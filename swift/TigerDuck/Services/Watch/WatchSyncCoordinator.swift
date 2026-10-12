@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WatchConnectivity
 import Combine
 import os
@@ -21,36 +22,100 @@ extension WCSession: WatchSessionPushing {}
 @MainActor
 final class WatchSyncCoordinator: NSObject {
 
-    private let session: WatchSessionPushing
-    private(set) var debounceTask: Task<Void, Never>?
-    private var pendingPayload: PendingPayload?
-    private var pendingSnapshot: WatchSnapshot?
-    private let debounceInterval: Duration = .milliseconds(500)
-    /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
-    private let sleep: @Sendable (Duration) async -> Void
-
-    private struct PendingPayload {
+    struct Payload {
         let courses: [SDCourse]
         let customNames: [String: String]
         let accentHex: String
         let loggedIn: Bool
         let languageTag: String?
         let visualPreset: VisualPreset
+        var quietDays: Set<String> = []
     }
+
+    private let session: WatchSessionPushing
+    private(set) var debounceTask: Task<Void, Never>?
+    private var pendingPayload: Payload?
+    private var pendingForce = false
+    private var pendingSnapshot: WatchSnapshot?
+    private var lastDelivered: WatchSnapshot?
+    private var payloadSource: (@MainActor () -> Payload)?
+    private var isActivated = false
+    private let debounceInterval: Duration = .milliseconds(500)
+    /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
+    private let sleep: @Sendable (Duration) async -> Void
+    private let republishCredentials: @MainActor () -> Void
+    private let isProtectedDataAvailable: @MainActor () -> Bool
+    /// A sync request arrived while the keychain could not be read, so its credentials are
+    /// still owed to the Watch, which does not ask again for them.
+    private var owesCredentials = false
+    private let notificationCenter: NotificationCenter
+    private var observers: [NSObjectProtocol] = []
 
     init(
         session: WatchSessionPushing = WCSession.default,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0, clock: .suspending) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0, clock: .suspending) },
+        republishCredentials: (@MainActor () -> Void)? = nil,
+        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil,
+        notificationCenter: NotificationCenter = .default
     ) {
         self.session = session
         self.sleep = sleep
+        self.republishCredentials = republishCredentials
+            ?? { WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed() }
+        self.isProtectedDataAvailable = isProtectedDataAvailable
+            ?? { UIApplication.shared.isProtectedDataAvailable }
+        self.notificationCenter = notificationCenter
         super.init()
+        // An unlock may come while the app is suspended, so a return to the app retries too.
+        observers = [
+            UIApplication.protectedDataDidBecomeAvailableNotification,
+            UIApplication.didBecomeActiveNotification,
+        ].map { name in
+            notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sendOwedCredentials() }
+            }
+        }
+    }
+
+    deinit {
+        for observer in observers {
+            notificationCenter.removeObserver(observer)
+        }
     }
 
     func activate() {
-        guard let wcSession = session as? WCSession else { return }
+        guard !isActivated, let wcSession = session as? WCSession else { return }
+        isActivated = true
         wcSession.delegate = self
         wcSession.activate()
+    }
+
+    /// Sets what `pushCurrentState()` reads at each push. Installed at launch, so a sync
+    /// request from the Watch is answered when iOS launches the app in the background,
+    /// where no scene and so no `WatchSyncBridge` exists.
+    func setPayloadSource(_ source: @escaping @MainActor () -> Payload) {
+        payloadSource = source
+    }
+
+    func pushCurrentState(force: Bool = false) {
+        guard let payloadSource else { return }
+        scheduleDebouncedPush(payloadSource(), force: force)
+    }
+
+    /// The Watch asked for a sync, so it may have lost what it had: send the current state
+    /// even if unchanged, and the library credentials, which go out only on such a request.
+    func answerSyncRequest() {
+        pushCurrentState(force: true)
+        owesCredentials = true
+        sendOwedCredentials()
+    }
+
+    /// The library password is readable only while the phone is unlocked, and a Watch message
+    /// can launch the app behind the lock screen.
+    private func sendOwedCredentials() {
+        guard owesCredentials, isProtectedDataAvailable() else { return }
+        owesCredentials = false
+        republishCredentials()
     }
 
     /// Push immediately (used in tests). Production code uses
@@ -61,14 +126,23 @@ final class WatchSyncCoordinator: NSObject {
         accentHex: String,
         loggedIn: Bool,
         languageTag: String?,
-        visualPreset: VisualPreset
+        visualPreset: VisualPreset,
+        quietDays: Set<String> = [],
+        force: Bool = false
     ) {
-        let snapshot = WatchPayloadEncoder.encode(
-            courses: courses, customNames: customNames, accentHex: accentHex,
-            syncedAt: Date(), loggedIn: loggedIn, languageTag: languageTag,
-            visualPreset: visualPreset
-        )
-        deliver(snapshot)
+        let snapshot = { (syncedAt: Date) in
+            WatchPayloadEncoder.encode(
+                courses: courses, customNames: customNames, accentHex: accentHex,
+                syncedAt: syncedAt, loggedIn: loggedIn, languageTag: languageTag,
+                visualPreset: visualPreset, quietDays: quietDays
+            )
+        }
+        // Only the stamp would differ, and every update wakes the Watch. A snapshot still
+        // pending, such as a failed answer to the Watch's request, goes out again instead.
+        if !force, pendingSnapshot == nil, let last = lastDelivered, snapshot(last.syncedAt) == last {
+            return
+        }
+        deliver(snapshot(Date()))
     }
 
     /// Attempt to deliver `snapshot` to the watch. If the watch isn't reachable
@@ -85,6 +159,7 @@ final class WatchSyncCoordinator: NSObject {
             let dict = try WatchPayloadCodec.encode(snapshot)
             try session.updateApplicationContext(dict)
             pendingSnapshot = nil
+            lastDelivered = snapshot
         } catch {
             AppLogger.network.error("watch context push failed: \(error.localizedDescription)")
             pendingSnapshot = snapshot
@@ -96,29 +171,21 @@ final class WatchSyncCoordinator: NSObject {
         deliver(snapshot)
     }
 
-    func scheduleDebouncedPush(
-        courses: [SDCourse],
-        customNames: [String: String],
-        accentHex: String,
-        loggedIn: Bool,
-        languageTag: String?,
-        visualPreset: VisualPreset
-    ) {
-        pendingPayload = PendingPayload(
-            courses: courses, customNames: customNames,
-            accentHex: accentHex, loggedIn: loggedIn, languageTag: languageTag,
-            visualPreset: visualPreset
-        )
+    func scheduleDebouncedPush(_ payload: Payload, force: Bool = false) {
+        pendingPayload = payload
+        pendingForce = pendingForce || force
         debounceTask?.cancel()
         let sleep = self.sleep
         let interval = debounceInterval
         debounceTask = Task { [weak self] in
             await sleep(interval)
             guard !Task.isCancelled, let self, let p = self.pendingPayload else { return }
+            let force = self.pendingForce
             self.pendingPayload = nil
+            self.pendingForce = false
             self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
                       loggedIn: p.loggedIn, languageTag: p.languageTag,
-                      visualPreset: p.visualPreset)
+                      visualPreset: p.visualPreset, quietDays: p.quietDays, force: force)
         }
     }
 }
@@ -151,10 +218,7 @@ extension WatchSyncCoordinator: WCSessionDelegate {
                              didReceiveMessage message: [String: Any]) {
         guard let kind = message[WatchWireFormat.MessageKey.kind] as? String,
               kind == WatchWireFormat.MessageKind.syncRequest else { return }
-        Task { @MainActor in
-            // Future subscribers will hook into this to re-emit current state.
-            NotificationCenter.default.post(name: .watchSyncRequested, object: nil)
-        }
+        Task { @MainActor in self.answerSyncRequest() }
     }
 
     /// Reply-expecting messages. The watch asks for a library QR here so it
@@ -194,8 +258,4 @@ extension WatchSyncCoordinator: WCSessionDelegate {
             }
         }
     }
-}
-
-extension Notification.Name {
-    static let watchSyncRequested = Notification.Name("watchSyncRequested")
 }

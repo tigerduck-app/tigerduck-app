@@ -200,4 +200,100 @@ struct WidgetTimelineDerivationTests {
             Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
         }
     }
+
+    /// A course meeting twice in a day gets a row per block, not one row spanning the gap.
+    @Test func todayRows_splitACourseIntoItsBlocks() {
+        let now = monday(8, 0)
+        let snap = snapshot(courses: [
+            course(courseNo: "X", displayName: "Twice", weekday: 1, periods: ["C", "A"]),
+            course(courseNo: "Y", displayName: "Long", weekday: 1, periods: ["A", "B"]),
+            course(courseNo: "Z", displayName: "Tuesday", weekday: 2, periods: ["A"]),
+        ])
+
+        let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: now)
+
+        #expect(rows.map(\.id) == ["X-A", "Y-A", "X-C"])
+        #expect(rows.map(\.periodRange) == ["A", "A–B", "C"])
+        #expect(rows.map(\.startTime) == ["08:10", "08:10", "10:20"])
+        #expect(rows.map(\.endTime) == ["09:00", "10:00", "11:10"])
+    }
+
+    @Test func todayRows_leaveOutACourseSkippedToday() {
+        let now = monday(8, 0)
+        let snap = snapshot(courses: [
+            course(
+                courseNo: "X", displayName: "Skipped", weekday: 1, periods: ["A"],
+                skippedDates: [WidgetTimelineDerivation.dateKey(for: now)]
+            ),
+            course(courseNo: "Y", displayName: "Kept", weekday: 1, periods: ["B"]),
+        ])
+
+        #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map(\.id) == ["Y-B"])
+    }
+
+    /// A course in a different room for each block shows the room of the block in question,
+    /// not every room joined, which the week grid cut to "TR-313, ...".
+    @Test func eachBlockShowsItsOwnRoom() {
+        let twoRooms = SnapshotCourse(
+            courseNo: "X",
+            displayName: "Twice",
+            classroom: "TR-313, IB-101, EE-201",
+            schedule: [1: ["A", "C"], 2: ["B"]],
+            colorHex: 0,
+            classroomMap: ["1-A": "TR-313", "1-C": "IB-101", "2-B": "EE-201"]
+        )
+        let snap = snapshot(courses: [twoRooms])
+
+        if case .ongoing(let infos) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(8, 30)) {
+            #expect(infos.map(\.classroom) == ["TR-313"])
+        } else {
+            Issue.record("Expected .ongoing at 08:30")
+        }
+        if case .nextToday(let info) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 30)) {
+            #expect(info.classroom == "IB-101")
+        } else {
+            Issue.record("Expected .nextToday at 09:30")
+        }
+        if case .tomorrowFirst(let info) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(18, 0)) {
+            #expect(info.classroom == "EE-201")
+        } else {
+            Issue.record("Expected .tomorrowFirst at 18:00")
+        }
+        let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: monday(8, 0))
+        #expect(rows.map(\.classroom) == ["TR-313", "IB-101"])
+        // The week grid asks for a whole block, whose distinct rooms it lists.
+        #expect(twoRooms.classroom(weekday: 1, periods: ["A", "B", "C"]) == "TR-313, IB-101")
+    }
+
+    /// Taipei's midnight wherever the device is, since the widget's day is Taipei's.
+    @Test func nextMidnight_isTaipeiMidnight() {
+        let taipei = WidgetTaipei.calendar
+        let lateEvening = taipei.date(from: DateComponents(year: 2026, month: 9, day: 22, hour: 23, minute: 30))!
+        let midnight = taipei.date(from: DateComponents(year: 2026, month: 9, day: 23))!
+        #expect(WidgetTimelineDerivation.nextMidnight(after: lateEvening) == midnight)
+        // At midnight itself the next one is a day later, never the same instant.
+        let nextDay = taipei.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        #expect(WidgetTimelineDerivation.nextMidnight(after: midnight) == nextDay)
+    }
+
+    /// The evening before a school holiday, the scan passes the holiday as today's check
+    /// does, instead of offering its class as tomorrow's.
+    @Test func holidayTomorrow_advancesToTheNextClassDay() {
+        let now = monday(18, 0)
+        let tomorrowKey = WidgetTimelineDerivation.dateKey(
+            for: Calendar(identifier: .gregorian).date(byAdding: .day, value: 1, to: now)!
+        )
+        var snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "TuesClass", weekday: 2, periods: ["B"]),
+            course(courseNo: "B", displayName: "WedClass", weekday: 3, periods: ["B"]),
+        ])
+        snap.quietDayKeys = [tomorrowKey]
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
+        if case .tomorrowFirst(let info) = derived {
+            #expect(info.course.displayName == "WedClass")
+            #expect(info.day == .later(weekday: 3))
+        } else {
+            Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
+        }
+    }
 }

@@ -97,5 +97,31 @@ final class WatchPayloadCodecTests: XCTestCase {
         let decoded = try JSONDecoder().decode(WatchSnapshot.self, from: legacyJSON)
         XCTAssertEqual(decoded.visualPreset, .default)
         XCTAssertNil(decoded.clockOverrideJSON)
+        XCTAssertEqual(decoded.quietDays, [])
+    }
+
+    func test_quietDaysAndSkippedDates_roundTrip() throws {
+        let course = WatchCourse(
+            id: "X1-1-3", courseNo: "X1", name: "Algorithms", teacher: "",
+            classroom: "TR-313", colorHex: "#FF8800", weekday: 1,
+            startHHmm: "10:20", endHHmm: "12:10", periodLabel: "3-4",
+            skippedDates: ["2026-05-11"]
+        )
+        let snapshot = WatchSnapshot(
+            courses: [course], accentHex: "#FF8800", syncedAtMs: 1,
+            loggedIn: true, languageTag: nil, quietDays: ["2026-10-09", "2026-10-10"]
+        )
+        let decoded = try WatchPayloadCodec.decode(WatchPayloadCodec.encode(snapshot))
+        XCTAssertEqual(decoded, snapshot)
+    }
+
+    /// A phone that sends neither key, or a payload with none to send, decodes to no holidays
+    /// and no skipped days.
+    func test_decode_withoutQuietDaysOrSkippedDates_hasNone() throws {
+        let dict = try WatchPayloadCodec.encode(sampleSnapshot())
+        XCTAssertNil(dict[WatchWireFormat.Key.quietDays])
+        let decoded = try WatchPayloadCodec.decode(dict)
+        XCTAssertEqual(decoded.quietDays, [])
+        XCTAssertNil(decoded.courses.first?.skippedDates)
     }
 }

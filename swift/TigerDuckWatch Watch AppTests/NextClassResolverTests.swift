@@ -64,6 +64,35 @@ final class NextClassResolverTests: XCTestCase {
         XCTAssertEqual(r.next?.id, "A")
     }
 
+    func test_holiday_hidesTodaysClasses() {
+        let a = course("A", weekday: 1, start: "10:20", end: "11:10")
+        let now = mondayAt("10:45")
+        let r = NextClassResolver.resolve(courses: [a], now: now, quietDays: [SharedTaipei.dayKey(for: now)])
+        XCTAssertNil(r.current)
+        XCTAssertNil(r.next)
+    }
+
+    func test_holidayOnAnotherDay_changesNothing() {
+        let a = course("A", weekday: 1, start: "10:20", end: "11:10")
+        let now = mondayAt("09:00")
+        let tomorrow = SharedTaipei.calendar.date(byAdding: .day, value: 1, to: now)!
+        let r = NextClassResolver.resolve(courses: [a], now: now, quietDays: [SharedTaipei.dayKey(for: tomorrow)])
+        XCTAssertEqual(r.next?.id, "A")
+    }
+
+    func test_courseSkippedToday_isLeftOut() {
+        let now = mondayAt("09:00")
+        let skipped = WatchCourse(
+            id: "A", courseNo: "A", name: "A", teacher: "", classroom: "", colorHex: "#FF8800",
+            weekday: 1, startHHmm: "10:20", endHHmm: "11:10", periodLabel: "",
+            skippedDates: [SharedTaipei.dayKey(for: now)]
+        )
+        let b = course("B", weekday: 1, start: "13:30", end: "14:20")
+        let r = NextClassResolver.resolve(courses: [skipped, b], now: now)
+        XCTAssertNil(r.current)
+        XCTAssertEqual(r.next?.id, "B")
+    }
+
     func test_overlappingSessions_picksEarliestEnd() {
         // Defensive: real data shouldn't overlap, but lock the contract.
         let a = course("A", weekday: 1, start: "10:00", end: "11:00")

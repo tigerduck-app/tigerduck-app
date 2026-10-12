@@ -31,7 +31,6 @@ nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
 /// Tests pin these, not the prune loop. See docs/decisions/0010-live-activity-end-policy.md.
 @MainActor
 final class LiveActivityCoordinator {
-    private let store: SharedSnapshotStore
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "LiveActivity")
     private var automaticEndTasks: [String: Task<Void, Never>] = [:]
     private var activityObserverTask: Task<Void, Never>?
@@ -59,8 +58,7 @@ final class LiveActivityCoordinator {
     /// than left to its countdown. `false` until `AppState` installs it.
     private var isQuietDay: (Date) -> Bool = { _ in false }
 
-    init(store: SharedSnapshotStore = SharedSnapshotStore()) {
-        self.store = store
+    init() {
         startActivityObserver()
     }
 
@@ -98,12 +96,8 @@ final class LiveActivityCoordinator {
         let now = AppClock.now()
         await pruneRunningActivities(now: now)
 
-        // Write the snapshot to the App Group only after the system gate, and clear it when
-        // Live Activities are disabled or there is no snapshot, so a background widget read
-        // never surfaces a stale snapshot.
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             logger.info("Live Activities are disabled by the system")
-            store.writeSnapshot(nil)
             return
         }
 
@@ -113,14 +107,11 @@ final class LiveActivityCoordinator {
         guard let snapshot,
               Self.canStart(snapshot, isAvailable: isAvailable(), isQuietDay: isQuietDay)
         else {
-            store.writeSnapshot(nil)
             // No `cancelAutomaticEndTasks()` here: the prune already cancelled every timer but the
             // survivors', and a survivor that is not the current target keeps running, so it
             // would be stranded with no timer left to end it.
             return
         }
-
-        store.writeSnapshot(snapshot)
 
         let targetId = snapshot.composedActivityId
         let runningActivities = Activity<TigerDuckActivityAttributes>.activities
@@ -174,7 +165,6 @@ final class LiveActivityCoordinator {
         }
         cancelAutomaticEndTasks()
         cancelUpdateTokenTasks()
-        store.writeSnapshot(nil)
     }
 
     private func startActivityObserver() {

@@ -135,7 +135,14 @@ struct WeekGridView: View {
                 .fill(palette.emptyCell)
 
         case let .solo(course, spanCount):
-            courseBlock(course, spanCount: spanCount, cellHeight: cellHeight, fontScale: fontScale)
+            let block = Array(periods[periodIndex..<min(periodIndex + spanCount, periods.count)])
+            courseBlock(
+                course,
+                classroom: course.classroom(weekday: weekday, periods: block),
+                spanCount: spanCount,
+                cellHeight: cellHeight,
+                fontScale: fontScale
+            )
 
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
             // Two overlapping courses: each half is a column sized to its course's span and
@@ -182,7 +189,7 @@ struct WeekGridView: View {
 
     @ViewBuilder
     private func courseBlock(
-        _ course: SnapshotCourse, spanCount: Int, cellHeight: CGFloat, fontScale: CGFloat
+        _ course: SnapshotCourse, classroom: String, spanCount: Int, cellHeight: CGFloat, fontScale: CGFloat
     ) -> some View {
         let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
         let courseColor = Color(widgetHex: course.colorHex)
@@ -202,8 +209,8 @@ struct WeekGridView: View {
                                 .lineLimit(spanCount > 1 ? 3 : 2)
                                 .multilineTextAlignment(.center)
                                 .minimumScaleFactor(0.7)
-                            if !course.classroom.isEmpty && spanCount > 1 {
-                                Text(course.classroom)
+                            if !classroom.isEmpty && spanCount > 1 {
+                                Text(classroom)
                                     .font(.system(size: 7 * fontScale))
                                     .foregroundStyle(palette.onSurfaceVariant)
                                     .lineLimit(1)

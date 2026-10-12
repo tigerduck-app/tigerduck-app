@@ -26,7 +26,7 @@ struct AccessoryProvider: TimelineProvider {
         guard let snap = store.readSnapshot() else {
             completion(Timeline(
                 entries: [AccessoryEntry(date: Date(), derived: .signInRequired)],
-                policy: .atEnd
+                policy: .after(WidgetTimelineDerivation.nextMidnight(after: Date()))
             ))
             return
         }

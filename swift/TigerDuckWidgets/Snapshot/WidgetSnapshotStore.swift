@@ -2,8 +2,7 @@ import Foundation
 import os
 
 /// Persists the latest `WidgetSnapshot` in a shared App Group `UserDefaults` suite so the
-/// widget extension can render what the app writes. Mirrors the Live Activity extension's
-/// `SharedSnapshotStore`.
+/// widget extension can render what the app writes.
 ///
 /// DEBUG builds trap when the App Group is unreachable, checked by container URL (see
 /// ``isAppGroupAvailable(_:)``), so an empty `com.apple.security.application-groups`

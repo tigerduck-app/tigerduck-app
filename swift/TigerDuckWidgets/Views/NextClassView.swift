@@ -108,8 +108,8 @@ struct NextClassView: View {
             Text("\(info.startTime)–\(info.endTime)  \(info.periodRange)")
                 .font(.caption)
                 .foregroundStyle(palette.onSurfaceVariant)
-            if !info.course.classroom.isEmpty {
-                Text(info.course.classroom)
+            if !info.classroom.isEmpty {
+                Text(info.classroom)
                     .font(.caption)
                     .foregroundStyle(palette.onSurfaceVariant)
             }
@@ -139,8 +139,8 @@ struct NextClassView: View {
             Text(info.startTime)
                 .font(.caption)
                 .foregroundStyle(palette.onSurfaceVariant)
-            if !info.course.classroom.isEmpty {
-                Text(info.course.classroom)
+            if !info.classroom.isEmpty {
+                Text(info.classroom)
                     .font(.caption)
                     .foregroundStyle(palette.onSurfaceVariant)
             }

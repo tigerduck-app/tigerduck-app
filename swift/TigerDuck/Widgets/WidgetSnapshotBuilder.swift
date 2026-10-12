@@ -33,7 +33,8 @@ enum WidgetSnapshotBuilder {
                 classroom: course.classroom,
                 schedule: course.schedule,
                 colorHex: resolveColor(courseNo: course.courseNo, colorMap: input.colorMap),
-                skippedDates: Set(course.skippedDates)
+                skippedDates: Set(course.skippedDates),
+                classroomMap: course.classroomMap
             )
         }
 

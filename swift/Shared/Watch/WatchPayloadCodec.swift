@@ -21,6 +21,7 @@ public enum WatchPayloadCodec {
         static let startHHmm    = "startHHmm"
         static let endHHmm      = "endHHmm"
         static let periodLabel  = "periodLabel"
+        static let skippedDates = "skippedDates"
     }
 
     // MARK: Encode
@@ -40,11 +41,14 @@ public enum WatchPayloadCodec {
         if let json = snapshot.clockOverrideJSON {
             dict[WatchWireFormat.Key.clockOverride] = json
         }
+        if !snapshot.quietDays.isEmpty {
+            dict[WatchWireFormat.Key.quietDays] = snapshot.quietDays.sorted()
+        }
         return dict
     }
 
     private nonisolated static func encodeCourse(_ c: WatchCourse) -> [String: Any] {
-        [
+        var dict: [String: Any] = [
             CourseKey.id:          c.id,
             CourseKey.courseNo:    c.courseNo,
             CourseKey.name:        c.name,
@@ -56,6 +60,10 @@ public enum WatchPayloadCodec {
             CourseKey.endHHmm:     c.endHHmm,
             CourseKey.periodLabel: c.periodLabel,
         ]
+        if let skipped = c.skippedDates, !skipped.isEmpty {
+            dict[CourseKey.skippedDates] = skipped.sorted()
+        }
+        return dict
     }
 
     // MARK: Decode
@@ -77,6 +85,7 @@ public enum WatchPayloadCodec {
         let presetRaw   = dict[WatchWireFormat.Key.visualPreset] as? String
         let preset      = presetRaw.flatMap(VisualPreset.init(rawValue:)) ?? .default
         let clockJSON   = dict[WatchWireFormat.Key.clockOverride] as? String
+        let quietDays   = dict[WatchWireFormat.Key.quietDays] as? [String] ?? []
 
         return WatchSnapshot(
             version: version,
@@ -86,7 +95,8 @@ public enum WatchPayloadCodec {
             loggedIn: loggedIn,
             languageTag: languageTag,
             visualPreset: preset,
-            clockOverrideJSON: clockJSON
+            clockOverrideJSON: clockJSON,
+            quietDays: Set(quietDays)
         )
     }
 
@@ -106,7 +116,8 @@ public enum WatchPayloadCodec {
             weekday:     try req(CourseKey.weekday),
             startHHmm:   try req(CourseKey.startHHmm),
             endHHmm:     try req(CourseKey.endHHmm),
-            periodLabel: try req(CourseKey.periodLabel)
+            periodLabel: try req(CourseKey.periodLabel),
+            skippedDates: (dict[CourseKey.skippedDates] as? [String]).map(Set.init)
         )
     }
 

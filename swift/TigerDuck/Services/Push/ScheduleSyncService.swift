@@ -146,7 +146,8 @@ final class ScheduleSyncService {
 
         if inputs.showAssignmentScenario {
             for assignment in inputs.assignments
-                where !assignment.isCompleted && assignment.dueDate > now && assignment.dueDate <= horizonEnd {
+                where LiveActivityScenarioResolver.isOutstanding(assignment)
+                    && assignment.dueDate > now && assignment.dueDate <= horizonEnd {
                 let fireAt = leadTimeFireAt(
                     desired: assignment.dueDate.addingTimeInterval(-inputs.assignmentLeadTime),
                     event: assignment.dueDate,

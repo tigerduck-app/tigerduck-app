@@ -105,7 +105,7 @@ extension AppState {
 
         let assignmentLead = liveActivityPreferences.assignmentLiveActivityLeadTime
         if let nextDue = assignments
-            .filter({ !$0.isCompleted && $0.dueDate > now })
+            .filter({ LiveActivityScenarioResolver.isOutstanding($0) && $0.dueDate > now })
             .min(by: { $0.dueDate < $1.dueDate })?.dueDate {
             candidates.append(nextDue.addingTimeInterval(-assignmentLead))
             candidates.append(nextDue)

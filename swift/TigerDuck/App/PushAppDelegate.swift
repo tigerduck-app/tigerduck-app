@@ -10,12 +10,11 @@ import os
 /// the token to a `forwardTo` closure, which `TigerDuckApp` wires to the
 /// shared `PushRegistrationService`.
 final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
-    /// Set in `TigerDuckApp`'s `.onAppear` through `PushCoordinator.bindTokenForwarding`
-    /// and called on the main thread with the raw token data. This delegate, the app and
-    /// the coordinator live for the whole process, so the closure's weak capture of the
-    /// coordinator never drops a token. `AppState.init` triggers
-    /// `registerForRemoteNotifications()` before `.onAppear`, so APNs can deliver a token
-    /// or error while this is nil; `bufferedToken` and `bufferedError` hold it until the
+    /// Set at launch and again in `TigerDuckApp`'s `.onAppear` through
+    /// `PushCoordinator.bindTokenForwarding`, and called on the main thread with the raw token
+    /// data. This delegate, the app and the coordinator live for the whole process, so the
+    /// closure's weak capture of the coordinator never drops a token. APNs can deliver a token
+    /// or error before it is set; `bufferedToken` and `bufferedError` hold it until the
     /// `didSet`s below replay it.
     var forwardToken: ((Data) -> Void)? {
         didSet {
@@ -46,6 +45,11 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Delegate")
 
+    /// Wiring that cannot wait for a scene, run once by `didFinishLaunching`: iOS can launch the
+    /// app in the background for a silent push or a Watch message, and then no `.onAppear` runs.
+    /// `TigerDuckApp.init` sets it; SwiftUI builds the app before it creates this delegate.
+    static var launchWork: ((PushAppDelegate) -> Void)?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -62,6 +66,8 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
             MailBackgroundRefresh.register()
         }
         #endif
+        Self.launchWork?(self)
+        Self.launchWork = nil
         return true
     }
 

@@ -14,7 +14,8 @@ enum WatchPayloadEncoder {
         syncedAt: Date,
         loggedIn: Bool,
         languageTag: String?,
-        visualPreset: VisualPreset
+        visualPreset: VisualPreset,
+        quietDays: Set<String> = []
     ) -> WatchSnapshot {
         // No courses when logged out: the previous user's may still be cached when this push
         // fires, and the watch's NowNextView checks `courses` before `loggedIn`, so it would
@@ -30,7 +31,8 @@ enum WatchPayloadEncoder {
             loggedIn: loggedIn,
             languageTag: languageTag,
             visualPreset: visualPreset,
-            clockOverrideJSON: encodedClockOverride()
+            clockOverrideJSON: encodedClockOverride(),
+            quietDays: quietDays
         )
     }
 
@@ -53,8 +55,7 @@ enum WatchPayloadEncoder {
         // complication show one block across the gap and call it "current" during the free
         // period. Mirrors `WidgetTimelineDerivation.contiguousRuns` in the iOS widget.
         let order = AppConstants.Periods.chronologicalOrder
-        let classroomMap = course.classroomMap
-        let flatClassroom = SDCourse.dedup(course.classroom)
+        let skipped = Set(course.skippedDates)
         return course.schedule.flatMap { weekday, periodIds -> [WatchCourse] in
             let sorted = periodIds.sortedByPeriodOrder()
             return contiguousRuns(sorted, by: order).compactMap { run -> WatchCourse? in
@@ -68,15 +69,13 @@ enum WatchPayloadEncoder {
                     courseNo: course.courseNo,
                     name: resolveDisplayName(course: course, customNames: customNames),
                     teacher: course.instructor,
-                    classroom: classroomForRun(
-                        weekday: weekday, run: run,
-                        map: classroomMap, fallback: flatClassroom
-                    ),
+                    classroom: course.classroom(weekday: weekday, periods: run),
                     colorHex: courseColorHex(course),
                     weekday: weekday,
                     startHHmm: startPeriod.startTime,
                     endHHmm: endPeriod.endTime,
-                    periodLabel: label
+                    periodLabel: label,
+                    skippedDates: skipped.isEmpty ? nil : skipped
                 )
             }
         }
@@ -99,26 +98,6 @@ enum WatchPayloadEncoder {
         }
         if !current.isEmpty { runs.append(current) }
         return runs
-    }
-
-    private static func classroomForRun(
-        weekday: Int,
-        run: [String],
-        map: [String: String],
-        fallback: String
-    ) -> String {
-        guard !map.isEmpty else { return fallback }
-        var seen = Set<String>()
-        var rooms: [String] = []
-        for period in run {
-            let key = "\(weekday)-\(period)"
-            guard let raw = map[key] else { continue }
-            for part in SDCourse.splitRoom(raw) where !seen.contains(part) {
-                seen.insert(part)
-                rooms.append(part)
-            }
-        }
-        return rooms.isEmpty ? fallback : rooms.joined(separator: ", ")
     }
 
     /// Mirror of `WidgetSnapshotBuilder.resolveDisplayName` — prefer the

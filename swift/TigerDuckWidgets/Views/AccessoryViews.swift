@@ -70,9 +70,9 @@ struct AccessoryRectangularView: View {
                     .lineLimit(1)
                 HStack(spacing: 4) {
                     Text("\(info.startTime)–\(info.endTime)").font(.caption2)
-                    if !info.course.classroom.isEmpty {
+                    if !info.classroom.isEmpty {
                         Text("·").font(.caption2)
-                        Text(info.course.classroom).font(.caption2)
+                        Text(info.classroom).font(.caption2)
                     }
                 }
             }
@@ -83,7 +83,7 @@ struct AccessoryRectangularView: View {
                 Text(info.course.displayName)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
-                Text("\(info.startTime)  \(info.course.classroom)")
+                Text("\(info.startTime)  \(info.classroom)")
                     .font(.caption2)
             }
         case .tomorrowFirst(let info):

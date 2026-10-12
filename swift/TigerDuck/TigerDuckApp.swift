@@ -8,17 +8,23 @@ import UserNotifications
 
 @main
 struct TigerDuckApp: App {
-    @State private var appState = AppState()
+    @State private var appState: AppState
     @State private var sceneRefreshTask: Task<Void, Never>?
     @State private var rootLanguageId = UUID()
-    @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
+    @State private var widgetSnapshotWriter: WidgetSnapshotWriter
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var watchSyncCoordinator = WatchSyncCoordinator()
-    @State private var watchSyncActivated = false
+    @State private var watchSyncCoordinator: WatchSyncCoordinator
 
     init() {
+        // Built here, not as property defaults, so the launch work below can hold them. A silent
+        // push or a Watch message can launch the app in the background, where no scene appears
+        // and `.onAppear` never runs.
+        let appState = AppState()
+        let watchSync = WatchSyncCoordinator()
+        _appState = State(initialValue: appState)
+        _watchSyncCoordinator = State(initialValue: watchSync)
         AppLogger.start()
         #if DEBUG
         // Scaffolding for the Library freeze: tells a blocked main thread
@@ -32,6 +38,16 @@ struct TigerDuckApp: App {
         #endif
         PushCoordinator.assertEnvConsistency()
         SchoolMailBootstrap.install()
+        _widgetSnapshotWriter = State(initialValue: WidgetSnapshotWriter(appState: appState))
+        watchSync.setPayloadSource { WatchSyncCoordinator.Payload(appState: appState) }
+        // Sync triggers reach the backend, so they wait for onboarding as `AppState.init` does;
+        // `.onAppear` binds them again for a user who finishes onboarding in this session.
+        PushAppDelegate.launchWork = { delegate in
+            if appState.hasCompletedOnboarding {
+                appState.bindPushDelegate(delegate)
+            }
+            watchSync.activate()
+        }
     }
 
     /// `static` so the store is opened exactly once per process. As an
@@ -91,10 +107,7 @@ struct TigerDuckApp: App {
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .environment(appState)
                 .onAppear {
-                    if !watchSyncActivated {
-                        watchSyncActivated = true
-                        watchSyncCoordinator.activate()
-                    }
+                    watchSyncCoordinator.activate()
                     appState.bindPushDelegate(pushAppDelegate)
                     // Route custom-push taps into AppState. Capture the
                     // class instance weakly to avoid a retain cycle
@@ -112,10 +125,7 @@ struct TigerDuckApp: App {
                     }
                     appState.backgroundSync()
                     appState.startCloudSyncIfEnabled()
-                    if widgetSnapshotWriter == nil {
-                        widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
-                        widgetSnapshotWriter?.regenerate()
-                    }
+                    widgetSnapshotWriter.regenerate()
                     // `.onChange(of: scenePhase)` does not fire for the initial `.active`
                     // value, so the first background check starts here; later foreground
                     // returns go through the scene-phase observer.
@@ -148,7 +158,7 @@ struct TigerDuckApp: App {
                         Task {
                             if await AcademicCalendarStore.shared.refresh() {
                                 await appState.refreshLiveActivity()
-                                widgetSnapshotWriter?.regenerate()
+                                widgetSnapshotWriter.regenerate()
                             }
                         }
                         // Cancel the previous activation's refresh so rapid scene toggles do not
@@ -164,7 +174,7 @@ struct TigerDuckApp: App {
                             Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
                         }
                         appState.startRevisionPolling()
-                        widgetSnapshotWriter?.regenerate()
+                        widgetSnapshotWriter.regenerate()
                         // App Store update check, throttled inside to once per
                         // ``AppConstants/updateCheckThrottle`` so rapid scene
                         // toggles don't generate iTunes Lookup traffic.
@@ -178,13 +188,8 @@ struct TigerDuckApp: App {
     }
 
     /// Translates a tapped notification into the right AppState mutation. A
-    /// static helper keeps the SwiftUI body uncluttered and lets the routing
-    /// be unit-tested without the App scene plumbing.
-    ///
-    /// `bulletin_id` is decoded as `Int`, `NSNumber.intValue` and `String → Int`
-    /// because APNs, FCM and relays bridge JSON numbers inconsistently: an
-    /// int-tagged NSNumber passes `as? Int`, a Double-tagged one fails it, and
-    /// some relays re-encode the value as a quoted string.
+    /// static helper keeps the SwiftUI body uncluttered; the payload parsing it
+    /// calls lives in AppState+PushRouting.swift, where it is unit-tested.
     @MainActor
     private static func routeServerPushTap(
         response: UNNotificationResponse,
@@ -194,9 +199,16 @@ struct TigerDuckApp: App {
         let info = response.notification.request.content.userInfo
         let kind = info["kind"] as? String
         switch kind {
-        case "custom_push_bulletin":
-            if let id = bulletinId(from: info["bulletin_id"]) {
-                appState.pendingDeepLink = .bulletin(id)
+        case "custom_push_bulletin", "bulletin":
+            if let link = AppState.bulletinDeepLink(from: info) {
+                appState.pendingDeepLink = link
+            }
+        case "assignment_reminder":
+            if let assignment = AppState.remindedAssignment(
+                from: info,
+                in: DataCache.shared.loadAssignments()
+            ) {
+                openInMoodle(assignment)
             }
         case "custom_push_popup":
             guard let nid = info["notification_id"] as? String,
@@ -236,14 +248,18 @@ struct TigerDuckApp: App {
         }
     }
 
-    /// Decode `bulletin_id` from a JSON-bridged userInfo value. See the
-    /// `routeServerPushTap` doc comment for why all three paths exist.
+    /// Opens the assignment in the Moodle app, as its Home row does, or its web page when iOS
+    /// refuses the `moodlemobile://` link because the app is not installed.
     @MainActor
-    private static func bulletinId(from raw: Any?) -> Int? {
-        if let n = raw as? Int { return n }
-        if let n = raw as? NSNumber { return n.intValue }
-        if let s = raw as? String { return Int(s) }
-        return nil
+    private static func openInMoodle(_ assignment: SDAssignment) {
+        let web = assignment.moodleWebURL
+        guard let link = assignment.moodleDeepLink else {
+            if let web { UIApplication.shared.open(web) }
+            return
+        }
+        UIApplication.shared.open(link) { opened in
+            if !opened, let web { UIApplication.shared.open(web) }
+        }
     }
 }
 
