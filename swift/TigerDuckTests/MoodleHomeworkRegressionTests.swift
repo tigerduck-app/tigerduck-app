@@ -42,7 +42,9 @@ struct MoodleHomeworkRegressionTests {
                     autologinURL: "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
                 )
             },
-            signInGeneration: { 0 }
+            signInGeneration: { 0 },
+            // A wait for the key that never ends on its own, so a slow runner still signs in.
+            sleep: { await ManualSleeper().sleep(for: $0) }
         )
     }
 
