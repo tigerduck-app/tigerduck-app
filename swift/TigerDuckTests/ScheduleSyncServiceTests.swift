@@ -355,6 +355,8 @@ struct ScheduleSyncServiceTests {
         #expect(event?.scenario == .assignmentUrgent)
         #expect(event?.snapshot.title == "Final Project")
         #expect(event?.sourceId == "a-1000")
+        // The server starts its activity from this snapshot, so a tap there opens the same link.
+        #expect(event?.snapshot.deepLink?.absoluteString == "tigerduck://assignment/a-1000")
     }
 
     @Test func classPreparingLeadTimePast_firesImmediately() {

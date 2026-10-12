@@ -156,6 +156,12 @@ final class AppState {
         liveActivityCoordinator.setQuietDayProvider { day in
             AcademicCalendarStore.shared.suppressesClasses(on: day)
         }
+        liveActivityCoordinator.setAssignmentOutstandingProvider { id in
+            LiveActivityScenarioResolver.isOutstanding(
+                assignmentId: id,
+                in: DataCache.shared.loadAssignments()
+            )
+        }
         #endif
 
         // Install before enabling push, so a refresh the first registration triggers can

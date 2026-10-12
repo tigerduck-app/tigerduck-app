@@ -20,7 +20,8 @@ reminders; nothing here schedules them.
   follow-up are distinct), and each is ended by its server end job or its own countdown. The
   coordinator ends only expired activities, duplicate copies of one `composedActivityId`, class
   activities on a day classes do not meet (by the academic calendar and the user's "still have
-  class" choices), and all of them while Live Activity is unavailable.
+  class" choices), assignment activities whose cached assignment is submitted, ignored or marked
+  done, and all of them while Live Activity is unavailable.
 - Do not exceed the 8-hour assignment lead-time limit in `LiveActivityPreferencesStore`.
 - Do not ask for notification permission from background scheduling paths; it needs an explicit
   user action.

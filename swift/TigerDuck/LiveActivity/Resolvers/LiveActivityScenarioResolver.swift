@@ -136,7 +136,7 @@ struct LiveActivityScenarioResolver {
             countdownTarget: assignment.dueDate,
             progressStart: progressStart,
             accentHex: accentHex,
-            deepLink: assignment.moodleDeepLink,
+            deepLink: WidgetURLRouter.assignmentURL(id: assignment.assignmentId),
             sourceId: assignment.assignmentId
         )
     }
@@ -169,6 +169,10 @@ struct LiveActivityScenarioResolver {
     /// not marked done here, the assignments the backend's reminders are sent for.
     static func isOutstanding(_ assignment: SDAssignment) -> Bool {
         !assignment.isCompleted && !assignment.isArchived && !assignment.isLocallyCompleted
+    }
+
+    static func isOutstanding(assignmentId id: String, in assignments: [SDAssignment]) -> Bool? {
+        assignments.first { $0.assignmentId == id }.map { isOutstanding($0) }
     }
 
 }
