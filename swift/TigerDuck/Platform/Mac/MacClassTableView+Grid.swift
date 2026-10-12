@@ -230,7 +230,7 @@ extension MacClassTableView {
         )
         .overlay {
             let edge = RoundedRectangle(cornerRadius: 8, style: .continuous)
-            if appState.outlineRequiredCourses, course.isRequired {
+            if outlineRequiredCourses, course.isRequired {
                 edge.strokeBorder(color, lineWidth: 1)
             } else {
                 edge.stroke(color.opacity(0.6), lineWidth: 0.5)

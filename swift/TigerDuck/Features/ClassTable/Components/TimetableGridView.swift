@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -31,6 +32,7 @@ struct TimetableGridView: View {
     /// environment. For an export, whose renderer cannot set that value itself.
     var differentiateWithoutColor: Bool? = nil
     @Environment(AppState.self) private var appState
+    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
     private let rowSpacing: CGFloat = 3
     private let colSpacing: CGFloat = 3
@@ -148,7 +150,7 @@ struct TimetableGridView: View {
                     RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
                         .fill(course.color.opacity(0.4))
                         .overlay {
-                            if appState.outlineRequiredCourses, course.isRequired {
+                            if outlineRequiredCourses, course.isRequired {
                                 RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
                                     .strokeBorder(course.color, lineWidth: 1)
                             }
@@ -291,6 +293,7 @@ private struct ConflictClusterView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var environmentDiffWithoutColor
     private var diffWithoutColor: Bool { differentiateWithoutColorOverride ?? environmentDiffWithoutColor }
     @Environment(AppState.self) private var appState
+    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
 
@@ -566,7 +569,7 @@ private struct ConflictClusterView: View {
     }
 
     private func isOutlined(_ course: SDCourse) -> Bool {
-        appState.outlineRequiredCourses && course.isRequired
+        outlineRequiredCourses && course.isRequired
     }
 
     private func courseRegion(

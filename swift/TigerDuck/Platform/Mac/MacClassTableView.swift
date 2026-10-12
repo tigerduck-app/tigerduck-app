@@ -16,6 +16,7 @@ struct MacClassTableView: View {
     /// Read through `@Default` rather than `Defaults[...]` so toggling the
     /// setting redraws the grid — a raw read registers no SwiftUI dependency.
     @Default(.alwaysShowAllPeriods) private var showsAllPeriods
+    @Default(.outlineRequiredCourses) var outlineRequiredCourses
 
     @State var selectedSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
