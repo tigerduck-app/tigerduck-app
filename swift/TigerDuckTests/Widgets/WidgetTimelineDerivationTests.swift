@@ -47,6 +47,12 @@ struct WidgetTimelineDerivationTests {
         return WidgetTaipei.calendar.date(from: components)!
     }
 
+    private func dayKey(_ offset: Int, after date: Date) -> String {
+        WidgetTimelineDerivation.dateKey(
+            for: WidgetTaipei.calendar.date(byAdding: .day, value: offset, to: date)!
+        )
+    }
+
     @Test func notLoggedIn_emitsSignInState() {
         let snap = WidgetSnapshot(
             version: 1, generatedAt: Date(),
@@ -305,6 +311,116 @@ struct WidgetTimelineDerivationTests {
             #expect(info.day == .later(weekday: 3))
         } else {
             Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
+        }
+    }
+
+    /// A holiday has no class now or later today, but the widget still offers the next class
+    /// day, as it does every evening, and captions it "Tomorrow" when it is.
+    @Test func holidayToday_offersTomorrowsFirstClass() {
+        // 09:30, inside the Monday class that a class day would show as ongoing.
+        let now = monday(9, 30)
+        var snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "MonClass", weekday: 1, periods: ["B"]),
+            course(courseNo: "B", displayName: "TuesClass", weekday: 2, periods: ["B"]),
+        ])
+        snap.quietDayKeys = [dayKey(0, after: now)]
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
+        if case .tomorrowFirst(let info) = derived {
+            #expect(info.course.displayName == "TuesClass")
+            #expect(info.startTime == "09:10")
+            #expect(info.day == .tomorrow)
+        } else {
+            Issue.record("Expected .tomorrowFirst with Tuesday's course, got \(derived)")
+        }
+    }
+
+    /// Past a holiday that runs into tomorrow, the next class day is named by its weekday.
+    @Test func holidayTodayAndTomorrow_offerTheNextClassDay() {
+        let now = monday(9, 30)
+        var snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "MonClass", weekday: 1, periods: ["B"]),
+            course(courseNo: "B", displayName: "TuesClass", weekday: 2, periods: ["B"]),
+            course(courseNo: "C", displayName: "WedClass", weekday: 3, periods: ["C"]),
+        ])
+        snap.quietDayKeys = [dayKey(0, after: now), dayKey(1, after: now)]
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
+        if case .tomorrowFirst(let info) = derived {
+            #expect(info.course.displayName == "WedClass")
+            #expect(info.startTime == "10:20")
+            #expect(info.day == .later(weekday: 3))
+        } else {
+            Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
+        }
+    }
+
+    /// Today's own class stays hidden on a holiday, and with the same weekday next week quiet
+    /// too, the seven-day scan has nothing to offer.
+    @Test func holidayToday_withNoClassForAWeek_hasNoMoreClasses() {
+        // 08:00, before the Monday class that a class day would show as next today.
+        let now = monday(8, 0)
+        var snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "MonClass", weekday: 1, periods: ["B"]),
+        ])
+        snap.quietDayKeys = [dayKey(0, after: now), dayKey(7, after: now)]
+        #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .noMoreClasses)
+    }
+
+    /// A holiday later in the week leaves a class day's own classes in place.
+    @Test func classDayBeforeAHoliday_keepsTodaysClasses() {
+        var snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "MonClass", weekday: 1, periods: ["B"]),
+            course(courseNo: "B", displayName: "TuesClass", weekday: 2, periods: ["B"]),
+        ])
+        snap.quietDayKeys = [dayKey(1, after: monday(0, 0))]
+
+        let before = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(8, 0))
+        if case .nextToday(let info) = before {
+            #expect(info.course.displayName == "MonClass")
+            #expect(info.day == .today)
+        } else {
+            Issue.record("Expected .nextToday at 08:00, got \(before)")
+        }
+        let during = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 30))
+        if case .ongoing(let infos) = during {
+            #expect(infos.map(\.course.displayName) == ["MonClass"])
+        } else {
+            Issue.record("Expected .ongoing at 09:30, got \(during)")
+        }
+    }
+
+    /// The providers add an entry at each period boundary of today's timetable. On a holiday
+    /// every one of them shows the same next class, so the widget does not change at those
+    /// boundaries, and the midnight entry moves on to the new day.
+    @Test func holidayToday_holdsOneStateUntilMidnight() {
+        let now = monday(7, 0)
+        var snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "MonMorning", weekday: 1, periods: ["A", "B"]),
+            course(courseNo: "B", displayName: "MonLate", weekday: 1, periods: ["C"]),
+            course(courseNo: "C", displayName: "TuesClass", weekday: 2, periods: ["B"]),
+        ])
+        snap.quietDayKeys = [dayKey(0, after: now)]
+
+        let dates = WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
+        let midnight = WidgetTimelineDerivation.nextMidnight(after: now)
+        #expect(dates.first == now)
+        #expect(dates.last == midnight)
+        // `now`, the six boundaries of A to C, and midnight.
+        #expect(dates.count == 8)
+
+        let states = dates.dropLast().map { WidgetTimelineDerivation.derive(snapshot: snap, at: $0) }
+        #expect(states.allSatisfy { $0 == states.first })
+        if case .tomorrowFirst(let info)? = states.first {
+            #expect(info.course.displayName == "TuesClass")
+            #expect(info.day == .tomorrow)
+        } else {
+            Issue.record("Expected .tomorrowFirst through the holiday, got \(String(describing: states.first))")
+        }
+        let atMidnight = WidgetTimelineDerivation.derive(snapshot: snap, at: midnight)
+        if case .nextToday(let info) = atMidnight {
+            #expect(info.course.displayName == "TuesClass")
+            #expect(info.day == .today)
+        } else {
+            Issue.record("Expected Tuesday's class as next today at midnight, got \(atMidnight)")
         }
     }
 }
