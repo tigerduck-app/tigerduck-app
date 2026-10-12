@@ -142,7 +142,6 @@
 				Clock/ClockOverride.swift,
 				LiveActivity/Models/LiveActivityScenarioKind.swift,
 				LiveActivity/Models/LiveActivitySnapshot.swift,
-				LiveActivity/Runtime/SharedSnapshotStore.swift,
 				LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
 			);
 			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;

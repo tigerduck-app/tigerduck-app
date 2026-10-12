@@ -147,7 +147,6 @@ LiveActivityPreferencesStore.swift
 
 # LiveActivity/Runtime — ActivityKit — iOS only
 LiveActivityCoordinator.swift
-SharedSnapshotStore.swift
 TigerDuckActivityAttributes.swift
 
 # LiveActivity/Scheduling — ActivityKit — iOS only

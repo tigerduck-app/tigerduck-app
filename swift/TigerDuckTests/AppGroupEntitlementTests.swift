@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The three App-Group-backed stores (`WidgetSnapshotStore`, `SharedSnapshotStore`,
-/// `CourseCardFontScaleStore`) promise in their doc comments to crash in DEBUG
-/// rather than let a missing `com.apple.security.application-groups` entry ship.
+/// The App-Group-backed stores (`WidgetSnapshotStore`, `CourseCardFontScaleStore`)
+/// promise in their doc comments to crash in DEBUG rather than let a missing
+/// `com.apple.security.application-groups` entry ship.
 ///
 /// A `UserDefaults(suiteName:) != nil` gate cannot keep that promise: the initializer
 /// returns nil only for reserved names (this process's bundle identifier, `NSGlobalDomain`).
@@ -17,7 +17,6 @@ struct AppGroupEntitlementTests {
 
     @Test func unentitledGroupIsReportedUnavailable() {
         #expect(WidgetSnapshotStore.isAppGroupAvailable(Self.unentitled) == false)
-        #expect(SharedSnapshotStore.isAppGroupAvailable(Self.unentitled) == false)
         #expect(CourseCardFontScaleStore.isAppGroupAvailable(Self.unentitled) == false)
     }
 
