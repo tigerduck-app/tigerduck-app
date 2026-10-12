@@ -55,8 +55,8 @@ nonisolated enum MoodleWebserviceClient {
         }
     }
 
-    /// Calls the webservice `function` with `token` and decodes the answer as `T` off the main
-    /// actor. A Moodle error body throws its case whatever the HTTP status.
+    /// The answer is decoded off the main actor. A Moodle error body throws its case whatever
+    /// the HTTP status, since Moodle sends most errors with a 200.
     static func call<T: Decodable & Sendable>(
         _ function: String,
         params: [(String, String)] = [],

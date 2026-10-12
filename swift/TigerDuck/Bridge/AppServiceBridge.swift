@@ -337,7 +337,6 @@ enum AppServiceBridge {
     /// queue, and each one's timeout runs while it waits.
     nonisolated static let maxConcurrentRequests = 4
 
-    /// `transform` of each of `items`, at most `limit` running at once, in the order of `items`.
     static func concurrentMap<Item: Sendable, Output: Sendable>(
         _ items: [Item],
         limit: Int = maxConcurrentRequests,
