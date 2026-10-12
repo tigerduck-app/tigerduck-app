@@ -23,7 +23,6 @@ struct CourseTimeSlot: Identifiable, Equatable {
     let end: Date
     /// The calendar date this slot belongs to (for display purposes).
     let date: Date
-    /// The block's periods in order, for its room (`SDCourse.classroom(weekday:periods:)`).
     var periods: [String] = []
 
     /// Build slots for a single day: one per contiguous run of periods

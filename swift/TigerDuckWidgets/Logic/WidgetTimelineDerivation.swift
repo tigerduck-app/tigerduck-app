@@ -22,7 +22,6 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
         let startTime: String
         let periodRange: String
         let day: Day
-        /// The room of the block that starts then.
         let classroom: String
     }
 
