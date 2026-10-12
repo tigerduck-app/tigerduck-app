@@ -37,103 +37,22 @@ enum MoodleEnrolledCoursesService {
     }
 
     private static func fetchUnshared() async throws -> [MoodleEnrolledCourse] {
-        let tokenService = MoodleTokenService.shared
-
-        func attempt(forceFreshToken: Bool) async throws -> [MoodleEnrolledCourse] {
-            let token: String
-            if forceFreshToken {
-                token = try await tokenService.refreshTokenIfNeeded()
-            } else if let cached = await tokenService.currentToken() {
-                token = cached
-            } else {
-                token = try await tokenService.refreshTokenIfNeeded()
-            }
-            // `userId(token:)` calls core_webservice_get_site_info with the same token, so it
-            // stays inside the retry block: outside it, a stale token's `.invalidToken` from
-            // site_info would skip the refresh path and fail the whole call.
+        // `userId(token:)` calls core_webservice_get_site_info with the same token, so it
+        // stays inside `withToken`: outside it, a stale token's `.invalidToken` from
+        // site_info would skip the renewal and fail the whole call.
+        try await MoodleWebserviceClient.withToken { token in
             let userId = try await MoodleSiteInfoService.shared.userId(token: token)
-            return try await fetchEnrolledCourses(token: token, userId: userId)
+            return try await MoodleWebserviceClient.call(
+                "core_enrol_get_users_courses",
+                params: [("userid", String(userId))],
+                token: token,
+                as: [RawMoodleEnrolledCourse].self
+            ).map { $0.toMoodleEnrolledCourse() }
         }
-
-        do {
-            return try await attempt(forceFreshToken: false)
-        } catch MoodleWebserviceError.invalidToken {
-            await tokenService.clearToken()
-            return try await attempt(forceFreshToken: true)
-        }
-    }
-
-    private static func fetchEnrolledCourses(
-        token: String,
-        userId: Int
-    ) async throws -> [MoodleEnrolledCourse] {
-        guard var components = URLComponents(url: MoodleWebserviceClient.siteBaseURL, resolvingAgainstBaseURL: false) else {
-            throw MoodleWebserviceError.malformedResponse(detail: "invalid enrolled courses URL")
-        }
-        components.path = "/webservice/rest/server.php"
-        components.queryItems = [
-            URLQueryItem(name: "moodlewsrestformat", value: "json"),
-            URLQueryItem(name: "wsfunction", value: "core_enrol_get_users_courses"),
-            URLQueryItem(name: "wstoken", value: token),
-        ]
-
-        guard let url = components.url else {
-            throw MoodleWebserviceError.malformedResponse(detail: "invalid enrolled courses URL")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try wsFormBody(["userid": String(userId)])
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await MoodleWebserviceClient.session.data(for: request)
-        } catch let urlError as URLError {
-            throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw MoodleWebserviceError.malformedResponse(detail: "No HTTP response")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if let moodleError = MoodleWebserviceError.from(jsonData: data) {
-                throw moodleError
-            }
-            throw MoodleWebserviceError.httpStatus(code: httpResponse.statusCode)
-        }
-
-        if let moodleError = MoodleWebserviceError.from(jsonData: data) {
-            throw moodleError
-        }
-
-        do {
-            let courses = try JSONDecoder().decode([RawMoodleEnrolledCourse].self, from: data)
-            return courses.map { $0.toMoodleEnrolledCourse() }
-        } catch {
-            throw MoodleWebserviceError.malformedResponse(detail: "Unable to decode enrolled courses response: \(error)")
-        }
-    }
-
-    private static func wsFormBody(_ fields: [String: String]) throws -> Data {
-        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
-        let encoded = fields
-            .map { key, value in
-                let encodedKey = key.addingPercentEncoding(withAllowedCharacters: unreserved) ?? key
-                let encodedValue = value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
-                return "\(encodedKey)=\(encodedValue)"
-            }
-            .joined(separator: "&")
-        guard let data = encoded.data(using: .utf8) else {
-            throw MoodleWebserviceError.malformedResponse(detail: "wsFormBody: utf8 encoding failed")
-        }
-        return data
     }
 }
 
-private struct RawMoodleEnrolledCourse: Decodable {
+nonisolated private struct RawMoodleEnrolledCourse: Decodable, Sendable {
     let id: Int
     let fullname: String?
     let shortname: String?

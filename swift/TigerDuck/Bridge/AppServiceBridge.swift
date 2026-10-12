@@ -182,34 +182,24 @@ enum AppServiceBridge {
                 uniquingKeysWith: { first, _ in first }
             )
 
-            let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
-                for courseNo in orderedCourseNos {
-                    // MainActor: `SDCourse` accessors and `NameAbbrService.shared` are
-                    // MainActor-isolated, so this avoids a `MainActor.run` per statement.
-                    // The network `lookupCourse(…)` still suspends cooperatively.
-                    group.addTask { @MainActor in
-                        await refreshedCourseData(
-                            courseNo: courseNo,
-                            semester: semester,
-                            cached: cachedByNo[courseNo],
-                            moodle: moodleByNo[courseNo],
-                            grade: scoreByNo[courseNo],
-                            display: display
-                        ) {
-                            try await CourseLookupService.lookupCourse(
-                                semester: semester, courseNo: courseNo, language: courseApiLanguage,
-                                fresh: forceRefresh
-                            )
-                        }
-                    }
+            // MainActor: `SDCourse` accessors and `NameAbbrService.shared` are
+            // MainActor-isolated, so this avoids a `MainActor.run` per statement.
+            // The network `lookupCourse(…)` still suspends cooperatively.
+            let courseDataList = await concurrentMap(orderedCourseNos) { @MainActor courseNo -> CourseData? in
+                await refreshedCourseData(
+                    courseNo: courseNo,
+                    semester: semester,
+                    cached: cachedByNo[courseNo],
+                    moodle: moodleByNo[courseNo],
+                    grade: scoreByNo[courseNo],
+                    display: display
+                ) {
+                    try await CourseLookupService.lookupCourse(
+                        semester: semester, courseNo: courseNo, language: courseApiLanguage,
+                        fresh: forceRefresh
+                    )
                 }
-
-                var results: [CourseData] = []
-                for await data in group {
-                    if let data { results.append(data) }
-                }
-                return results
-            }
+            }.compactMap { $0 }
 
             let courses = courseDataList.map { course in
                 SDCourse(
@@ -324,6 +314,30 @@ enum AppServiceBridge {
             map[SDCourse.normalizedMoodleId(course.idnumber)] = course.id
         }
         return map
+    }
+
+    /// School requests a fetch has in flight at once. Past the per-host connection limit they
+    /// queue, and each one's timeout runs while it waits.
+    nonisolated static let maxConcurrentRequests = 4
+
+    static func concurrentMap<Item: Sendable, Output: Sendable>(
+        _ items: [Item],
+        limit: Int = maxConcurrentRequests,
+        _ transform: @escaping @Sendable (Item) async -> Output
+    ) async -> [Output] {
+        await withTaskGroup(of: (Int, Output).self) { group in
+            var results = [Output?](repeating: nil, count: items.count)
+            for (index, item) in items.enumerated() {
+                if index >= limit, let (finished, output) = await group.next() {
+                    results[finished] = output
+                }
+                group.addTask { (index, await transform(item)) }
+            }
+            for await (finished, output) in group {
+                results[finished] = output
+            }
+            return results.compactMap { $0 }
+        }
     }
 
     /// Which of a Moodle course's numbers an assignment is filed under. A
@@ -477,24 +491,18 @@ enum AppServiceBridge {
         // Snapshot the MainActor-bound model fields before fanning out.
         let seeds = targets.map { ($0.courseNo, $0.moodleIdNumber, $0.semester.isEmpty ? semester : $0.semester) }
 
-        var refreshed: [String: CourseData] = [:]
-        await withTaskGroup(of: (String, CourseData?).self) { group in
-            for (courseNo, moodleId, rowSemester) in seeds {
-                group.addTask { @MainActor in
-                    guard let results = try? await CourseLookupService.lookupCourse(
-                        semester: rowSemester, courseNo: courseNo, language: display.language,
-                        fresh: true
-                    ), !results.isEmpty else { return (courseNo, nil) }
-                    return (courseNo, enrichedCourseData(
-                        from: results, semester: rowSemester,
-                        fallbackMoodleIdNumber: moodleId, display: display
-                    ))
-                }
-            }
-            for await (courseNo, data) in group {
-                if let data { refreshed[courseNo] = data }
-            }
+        let lookups = await concurrentMap(seeds) { @MainActor seed -> (String, CourseData)? in
+            let (courseNo, moodleId, rowSemester) = seed
+            guard let results = try? await CourseLookupService.lookupCourse(
+                semester: rowSemester, courseNo: courseNo, language: display.language,
+                fresh: true
+            ), !results.isEmpty else { return nil }
+            return (courseNo, enrichedCourseData(
+                from: results, semester: rowSemester,
+                fallbackMoodleIdNumber: moodleId, display: display
+            ))
         }
+        let refreshed = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
         // A sign-out during the lookups cleared the list `stored` would write back.
         guard authService.loginGeneration == startGeneration else { return [] }
         guard !refreshed.isEmpty else { return targets }
@@ -522,24 +530,18 @@ enum AppServiceBridge {
         guard !seeds.isEmpty else { return false }
         let display = CourseDisplayPreferences.current()
 
-        var found: [String: CourseData] = [:]
-        await withTaskGroup(of: (String, CourseData?).self) { group in
-            for (courseNo, moodleId) in seeds {
-                group.addTask { @MainActor in
-                    guard let results = try? await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: courseNo, language: display.language
-                    ), !results.isEmpty else { return (courseNo, nil) }
-                    let data = enrichedCourseData(
-                        from: results, semester: semester,
-                        fallbackMoodleIdNumber: moodleId, display: display
-                    )
-                    return (courseNo, data.classroom.isEmpty ? nil : data)
-                }
-            }
-            for await (courseNo, data) in group {
-                if let data { found[courseNo] = data }
-            }
+        let lookups = await concurrentMap(seeds) { @MainActor seed -> (String, CourseData)? in
+            let (courseNo, moodleId) = seed
+            guard let results = try? await CourseLookupService.lookupCourse(
+                semester: semester, courseNo: courseNo, language: display.language
+            ), !results.isEmpty else { return nil }
+            let data = enrichedCourseData(
+                from: results, semester: semester,
+                fallbackMoodleIdNumber: moodleId, display: display
+            )
+            return data.classroom.isEmpty ? nil : (courseNo, data)
         }
+        let found = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
         guard !found.isEmpty else { return false }
 
         if enrolled.contains(where: { found[$0.courseNo] != nil }) {

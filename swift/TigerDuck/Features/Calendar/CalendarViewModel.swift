@@ -125,7 +125,7 @@ final class CalendarViewModel {
             let systemEvents = events.filter { $0.source == .system }
             var updated = systemEvents
             updated.append(contentsOf: moodle)
-            updated.append(contentsOf: school)
+            updated.append(contentsOf: school ?? events.filter { $0.source == .school })
             setEvents(updated)
             // Save only non-system events to cache
             DataCache.shared.saveCalendarEvents(updated.filter { $0.source != .system })
@@ -139,7 +139,7 @@ final class CalendarViewModel {
             .map(AppServiceBridge.moodleCalendarEvent)
     }
 
-    private func fetchSchoolEvents() async -> [SDCalendarEvent] {
+    private func fetchSchoolEvents() async -> [SDCalendarEvent]? {
         await CalendarService.fetchAndParseICS()
     }
 
