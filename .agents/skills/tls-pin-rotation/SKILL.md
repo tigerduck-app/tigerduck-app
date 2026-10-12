@@ -7,6 +7,7 @@ description: Use when TigerDuck's TLS pins need rotating or checking, when a pin
 
 The pin table is `pinSets` in `swift/Shared/TLSPinningDelegate.swift`; the reasoning is in
 `docs/decisions/0001-tls-pinning.md`. School Mail's `MailTLSVerifier` reads the same table.
+`swift/TigerDuckTests/TLSPinningDelegateTests.swift` fails 45 days before any pin set expires.
 
 1. For each pinned host (`ntust.edu.tw` and its subdomains, `api.lib.ntust.edu.tw`), print the
    SPKI SHA-256 of every certificate in the chain the server sends:
@@ -22,10 +23,22 @@ The pin table is `pinSets` in `swift/Shared/TLSPinningDelegate.swift`; the reaso
 
    The pipeline above hashes the first certificate only. Pin the leaf and the intermediate:
    split the `-showcerts` output into one PEM file per certificate and run the last four
-   commands on each.
-2. Set the host's `pins` to those values and move the shared `expiration` date forward.
-3. Make the same change in `tigerduck-app-android`'s
-   `app/src/main/res/xml/network_security_config.xml`; both apps must ship the same pin set and
-   expiration.
-4. Ship both builds before the old expiration date. After it, unrotated builds fall back to
+   commands on each, and read each leaf's `notAfter` with `openssl x509 -noout -enddate`.
+   Check several subdomains, `mail.ntust.edu.tw:993` and `:465` among them. A subdomain with a
+   certificate of its own can show the intermediate the next renewal comes from:
+   `cardsystem.ntust.edu.tw`'s is why the `ntust.edu.tw` set also pins TWCA SSL Certification
+   Authority.
+2. Set each set's `pins` to those values, keeping any intermediate a renewal may still come
+   from, and its `expiration` to six months after the `notAfter` of the leaf it pins.
+3. Update the tests that hold certificate data: `appPins` in
+   `swift/TigerDuckTests/SchoolMail/MailTLSVerifierTests.swift`, and the captured chains in
+   `TLSPinningDelegateTests`, which must include a certificate for every pin. Add a new leaf
+   there as base64 DER (`openssl x509 -outform der | openssl enc -base64 -A`).
+4. Make the same change in `tigerduck-app-android`: the pin sets in both
+   `app/src/main/res/xml/network_security_config.xml` and
+   `app/src/debug/res/xml/network_security_config.xml`, and `PIN_EXPIRY_EPOCH` in
+   `app/build.gradle.kts`, the earliest expiration in epoch milliseconds.
+   `NetworkSecurityConfigTest` there checks all three. Both apps must ship the same pin sets
+   and expirations.
+5. Ship both builds before the old expiration date. After it, unrotated builds fall back to
    system trust and log the expiry at `.fault` (`TLSPinningDelegate` and `MailTLSVerifier`).
