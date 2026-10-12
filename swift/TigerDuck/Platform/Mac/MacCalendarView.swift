@@ -15,6 +15,7 @@ struct MacCalendarView: View {
     @State private var selectedDate: Date = Date()
     @State private var displayedMonth: Date = Date()
     @State private var cacheRevision: Int = 0
+    @State private var eventsMemo = ViewMemo<Int, [DateComponents: [SDCalendarEvent]]>()
 
     private let weekdaySymbols: [String] = [
         String(localized: "weekday_sun_short"),
@@ -36,16 +37,18 @@ struct MacCalendarView: View {
     /// `AcademicCalendarStore` posts `dataDidUpdate` after a successful fetch, so `cacheRevision`
     /// re-reads this when the calendar lands.
     private var allEvents: [SDCalendarEvent] {
-        _ = cacheRevision
         let cached = DataCache.shared.loadCalendarEvents()
             .filter { $0.source != .holiday && $0.source != .semester }
         return cached + AcademicCalendarStore.shared.calendar.calendarEvents()
     }
 
+    /// Every day cell reads this, so the cache file is decoded once per `cacheRevision`.
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] {
-        let cal = AppConstants.taipeiCalendar
-        return Dictionary(grouping: allEvents) { event in
-            cal.dateComponents([.year, .month, .day], from: event.date)
+        eventsMemo.value(for: cacheRevision) {
+            let cal = AppConstants.taipeiCalendar
+            return Dictionary(grouping: allEvents) { event in
+                cal.dateComponents([.year, .month, .day], from: event.date)
+            }
         }
     }
 
@@ -312,6 +315,17 @@ private struct DayCell: View {
     let cellHeight: CGFloat
     let onTap: () -> Void
 
+    /// `a11y_calendar_day`'s date argument in the app's Taipei calendar, as on iOS, so the
+    /// spoken date matches the cell for a user west of Taiwan.
+    private var accessibleDateString: String {
+        date.formatted(Date.FormatStyle(
+            date: .complete,
+            time: .omitted,
+            calendar: AppConstants.taipeiCalendar,
+            timeZone: AppConstants.taipeiTimeZone
+        ))
+    }
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 4) {
@@ -319,11 +333,13 @@ private struct DayCell: View {
                     .font(.callout.weight(isToday || isSelected ? .semibold : .regular))
                     .foregroundStyle(textColor)
                     .frame(width: 28, height: 28)
+                    // Selection is the filled circle alone, as on iOS, and `strokeBorder` keeps
+                    // the today ring inside the 28 pt frame, so neither crowds the cell's edge.
                     .background {
                         if isSelected {
                             Circle().fill(.tint)
                         } else if isToday {
-                            Circle().stroke(.tint, lineWidth: 1.5)
+                            Circle().strokeBorder(.tint, lineWidth: 1.5)
                         }
                     }
                     .padding(.top, 4)
@@ -343,15 +359,17 @@ private struct DayCell: View {
             .frame(maxWidth: .infinity)
             .frame(height: cellHeight)
             .contentShape(Rectangle())
-            .background(
-                // Inset by 3pt so the highlight clears the day-number circle and the neighbouring
-                // column; without it the today/selected ring touches the outer rounded fill.
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.tint.opacity(isSelected ? 0.08 : 0))
-                    .padding(3)
-            )
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            Text(String(
+                format: String(localized: "a11y_calendar_day"),
+                accessibleDateString,
+                events.count
+            ))
+        )
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     private var textColor: AnyShapeStyle {

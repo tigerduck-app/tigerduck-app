@@ -7,7 +7,7 @@ import os
 /// `WidgetReloadCoordinator` for a debounced timeline reload.
 ///
 /// The host app creates it and calls `regenerate()` at cold start. Each call
-/// rebuilds the whole snapshot, acceptable with the 300 ms debounce.
+/// rebuilds the whole snapshot, but writes and reloads only when it changed.
 @MainActor
 final class WidgetSnapshotWriter {
     private let store: WidgetSnapshotStore
@@ -66,15 +66,14 @@ final class WidgetSnapshotWriter {
         }
     }
 
-    /// Every published school holiday, as `yyyy-MM-dd` keys.
-    ///
-    /// Not windowed to the widget's horizon: only the app writes the snapshot,
+    /// Every published school holiday, as `yyyy-MM-dd` keys, for the widget snapshot and the
+    /// Watch payload. Not windowed to the widget's horizon: only the app writes the snapshot,
     /// and a widget keeps reloading the last one while the app stays closed. A
     /// horizon measured from write time would expire while the snapshot lives
     /// on, and the first holiday past it would render as a class that is not
     /// happening. A term's holidays are a few dozen dates, so the whole
     /// published set is cheaper than that bug.
-    private static func quietDayKeys() -> Set<String> {
+    static func quietDayKeys() -> Set<String> {
         let store = AcademicCalendarStore.shared
         let optedIn = store.optedInHolidayIDs
         let calendar = store.calendar
@@ -98,9 +97,9 @@ final class WidgetSnapshotWriter {
         return keys
     }
 
-    /// Idempotent — call at app cold-start and again whenever you want to
-    /// force a fresh snapshot. Observer paths call this internally.
-    func regenerate() {
+    /// An unchanged snapshot is neither written nor reloaded: this runs on every return to the
+    /// app and every data change, and each reload spends the widgets' budget.
+    func regenerate(forceReload: Bool = false) {
         let courses = courseProvider.currentCourses()
         let customNames = cache.loadCourseCustomNamesFlat()
         let colorMap = cache.loadCourseColorMap()
@@ -115,27 +114,39 @@ final class WidgetSnapshotWriter {
                 quietDayKeys: Self.quietDayKeys()
             )
         )
+        if !forceReload, let stored = store.readSnapshot(), Self.hasSameContent(snapshot, as: stored) {
+            return
+        }
         store.writeSnapshot(snapshot)
         coordinator.requestReload()
     }
 
+    /// Equal but for `generatedAt`, which every build stamps afresh and no widget reads.
+    static func hasSameContent(_ snapshot: WidgetSnapshot, as other: WidgetSnapshot) -> Bool {
+        var candidate = snapshot
+        candidate.generatedAt = other.generatedAt
+        return candidate == other
+    }
+
     private func attachObservers() {
         let center = NotificationCenter.default
-        let names: [Notification.Name] = [
-            AppConstants.dataDidUpdate,
-            AppConstants.languageDidChange,
-            AppConstants.courseSkipStateDidChange,
-            AppConstants.holidayNotifyDidChange,
-            AppConstants.courseColorMapDidChange,
-            AppConstants.accentColorDidChange,
-            NSLocale.currentLocaleDidChangeNotification,
+        let names: [(name: Notification.Name, forceReload: Bool)] = [
+            (AppConstants.dataDidUpdate, false),
+            // The widgets render their text in the new language, which no snapshot field
+            // holds, so these two reload even when the snapshot is unchanged.
+            (AppConstants.languageDidChange, true),
+            (AppConstants.courseSkipStateDidChange, false),
+            (AppConstants.holidayNotifyDidChange, false),
+            (AppConstants.courseColorMapDidChange, false),
+            (AppConstants.accentColorDidChange, false),
+            (NSLocale.currentLocaleDidChangeNotification, true),
         ]
-        for name in names {
+        for (name, forceReload) in names {
             let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 // The queue is .main, but strict concurrency still needs a MainActor
                 // hop to touch the writer from this closure, so go through a Task.
                 Task { @MainActor [weak self] in
-                    self?.regenerate()
+                    self?.regenerate(forceReload: forceReload)
                 }
             }
             observers.append(token)

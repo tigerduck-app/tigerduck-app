@@ -180,15 +180,15 @@ struct MacContentView: View {
 /// it or `MacMoreView` pushes it. On the outer `NavigationSplitView` detail, the button
 /// would vanish on a push: on macOS More's inner `NavigationStack` owns the pushed view's toolbar.
 ///
-/// Scores opts out: its own refresh button re-fetches scores, which `backgroundSync` does not
-/// touch, and a second button would double up in `.primaryAction`.
+/// Scores and Bulletins opt out: each has its own refresh button for data `backgroundSync`
+/// does not fetch, and a second button would double up in `.primaryAction`.
 struct MacFeatureDetail: View {
     let feature: AppFeature
 
     var body: some View {
         content
             .toolbar {
-                if feature != .gpa {
+                if feature != .gpa && feature != .announcements {
                     ToolbarItem(placement: .primaryAction) {
                         HStack(spacing: 8) {
                             SyncStatusDot(servers: serversForFeature)
@@ -206,7 +206,6 @@ struct MacFeatureDetail: View {
         // Backend included for the same reason as the iPhone tab: the holiday
         // and term-boundary rows come from its published academic calendar.
         case .calendar: [.moodle, .courseSelection, .backend]
-        case .announcements: [.backend]
         default: ServerKind.allCases
         }
     }

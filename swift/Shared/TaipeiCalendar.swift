@@ -16,4 +16,11 @@ public enum SharedTaipei {
         c.timeZone = timeZone
         return c
     }()
+
+    /// `yyyy-MM-dd` for the Taipei day of `date`: the form of `SDCourse.skippedDates` and
+    /// of the holidays in the Watch payload.
+    public static func dayKey(for date: Date) -> String {
+        let day = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0)
+    }
 }

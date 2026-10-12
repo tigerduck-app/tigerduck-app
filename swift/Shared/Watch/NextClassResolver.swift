@@ -9,8 +9,11 @@ public enum NextClassResolver {
 
     /// Given the watch's full course list and the current instant, return
     /// the class currently in progress (if any) and the next class the wearer
-    /// still has to get to today (if any). Other weekdays are ignored.
-    public static func resolve(courses: [WatchCourse], now: Date) -> Result {
+    /// still has to get to today (if any). Other weekdays are ignored, and so
+    /// are today's classes when today is in `quietDays` or a course skips it.
+    public static func resolve(courses: [WatchCourse], now: Date, quietDays: Set<String> = []) -> Result {
+        let todayKey = SharedTaipei.dayKey(for: now)
+        guard !quietDays.contains(todayKey) else { return Result(current: nil, next: nil) }
         // Taipei, not the device zone: class times are Taiwan wall time, so a
         // wearer abroad must still see "now" in that frame. Without the pin
         // they would see no classes during the Taipei morning.
@@ -24,7 +27,7 @@ public enum NextClassResolver {
         let nowMin = hh * 60 + mm
 
         let today = courses
-            .filter { $0.weekday == isoWeekday }
+            .filter { $0.weekday == isoWeekday && $0.skippedDates?.contains(todayKey) != true }
             .sorted { minutes(of: $0.startHHmm) < minutes(of: $1.startHHmm) }
 
         let current = today.first { c in

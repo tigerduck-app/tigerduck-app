@@ -129,6 +129,15 @@ extension ScheduleStore: WCSessionDelegate {
         }
     }
 
+    /// The phone sends library credentials only when the Watch asks, and a Watch without them
+    /// tells the user to open the iPhone app; opening it makes the phone reachable, so ask then.
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        guard session.isReachable else { return }
+        Task { @MainActor in
+            if !WatchLibraryCredentialsStore.shared.hasCredentials { self.requestSync() }
+        }
+    }
+
     nonisolated func session(_ session: WCSession,
                              didReceiveApplicationContext applicationContext: [String: Any]) {
         Task { @MainActor in

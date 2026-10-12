@@ -119,4 +119,28 @@ final class WatchPayloadEncoderTests: XCTestCase {
         XCTAssertFalse(snap.loggedIn)
         XCTAssertTrue(snap.courses.isEmpty)
     }
+
+    func test_quietDaysAndSkippedDates_reachThePayload() {
+        let c = makeCourse()
+        c.skippedDates = ["2026-10-09"]
+        let snap = WatchPayloadEncoder.encode(
+            courses: [c], customNames: [:], accentHex: "#000", syncedAt: Date(),
+            loggedIn: true, languageTag: nil, visualPreset: .default, quietDays: ["2026-10-10"]
+        )
+        XCTAssertEqual(snap.quietDays, ["2026-10-10"])
+        XCTAssertEqual(snap.courses.first?.skippedDates, ["2026-10-09"])
+    }
+
+    /// The Watch keys today with `SharedTaipei.dayKey`, and the phone sends holidays keyed by
+    /// the widget's `dateKey`; the two must agree, including on a device outside Taiwan.
+    func test_watchDayKeyMatchesTheWidgetKey() {
+        let days = [
+            Date(timeIntervalSince1970: 1_790_000_000),
+            Date(timeIntervalSince1970: 1_767_196_800),  // 2025-12-31 16:00 UTC, Taipei midnight
+            Date(timeIntervalSince1970: 1_767_196_799),
+        ]
+        for day in days {
+            XCTAssertEqual(SharedTaipei.dayKey(for: day), WidgetTimelineDerivation.dateKey(for: day))
+        }
+    }
 }

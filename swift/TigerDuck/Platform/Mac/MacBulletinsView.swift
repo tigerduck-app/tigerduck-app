@@ -48,6 +48,25 @@ struct MacBulletinsView: View {
             logger.info("MacBulletinsView .task done — items=\(viewModel.filteredItems.count, privacy: .public) state=\(String(describing: viewModel.loadState), privacy: .private)")
         }
         .onDisappear { viewModel.pausePrefetch() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 8) {
+                    SyncStatusDot(servers: [.backend])
+                    Button {
+                        Task { await viewModel.refresh() }
+                    } label: {
+                        if viewModel.loadState == .loading {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(viewModel.loadState == .loading)
+                    .help(String(localized: "desktop_action_refresh_help"))
+                }
+            }
+        }
         .onChange(of: searchText) { _, newValue in
             viewModel.searchText = newValue
         }

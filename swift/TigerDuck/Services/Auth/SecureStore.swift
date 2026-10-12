@@ -6,8 +6,8 @@ nonisolated enum SecureStore {
     /// Per-app valet at the strictest class our usage allows.
     ///
     /// Re-auth, settings reads and library QR refresh run while the app is active, and no
-    /// extension needs these secrets: the Live Activity widget reads App Group `UserDefaults`
-    /// (`SharedSnapshotStore`). `.whenUnlockedThisDeviceOnly` keeps items out of an iCloud
+    /// extension needs these secrets: the Live Activity renders the snapshot its content state
+    /// carries. `.whenUnlockedThisDeviceOnly` keeps items out of an iCloud
     /// Keychain restore to a new device, and background work behind a locked screen cannot read
     /// them, which the threat model accepts. The few secrets a locked-screen launch needs live
     /// in ``readableWhileLocked``.

@@ -13,6 +13,8 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
         let endTime: String
         let periodRange: String            // "B" or "B–C"
         let progress: Double               // 0.0…1.0
+        /// This block's room, not every room of the course.
+        let classroom: String
     }
 
     struct NextInfo: nonisolated Equatable, Sendable {
@@ -20,6 +22,7 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
         let startTime: String
         let periodRange: String
         let day: Day
+        let classroom: String
     }
 
     /// Which day a ``NextInfo`` falls on, relative to the instant the state was derived for.
@@ -73,7 +76,8 @@ enum WidgetTimelineDerivation {
                     startTime: snapshot.periodTimes[first]?.start ?? "",
                     endTime: snapshot.periodTimes[last]?.end ?? "",
                     periodRange: run.count > 1 ? "\(first)–\(last)" : first,
-                    progress: progress.clamped(to: 0...1)
+                    progress: progress.clamped(to: 0...1),
+                    classroom: course.classroom(weekday: weekday, periods: run)
                 )
             }
             return nil
@@ -97,7 +101,8 @@ enum WidgetTimelineDerivation {
                 course: pick.0,
                 startTime: snapshot.periodTimes[pick.2]?.start ?? "",
                 periodRange: pick.2,
-                day: .today
+                day: .today,
+                classroom: blockClassroom(of: pick.0, weekday: weekday, startingAt: pick.2, order: order)
             ))
         }
 
@@ -109,6 +114,7 @@ enum WidgetTimelineDerivation {
             let target = ((weekday - 1 + offset) % 7) + 1
             let targetDate = calendar.date(byAdding: .day, value: offset, to: date) ?? date
             let targetKey = dateKey(for: targetDate)
+            if snapshot.quietDayKeys?.contains(targetKey) == true { continue }
             let dayCourses = snapshot.courses.compactMap { course -> (SnapshotCourse, String)? in
                 if course.skippedDates.contains(targetKey) { return nil }
                 guard let raw = course.schedule[target] else { return nil }
@@ -125,12 +131,62 @@ enum WidgetTimelineDerivation {
                     course: pick.0,
                     startTime: snapshot.periodTimes[pick.1]?.start ?? "",
                     periodRange: pick.1,
-                    day: offset == 1 ? .tomorrow : .later(weekday: target)
+                    day: offset == 1 ? .tomorrow : .later(weekday: target),
+                    classroom: blockClassroom(of: pick.0, weekday: target, startingAt: pick.1, order: order)
                 ))
             }
         }
 
         return .noMoreClasses
+    }
+
+    private static func blockClassroom(
+        of course: SnapshotCourse,
+        weekday: Int,
+        startingAt periodId: String,
+        order: [String]
+    ) -> String {
+        let runs = contiguousRuns(sortPeriods(course.schedule[weekday] ?? [], by: order), by: order)
+        let block = runs.first { $0.first == periodId } ?? [periodId]
+        return course.classroom(weekday: weekday, periods: block)
+    }
+
+    /// One row of the Today widget: one contiguous block of a course's periods.
+    struct TodayRow: nonisolated Equatable, Identifiable, Sendable {
+        let course: SnapshotCourse
+        /// Never empty, in `periodOrder`.
+        let periods: [String]
+        let startTime: String
+        let endTime: String
+        let classroom: String
+
+        var id: String { "\(course.courseNo)-\(periods[0])" }
+        var periodRange: String { periods.count > 1 ? "\(periods[0])–\(periods[periods.count - 1])" : periods[0] }
+    }
+
+    /// Today's rows in start order, one per contiguous block, so a course meeting at periods
+    /// 3-4 and 7-8 gets two rows, as `derive` and the Watch payload split it. Courses skipped
+    /// today are left out.
+    static func todayRows(snapshot: WidgetSnapshot, at date: Date) -> [TodayRow] {
+        let weekday = weekdayFor(date)
+        let todayKey = dateKey(for: date)
+        let order = snapshot.periodOrder
+        let rows = snapshot.courses
+            .filter { !$0.skippedDates.contains(todayKey) }
+            .flatMap { course in
+                contiguousRuns(sortPeriods(course.schedule[weekday] ?? [], by: order), by: order).map { run in
+                    TodayRow(
+                        course: course,
+                        periods: run,
+                        startTime: snapshot.periodTimes[run[0]]?.start ?? "",
+                        endTime: snapshot.periodTimes[run[run.count - 1]]?.end ?? "",
+                        classroom: course.classroom(weekday: weekday, periods: run)
+                    )
+                }
+            }
+        return rows.sorted { lhs, rhs in
+            (order.firstIndex(of: lhs.periods[0]) ?? Int.max) < (order.firstIndex(of: rhs.periods[0]) ?? Int.max)
+        }
     }
 
     /// `yyyy-MM-dd` in Asia/Taipei — must mirror `SDCourse.isoFormatter`
@@ -222,6 +278,15 @@ private extension Comparable {
 }
 
 extension WidgetTimelineDerivation {
+    /// The first Taipei midnight after `date`, when a widget with nothing to show asks again.
+    /// A single entry with `.atEnd` would make WidgetKit reload it at once, over and over; the
+    /// app reloads every timeline itself when it writes a snapshot.
+    static func nextMidnight(after date: Date, calendar: Calendar = WidgetTaipei.calendar) -> Date {
+        let startOfDay = calendar.startOfDay(for: date)
+        return calendar.date(byAdding: .day, value: 1, to: startOfDay)
+            ?? startOfDay.addingTimeInterval(86_400)
+    }
+
     /// Returns the dates at which the widget should refresh, deduplicated and sorted ascending:
     ///   - `now` itself
     ///   - the start and the end of every remaining period today

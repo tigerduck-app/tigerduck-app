@@ -7,7 +7,7 @@ import os
 /// uses `WCSession.transferUserInfo` for FIFO, guaranteed delivery.
 ///
 /// MainActor-isolated: the only callers (`LibraryService.saveCredentials`
-/// /`clearCredentials` and `WatchSyncBridge.pushNow`) are all on the main
+/// /`clearCredentials` and `WatchSyncCoordinator.answerSyncRequest`) are all on the main
 /// actor, and synchronous MainActor → MainActor calls avoid the deferred-
 /// `Task` race we hit in the original Combine-style broadcast path.
 @MainActor
@@ -58,7 +58,7 @@ final class WatchLibraryCredentialBroadcaster {
         send(payload)
     }
 
-    /// Re-emits the current credentials if the phone still has them. Idempotent on the watch,
+    /// Re-emits the stored credentials when the watch asks for a sync. Idempotent on the watch,
     /// which rejects a replay of an epoch it already holds. Recovers three cases:
     /// 1. The watch never got the original set: it was off when the phone logged in.
     /// 2. The watch ran its TTL purge, which resets its stored epoch to 0, so this same-epoch
@@ -93,8 +93,8 @@ final class WatchLibraryCredentialBroadcaster {
     /// Used by `republishIfCredentialed`: reuse the current epoch when one
     /// has been broadcast, but bootstrap to epoch 1 if defaults still hold
     /// the install-time 0 (existing user upgraded with credentials already
-    /// in keychain). Returns the same epoch on subsequent calls so a chatty
-    /// `pushNow` doesn't burn through fresh epochs on every accent/lang flip.
+    /// in keychain). Returns the same epoch on subsequent calls so repeated
+    /// sync requests don't burn through fresh epochs.
     private func republishEpoch() -> Int {
         let current = defaults.integer(forKey: DefaultsKey.epoch)
         if current > 0 { return current }

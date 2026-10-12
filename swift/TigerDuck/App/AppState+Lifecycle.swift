@@ -31,6 +31,8 @@ extension AppState {
         if DefaultTabsPinMigration.runIfNeeded() {
             configuredTabs = AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) ?? AppFeature.defaultTabs
         }
+        // iOS only and off the macOS allow-list, like the store whose key it deletes.
+        LiveActivitySnapshotPurgeMigration.runIfNeeded()
         #endif
         Task(priority: .utility) { @MainActor in
             #if os(iOS)

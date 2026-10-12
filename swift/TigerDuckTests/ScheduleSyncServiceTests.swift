@@ -414,6 +414,36 @@ struct ScheduleSyncServiceTests {
         #expect(events.contains { $0.scenario == .inClass })
     }
 
+    /// The server starts the "due soon" activity from this list, so an assignment the user
+    /// ignored or marked done stays out of it, as it stays out of the backend's reminders.
+    @Test func ignoredAndLocallyCompletedAssignments_areSkipped() {
+        let ctx = Self.context()
+        let assignments = [
+            SDAssignment(
+                assignmentId: "a-ignored", courseNo: "CS101", courseName: "Algorithms",
+                title: "Ignored", dueDate: Self.tuesdayAt(20), isArchived: true
+            ),
+            SDAssignment(
+                assignmentId: "a-marked", courseNo: "CS101", courseName: "Algorithms",
+                title: "Marked done", dueDate: Self.tuesdayAt(20), isLocallyCompleted: true
+            ),
+            SDAssignment(
+                assignmentId: "a-open", courseNo: "CS101", courseName: "Algorithms",
+                title: "Open", dueDate: Self.tuesdayAt(20)
+            ),
+        ]
+        assignments.forEach(ctx.insert)
+
+        let now = Self.tuesdayAt(8)
+        let events = ScheduleSyncService.buildEvents(
+            inputs: Self.defaultInputs(courses: [], assignments: assignments),
+            now: now,
+            horizonEnd: now.addingTimeInterval(48 * 3600)
+        )
+
+        #expect(events.map(\.sourceId) == ["a-open"])
+    }
+
     @Test func completedAssignment_isSkipped() {
         let ctx = Self.context()
         let assignment = SDAssignment(

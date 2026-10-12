@@ -4,7 +4,7 @@ import Foundation
 /// Live Activity is unavailable (`effectiveLiveActivityEnabled`). Assignments come
 /// first, a product decision, so a due-soon warning still shows during class; users
 /// who turn off `showAssignmentScenario` get class-first behavior. In priority order:
-/// 1. assignmentUrgent: the uncompleted assignment due soonest within `assignmentLiveActivityLeadTime`.
+/// 1. assignmentUrgent: the outstanding assignment due soonest within `assignmentLiveActivityLeadTime`.
 /// 2. inClass: the current non-skipped course. Overlapping slots come back in timeline
 ///    order and one activity shows one class, so the earliest start wins.
 /// 3. classPreparing: the soonest non-skipped course within `classPreparingLeadTime`.
@@ -87,7 +87,7 @@ struct LiveActivityScenarioResolver {
             // course split within a day, such as P3-P4 plus P7-P8, countdown and progress
             // cover this slot, and the subtitle must match rather than span the gap.
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
-            locationText: slot.course.classroom(for: weekday),
+            locationText: slot.course.classroom(weekday: weekday, periods: slot.periods),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.end,
             progressStart: slot.start < slot.end ? slot.start : nil,
@@ -106,7 +106,7 @@ struct LiveActivityScenarioResolver {
             // specific block, so subtitle must reflect that block — not
             // an earlier block plus the gap leading to this one.
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
-            locationText: slot.course.classroom(for: weekday),
+            locationText: slot.course.classroom(weekday: weekday, periods: slot.periods),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.start,
             progressStart: nil,
@@ -160,9 +160,15 @@ struct LiveActivityScenarioResolver {
         now: Date
     ) -> SDAssignment? {
         assignments
-            .filter { !$0.isCompleted && $0.dueDate > now }
+            .filter { isOutstanding($0) && $0.dueDate > now }
             .filter { $0.dueDate.timeIntervalSince(now) <= leadTime }
             .min { $0.dueDate < $1.dueDate }
+    }
+
+    /// Whether `assignment` can start the "due soon" activity: not submitted, not ignored and
+    /// not marked done here, the assignments the backend's reminders are sent for.
+    static func isOutstanding(_ assignment: SDAssignment) -> Bool {
+        !assignment.isCompleted && !assignment.isArchived && !assignment.isLocallyCompleted
     }
 
 }
