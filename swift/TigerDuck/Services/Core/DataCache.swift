@@ -553,6 +553,7 @@ final class DataCache {
         // Bulletin detail bodies are user-scoped (read state, subscriptions).
         let bulletinDetails = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
         try? FileManager.default.removeItem(at: bulletinDetails)
+        try? FileManager.default.removeItem(at: moodleDir)
     }
 
     /// Removes every file in both cache directories, user-scoped or not.
@@ -611,6 +612,37 @@ final class DataCache {
         // Normalised on both sides: Moodle spells a summer term "114h" and
         // NTUST "114H", and a course row can hold either spelling.
         return loadMoodleCourseIdMap()[SDCourse.normalizedMoodleId(idnumber)]
+    }
+
+    // MARK: - Moodle course data (per account)
+
+    /// Saves one Moodle answer for `account` with the time it was fetched, which tells a screen
+    /// when to fetch it again. `name` may hold `/` to sort a course's answers into a folder.
+    func saveMoodleData<Value: Codable>(_ value: Value, fetchedAt: Date, name: String, account: String) {
+        let url = moodleFileURL(name: name, account: account)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        save(MoodleCacheEntry(fetchedAt: fetchedAt, value: value), to: url.lastPathComponent, in: url.deletingLastPathComponent())
+    }
+
+    func loadMoodleData<Value: Codable>(_ type: Value.Type, name: String, account: String) -> (value: Value, fetchedAt: Date)? {
+        let url = moodleFileURL(name: name, account: account)
+        let entry: MoodleCacheEntry<Value>? = load(from: url.lastPathComponent, in: url.deletingLastPathComponent())
+        return entry.map { ($0.value, $0.fetchedAt) }
+    }
+
+    private struct MoodleCacheEntry<Value: Codable>: Codable {
+        let fetchedAt: Date
+        let value: Value
+    }
+
+    private var moodleDir: URL { cacheDir.appendingPathComponent("moodle", isDirectory: true) }
+
+    /// The account is a student ID, kept to letters and digits so it is always one folder name.
+    private func moodleFileURL(name: String, account: String) -> URL {
+        let folder = String(account.unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
+        return moodleDir
+            .appendingPathComponent(folder.isEmpty ? "_" : folder, isDirectory: true)
+            .appendingPathComponent(name + ".json")
     }
 
     // MARK: - Private helpers
