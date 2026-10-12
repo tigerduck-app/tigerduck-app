@@ -19,6 +19,27 @@ extension AppState {
         case schoolMail(folder: String, uid: UInt32?, uidValidity: UInt32? = nil)
     }
 
+    /// Parses a bulletin notification tap into a `DeepLink`: an operator's custom push and a
+    /// subscription match both carry `bulletin_id`. Returns `nil` for any other `kind`.
+    static func bulletinDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
+        switch userInfo["kind"] as? String {
+        case "custom_push_bulletin", "bulletin":
+            return pushInteger(from: userInfo["bulletin_id"]).map(DeepLink.bulletin)
+        default:
+            return nil
+        }
+    }
+
+    /// Decodes an id from a JSON-bridged userInfo value as `Int`, `NSNumber.intValue` or
+    /// `String → Int`: APNs, FCM and relays bridge JSON numbers inconsistently. An int-tagged
+    /// NSNumber passes `as? Int`, a Double-tagged one fails it, and some relays send a string.
+    private static func pushInteger(from raw: Any?) -> Int? {
+        if let n = raw as? Int { return n }
+        if let n = raw as? NSNumber { return n.intValue }
+        if let s = raw as? String { return Int(s) }
+        return nil
+    }
+
     /// Parses a School Mail notification tap into a `DeepLink`. Returns `nil` for any
     /// other `kind` (bulletin, popup, or unrecognized) so callers can chain it after
     /// their own routing without misclassifying unrelated pushes.
@@ -30,7 +51,7 @@ extension AppState {
     }
 
     /// Decode `uid` from a JSON-bridged userInfo value the same tolerant way
-    /// `TigerDuckApp`'s `bulletinId(from:)` decodes `bulletin_id`: APNs / FCM / intermediate
+    /// `pushInteger(from:)` decodes `bulletin_id`: APNs / FCM / intermediate
     /// relays bridge JSON numbers inconsistently — some land as an Int-tagged NSNumber that
     /// succeeds `as? Int`, others as a Double-tagged NSNumber where `as? Int` fails, and a few
     /// re-encode the value as a quoted string. `UInt32(exactly:)` (rather than a truncating or

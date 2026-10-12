@@ -178,13 +178,8 @@ struct TigerDuckApp: App {
     }
 
     /// Translates a tapped notification into the right AppState mutation. A
-    /// static helper keeps the SwiftUI body uncluttered and lets the routing
-    /// be unit-tested without the App scene plumbing.
-    ///
-    /// `bulletin_id` is decoded as `Int`, `NSNumber.intValue` and `String → Int`
-    /// because APNs, FCM and relays bridge JSON numbers inconsistently: an
-    /// int-tagged NSNumber passes `as? Int`, a Double-tagged one fails it, and
-    /// some relays re-encode the value as a quoted string.
+    /// static helper keeps the SwiftUI body uncluttered; the payload parsing it
+    /// calls lives in AppState+PushRouting.swift, where it is unit-tested.
     @MainActor
     private static func routeServerPushTap(
         response: UNNotificationResponse,
@@ -194,9 +189,9 @@ struct TigerDuckApp: App {
         let info = response.notification.request.content.userInfo
         let kind = info["kind"] as? String
         switch kind {
-        case "custom_push_bulletin":
-            if let id = bulletinId(from: info["bulletin_id"]) {
-                appState.pendingDeepLink = .bulletin(id)
+        case "custom_push_bulletin", "bulletin":
+            if let link = AppState.bulletinDeepLink(from: info) {
+                appState.pendingDeepLink = link
             }
         case "custom_push_popup":
             guard let nid = info["notification_id"] as? String,
@@ -234,16 +229,6 @@ struct TigerDuckApp: App {
             // behaviour — no-op here so we don't accidentally swallow them.
             break
         }
-    }
-
-    /// Decode `bulletin_id` from a JSON-bridged userInfo value. See the
-    /// `routeServerPushTap` doc comment for why all three paths exist.
-    @MainActor
-    private static func bulletinId(from raw: Any?) -> Int? {
-        if let n = raw as? Int { return n }
-        if let n = raw as? NSNumber { return n.intValue }
-        if let s = raw as? String { return Int(s) }
-        return nil
     }
 }
 
