@@ -127,7 +127,8 @@ extension AppState {
                       !((row["schedule_json"] as? [String: [String]]) ?? [:]).isEmpty else { continue }
                 userAdded[index] = Self.course(fromServerRow: row, courseNo: existing.courseNo,
                                                semester: existing.semester, name: existing.courseName,
-                                               dimension: existing.dimension, allYear: existing.allYear)
+                                               dimension: existing.dimension, allYear: existing.allYear,
+                                               requireOption: existing.requireOption)
                 mergedSemesters.insert(semester)
             }
             for row in rows {
@@ -172,16 +173,17 @@ extension AppState {
         return prefix == semester.uppercased()
     }
 
-    /// Known gap: the sync payload has no `dimension` or `all_year`, so a row merged from
-    /// another device leaves both empty and the detail sheet hides those two rows. The next
-    /// QueryCourse refresh fills them in for a current term; for a term the portal has stopped
-    /// serving they stay empty until the backend sends them.
+    /// Known gap: the sync payload has no `dimension`, `all_year` or required flag, so a row
+    /// merged from another device leaves them empty. The next QueryCourse refresh fills them
+    /// in for a current term; for a term the portal has stopped serving they stay empty
+    /// until the backend sends them.
     ///
     /// Callers rebuilding a row they already hold must pass the values it carries: a local
     /// record that saw QueryCourse knows its dimension and the server row does not, so the
     /// defaults would erase that metadata during a schedule merge.
     static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?,
-                               dimension: String = "", allYear: String = "") -> SDCourse {
+                               dimension: String = "", allYear: String = "",
+                               requireOption: String = "") -> SDCourse {
         var schedule: [Int: [String]] = [:]
         for (key, periods) in (row["schedule_json"] as? [String: [String]]) ?? [:] {
             if let weekday = Int(key) { schedule[weekday] = periods }
@@ -199,7 +201,8 @@ extension AppState {
             semester: semester,
             classroomMap: row["classroom_map"] as? [String: String] ?? [:],
             dimension: dimension,
-            allYear: allYear
+            allYear: allYear,
+            requireOption: requireOption
         )
     }
 }

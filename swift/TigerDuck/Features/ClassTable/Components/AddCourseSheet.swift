@@ -517,6 +517,7 @@ struct AddCourseSheet: View {
         /// its dimension / term span without waiting for the next refresh.
         let dimension: String
         let allYear: String
+        let requireOption: String
 
         var displayName: String {
             guard let secondary = secondaryName,
@@ -580,7 +581,8 @@ struct AddCourseSheet: View {
                     // Same first-non-empty rule as `buildSDCourse`: the row
                     // that names the dimension may not be the one seen first.
                     dimension: existing.dimension.isEmpty ? (result.Dimension ?? "") : existing.dimension,
-                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear
+                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear,
+                    requireOption: existing.requireOption.isEmpty ? (result.RequireOption ?? "") : existing.requireOption
                 )
                 seen[key] = existing
             } else {
@@ -606,7 +608,8 @@ struct AddCourseSheet: View {
                     schedule: partial,
                     nodeDisplay: result.Node ?? "",
                     dimension: result.Dimension ?? "",
-                    allYear: result.AllYear ?? ""
+                    allYear: result.AllYear ?? "",
+                    requireOption: result.RequireOption ?? ""
                 )
             }
         }
@@ -628,7 +631,8 @@ struct AddCourseSheet: View {
             semester: semester,
             classroomMap: group.classroomMap,
             dimension: group.dimension,
-            allYear: group.allYear
+            allYear: group.allYear,
+            requireOption: group.requireOption
         )
         if onAdd(course) {
             sessionAddedCourseNos.insert(group.courseNo)

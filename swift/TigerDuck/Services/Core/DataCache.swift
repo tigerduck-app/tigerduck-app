@@ -686,6 +686,7 @@ private struct CachedCourse: Codable {
     /// fills them in for a cache written before they existed.
     let dimension: String?
     let allYear: String?
+    let requireOption: String?
 
     init(from course: SDCourse) {
         courseNo = course.courseNo
@@ -702,6 +703,7 @@ private struct CachedCourse: Codable {
         skippedDatesJSON = course.skippedDatesJSON
         dimension = course.dimension.isEmpty ? nil : course.dimension
         allYear = course.allYear.isEmpty ? nil : course.allYear
+        requireOption = course.requireOption.isEmpty ? nil : course.requireOption
     }
 
     func toSDCourse() -> SDCourse {
@@ -739,7 +741,8 @@ private struct CachedCourse: Codable {
             semester: semester ?? CourseSelectionService.currentSemesterCode(),
             classroomMap: classroomMap,
             dimension: dimension ?? "",
-            allYear: allYear ?? ""
+            allYear: allYear ?? "",
+            requireOption: requireOption ?? ""
         )
         course.skippedDatesJSON = skippedDatesJSON ?? "[]"
         return course
