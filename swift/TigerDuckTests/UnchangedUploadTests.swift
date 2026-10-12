@@ -65,16 +65,16 @@ struct UnchangedUploadTests {
         let coordinator = backend.makeCoordinator()
         let list = Self.courses(Self.entry("CS1"))
 
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151"))
-        #expect(try await !coordinator.uploadCoursesIfChanged(list, semester: "1151"))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(try await !coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
         #expect(backend.uploads == 1)
 
         #expect(try await coordinator.uploadCoursesIfChanged(
-            Self.courses(Self.entry("CS1"), forceKeys: ["client:1151:CS1"]), semester: "1151"))
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true))
+            Self.courses(Self.entry("CS1"), forceKeys: ["client:1151:CS1"]), semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true, isCurrent: { true }))
         coordinator.forgetUploads(semester: "1151")
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151"))
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1142"))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1142", isCurrent: { true }))
         #expect(backend.uploads == 5)
     }
 
@@ -87,9 +87,9 @@ struct UnchangedUploadTests {
         let list = Self.courses(Self.entry("CS1"))
 
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(list, semester: "1151")
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
         }
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151"))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
         #expect(backend.uploads == 2)
     }
 
@@ -157,12 +157,12 @@ struct UnchangedUploadTests {
         let coordinator = Backend().makeCoordinator()
         let sends = Sends()
         let key = UploadLedger.courses("1151")
-        #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false) { await sends.send(1) })
+        #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) { await sends.send(1) })
 
         sends.holds = true
-        let edit = Task { try await coordinator.uploadIfChanged(key, fingerprint: 2, always: false) { await sends.send(2) } }
+        let edit = Task { try await coordinator.uploadIfChanged(key, fingerprint: 2, always: false, isCurrent: { true }) { await sends.send(2) } }
         try await waitUntil { sends.isParked }
-        let undo = Task { try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false) { await sends.send(1) } }
+        let undo = Task { try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) { await sends.send(1) } }
         // Let the undo reach its check while the edit's request is still out.
         for _ in 0..<50 { await Task.yield() }
         #expect(sends.isParked)
@@ -171,6 +171,33 @@ struct UnchangedUploadTests {
         #expect(try await edit.value)
         #expect(try await undo.value)
         #expect(sends.sent == [1, 2, 1])
+    }
+
+    @Test("An upload queued behind another is dropped if its account signs out while it waits")
+    func queuedUploadSkipsAfterSignOut() async throws {
+        let coordinator = Backend().makeCoordinator()
+        let sends = Sends()
+        let key = UploadLedger.assignments
+        var signedIn = true
+
+        sends.holds = true
+        let first = Task {
+            try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+                await sends.send(1)
+            }
+        }
+        try await waitUntil { sends.isParked }
+        let queued = Task {
+            try await coordinator.uploadIfChanged(key, fingerprint: 2, always: true, isCurrent: { signedIn }) {
+                await sends.send(2)
+            }
+        }
+        signedIn = false
+        sends.release()
+
+        #expect(try await first.value)
+        #expect(try await !queued.value)
+        #expect(sends.sent == [1])
     }
 }
 

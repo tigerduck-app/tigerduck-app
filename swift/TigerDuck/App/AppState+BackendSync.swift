@@ -518,8 +518,10 @@ extension AppState {
         let generation = authService.loginGeneration
         let coordinator = pushCoordinator
         Task { [weak self] in
-            await self?.sendUpload("uploadCourses \(semester)", generation: generation) {
-                try await coordinator.uploadCoursesIfChanged(request, semester: semester, resend: resend)
+            await self?.sendUpload("uploadCourses \(semester)", generation: generation) { isCurrent in
+                try await coordinator.uploadCoursesIfChanged(
+                    request, semester: semester, resend: resend, isCurrent: isCurrent
+                )
             }
         }
     }
@@ -530,8 +532,8 @@ extension AppState {
         let generation = authService.loginGeneration
         let coordinator = pushCoordinator
         Task { [weak self] in
-            await self?.sendUpload("uploadAssignments", generation: generation) {
-                try await coordinator.uploadAssignmentsIfChanged(request)
+            await self?.sendUpload("uploadAssignments", generation: generation) { isCurrent in
+                try await coordinator.uploadAssignmentsIfChanged(request, isCurrent: isCurrent)
             }
         }
     }
@@ -542,13 +544,16 @@ extension AppState {
         _ label: String,
         generation: Int,
         retried: Bool = false,
-        _ send: () async throws -> Bool
+        _ send: (_ isCurrent: @escaping @MainActor () -> Bool) async throws -> Bool
     ) async {
-        guard authService.loginGeneration == generation, Defaults[.cloudSyncEnabled] else { return }
+        let isCurrent: @MainActor () -> Bool = { [weak self] in
+            self?.authService.loginGeneration == generation && Defaults[.cloudSyncEnabled]
+        }
+        guard isCurrent() else { return }
         do {
-            let sent = try await send()
-            AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "unchanged, skipped", privacy: .public)")
-        } catch PushAPIError.httpStatus(401, _) where !retried {
+            let sent = try await send(isCurrent)
+            AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "skipped", privacy: .public)")
+        } catch PushAPIError.httpStatus(401, _) where !retried && isCurrent() {
             guard await attemptBackendRelogin() else {
                 AppLogger.sync.error("\(label, privacy: .public) failed: 401, relogin failed")
                 return

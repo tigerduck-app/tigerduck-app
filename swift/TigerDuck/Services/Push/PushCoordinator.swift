@@ -239,13 +239,15 @@ final class PushCoordinator {
     func uploadCoursesIfChanged(
         _ request: PushAPI.CourseUploadRequest,
         semester: String,
-        resend: Bool = false
+        resend: Bool = false,
+        isCurrent: @escaping @MainActor () -> Bool
     ) async throws -> Bool {
         let client = apiClient
         return try await uploadIfChanged(
             UploadLedger.courses(semester),
             fingerprint: Self.fingerprint(of: request),
-            always: resend || !request.forceKeys.isEmpty
+            always: resend || !request.forceKeys.isEmpty,
+            isCurrent: isCurrent
         ) {
             try await client.uploadCourses(request)
         }
@@ -253,10 +255,14 @@ final class PushCoordinator {
 
     /// Uploads the assignment list unless the server accepted the same one within
     /// `unchangedUploadInterval`. Returns whether it sent.
-    func uploadAssignmentsIfChanged(_ request: PushAPI.AssignmentUploadRequest) async throws -> Bool {
+    func uploadAssignmentsIfChanged(
+        _ request: PushAPI.AssignmentUploadRequest,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) async throws -> Bool {
         let client = apiClient
         return try await uploadIfChanged(
-            UploadLedger.assignments, fingerprint: Self.fingerprint(of: request), always: false
+            UploadLedger.assignments, fingerprint: Self.fingerprint(of: request), always: false,
+            isCurrent: isCurrent
         ) {
             try await client.uploadAssignments(request)
         }
@@ -264,16 +270,19 @@ final class PushCoordinator {
 
     /// Runs `send` for list `key` once the list's previous upload has ended, unless `always` is
     /// false and the ledger holds `fingerprint` as accepted within `unchangedUploadInterval`.
+    /// `isCurrent` is checked after that wait, which can span a sign-out: the request would
+    /// carry the departing account's list on the next account's token.
     func uploadIfChanged(
         _ key: String,
         fingerprint: Int,
         always: Bool,
+        isCurrent: @escaping @MainActor () -> Bool,
         send: @escaping @MainActor () async throws -> Void
     ) async throws -> Bool {
         let previous = lastUploads[key]
         let upload = Task { @MainActor [weak self] () async throws -> Bool in
             await previous?.value
-            guard let self else { return false }
+            guard let self, isCurrent() else { return false }
             let now = Date()
             guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else { return false }
             let started = self.uploads.generation(of: key)
