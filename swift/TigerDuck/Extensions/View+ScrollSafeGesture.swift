@@ -37,10 +37,10 @@ extension View {
         )
     }
 
-    /// A keyboard / focus-dismiss tap attached as a `.simultaneousGesture` so it
-    /// doesn't swallow taps on interactive children — the iOS 18 failure mode
-    /// that left onboarding links dead.
-    func dismissTapGesture(_ action: @escaping () -> Void) -> some View {
+    /// A tap anywhere on the view, such as one that dismisses the keyboard, attached as a
+    /// `.simultaneousGesture` so it doesn't swallow taps on interactive children — the iOS 18
+    /// failure mode that left onboarding links dead.
+    func simultaneousTapGesture(_ action: @escaping () -> Void) -> some View {
         simultaneousGesture(TapGesture().onEnded(action))
     }
 }
