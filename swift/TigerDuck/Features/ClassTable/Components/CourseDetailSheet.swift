@@ -28,6 +28,7 @@ struct CourseDetailSheet: View {
 
     @State private var ownMoodlePath: [MoodleCourseRoute] = []
     @State private var moodle: MoodleCourseStore?
+    @State private var moodleAttempt = 0
     #if os(iOS)
     @State private var detent: PresentationDetent = .medium
     #endif
@@ -65,11 +66,15 @@ struct CourseDetailSheet: View {
                 }
             }
         }
-        .task(id: course.courseNo) {
+        .task(id: MoodleStoreKey(courseNo: course.courseNo, attempt: moodleAttempt)) {
             // Cached rows are there when the sheet opens; only rows a fetch brings fade in.
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) { moodle = makeMoodleStore() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+            // A sheet opened before the first sync finds no Moodle course id; a sync may bring it.
+            if moodle == nil { moodleAttempt += 1 }
         }
         #if os(iOS)
         .presentationDetents([.medium, .large], selection: $detent)
@@ -81,6 +86,11 @@ struct CourseDetailSheet: View {
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 360)
         #endif
+    }
+
+    private struct MoodleStoreKey: Equatable {
+        let courseNo: String
+        let attempt: Int
     }
 
     private var routes: Binding<[MoodleCourseRoute]> {
