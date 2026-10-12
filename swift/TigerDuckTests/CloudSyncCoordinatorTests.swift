@@ -156,6 +156,13 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 1)
     }
 
+    @Test("A mark goes out with the Assignments switch on and its re-enable check settled")
+    func marksGoOutWithTheSwitchOnAndNoCheckPending() {
+        #expect(CloudSyncCoordinator.sendsAssignmentMarks(assignments: true, pendingChecks: ["courses"]))
+        #expect(!CloudSyncCoordinator.sendsAssignmentMarks(assignments: false, pendingChecks: []))
+        #expect(!CloudSyncCoordinator.sendsAssignmentMarks(assignments: true, pendingChecks: ["assignments"]))
+    }
+
     @Test("Use Server after the re-enable check drops every mark still on its way up, parked too, and no other edit")
     func useServerAfterTheReenableCheckDropsEveryMark() async {
         let backend = Backend()
