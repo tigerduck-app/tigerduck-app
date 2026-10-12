@@ -493,24 +493,6 @@ struct AddCourseSheet: View {
         text.applyingTransform(hansHantTransform, reverse: false) ?? text
     }
 
-    /// Returns "zh" if the query contains any CJK Unified Ideograph
-    /// (traditional, simplified, or extension blocks); otherwise "en".
-    static func queryLanguage(of query: String) -> String {
-        for scalar in query.unicodeScalars {
-            switch scalar.value {
-            case 0x3400...0x4DBF,    // CJK Unified Ideographs Extension A
-                 0x4E00...0x9FFF,    // CJK Unified Ideographs
-                 0x20000...0x2A6DF,  // Extension B
-                 0x2A700...0x2EBEF,  // Extensions C, D, E, F
-                 0x30000...0x3134F:  // Extension G
-                return "zh"
-            default:
-                continue
-            }
-        }
-        return "en"
-    }
-
     // MARK: - Group & Add
 
     private struct GroupedCourse {

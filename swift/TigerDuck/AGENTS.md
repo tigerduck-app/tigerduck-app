@@ -56,6 +56,4 @@ working in those directories.
 
 ## Gotchas
 
-- `Bridge/ModelAdapters.swift` is an empty placeholder from a planned KMP integration; nothing
-  uses it.
 - macOS sidebar pins are stored in `macConfiguredTabs`, apart from the iOS tab configuration.

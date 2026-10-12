@@ -272,10 +272,6 @@ final class HomeViewModel {
         isUpdatingFromNetwork = false
     }
 
-    func hasUnfinishedAssignment(for courseNo: String) -> Bool {
-        upcomingAssignments.hasUnfinished(for: courseNo)
-    }
-
     func assignmentsFor(courseNo: String) -> [SDAssignment] {
         upcomingAssignments.unfinished(for: courseNo)
     }

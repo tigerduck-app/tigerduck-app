@@ -1,4 +1,5 @@
-TigerDuck.iml
+*.iml
+oh-my-openagent.json
 swift/buildServer.json
 .idea/
 .sisyphus/
