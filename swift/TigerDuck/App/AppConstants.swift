@@ -270,6 +270,12 @@ nonisolated enum AppConstants {
                 String(localized: "weekday_sun_short"),
             ]
         }
+
+        /// `weekdays` and `weekendDays` by schedule weekday, 1 = Monday to 7 = Sunday.
+        static func shortWeekdayLabel(_ weekday: Int) -> String {
+            let labels = weekdays + weekendDays
+            return labels.indices.contains(weekday - 1) ? labels[weekday - 1] : "\(weekday)"
+        }
     }
 
     enum PeriodTimes {

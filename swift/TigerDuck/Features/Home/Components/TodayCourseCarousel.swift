@@ -57,6 +57,7 @@ struct TodayCourseCarousel: View {
     #if os(iOS)
     @State private var scrollPosition = ScrollPosition()
     #endif
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // The body and its helpers read `AppClock.now()`, which Observation cannot
@@ -122,7 +123,7 @@ struct TodayCourseCarousel: View {
             .onChange(of: firstOngoingIndex, initial: true) { _, index in
                 guard index > 0 else { return }
                 let flags = sortedCourses.map { ongoingByCourseNo[$0.courseNo] != nil }
-                withAnimation {
+                withAnimation(reduceMotion ? nil : .default) {
                     scrollPosition.scrollTo(
                         x: carouselScrollTarget(isOngoing: flags, firstOngoingIndex: index)
                     )

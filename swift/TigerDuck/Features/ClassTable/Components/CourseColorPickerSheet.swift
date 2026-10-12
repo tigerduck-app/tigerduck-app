@@ -102,6 +102,7 @@ struct CourseColorPickerSheet: View {
                     swatch(color: color, isSelected: index == activePresetIndex)
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(index == activePresetIndex ? .isSelected : [])
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)

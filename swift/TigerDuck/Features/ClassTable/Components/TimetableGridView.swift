@@ -3,30 +3,13 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Maps the codebase weekday convention (1=Mon, 2=Tue, ..., 7=Sun) to a
-/// localized short weekday name. DateFormatter's symbol arrays use a
-/// 1=Sunday convention, so we remap before indexing. The fallback to the
-/// raw int keeps VoiceOver labels usable even if symbol lookup fails.
-///
-/// The formatter is cached as a `private static let` so we don't allocate
-/// one on every call (the grid calls this once per cell per layout pass).
-private let _weekdayFormatter: DateFormatter = {
-    let f = DateFormatter()
-    f.locale = Locale.current
-    return f
-}()
-
-private func weekdayDisplayName(_ weekday: Int) -> String {
-    let symbols = _weekdayFormatter.shortStandaloneWeekdaySymbols ?? _weekdayFormatter.shortWeekdaySymbols ?? []
-    // Codebase: 1=Mon...6=Sat,7=Sun → DateFormatter index: 2=Mon...7=Sat,1=Sun
-    let dfIndex: Int
-    switch weekday {
-    case 1...6: dfIndex = weekday + 1 // Mon..Sat → 2..7
-    case 7: dfIndex = 1               // Sun → 1
-    default: dfIndex = 0
-    }
-    guard dfIndex >= 1, dfIndex <= symbols.count else { return "\(weekday)" }
-    return symbols[dfIndex - 1]
+/// A course as a cell's VoiceOver label names it. The room hint and the assignment badge
+/// are hidden from VoiceOver, so the label carries them.
+private func spokenCourse(_ course: SDCourse, room: String? = nil, hasAssignment: Bool) -> String {
+    var parts = [course.displayName]
+    if let room { parts.append(room) }
+    if hasAssignment { parts.append(String(localized: "a11y_class_table_cell_assignment_indicator")) }
+    return parts.joined(separator: ", ")
 }
 
 struct TimetableGridView: View {
@@ -192,12 +175,12 @@ struct TimetableGridView: View {
                         .accessibilityLabel(
                             Text(String(
                                 format: String(localized: "a11y_timetable_cell"),
-                                weekdayDisplayName(weekday),
+                                AppConstants.Periods.shortWeekdayLabel(weekday),
                                 viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
                                 // The visible hint is `accessibilityHidden`;
                                 // it rides the cell's own label instead so it
                                 // is announced once, in place.
-                                roomHint.map { "\(course.displayName), \($0)" } ?? course.displayName
+                                spokenCourse(course, room: roomHint, hasAssignment: hasBadge)
                             ))
                         )
                         .contextMenu {
@@ -386,9 +369,10 @@ private struct ConflictClusterView: View {
             .accessibilityLabel(
                 Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
                      String(format: String(localized: "a11y_timetable_cell"),
-                            weekdayDisplayName(weekday),
+                            AppConstants.Periods.shortWeekdayLabel(weekday),
                             viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
-                            "\(courseA.displayName), \(courseB.displayName)"))
+                            [courseA, courseB].map { spokenCourse($0, hasAssignment: showsBadge(for: $0)) }
+                                .joined(separator: ", ")))
             )
             .contextMenu {
                 conflictContextMenu()
@@ -453,9 +437,9 @@ private struct ConflictClusterView: View {
             .accessibilityLabel(
                 Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
                      String(format: String(localized: "a11y_timetable_cell"),
-                            weekdayDisplayName(weekday),
+                            AppConstants.Periods.shortWeekdayLabel(weekday),
                             viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
-                            course.displayName))
+                            spokenCourse(course, hasAssignment: hasBadge)))
             )
             .contextMenu {
                 Button {
@@ -535,13 +519,17 @@ private struct ConflictClusterView: View {
         #endif
     }
 
+    private func showsBadge(for course: SDCourse) -> Bool {
+        showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
+    }
+
     private func courseRegion(
         course: SDCourse,
         shape: ConflictLShape,
         labelAlignment: Alignment,
         barFraction: CGFloat
     ) -> some View {
-        let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
+        let hasBadge = showsBadge(for: course)
         return GeometryReader { boxProxy in
             ZStack(alignment: labelAlignment) {
                 course.color.opacity(0.4)

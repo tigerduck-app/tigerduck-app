@@ -182,7 +182,7 @@ struct MacClassTableView: View {
                 Text(String(
                     format: String(localized: "class_table_conflict_add_failed_message"),
                     err.newCourseName,
-                    "\(err.weekday)",
+                    AppConstants.Periods.shortWeekdayLabel(err.weekday),
                     err.periodId,
                     err.existingA.displayName,
                     err.existingB.displayName
