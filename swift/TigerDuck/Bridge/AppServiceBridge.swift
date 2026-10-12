@@ -18,6 +18,10 @@ struct CourseData: Sendable {
 
 enum AppServiceBridge {
 
+    /// Hands a refreshed term to cloud sync (`AppState.uploadCourses`), which `AppState` installs
+    /// at launch. Unset, as in tests, a refresh uploads nothing.
+    static var courseUploader: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+
     /// Fetch and enrich enrolled courses.
     ///
     /// Pass `forceRefresh: true` to bust the `CourseService`
@@ -226,40 +230,7 @@ enum AppServiceBridge {
                !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveCourses(courses, semester: semester)
-
-                if CourseUploadPolicy.uploadsCourses, let atm = authService.authTokenManager {
-                    let entries = courses.map { c in
-                        PushAPI.CourseUploadEntry(
-                            semester: semester,
-                            courseNo: c.courseNo,
-                            courseName: c.courseName,
-                            courseNameEn: nil,
-                            moodleId: c.moodleIdNumber,
-                            credits: c.credits > 0 ? c.credits : nil,
-                            classroom: c.classroom.isEmpty ? nil : c.classroom,
-                            instructors: c.instructor.isEmpty ? nil : [c.instructor],
-                            scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),
-                            classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
-                        )
-                    }
-                    let colorMap = TigerDuckTheme.courseColorMap
-                    let sendColors = CourseUploadPolicy.uploadsCourseColors
-                    let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
-                        guard sendColors, let hex = colorMap[c.courseNo] else { return nil }
-                        return PushAPI.CourseOverrideUploadEntry(
-                            courseKey: "client:\(semester):\(c.courseNo)",
-                            colorHex: String(format: "#%06X", hex)
-                        )
-                    }
-                    let client = PushAPIClient(
-                        authHeaderProvider: { await atm.authorizationHeader() }
-                    )
-                    Task.detached {
-                        try? await client.uploadCourses(
-                            PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides)
-                        )
-                    }
-                }
+                courseUploader?(courses, semester)
             }
             return courses
         } catch {

@@ -435,24 +435,46 @@ extension AppState {
         }
     }
 
+    /// Uploads one term's course list: a course refresh, a class table edit, the reconcile.
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = []) {
         guard CourseUploadPolicy.uploadsCourses else { return }
         let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
-        let coordinator = pushCoordinator
-        Task.detached {
-            do {
-                try await coordinator.uploadCourses(request)
-                AppLogger.sync.info("uploadCourses: \(request.courses.count, privacy: .public) courses sent")
-            } catch {
-                AppLogger.sync.error("uploadCourses failed: \(error, privacy: .public)")
-            }
+        let generation = authService.loginGeneration
+        Task { [weak self] in
+            await self?.sendCourseUpload(request, generation: generation)
         }
     }
 
+    private func sendCourseUpload(
+        _ request: PushAPI.CourseUploadRequest,
+        generation: Int,
+        retried: Bool = false
+    ) async {
+        // A sign-out since: the list is the departing account's, and the session the next one's.
+        guard authService.loginGeneration == generation, CourseUploadPolicy.uploadsCourses else { return }
+        do {
+            try await pushCoordinator.uploadCourses(request)
+            AppLogger.sync.info("uploadCourses: \(request.courses.count, privacy: .public) courses sent")
+        } catch PushAPIError.httpStatus(401, _) where !retried {
+            guard await attemptBackendRelogin() else {
+                AppLogger.sync.error("uploadCourses failed: 401, relogin failed")
+                return
+            }
+            await sendCourseUpload(request, generation: generation, retried: true)
+        } catch {
+            AppLogger.sync.error("uploadCourses failed: \(error, privacy: .public)")
+        }
+    }
+
+    /// The one builder of a course upload. `colors` go up as `course_overrides`, generated ones
+    /// too: an upload only fills a blank `color_hex`, so the first device to upload a course sets
+    /// its colour account-wide and the rest take the server's. Picks go through
+    /// `syncCourseOverride`, whose PATCH overwrites.
     static func courseUploadRequest(
         _ courses: [SDCourse],
         semester: String,
-        forceKeys: [String]
+        forceKeys: [String],
+        colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
     ) -> PushAPI.CourseUploadRequest {
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
@@ -468,10 +490,14 @@ extension AppState {
                 classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
             )
         }
-        // No `course_overrides`: `courseColorMap` cannot tell generated colours from chosen ones,
-        // and an upload only fills a blank `color_hex`: generated ones would stick account-wide.
-        // Picks go through `syncCourseOverride`, whose PATCH overwrites; Android sends only those.
-        return PushAPI.CourseUploadRequest(courses: entries, forceKeys: forceKeys)
+        let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
+            guard let hex = colors[c.courseNo] else { return nil }
+            return PushAPI.CourseOverrideUploadEntry(
+                courseKey: "client:\(semester):\(c.courseNo)",
+                colorHex: String(format: "#%06X", hex)
+            )
+        }
+        return PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides, forceKeys: forceKeys)
     }
 }
 
@@ -527,5 +553,10 @@ enum CourseUploadPolicy {
         #else
         return uploadsCourses
         #endif
+    }
+
+    /// The colours a course upload carries.
+    static var uploadedCourseColors: [String: UInt32] {
+        uploadsCourseColors ? TigerDuckTheme.courseColorMap : [:]
     }
 }

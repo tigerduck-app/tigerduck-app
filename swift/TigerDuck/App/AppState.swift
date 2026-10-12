@@ -189,6 +189,9 @@ final class AppState {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
+        AppServiceBridge.courseUploader = { [weak self] courses, semester in
+            self?.uploadCourses(courses, semester: semester)
+        }
         revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
         revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin() ?? false }
 
