@@ -11,6 +11,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
             date: Date(),
             current: nil,
             next: Self.sampleCourse(),
+            nextDay: .today,
             accentHex: WatchSnapshot.defaultAccentHex,
             languageTag: nil,
             relevance: nil
@@ -86,7 +87,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
     }
 
     /// The state at `appNow` on the app clock, shown from `date` on the real clock. Holidays and
-    /// skipped dates leave no class, as on the Watch's Now & Next tab.
+    /// skipped dates leave no class that day, as on the Watch's Now & Next tab.
     private func entry(for snapshot: WatchSnapshot?, at appNow: Date, date: Date) -> NextClassEntry {
         let r = NextClassResolver.resolve(
             courses: snapshot?.courses ?? [], now: appNow, quietDays: snapshot?.quietDays ?? []
@@ -95,6 +96,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
             date: date,
             current: r.current,
             next: r.next,
+            nextDay: r.nextDay,
             accentHex: snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex,
             languageTag: snapshot?.languageTag,
             relevance: relevance(for: r, now: appNow)

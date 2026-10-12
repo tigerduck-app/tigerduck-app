@@ -62,7 +62,8 @@ final class NextClassProviderTests: XCTestCase {
         let onTheHoliday = entries.filter { $0.date < mondayAt("00:00", dayOffset: 1) }
         XCTAssertEqual(onTheHoliday.map(\.date), [now])
         XCTAssertNil(onTheHoliday.first?.current)
-        XCTAssertNil(onTheHoliday.first?.next)
+        XCTAssertEqual(onTheHoliday.first?.next?.id, "B")
+        XCTAssertEqual(onTheHoliday.first?.nextDay, .tomorrow)
         XCTAssertEqual(entries.first { $0.date == mondayAt("00:00", dayOffset: 1) }?.next?.id, "B")
     }
 
@@ -75,9 +76,10 @@ final class NextClassProviderTests: XCTestCase {
 
         let entries = NextClassProvider().timeline(for: snapshot([skipped, later]), now: now).entries
 
-        XCTAssertFalse(entries.contains { $0.current?.id == "A" || $0.next?.id == "A" })
+        XCTAssertFalse(entries.contains { $0.current?.id == "A" || ($0.next?.id == "A" && $0.nextDay == .today) })
         XCTAssertFalse(entries.contains { $0.date == mondayAt("10:20") || $0.date == mondayAt("11:10") })
         XCTAssertEqual(entries.first?.next?.id, "B")
+        XCTAssertEqual(entries.first { $0.date == mondayAt("14:20") }?.nextDay, .later(weekday: 1))
     }
 
     func test_timeline_fromMidnight_showsTheNextDaysFirstClass() {
@@ -87,10 +89,25 @@ final class NextClassProviderTests: XCTestCase {
 
         let entries = NextClassProvider().timeline(for: snapshot([monday, tuesday]), now: now).entries
 
-        XCTAssertNil(entries.first?.next)
+        XCTAssertEqual(entries.first?.next?.id, "B")
+        XCTAssertEqual(entries.first?.nextDay, .tomorrow)
         let atMidnight = entries.first { $0.date == mondayAt("00:00", dayOffset: 1) }
         XCTAssertNil(atMidnight?.current)
         XCTAssertEqual(atMidnight?.next?.id, "B")
+        XCTAssertEqual(atMidnight?.nextDay, .today)
+    }
+
+    func test_timeline_fromTheEndOfTheLastClass_showsTomorrowsFirstClass() {
+        let now = mondayAt("09:00")
+        let monday = course("A", weekday: 1, start: "10:20", end: "11:10")
+        let tuesday = course("B", weekday: 2, start: "08:10", end: "09:00")
+
+        let entries = NextClassProvider().timeline(for: snapshot([monday, tuesday]), now: now).entries
+
+        let afterTheLastClass = entries.first { $0.date == mondayAt("11:10") }
+        XCTAssertNil(afterTheLastClass?.current)
+        XCTAssertEqual(afterTheLastClass?.next?.id, "B")
+        XCTAssertEqual(afterTheLastClass?.nextDay, .tomorrow)
     }
 
     /// A ticking override keeps a fixed offset between the app clock and the real one.
