@@ -114,6 +114,8 @@ struct MailHTMLSanitizerTests {
 
     /// The rewrite as WebKit draws it on the mail page: narrowed to a phone, a loaded picture and
     /// a held-back one keep their ratio, and on a wide page both keep the sender's 546x772 box.
+    /// CI picks it by name to run after the other tests: see `webkit_tests` in
+    /// `.github/workflows/tests.yaml`.
     @MainActor
     @Test(arguments: [375.0, 1280.0])
     func aFixedImageBoxKeepsItsRatioOnThePage(pageWidth: Double) async throws {
