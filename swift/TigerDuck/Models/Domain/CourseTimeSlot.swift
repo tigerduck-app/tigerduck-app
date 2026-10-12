@@ -75,6 +75,18 @@ struct CourseTimeSlot: Identifiable, Equatable {
         return slots.sorted { $0.start < $1.start }
     }
 
+    /// `buildSlots` for the day of `date`, less the courses skipped that day, and empty on a
+    /// day `isClassDay` rejects: outside the term, or a holiday the user has not opted back into.
+    static func meetingSlots(
+        from courses: [SDCourse],
+        on date: Date,
+        isClassDay: (Date) -> Bool
+    ) -> [CourseTimeSlot] {
+        guard isClassDay(date) else { return [] }
+        return buildSlots(from: courses, weekday: date.scheduleWeekday, on: date)
+            .filter { !$0.course.isSkipped(on: $0.date) }
+    }
+
     private static func periodOrder(_ periodId: String) -> Int {
         AppConstants.Periods.chronologicalOrder.firstIndex(of: periodId) ?? Int.max
     }
