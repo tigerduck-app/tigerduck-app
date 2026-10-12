@@ -3,8 +3,9 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// `MoodleAutologinService` with stand-in keys and clocks, and its key request against
+/// `MoodleAutologinService` with stand-in keys, clocks and sign-outs, and its key request against
 /// `SettingsAPIStub` on a site that does not exist, so no request reaches Moodle.
+@MainActor
 struct MoodleAutologinServiceTests {
     private static let page = URL(string: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=5501")!
     private static let autologinLink = "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
@@ -20,18 +21,28 @@ struct MoodleAutologinServiceTests {
         func record() { count += 1 }
     }
 
+    /// A service with its own sign-in generation, never the app's session generation, which
+    /// any test that signs out would move under this one.
     private static func service(
-        answering key: MoodleAutologinService.Key? = key,
-        requests: KeyRequests = KeyRequests(),
-        clock: OSAllocatedUnfairLock<Date> = OSAllocatedUnfairLock(initialState: start)
+        clock: OSAllocatedUnfairLock<Date> = OSAllocatedUnfairLock(initialState: start),
+        signInGeneration: @escaping () -> Int = { 0 },
+        keySource: @escaping @Sendable () async throws -> MoodleAutologinService.Key?
     ) -> MoodleAutologinService {
         MoodleAutologinService(
-            keySource: {
-                await requests.record()
-                return key
-            },
-            now: { clock.withLock { $0 } }
+            keySource: keySource,
+            now: { clock.withLock { $0 } },
+            signInGeneration: signInGeneration
         )
+    }
+
+    private static func answering(
+        _ key: MoodleAutologinService.Key? = key,
+        _ requests: KeyRequests = KeyRequests()
+    ) -> @Sendable () async throws -> MoodleAutologinService.Key? {
+        {
+            await requests.record()
+            return key
+        }
     }
 
     // MARK: - Link
@@ -50,7 +61,8 @@ struct MoodleAutologinServiceTests {
     @Test("a page on the Moodle site opens through the sign-in link")
     func moodlePageIsSignedIn() async {
         let requests = KeyRequests()
-        #expect(await Self.service(requests: requests).url(for: Self.page) == Self.signedInPage)
+        let service = Self.service(keySource: Self.answering(Self.key, requests))
+        #expect(await service.url(for: Self.page) == Self.signedInPage)
         #expect(await requests.count == 1)
     }
 
@@ -64,7 +76,8 @@ struct MoodleAutologinServiceTests {
     func otherLinksAreLeftAlone(_ link: String) async throws {
         let url = try #require(URL(string: link))
         let requests = KeyRequests()
-        #expect(await Self.service(requests: requests).url(for: url) == url)
+        let service = Self.service(keySource: Self.answering(Self.key, requests))
+        #expect(await service.url(for: url) == url)
         #expect(await requests.count == 0)
     }
 
@@ -78,7 +91,7 @@ struct MoodleAutologinServiceTests {
     func foreignSignInLinkIsRefused(_ link: String) async {
         let key = MoodleAutologinService.Key(userId: 42, value: "k3y", autologinURL: link)
         #expect(MoodleAutologinService.signedInURL(key, opening: Self.page) == nil)
-        #expect(await Self.service(answering: key).url(for: Self.page) == Self.page)
+        #expect(await Self.service(keySource: Self.answering(key)).url(for: Self.page) == Self.page)
     }
 
     // MARK: - Rate limit
@@ -87,7 +100,7 @@ struct MoodleAutologinServiceTests {
     func oneKeyPerInterval() async {
         let requests = KeyRequests()
         let clock = OSAllocatedUnfairLock(initialState: Self.start)
-        let service = Self.service(requests: requests, clock: clock)
+        let service = Self.service(clock: clock, keySource: Self.answering(Self.key, requests))
 
         #expect(await service.url(for: Self.page) == Self.signedInPage)
         clock.withLock { $0 += MoodleAutologinService.keyInterval - 1 }
@@ -108,11 +121,12 @@ struct MoodleAutologinServiceTests {
     func keyOnItsWay() async throws {
         let requests = KeyRequests()
         let sleeper = ManualSleeper()
-        let service = MoodleAutologinService(keySource: {
+        let key = Self.key
+        let service = Self.service {
             await requests.record()
             await sleeper.sleep(for: .zero)
-            return Self.key
-        })
+            return key
+        }
 
         let first = Task { await service.url(for: Self.page) }
         try await sleeper.waitUntilArmed()
@@ -133,13 +147,31 @@ struct MoodleAutologinServiceTests {
 
     // MARK: - Fallbacks
 
+    @Test("a key that arrives after a sign-out opens the page as it is and starts no wait")
+    func signOutWhileKeyIsOnItsWay() async {
+        let requests = KeyRequests()
+        let signOuts = OSAllocatedUnfairLock(initialState: 0)
+        let signsOutWhileWaiting = OSAllocatedUnfairLock(initialState: true)
+        let key = Self.key
+        let service = Self.service(signInGeneration: { signOuts.withLock { $0 } }) {
+            await requests.record()
+            if signsOutWhileWaiting.withLock({ $0 }) { signOuts.withLock { $0 += 1 } }
+            return key
+        }
+
+        #expect(await service.url(for: Self.page) == Self.page)
+        signsOutWhileWaiting.withLock { $0 = false }
+        #expect(await service.url(for: Self.page) == Self.signedInPage)
+        #expect(await requests.count == 2)
+    }
+
     @Test("a failed request opens the page as it is and is not retried, and the next page asks again")
     func failedRequest() async {
         let requests = KeyRequests()
-        let service = MoodleAutologinService(keySource: {
+        let service = Self.service {
             await requests.record()
             throw MoodleWebserviceError.transientNetwork(underlying: "offline")
-        })
+        }
 
         #expect(await service.url(for: Self.page) == Self.page)
         #expect(await requests.count == 1)
@@ -152,7 +184,7 @@ struct MoodleAutologinServiceTests {
         let empty = MoodleAutologinService.Key(userId: 42, value: "", autologinURL: Self.autologinLink)
         for answer in [nil, empty] {
             let requests = KeyRequests()
-            let service = Self.service(answering: answer, requests: requests)
+            let service = Self.service(keySource: Self.answering(answer, requests))
             #expect(await service.url(for: Self.page) == Self.page)
             #expect(await service.url(for: Self.page) == Self.page)
             #expect(await requests.count == 2)
@@ -249,33 +281,6 @@ struct MoodleAutologinServiceTests {
         #expect(body == "privatetoken=r3newed")
     }
 
-    @Test(
-        "a key that arrives after a sign-out or another account's sign-in is dropped",
-        arguments: [nil, "0ther"] as [String?]
-    )
-    func accountChangedWhileKeyWasOnItsWay(_ storedAfterward: String?) async throws {
-        let token = UUID().uuidString
-        Self.answer(#"{"key":"k3y","autologinurl":"\#(Self.autologinLink)","warnings":[]}"#, token: token)
-        let stored = OSAllocatedUnfairLock<String?>(initialState: "pr1vate")
-
-        let key = try await MoodleAutologinService.requestKey(
-            tokens: MoodleWebserviceClient.TokenSource(
-                stored: { token },
-                renew: { _ in throw MoodleWebserviceError.missingStoredCredentials }
-            ),
-            privateToken: { stored.withLock { $0 } },
-            userId: { _ in
-                stored.withLock { $0 = storedAfterward }
-                return 42
-            },
-            session: Self.session(),
-            siteURL: Self.site
-        )
-
-        #expect(key == nil)
-        #expect(SettingsAPIStub.requests(for: Self.endpoint(token: token)).count == 1)
-    }
-
     @Test("without a private token nothing is sent and no token is renewed")
     func noPrivateToken() async throws {
         let token = UUID().uuidString
@@ -296,9 +301,9 @@ struct MoodleAutologinServiceTests {
     func failedAnswer(_ body: String) async {
         let token = UUID().uuidString
         Self.answer(body, token: token)
-        let service = MoodleAutologinService(keySource: {
+        let service = Self.service {
             try await Self.requestKey(token: token, privateToken: "pr1vate")
-        })
+        }
 
         #expect(await service.url(for: Self.page) == Self.page)
         #expect(SettingsAPIStub.requests(for: Self.endpoint(token: token)).count == 1)

@@ -33,14 +33,17 @@ struct MoodleHomeworkRegressionTests {
     }
 
     private static func autologin(counting requests: KeyRequests = KeyRequests()) -> MoodleAutologinService {
-        MoodleAutologinService(keySource: {
-            await requests.record()
-            return MoodleAutologinService.Key(
-                userId: 42,
-                value: "k3y",
-                autologinURL: "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
-            )
-        })
+        MoodleAutologinService(
+            keySource: {
+                await requests.record()
+                return MoodleAutologinService.Key(
+                    userId: 42,
+                    value: "k3y",
+                    autologinURL: "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
+                )
+            },
+            signInGeneration: { 0 }
+        )
     }
 
     @Test func moodleLink_opensTheWebPageSignedInWhenNoAppTakesTheDeepLink() async throws {
