@@ -261,7 +261,8 @@ nonisolated enum MoodlePersonName {
     }
 }
 
-/// A Moodle user's picture: the first character of their name in a circle.
+/// Moodle's own pictures of other users need a file token, so a user shows as the first
+/// character of their name in a circle.
 struct MoodleAvatar: View {
     let name: String
     let size: CGFloat

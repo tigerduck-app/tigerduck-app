@@ -26,7 +26,6 @@ actor MoodleSiteInfoService {
         try await siteInfo(token: token).userId
     }
 
-    /// The functions the site lets `token` call.
     func functions(token: String) async throws -> Set<String> {
         try await siteInfo(token: token).functions
     }

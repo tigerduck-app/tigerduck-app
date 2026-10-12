@@ -70,7 +70,7 @@ extension View {
 struct MoodleSectionRowView: View {
     let row: MoodleSectionRow
 
-    /// Where a row's text starts, which is where the line between rows starts.
+    /// The line between rows starts under the text, not under the icon.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + iconWidth + TigerDuckTheme.Spacing.md
     private static let iconWidth: CGFloat = 28
 
