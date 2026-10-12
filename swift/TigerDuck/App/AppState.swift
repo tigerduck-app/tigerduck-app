@@ -425,6 +425,7 @@ final class AppState {
         // which cancels every start the server queued for this device.
         requestPushScheduleSync()
         if enabled {
+            pushCoordinator.forgetUploads()
             startRevisionPolling()
             #if os(iOS)
             // Resumes without a relaunch. `isLiveActivityEnabled` itself

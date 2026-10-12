@@ -58,6 +58,8 @@ extension AppState {
     }
 
     func markCategoryReenabled(_ category: String) {
+        // The server may have dropped the lists while the category was off on every device.
+        pushCoordinator.forgetUploads()
         Defaults[.pendingConflictCategories].insert(category)
         AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
     }

@@ -497,6 +497,9 @@ extension AppState {
             try await pushCoordinator.deleteAllCourses(semester: semester)
             AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
             if let semester { DataCache.shared.recordSemesterReset(semester) }
+            // The refetch's upload releases the reset's tombstones, and it usually matches the
+            // list sent before the reset.
+            pushCoordinator.forgetUploads(semester: semester)
             resetLocally()
             return true
         } catch {
@@ -506,14 +509,16 @@ extension AppState {
     }
 
     /// Uploads one term's course list: a course refresh, a class table edit, the reconcile.
-    func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = []) {
+    /// A list the server already took is skipped (`PushCoordinator.uploadCoursesIfChanged`);
+    /// `resend` sends it anyway, for a term the server has emptied.
+    func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
         guard CourseUploadPolicy.uploadsCourses else { return }
         let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         let generation = authService.loginGeneration
         let coordinator = pushCoordinator
         Task { [weak self] in
-            await self?.sendUpload("uploadCourses", generation: generation) {
-                try await coordinator.uploadCourses(request)
+            await self?.sendUpload("uploadCourses \(semester)", generation: generation) {
+                try await coordinator.uploadCoursesIfChanged(request, semester: semester, resend: resend)
             }
         }
     }
@@ -525,7 +530,7 @@ extension AppState {
         let coordinator = pushCoordinator
         Task { [weak self] in
             await self?.sendUpload("uploadAssignments", generation: generation) {
-                try await coordinator.uploadAssignments(request)
+                try await coordinator.uploadAssignmentsIfChanged(request)
             }
         }
     }
@@ -536,12 +541,12 @@ extension AppState {
         _ label: String,
         generation: Int,
         retried: Bool = false,
-        _ send: () async throws -> Void
+        _ send: () async throws -> Bool
     ) async {
         guard authService.loginGeneration == generation, Defaults[.cloudSyncEnabled] else { return }
         do {
-            try await send()
-            AppLogger.sync.info("\(label, privacy: .public) sent")
+            let sent = try await send()
+            AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "unchanged, skipped", privacy: .public)")
         } catch PushAPIError.httpStatus(401, _) where !retried {
             guard await attemptBackendRelogin() else {
                 AppLogger.sync.error("\(label, privacy: .public) failed: 401, relogin failed")

@@ -216,8 +216,85 @@ final class PushCoordinator {
         try await apiClient.uploadCourses(request)
     }
 
-    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {
+    /// How often an unchanged course or assignment list goes to the server again. The backend
+    /// upserts every row of an upload; an unchanged one moves no revision, so a skip loses nothing.
+    static let unchangedUploadInterval: TimeInterval = 6 * 3600
+
+    /// The last list the server accepted, per term for courses. In memory, so a relaunch sends
+    /// again; sign-out, a term reset and a sync switch coming back on forget them.
+    private var acceptedCourseUploads: [String: (fingerprint: Int, at: Date)] = [:]
+    private var acceptedAssignmentUpload: (fingerprint: Int, at: Date)?
+
+    static func uploadIsDue(accepted: (fingerprint: Int, at: Date)?, fingerprint: Int, now: Date) -> Bool {
+        guard let accepted, accepted.fingerprint == fingerprint else { return true }
+        let age = now.timeIntervalSince(accepted.at)
+        return age >= unchangedUploadInterval || age < 0
+    }
+
+    /// Uploads a term's course list unless the server accepted the same one within
+    /// `unchangedUploadInterval`. `forceKeys` and `resend` always send. Returns whether it sent.
+    func uploadCoursesIfChanged(
+        _ request: PushAPI.CourseUploadRequest,
+        semester: String,
+        resend: Bool = false
+    ) async throws -> Bool {
+        let fingerprint = Self.fingerprint(of: request)
+        let now = Date()
+        guard resend || !request.forceKeys.isEmpty || Self.uploadIsDue(
+            accepted: acceptedCourseUploads[semester], fingerprint: fingerprint, now: now
+        ) else { return false }
+        try await apiClient.uploadCourses(request)
+        acceptedCourseUploads[semester] = (fingerprint, now)
+        return true
+    }
+
+    /// Uploads the assignment list unless the server accepted the same one within
+    /// `unchangedUploadInterval`. Returns whether it sent.
+    func uploadAssignmentsIfChanged(_ request: PushAPI.AssignmentUploadRequest) async throws -> Bool {
+        let fingerprint = Self.fingerprint(of: request)
+        let now = Date()
+        guard Self.uploadIsDue(accepted: acceptedAssignmentUpload, fingerprint: fingerprint, now: now) else {
+            return false
+        }
         try await apiClient.uploadAssignments(request)
+        acceptedAssignmentUpload = (fingerprint, now)
+        return true
+    }
+
+    /// Forgets the accepted course lists of `semester`, or of every term and the assignment list
+    /// when nil, so the next upload goes whatever it holds.
+    func forgetUploads(semester: String? = nil) {
+        if let semester {
+            acceptedCourseUploads[semester] = nil
+        } else {
+            acceptedCourseUploads = [:]
+            acceptedAssignmentUpload = nil
+        }
+    }
+
+    /// The same list in any order gives the same fingerprint. Force keys are left out: a request
+    /// with any always goes.
+    static func fingerprint(of request: PushAPI.CourseUploadRequest) -> Int {
+        encodedFingerprint(PushAPI.CourseUploadRequest(
+            courses: request.courses.sorted { $0.courseNo < $1.courseNo },
+            courseOverrides: request.courseOverrides.sorted { $0.courseKey < $1.courseKey }
+        ))
+    }
+
+    static func fingerprint(of request: PushAPI.AssignmentUploadRequest) -> Int {
+        encodedFingerprint(PushAPI.AssignmentUploadRequest(
+            assignments: request.assignments.sorted { $0.moodleAssignmentId < $1.moodleAssignmentId }
+        ))
+    }
+
+    private static func encodedFingerprint(_ value: some Encodable) -> Int {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var hasher = Hasher()
+        // A list that does not encode cannot be told apart from the last one, so it always goes.
+        guard let data = try? encoder.encode(value) else { return Int.random(in: .min ... .max) }
+        hasher.combine(data)
+        return hasher.finalize()
     }
 
     func deleteAllCourses(semester: String? = nil) async throws {

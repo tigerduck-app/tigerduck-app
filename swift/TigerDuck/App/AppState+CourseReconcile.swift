@@ -87,7 +87,7 @@ extension AppState {
             guard !serverNos.isEmpty else {
                 let uploadable = localCourses.filter { !isHidden($0.courseNo) }
                 if !uploadable.isEmpty {
-                    uploadCourses(uploadable, semester: semester)
+                    uploadCourses(uploadable, semester: semester, resend: true)
                     AppLogger.sync.info("[sync] \(semester, privacy: .public): server empty, uploaded \(uploadable.count, privacy: .public) local courses")
                 }
                 // Only rows stamped with this term: an unstamped legacy row
