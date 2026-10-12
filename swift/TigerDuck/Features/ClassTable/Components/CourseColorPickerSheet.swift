@@ -108,6 +108,7 @@ struct CourseColorPickerSheet: View {
                     swatch(color: color, isSelected: index == activePresetIndex)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(Text(String(format: String(localized: "a11y_course_color_swatch"), index + 1)))
                 .accessibilityAddTraits(index == activePresetIndex ? .isSelected : [])
             }
         }
