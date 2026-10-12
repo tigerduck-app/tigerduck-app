@@ -134,5 +134,23 @@ struct SyncOutboxTests {
         private(set) var count = 0
         func add(_ op: ResolvedSyncOp) { count += 1 }
     }
+
+    @Test("A full sync that requeues during the drain parking a mark keeps it parked")
+    func requeueDuringTheParkingDrainKeepsTheMark() async {
+        let outbox = Self.makeOutbox()
+        await outbox.enqueue(Self.mark)
+        await Self.drain(outbox, times: SyncOutbox.maxAttempts - 1,
+                         failingWith: PushAPIError.httpStatus(404, body: ""))
+        await outbox.enqueue(Self.colour)
+
+        await outbox.drain { op in
+            if case .assignmentOverride = op { throw PushAPIError.httpStatus(404, body: "") }
+            // A full sync starts while the colour's request is out.
+            await outbox.requeueParked()
+        }
+
+        #expect(await outbox.parkedSnapshot().map(\.op.dedupKey) == [Self.mark.dedupKey])
+        #expect(await outbox.snapshot().isEmpty)
+    }
 }
 

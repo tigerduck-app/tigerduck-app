@@ -136,15 +136,21 @@ actor SyncOutbox {
         persist()
     }
 
-    /// Queues every parked mark again with one attempt left, behind any newer edit of it.
+    /// Queues every parked mark again with one attempt left. One whose old copy a drain still
+    /// holds stays parked: that drain drops the copy when it ends, so requeuing would lose both.
     func requeueParked() {
         guard !parked.isEmpty else { return }
         let queuedKeys = Set(entries.map(\.op.dedupKey))
-        for var entry in parked where !queuedKeys.contains(entry.op.dedupKey) {
+        var stillParked: [OutboxEntry] = []
+        for var entry in parked {
+            guard !queuedKeys.contains(entry.op.dedupKey) else {
+                stillParked.append(entry)
+                continue
+            }
             entry.attempts = Self.maxAttempts - 1
             entries.append(entry)
         }
-        parked = []
+        parked = stillParked
         persist()
     }
 
