@@ -244,7 +244,7 @@ final class PushCoordinator {
         guard resend || !request.forceKeys.isEmpty || uploads.isDue(key, fingerprint: fingerprint, now: now) else {
             return false
         }
-        let started = uploads.generation
+        let started = uploads.generation(of: key)
         try await apiClient.uploadCourses(request)
         uploads.record(key, fingerprint: fingerprint, at: now, startedIn: started)
         return true
@@ -256,7 +256,7 @@ final class PushCoordinator {
         let fingerprint = Self.fingerprint(of: request)
         let now = Date()
         guard uploads.isDue(UploadLedger.assignments, fingerprint: fingerprint, now: now) else { return false }
-        let started = uploads.generation
+        let started = uploads.generation(of: UploadLedger.assignments)
         try await apiClient.uploadAssignments(request)
         uploads.record(UploadLedger.assignments, fingerprint: fingerprint, at: now, startedIn: started)
         return true
@@ -424,22 +424,33 @@ nonisolated struct UploadLedger {
     static func courses(_ semester: String) -> String { "courses:\(semester)" }
 
     private var accepted: [String: (fingerprint: Int, at: Date)] = [:]
-    /// Moved by `forget`. An upload in flight across one records nothing: it may have reached the
-    /// server before what the forget answers, a term reset, so its list is not on the server now.
-    private(set) var generation = 0
+    private var forgetsOfKey: [String: Int] = [:]
+    private var forgetsOfAll = 0
+
+    /// Moved by a forget of `key` or of every list. An upload in flight across one records
+    /// nothing: it may have reached the server before what the forget answers, a term reset, so
+    /// its list is not on the server now.
+    func generation(of key: String) -> (all: Int, key: Int) {
+        (forgetsOfAll, forgetsOfKey[key, default: 0])
+    }
 
     func isDue(_ key: String, fingerprint: Int, now: Date) -> Bool {
         PushCoordinator.uploadIsDue(accepted: accepted[key], fingerprint: fingerprint, now: now)
     }
 
-    mutating func record(_ key: String, fingerprint: Int, at date: Date, startedIn started: Int) {
-        guard started == generation else { return }
+    mutating func record(_ key: String, fingerprint: Int, at date: Date, startedIn started: (all: Int, key: Int)) {
+        guard started == generation(of: key) else { return }
         accepted[key] = (fingerprint, date)
     }
 
     /// `key` nil forgets every list.
     mutating func forget(_ key: String?) {
-        generation &+= 1
-        if let key { accepted[key] = nil } else { accepted = [:] }
+        if let key {
+            forgetsOfKey[key, default: 0] &+= 1
+            accepted[key] = nil
+        } else {
+            forgetsOfAll &+= 1
+            accepted = [:]
+        }
     }
 }
