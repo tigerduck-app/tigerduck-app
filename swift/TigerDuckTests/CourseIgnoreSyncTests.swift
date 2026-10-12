@@ -161,7 +161,8 @@ struct CourseIgnoreCoordinatorTests {
 
     private static func makeCoordinator(
         _ backend: Backend,
-        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { true }
+        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { true },
+        syncsCourseIgnores: @escaping @Sendable () -> Bool = { true }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -174,7 +175,7 @@ struct CourseIgnoreCoordinatorTests {
             .appendingPathComponent("CourseIgnoreCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: syncsAssignmentMarks
+            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseIgnores: syncsCourseIgnores
         )
     }
 
@@ -209,12 +210,14 @@ struct CourseIgnoreCoordinatorTests {
         #expect(Set(body.keys) == ["moodle_course_id"])
     }
 
-    @Test("With the Assignments switch off the setting waits for it to come back")
-    func switchOffHoldsTheSetting() async {
+    @Test("With the Courses switch off the setting waits, though the marks go, until both switches are on")
+    func coursesSwitchOffHoldsTheSetting() async {
         let backend = Backend()
         backend.answer(Self.path)
-        let syncsMarks = OSAllocatedUnfairLock(initialState: false)
-        let coordinator = Self.makeCoordinator(backend) { syncsMarks.withLock { $0 } }
+        let syncsIgnores = OSAllocatedUnfairLock(initialState: false)
+        let coordinator = Self.makeCoordinator(
+            backend, syncsAssignmentMarks: { true }, syncsCourseIgnores: { syncsIgnores.withLock { $0 } }
+        )
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
 
@@ -222,7 +225,7 @@ struct CourseIgnoreCoordinatorTests {
         #expect(backend.bodies(Self.path).isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
 
-        syncsMarks.withLock { $0 = true }
+        syncsIgnores.withLock { $0 = true }
         await coordinator.syncTick()
         #expect(backend.bodies(Self.path).count == 1)
         #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
@@ -252,7 +255,9 @@ struct CourseIgnoreCoordinatorTests {
 extension CourseIgnoreCoordinatorTests {
     @Test("Use Server drops the settings still waiting to go up, and leaves the marks")
     func useServerDropsWaitingSettings() async {
-        let coordinator = Self.makeCoordinator(Backend()) { false }
+        let coordinator = Self.makeCoordinator(
+            Backend(), syncsAssignmentMarks: { false }, syncsCourseIgnores: { false }
+        )
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
         await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
@@ -280,14 +285,19 @@ struct CourseIgnorePullTests {
 
     @Test("A backend without the setting is read as having none to apply")
     func oldBackendIsSkipped() {
-        #expect(AppState.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2", ignored: nil)]) == nil)
+        #expect(AppState.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2", ignored: nil)], syncsCourses: true) == nil)
+    }
+
+    @Test("With the Courses switch off a pull and the re-enable check take no course settings")
+    func coursesSwitchOffTakesNone() {
+        #expect(AppState.serverIgnoredCourses([Self.row("CS1")], syncsCourses: false) == nil)
     }
 
     @Test("The server's ignored courses are keyed by term and course number")
     func serverRowsAreKeyed() throws {
         let courses = try #require(AppState.serverIgnoredCourses([
             Self.row("CS1", moodleCourseId: 4242), Self.row("EE2", ignored: false), Self.row("GE3", semester: ""),
-        ]))
+        ], syncsCourses: true))
         #expect(courses == [AppState.ServerIgnoredCourse(
             semester: "1151", courseNo: "CS1", moodleId: "1151CS1", moodleCourseId: 4242
         )])
@@ -329,7 +339,7 @@ struct CourseIgnorePullTests {
     func missingNumericIdsAreSent() throws {
         let courses = try #require(AppState.serverIgnoredCourses([
             Self.row("CS1"), Self.row("EE2", moodleCourseId: 77), Self.row("GE3"), Self.row("PE4"),
-        ]))
+        ], syncsCourses: true))
 
         let toSend = AppState.moodleCourseIdsToSend(courses, protected: ["1151:PE4"]) { moodleId in
             ["1151CS1": 4242, "1151EE2": 77, "1151PE4": 9].first { $0.key == moodleId }?.value
@@ -341,7 +351,7 @@ struct CourseIgnorePullTests {
 
     @Test("Keep Local stops ignoring on the server what this device does not ignore")
     func keepLocalClearsServerOnlySettings() throws {
-        let server = try #require(AppState.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2")]))
+        let server = try #require(AppState.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2")], syncsCourses: true))
 
         let cleared = AppState.courseIgnoresToClear(server: server, local: ["1151:CS1", "1142:GE3"])
 

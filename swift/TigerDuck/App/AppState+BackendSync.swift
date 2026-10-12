@@ -77,7 +77,7 @@ extension AppState {
 
             let coursesArray = json["courses"] as? [[String: Any]] ?? []
             let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
-            let serverIgnoredCourses = Self.serverIgnoredCourses(courseOverrides)
+            let serverIgnoredCourses = Self.serverIgnoredCourses(courseOverrides, syncsCourses: Defaults[.syncCourses])
 
             // First-time migration: upload local overrides when the server has none. This skips
             // only conflict detection; course overrides, hard-delete detection and `dataDidUpdate`
@@ -177,7 +177,8 @@ extension AppState {
                     pendingSyncServerCompleted = serverCompletedIds
                 }
 
-                if let serverIgnoredCourses {
+                // Read again: the switch may have gone off while the outbox was read.
+                if let serverIgnoredCourses, Defaults[.syncCourses] {
                     changed = applyIgnoredCourses(
                         serverIgnoredCourses, coursesArray: coursesArray, protected: protectedOverrides
                     ) || changed
@@ -331,10 +332,14 @@ extension AppState {
         var key: String { CourseTombstone.key(semester: semester, courseNo: courseNo) }
     }
 
-    /// The courses the server ignores every assignment of, or nil from a backend without the
-    /// setting, whose rows carry no `ignore_assignments`.
-    nonisolated static func serverIgnoredCourses(_ overrides: [[String: Any]]) -> [ServerIgnoredCourse]? {
-        guard overrides.allSatisfy({ $0["ignore_assignments"] != nil }) else { return nil }
+    /// The courses the server ignores every assignment of, or nil when there are none to take:
+    /// from a backend without the setting, whose rows carry no `ignore_assignments`, and with the
+    /// Courses sync switch off, which the setting follows with the Assignments switch.
+    nonisolated static func serverIgnoredCourses(
+        _ overrides: [[String: Any]],
+        syncsCourses: Bool
+    ) -> [ServerIgnoredCourse]? {
+        guard syncsCourses, overrides.allSatisfy({ $0["ignore_assignments"] != nil }) else { return nil }
         return overrides.compactMap { row in
             guard row["ignore_assignments"] as? Bool == true,
                   let semester = row["semester"] as? String, !semester.isEmpty,
@@ -586,7 +591,8 @@ extension AppState {
     }
 
     /// Queues a course's "ignore assignments" setting, which the server's reminders follow. The
-    /// Assignments sync switch covers it, as it covers the marks.
+    /// Assignments sync switch covers it, as it covers the marks, and the outbox holds it while
+    /// the Courses switch is off.
     func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) {
         guard Defaults[.cloudSyncEnabled], Defaults[.syncAssignments] else { return }
         // The server keys a course without an idnumber, a hand-added one, by term and number.

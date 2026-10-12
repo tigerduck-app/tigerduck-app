@@ -51,6 +51,10 @@ final class CloudSyncCoordinator {
     /// The Assignments sync switch, read before each mark goes out. A mark queued before it went
     /// off waits for it to come back.
     @ObservationIgnored private let syncsAssignmentMarks: @Sendable () -> Bool
+    /// The Assignments and Courses sync switches together, read before each course's ignore
+    /// setting goes out: the server drops the setting with the course rows once no device syncs
+    /// courses. A setting queued while either is off waits.
+    @ObservationIgnored private let syncsCourseIgnores: @Sendable () -> Bool
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -69,11 +73,15 @@ final class CloudSyncCoordinator {
         pushCoordinator: PushCoordinator,
         outbox: SyncOutbox = SyncOutbox(),
         isEnabled: Bool = Defaults[.cloudSyncEnabled],
-        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { Defaults[.syncAssignments] }
+        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { Defaults[.syncAssignments] },
+        syncsCourseIgnores: @escaping @Sendable () -> Bool = {
+            Defaults[.syncAssignments] && Defaults[.syncCourses]
+        }
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
         self.syncsAssignmentMarks = syncsAssignmentMarks
+        self.syncsCourseIgnores = syncsCourseIgnores
 
         if isEnabled {
             state = .active
@@ -185,9 +193,11 @@ final class CloudSyncCoordinator {
         guard await outbox.pendingCount() > 0 else { return }
 
         let syncsMarks = syncsAssignmentMarks
+        let syncsIgnores = syncsCourseIgnores
         await outbox.drain(holding: { op in
             switch op {
-            case .assignmentOverride, .courseIgnore: return !syncsMarks()
+            case .assignmentOverride: return !syncsMarks()
+            case .courseIgnore: return !syncsIgnores()
             case .courseOverride: return false
             }
         }) { [weak self] op in
