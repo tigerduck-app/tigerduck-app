@@ -66,15 +66,14 @@ final class WidgetSnapshotWriter {
         }
     }
 
-    /// Every published school holiday, as `yyyy-MM-dd` keys.
-    ///
-    /// Not windowed to the widget's horizon: only the app writes the snapshot,
+    /// Every published school holiday, as `yyyy-MM-dd` keys, for the widget snapshot and the
+    /// Watch payload. Not windowed to the widget's horizon: only the app writes the snapshot,
     /// and a widget keeps reloading the last one while the app stays closed. A
     /// horizon measured from write time would expire while the snapshot lives
     /// on, and the first holiday past it would render as a class that is not
     /// happening. A term's holidays are a few dozen dates, so the whole
     /// published set is cheaper than that bug.
-    private static func quietDayKeys() -> Set<String> {
+    static func quietDayKeys() -> Set<String> {
         let store = AcademicCalendarStore.shared
         let optedIn = store.optedInHolidayIDs
         let calendar = store.calendar

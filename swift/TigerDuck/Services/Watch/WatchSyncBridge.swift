@@ -27,6 +27,11 @@ struct WatchSyncBridge: View {
             ) { _ in
                 pushNow()
             }
+            .onReceive(
+                NotificationCenter.default.publisher(for: AppConstants.holidayNotifyDidChange)
+            ) { _ in
+                pushNow()
+            }
             #if DEBUG
             // Debug time override changes don't touch courses/AppState, so
             // `changeToken` won't re-fire. Push explicitly so the watch
@@ -67,7 +72,8 @@ extension WatchSyncCoordinator.Payload {
             accentHex: String(format: "#%06X", UInt(bitPattern: Int(appState.accentColorHex)) & 0xFFFFFF),
             loggedIn: appState.authService.hasStoredCredentials,
             languageTag: appState.appLanguage == LanguageManager.system ? nil : appState.appLanguage,
-            visualPreset: appState.visualPreset
+            visualPreset: appState.visualPreset,
+            quietDays: WidgetSnapshotWriter.quietDayKeys()
         )
     }
 }

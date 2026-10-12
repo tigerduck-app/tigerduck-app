@@ -29,6 +29,7 @@ final class WatchSyncCoordinator: NSObject {
         let loggedIn: Bool
         let languageTag: String?
         let visualPreset: VisualPreset
+        var quietDays: Set<String> = []
     }
 
     private let session: WatchSessionPushing
@@ -94,13 +95,14 @@ final class WatchSyncCoordinator: NSObject {
         loggedIn: Bool,
         languageTag: String?,
         visualPreset: VisualPreset,
+        quietDays: Set<String> = [],
         force: Bool = false
     ) {
         let snapshot = { (syncedAt: Date) in
             WatchPayloadEncoder.encode(
                 courses: courses, customNames: customNames, accentHex: accentHex,
                 syncedAt: syncedAt, loggedIn: loggedIn, languageTag: languageTag,
-                visualPreset: visualPreset
+                visualPreset: visualPreset, quietDays: quietDays
             )
         }
         // Only the stamp would differ, and every update wakes the Watch. A newer pending
@@ -153,7 +155,7 @@ final class WatchSyncCoordinator: NSObject {
             self.pendingForce = false
             self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
                       loggedIn: p.loggedIn, languageTag: p.languageTag,
-                      visualPreset: p.visualPreset, force: force)
+                      visualPreset: p.visualPreset, quietDays: p.quietDays, force: force)
         }
     }
 }

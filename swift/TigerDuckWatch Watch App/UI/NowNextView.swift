@@ -15,7 +15,9 @@ struct NowNextView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     if let snapshot = store.snapshot, !snapshot.courses.isEmpty {
-                        let result = NextClassResolver.resolve(courses: snapshot.courses, now: AppClock.now())
+                        let result = NextClassResolver.resolve(
+                            courses: snapshot.courses, now: AppClock.now(), quietDays: snapshot.quietDays
+                        )
                         if let current = result.current {
                             ClassCard(title: String(localized: "watch_now"), course: current, policy: policy)
                         }

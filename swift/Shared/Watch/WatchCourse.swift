@@ -17,6 +17,9 @@ public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable
     public let startHHmm: String  // first-period start, e.g. "10:20"
     public let endHHmm: String    // last-period end, e.g. "11:10"
     public let periodLabel: String // human-readable e.g. "3-4" or "A"
+    /// `yyyy-MM-dd` days the user skips this course. Optional so a snapshot cached by an
+    /// older build, which has no such key, still decodes.
+    public let skippedDates: Set<String>?
 
     public init(
         id: String,
@@ -28,7 +31,8 @@ public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable
         weekday: Int,
         startHHmm: String,
         endHHmm: String,
-        periodLabel: String
+        periodLabel: String,
+        skippedDates: Set<String>? = nil
     ) {
         self.id = id
         self.courseNo = courseNo
@@ -40,5 +44,6 @@ public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable
         self.startHHmm = startHHmm
         self.endHHmm = endHHmm
         self.periodLabel = periodLabel
+        self.skippedDates = skippedDates
     }
 }

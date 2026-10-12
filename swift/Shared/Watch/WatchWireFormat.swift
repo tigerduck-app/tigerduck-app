@@ -25,6 +25,8 @@ nonisolated public enum WatchWireFormat {
         /// path-independent of the `ClockOverride` type when the watch
         /// target hasn't been updated yet.
         public static let clockOverride = "clockOverride"
+        /// `WatchSnapshot.quietDays` as an array of `yyyy-MM-dd` strings. Optional.
+        public static let quietDays = "quietDays"
     }
 
     public enum MessageKind {

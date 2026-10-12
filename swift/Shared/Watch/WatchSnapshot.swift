@@ -21,6 +21,9 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
     /// decodes it via `JSONDecoder().decode(ClockOverride.self, ...)`.
     /// `nil` when no debug override is active.
     public let clockOverrideJSON: String?
+    /// `yyyy-MM-dd` days classes do not meet: holidays the user has not opted back into.
+    /// Empty in a payload from a phone that does not send them.
+    public let quietDays: Set<String>
 
     public static let defaultAccentHex = "#FF8800"
 
@@ -32,7 +35,8 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
         loggedIn: Bool,
         languageTag: String?,
         visualPreset: VisualPreset = .default,
-        clockOverrideJSON: String? = nil
+        clockOverrideJSON: String? = nil,
+        quietDays: Set<String> = []
     ) {
         self.version = version
         self.courses = courses
@@ -42,9 +46,10 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
         self.languageTag = languageTag
         self.visualPreset = visualPreset
         self.clockOverrideJSON = clockOverrideJSON
+        self.quietDays = quietDays
     }
 
-    // Cached JSON from older builds can lack `visualPreset` and `clockOverrideJSON`.
+    // Cached JSON from older builds can lack `visualPreset`, `clockOverrideJSON` and `quietDays`.
     // Synthesised `Codable` ignores the init's defaults and would throw `keyNotFound`,
     // leaving the watch on its empty sign-in state until the next WatchConnectivity push.
     public init(from decoder: Decoder) throws {
@@ -57,6 +62,7 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
         self.languageTag = try c.decodeIfPresent(String.self, forKey: .languageTag)
         self.visualPreset = try c.decodeIfPresent(VisualPreset.self, forKey: .visualPreset) ?? .default
         self.clockOverrideJSON = try c.decodeIfPresent(String.self, forKey: .clockOverrideJSON)
+        self.quietDays = try c.decodeIfPresent(Set<String>.self, forKey: .quietDays) ?? []
     }
 
     public var syncedAt: Date {

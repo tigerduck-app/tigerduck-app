@@ -14,7 +14,8 @@ enum WatchPayloadEncoder {
         syncedAt: Date,
         loggedIn: Bool,
         languageTag: String?,
-        visualPreset: VisualPreset
+        visualPreset: VisualPreset,
+        quietDays: Set<String> = []
     ) -> WatchSnapshot {
         // No courses when logged out: the previous user's may still be cached when this push
         // fires, and the watch's NowNextView checks `courses` before `loggedIn`, so it would
@@ -30,7 +31,8 @@ enum WatchPayloadEncoder {
             loggedIn: loggedIn,
             languageTag: languageTag,
             visualPreset: visualPreset,
-            clockOverrideJSON: encodedClockOverride()
+            clockOverrideJSON: encodedClockOverride(),
+            quietDays: quietDays
         )
     }
 
@@ -55,6 +57,7 @@ enum WatchPayloadEncoder {
         let order = AppConstants.Periods.chronologicalOrder
         let classroomMap = course.classroomMap
         let flatClassroom = SDCourse.dedup(course.classroom)
+        let skipped = Set(course.skippedDates)
         return course.schedule.flatMap { weekday, periodIds -> [WatchCourse] in
             let sorted = periodIds.sortedByPeriodOrder()
             return contiguousRuns(sorted, by: order).compactMap { run -> WatchCourse? in
@@ -76,7 +79,8 @@ enum WatchPayloadEncoder {
                     weekday: weekday,
                     startHHmm: startPeriod.startTime,
                     endHHmm: endPeriod.endTime,
-                    periodLabel: label
+                    periodLabel: label,
+                    skippedDates: skipped.isEmpty ? nil : skipped
                 )
             }
         }
