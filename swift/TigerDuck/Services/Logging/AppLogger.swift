@@ -15,11 +15,11 @@ nonisolated enum AppLogger {
     private static let diagnostics = Logger(subsystem: subsystem, category: "Diagnostics")
 
     static func captureError(_ error: any Error, context: [String: String] = [:]) {
-        diagnostics.error("\(errorLine(error, context: context), privacy: .public)")
+        diagnostics.error("\(errorLine(error, context: context), privacy: .private)")
     }
 
     static func breadcrumb(_ message: String, category: String) {
-        diagnostics.info("\(category, privacy: .public): \(scrubSensitive(message), privacy: .public)")
+        diagnostics.info("\(category, privacy: .public): \(scrubSensitive(message), privacy: .private)")
     }
 
     static func errorLine(_ error: any Error, context: [String: String]) -> String {
@@ -30,9 +30,10 @@ nonisolated enum AppLogger {
         return scrubSensitive(line)
     }
 
-    /// Scrubs credentials from a string before it is logged as public, where a sysdiagnose can
-    /// read it. Drops the query string of any `scheme://` URL, which can carry `wstoken=` or an
-    /// OIDC `code=`, and masks `token=`, `wstoken=`, `/wstoken/<...>`, password fields and
+    /// Scrubs credentials from a string before it is logged as private, which Console and a
+    /// sysdiagnose still show on a device with a logging profile that enables private data.
+    /// Drops the query string of any `scheme://` URL, which can carry `wstoken=` or an OIDC
+    /// `code=`, and masks `token=`, `wstoken=`, `/wstoken/<...>`, password fields and
     /// `Bearer ...` values elsewhere, such as in `moodlemobile://token=` or a form body. An
     /// error's description or user info can hold any of these.
     static func scrubSensitive(_ value: String) -> String {
