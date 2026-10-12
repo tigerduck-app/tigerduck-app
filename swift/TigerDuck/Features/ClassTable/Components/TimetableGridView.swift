@@ -12,6 +12,14 @@ private func spokenCourse(_ course: SDCourse, room: String? = nil, hasAssignment
     return parts.joined(separator: ", ")
 }
 
+private extension Shape {
+    /// A 1 pt line inside the edge, as `strokeBorder` draws one on an insettable shape: half of a
+    /// 2 pt stroke, clipped to the shape, so it stays off the course beside it in a conflict.
+    func innerOutline(_ color: Color) -> some View {
+        stroke(color, lineWidth: 2).clipShape(self)
+    }
+}
+
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
     /// Off for an exported image: the badge marks work still due, which is
@@ -139,6 +147,12 @@ struct TimetableGridView: View {
                     // scroll view. See View+ScrollSafeGesture.
                     RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
                         .fill(course.color.opacity(0.4))
+                        .overlay {
+                            if appState.outlineRequiredCourses, course.isRequired {
+                                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                                    .strokeBorder(course.color, lineWidth: 1)
+                            }
+                        }
                         .overlay {
                             Text(course.displayName)
                                 .font(.system(size: courseNameSize, weight: .medium))
@@ -451,6 +465,9 @@ private struct ConflictClusterView: View {
         } label: {
             shape
                 .fill(course.color.opacity(0.4))
+                .overlay {
+                    if isOutlined(course) { shape.innerOutline(course.color) }
+                }
                 .overlay(alignment: .topLeading) {
                     Text(course.displayName)
                         .font(.system(size: courseNameSize, weight: .medium))
@@ -548,6 +565,10 @@ private struct ConflictClusterView: View {
         showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
     }
 
+    private func isOutlined(_ course: SDCourse) -> Bool {
+        appState.outlineRequiredCourses && course.isRequired
+    }
+
     private func courseRegion(
         course: SDCourse,
         shape: ConflictLShape,
@@ -580,6 +601,9 @@ private struct ConflictClusterView: View {
                         .padding(3)
                 }
             }
+        }
+        .overlay {
+            if isOutlined(course) { shape.innerOutline(course.color) }
         }
         .clipShape(shape)
         .contentShape(shape)

@@ -54,6 +54,7 @@ struct MacGeneralSettingsView: View {
                     String(localized: "settings_show_classroom_on_class_table"),
                     isOn: $state.showClassroomInClassTable
                 )
+                Toggle(String(localized: "settings_outline_required_courses"), isOn: $state.outlineRequiredCourses)
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $state.alwaysShowAllPeriods)
             }
 

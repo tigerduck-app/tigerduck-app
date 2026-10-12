@@ -57,6 +57,12 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.showClassroomInClassTable,
         default: false
     )
+    /// Outline each required course's class-table cell. On by default, as
+    /// https://github.com/tigerduck-app/tigerduck-app/issues/208 asks. Device-local.
+    static let outlineRequiredCourses = Key<Bool>(
+        AppConstants.UserDefaultsKeys.outlineRequiredCourses,
+        default: true
+    )
     static let configuredTabsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.configuredTabs
     )

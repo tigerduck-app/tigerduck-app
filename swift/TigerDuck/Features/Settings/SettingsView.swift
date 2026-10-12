@@ -123,6 +123,7 @@ struct SettingsView: View {
                     String(localized: "settings_show_classroom_on_class_table"),
                     isOn: $appState.showClassroomInClassTable
                 )
+                Toggle(String(localized: "settings_outline_required_courses"), isOn: $appState.outlineRequiredCourses)
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowAllPeriods)
                 Toggle(String(localized: "settings_remember_bulletin_filter"), isOn: $appState.rememberAnnouncementFilter)
                 Picker(String(localized: "settings_link_opening_method"), selection: $appState.browserPreference) {

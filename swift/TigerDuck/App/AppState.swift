@@ -477,6 +477,11 @@ final class AppState {
         didSet { Defaults[.showClassroomInClassTable] = showClassroomInClassTable }
     }
 
+    /// Outline required courses in the class table.
+    var outlineRequiredCourses: Bool = Defaults[.outlineRequiredCourses] {
+        didSet { Defaults[.outlineRequiredCourses] = outlineRequiredCourses }
+    }
+
     /// Whether library-related features are enabled (requires explicit user consent)
     var libraryFeatureEnabled: Bool = Defaults[.libraryFeatureEnabled] {
         didSet { Defaults[.libraryFeatureEnabled] = libraryFeatureEnabled }
