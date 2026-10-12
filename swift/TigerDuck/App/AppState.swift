@@ -283,8 +283,8 @@ final class AppState {
 
     // MARK: - Revision polling
 
-    /// Last known server revision. When the server reports a higher value
-    /// the poller triggers a full sync via ``syncOverridesFromBackend()``.
+    /// The server revision this device has applied. When the server reports a higher value the
+    /// poller applies what moved via ``syncChangesSinceLastRevision()``.
     @ObservationIgnored
     var _lastKnownRevision: Int = 0
 

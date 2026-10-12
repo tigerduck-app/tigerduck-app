@@ -56,7 +56,7 @@ final class ServerStatusTracker {
         set(reachable ? .ok : .failed, for: .backend)
     }
 
-    /// Report the outcome of a *full sync*.
+    /// Report the outcome of a full sync, or of a change feed read that made one unnecessary.
     ///
     /// The mirror of ``noteBackendReachable(_:)``, and ignored for the mirror
     /// reason: a sync started while TigerSync was on can finish after it has

@@ -28,7 +28,7 @@ extension AppState {
     }
 
     /// One poll: fetch the lightweight revision endpoint, compare with
-    /// ``_lastKnownRevision``, and run a full sync when the server is ahead.
+    /// ``_lastKnownRevision``, and apply what moved when the server is ahead.
     func pollRevision() async -> RevisionPollOutcome {
         guard Defaults[.cloudSyncEnabled], await authTokenManager.isLoggedIn else { return .unchanged }
         guard NetworkMonitor.shared.isConnected else { return .offline }
@@ -36,15 +36,101 @@ extension AppState {
             let serverRevision = try await pushCoordinator.fetchRevision()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self._lastKnownRevision)")
             guard serverRevision > _lastKnownRevision else { return .unchanged }
-            await syncOverridesFromBackend()
+            let outcome = await syncChangesSinceLastRevision()
             await cloudSyncCoordinator.onRevisionChanged()
-            return .changed
+            return outcome
         } catch PushAPIError.httpStatus(401, _) {
             return .unauthorized
         } catch {
             AppLogger.sync.info("[poll] tick failed: \(error, privacy: .public)")
             return .failed
         }
+    }
+
+    /// Reads the change feed after ``_lastKnownRevision`` and does what ``ChangeFeedPlan`` makes of
+    /// it. Until the launch or sign-in sync sets a watermark the feed cannot show what this device
+    /// lacks, so the full sync runs instead. A full sync in flight covers the poll, and a read that
+    /// a sign-out or a full sync overtook is dropped. Settings changes left unapplied, as when the
+    /// document read fails, make the poll `.failed`, so the poller backs off before the next read.
+    func syncChangesSinceLastRevision() async -> RevisionPollOutcome {
+        let since = _lastKnownRevision
+        let generation = authService.loginGeneration
+        guard since > 0, !fullSyncGate.isRunning else {
+            await syncOverridesFromBackend()
+            return .changed
+        }
+        let page: PushAPI.SyncChangesPage?
+        do {
+            page = try await pushCoordinator.fetchChanges(sinceRevision: since)
+        } catch {
+            AppLogger.sync.info("[feed] read failed: \(error, privacy: .public)")
+            page = nil
+        }
+        guard mayAdvanceRevision(from: since, generation: generation), !fullSyncGate.isRunning else {
+            return .changed
+        }
+        let plan = ChangeFeedPlan(page, since: since)
+        AppLogger.sync.info("[feed] since=\(since) plan=\(String(describing: plan), privacy: .public)")
+        switch plan {
+        case .fullSync:
+            await syncOverridesFromBackend()
+        case .advance(let revision):
+            await retryUnsentEdits()
+            advanceRevision(from: since, to: revision, generation: generation)
+        case .reconcileSettings(let revision):
+            await retryUnsentEdits()
+            await reconcileSettings(thenAdvanceFrom: since, to: revision, generation: generation)
+            // Still at `since` only when the reconcile ended unsettled and nothing overtook the read.
+            if _lastKnownRevision == since { return .failed }
+        }
+        return .changed
+    }
+
+    /// Adopts the notification settings document a feed read found changed, then moves the
+    /// watermark. The routine adopts nothing while neither section syncs here or a local edit waits
+    /// to go up, whose push comes back as a change of its own, and a Mac keeps no notification
+    /// settings: those cases move the watermark at once.
+    private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, generation: Int) async {
+        #if os(iOS)
+        if Defaults[.syncAssignmentReminders] || Defaults[.syncLiveActivity],
+           !Defaults[.notificationSettingsPushPending] {
+            await reconcileNotificationSettings(onSettled: { [weak self] in
+                self?.advanceRevision(from: since, to: revision, generation: generation)
+            }).value
+            return
+        }
+        #endif
+        advanceRevision(from: since, to: revision, generation: generation)
+    }
+
+    private func advanceRevision(from since: Int, to revision: Int, generation: Int) {
+        guard mayAdvanceRevision(from: since, generation: generation) else { return }
+        _lastKnownRevision = revision
+        ServerStatusTracker.shared.noteSyncResult(true)
+    }
+
+    private func mayAdvanceRevision(from since: Int, generation: Int) -> Bool {
+        Self.feedMayAdvanceRevision(
+            readAfter: since,
+            watermark: _lastKnownRevision,
+            startedIn: generation,
+            current: authService.loginGeneration,
+            cloudSyncEnabled: Defaults[.cloudSyncEnabled]
+        )
+    }
+
+    /// Whether a feed read after watermark `since`, begun under login `generation`, may still move
+    /// the watermark: a full sync could still write (`fullSyncMayWrite`), and no full sync has set
+    /// the watermark since.
+    nonisolated static func feedMayAdvanceRevision(
+        readAfter since: Int,
+        watermark: Int,
+        startedIn generation: Int,
+        current: Int,
+        cloudSyncEnabled: Bool
+    ) -> Bool {
+        since == watermark
+            && fullSyncMayWrite(startedIn: generation, current: current, cloudSyncEnabled: cloudSyncEnabled)
     }
 
     /// Background sync all data on app launch.
@@ -131,6 +217,42 @@ nonisolated enum RevisionPollOutcome: Equatable, Sendable {
     case unauthorized
     /// No network to ask on, so no request was made.
     case offline
+}
+
+/// What a revision poll does with the change feed after its watermark
+/// (https://github.com/tigerduck-app/tigerduck-app/issues/241). Assignment changes come from the
+/// server's own copy of the Moodle list, which this device fetches from Moodle itself, and
+/// bulletins are not part of TigerSync, so changes to those alone only move the watermark. A
+/// notification settings change needs only its document reconciled. Any other change, or a page
+/// that may not hold every change up to the current revision, takes the full sync.
+nonisolated enum ChangeFeedPlan: Equatable, Sendable {
+    case fullSync
+    case advance(to: Int)
+    case reconcileSettings(thenAdvanceTo: Int)
+
+    static let passedOver: Set<String> = [
+        "assignment", "bulletin_subscription", "bulletin_state", "bulletin_match",
+    ]
+
+    /// `page` is nil when the read failed or the server had compacted the changes after `since`.
+    init(_ page: PushAPI.SyncChangesPage?, since: Int) {
+        guard let page, !page.hasMore,
+              page.returnedUntilRevision == page.currentRevision,
+              page.changes.last?.revision == page.currentRevision,
+              page.changes.allSatisfy({ $0.revision > since })
+        else {
+            self = .fullSync
+            return
+        }
+        let applied = Set(page.changes.map(\.entityType)).subtracting(Self.passedOver)
+        if applied.isEmpty {
+            self = .advance(to: page.returnedUntilRevision)
+        } else if applied == ["settings_document"] {
+            self = .reconcileSettings(thenAdvanceTo: page.returnedUntilRevision)
+        } else {
+            self = .fullSync
+        }
+    }
 }
 
 /// When the foreground revision poll asks next. A sync trigger push covers only marks, course

@@ -272,7 +272,7 @@ struct SettingsDocumentClientTests {
     /// The gate latches for the whole process by design, so this is the
     /// **only** test in the target that touches it — both halves live in
     /// one test rather than two so they cannot race each other's reset, and
-    /// no other test sends a 410. (404 and 409, which this client hands to
+    /// no other test sends it a 410. (404 and 409, which this client hands to
     /// the gate on its normal paths, do not latch it — the first half here
     /// is what proves the assertion in the second half means something.)
     @Test("the version gate latches on 410 and only on 410")

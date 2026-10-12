@@ -359,4 +359,33 @@ enum PushAPI {
     struct AssignmentUploadRequest: Encodable, Sendable {
         let assignments: [AssignmentUploadEntry]
     }
+
+    // MARK: - Change feed
+
+    /// One page of `GET /sync?since_revision=`, oldest change first, as the backend answers it:
+    /// https://github.com/tigerduck-app/tigerduck-backend/blob/7f3cb94b2817c2d262da676e9d7a9b7568c98437/server/routes/sync/snapshot.py
+    /// A change's id, operation and payload are not decoded: a poll decides on entity types alone.
+    nonisolated struct SyncChangesPage: Decodable, Equatable, Sendable {
+        let currentRevision: Int
+        let returnedUntilRevision: Int
+        let hasMore: Bool
+        let changes: [Change]
+
+        nonisolated struct Change: Decodable, Equatable, Sendable {
+            let revision: Int
+            let entityType: String
+
+            enum CodingKeys: String, CodingKey {
+                case revision
+                case entityType = "entity_type"
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case currentRevision = "current_revision"
+            case returnedUntilRevision = "returned_until_revision"
+            case hasMore = "has_more"
+            case changes
+        }
+    }
 }

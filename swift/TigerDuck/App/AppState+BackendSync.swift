@@ -30,17 +30,7 @@ extension AppState {
         // pull does not run in. So no write below follows an await without this check.
         let generation = authService.loginGeneration
         guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return }
-        // Not awaited: this is a repair, not a precondition. Its pending
-        // marker makes `applySyncedOverrides` sit out this cycle rather than
-        // race it, and the next sync applies the settled state.
-        retryUnacknowledgedHolidayOverrides()
-        #if os(iOS)
-        // Same repair for a reminder or Live Activity preference whose settings document
-        // write never landed (dropped debounce, expired session, offline, 5xx). A no-op
-        // unless something is outstanding.
-        retryUnacknowledgedNotificationSettings()
-        #endif
-        await cloudSyncCoordinator.requeueParkedMarks()
+        await retryUnsentEdits()
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)
@@ -261,6 +251,22 @@ extension AppState {
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
         }
+    }
+
+    /// Re-sends the edits whose upload never landed. Every full sync starts with this, and so does
+    /// a poll the change feed settles without one: both mean a network and a session.
+    func retryUnsentEdits() async {
+        // Not awaited: this is a repair, not a precondition. Its pending
+        // marker makes `applySyncedOverrides` sit out this cycle rather than
+        // race it, and the next sync applies the settled state.
+        retryUnacknowledgedHolidayOverrides()
+        #if os(iOS)
+        // Same repair for a reminder or Live Activity preference whose settings document
+        // write never landed (dropped debounce, expired session, offline, 5xx). A no-op
+        // unless something is outstanding.
+        retryUnacknowledgedNotificationSettings()
+        #endif
+        await cloudSyncCoordinator.requeueParkedMarks()
     }
 
     /// Why a pull leaves the server's marks unapplied, or nil to apply them. With the Assignments
