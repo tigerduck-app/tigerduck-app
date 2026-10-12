@@ -124,6 +124,9 @@ nonisolated extension Defaults.Keys {
     static let ssoLoginTimestamp = Key<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
     /// When Moodle last answered a whole assignment round for the signed-in account.
     static let schoolDataSyncedAt = Key<Date?>("schoolDataSyncedAt")
+    /// The last `courses_reset_at` a full sync read, in server time, for the signed-in account:
+    /// a full course reset made elsewhere applies once, when a sync reads a later one.
+    static let lastSeenCoursesResetAt = Key<Date?>("lastSeenCoursesResetAt")
     /// Optional on purpose: `nil` means "never picked a semester", which
     /// `SemesterCatalog.selectedSemester(storedPick:)` resolves to the newest
     /// published term. A non-optional key with a computed default cannot tell

@@ -204,16 +204,18 @@ extension AppState {
             }
 
             // Conflict resolution: detect reset + process tombstones
-            let coursesResetAtStr = json["courses_reset_at"] as? String
-            let coursesResetAt = coursesResetAtStr.flatMap { ISO8601DateFormatter().date(from: $0) }
+            let coursesResetAt = Self.backendDate(json["courses_reset_at"])
             let tombstoneArray = json["course_tombstones"] as? [[String: Any]] ?? []
-            let lastCourseSyncAt = UserDefaults.standard.object(forKey: "lastCourseSyncAt") as? Date
+            let lastSeenReset = Defaults[.lastSeenCoursesResetAt]
 
-            if let resetAt = coursesResetAt, let syncAt = lastCourseSyncAt, resetAt > syncAt {
+            if Self.isUnappliedCoursesReset(coursesResetAt, lastSeen: lastSeenReset) {
                 DataCache.shared.saveUserAddedCourses([])
                 DataCache.shared.saveDeletedCourseNos([])
                 changed = true
-                AppLogger.sync.info("[sync] courses reset detected (reset=\(resetAt, privacy: .public) > lastSync=\(syncAt, privacy: .public)), wiped local state")
+                AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: coursesResetAt), privacy: .public) > lastSeen=\(String(describing: lastSeenReset), privacy: .public)), wiped local state")
+            }
+            if let coursesResetAt {
+                Defaults[.lastSeenCoursesResetAt] = coursesResetAt
             }
 
             if pendingConflicts.contains("courses") {
@@ -231,7 +233,6 @@ extension AppState {
                 _lastKnownRevision = rev
             }
 
-            UserDefaults.standard.set(Date(), forKey: "lastCourseSyncAt")
             if changed {
                 NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             }
@@ -299,6 +300,21 @@ extension AppState {
         protected: Set<String>
     ) -> Set<String> {
         server.subtracting(protected).union(local.intersection(protected))
+    }
+
+    /// A backend timestamp: Python `isoformat()`, which has microseconds unless they are zero.
+    static func backendDate(_ value: Any?) -> Date? {
+        guard let raw = value as? String else { return nil }
+        return TigerDuckDateFormatters.withFractional.date(from: raw)
+            ?? TigerDuckDateFormatters.withoutFractional.date(from: raw)
+    }
+
+    /// Whether the full course reset the server reports is one this device has not applied.
+    /// Both times are the server's, so a device whose clock runs behind cannot take one reset
+    /// for a new one on every sync. With nothing seen yet, the first sync only records it.
+    nonisolated static func isUnappliedCoursesReset(_ serverResetAt: Date?, lastSeen: Date?) -> Bool {
+        guard let serverResetAt, let lastSeen else { return false }
+        return serverResetAt > lastSeen
     }
 
     /// Whether a full sync begun under login `generation` may still write. A sign-out moves the
