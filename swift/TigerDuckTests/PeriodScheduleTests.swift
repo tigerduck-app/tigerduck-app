@@ -58,7 +58,7 @@ struct PeriodScheduleTests {
 
     /// VoiceOver reads a class table cell through `a11y_timetable_cell`, whose Chinese
     /// templates put the word for "weekday" before the label. A date formatter's short
-    /// weekday symbol carries that word too, so the cell read it twice.
+    /// weekday symbol carries that word too, so passing one reads the word twice.
     @Test func shortWeekdayLabel_isTheShortLabelForEachScheduleWeekday() {
         let expected = [
             "weekday_mon_short", "weekday_tue_short", "weekday_wed_short", "weekday_thu_short",

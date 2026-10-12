@@ -37,8 +37,8 @@ struct StoredCredentialResolutionTests {
 
     @MainActor
     @Test func redrawsReadTheLastKeychainAnswerNotTheKeychain() {
-        // The Class Table reads `hasStoredCredentials` several times per redraw, and
-        // each live answer cost two keychain reads. A false answer leaves the mirror alone.
+        // The Class Table reads `hasStoredCredentials` several times per redraw, and each
+        // keychain answer costs two reads. A false answer leaves the real mirror alone.
         let reads = KeychainReads()
         let auth = AuthService(keychainHasCredentials: {
             reads.count += 1

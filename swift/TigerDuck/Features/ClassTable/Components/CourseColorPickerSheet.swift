@@ -26,7 +26,11 @@ struct CourseColorPickerSheet: View {
         self.course = course
         self.onSelect = onSelect
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
-        _customPicks = State(initialValue: CustomColorPickDebouncer(apply: onSelect))
+        let courseNo = course.courseNo
+        _customPicks = State(initialValue: CustomColorPickDebouncer(
+            apply: onSelect,
+            appliedHex: { TigerDuckTheme.assignedHex(for: courseNo) }
+        ))
     }
 
     /// Index of the preset that matches the course's currently-assigned hex,
@@ -149,12 +153,10 @@ struct CourseColorPickerSheet: View {
                     suppressNextColorChange = false
                     return
                 }
-                let hex = hexFrom(color: newValue)
-                // Skip the no-op tick SwiftUI emits when the picker first shows the
-                // current course color, or just opening the sheet would issue a
-                // needless setColor call and broadcast.
-                guard hex != currentHex else { return }
-                customPicks.pick(hex)
+                // This also sees the no-op tick SwiftUI emits when the picker first shows
+                // the current course color; the debouncer applies nothing for it, so just
+                // opening the sheet issues no setColor call and broadcast.
+                customPicks.pick(hexFrom(color: newValue))
             }
         }
     }
@@ -219,19 +221,27 @@ final class CustomColorPickDebouncer {
     static let pause: Duration = .milliseconds(300)
 
     private let apply: (UInt32) -> Void
+    /// The course's colour now, which a pick back on it leaves as it is.
+    private let appliedHex: () -> UInt32
     private let sleep: @Sendable (Duration) async -> Void
     private var pendingHex: UInt32?
     private(set) var pendingTask: Task<Void, Never>?
 
     init(
         apply: @escaping (UInt32) -> Void,
+        appliedHex: @escaping () -> UInt32,
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.apply = apply
+        self.appliedHex = appliedHex
         self.sleep = sleep
     }
 
     func pick(_ hex: UInt32) {
+        guard hex != appliedHex() else {
+            cancel()
+            return
+        }
         pendingHex = hex
         pendingTask?.cancel()
         let sleep = sleep

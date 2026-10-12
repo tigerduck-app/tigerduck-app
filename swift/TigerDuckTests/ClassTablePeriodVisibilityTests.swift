@@ -52,8 +52,8 @@ struct ClassTablePeriodVisibilityTests {
     }
 
     @Test func fillingTheCellRoleCache_doesNotRedrawTheGrid() {
-        // The grid fills the cache while its body runs. A tracked write there invalidated the
-        // cells that had just read it, so every rebuild cost a second grid pass.
+        // The grid fills the cache while its body runs, so a write there must not invalidate
+        // the cells that just read it, or every rebuild costs a second grid pass.
         let viewModel = ClassTableViewModel()
         let redrawn = Flag()
         withObservationTracking {
