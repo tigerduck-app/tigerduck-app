@@ -4,13 +4,24 @@ enum MoodleAssignmentService {
 
     // MARK: - mod_assign_get_assignments
 
-    static func fetchAssignments(courseIds: [Int]) async throws -> [MoodleAssignmentRecord] {
-        try await MoodleWebserviceClient.withToken { token in
+    /// Asks only for the courses where the user can submit, so Moodle leaves out a course they
+    /// are a TA in, whose assignments they grade
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/209).
+    static func fetchAssignments(
+        courseIds: [Int],
+        tokens: MoodleWebserviceClient.TokenSource = .keychain,
+        session: URLSession = MoodleWebserviceClient.session,
+        siteURL: URL = AppConstants.moodleBaseURL
+    ) async throws -> [MoodleAssignmentRecord] {
+        try await MoodleWebserviceClient.withToken(tokens) { token in
             try await MoodleWebserviceClient.call(
                 "mod_assign_get_assignments",
-                params: courseIds.enumerated().map { ("courseids[\($0.offset)]", String($0.element)) },
+                params: courseIds.enumerated().map { ("courseids[\($0.offset)]", String($0.element)) }
+                    + [("capabilities[0]", "mod/assign:submit")],
                 token: token,
-                as: RawAssignmentsResponse.self
+                as: RawAssignmentsResponse.self,
+                session: session,
+                siteURL: siteURL
             ).toRecords()
         }
     }
