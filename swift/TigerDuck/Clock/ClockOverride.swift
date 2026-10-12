@@ -9,8 +9,6 @@ nonisolated struct ClockOverride: Codable, Equatable, Sendable {
     let frozen: Bool
     let savedAtReal: Date
 
-    /// Reads `WatchSnapshot.clockOverrideJSON`, the form the phone sends the Watch; nil when
-    /// there is none or it does not decode.
     static func decode(snapshotJSON json: String?) -> ClockOverride? {
         guard let data = json?.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(ClockOverride.self, from: data)
