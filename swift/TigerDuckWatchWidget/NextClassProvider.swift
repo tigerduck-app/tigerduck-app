@@ -115,15 +115,23 @@ nonisolated struct NextClassProvider: TimelineProvider {
         return cal.date(from: dc)
     }
 
+    /// High while the next class starts within 30 minutes. Its time is put on the day it meets,
+    /// since a later day's class put on today's date can look about to start or already started.
     private func relevance(for r: NextClassResolver.Result, now: Date) -> TimelineEntryRelevance? {
-        guard let next = r.next, let start = combine(hhmm: next.startHHmm, with: now) else {
-            return TimelineEntryRelevance(score: 30, duration: 0)
+        let low = TimelineEntryRelevance(score: 30, duration: 0)
+        let daysAhead: Int
+        switch r.nextDay {
+        case .today: daysAhead = 0
+        case .tomorrow: daysAhead = 1
+        case .later: return low
         }
+        guard let next = r.next,
+              let day = SharedTaipei.calendar.date(byAdding: .day, value: daysAhead, to: now),
+              let start = combine(hhmm: next.startHHmm, with: day)
+        else { return low }
         let minutesUntil = start.timeIntervalSince(now) / 60
-        if minutesUntil <= 30 {
-            return TimelineEntryRelevance(score: 90, duration: minutesUntil * 60)
-        }
-        return TimelineEntryRelevance(score: 30, duration: 0)
+        guard minutesUntil > 0, minutesUntil <= 30 else { return low }
+        return TimelineEntryRelevance(score: 90, duration: minutesUntil * 60)
     }
 
     static func sampleCourse() -> WatchCourse {

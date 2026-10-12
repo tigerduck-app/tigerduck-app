@@ -110,6 +110,45 @@ final class NextClassProviderTests: XCTestCase {
         XCTAssertEqual(afterTheLastClass?.nextDay, .tomorrow)
     }
 
+    func test_relevance_risesOnlyWhenTheNextClassStartsWithin30Minutes() {
+        let monday = course("A", weekday: 1, start: "10:20", end: "11:10")
+        let mondayLater = course("C", weekday: 1, start: "11:20", end: "12:10")
+        let entries = NextClassProvider().timeline(for: snapshot([monday, mondayLater]), now: mondayAt("09:00")).entries
+
+        XCTAssertEqual(entries.first?.relevance?.score, 30)
+        let beforeC = entries.first { $0.date == mondayAt("11:10") }?.relevance
+        XCTAssertEqual(beforeC?.score, 90)
+        XCTAssertEqual(beforeC?.duration, 600)
+    }
+
+    /// On today's date, the next class day's 08:10 would read as 20 minutes off at 07:50 on a
+    /// holiday, and as already started on a Friday evening.
+    func test_relevance_staysLowForAClassOnALaterDay() {
+        let monday = course("A", weekday: 1, start: "08:10", end: "09:00")
+        let tuesday = course("B", weekday: 2, start: "08:10", end: "09:00")
+        let holidayMorning = mondayAt("07:50")
+        let provider = NextClassProvider()
+
+        let holiday = snapshot([monday, tuesday], quietDays: [SharedTaipei.dayKey(for: holidayMorning)])
+        let onTheHoliday = provider.timeline(for: holiday, now: holidayMorning).entries.first
+        XCTAssertEqual(onTheHoliday?.next?.id, "B")
+        XCTAssertEqual(onTheHoliday?.relevance?.score, 30)
+
+        let fridayEvening = provider.timeline(for: snapshot([monday, tuesday]), now: mondayAt("20:00", dayOffset: 4))
+        XCTAssertEqual(fridayEvening.entries.first?.nextDay, .later(weekday: 1))
+        XCTAssertEqual(fridayEvening.entries.first?.relevance?.score, 30)
+    }
+
+    func test_relevance_countsTomorrowsClassFromTomorrowsDate() {
+        let tuesdayPastMidnight = course("B", weekday: 2, start: "00:10", end: "01:00")
+
+        let entry = NextClassProvider().timeline(for: snapshot([tuesdayPastMidnight]), now: mondayAt("23:50")).entries.first
+
+        XCTAssertEqual(entry?.nextDay, .tomorrow)
+        XCTAssertEqual(entry?.relevance?.score, 90)
+        XCTAssertEqual(entry?.relevance?.duration, 1_200)
+    }
+
     /// A ticking override keeps a fixed offset between the app clock and the real one.
     func test_timeline_datesEntriesAndTheReloadOnTheRealClock() {
         let now = mondayAt("09:00")
