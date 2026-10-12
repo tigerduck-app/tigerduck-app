@@ -204,3 +204,26 @@ struct ClassTableIgnoredCourseTests {
         #expect(!viewModel.offersIgnoreAssignments)
     }
 }
+
+/// Home's rows: one ignored with its course offers no swipe, so it cannot be marked done or
+/// stop being ignored on its own; the class table undoes the setting.
+@MainActor
+struct HomeIgnoredCourseRowTests {
+    private static let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    @Test("A row ignored with its course offers no swipe, and one ignored on its own still does")
+    func courseIgnoredRowsOfferNoSwipe() {
+        let byCourse = SDAssignment(assignmentId: "a1", courseNo: "CS1", courseName: "CS1", title: "HW",
+                                    dueDate: Self.now.addingTimeInterval(3600), isArchived: true)
+        byCourse.isIgnoredByCourse = true
+        let onItsOwn = SDAssignment(assignmentId: "b1", courseNo: "EE2", courseName: "EE2", title: "HW",
+                                    dueDate: Self.now.addingTimeInterval(3600), isArchived: true)
+        let view = UpcomingAssignmentsView(assignments: [byCourse, onItsOwn], filter: .ignored)
+
+        let none = view.rowSwipeActions(for: byCourse, now: Self.now)
+        #expect(none.trailing == nil)
+        #expect(none.leading == nil)
+        let own = view.rowSwipeActions(for: onItsOwn, now: Self.now)
+        #expect(own.trailing?.label == String(localized: "assignment_ignore_undo"))
+    }
+}
