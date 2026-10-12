@@ -60,7 +60,6 @@ extension AppState {
         }
     }
 
-    /// The colour PATCHes for `colors`, by course number, for the courses with a Moodle id.
     nonisolated static func courseColorOverrides(
         _ colors: [String: UInt32],
         moodleIds: [String: String]

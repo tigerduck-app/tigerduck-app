@@ -185,7 +185,6 @@ enum NotificationSettingsPushQueue {
     /// went out may have written past the snapshot's copy of the document.
     private(set) static var finishedLinks = 0
 
-    /// `snapshot`, if no link finished since `linksBeforeSnapshot` was read; else a fresh read.
     static func source(
         _ snapshot: NotificationSettingsSync.DocumentSource,
         linksBeforeSnapshot: Int

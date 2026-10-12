@@ -124,7 +124,6 @@ extension AppState {
     }
 }
 
-/// What one revision poll found.
 nonisolated enum RevisionPollOutcome: Equatable, Sendable {
     case unchanged
     case changed
@@ -177,7 +176,6 @@ nonisolated struct RevisionPollSchedule: Sendable {
         return backoff * (0.5 + 0.5 * min(max(jitter, 0), 1))
     }
 
-    /// The wait the schedule is at, without moving it.
     func currentInterval(at now: Date) -> TimeInterval {
         now < activeUntil ? Self.activeInterval : idleInterval
     }
@@ -187,9 +185,7 @@ nonisolated struct RevisionPollSchedule: Sendable {
 /// gets one relogin; another 401, or a failed relogin, stops polling until the next ``start``.
 @MainActor
 final class RevisionPoller {
-    /// One poll. `AppState` sets it to `pollRevision()`.
     var poll: @MainActor () async -> RevisionPollOutcome = { .unchanged }
-    /// One relogin after a 401. `AppState` sets it to `attemptBackendRelogin()`.
     var relogin: @MainActor () async -> Bool = { false }
 
     private let sleep: @Sendable (Duration) async -> Void

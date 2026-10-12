@@ -647,7 +647,6 @@ enum CourseUploadPolicy {
         #endif
     }
 
-    /// The colours a course upload carries.
     static var uploadedCourseColors: [String: UInt32] {
         uploadsCourseColors ? TigerDuckTheme.courseColorMap : [:]
     }

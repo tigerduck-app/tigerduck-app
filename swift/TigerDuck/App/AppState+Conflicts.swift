@@ -267,7 +267,6 @@ extension AppState {
         }
     }
 
-    /// Releases `isCheckingConflicts` at the end of a check, a retry's included.
     private func endConflictCheck(checked pending: Set<String>) {
         isCheckingConflicts = false
         // A category marked mid-check was turned away by the guard; re-run now
