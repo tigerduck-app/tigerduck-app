@@ -1,7 +1,7 @@
 import Foundation
 import Defaults
 
-private struct CourseData: Sendable {
+struct CourseData: Sendable {
     let courseNo: String
     var courseName: String
     let instructor: String
@@ -177,43 +177,26 @@ enum AppServiceBridge {
                 moodle: moodleForSemester.map(\.courseNo),
                 transcript: scoreCoursesForSemester.map(\.code)
             )
+            let cachedByNo = Dictionary(
+                DataCache.shared.loadCourses(semester: semester).map { ($0.courseNo, CourseData($0)) },
+                uniquingKeysWith: { first, _ in first }
+            )
 
             // MainActor: `SDCourse` accessors and `NameAbbrService.shared` are
             // MainActor-isolated, so this avoids a `MainActor.run` per statement.
             // The network `lookupCourse(…)` still suspends cooperatively.
             let courseDataList = await concurrentMap(orderedCourseNos) { @MainActor courseNo -> CourseData? in
-                do {
-                    let results = try await CourseLookupService.lookupCourse(
+                await refreshedCourseData(
+                    courseNo: courseNo,
+                    semester: semester,
+                    cached: cachedByNo[courseNo],
+                    moodle: moodleByNo[courseNo],
+                    grade: scoreByNo[courseNo],
+                    display: display
+                ) {
+                    try await CourseLookupService.lookupCourse(
                         semester: semester, courseNo: courseNo, language: courseApiLanguage,
                         fresh: forceRefresh
-                    )
-
-                    guard !results.isEmpty else {
-                        return fallbackCourseData(
-                            courseNo: courseNo,
-                            moodle: moodleByNo[courseNo],
-                            grade: scoreByNo[courseNo]
-                        )
-                    }
-
-                    return enrichedCourseData(
-                        from: results,
-                        semester: semester,
-                        fallbackMoodleIdNumber: moodleByNo[courseNo]?.idnumber,
-                        display: display
-                    )
-                } catch {
-                    await MainActor.run {
-                        AppLogger.captureError(error, context: [
-                            "service": "courseLookup",
-                            "semester": semester,
-                            "courseNo": courseNo,
-                        ])
-                    }
-                    return fallbackCourseData(
-                        courseNo: courseNo,
-                        moodle: moodleByNo[courseNo],
-                        grade: scoreByNo[courseNo]
                     )
                 }
             }.compactMap { $0 }
@@ -392,7 +375,7 @@ enum AppServiceBridge {
 
     /// The per-user display toggles a course lookup has to honour, read once
     /// per fetch so a concurrent fan-out sees one consistent set.
-    private struct CourseDisplayPreferences: Sendable {
+    struct CourseDisplayPreferences: Sendable {
         let language: String
         let courseAbbrEnabled: Bool
         let classroomAbbrEnabled: Bool
@@ -405,6 +388,42 @@ enum AppServiceBridge {
                 classroomAbbrEnabled: Defaults[.useEnglishClassroomAbbreviation],
                 classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
             )
+        }
+    }
+
+    /// One course of a term refresh: its lookup's answer, or what stands in for it.
+    ///
+    /// A failed lookup keeps `cached`. The term's list replaces its cache and is uploaded, and
+    /// the backend's upsert overwrites times and rooms, so a stand-in without them would blank
+    /// the course on every device. An answer with no rows, as for a term NTUST no longer
+    /// indexes, falls back to Moodle or the transcript.
+    static func refreshedCourseData(
+        courseNo: String,
+        semester: String,
+        cached: CourseData?,
+        moodle: MoodleEnrolledCourse?,
+        grade: CourseGrade?,
+        display: CourseDisplayPreferences,
+        lookup: () async throws -> [CourseSearchResult]
+    ) async -> CourseData? {
+        do {
+            let results = try await lookup()
+            guard !results.isEmpty else {
+                return fallbackCourseData(courseNo: courseNo, moodle: moodle, grade: grade)
+            }
+            return enrichedCourseData(
+                from: results,
+                semester: semester,
+                fallbackMoodleIdNumber: moodle?.idnumber,
+                display: display
+            )
+        } catch {
+            AppLogger.captureError(error, context: [
+                "service": "courseLookup",
+                "semester": semester,
+                "courseNo": courseNo,
+            ])
+            return cached ?? fallbackCourseData(courseNo: courseNo, moodle: moodle, grade: grade)
         }
     }
 
@@ -463,7 +482,8 @@ enum AppServiceBridge {
     /// snapshot taken when they were added. Rows the lookup cannot find
     /// keep that snapshot. Persists and returns the semester's user-added
     /// list.
-    static func refreshUserAddedCourses(semester: String) async -> [SDCourse] {
+    static func refreshUserAddedCourses(semester: String, authService: AuthService) async -> [SDCourse] {
+        let startGeneration = authService.loginGeneration
         let stored = DataCache.shared.loadUserAddedCourses()
         let targets = stored.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
         guard !targets.isEmpty else { return [] }
@@ -483,6 +503,8 @@ enum AppServiceBridge {
             ))
         }
         let refreshed = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
+        // A sign-out during the lookups cleared the list `stored` would write back.
+        guard authService.loginGeneration == startGeneration else { return [] }
         guard !refreshed.isEmpty else { return targets }
 
         let updated = stored.map { course -> SDCourse in
@@ -659,6 +681,25 @@ private extension SDCourse {
             classroomMap: data.classroomMap,
             dimension: data.dimension,
             allYear: data.allYear
+        )
+    }
+}
+
+private extension CourseData {
+    init(_ course: SDCourse) {
+        self.init(
+            courseNo: course.courseNo,
+            courseName: course.courseName,
+            instructor: course.instructor,
+            credits: course.credits,
+            classroom: course.classroom,
+            enrolledCount: course.enrolledCount,
+            maxCount: course.maxCount,
+            schedule: course.schedule,
+            moodleIdNumber: course.moodleIdNumber,
+            classroomMap: course.classroomMap,
+            dimension: course.dimension,
+            allYear: course.allYear
         )
     }
 }

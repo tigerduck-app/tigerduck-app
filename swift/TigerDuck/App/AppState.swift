@@ -363,8 +363,9 @@ final class AppState {
     var accentColorHex: Int = Defaults[.accentColorHex] {
         didSet {
             Defaults[.accentColorHex] = accentColorHex
+            // The widget and Live Activity snapshots both carry the accent.
+            NotificationCenter.default.post(name: AppConstants.accentColorDidChange, object: nil)
             #if os(iOS)
-            // Accent color only affects the Live Activity snapshot.
             scheduleLiveActivityRefresh()
             #endif
         }
