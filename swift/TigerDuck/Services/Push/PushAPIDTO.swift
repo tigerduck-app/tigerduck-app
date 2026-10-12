@@ -359,4 +359,33 @@ enum PushAPI {
     struct AssignmentUploadRequest: Encodable, Sendable {
         let assignments: [AssignmentUploadEntry]
     }
+
+    // MARK: - Change feed
+
+    /// One page of `GET /sync?since_revision=` (`server/routes/sync/snapshot.py`), oldest change
+    /// first. A change's id, operation and payload are not decoded: a poll decides on entity
+    /// types alone.
+    nonisolated struct SyncChangesPage: Decodable, Equatable, Sendable {
+        let currentRevision: Int
+        let returnedUntilRevision: Int
+        let hasMore: Bool
+        let changes: [Change]
+
+        nonisolated struct Change: Decodable, Equatable, Sendable {
+            let revision: Int
+            let entityType: String
+
+            enum CodingKeys: String, CodingKey {
+                case revision
+                case entityType = "entity_type"
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case currentRevision = "current_revision"
+            case returnedUntilRevision = "returned_until_revision"
+            case hasMore = "has_more"
+            case changes
+        }
+    }
 }

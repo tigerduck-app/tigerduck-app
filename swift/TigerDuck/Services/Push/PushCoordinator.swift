@@ -188,6 +188,10 @@ final class PushCoordinator {
         try await apiClient.fetchFullSync()
     }
 
+    func fetchChanges(sinceRevision: Int) async throws -> PushAPI.SyncChangesPage {
+        try await apiClient.fetchChanges(sinceRevision: sinceRevision)
+    }
+
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String

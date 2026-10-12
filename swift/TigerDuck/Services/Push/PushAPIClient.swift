@@ -15,6 +15,9 @@ final class PushAPIClient: Sendable {
     /// attempted so the server can respond with 401 rather than silently
     /// dropping calls before auth is wired up end-to-end).
     private let authHeaderProvider: @Sendable () async -> String?
+    /// Where failure statuses go. A test that answers 410 passes its own gate, since the shared
+    /// one latches for the whole process.
+    private let versionGate: APIVersionGate
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
     /// `baseURLProvider` is re-evaluated on every request, so an endpoint
@@ -28,11 +31,13 @@ final class PushAPIClient: Sendable {
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
+        authHeaderProvider: @escaping @Sendable () async -> String? = { nil },
+        versionGate: APIVersionGate? = nil
     ) {
         self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
         self.authHeaderProvider = authHeaderProvider
+        self.versionGate = versionGate ?? .shared
     }
 
     // MARK: - Public surface
@@ -259,6 +264,33 @@ final class PushAPIClient: Sendable {
         return json
     }
 
+    /// The changes after `sinceRevision`. Once the server has compacted them it answers 410
+    /// `sync_revision_expired`, thrown as `syncRevisionExpired` and kept from `versionGate`,
+    /// which would read it as a retired API and latch the update-required screen.
+    func fetchChanges(sinceRevision: Int) async throws -> PushAPI.SyncChangesPage {
+        let url = baseURLProvider().appendingPathComponent("sync")
+            .appending(queryItems: [URLQueryItem(name: "since_revision", value: String(sinceRevision))])
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        await applyAuth(to: &request)
+        let data = try await execute(request, expectedFailure: Self.revisionExpired)
+        do {
+            return try Self.decoder.decode(PushAPI.SyncChangesPage.self, from: data)
+        } catch {
+            logger.error("Push.API decode failed path=/sync error=\(String(describing: error), privacy: .public)")
+            throw PushAPIError.decodingFailed(error)
+        }
+    }
+
+    private static func revisionExpired(statusCode: Int, body: Data) -> PushAPIError? {
+        guard statusCode == 410,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              json["error"] as? String == "sync_revision_expired"
+        else { return nil }
+        return .syncRevisionExpired
+    }
+
     /// Health check. Intentionally unauthenticated — the push server's
     /// `/ping` is public so connectivity / TLS / DNS can be diagnosed
     /// without needing the shared secret.
@@ -348,15 +380,21 @@ final class PushAPIClient: Sendable {
         request.setValue(header, forHTTPHeaderField: "Authorization")
     }
 
-    private func execute(_ request: URLRequest) async throws -> Data {
+    /// `expectedFailure` turns a failure its caller handles into the error to throw, and that
+    /// failure is not reported to `versionGate`.
+    private func execute(
+        _ request: URLRequest,
+        expectedFailure: (_ statusCode: Int, _ body: Data) -> PushAPIError? = { _, _ in nil }
+    ) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw PushAPIError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
+            if let expected = expectedFailure(http.statusCode, data) { throw expected }
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
             logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
-            APIVersionGate.shared.note(statusCode: http.statusCode)
+            versionGate.note(statusCode: http.statusCode)
             throw PushAPIError.httpStatus(http.statusCode, body: snippet)
         }
         return data
@@ -408,6 +446,8 @@ enum PushAPIError: Error, LocalizedError {
     case decodingFailed(Error)
     case invalidResponse
     case httpStatus(Int, body: String)
+    /// The change feed no longer holds the changes asked for; only a full sync catches up.
+    case syncRevisionExpired
 
     var errorDescription: String? {
         switch self {
@@ -415,6 +455,7 @@ enum PushAPIError: Error, LocalizedError {
         case .decodingFailed(let error): return "Push decode failed: \(error.localizedDescription)"
         case .invalidResponse: return "Push server returned a non-HTTP response."
         case .httpStatus(let code, let body): return "Push server returned HTTP \(code): \(body)"
+        case .syncRevisionExpired: return "Push server has compacted the changes asked for."
         }
     }
 }
