@@ -89,6 +89,27 @@ struct CourseIgnoreOutboxTests {
         #expect(await outbox.parkedSnapshot().isEmpty)
     }
 
+    @Test("A drain under way does not send a setting discarded before its turn")
+    func drainSkipsASettingDiscardedBeforeItsTurn() async {
+        let outbox = SyncOutbox(directory: Self.freshDirectory())
+        await outbox.enqueue(Self.colour)
+        await outbox.enqueue(Self.setting(true))
+        let sent = Sent()
+
+        await outbox.drain { op in
+            await sent.add(op)
+            await outbox.discard(where: Self.isSetting)
+        }
+
+        #expect(await sent.count == 1)
+        #expect(await outbox.snapshot().isEmpty)
+    }
+
+    private actor Sent {
+        private(set) var count = 0
+        func add(_ op: ResolvedSyncOp) { count += 1 }
+    }
+
     @Test("A drain under way neither keeps nor parks a setting discarded while it ran")
     func drainDoesNotBringADiscardedSettingBack() async {
         let outbox = SyncOutbox(directory: Self.freshDirectory())

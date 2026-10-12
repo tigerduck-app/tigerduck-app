@@ -232,6 +232,11 @@ actor SyncOutbox {
         while index < snapshot.count {
             guard generation == startGeneration else { return entries.isEmpty }
             let entry = snapshot[index]
+            // Discarded or superseded since the snapshot: not sent.
+            guard entries.contains(where: { $0.id == entry.id }) else {
+                index += 1
+                continue
+            }
             if isHeld(entry.op) {
                 kept.append(entry)
                 index += 1
