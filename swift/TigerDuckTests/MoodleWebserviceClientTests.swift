@@ -29,8 +29,13 @@ struct MoodleWebserviceClientTests {
         )
     }
 
-    private func answer(_ status: Int, _ body: String, function: String = "core_webservice_get_site_info", token: String) {
-        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(body.utf8)), for: Self.endpoint(function, token: token))
+    private func answer(
+        _ status: Int, _ body: String, headers: [String: String] = [:],
+        function: String = "core_webservice_get_site_info", token: String
+    ) {
+        SettingsAPIStub.enqueue(
+            .init(statusCode: status, body: Data(body.utf8), headerFields: headers), for: Self.endpoint(function, token: token)
+        )
     }
 
     @Test("a call posts the function, the token and the form-encoded parameters, and decodes the answer")
@@ -79,6 +84,16 @@ struct MoodleWebserviceClientTests {
             Issue.record("expected a malformed response, got \(String(describing: decodeError))")
             return
         }
+    }
+
+    @Test("a 503 page with Retry-After is Moodle's upgrade maintenance", arguments: ["Retry-After", "retry-after"])
+    func cliMaintenance(header: String) async {
+        let token = UUID().uuidString
+        answer(
+            503, "<html>Moodle under maintenance</html>",
+            headers: [header: "300", "Content-Type": "text/html; charset=utf-8"], token: token
+        )
+        await #expect(throws: MoodleWebserviceError.siteMaintenance) { try await call(token: token) }
     }
 
     // MARK: - Token
