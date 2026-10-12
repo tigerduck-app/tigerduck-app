@@ -2,6 +2,7 @@
 // requests a tick sends, and what it leaves queued.
 import Foundation
 import Testing
+import os
 @testable import TigerDuck
 
 @MainActor
@@ -20,7 +21,7 @@ struct CloudSyncCoordinatorTests {
 
     private static func makeCoordinator(
         _ backend: Backend,
-        syncsAssignmentMarks: @escaping () -> Bool = { true }
+        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { true }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -111,8 +112,8 @@ struct CloudSyncCoordinatorTests {
         let backend = Backend()
         backend.answer("sync/courses/1151CS1001301/override", body: Self.colourReply)
         backend.answer("sync/assignments/42/override", body: Self.markReply)
-        var syncsMarks = false
-        let coordinator = Self.makeCoordinator(backend) { syncsMarks }
+        let syncsMarks = OSAllocatedUnfairLock(initialState: false)
+        let coordinator = Self.makeCoordinator(backend) { syncsMarks.withLock { $0 } }
         await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
         coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")
         // The colour is queued from a task of its own.
@@ -126,13 +127,35 @@ struct CloudSyncCoordinatorTests {
         #expect(backend.requests("sync/assignments/42/override").isEmpty)
         #expect(await coordinator.outbox.pendingCount() == 1)
 
-        syncsMarks = true
+        syncsMarks.withLock { $0 = true }
         await coordinator.syncTick()
         #expect(backend.requests("sync/assignments/42/override").count == 1)
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
+    @Test("A mark after the switch went off mid-drain stays queued")
+    func switchTurnedOffMidDrainHoldsTheRest() async {
+        let backend = Backend()
+        backend.answer("sync/assignments/42/override", body: Self.markReply)
+        backend.answer("sync/assignments/43/override", body: Self.markReply)
+        // On for the first mark and off from the second, as if turned off while the first went.
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let coordinator = Self.makeCoordinator(backend) {
+            reads.withLock { count in
+                count += 1
+                return count == 1
+            }
+        }
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 43, localStatus: "ignored")
+
+        await coordinator.syncTick()
+
+        #expect(backend.requests("sync/assignments/42/override").count == 1)
+        #expect(backend.requests("sync/assignments/43/override").isEmpty)
+        #expect(await coordinator.outbox.pendingCount() == 1)
+    }
+
     private static let colourReply =
         ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##
 }
-
