@@ -61,7 +61,6 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
         self.classroomMap = classroomMap
     }
 
-    /// The room of one block of this course's periods on `weekday`.
     func classroom(weekday: Int, periods: [String]) -> String {
         CourseBlockRoom.room(weekday: weekday, periods: periods, map: classroomMap, fallback: classroom)
     }

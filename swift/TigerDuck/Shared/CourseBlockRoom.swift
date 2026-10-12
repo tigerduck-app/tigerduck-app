@@ -24,7 +24,6 @@ nonisolated enum CourseBlockRoom {
         return rooms.isEmpty ? fallback : rooms.joined(separator: ", ")
     }
 
-    /// Splits a classroom string at the separators the portal uses, trimmed, without empties.
     static func split(_ raw: String) -> [String] {
         raw.components(separatedBy: separators)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

@@ -141,7 +141,6 @@ enum WidgetTimelineDerivation {
         return .noMoreClasses
     }
 
-    /// The room of the block of `course` on `weekday` that starts at `periodId`.
     private static func blockClassroom(
         of course: SnapshotCourse,
         weekday: Int,

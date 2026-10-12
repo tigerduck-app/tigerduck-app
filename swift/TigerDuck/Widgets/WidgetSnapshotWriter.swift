@@ -97,10 +97,8 @@ final class WidgetSnapshotWriter {
         return keys
     }
 
-    /// Idempotent — call at app cold-start and again whenever the widget data may have
-    /// changed. Observer paths call this internally. An unchanged snapshot is neither written
-    /// nor reloaded, since this runs on every return to the app and every data change and each
-    /// reload spends the widgets' budget; `forceReload` reloads it anyway.
+    /// An unchanged snapshot is neither written nor reloaded: this runs on every return to the
+    /// app and every data change, and each reload spends the widgets' budget.
     func regenerate(forceReload: Bool = false) {
         let courses = courseProvider.currentCourses()
         let customNames = cache.loadCourseCustomNamesFlat()
