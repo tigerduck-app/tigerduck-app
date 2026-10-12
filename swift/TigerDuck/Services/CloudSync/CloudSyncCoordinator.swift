@@ -197,7 +197,7 @@ final class CloudSyncCoordinator {
     }
 
     /// Called by the revision poller when the server revision is ahead,
-    /// after `syncOverridesFromBackend()` has pulled and applied it.
+    /// after `AppState.syncChangesSinceLastRevision()` has applied what moved.
     func onRevisionChanged() async {
         await syncTick()
     }
@@ -252,7 +252,8 @@ final class CloudSyncCoordinator {
         return ids
     }
 
-    /// Gives each mark the server kept refusing one more try. Called by every full sync.
+    /// Gives each mark the server kept refusing one more try. Called by every full sync, and by
+    /// each poll the change feed settles without one.
     func requeueParkedMarks() async {
         await outbox.requeueParked()
     }

@@ -1,9 +1,94 @@
-// `PushAPIClient.fetchChanges`, the change feed read of the revision poll
-// (https://github.com/tigerduck-app/tigerduck-app/issues/241). Bodies copy
-// `server/routes/sync/snapshot.py`'s.
+// The revision poll's change feed (https://github.com/tigerduck-app/tigerduck-app/issues/241):
+// what `ChangeFeedPlan` makes of a `GET /sync` page, when a read may move the watermark, and how
+// `PushAPIClient.fetchChanges` reads a page. Bodies copy `server/routes/sync/snapshot.py`'s.
 import Foundation
 import Testing
 @testable import TigerDuck
+
+struct ChangeFeedPlanTests {
+    private static func page(
+        _ changes: [(revision: Int, type: String)],
+        current: Int? = nil,
+        returnedUntil: Int? = nil,
+        hasMore: Bool = false
+    ) -> PushAPI.SyncChangesPage {
+        let current = current ?? changes.last?.revision ?? 0
+        return PushAPI.SyncChangesPage(
+            currentRevision: current,
+            returnedUntilRevision: returnedUntil ?? current,
+            hasMore: hasMore,
+            changes: changes.map { .init(revision: $0.revision, entityType: $0.type) }
+        )
+    }
+
+    @Test("Assignment and bulletin changes only move the watermark")
+    func serverBookkeepingOnlyAdvances() {
+        let page = Self.page([(11, "assignment"), (12, "bulletin_state"), (14, "assignment")])
+        #expect(ChangeFeedPlan(page, since: 10) == .advance(to: 14))
+    }
+
+    @Test("A notification settings change gets the reconcile, beside assignment changes or not")
+    func settingsChangesReconcile() {
+        #expect(ChangeFeedPlan(Self.page([(11, "settings_document")]), since: 10)
+            == .reconcileSettings(thenAdvanceTo: 11))
+        #expect(ChangeFeedPlan(Self.page([(11, "assignment"), (12, "settings_document")]), since: 10)
+            == .reconcileSettings(thenAdvanceTo: 12))
+    }
+
+    @Test(
+        "A change a full sync applies, or a type this build does not know, takes the full sync",
+        arguments: [
+            "assignment_override", "course", "course_override", "course_skipped_date",
+            "holiday_override", "calendar_note",
+        ]
+    )
+    func otherChangesTakeTheFullSync(entityType: String) {
+        let page = Self.page([(11, "assignment"), (12, entityType), (13, "settings_document")])
+        #expect(ChangeFeedPlan(page, since: 10) == .fullSync)
+    }
+
+    @Test("A page that may not hold every change up to the current revision takes the full sync")
+    func partialPagesTakeTheFullSync() {
+        let more = Self.page([(11, "assignment")], current: 20, returnedUntil: 11, hasMore: true)
+        #expect(ChangeFeedPlan(more, since: 10) == .fullSync)
+        #expect(ChangeFeedPlan(Self.page([(11, "assignment")], current: 12), since: 10) == .fullSync)
+        #expect(ChangeFeedPlan(Self.page([], current: 12), since: 10) == .fullSync)
+        #expect(ChangeFeedPlan(Self.page([(11, "assignment")], returnedUntil: 10), since: 10) == .fullSync)
+    }
+
+    @Test("A page that answers another read, as after a server reset, takes the full sync")
+    func pagesFromBeforeTheWatermarkTakeTheFullSync() {
+        #expect(ChangeFeedPlan(Self.page([(9, "assignment"), (11, "assignment")]), since: 10) == .fullSync)
+        #expect(ChangeFeedPlan(Self.page([(8, "assignment")]), since: 10) == .fullSync)
+    }
+
+    @Test("No page, from a failed read or compacted changes, takes the full sync")
+    func noPageTakesTheFullSync() {
+        #expect(ChangeFeedPlan(nil, since: 10) == .fullSync)
+    }
+}
+
+/// The rule `AppState.syncChangesSinceLastRevision` checks after the read and before it moves
+/// the watermark.
+struct ChangeFeedWatermarkTests {
+    @Test("A read that nothing overtook may move the watermark")
+    func readNothingOvertookMayAdvance() {
+        #expect(AppState.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 10, startedIn: 4, current: 4, cloudSyncEnabled: true))
+    }
+
+    @Test("A sign-out, a full sync that set its own watermark, or sync switched off keeps it")
+    func overtakenReadKeepsTheWatermark() {
+        #expect(!AppState.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 0, startedIn: 4, current: 5, cloudSyncEnabled: true))
+        #expect(!AppState.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 10, startedIn: 4, current: 6, cloudSyncEnabled: true))
+        #expect(!AppState.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 13, startedIn: 4, current: 4, cloudSyncEnabled: true))
+        #expect(!AppState.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 10, startedIn: 4, current: 4, cloudSyncEnabled: false))
+    }
+}
 
 /// Each client gets an `APIVersionGate` of its own: the shared one latches for the process, and
 /// `SettingsDocumentClientTests` owns it.

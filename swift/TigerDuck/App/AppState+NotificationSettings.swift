@@ -62,11 +62,12 @@ extension AppState {
     /// write a previous account's values over the new account's document. An unacknowledged local
     /// edit wins and its push runs instead. Gated on cloud sync and a session like the push;
     /// `onSettled` runs only once the document was read and every synced section settled.
+    @discardableResult
     func reconcileNotificationSettings(
         onSettled: (@MainActor () -> Void)? = nil,
         snapshot: NotificationSettingsSync.DocumentSource = .read,
         linksBeforeSnapshot: Int = 0
-    ) {
+    ) -> Task<Void, Never> {
         NotificationSettingsPushQueue.enqueueReconcile { [weak self] isCurrent in
             guard let self, Defaults[.cloudSyncEnabled] else { return }
             guard await self.authTokenManager.isLoggedIn, isCurrent() else { return }
@@ -137,7 +138,7 @@ extension AppState {
     /// Re-sends preferences whose last push never landed: a dropped debounce, an expired
     /// session, being offline, a 5xx, or a conflict that outlived its one retry.
     ///
-    /// Called from `syncOverridesFromBackend`, beside `retryUnacknowledgedHolidayOverrides()`,
+    /// Called from `retryUnsentEdits()`, beside `retryUnacknowledgedHolidayOverrides()`,
     /// because that is when the app has a network and a session again. It also carries up an
     /// edit made while cloud sync was off: the marker was set then and nothing was sent, so the
     /// first full sync after the user turns cloud sync back on sends it.
