@@ -102,7 +102,7 @@ final class ScheduleSyncService {
         let timeline = resolver.timeline(for: inputs.courses, around: now)
         let futureSlots = timeline
             .filter { !$0.course.isSkipped(on: $0.date) }
-            .filter { !inputs.calendar.suppressesClasses(on: $0.date, optedIn: inputs.optedInHolidayIDs) }
+            .filter { inputs.calendar.isClassDay($0.date, optedIn: inputs.optedInHolidayIDs) }
             .filter { $0.start >= now && $0.start <= horizonEnd }
 
         for slot in futureSlots {
