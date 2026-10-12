@@ -33,12 +33,11 @@ nonisolated enum MailBackgroundRefresh {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: MailConstants.backgroundTaskIdentifier)
     }
 
-    /// Whether a background task that just ran (or was about to) should submit the *next*
-    /// request. Kept as a pure function of the account/feature state so it's testable without
-    /// touching `BGTaskScheduler` or `UserDefaults`: only while background checks are still
-    /// wanted — signed in, notifications on and allowed by iOS, not locked out by a rejected
-    /// password, and the feature itself enabled — does the next refresh get scheduled. Otherwise
-    /// a signed-out or locked-out account stops waking the app for nothing.
+    /// Whether a background task that just ran, or was about to, should submit the next request:
+    /// only while background checks are still wanted (signed in, notifications on and allowed by
+    /// iOS, no rejected password, the feature enabled), so a signed-out or locked-out account
+    /// stops waking the app for nothing. A pure function of that state, so it is testable without
+    /// `BGTaskScheduler` or `UserDefaults`.
     static func shouldRescheduleAfterHandling(
         featureEnabled: Bool,
         signedIn: Bool,

@@ -43,12 +43,12 @@ protocol MailClient: Actor {
     /// TigerDuck owns, so it is part of the chain that ends in EXPUNGE and is pinned the same way.
     func flags(folder: String, uids: ClosedRange<UInt32>, expectedUIDValidity: UInt32?) async throws -> [UInt32: MailFlags]
     /// `expectedUIDValidity` as in `setFlag`: the generation the caller read `uid` under, compared
-    /// against **this call's own** SELECT/EXAMINE response before a single byte of the message is
-    /// fetched. A folder recreated server-side reuses its UIDs, so the same folder+UID then names
-    /// a different message — one that would be shown on the screen the caller opened for the old
-    /// one, and cached under the old generation's key. A caller that holds no pin passes `nil` and
-    /// gets no check, exactly as `setFlag` allows. `inlineImages: false` leaves out the `cid:`
-    /// images, for a prefetch: opening the mail fetches it again with them.
+    /// against this call's own SELECT/EXAMINE response before a byte of the message is fetched. A
+    /// folder recreated server-side reuses its UIDs, so the same folder and UID then name another
+    /// message, which would be shown on the screen the caller opened for the old one and cached
+    /// under the old generation's key. A caller that holds no pin passes `nil` and gets no check,
+    /// as `setFlag` allows. `inlineImages: false` leaves out the `cid:` images, for a prefetch:
+    /// opening the mail fetches it again with them.
     func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages: Bool) async throws -> MailMessageDetail
     /// `BODY.PEEK[]` — does not mark the message read.
     func rawSource(folder: String, uid: UInt32) async throws -> Data
