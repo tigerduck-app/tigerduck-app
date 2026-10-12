@@ -2,16 +2,16 @@
 #
 # Xcode Cloud post-clone hook.
 #
-# Both fixes below repair inputs that a Cloud checkout cannot have on its own.
-# Neither one fails the build when it is missing — the app just ships broken —
-# so this script also verifies its own work and exits nonzero if either is off.
+# The fix below repairs an input that a Cloud checkout cannot have on its own.
+# A missing input does not fail the build (the app just ships broken), so this
+# script also verifies its own work and exits nonzero if the fix did not take.
 
 set -e
 
 REPO="${CI_PRIMARY_REPOSITORY_PATH:?CI_PRIMARY_REPOSITORY_PATH is not set}"
 APP_DIR="$REPO/swift/TigerDuck"
 
-# 1. Localizations.
+# Localizations.
 #
 # Every `<lang>.lproj` under the Apple targets is a tracked symlink into
 # `app-translation/generated/apple/`. With the submodule uncheckedout those links
@@ -28,18 +28,3 @@ if [ "$resolved" -lt 60 ]; then
     exit 1
 fi
 echo "localizations: $resolved locales resolved"
-
-# 2. API shared secret.
-#
-# Secrets.plist is gitignored, so it is never in a Cloud checkout. The target is
-# a filesystem-synchronized group, which silently skips absent files, so the app
-# ships without an `X-Push-Token` header and every write request 401s. Set
-# TIGERDUCK_API_SHARED_SECRET as a *secret* environment variable on the workflow
-# so its value is masked in the build logs.
-: "${TIGERDUCK_API_SHARED_SECRET:?set it as a secret environment variable on the Xcode Cloud workflow}"
-
-SECRETS="$APP_DIR/Secrets.plist"
-plutil -create xml1 "$SECRETS"
-plutil -insert APIToken -string "$TIGERDUCK_API_SHARED_SECRET" "$SECRETS"
-plutil -lint "$SECRETS" >/dev/null
-echo "Secrets.plist: written with APIToken"
