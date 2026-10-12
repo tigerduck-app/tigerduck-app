@@ -75,7 +75,7 @@ struct MacDeveloperSettingsView: View {
                     }
                     Spacer()
                     Button("Reset statuses") {
-                        ServerStatusTracker.shared.statuses.removeAll()
+                        ServerStatusTracker.shared.reset()
                     }
                 }
             }

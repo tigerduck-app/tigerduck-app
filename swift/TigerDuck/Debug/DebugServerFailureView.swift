@@ -33,7 +33,7 @@ struct DebugServerFailureView: View {
                     simulator.failures.removeAll()
                 }
                 Button("Reset server statuses") {
-                    ServerStatusTracker.shared.statuses.removeAll()
+                    ServerStatusTracker.shared.reset()
                 }
             }
         }
