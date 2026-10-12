@@ -49,16 +49,16 @@ enum WidgetTimelineDerivation {
         let order = snapshot.periodOrder
         let todayKey = dateKey(for: date)
 
-        // No class meets on a school holiday, so there is no now or next. The Week grid reads
-        // `snapshot.courses` directly and keeps the timetable on a day off. A nil set means a
-        // snapshot from a build without holidays: treat it as no quiet days.
-        if snapshot.quietDayKeys?.contains(todayKey) == true { return .noMoreClasses }
+        // No class meets on a quiet day, such as a school holiday, so today has no ongoing or
+        // later class, but step 3 still offers the next class day, as on any evening. A nil set
+        // means a snapshot from a build without holidays: treat it as no quiet days.
+        let isQuietToday = snapshot.quietDayKeys?.contains(todayKey) == true
 
         // 1. Ongoing: only when `nowMin` falls inside a contiguous run of scheduled periods.
         // Non-adjacent slots (A and C, B unscheduled) form separate runs, so the gap falls
         // through to the next-class branch instead of keeping the course ongoing.
         let ongoing = snapshot.courses.compactMap { course -> WidgetDerivedState.OngoingInfo? in
-            if course.skippedDates.contains(todayKey) { return nil }
+            if isQuietToday || course.skippedDates.contains(todayKey) { return nil }
             guard let raw = course.schedule[weekday] else { return nil }
             let periods = sortPeriods(raw, by: order)
             guard !periods.isEmpty else { return nil }
@@ -86,7 +86,7 @@ enum WidgetTimelineDerivation {
 
         // 2. Next today (any course whose first period today starts in the future)
         let candidates = snapshot.courses.compactMap { course -> (SnapshotCourse, Int, String)? in
-            if course.skippedDates.contains(todayKey) { return nil }
+            if isQuietToday || course.skippedDates.contains(todayKey) { return nil }
             guard let raw = course.schedule[weekday] else { return nil }
             let periods = sortPeriods(raw, by: order)
             for periodId in periods {
@@ -166,7 +166,7 @@ enum WidgetTimelineDerivation {
 
     /// Today's rows in start order, one per contiguous block, so a course meeting at periods
     /// 3-4 and 7-8 gets two rows, as `derive` and the Watch payload split it. Courses skipped
-    /// today are left out, and on a school holiday there are no rows, as `derive` has no class.
+    /// today are left out, and a school holiday has no rows, as `derive` has no class today.
     static func todayRows(snapshot: WidgetSnapshot, at date: Date) -> [TodayRow] {
         let weekday = weekdayFor(date)
         let todayKey = dateKey(for: date)
