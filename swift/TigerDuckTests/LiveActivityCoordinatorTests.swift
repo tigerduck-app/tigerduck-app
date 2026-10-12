@@ -291,7 +291,6 @@ struct LiveActivityCoordinatorTests {
         ),
     ]
 
-    /// The lookup `AppState` installs, over `cachedAssignments`.
     private static func isOutstanding(_ id: String) -> Bool? {
         LiveActivityScenarioResolver.isOutstanding(assignmentId: id, in: cachedAssignments)
     }

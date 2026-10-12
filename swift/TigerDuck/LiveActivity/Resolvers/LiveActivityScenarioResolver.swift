@@ -171,8 +171,6 @@ struct LiveActivityScenarioResolver {
         !assignment.isCompleted && !assignment.isArchived && !assignment.isLocallyCompleted
     }
 
-    /// `isOutstanding` for the assignment with `id` in `assignments`, or `nil` when it is not
-    /// there; the lookup `LiveActivityCoordinator` ends a running "due soon" activity by.
     static func isOutstanding(assignmentId id: String, in assignments: [SDAssignment]) -> Bool? {
         assignments.first { $0.assignmentId == id }.map { isOutstanding($0) }
     }
