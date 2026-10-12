@@ -200,8 +200,11 @@ struct MacClassTableView: View {
             }
         }
         .sheet(item: $courseToRecolor) { course in
+            let authService = appState.authService
+            let generation = authService.loginGeneration
             CourseColorPickerSheet(
                 course: course,
+                isCurrent: { authService.loginGeneration == generation },
                 onSelect: { hex in
                     TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
                     cacheRevision &+= 1

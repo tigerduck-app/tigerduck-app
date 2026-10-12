@@ -22,14 +22,16 @@ struct CourseColorPickerSheet: View {
     @State private var suppressNextColorChange = false
     @State private var customPicks: CustomColorPickDebouncer
 
-    init(course: SDCourse, onSelect: @escaping (UInt32) -> Void) {
+    /// `isCurrent` says whether the account that opened the sheet is still signed in.
+    init(course: SDCourse, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
         self.onSelect = onSelect
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
         let courseNo = course.courseNo
         _customPicks = State(initialValue: CustomColorPickDebouncer(
             apply: onSelect,
-            appliedHex: { TigerDuckTheme.assignedHex(for: courseNo) }
+            appliedHex: { TigerDuckTheme.assignedHex(for: courseNo) },
+            isCurrent: isCurrent
         ))
     }
 
@@ -223,6 +225,9 @@ final class CustomColorPickDebouncer {
     private let apply: (UInt32) -> Void
     /// The course's colour now, which a pick back on it leaves as it is.
     private let appliedHex: () -> UInt32
+    /// False once the account that picked has signed out: sign-out clears the colour map,
+    /// and a late pick would write the departing account's colour into the next one's.
+    private let isCurrent: () -> Bool
     private let sleep: @Sendable (Duration) async -> Void
     private var pendingHex: UInt32?
     private(set) var pendingTask: Task<Void, Never>?
@@ -230,10 +235,12 @@ final class CustomColorPickDebouncer {
     init(
         apply: @escaping (UInt32) -> Void,
         appliedHex: @escaping () -> UInt32,
+        isCurrent: @escaping () -> Bool,
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.apply = apply
         self.appliedHex = appliedHex
+        self.isCurrent = isCurrent
         self.sleep = sleep
     }
 
@@ -258,6 +265,7 @@ final class CustomColorPickDebouncer {
         pendingTask = nil
         guard let hex = pendingHex else { return }
         pendingHex = nil
+        guard isCurrent() else { return }
         apply(hex)
     }
 

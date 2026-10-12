@@ -21,6 +21,7 @@ struct CustomColorPickDebouncerTests {
         let picks = CustomColorPickDebouncer(
             apply: { applied.hexes.append($0) },
             appliedHex: { Self.appliedHex },
+            isCurrent: { true },
             sleep: { await timer.sleep(for: $0) }
         )
         var windows: [Task<Void, Never>] = []
@@ -45,6 +46,7 @@ struct CustomColorPickDebouncerTests {
         let picks = CustomColorPickDebouncer(
             apply: { applied.hexes.append($0) },
             appliedHex: { Self.appliedHex },
+            isCurrent: { true },
             sleep: { await timer.sleep(for: $0) }
         )
         picks.pick(0x123456)
@@ -62,6 +64,7 @@ struct CustomColorPickDebouncerTests {
         let picks = CustomColorPickDebouncer(
             apply: { applied.hexes.append($0) },
             appliedHex: { Self.appliedHex },
+            isCurrent: { true },
             sleep: { await timer.sleep(for: $0) }
         )
         picks.pick(0x123456)
@@ -81,7 +84,8 @@ struct CustomColorPickDebouncerTests {
         let applied = Applied()
         let picks = CustomColorPickDebouncer(
             apply: { applied.hexes.append($0) },
-            appliedHex: { Self.appliedHex }
+            appliedHex: { Self.appliedHex },
+            isCurrent: { true }
         )
 
         picks.pick(Self.appliedHex)
@@ -91,12 +95,36 @@ struct CustomColorPickDebouncerTests {
         #expect(applied.hexes.isEmpty)
     }
 
+    @Test func aColourStillWaitingAtSignOutIsDropped() async throws {
+        let applied = Applied()
+        let timer = ManualSleeper()
+        var signedIn = true
+        let picks = CustomColorPickDebouncer(
+            apply: { applied.hexes.append($0) },
+            appliedHex: { Self.appliedHex },
+            isCurrent: { signedIn },
+            sleep: { await timer.sleep(for: $0) }
+        )
+        picks.pick(0x123456)
+        let window = try #require(picks.pendingTask)
+        try await timer.waitUntilArmed()
+
+        signedIn = false
+        await timer.fire()
+        await window.value
+        // What the sheet does as it closes.
+        picks.flush()
+
+        #expect(applied.hexes.isEmpty)
+    }
+
     @Test func aPresetDropsTheWaitingCustomColour() async throws {
         let applied = Applied()
         let timer = ManualSleeper()
         let picks = CustomColorPickDebouncer(
             apply: { applied.hexes.append($0) },
             appliedHex: { Self.appliedHex },
+            isCurrent: { true },
             sleep: { await timer.sleep(for: $0) }
         )
         picks.pick(0x123456)
