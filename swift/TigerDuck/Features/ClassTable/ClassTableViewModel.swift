@@ -57,15 +57,18 @@ final class ClassTableViewModel {
         return options.contains(selected) ? options : options + [selected]
     }
 
-    /// The catalogue can land after `init` on a cold launch, so re-apply the
-    /// "never picked → newest term" rule once it does.
-    private func followNewestSemesterIfUnpicked() {
+    /// The catalogue can land after `init` on a cold launch, and refreshes while
+    /// the app runs, so re-apply the "never picked → newest term" rule each time.
+    /// Returns whether it moved the table, which reloaded it.
+    @discardableResult
+    private func followNewestSemesterIfUnpicked() -> Bool {
         guard Defaults[.classTableSelectedSemester] == nil,
               let newest = SemesterCatalog.availableSemesters().first,
-              newest != currentSemester else { return }
+              newest != currentSemester else { return false }
         isFollowingNewestSemester = true
         currentSemester = newest
         isFollowingNewestSemester = false
+        return true
     }
 
     /// Format semester code for display: "1142" → "114-2"
@@ -255,6 +258,9 @@ final class ClassTableViewModel {
     }
 
     func reloadFromCache() {
+        // A term published while the app runs reaches the picker here.
+        guard !followNewestSemesterIfUnpicked() else { return }
+        availableSemesters = Self.semesterOptions(including: currentSemester)
         // Re-read the per-user customizations on every reload: logout deletes
         // their files and posts dataDidUpdate, and a copy read once at init
         // would apply the last account's deletions and renames to the next user.
