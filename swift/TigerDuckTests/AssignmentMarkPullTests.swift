@@ -1,4 +1,4 @@
-// What a full sync does with the done and ignored marks (`AppState+BackendSync.swift`).
+// What a full sync and Keep Local do with the done and ignored marks (`AppState+BackendSync.swift`).
 import Testing
 @testable import TigerDuck
 
@@ -14,6 +14,17 @@ struct MergedMarksTests {
     func protectedMarksKeepTheLocalStatus() {
         let merged = AppState.mergedMarks(server: ["1", "2"], local: ["3"], protected: ["2", "3"])
         #expect(merged == ["1", "3"])
+    }
+}
+
+/// `AppState.assignmentMarksToClear`: what Keep Local clears on the server when the re-enabled
+/// Assignments switch's check found the marks differ, so that the next full sync keeps them off.
+struct KeepLocalMarkTests {
+    @Test("Keep Local clears the marks only the server has and leaves this device's")
+    func keepLocalClearsServerOnlyMarks() {
+        let cleared = AppState.assignmentMarksToClear(server: ["1", "2", "3"], local: ["2", "4"])
+
+        #expect(cleared == ["1", "3"])
     }
 }
 

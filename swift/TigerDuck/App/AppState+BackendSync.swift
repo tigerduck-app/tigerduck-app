@@ -322,6 +322,11 @@ extension AppState {
         server.subtracting(protected).union(local.intersection(protected))
     }
 
+    /// The assignments whose mark Keep Local clears on the server: marked there, not on this device.
+    nonisolated static func assignmentMarksToClear(server: Set<String>, local: Set<String>) -> Set<String> {
+        server.subtracting(local)
+    }
+
     /// A course the server ignores every assignment of, from the snapshot's `course_overrides`.
     nonisolated struct ServerIgnoredCourse: Equatable {
         let semester: String

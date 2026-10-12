@@ -58,6 +58,9 @@ extension AppState {
         /// What the check found, for Keep Local to clear the ones this device does not ignore, or
         /// nil when it compared no course settings: the resolution then leaves them alone too.
         var serverIgnoredCourses: [ServerIgnoredCourse]?
+        /// The assignments the check found marked on the server, for Keep Local to clear the ones
+        /// this device has no mark on.
+        let serverMarkedAssignments: Set<String>
     }
 
     func markCategoryReenabled(_ category: String) {
@@ -106,6 +109,7 @@ extension AppState {
             do {
                 let json = try await pushCoordinator.fetchFullSync()
                 var diffs: [String] = []
+                var serverMarkedAssignments = Set<String>()
 
                 let coursesArray = json["courses"] as? [[String: Any]] ?? []
                 let serverIgnoredCourses = Self.serverIgnoredCourses(
@@ -220,6 +224,7 @@ extension AppState {
                         default: break
                         }
                     }
+                    serverMarkedAssignments = serverArchivedIds.union(serverCompletedIds)
                     let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
                     let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
                     let archivedMatch = localArchivedIds == serverArchivedIds
@@ -258,7 +263,8 @@ extension AppState {
                         reenableConflict = ReenableConflict(
                             categories: Array(checked),
                             description: diffs.joined(separator: "\n"),
-                            serverIgnoredCourses: serverIgnoredCourses
+                            serverIgnoredCourses: serverIgnoredCourses,
+                            serverMarkedAssignments: serverMarkedAssignments
                         )
                     } else {
                         Defaults[.pendingConflictCategories].subtract(checked)
@@ -356,11 +362,19 @@ extension AppState {
                     }
                 }
                 if conflict.categories.contains("assignments") {
-                    for id in DataCache.shared.loadArchivedAssignmentIds() {
+                    let archived = DataCache.shared.loadArchivedAssignmentIds()
+                    let completed = DataCache.shared.loadLocallyCompletedAssignmentIds()
+                    for id in archived {
                         syncAssignmentOverride(moodleId: id, status: "archived")
                     }
-                    for id in DataCache.shared.loadLocallyCompletedAssignmentIds() {
+                    for id in completed {
                         syncAssignmentOverride(moodleId: id, status: "locally_completed")
+                    }
+                    let cleared = Self.assignmentMarksToClear(
+                        server: conflict.serverMarkedAssignments, local: archived.union(completed)
+                    )
+                    for id in cleared {
+                        syncAssignmentOverride(moodleId: id, status: "none")
                     }
                     if let serverIgnoredCourses = conflict.serverIgnoredCourses {
                         let ignoredCourses = DataCache.shared.loadIgnoredAssignmentCourses()
