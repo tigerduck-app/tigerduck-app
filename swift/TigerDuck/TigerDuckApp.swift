@@ -193,6 +193,13 @@ struct TigerDuckApp: App {
             if let link = AppState.bulletinDeepLink(from: info) {
                 appState.pendingDeepLink = link
             }
+        case "assignment_reminder":
+            if let assignment = AppState.remindedAssignment(
+                from: info,
+                in: DataCache.shared.loadAssignments()
+            ) {
+                openInMoodle(assignment)
+            }
         case "custom_push_popup":
             guard let nid = info["notification_id"] as? String,
                   let title = info["title"] as? String,
@@ -228,6 +235,20 @@ struct TigerDuckApp: App {
             // Unknown / legacy kinds fall through to the OS default open
             // behaviour — no-op here so we don't accidentally swallow them.
             break
+        }
+    }
+
+    /// Opens the assignment in the Moodle app, as its Home row does, or its web page when iOS
+    /// refuses the `moodlemobile://` link because the app is not installed.
+    @MainActor
+    private static func openInMoodle(_ assignment: SDAssignment) {
+        let web = assignment.moodleWebURL
+        guard let link = assignment.moodleDeepLink else {
+            if let web { UIApplication.shared.open(web) }
+            return
+        }
+        UIApplication.shared.open(link) { opened in
+            if !opened, let web { UIApplication.shared.open(web) }
         }
     }
 }

@@ -30,6 +30,17 @@ extension AppState {
         }
     }
 
+    /// The cached assignment an assignment reminder names by `moodle_assignment_id`, or `nil`
+    /// for any other `kind` or an assignment this device has not fetched.
+    static func remindedAssignment(
+        from userInfo: [AnyHashable: Any],
+        in assignments: [SDAssignment]
+    ) -> SDAssignment? {
+        guard userInfo["kind"] as? String == "assignment_reminder",
+              let id = pushInteger(from: userInfo["moodle_assignment_id"]) else { return nil }
+        return assignments.first { $0.assignmentId == String(id) }
+    }
+
     /// Decodes an id from a JSON-bridged userInfo value as `Int`, `NSNumber.intValue` or
     /// `String → Int`: APNs, FCM and relays bridge JSON numbers inconsistently. An int-tagged
     /// NSNumber passes `as? Int`, a Double-tagged one fails it, and some relays send a string.
