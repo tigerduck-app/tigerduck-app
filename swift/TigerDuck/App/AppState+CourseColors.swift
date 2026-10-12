@@ -37,4 +37,37 @@ extension AppState {
             )
         }
     }
+
+    /// PATCHes a colour pick: the picked course, and the new colour of each course the pick
+    /// moved off it (`changed`, from `TigerDuckTheme.setColor`), which the server would otherwise
+    /// keep on the picked colour too. A course with no Moodle id, a manual one, has no override.
+    @MainActor
+    func syncColorPick(_ hex: UInt32, for picked: SDCourse, changed: [String: UInt32]) {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        var colors = changed
+        colors[picked.courseNo] = hex & 0xFFFFFF
+        var moodleIds: [String: String] = [:]
+        moodleIds[picked.courseNo] = picked.moodleIdNumber
+        if colors.count > 1 {
+            for semester in SemesterCatalog.availableSemesters() {
+                for course in DataCache.shared.loadCourses(semester: semester) where moodleIds[course.courseNo] == nil {
+                    moodleIds[course.courseNo] = course.moodleIdNumber
+                }
+            }
+        }
+        for override in Self.courseColorOverrides(colors, moodleIds: moodleIds) {
+            syncCourseOverride(moodleCourseId: override.moodleId, colorHex: override.colorHex)
+        }
+    }
+
+    /// The colour PATCHes for `colors`, by course number, for the courses with a Moodle id.
+    nonisolated static func courseColorOverrides(
+        _ colors: [String: UInt32],
+        moodleIds: [String: String]
+    ) -> [(moodleId: String, colorHex: String)] {
+        colors.keys.sorted().compactMap { courseNo in
+            guard let moodleId = moodleIds[courseNo], let hex = colors[courseNo] else { return nil }
+            return (moodleId, String(format: "#%06X", hex))
+        }
+    }
 }

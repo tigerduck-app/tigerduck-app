@@ -259,15 +259,9 @@ extension ClassTableViewModel {
     /// throughout a drag, and dismissing here would close the sheet on the first.
     /// `CourseColorPickerSheet` calls `dismiss()` itself on a preset tap or Close.
     func setColor(hex: UInt32, for course: SDCourse) {
-        TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
+        let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
         broadcastLocalChange()
-        syncColorOverride(course: course, hex: hex)
-    }
-
-    private func syncColorOverride(course: SDCourse, hex: UInt32) {
-        guard let moodleId = course.moodleIdNumber else { return }
-        let hexStr = String(format: "#%06X", hex)
-        onSyncCourseOverride?(moodleId, hexStr, nil, nil)
+        onSyncColorPick?(hex, course, changed)
     }
 
     private func syncNameOverride(course: SDCourse, customName: String, locale: String) {

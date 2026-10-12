@@ -331,21 +331,14 @@ extension AppState {
         }
         AppLogger.sync.info("moodleIdToNo: \(moodleIdToNo.count, privacy: .public) entries, overrides: \(overrides.count, privacy: .public)")
 
-        let colorsBefore = TigerDuckTheme.courseColorMap
+        let colorsChanged = Defaults[.syncCourseColors]
+            && TigerDuckTheme.applyColors(Self.serverCourseColors(overrides, courseNos: moodleIdToNo))
         let namesBefore = DataCache.shared.loadCourseCustomNames()
         var customNames = namesBefore
-        var colorCount = 0
         var nameCount = 0
         for o in overrides {
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
             guard let courseNo = moodleIdToNo[mId] else { continue }
-            if Defaults[.syncCourseColors], let colorHex = o["color_hex"] as? String, !colorHex.isEmpty {
-                if let hex = UInt32(colorHex.dropFirst(), radix: 16) {
-                    TigerDuckTheme.setColor(hex: hex, for: courseNo)
-                    colorCount += 1
-                    AppLogger.sync.debug("course color applied")
-                }
-            }
             if Defaults[.syncCourseNames], let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
                 var existing = customNames[courseNo] ?? [:]
                 for (locale, name) in serverNames {
@@ -364,7 +357,27 @@ extension AppState {
         if namesChanged {
             DataCache.shared.saveCourseCustomNames(customNames)
         }
-        return namesChanged || TigerDuckTheme.courseColorMap != colorsBefore
+        return colorsChanged || namesChanged
+    }
+
+    /// The server's course colours in the order to apply them, oldest first: where two courses
+    /// share a colour the latest pick keeps it, the same way on every device and every sync.
+    static func serverCourseColors(
+        _ overrides: [[String: Any]],
+        courseNos: [String: String]
+    ) -> [(courseNo: String, hex: UInt32)] {
+        let rows = overrides.compactMap { o -> (courseNo: String, hex: UInt32, at: Date)? in
+            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
+                  let courseNo = courseNos[mId],
+                  let colorHex = o["color_hex"] as? String, !colorHex.isEmpty,
+                  let hex = UInt32(colorHex.dropFirst(), radix: 16) else { return nil }
+            let at = (o["color_hex_updated_at"] as? String).flatMap {
+                TigerDuckDateFormatters.withFractional.date(from: $0)
+                    ?? TigerDuckDateFormatters.withoutFractional.date(from: $0)
+            } ?? .distantPast
+            return (courseNo, hex, at)
+        }
+        return rows.sorted { ($0.at, $0.courseNo) < ($1.at, $1.courseNo) }.map { ($0.courseNo, $0.hex) }
     }
 
     func attemptBackendRelogin() async -> Bool {

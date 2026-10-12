@@ -35,7 +35,7 @@ enum TigerDuckTheme {
     /// `Color` values from this list; the watch-sync encoder reads it via
     /// `courseColorHex(for:)` so its hex output stays in lockstep with what
     /// the phone renders.
-    static let coursePaletteHexes: [UInt32] = [
+    nonisolated static let coursePaletteHexes: [UInt32] = [
         0xFF6B6B, // coral red
         0x4ECDC4, // teal
         0x45B7D1, // sky blue
@@ -111,9 +111,30 @@ enum TigerDuckTheme {
     /// Persist a user-picked color for this course. If another course
     /// currently holds the same hex, that other course is reassigned to the
     /// first unused preset (or a random distinct hex when all 20 are taken)
-    /// so the uniqueness invariant survives the edit.
-    static func setColor(hex: UInt32, for courseNo: String) {
+    /// so the uniqueness invariant survives the edit. Returns every course
+    /// whose colour changed, with its new colour, displaced ones included.
+    @discardableResult
+    static func setColor(hex: UInt32, for courseNo: String) -> [String: UInt32] {
         state.setColor(hex: hex & 0xFFFFFF, for: courseNo, palette: coursePaletteHexes)
+    }
+
+    /// Applies colours in order with one write, a later one winning a colour two share.
+    /// Returns whether the map changed.
+    @discardableResult
+    static func applyColors(_ colors: [(courseNo: String, hex: UInt32)]) -> Bool {
+        state.applyColors(colors, palette: coursePaletteHexes)
+    }
+
+    /// `map` with `hex` on `courseNo`, and every other course that held it moved to an unused
+    /// colour, in course number order, so every device resolves a shared colour the same way.
+    /// `changed` is each course whose colour moved, with its new colour.
+    nonisolated static func assigning(
+        _ hex: UInt32,
+        to courseNo: String,
+        in map: [String: UInt32],
+        palette: [UInt32] = coursePaletteHexes
+    ) -> (map: [String: UInt32], changed: [String: UInt32]) {
+        ColorState.assigning(hex & 0xFFFFFF, to: courseNo, in: map, palette: palette)
     }
 
     static func snapshot() -> [String: UInt32] {
@@ -194,26 +215,53 @@ private final class ColorState: @unchecked Sendable {
         if didMutate { persist() }
     }
 
-    func setColor(hex newHex: UInt32, for courseNo: String, palette: [UInt32]) {
+    func setColor(hex newHex: UInt32, for courseNo: String, palette: [UInt32]) -> [String: UInt32] {
+        let changed: [String: UInt32] = lock.withLock {
+            let result = Self.assigning(newHex, to: courseNo, in: map, palette: palette)
+            map = result.map
+            return result.changed
+        }
+        if !changed.isEmpty { persist() }
+        return changed
+    }
+
+    func applyColors(_ colors: [(courseNo: String, hex: UInt32)], palette: [UInt32]) -> Bool {
         let didMutate: Bool = lock.withLock {
-            if map[courseNo] == newHex { return false }
-            // Release every other course holding this hex (normally one, but an
-            // aborted migration can leave duplicates) before reassigning, so the
-            // picker can choose the just-freed hex if it is the only valid option.
-            let displaced = map.compactMap { entry -> String? in
-                entry.key != courseNo && entry.value == newHex ? entry.key : nil
+            var updated = map
+            for (courseNo, hex) in colors {
+                updated = Self.assigning(hex & 0xFFFFFF, to: courseNo, in: updated, palette: palette).map
             }
-            map[courseNo] = newHex
-            for d in displaced { map.removeValue(forKey: d) }
-            var used = Set(map.values)
-            for d in displaced {
-                let assigned = Self.pickUnusedHex(seed: d, used: used, palette: palette)
-                map[d] = assigned
-                used.insert(assigned)
-            }
+            guard updated != map else { return false }
+            map = updated
             return true
         }
         if didMutate { persist() }
+        return didMutate
+    }
+
+    nonisolated static func assigning(
+        _ newHex: UInt32,
+        to courseNo: String,
+        in map: [String: UInt32],
+        palette: [UInt32]
+    ) -> (map: [String: UInt32], changed: [String: UInt32]) {
+        guard map[courseNo] != newHex else { return (map, [:]) }
+        var updated = map
+        // Release every other course holding this hex (normally one, but an
+        // aborted migration can leave duplicates) before reassigning, so the
+        // picker can choose the just-freed hex if it is the only valid option.
+        let displaced = map.compactMap { entry -> String? in
+            entry.key != courseNo && entry.value == newHex ? entry.key : nil
+        }.sorted()
+        updated[courseNo] = newHex
+        for d in displaced { updated.removeValue(forKey: d) }
+        var used = Set(updated.values)
+        for d in displaced {
+            let assigned = pickUnusedHex(seed: d, used: used, palette: palette)
+            updated[d] = assigned
+            used.insert(assigned)
+        }
+        return (updated, updated.filter { map[$0.key] != $0.value })
     }
 
     func reload() {
