@@ -156,6 +156,37 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 1)
     }
 
+    @Test("Use Server after the re-enable check drops every mark still on its way up, parked too, and no other edit")
+    func useServerAfterTheReenableCheckDropsEveryMark() async {
+        let backend = Backend()
+        for _ in 0..<SyncOutbox.maxAttempts {
+            backend.answer("sync/assignments/42/override", status: 404)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+        for _ in 0..<SyncOutbox.maxAttempts { await coordinator.syncTick() }
+        #expect(await coordinator.outbox.parkedSnapshot().count == 1)
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 43, localStatus: "none")
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+
+        await coordinator.discardAssignmentOverrides()
+
+        #expect(await coordinator.pendingAssignmentOverrideIds().isEmpty)
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
+    }
+
+    @Test("Use Server in a full sync's conflict drops the queued edits of the listed marks only")
+    func useServerAfterAFullSyncDropsTheListedMarks() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "none")
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 43, localStatus: "ignored")
+
+        await coordinator.discardAssignmentOverrides(assignmentIds: ["42"])
+
+        #expect(await coordinator.pendingAssignmentOverrideIds() == ["43"])
+    }
+
     private static let colourReply =
         ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##
 }

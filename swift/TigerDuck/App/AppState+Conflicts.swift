@@ -26,10 +26,13 @@ extension AppState {
         } else {
             let serverArchived = pendingSyncServerArchived
             let serverCompleted = pendingSyncServerCompleted
+            let listed = Set(syncConflicts.map(\.id))
             Task { [weak self] in
                 guard let self else { return }
-                // Same guard as the pull path: edits queued in the outbox are
-                // in flight to the server and must survive "keep server".
+                // The answer gives the listed marks the server's status, over any edit of them
+                // queued since the pull listed them. Other queued edits are in flight to the server
+                // and survive "keep server", as in the pull path.
+                await cloudSyncCoordinator.discardAssignmentOverrides(assignmentIds: listed)
                 let inFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 let protectedOverrides = pendingOverrides.union(inFlight)
                 let safeArchived = Self.mergedMarks(
@@ -399,6 +402,7 @@ extension AppState {
                     DataCache.shared.saveCourseCustomNames([:])
                 }
                 if conflict.categories.contains("assignments") {
+                    await cloudSyncCoordinator.discardAssignmentOverrides()
                     DataCache.shared.replaceArchivedAssignmentIds([])
                     DataCache.shared.replaceLocallyCompletedAssignmentIds([])
                     if conflict.serverIgnoredCourses != nil {
