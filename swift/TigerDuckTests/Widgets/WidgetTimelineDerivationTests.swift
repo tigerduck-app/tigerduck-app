@@ -200,4 +200,25 @@ struct WidgetTimelineDerivationTests {
             Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
         }
     }
+
+    /// The evening before a school holiday, the scan passes the holiday as today's check
+    /// does, instead of offering its class as tomorrow's.
+    @Test func holidayTomorrow_advancesToTheNextClassDay() {
+        let now = monday(18, 0)
+        let tomorrowKey = WidgetTimelineDerivation.dateKey(
+            for: Calendar(identifier: .gregorian).date(byAdding: .day, value: 1, to: now)!
+        )
+        var snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "TuesClass", weekday: 2, periods: ["B"]),
+            course(courseNo: "B", displayName: "WedClass", weekday: 3, periods: ["B"]),
+        ])
+        snap.quietDayKeys = [tomorrowKey]
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
+        if case .tomorrowFirst(let info) = derived {
+            #expect(info.course.displayName == "WedClass")
+            #expect(info.day == .later(weekday: 3))
+        } else {
+            Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
+        }
+    }
 }

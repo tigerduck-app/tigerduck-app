@@ -109,6 +109,7 @@ enum WidgetTimelineDerivation {
             let target = ((weekday - 1 + offset) % 7) + 1
             let targetDate = calendar.date(byAdding: .day, value: offset, to: date) ?? date
             let targetKey = dateKey(for: targetDate)
+            if snapshot.quietDayKeys?.contains(targetKey) == true { continue }
             let dayCourses = snapshot.courses.compactMap { course -> (SnapshotCourse, String)? in
                 if course.skippedDates.contains(targetKey) { return nil }
                 guard let raw = course.schedule[target] else { return nil }
