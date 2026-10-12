@@ -225,12 +225,13 @@ enum AppServiceBridge {
                 )
             }
 
-            // Skip the write if the Task was cancelled (`AppState.syncTask`) or the
-            // login generation moved on: Home, Class Table and Calendar refreshes run
-            // in Tasks that `syncTask?.cancel()` does not reach.
-            if !courses.isEmpty,
-               !Task.isCancelled,
-               authService.loginGeneration == startGeneration {
+            // Cancelled (`AppState.syncTask`) or signed out since: Home, Class Table and Calendar
+            // refreshes run in Tasks `syncTask?.cancel()` does not reach, and show what this
+            // returns, so they get the current cache, never the previous account's list.
+            guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
+                return DataCache.shared.loadCourses(semester: semester)
+            }
+            if !courses.isEmpty {
                 DataCache.shared.saveCourses(courses, semester: semester)
                 courseUploader?(courses, semester)
             }
@@ -493,7 +494,8 @@ enum AppServiceBridge {
     /// rooms are announced late, and a lookup that failed once used to
     /// leave the cell blank until the next pull-to-refresh. Persists the
     /// rows that now carry one and returns whether anything changed.
-    static func refreshCoursesMissingClassroom(semester: String) async -> Bool {
+    static func refreshCoursesMissingClassroom(semester: String, authService: AuthService) async -> Bool {
+        let startGeneration = authService.loginGeneration
         let enrolled = DataCache.shared.loadCourses(semester: semester)
         let userAdded = DataCache.shared.loadUserAddedCourses()
         let isUserAddedHere: (SDCourse) -> Bool = { DataCache.userAddedCourse($0, belongsTo: semester) }
@@ -515,7 +517,8 @@ enum AppServiceBridge {
             return data.classroom.isEmpty ? nil : (courseNo, data)
         }
         let found = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
-        guard !found.isEmpty else { return false }
+        // A sign-out during the lookups cleared the lists this would write back.
+        guard authService.loginGeneration == startGeneration, !found.isEmpty else { return false }
 
         if enrolled.contains(where: { found[$0.courseNo] != nil }) {
             DataCache.shared.saveCourses(

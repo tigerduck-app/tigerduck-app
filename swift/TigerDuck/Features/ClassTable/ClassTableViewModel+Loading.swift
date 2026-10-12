@@ -44,11 +44,11 @@ extension ClassTableViewModel {
     /// Runs on every appearance, not just the first load: any course of the
     /// shown semester that still has no classroom gets looked up again, and
     /// a hit is broadcast so Home and the Live Activity pick it up too.
-    func refreshMissingClassrooms() {
+    func refreshMissingClassrooms(authService: AuthService) {
         let semester = currentSemester
         Task { [weak self] in
             guard await NetworkMonitor.shared.isReachable(),
-                  await AppServiceBridge.refreshCoursesMissingClassroom(semester: semester)
+                  await AppServiceBridge.refreshCoursesMissingClassroom(semester: semester, authService: authService)
             else { return }
             self?.broadcastLocalChange()
         }
