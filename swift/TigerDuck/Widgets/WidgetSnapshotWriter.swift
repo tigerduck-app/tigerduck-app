@@ -66,14 +66,16 @@ final class WidgetSnapshotWriter {
         }
     }
 
-    private static let outsideTermHorizonDays = 366
+    /// A snapshot serves for a year after it is written, and on each of those days the Next class
+    /// widget looks up to seven days ahead (`WidgetTimelineDerivation.derive`).
+    private static let outsideTermHorizonDays = 366 + 7
 
     /// The days classes do not meet, as `yyyy-MM-dd` keys, for the widget snapshot and the Watch
     /// payload: every published holiday the user has left quiet, and the days outside the term in
-    /// the coming year. Holidays are not windowed: only the app writes the snapshot, and a widget
-    /// keeps reloading the last one while the app stays closed, so a horizon measured from write
-    /// time would expire while the snapshot lives on and show a class that is not happening. The
-    /// days after the last published term never end, so those stop a year out.
+    /// the next year and a week. Holidays are not windowed: only the app writes the snapshot, and
+    /// a widget keeps reloading the last one while the app stays closed, so a horizon measured
+    /// from write time would expire while the snapshot lives on and show a class that is not
+    /// happening. The days after the last published term never end, so those need one.
     static func quietDayKeys() -> Set<String> {
         let store = AcademicCalendarStore.shared
         return quietDayKeys(calendar: store.calendar, optedIn: store.optedInHolidayIDs, now: AppClock.now())

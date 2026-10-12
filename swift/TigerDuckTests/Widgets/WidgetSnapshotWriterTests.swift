@@ -121,10 +121,10 @@ struct WidgetSnapshotWriterTests {
         #expect(keys.contains("2027-06-19"), "after the last published term")
     }
 
-    /// The days after the last published term never end, so the list stops a year out. With no
-    /// term known every day counts as in term, so a device that never reached the backend hides
-    /// nothing.
-    @Test func daysOutsideTheTermStopAYearOut() {
+    /// The days after the last published term never end, so the list stops a year and a week out.
+    /// With no term known every day counts as in term, so a device that never reached the backend
+    /// hides nothing.
+    @Test func daysOutsideTheTermStopAYearAndAWeekOut() {
         let ended = AcademicCalendar(
             revision: 1,
             terms: [SemesterTerm(code: "1142", start: Self.day(2026, 2, 16), end: Self.day(2026, 6, 19))],
@@ -134,9 +134,43 @@ struct WidgetSnapshotWriterTests {
 
         let keys = WidgetSnapshotWriter.quietDayKeys(calendar: ended, optedIn: [], now: now)
 
-        #expect(keys.count == 366)
+        #expect(keys.count == 373)
         #expect(keys.min() == "2026-10-13")
-        #expect(keys.max() == "2027-10-13")
+        #expect(keys.max() == "2027-10-20")
         #expect(WidgetSnapshotWriter.quietDayKeys(calendar: .empty, optedIn: [], now: now).isEmpty)
+    }
+
+    /// A snapshot is read for up to a year, and on each of those days the Next class widget looks
+    /// a week ahead for a class. On the year's last day, here also the term's last, the days after
+    /// the term lie past the year, and the widget must not offer a class on them.
+    @Test func aYearOldSnapshotOffersNoClassAfterTheTerm() throws {
+        let written = Self.day(2026, 10, 13).addingTimeInterval(9 * 3600)
+        let lastDay = try #require(AcademicCalendar.calendar.date(byAdding: .day, value: 365, to: written))
+        let calendar = AcademicCalendar(
+            revision: 1,
+            terms: [
+                SemesterTerm(
+                    code: "1161", start: Self.day(2027, 9, 13), end: AcademicCalendar.startOfDay(lastDay)
+                ),
+            ],
+            holidays: []
+        )
+        let everyDay = SDCourse(
+            courseNo: "TEST100",
+            courseName: "Test",
+            schedule: Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        )
+        let snapshot = WidgetSnapshotBuilder.build(.init(
+            courses: [everyDay],
+            customNames: [:],
+            colorMap: [:],
+            isLoggedIn: true,
+            accentColorHex: 0x007AFF,
+            now: written,
+            quietDayKeys: WidgetSnapshotWriter.quietDayKeys(calendar: calendar, optedIn: [], now: written)
+        ))
+
+        let evening = lastDay.addingTimeInterval(11 * 3600)
+        #expect(WidgetTimelineDerivation.derive(snapshot: snapshot, at: evening) == .noMoreClasses)
     }
 }
