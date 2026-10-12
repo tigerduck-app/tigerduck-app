@@ -20,8 +20,8 @@ struct ScheduleSyncServiceTests {
     private static func context() -> ModelContext { ModelContext(container) }
 
     private static func tuesdayAt(_ hour: Int, minute: Int = 0, secondsFromNow: TimeInterval = 0) -> Date {
-        // Anchor "now" at a deterministic Tuesday 08:00 local to make all
-        // future class starts computable without leaking across DST edges.
+        // A fixed Tuesday in Taipei time, which class periods are read in, so every class
+        // start is computable wherever the tests run.
         var comps = DateComponents()
         comps.year = 2026
         comps.month = 4
@@ -29,7 +29,7 @@ struct ScheduleSyncServiceTests {
         comps.hour = hour
         comps.minute = minute
         comps.second = 0
-        return Calendar.current.date(from: comps)!.addingTimeInterval(secondsFromNow)
+        return AppConstants.taipeiCalendar.date(from: comps)!.addingTimeInterval(secondsFromNow)
     }
 
     private static func makeCourse(
