@@ -163,6 +163,7 @@ actor MailChecker {
         isRunning = true
         defer { isRunning = false }
         if await notificationsDenied() { return .skippedDisabled }
+        guard stillSignedIn(as: account) else { return .skippedSignedOut }
         prefs.lastCheckAt = now()
         let outcome = await run(for: account)
         // Re-checked here as well as inside the run: `run` ends with a `logout()` await of its

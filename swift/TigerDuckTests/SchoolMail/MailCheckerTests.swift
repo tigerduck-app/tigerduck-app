@@ -312,6 +312,25 @@ struct MailCheckerTests {
         #expect(h.prefs.inboxNextUID == nil)
     }
 
+    /// Reading the permission is an await, and a sign-out during it must not be followed by this
+    /// run stamping its check time, which would hold off the next student's first check.
+    @Test func aSignOutWhileThePermissionIsReadWritesNothing() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 1)]])
+        let checker = MailChecker(
+            prefs: prefs, notifier: MailNotifier(center: RecordingNotificationCenter()),
+            openSession: { fake }, onAuthFailure: {},
+            notificationsDenied: {
+                prefs.studentID = nil
+                return false
+            }
+        )
+        #expect(await checker.check(trigger: .foreground) == .skippedSignedOut)
+        #expect(prefs.lastCheckAt == nil)
+        #expect(await fake.calls.isEmpty)
+    }
+
     @Test func signedOutSkipsEverything() async {
         let h = Self.harness(inbox: [], marker: nil)
         h.prefs.studentID = nil
