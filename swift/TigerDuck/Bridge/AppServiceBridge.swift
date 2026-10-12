@@ -366,10 +366,10 @@ enum AppServiceBridge {
 
     /// One course of a term refresh: its lookup's answer, or what stands in for it.
     ///
-    /// A failed lookup keeps `cached`. The term's list replaces its cache and is uploaded, and
-    /// the backend's upsert overwrites times and rooms, so a stand-in without them would blank
-    /// the course on every device. An answer with no rows, as for a term NTUST no longer
-    /// indexes, falls back to Moodle or the transcript.
+    /// A failed lookup, or an answer with no rows as for a term NTUST no longer indexes, keeps
+    /// `cached`. The term's list replaces its cache and is uploaded, and the backend's upsert
+    /// overwrites times and rooms, so a stand-in without them would blank the course on every
+    /// device. Only a course not cached yet falls back to Moodle or the transcript.
     static func refreshedCourseData(
         courseNo: String,
         semester: String,
@@ -382,7 +382,7 @@ enum AppServiceBridge {
         do {
             let results = try await lookup()
             guard !results.isEmpty else {
-                return fallbackCourseData(courseNo: courseNo, moodle: moodle, grade: grade)
+                return cached ?? fallbackCourseData(courseNo: courseNo, moodle: moodle, grade: grade)
             }
             return enrichedCourseData(
                 from: results,
