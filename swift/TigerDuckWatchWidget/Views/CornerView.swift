@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct CornerView: View {
     let entry: NextClassEntry
