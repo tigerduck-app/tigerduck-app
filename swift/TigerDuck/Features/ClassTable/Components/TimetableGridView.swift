@@ -4,13 +4,31 @@ import SwiftUI
 import UIKit
 #endif
 
-/// A course as a cell's VoiceOver label names it. The room hint and the assignment badge
+/// A course as a cell's VoiceOver label names it. The room hint and the assignment marks
 /// are hidden from VoiceOver, so the label carries them.
-private func spokenCourse(_ course: SDCourse, room: String? = nil, hasAssignment: Bool) -> String {
+func spokenCourse(_ course: SDCourse, room: String? = nil, hasAssignment: Bool, ignoresAssignments: Bool) -> String {
     var parts = [course.displayName]
     if let room { parts.append(room) }
     if hasAssignment { parts.append(String(localized: "a11y_class_table_cell_assignment_indicator")) }
+    if ignoresAssignments { parts.append(String(localized: "a11y_class_table_cell_assignments_ignored")) }
     return parts.joined(separator: ", ")
+}
+
+/// "Ignore assignments", or its undo, offered for the term assignments are fetched for.
+@ViewBuilder
+private func ignoreAssignmentsButton(_ course: SDCourse, viewModel: ClassTableViewModel) -> some View {
+    if viewModel.offersIgnoreAssignments {
+        let ignored = viewModel.ignoresAssignments(of: course.courseNo)
+        Button {
+            viewModel.setIgnoresAssignments(!ignored, for: course)
+        } label: {
+            if ignored {
+                Label(String(localized: "class_table_ignore_assignments_undo"), systemImage: "arrow.uturn.backward")
+            } else {
+                Label(String(localized: "class_table_ignore_assignments"), systemImage: "archivebox")
+            }
+        }
+    }
 }
 
 private extension Shape {
@@ -135,6 +153,7 @@ struct TimetableGridView: View {
 
         case .solo(let course, let spanCount):
             let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
+            let ignoresAssignments = showsAssignmentBadges && viewModel.ignoresAssignments(of: course.courseNo)
             let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
             // A conflict cell never reaches this branch, so the hint is absent
             // there by construction; a split cell has no free corner.
@@ -179,11 +198,12 @@ struct TimetableGridView: View {
                                     .padding(.bottom, 2)
                                     // Stay clear of the assignment badge,
                                     // which sits in the opposite corner.
-                                    .padding(.trailing, hasBadge ? badgeIconSize + 6 : 3)
+                                    .padding(.trailing, hasBadge || ignoresAssignments ? badgeIconSize + 6 : 3)
                                     .accessibilityHidden(true)
                             }
                         }
                         .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
+                        .ignoredAssignmentsBadge(show: ignoresAssignments, iconSize: badgeIconSize, padding: 4)
                         .frame(height: totalHeight)
                         .scrollSafeTapAction {
                             viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
@@ -196,7 +216,10 @@ struct TimetableGridView: View {
                                 // The visible hint is `accessibilityHidden`;
                                 // it rides the cell's own label instead so it
                                 // is announced once, in place.
-                                spokenCourse(course, room: roomHint, hasAssignment: hasBadge)
+                                spokenCourse(
+                                    course, room: roomHint,
+                                    hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments
+                                )
                             ))
                         )
                         .contextMenu {
@@ -210,6 +233,7 @@ struct TimetableGridView: View {
                             } label: {
                                 Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
                             }
+                            ignoreAssignmentsButton(course, viewModel: viewModel)
                             Button(role: .destructive) {
                                 viewModel.deleteCourse(course)
                             } label: {
@@ -414,8 +438,11 @@ private struct ConflictClusterView: View {
                      String(format: String(localized: "a11y_timetable_cell"),
                             AppConstants.Periods.shortWeekdayLabel(weekday),
                             viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
-                            [courseA, courseB].map { spokenCourse($0, hasAssignment: showsBadge(for: $0)) }
-                                .joined(separator: ", ")))
+                            [courseA, courseB].map {
+                                spokenCourse($0, hasAssignment: showsBadge(for: $0),
+                                             ignoresAssignments: showsIgnoredMark(for: $0))
+                            }
+                            .joined(separator: ", ")))
             )
             .contextMenu {
                 conflictContextMenu()
@@ -459,6 +486,7 @@ private struct ConflictClusterView: View {
         // The name goes in the largest run, which is a full-width one where there is one.
         let label = runs.max { $0.width * $0.height < $1.width * $1.height } ?? .zero
         let hasBadge = showsBadge(for: course)
+        let ignoresAssignments = showsIgnoredMark(for: course)
         // A course can start below the cluster's first period; VoiceOver names its own.
         let periods = viewModel.activePeriods
         let firstPeriod = periods.firstIndex { $0.id == periodId }.flatMap { periods[safe: $0 + segment.offset] }
@@ -481,6 +509,7 @@ private struct ConflictClusterView: View {
                         .padding(2)
                         .frame(width: label.width, height: label.height)
                         .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
+                        .ignoredAssignmentsBadge(show: ignoresAssignments, iconSize: badgeIconSize, padding: 4)
                         .offset(x: label.minX, y: label.minY)
                 }
                 .contentShape(shape)
@@ -492,7 +521,7 @@ private struct ConflictClusterView: View {
                  String(format: String(localized: "a11y_timetable_cell"),
                         AppConstants.Periods.shortWeekdayLabel(weekday),
                         firstPeriod?.displayLabel ?? periodId,
-                        spokenCourse(course, hasAssignment: hasBadge)))
+                        spokenCourse(course, hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments)))
         )
         .contextMenu {
             Button {
@@ -505,6 +534,7 @@ private struct ConflictClusterView: View {
             } label: {
                 Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
             }
+            ignoreAssignmentsButton(course, viewModel: viewModel)
             Button(role: .destructive) {
                 viewModel.deleteCourse(course)
             } label: {
@@ -534,6 +564,7 @@ private struct ConflictClusterView: View {
                         Self.colorDot(segment.course.color)
                     }
                 }
+                ignoreAssignmentsButton(segment.course, viewModel: viewModel)
                 Button(role: .destructive) {
                     viewModel.deleteCourse(segment.course)
                 } label: {
@@ -568,6 +599,10 @@ private struct ConflictClusterView: View {
         showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
     }
 
+    private func showsIgnoredMark(for course: SDCourse) -> Bool {
+        showsAssignmentBadges && viewModel.ignoresAssignments(of: course.courseNo)
+    }
+
     private func isOutlined(_ course: SDCourse) -> Bool {
         outlineRequiredCourses && course.isRequired
     }
@@ -579,6 +614,7 @@ private struct ConflictClusterView: View {
         barFraction: CGFloat
     ) -> some View {
         let hasBadge = showsBadge(for: course)
+        let ignoresAssignments = showsIgnoredMark(for: course)
         return GeometryReader { boxProxy in
             ZStack(alignment: labelAlignment) {
                 course.color.opacity(0.4)
@@ -600,6 +636,10 @@ private struct ConflictClusterView: View {
                 if hasBadge {
                     Image(systemName: "book.fill")
                         .font(.system(size: badgeIconSize))
+                        .foregroundStyle(Color.textPrimary.opacity(0.7))
+                        .padding(3)
+                } else if ignoresAssignments {
+                    IgnoredAssignmentsIcon(size: badgeIconSize)
                         .foregroundStyle(Color.textPrimary.opacity(0.7))
                         .padding(3)
                 }

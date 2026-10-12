@@ -116,6 +116,11 @@ extension ClassTableViewModel {
         courses.removeAll { $0.courseNo == courseNo }
         deletedCourseNos.insert(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+        // The server drops the setting with the course's row.
+        if ignoresAssignments(of: courseNo) {
+            DataCache.shared.setAssignmentsIgnored(false, semester: currentSemester, courseNo: courseNo)
+            ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+        }
         persistUserAddedCourses()
         broadcastLocalChange()
         onCourseDeleted?(courseNo, currentSemester)
@@ -173,6 +178,7 @@ extension ClassTableViewModel {
             courseCustomNames.removeValue(forKey: courseNo)
         }
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        DataCache.shared.clearIgnoredAssignmentCourses(semester: semester)
         // Clear the portal cache too, in every language: a reset starts the term over.
         // An old roster left beside an empty server term would go back up on a poll,
         // and this device's upload releases its reset tombstones, undoing the reset.
@@ -249,6 +255,17 @@ extension ClassTableViewModel {
 
     func startRecolor(_ course: SDCourse) {
         courseToRecolor = course
+    }
+
+    /// Ignores every assignment of `course`, the ones Moodle adds later included, or stops.
+    func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
+        guard offersIgnoreAssignments else { return }
+        let semester = currentSemester
+        DataCache.shared.setAssignmentsIgnored(ignore, semester: semester, courseNo: course.courseNo)
+        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+        assignments = DataCache.shared.loadAssignments()
+        broadcastLocalChange()
+        onSyncCourseIgnore?(course, semester, ignore)
     }
 
     /// Apply a picked color, preset or custom. Writes through `TigerDuckTheme`,

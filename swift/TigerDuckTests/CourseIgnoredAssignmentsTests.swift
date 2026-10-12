@@ -1,6 +1,7 @@
 // Ignoring every assignment of a course (https://github.com/tigerduck-app/tigerduck-app/issues/210).
 // The setting is applied wherever an assignment row is built, so Home, the badges, course details,
 // the Live Activity and the list the server starts it from all follow without code of their own.
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -160,5 +161,46 @@ struct CourseIgnoredAssignmentsTests {
 
         cache.clearIgnoredAssignmentCourses(semester: Self.term)
         #expect(cache.loadIgnoredAssignmentCourses() == ["1142:CS1"])
+    }
+}
+
+/// The class table side: which course shows the mark, what VoiceOver reads, and which term offers
+/// the long-press items. Synchronous on the main actor, so the stored term pick the test moves is
+/// back before another test can read it.
+@MainActor
+struct ClassTableIgnoredCourseTests {
+    @Test("A cell's label ends with the ignored mark, after the room")
+    func voiceOverNamesTheMark() {
+        let course = SDCourse(courseNo: "CS1", courseName: "Algorithms")
+        let ignored = String(localized: "a11y_class_table_cell_assignments_ignored")
+
+        #expect(spokenCourse(course, room: "TR-313", hasAssignment: false, ignoresAssignments: true)
+            == "Algorithms, TR-313, \(ignored)")
+        #expect(!spokenCourse(course, hasAssignment: true, ignoresAssignments: false).contains(ignored))
+    }
+
+    @Test("Only the term on show marks its ignored courses")
+    func markFollowsTheTermOnShow() {
+        let viewModel = ClassTableViewModel()
+        viewModel.ignoredAssignmentCourses = [
+            CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "CS1"),
+            CourseTombstone.key(semester: "1001", courseNo: "EE2"),
+        ]
+
+        #expect(viewModel.ignoresAssignments(of: "CS1"))
+        #expect(!viewModel.ignoresAssignments(of: "EE2"))
+    }
+
+    @Test("Only the term assignments are fetched for offers the long-press items")
+    func onlyTheAssignmentTermOffersTheItems() {
+        let storedPick = Defaults[.classTableSelectedSemester]
+        defer { Defaults[.classTableSelectedSemester] = storedPick }
+        let viewModel = ClassTableViewModel()
+
+        viewModel.currentSemester = CourseSelectionService.currentSemesterCode()
+        #expect(viewModel.offersIgnoreAssignments)
+
+        viewModel.currentSemester = "1001"
+        #expect(!viewModel.offersIgnoreAssignments)
     }
 }

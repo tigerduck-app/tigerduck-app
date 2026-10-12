@@ -3,7 +3,7 @@ import SwiftUI
 import Defaults
 
 /// Mutations the Mac grid can make to a schedule: add and remove a
-/// user-added course, rename one, and delete one.
+/// user-added course, rename one, ignore its assignments, and delete one.
 ///
 /// Each writes an on-disk store keyed by `courseNo` alone, so call sites gate them on
 /// `isViewingCurrentSemester`: a rename made on a past term would otherwise leak into the current
@@ -155,6 +155,14 @@ extension MacClassTableView {
         }
     }
 
+    /// Mirrors `ClassTableViewModel.setIgnoresAssignments`.
+    func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
+        guard isViewingCurrentSemester else { return }
+        DataCache.shared.setAssignmentsIgnored(ignore, semester: selectedSemester, courseNo: course.courseNo)
+        cacheRevision &+= 1
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+    }
+
     /// Right-click "Delete" — mirrors `ClassTableViewModel.deleteCourse` on
     /// iPhone. Tombstones the courseNo so a future cache refresh from NTUST
     /// can't resurrect a course the user deliberately removed, AND drops any
@@ -164,6 +172,10 @@ extension MacClassTableView {
         var deleted = Set(DataCache.shared.loadDeletedCourseNos())
         deleted.insert(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo))
         DataCache.shared.saveDeletedCourseNos(Array(deleted))
+        // The server drops the setting with the course's row.
+        if ignoredAssignmentCourses.contains(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo)) {
+            DataCache.shared.setAssignmentsIgnored(false, semester: selectedSemester, courseNo: course.courseNo)
+        }
 
         let existing = DataCache.shared.loadUserAddedCourses()
         let pruned = existing.filter { entry in

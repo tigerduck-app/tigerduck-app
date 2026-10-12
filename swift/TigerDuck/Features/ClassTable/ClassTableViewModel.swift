@@ -131,6 +131,8 @@ final class ClassTableViewModel {
 
     var deletedCourseNos: Set<String> = []
     var courseCustomNames: [String: [String: String]] = [:]
+    /// `CourseTombstone` keys of the courses whose assignments are all ignored.
+    var ignoredAssignmentCourses: Set<String> = []
 
     /// The course API language tag ("zh" or "en") derived from the
     /// current app language setting. Used as the locale key when
@@ -197,6 +199,7 @@ final class ClassTableViewModel {
         self.isClassDay = isClassDay
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
+        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
 
         dataObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.dataDidUpdate,
@@ -282,6 +285,7 @@ final class ClassTableViewModel {
         // would apply the last account's deletions and renames to the next user.
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
+        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
         TigerDuckTheme.reload()
         reloadCurrentSemesterCourses()
         courses = buildCourseList(
@@ -432,6 +436,17 @@ final class ClassTableViewModel {
         assignments.unfinished(for: courseNo)
     }
 
+    func ignoresAssignments(of courseNo: String) -> Bool {
+        ignoredAssignmentCourses.contains(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
+    }
+
+    /// Assignments are fetched for `CourseSelectionService.currentSemesterCode()` alone, so only
+    /// that term's courses can have theirs ignored.
+    var offersIgnoreAssignments: Bool {
+        currentSemester == CourseSelectionService.currentSemesterCode()
+    }
+
+    var onSyncCourseIgnore: ((_ course: SDCourse, _ semester: String, _ ignore: Bool) -> Void)?
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
     var onSyncColorPick: ((_ hex: UInt32, _ course: SDCourse, _ changed: [String: UInt32]) -> Void)?
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
