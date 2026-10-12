@@ -77,9 +77,8 @@ nonisolated enum MailMessageBuilder {
                 lines.append("Content-Transfer-Encoding: base64")
                 lines.append("Content-Disposition: attachment; \(dispositionFilename(attachment.filename))")
                 lines.append("")
-                lines += attachment.data
-                    .base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn, .endLineWithLineFeed])
-                    .components(separatedBy: "\r\n")
+                lines.append(attachment.data
+                    .base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn, .endLineWithLineFeed]))
             }
             lines.append("--\(boundary)--")
         }

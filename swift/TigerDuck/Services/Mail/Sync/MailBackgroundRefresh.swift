@@ -33,35 +33,37 @@ nonisolated enum MailBackgroundRefresh {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: MailConstants.backgroundTaskIdentifier)
     }
 
-    /// Whether a background task that just ran (or was about to) should submit the *next*
-    /// request. Kept as a pure function of the account/feature state so it's testable without
-    /// touching `BGTaskScheduler` or `UserDefaults`: only while background checks are still
-    /// wanted — signed in, notifications on, not locked out by a rejected password, and the
-    /// feature itself enabled — does the next refresh get scheduled. Otherwise a signed-out or
-    /// locked-out account stops waking the app for nothing.
+    /// Whether a background task that just ran, or was about to, should submit the next request:
+    /// only while background checks are still wanted (signed in, notifications on and allowed by
+    /// iOS, no rejected password, the feature enabled), so a signed-out or locked-out account
+    /// stops waking the app for nothing. A pure function of that state, so it is testable without
+    /// `BGTaskScheduler` or `UserDefaults`.
     static func shouldRescheduleAfterHandling(
         featureEnabled: Bool,
         signedIn: Bool,
         notificationsEnabled: Bool,
-        authFailed: Bool
+        authFailed: Bool,
+        notificationsDenied: Bool
     ) -> Bool {
-        featureEnabled && signedIn && notificationsEnabled && !authFailed
+        featureEnabled && signedIn && notificationsEnabled && !authFailed && !notificationsDenied
     }
 
     private static func handle(_ task: BGAppRefreshTask) {
         // `DefaultsMailPreferences()` (nonisolated), not `MailAccountManager.shared`, which is
         // @MainActor and this callback isn't guaranteed to run on the main actor.
         let prefs = DefaultsMailPreferences()
-        if shouldRescheduleAfterHandling(
-            featureEnabled: SchoolMailAvailability.isEnabled,
-            signedIn: prefs.studentID != nil,
-            notificationsEnabled: prefs.notificationsEnabled,
-            authFailed: prefs.authFailed
-        ) {
-            schedule()
-        }
         let completion = TaskCompletion(task: task)
         let work = Task {
+            let denied = await MailNotificationPermission.isDenied()
+            if shouldRescheduleAfterHandling(
+                featureEnabled: SchoolMailAvailability.isEnabled,
+                signedIn: prefs.studentID != nil,
+                notificationsEnabled: prefs.notificationsEnabled,
+                authFailed: prefs.authFailed,
+                notificationsDenied: denied
+            ) {
+                schedule()
+            }
             let outcome = await MailChecker.shared.check(trigger: .backgroundTask)
             completion.finish(success: outcome.isSuccess)
         }

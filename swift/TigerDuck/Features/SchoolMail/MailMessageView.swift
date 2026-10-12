@@ -150,7 +150,8 @@ struct MailMessageView: View {
             Divider().background(Color.textSecondary)
             bodyContent
             if !showsSource, let attachments = viewModel.detail?.attachments, !attachments.isEmpty {
-                MailAttachmentList(parts: attachments, isRisky: viewModel.isRisky, onOpen: open, onShare: share)
+                MailAttachmentList(parts: attachments, downloading: viewModel.downloading, isRisky: viewModel.isRisky,
+                                   onOpen: open, onShare: share)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)

@@ -101,8 +101,9 @@ struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// The section path to fetch (e.g., [1], [1, 1], [2], etc.)
     let section: Section
 
-    /// Custom timeout for this operation
-    var timeoutSeconds: Int { return 60 }
+    /// Custom timeout for this operation. The timer never resets on progress, so it bounds the
+    /// whole transfer: five minutes moves a 50 MB message at about 1.3 Mbps.
+    var timeoutSeconds: Int { return 300 }
 
     /// Initialize a new fetch message part command
     /// - Parameters:
@@ -147,8 +148,8 @@ struct FetchRawMessageCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// The message identifier to fetch
     let identifier: T
 
-    /// Custom timeout for this operation
-    var timeoutSeconds: Int { return 10 }
+    /// Custom timeout for this operation, sized like `FetchMessagePartCommand`'s.
+    var timeoutSeconds: Int { return 300 }
 
     /// Initialize a new fetch raw message command
     /// - Parameter identifier: The message identifier to fetch

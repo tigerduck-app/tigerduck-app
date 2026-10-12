@@ -13,7 +13,8 @@ struct AppendCommand: IMAPCommand {
     let flags: [Flag]
     let internalDate: ServerMessageDate?
 
-    var timeoutSeconds: Int { return 30 }
+    /// Sized like `FetchMessagePartCommand`'s: the timer bounds the whole upload.
+    var timeoutSeconds: Int { return 300 }
 
     func validate() throws {
         guard !mailboxName.isEmpty else {
