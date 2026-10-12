@@ -191,33 +191,8 @@ struct BulletinDetailView: View {
             .foregroundStyle(Color.orange)
     }
 
-    /// MarkdownUI theme tuned to match the rest of the app — we want the
-    /// renderer's headers / lists / links to feel native to TigerDuck
-    /// rather than MarkdownUI's GitHub-flavored defaults.
     private var bulletinMarkdownTheme: Theme {
-        Theme()
-            .text {
-                ForegroundColor(Color.textPrimary)
-            }
-            .link {
-                ForegroundColor(appState.accentColor)
-                UnderlineStyle(.single)
-            }
-            .strong {
-                FontWeight(.bold)
-            }
-            .emphasis {
-                FontStyle(.italic)
-            }
-            .paragraph { configuration in
-                configuration.label
-                    .relativeLineSpacing(.em(0.25))
-                    .markdownMargin(top: .em(0.6))
-            }
-            .listItem { configuration in
-                configuration.label
-                    .markdownMargin(top: .em(0.3))
-            }
+        .bulletin(accent: appState.accentColor)
     }
 
     // MARK: - Loading

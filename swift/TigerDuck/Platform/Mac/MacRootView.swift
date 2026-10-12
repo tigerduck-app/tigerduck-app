@@ -185,14 +185,17 @@ struct MacContentView: View {
 struct MacFeatureDetail: View {
     let feature: AppFeature
 
+    @State private var refreshShortcutClaimed = false
+
     var body: some View {
         content
+            .onPreferenceChange(MacRefreshShortcutClaimKey.self) { refreshShortcutClaimed = $0 }
             .toolbar {
                 if feature != .gpa && feature != .announcements {
                     ToolbarItem(placement: .primaryAction) {
                         HStack(spacing: 8) {
                             SyncStatusDot(servers: serversForFeature)
-                            MacGlobalRefreshButton()
+                            MacGlobalRefreshButton(takesShortcut: !refreshShortcutClaimed)
                         }
                     }
                 }
@@ -232,10 +235,23 @@ struct MacFeatureDetail: View {
     }
 }
 
+/// True while a view in a feature answers ⌘R for what it shows, such as a Moodle list in the
+/// class table's course overlay, so the global refresh lets the shortcut go.
+struct MacRefreshShortcutClaimKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 /// Triggers `AppState.backgroundSync()` and swaps to a spinner while
 /// `sessionManager.loadingState == .loading`. The button stays mounted
 /// under the spinner so ⌘R keeps working without separate tracking.
 struct MacGlobalRefreshButton: View {
+    /// False while a view the feature shows answers ⌘R itself.
+    var takesShortcut = true
+
     @Environment(AppState.self) private var appState
 
     var body: some View {
@@ -245,7 +261,7 @@ struct MacGlobalRefreshButton: View {
             } label: {
                 Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
             }
-            .keyboardShortcut("r", modifiers: .command)
+            .keyboardShortcut(takesShortcut ? KeyboardShortcut("r", modifiers: .command) : nil)
             .help(String(localized: "desktop_action_refresh_help"))
             .opacity(isSyncing ? 0 : 1)
             .disabled(isSyncing)
