@@ -134,6 +134,7 @@ struct SSOServiceLoginTests {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
             SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
         }
         guard case .success(true) = outcome.result else {
             Issue.record("expected a sign-in, got \(outcome.result)")
@@ -141,6 +142,22 @@ struct SSOServiceLoginTests {
         }
         #expect(posts.map(\.url) == [Self.postURL])
         #expect(posts.first?.body.contains("Username=B00000000") == true)
+    }
+
+    @Test("a password POST answered with an error page and no live session is not a sign-in")
+    func errorPageAfterThePostIsNoSignIn() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, interactive: true) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Pages.maintenance, status: 500), for: Self.postURL)
+            SSOServerStub.enqueue(Self.notSignedIn, for: Self.probeURL)
+        }
+        guard case .failure(SSOLoginError.invalidResponse) = outcome.result else {
+            Issue.record("expected invalidResponse, got \(outcome.result)")
+            return
+        }
+        #expect(!outcome.rejected)
     }
 
     // MARK: - A rejected stored password
@@ -182,6 +199,7 @@ struct SSOServiceLoginTests {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
             SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
         }
         guard case .success(true) = outcome.result else {
             Issue.record("expected a sign-in, got \(outcome.result)")

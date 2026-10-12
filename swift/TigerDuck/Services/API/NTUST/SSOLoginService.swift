@@ -219,7 +219,9 @@ enum SSOLoginService {
                 throw SSOLoginError.loginFailed
             }
 
-            NTUSTSessionManager.shared.markLoginSuccess()
+            guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
+                throw SSOLoginError.invalidResponse
+            }
             return true
         } catch SSOLoginError.loginFailed {
             throw SSOLoginError.loginFailed
@@ -229,7 +231,6 @@ enum SSOLoginService {
         }
     }
 
-    /// GET `url`, following redirects and then the bridge forms that carry a sign-in to the service.
     private static func visit(_ url: URL, session: URLSession, generation: Int) async throws -> (String, URL) {
         let (data, response) = try await session.data(from: url)
         guard let httpResp = response as? HTTPURLResponse,
