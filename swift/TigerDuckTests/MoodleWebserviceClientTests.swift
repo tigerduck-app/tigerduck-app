@@ -100,6 +100,26 @@ struct MoodleWebserviceClientTests {
         await #expect(throws: MoodleWebserviceError.siteMaintenance) { try await call(token: token) }
     }
 
+    // MARK: - Assignments
+
+    @Test("the assignment fetch asks only for courses the user can submit to")
+    func assignmentsNeedTheSubmitCapability() async throws {
+        let token = UUID().uuidString
+        answer(200, #"{"courses":[],"warnings":[]}"#, function: "mod_assign_get_assignments", token: token)
+
+        let records = try await MoodleAssignmentService.fetchAssignments(
+            courseIds: [7, 9],
+            tokens: .init(stored: { token }, renew: { _ in token }),
+            session: Self.session(),
+            siteURL: Self.site
+        )
+        #expect(records.isEmpty)
+
+        let request = try #require(SettingsAPIStub.requests(for: Self.endpoint("mod_assign_get_assignments", token: token)).first)
+        let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
+        #expect(body == "courseids%5B0%5D=7&courseids%5B1%5D=9&capabilities%5B0%5D=mod%2Fassign%3Asubmit")
+    }
+
     // MARK: - Token
 
     private actor TokenLog {

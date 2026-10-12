@@ -793,7 +793,7 @@ struct MoodleHomeworkRegressionTests {
     }
 
     @Test func moodleAssignmentService_exposesModAssignEntryPoints() async {
-        let assignEntry = MoodleAssignmentService.fetchAssignments(courseIds:)
+        let assignEntry = MoodleAssignmentService.fetchAssignments(courseIds:tokens:session:siteURL:)
         let statusEntry = MoodleAssignmentService.fetchSubmissionStatus(assignId:)
         #expect(String(describing: assignEntry).isEmpty == false)
         #expect(String(describing: statusEntry).isEmpty == false)
