@@ -2,6 +2,7 @@ import Foundation
 
 enum MoodleWebserviceError: Error, Equatable, LocalizedError {
     case invalidToken
+    case accessDenied
     case invalidCredentials
     case missingStoredCredentials
     case ssoLoginRejected(reason: String?)
@@ -23,7 +24,7 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
                 return String(format: String(localized: "error_moodle_sso_rejected_with_reason"), reason)
             }
             return String(localized: "error_moodle_sso_rejected")
-        case .webserviceDisabled:
+        case .accessDenied, .webserviceDisabled:
             return String(localized: "error_moodle_webservice_disabled")
         case .transientNetwork(let underlying):
             return String(format: String(localized: "error_moodle_network_format"), underlying)
@@ -40,7 +41,7 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
             String(localized: "error_moodle_recovery_re_sign_in_ntust")
         case .invalidCredentials:
             String(localized: "error_moodle_recovery_check_credentials")
-        case .webserviceDisabled, .transientNetwork, .malformedResponse, .httpStatus:
+        case .accessDenied, .webserviceDisabled, .transientNetwork, .malformedResponse, .httpStatus:
             nil
         }
     }
@@ -57,8 +58,10 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
         }
 
         switch body.errorcode {
-        case "invalidtoken", "accessexception":
+        case "invalidtoken":
             return .invalidToken
+        case "accessexception":
+            return .accessDenied
         case "invalidlogin":
             return .invalidCredentials
         case "enablewsdescription", "servicenotloaded":

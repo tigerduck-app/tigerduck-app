@@ -41,13 +41,21 @@ nonisolated enum MoodleWebserviceClient {
     /// Runs `body` with the stored token, or a renewed one when none is stored. Once Moodle calls
     /// that token invalid, a renewed one replaces it and `body` runs once more. A call that needs
     /// the token's user id asks for it inside `body`, so a stale token there is renewed too.
+    ///
+    /// An access error gets one more try with the same token: Moodle answers an expired token
+    /// with `accessexception` once and deletes it, then answers `invalidtoken`. A function the
+    /// site does not allow fails the same way twice and starts no renewal.
     static func withToken<T>(
         _ tokens: TokenSource = .keychain,
         _ body: (String) async throws -> T
     ) async throws -> T {
         let token = if let stored = await tokens.stored() { stored } else { try await tokens.renew(nil) }
         do {
-            return try await body(token)
+            do {
+                return try await body(token)
+            } catch MoodleWebserviceError.accessDenied {
+                return try await body(token)
+            }
         } catch MoodleWebserviceError.invalidToken {
             return try await body(try await tokens.renew(token))
         }

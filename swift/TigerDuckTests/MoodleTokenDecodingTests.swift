@@ -63,7 +63,7 @@ struct MoodleTokenDecodingTests {
 
     @Test("Moodle error bodies map to their cases", arguments: [
         ("invalidtoken", MoodleWebserviceError.invalidToken),
-        ("accessexception", .invalidToken),
+        ("accessexception", .accessDenied),
         ("invalidlogin", .invalidCredentials),
         ("enablewsdescription", .webserviceDisabled),
         ("servicenotloaded", .webserviceDisabled),
