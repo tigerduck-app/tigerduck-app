@@ -19,11 +19,17 @@ struct AssignmentStatusRequestTests {
         )
     }
 
-    @Test("an assignment Moodle called unsubmitted after its cutoff is not asked about again")
+    @Test("a closed assignment is not asked about again until its cutoff moves past the answer")
     func closedAssignmentsAreSkipped() {
-        let records = [Self.record(1, cutoff: nil), Self.record(2, cutoff: nil)]
-        let asked = AppServiceBridge.recordsToAskAbout(records, confirmed: [:], closed: ["2"])
-        #expect(asked.map(\.assignId) == [1])
+        let records = [
+            Self.record(1, cutoff: nil),
+            Self.record(2, cutoff: Self.askTime - 60),
+            Self.record(3, cutoff: Self.askTime + 60),
+            Self.record(4, cutoff: nil),
+        ]
+        let closed = ["2": Self.askTime, "3": Self.askTime, "4": Self.askTime]
+        let asked = AppServiceBridge.recordsToAskAbout(records, confirmed: [:], closed: closed)
+        #expect(asked.map(\.assignId) == [1, 3, 4])
     }
 
     @Test("confirmed, undated and no-submission records are left out")
@@ -33,7 +39,7 @@ struct AssignmentStatusRequestTests {
             allowSubmissionsFromDate: nil, intro: "", noSubmissions: true
         )
         let records = [Self.record(1, cutoff: nil), Self.record(2, cutoff: nil, due: nil), noSubmissions]
-        #expect(AppServiceBridge.recordsToAskAbout(records, confirmed: ["1": Self.askTime], closed: []).isEmpty)
+        #expect(AppServiceBridge.recordsToAskAbout(records, confirmed: ["1": Self.askTime], closed: [:]).isEmpty)
     }
 
     @Test("only an unsubmitted answer asked for after the cutoff closes an assignment")
@@ -52,20 +58,25 @@ struct AssignmentStatusRequestTests {
             3: Self.status(3, submitted: false),
             4: Self.status(4, submitted: true),
         ]
-        let closed = AppServiceBridge.closedUnsubmittedIds(
-            records: records, statuses: statuses, askedAt: askedAt, kept: []
+        let closed = AppServiceBridge.closedUnsubmitted(
+            records: records, statuses: statuses, askedAt: askedAt, kept: [:]
         )
-        #expect(closed == ["1"])
+        #expect(closed == ["1": askedAt])
     }
 
-    @Test("an unanswered assignment keeps its place, and one no longer listed drops out")
-    func unansweredAssignmentsKeepTheirPlace() {
-        let records = [Self.record(1, cutoff: Self.askTime - 60), Self.record(2, cutoff: Self.askTime - 60)]
-        let closed = AppServiceBridge.closedUnsubmittedIds(
+    @Test("an unanswered assignment stays closed while its cutoff does, and one no longer listed drops out")
+    func unansweredAssignmentsKeepTheirTime() {
+        let earlier = Self.askTime - 3600
+        let records = [
+            Self.record(1, cutoff: earlier - 60),
+            Self.record(2, cutoff: earlier - 60),
+            Self.record(3, cutoff: earlier + 60),
+        ]
+        let closed = AppServiceBridge.closedUnsubmitted(
             records: records, statuses: [2: Self.status(2, submitted: true)], askedAt: Self.askTime,
-            kept: ["1", "2", "9"]
+            kept: ["1": earlier, "2": earlier, "3": earlier, "9": earlier]
         )
-        #expect(closed == ["1"])
+        #expect(closed == ["1": earlier])
     }
 
     // MARK: - Concurrency

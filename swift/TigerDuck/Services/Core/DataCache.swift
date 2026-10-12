@@ -259,13 +259,12 @@ final class DataCache {
 
     // MARK: - Closed assignments Moodle called unsubmitted
 
-    func loadClosedUnsubmittedAssignmentIds() -> Set<String> {
-        let ids: [String] = load(from: "closed_unsubmitted_assignments.json") ?? []
-        return Set(ids)
+    func loadClosedUnsubmittedAssignments() -> [String: Date] {
+        load(from: "closed_unsubmitted_assignments.json") ?? [:]
     }
 
-    func replaceClosedUnsubmittedAssignmentIds(_ ids: Set<String>) {
-        save(Array(ids), to: "closed_unsubmitted_assignments.json")
+    func replaceClosedUnsubmittedAssignments(_ closed: [String: Date]) {
+        save(closed, to: "closed_unsubmitted_assignments.json")
     }
 
     // MARK: - Bulletins

@@ -174,9 +174,9 @@ extension AppServiceBridge {
 
             let cachedAssignments = DataCache.shared.loadAssignments()
             let confirmed = recheckSubmissions ? [:] : confirmedSubmissions(in: cachedAssignments)
-            let closedIds = DataCache.shared.loadClosedUnsubmittedAssignmentIds()
+            let closed = DataCache.shared.loadClosedUnsubmittedAssignments()
             let recordsToAsk = recordsToAskAbout(
-                records, confirmed: confirmed, closed: recheckSubmissions ? [] : closedIds
+                records, confirmed: confirmed, closed: recheckSubmissions ? [:] : closed
             )
             let askedAt = Date()
             let answers = await concurrentMap(recordsToAsk) { record -> (Int, MoodleSubmissionStatus)? in
@@ -229,8 +229,8 @@ extension AppServiceBridge {
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignmentsToPersist)
-                DataCache.shared.replaceClosedUnsubmittedAssignmentIds(closedUnsubmittedIds(
-                    records: records, statuses: statuses, askedAt: askedAt, kept: closedIds
+                DataCache.shared.replaceClosedUnsubmittedAssignments(closedUnsubmitted(
+                    records: records, statuses: statuses, askedAt: askedAt, kept: closed
                 ))
                 if statuses.count == recordsToAsk.count {
                     Defaults[.schoolDataSyncedAt] = Date()
@@ -289,29 +289,40 @@ extension AppServiceBridge {
     static func recordsToAskAbout(
         _ records: [MoodleAssignmentRecord],
         confirmed: [String: Date],
-        closed: Set<String>
+        closed: [String: Date]
     ) -> [MoodleAssignmentRecord] {
         records.filter { record in
             let id = String(record.assignId)
-            return record.dueDate != nil && !record.noSubmissions && confirmed[id] == nil && !closed.contains(id)
+            return record.dueDate != nil && !record.noSubmissions && confirmed[id] == nil
+                && !isClosed(record, askedAt: closed[id])
         }
     }
 
-    /// Assignments Moodle called unsubmitted after their cutoff, which takes no submission
-    /// after it, so a round need not ask again. `askedAt` precedes the requests, so each of
-    /// these answers came after the cutoff. One left unanswered keeps its place from `kept`.
-    static func closedUnsubmittedIds(
+    /// When Moodle called each assignment unsubmitted in an answer asked for after its cutoff, by
+    /// id. It takes no submission after the cutoff, so a round need not ask again until a teacher
+    /// moves the cutoff past that answer. `askedAt` precedes the round's requests, and one left
+    /// unanswered keeps its time from `kept`.
+    static func closedUnsubmitted(
         records: [MoodleAssignmentRecord],
         statuses: [Int: MoodleSubmissionStatus],
         askedAt: Date,
-        kept: Set<String>
-    ) -> Set<String> {
-        Set(records.compactMap { record -> String? in
+        kept: [String: Date]
+    ) -> [String: Date] {
+        var closed: [String: Date] = [:]
+        for record in records {
             let id = String(record.assignId)
-            guard let status = statuses[record.assignId] else { return kept.contains(id) ? id : nil }
-            guard !status.isSubmitted, let cutoff = record.cutoffDate, cutoff < askedAt else { return nil }
-            return id
-        })
+            if let status = statuses[record.assignId] {
+                if !status.isSubmitted, isClosed(record, askedAt: askedAt) { closed[id] = askedAt }
+            } else if let keptAt = kept[id], isClosed(record, askedAt: keptAt) {
+                closed[id] = keptAt
+            }
+        }
+        return closed
+    }
+
+    private static func isClosed(_ record: MoodleAssignmentRecord, askedAt: Date?) -> Bool {
+        guard let askedAt, let cutoff = record.cutoffDate else { return false }
+        return cutoff < askedAt
     }
 
     /// One Moodle course per course number. Moodle keeps past enrolments, so a retaken course
