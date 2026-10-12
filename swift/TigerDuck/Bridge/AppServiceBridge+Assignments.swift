@@ -24,8 +24,8 @@ extension AppServiceBridge {
     /// account, unless it wants submissions rechecked and that round does not.
     ///
     /// `recheckSubmissions` asks Moodle about every submission. Without it a round skips the
-    /// ones ``confirmedSubmissions(in:)`` lists, so a pull, or Refresh on the Mac, is what shows
-    /// a reverted submission.
+    /// ones ``recordsToAskAbout(_:confirmed:closed:)`` leaves out, so a pull, or Refresh on the
+    /// Mac, is what shows a reverted submission.
     static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
         await sharedRound(generation: authService.loginGeneration, rechecks: recheckSubmissions) {
             await runAssignmentRound(authService: authService, recheckSubmissions: recheckSubmissions)
@@ -143,7 +143,10 @@ extension AppServiceBridge {
             if currentCourseNos.isEmpty {
                 relevantCourses = moodleEnrolled.filter { $0.semester == currentSemester }
             } else {
-                relevantCourses = moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) }
+                relevantCourses = coursesForTerm(
+                    moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) },
+                    semester: currentSemester
+                )
             }
             let relevantMoodleCourseIds = relevantCourses.map(\.id)
             guard !relevantMoodleCourseIds.isEmpty else {
@@ -171,34 +174,20 @@ extension AppServiceBridge {
 
             let cachedAssignments = DataCache.shared.loadAssignments()
             let confirmed = recheckSubmissions ? [:] : confirmedSubmissions(in: cachedAssignments)
-            // Records without a due date or a submission are dropped below, so asking about
-            // them would only cost Moodle a request.
-            let recordsToAsk = records.filter {
-                $0.dueDate != nil && !$0.noSubmissions && confirmed[String($0.assignId)] == nil
-            }
-            let statuses: [Int: MoodleSubmissionStatus] = await withTaskGroup(
-                of: (Int, MoodleSubmissionStatus)?.self,
-                returning: [Int: MoodleSubmissionStatus].self
-            ) { group in
-                for record in recordsToAsk {
-                    group.addTask {
-                        guard let status = try? await MoodleAssignmentService.fetchSubmissionStatus(
-                            assignId: record.assignId
-                        ) else {
-                            return nil
-                        }
-                        return (record.assignId, status)
-                    }
+            let closed = DataCache.shared.loadClosedUnsubmittedAssignments()
+            let recordsToAsk = recordsToAskAbout(
+                records, confirmed: confirmed, closed: recheckSubmissions ? [:] : closed
+            )
+            let askedAt = Date()
+            let answers = await concurrentMap(recordsToAsk) { record -> (Int, MoodleSubmissionStatus)? in
+                guard let status = try? await MoodleAssignmentService.fetchSubmissionStatus(
+                    assignId: record.assignId
+                ) else {
+                    return nil
                 }
-
-                var result: [Int: MoodleSubmissionStatus] = [:]
-                for await pair in group {
-                    if let (id, status) = pair {
-                        result[id] = status
-                    }
-                }
-                return result
+                return (record.assignId, status)
             }
+            let statuses = Dictionary(answers.compactMap { $0 }, uniquingKeysWith: { first, _ in first })
 
             let locallyCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
             let archivedIds = DataCache.shared.loadArchivedAssignmentIds()
@@ -220,7 +209,7 @@ extension AppServiceBridge {
                     isCompleted: status?.isSubmitted ?? (confirmedAt != nil),
                     isArchived: archivedIds.contains(assignmentId),
                     isLocallyCompleted: locallyCompletedIds.contains(assignmentId),
-                    moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(record.cmId)",
+                    moodleUrl: "\(AppConstants.moodleBaseURL.absoluteString)/mod/assign/view.php?id=\(record.cmId)",
                     cutoffDate: record.cutoffDate,
                     submittedAt: status?.submittedAt ?? confirmedAt
                 )
@@ -240,6 +229,9 @@ extension AppServiceBridge {
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignmentsToPersist)
+                DataCache.shared.replaceClosedUnsubmittedAssignments(closedUnsubmitted(
+                    records: records, statuses: statuses, askedAt: askedAt, kept: closed
+                ))
                 if statuses.count == recordsToAsk.count {
                     Defaults[.schoolDataSyncedAt] = Date()
                 }
@@ -289,6 +281,59 @@ extension AppServiceBridge {
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()
+        }
+    }
+
+    /// The records a round asks Moodle about. One without a due date or a submission is dropped
+    /// from the list, Moodle keeps a submission it confirmed, and a `closed` one cannot change.
+    static func recordsToAskAbout(
+        _ records: [MoodleAssignmentRecord],
+        confirmed: [String: Date],
+        closed: [String: Date]
+    ) -> [MoodleAssignmentRecord] {
+        records.filter { record in
+            let id = String(record.assignId)
+            return record.dueDate != nil && !record.noSubmissions && confirmed[id] == nil
+                && !isClosed(record, askedAt: closed[id])
+        }
+    }
+
+    /// When Moodle called each assignment unsubmitted in an answer asked for after its cutoff, by
+    /// id. It takes no submission after the cutoff, so a round need not ask again until a teacher
+    /// moves the cutoff past that answer. `askedAt` precedes the round's requests, and one left
+    /// unanswered keeps its time from `kept`.
+    static func closedUnsubmitted(
+        records: [MoodleAssignmentRecord],
+        statuses: [Int: MoodleSubmissionStatus],
+        askedAt: Date,
+        kept: [String: Date]
+    ) -> [String: Date] {
+        var closed: [String: Date] = [:]
+        for record in records {
+            let id = String(record.assignId)
+            if let status = statuses[record.assignId] {
+                if !status.isSubmitted, isClosed(record, askedAt: askedAt) { closed[id] = askedAt }
+            } else if let keptAt = kept[id], isClosed(record, askedAt: keptAt) {
+                closed[id] = keptAt
+            }
+        }
+        return closed
+    }
+
+    private static func isClosed(_ record: MoodleAssignmentRecord, askedAt: Date?) -> Bool {
+        guard let askedAt, let cutoff = record.cutoffDate else { return false }
+        return cutoff < askedAt
+    }
+
+    /// One Moodle course per course number. Moodle keeps past enrolments, so a retaken course
+    /// has one for each term it was taken in; this term's wins, else the one that started last.
+    static func coursesForTerm(_ courses: [MoodleEnrolledCourse], semester: String) -> [MoodleEnrolledCourse] {
+        let byCourseNo = Dictionary(grouping: courses, by: \.courseNo)
+        return courses.filter { course in
+            guard let siblings = byCourseNo[course.courseNo], siblings.count > 1 else { return true }
+            if siblings.contains(where: { $0.semester == semester }) { return course.semester == semester }
+            let latest = siblings.max { ($0.startDate ?? .distantPast, $0.id) < ($1.startDate ?? .distantPast, $1.id) }
+            return course.id == latest?.id
         }
     }
 

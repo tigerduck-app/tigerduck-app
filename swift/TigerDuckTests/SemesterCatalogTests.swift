@@ -22,6 +22,12 @@ struct SemesterCatalogTests {
     ]
     """.utf8)
 
+    @Test("The catalogue is fetched through the TLS pin and without the shared cookie jar")
+    func catalogueSessionIsPinned() {
+        #expect(SemesterCatalog.session.delegate === TLSPinningDelegate.shared)
+        #expect(SemesterCatalog.session.configuration.httpCookieStorage !== HTTPCookieStorage.shared)
+    }
+
     @Test("Decodes the catalogue newest-first, summer terms included")
     func decodesCatalogue() throws {
         let list = try SemesterCatalog.decodeSemesters(Self.payload)

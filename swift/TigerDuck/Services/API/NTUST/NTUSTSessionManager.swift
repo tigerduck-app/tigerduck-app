@@ -81,6 +81,10 @@ final class NTUSTSessionManager {
     /// Use this from any async auth path instead of ``cookiesValid``: the 1h timestamp
     /// TTL trusts cookies the server already evicted and expires ones it still honors.
     func probeCookiesValid() async -> Bool {
+        await probeCookiesValid(using: session)
+    }
+
+    func probeCookiesValid(using session: URLSession) async -> Bool {
         var req = URLRequest(url: URL.knownGood("https://ssoam2.ntust.edu.tw/"))
         req.httpMethod = "GET"
         req.timeoutInterval = 8

@@ -81,6 +81,7 @@ extension AppState {
             isCheckingConflicts = true
         }
         AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
+        let generation = authService.loginGeneration
         Task {
             // Set when we hand the flag to a 401 retry, which owns it from
             // there. The retry runs in its own Task, so releasing the flag here
@@ -226,6 +227,12 @@ extension AppState {
 
                 AppLogger.sync.info("[reenable] result: \(diffs.count, privacy: .public) diffs → \(diffs.isEmpty ? "no conflict" : "SHOW POPUP", privacy: .public)")
                 await MainActor.run {
+                    // After a sign-out the diffs compare the previous account's server state
+                    // with cleared caches, and with sync off there is nothing to reconcile.
+                    guard fullSyncMayWrite(since: generation) else {
+                        AppLogger.sync.info("[reenable] result discarded — signed out or sync off while in flight")
+                        return
+                    }
                     // Report only categories still pending: a resolve that landed mid-check
                     // cleared its own and changed the server state behind these diffs. Showing
                     // them again repeats a dismissed dialog, and dismissing it re-runs keep-local.

@@ -30,10 +30,10 @@ enum CalendarService {
 
     /// Fetch NTUST academic calendar ICS download URLs (public, no auth)
     /// Returns mapping of ROC year → ICS URL
-    static func fetchCalendarURLs() async throws -> [Int: URL] {
-        let (data, response) = try await browserSession.data(from: calendarPageURL)
+    static func fetchCalendarURLs(session: URLSession, pageURL: URL) async throws -> [Int: URL] {
+        let (data, response) = try await session.data(from: pageURL)
         guard let html = String(data: data, encoding: .utf8),
-              let baseURL = (response as? HTTPURLResponse)?.url ?? Optional(calendarPageURL) else {
+              let baseURL = (response as? HTTPURLResponse)?.url ?? Optional(pageURL) else {
             return [:]
         }
 
@@ -63,37 +63,44 @@ enum CalendarService {
         return result
     }
 
-    /// Current ROC academic year (e.g. 114 for 2025-2026)
-    private static var currentROCYear: Int {
-        let cal = Calendar.current
-        let now = Date()
-        let year = cal.component(.year, from: now) - 1911
-        let month = cal.component(.month, from: now)
+    /// The ROC academic year `date` falls in, e.g. 114 from August 2025 to July 2026.
+    nonisolated static func rocAcademicYear(at date: Date) -> Int {
+        let calendar = AppConstants.taipeiCalendar
+        let year = calendar.component(.year, from: date) - 1911
         // Academic year starts in August
-        return month >= 8 ? year : year - 1
+        return calendar.component(.month, from: date) >= 8 ? year : year - 1
     }
 
-    /// Fetch the current academic year's ICS file, parse it into calendar events
-    static func fetchAndParseICS() async -> [SDCalendarEvent] {
+    /// Fetch the current academic year's ICS file, parse it into calendar events. Nil when that
+    /// fails, so callers keep the school events they have.
+    static func fetchAndParseICS() async -> [SDCalendarEvent]? {
+        await fetchAndParseICS(session: browserSession, pageURL: calendarPageURL, now: AppClock.now())
+    }
+
+    static func fetchAndParseICS(session: URLSession, pageURL: URL, now: Date) async -> [SDCalendarEvent]? {
+        let rocYear = rocAcademicYear(at: now)
         do {
-            let urls = try await fetchCalendarURLs()
-            guard let icsURL = urls[currentROCYear] else { return [] }
+            let urls = try await fetchCalendarURLs(session: session, pageURL: pageURL)
+            guard let icsURL = urls[rocYear] else { return nil }
 
-            let (data, _) = try await browserSession.data(from: icsURL)
-            guard let icsString = String(data: data, encoding: .utf8) else { return [] }
+            let (data, response) = try await session.data(from: icsURL)
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  let icsString = String(data: data, encoding: .utf8) else { return nil }
 
-            return parseICS(icsString)
+            // A school year always has events, so a file with none is not the calendar.
+            let events = parseICS(icsString)
+            return events.isEmpty ? nil : events
         } catch {
             AppLogger.captureError(error, context: [
                 "service": "calendarFetchAndParseICS",
-                "rocYear": String(currentROCYear),
+                "rocYear": String(rocYear),
             ])
-            return []
+            return nil
         }
     }
 
     /// Parse ICS string into SDCalendarEvent array
-    private static func parseICS(_ ics: String) -> [SDCalendarEvent] {
+    static func parseICS(_ ics: String) -> [SDCalendarEvent] {
         // Unfold ICS line continuations (lines starting with space or tab are continuations)
         let unfolded = ics
             .replacingOccurrences(of: "\r\n ", with: "")
@@ -168,26 +175,20 @@ enum CalendarService {
         return events
     }
 
-    private static let icsDateOnly: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd"
-        f.timeZone = TimeZone(identifier: "Asia/Taipei")
-        return f
-    }()
+    static let icsDateOnly = icsFormatter("yyyyMMdd", timeZone: TimeZone(identifier: "Asia/Taipei"))
+    static let icsDateTime = icsFormatter("yyyyMMdd'T'HHmmss", timeZone: TimeZone(identifier: "Asia/Taipei"))
+    static let icsDateTimeZ = icsFormatter("yyyyMMdd'T'HHmmss'Z'", timeZone: TimeZone(identifier: "UTC"))
 
-    private static let icsDateTime: DateFormatter = {
+    /// ICS dates are Gregorian. A formatter left on the device's locale reads them in its
+    /// calendar, and on the ROC calendar `20250901` becomes the year 3936.
+    private static func icsFormatter(_ format: String, timeZone: TimeZone?) -> DateFormatter {
         let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd'T'HHmmss"
-        f.timeZone = TimeZone(identifier: "Asia/Taipei")
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateFormat = format
+        f.timeZone = timeZone
         return f
-    }()
-
-    private static let icsDateTimeZ: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
+    }
 
     /// Gregorian + Asia/Taipei calendar for ICS day arithmetic.
     /// `Calendar.current` follows the device locale and would shift
@@ -244,14 +245,11 @@ enum CalendarService {
                 .first
                 .map(String.init) ?? ""
             if !tzidValue.isEmpty, let tz = TimeZone(identifier: tzidValue) {
-                let f = DateFormatter()
-                f.dateFormat = "yyyyMMdd'T'HHmmss"
-                f.timeZone = tz
-                localFormatter = f
+                localFormatter = icsFormatter("yyyyMMdd'T'HHmmss", timeZone: tz)
             }
         }
-        return icsDateTimeZ.date(from: value)
-            ?? localFormatter.date(from: value)
-            ?? icsDateOnly.date(from: value)
+        // The UTC formatter also takes a time without its trailing `Z`, which is a local time.
+        if value.hasSuffix("Z") { return icsDateTimeZ.date(from: value) }
+        return localFormatter.date(from: value) ?? icsDateOnly.date(from: value)
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSoup
 
-enum HTMLParser {
+nonisolated enum HTMLParser {
 
     struct FormData {
         let action: String
@@ -25,11 +25,24 @@ enum HTMLParser {
     /// would miss that case and the HTML parser would fall through
     /// to `.empty`.
     static func looksLikeSSOLoginBody(_ html: String) -> Bool {
-        guard let doc = try? SwiftSoup.parse(html) else { return false }
+        // Most pages checked are the service's own. One without either marker cannot match the
+        // selectors below, whose attribute values match in any case, so only a hit is parsed.
+        guard html.contains("loginForm") || html.range(of: "username", options: .caseInsensitive) != nil,
+              let doc = try? SwiftSoup.parse(html) else { return false }
 
         return (try? doc.select("form#loginForm").first()) != nil ||
             ((try? doc.select("input[name=Username]").first()) != nil &&
                 (try? doc.select("input[name=Password]").first()) != nil)
+    }
+
+    /// Check if a response landed on the NetIQ sign-in form of the other SSO host, ssoam. It
+    /// submits through an invisible reCAPTCHA, so only a browser can sign in there.
+    static func isNetIQLoginPage(html: String, url: URL) -> Bool {
+        guard url.host == "ssoam.ntust.edu.tw", let doc = try? SwiftSoup.parse(html) else { return false }
+
+        return (try? doc.select("form#IDPLogin").first()) != nil ||
+            ((try? doc.select("input[name=Ecom_User_ID]").first()) != nil &&
+                (try? doc.select("input[name=Ecom_Password]").first()) != nil)
     }
 
     /// Find a form by its id attribute and extract action + input fields

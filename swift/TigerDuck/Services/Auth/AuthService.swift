@@ -157,7 +157,8 @@ final class AuthService {
                 serviceURL: Self.ssoServiceURL,
                 studentId: normalizedId,
                 password: password,
-                generation: NTUSTSessionManager.shared.generation
+                generation: NTUSTSessionManager.shared.generation,
+                interactive: true
             )
 
             if success {

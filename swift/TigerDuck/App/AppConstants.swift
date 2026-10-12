@@ -69,6 +69,9 @@ nonisolated enum AppConstants {
     /// snapshot rewrite so home-screen widgets follow in-app colors
     /// without waiting for the next data sync.
     static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
+    /// Posted when the user picks another accent colour. The widget snapshot carries the accent,
+    /// so its writer rewrites the snapshot on this.
+    static let accentColorDidChange = Notification.Name("TigerDuck.accentColorDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
     /// Wraps a site-relative Moodle path in the envelope the Moodle Mobile app
