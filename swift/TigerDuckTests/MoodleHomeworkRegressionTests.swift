@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import SwiftUI
 import Testing
@@ -692,6 +693,35 @@ struct MoodleHomeworkRegressionTests {
         #expect(AssignmentFilter.visibleFilters(hasIgnored: false) == [.incomplete, .all])
         #expect(AssignmentFilter.visibleFilters(hasIgnored: true) == [.incomplete, .all, .ignored])
     }
+
+    // HomeViewModel is iOS-only, like ClassTableViewModel above.
+#if os(iOS)
+    @Test func homeCourseSheet_listsTheCourseWorkUnderTheIgnoredFilter() {
+        let savedFilter = Defaults[.homeAssignmentFilter]
+        defer { Defaults[.homeAssignmentFilter] = savedFilter }
+        Defaults[.homeAssignmentFilter] = AssignmentFilter.incomplete.rawValue
+        let now = Date()
+        let ignored = SDAssignment(
+            assignmentId: "ignored", courseNo: "CS1", courseName: "C", title: "Ignored",
+            dueDate: now.addingTimeInterval(3600), isArchived: true
+        )
+        let later = SDAssignment(
+            assignmentId: "later", courseNo: "CS1", courseName: "C", title: "Later",
+            dueDate: now.addingTimeInterval(7200)
+        )
+        let sooner = SDAssignment(
+            assignmentId: "sooner", courseNo: "CS1", courseName: "C", title: "Sooner",
+            dueDate: now.addingTimeInterval(5400)
+        )
+        let viewModel = HomeViewModel()
+        viewModel.allAssignmentsCache = [ignored, later, sooner]
+
+        viewModel.assignmentFilter = .ignored
+
+        #expect(viewModel.upcomingAssignments.map(\.assignmentId) == ["ignored"])
+        #expect(viewModel.assignmentsFor(courseNo: "CS1").map(\.assignmentId) == ["sooner", "later"])
+    }
+#endif
 
     @Test func latestSemesterFilter_excludesOtherSemesters() {
         let currentCourseNos: Set<String> = ["EC1013701", "CS5164701"]
