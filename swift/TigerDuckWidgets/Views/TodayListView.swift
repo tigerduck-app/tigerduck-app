@@ -112,8 +112,8 @@ struct TodayListView: View {
                     .foregroundStyle(primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                if !course.classroom.isEmpty {
-                    Text(course.classroom)
+                if !todayRow.classroom.isEmpty {
+                    Text(todayRow.classroom)
                         .font(.caption2)
                         .foregroundStyle(secondary)
                         .lineLimit(1)

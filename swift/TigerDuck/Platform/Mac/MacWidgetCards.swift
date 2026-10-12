@@ -165,7 +165,9 @@ private struct NextClassWidgetCard: View {
                         Text(primary.course.displayName)
                             .font(.title3.bold())
                             .lineLimit(2)
-                        let classroom = primary.course.classroom(for: primary.date.scheduleWeekday)
+                        let classroom = primary.course.classroom(
+                            weekday: primary.date.scheduleWeekday, periods: primary.periods
+                        )
                         if !classroom.isEmpty {
                             Label(classroom, systemImage: "mappin.and.ellipse")
                                 .font(.callout)

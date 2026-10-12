@@ -13,6 +13,8 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
         let endTime: String
         let periodRange: String            // "B" or "B–C"
         let progress: Double               // 0.0…1.0
+        /// This block's room, not every room of the course.
+        let classroom: String
     }
 
     struct NextInfo: nonisolated Equatable, Sendable {
@@ -20,6 +22,8 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
         let startTime: String
         let periodRange: String
         let day: Day
+        /// The room of the block that starts then.
+        let classroom: String
     }
 
     /// Which day a ``NextInfo`` falls on, relative to the instant the state was derived for.
@@ -73,7 +77,8 @@ enum WidgetTimelineDerivation {
                     startTime: snapshot.periodTimes[first]?.start ?? "",
                     endTime: snapshot.periodTimes[last]?.end ?? "",
                     periodRange: run.count > 1 ? "\(first)–\(last)" : first,
-                    progress: progress.clamped(to: 0...1)
+                    progress: progress.clamped(to: 0...1),
+                    classroom: course.classroom(weekday: weekday, periods: run)
                 )
             }
             return nil
@@ -97,7 +102,8 @@ enum WidgetTimelineDerivation {
                 course: pick.0,
                 startTime: snapshot.periodTimes[pick.2]?.start ?? "",
                 periodRange: pick.2,
-                day: .today
+                day: .today,
+                classroom: blockClassroom(of: pick.0, weekday: weekday, startingAt: pick.2, order: order)
             ))
         }
 
@@ -126,12 +132,25 @@ enum WidgetTimelineDerivation {
                     course: pick.0,
                     startTime: snapshot.periodTimes[pick.1]?.start ?? "",
                     periodRange: pick.1,
-                    day: offset == 1 ? .tomorrow : .later(weekday: target)
+                    day: offset == 1 ? .tomorrow : .later(weekday: target),
+                    classroom: blockClassroom(of: pick.0, weekday: target, startingAt: pick.1, order: order)
                 ))
             }
         }
 
         return .noMoreClasses
+    }
+
+    /// The room of the block of `course` on `weekday` that starts at `periodId`.
+    private static func blockClassroom(
+        of course: SnapshotCourse,
+        weekday: Int,
+        startingAt periodId: String,
+        order: [String]
+    ) -> String {
+        let runs = contiguousRuns(sortPeriods(course.schedule[weekday] ?? [], by: order), by: order)
+        let block = runs.first { $0.first == periodId } ?? [periodId]
+        return course.classroom(weekday: weekday, periods: block)
     }
 
     /// One row of the Today widget: one contiguous block of a course's periods.
@@ -141,6 +160,7 @@ enum WidgetTimelineDerivation {
         let periods: [String]
         let startTime: String
         let endTime: String
+        let classroom: String
 
         var id: String { "\(course.courseNo)-\(periods[0])" }
         var periodRange: String { periods.count > 1 ? "\(periods[0])–\(periods[periods.count - 1])" : periods[0] }
@@ -161,7 +181,8 @@ enum WidgetTimelineDerivation {
                         course: course,
                         periods: run,
                         startTime: snapshot.periodTimes[run[0]]?.start ?? "",
-                        endTime: snapshot.periodTimes[run[run.count - 1]]?.end ?? ""
+                        endTime: snapshot.periodTimes[run[run.count - 1]]?.end ?? "",
+                        classroom: course.classroom(weekday: weekday, periods: run)
                     )
                 }
             }

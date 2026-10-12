@@ -261,13 +261,14 @@ struct LiveActivityScenarioResolverTests {
     // MARK: - What the snapshot carries
 
     @Test func inClassCoversTheBlockInProgress() throws {
-        // Periods 3-4 and 7-8: during the second block the countdown, progress and subtitle
-        // cover that block alone, not the day's first-to-last span.
+        // Periods 3-4 and 7-8 in two rooms: during the second block the countdown, progress,
+        // subtitle and room cover that block alone, not the day's first-to-last span.
         let course = SDCourse(
             courseNo: "CS200",
             courseName: "Compilers",
-            classroom: "TR-313",
-            schedule: [2: ["3", "4", "7", "8"]]
+            classroom: "TR-313, IB-101",
+            schedule: [2: ["3", "4", "7", "8"]],
+            classroomMap: ["2-3": "TR-313", "2-4": "TR-313", "2-7": "IB-101", "2-8": "IB-101"]
         )
         let now = LiveActivityScenarioCases.tuesday(15)
         let timeline = CourseTimelineResolver().timeline(for: [course], around: now)
@@ -287,6 +288,8 @@ struct LiveActivityScenarioResolverTests {
         #expect(snapshot.progressStart == start)
         #expect(snapshot.countdownTarget == end)
         #expect(snapshot.sourceId == "CS200_20260922_7")
+        #expect(slot.periods == ["7", "8"])
+        #expect(snapshot.locationText == "IB-101")
     }
 
     @Test func classPreparingCountsDownToTheStart() throws {

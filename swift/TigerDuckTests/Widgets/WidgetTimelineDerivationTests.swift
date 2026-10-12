@@ -231,6 +231,40 @@ struct WidgetTimelineDerivationTests {
         #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map(\.id) == ["Y-B"])
     }
 
+    /// A course in a different room for each block shows the room of the block in question,
+    /// not every room joined, which the week grid cut to "TR-313, ...".
+    @Test func eachBlockShowsItsOwnRoom() {
+        let twoRooms = SnapshotCourse(
+            courseNo: "X",
+            displayName: "Twice",
+            classroom: "TR-313, IB-101, EE-201",
+            schedule: [1: ["A", "C"], 2: ["B"]],
+            colorHex: 0,
+            classroomMap: ["1-A": "TR-313", "1-C": "IB-101", "2-B": "EE-201"]
+        )
+        let snap = snapshot(courses: [twoRooms])
+
+        if case .ongoing(let infos) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(8, 30)) {
+            #expect(infos.map(\.classroom) == ["TR-313"])
+        } else {
+            Issue.record("Expected .ongoing at 08:30")
+        }
+        if case .nextToday(let info) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 30)) {
+            #expect(info.classroom == "IB-101")
+        } else {
+            Issue.record("Expected .nextToday at 09:30")
+        }
+        if case .tomorrowFirst(let info) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(18, 0)) {
+            #expect(info.classroom == "EE-201")
+        } else {
+            Issue.record("Expected .tomorrowFirst at 18:00")
+        }
+        let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: monday(8, 0))
+        #expect(rows.map(\.classroom) == ["TR-313", "IB-101"])
+        // The week grid asks for a whole block, whose distinct rooms it lists.
+        #expect(twoRooms.classroom(weekday: 1, periods: ["A", "B", "C"]) == "TR-313, IB-101")
+    }
+
     /// Taipei's midnight wherever the device is, since the widget's day is Taipei's.
     @Test func nextMidnight_isTaipeiMidnight() {
         let taipei = WidgetTaipei.calendar

@@ -185,13 +185,17 @@ final class SDCourse: Identifiable {
         classroomMap["\(weekday)-\(period)"] ?? ""
     }
 
-    private static let roomSeparators = CharacterSet(charactersIn: "、，,")
+    /// The room of one block of periods on `weekday`, where ``classroom(for:)`` joins every
+    /// room of the day. Falls back to the flat `classroom` when the map has none for the block.
+    func classroom(weekday: Int, periods: [String]) -> String {
+        CourseBlockRoom.room(
+            weekday: weekday, periods: periods, map: classroomMap, fallback: Self.dedup(classroom)
+        )
+    }
 
     /// Split a classroom string by common separators, trim, drop empties.
     static func splitRoom(_ raw: String) -> [String] {
-        raw.components(separatedBy: roomSeparators)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        CourseBlockRoom.split(raw)
     }
 
     /// Dedup a raw classroom string that may contain separator-joined duplicates.

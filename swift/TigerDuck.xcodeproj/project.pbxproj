@@ -168,6 +168,7 @@
 				Clock/AppClock.swift,
 				Clock/ClockOverride.swift,
 				Shared/ClassTableLayout.swift,
+				Shared/CourseBlockRoom.swift,
 				Shared/CourseCardFontScale.swift,
 				Widgets/WidgetSnapshot.swift,
 			);
@@ -1202,6 +1203,7 @@
 					CourseColorPickerSheet.swift,
 					CourseDetailSheet.swift,
 					ClassTableLayout.swift,
+					CourseBlockRoom.swift,
 					CourseRoomHint.swift,
 					CreditFormat.swift,
 					"View+PlatformCompat.swift",
@@ -1454,6 +1456,7 @@
 					CourseColorPickerSheet.swift,
 					CourseDetailSheet.swift,
 					ClassTableLayout.swift,
+					CourseBlockRoom.swift,
 					CourseRoomHint.swift,
 					CreditFormat.swift,
 					"View+PlatformCompat.swift",

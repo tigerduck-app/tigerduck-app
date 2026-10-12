@@ -34,6 +34,19 @@ struct WidgetSnapshotBuilderTests {
         #expect(snapshot.courses.first?.displayName == "DS")
     }
 
+    @Test func carriesThePerSlotRoomMap() {
+        let course = SDCourse(
+            courseNo: "EC1013701", courseName: "Data Structures", classroom: "TR-313, IB-101",
+            schedule: [1: ["3"], 4: ["7"]], classroomMap: ["1-3": "TR-313", "4-7": "IB-101"]
+        )
+        let input = WidgetSnapshotBuilder.Input(
+            courses: [course], customNames: [:], colorMap: [:], isLoggedIn: true,
+            accentColorHex: 0x007AFF, now: Date()
+        )
+        let snapshot = WidgetSnapshotBuilder.build(input)
+        #expect(snapshot.courses.first?.classroomMap == ["1-3": "TR-313", "4-7": "IB-101"])
+    }
+
     @Test func resolvesDisplayName_fallsBackToCourseName() {
         let course = SDCourse(courseNo: "EC1013701", courseName: "Data Structures",
                               classroom: "TR-313", schedule: [1: ["B"]])

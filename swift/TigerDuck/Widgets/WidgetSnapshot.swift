@@ -40,6 +40,8 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
     /// this set so toggling skip in the app removes the class from "ongoing"
     /// and "next" without waiting for a data refresh.
     let skippedDates: Set<String>
+    /// Room per `"weekday-period"`, as `SDCourse.classroomMap`; `classroom` joins them all.
+    let classroomMap: [String: String]
 
     init(
         courseNo: String,
@@ -47,7 +49,8 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
         classroom: String,
         schedule: [Int: [String]],
         colorHex: UInt32,
-        skippedDates: Set<String> = []
+        skippedDates: Set<String> = [],
+        classroomMap: [String: String] = [:]
     ) {
         self.courseNo = courseNo
         self.displayName = displayName
@@ -55,12 +58,18 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
         self.schedule = schedule
         self.colorHex = colorHex
         self.skippedDates = skippedDates
+        self.classroomMap = classroomMap
+    }
+
+    /// The room of one block of this course's periods on `weekday`.
+    func classroom(weekday: Int, periods: [String]) -> String {
+        CourseBlockRoom.room(weekday: weekday, periods: periods, map: classroomMap, fallback: classroom)
     }
 }
 
 nonisolated extension SnapshotCourse {
     private enum CodingKeys: String, CodingKey {
-        case courseNo, displayName, classroom, schedule, colorHex, skippedDates
+        case courseNo, displayName, classroom, schedule, colorHex, skippedDates, classroomMap
     }
 
     init(from decoder: Decoder) throws {
@@ -71,7 +80,8 @@ nonisolated extension SnapshotCourse {
             classroom: c.decode(String.self, forKey: .classroom),
             schedule: c.decode([Int: [String]].self, forKey: .schedule),
             colorHex: c.decode(UInt32.self, forKey: .colorHex),
-            skippedDates: c.decodeIfPresent(Set<String>.self, forKey: .skippedDates) ?? []
+            skippedDates: c.decodeIfPresent(Set<String>.self, forKey: .skippedDates) ?? [],
+            classroomMap: c.decodeIfPresent([String: String].self, forKey: .classroomMap) ?? [:]
         )
     }
 }

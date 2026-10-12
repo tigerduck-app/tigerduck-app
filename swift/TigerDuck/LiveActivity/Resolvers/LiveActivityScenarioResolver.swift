@@ -87,7 +87,7 @@ struct LiveActivityScenarioResolver {
             // course split within a day, such as P3-P4 plus P7-P8, countdown and progress
             // cover this slot, and the subtitle must match rather than span the gap.
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
-            locationText: slot.course.classroom(for: weekday),
+            locationText: slot.course.classroom(weekday: weekday, periods: slot.periods),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.end,
             progressStart: slot.start < slot.end ? slot.start : nil,
@@ -106,7 +106,7 @@ struct LiveActivityScenarioResolver {
             // specific block, so subtitle must reflect that block — not
             // an earlier block plus the gap leading to this one.
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
-            locationText: slot.course.classroom(for: weekday),
+            locationText: slot.course.classroom(weekday: weekday, periods: slot.periods),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.start,
             progressStart: nil,

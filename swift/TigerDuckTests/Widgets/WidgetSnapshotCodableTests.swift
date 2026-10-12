@@ -48,6 +48,21 @@ struct WidgetSnapshotCodableTests {
         let snapshot = try JSONDecoder().decode(WidgetSnapshot.self, from: data)
         #expect(snapshot.version == 1)
         #expect(!snapshot.courses.isEmpty)
+        // The fixture predates the per-slot room map, which then decodes empty.
+        #expect(snapshot.courses.allSatisfy { $0.classroomMap.isEmpty })
+    }
+
+    @Test func classroomMap_roundTrips() throws {
+        let course = SnapshotCourse(
+            courseNo: "EC1013701",
+            displayName: "資料結構",
+            classroom: "TR-313, IB-101",
+            schedule: [1: ["B"], 3: ["D"]],
+            colorHex: 0xFF6B6B,
+            classroomMap: ["1-B": "TR-313", "3-D": "IB-101"]
+        )
+        let decoded = try JSONDecoder().decode(SnapshotCourse.self, from: JSONEncoder().encode(course))
+        #expect(decoded == course)
     }
 
     /// Tries the test bundle first (works under Xcode when the fixture is added
