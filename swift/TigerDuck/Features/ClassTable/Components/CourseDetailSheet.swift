@@ -9,7 +9,7 @@ import AppKit
 ///   1. Color bar and course title, with an optional Moodle jump button
 ///   2. Two emphasis cards side by side: classroom | time
 ///   3. Flat InfoRow list: instructor, code, dimension, duration, course type, credits, enrollment
-///   4. Outstanding assignments
+///   4. Outstanding assignments, then the course's Moodle section, whose rows push here
 ///
 /// Classroom and time get their own cards because they are the fields users
 /// glance at most when tapping a course, so they stay out of the metadata list.
@@ -17,11 +17,20 @@ struct CourseDetailSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let course: SDCourse
     let assignments: [SDAssignment]
     var timeRange: String? = nil
     var weekday: Int? = nil
+    /// The Mac overlay passes its own, so Escape can go back a screen before it closes.
+    var moodlePath: Binding<[MoodleCourseRoute]>? = nil
+
+    @State private var ownMoodlePath: [MoodleCourseRoute] = []
+    @State private var moodle: MoodleCourseStore?
+    #if os(iOS)
+    @State private var detent: PresentationDetent = .medium
+    #endif
 
     /// Drives the copy row's glyph; flipped back after a beat so the sheet
     /// does not sit in a "copied" state for as long as it stays open.
@@ -30,25 +39,84 @@ struct CourseDetailSheet: View {
     @State private var copyFeedback = 0
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: routes) {
             ScrollView {
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                     headerSection
                     emphasisCards
                     secondaryInfo
                     assignmentsSection
+                    if let moodle {
+                        MoodleCourseSection(store: moodle, policy: appState.visualStylePolicy)
+                    }
                 }
                 .padding(.top, TigerDuckTheme.Spacing.xl)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: moodle?.sectionRows)
+                .moodleSectionRefresh(moodle)
             }
             .background(Color.backgroundPrimary)
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+            .navigationDestination(for: MoodleCourseRoute.self) { route in
+                if let moodle {
+                    moodleDestination(route, store: moodle)
+                }
+            }
         }
+        .task(id: course.courseNo) {
+            // Cached rows are there when the sheet opens; only rows a fetch brings fade in.
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { moodle = makeMoodleStore() }
+        }
+        #if os(iOS)
+        .presentationDetents([.medium, .large], selection: $detent)
+        // A pushed screen is a list or an article, which the medium height would cut in half.
+        .onChange(of: routes.wrappedValue) { _, path in
+            if !path.isEmpty { detent = .large }
+        }
+        #endif
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 360)
         #endif
+    }
+
+    private var routes: Binding<[MoodleCourseRoute]> {
+        moodlePath ?? $ownMoodlePath
+    }
+
+    @ViewBuilder
+    private func moodleDestination(_ route: MoodleCourseRoute, store: MoodleCourseStore) -> some View {
+        switch route {
+        case .announcements:
+            MoodleAnnouncementsView(store: store) { routes.wrappedValue.append($0) }
+        case .announcement(let discussion):
+            MoodleAnnouncementView(store: store, discussion: discussion)
+        }
+    }
+
+    /// Nil for a course with no Moodle course, such as one added by hand, or when signed out.
+    private func makeMoodleStore() -> MoodleCourseStore? {
+        guard let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
+              let courseId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber),
+              let account = appState.authService.storedStudentId else { return nil }
+        let authService = appState.authService
+        let generation = authService.loginGeneration
+        let term = SDCourse.semesterPrefix(ofMoodleId: idnumber)
+        let termCourseIds = DataCache.shared.loadMoodleCourseIdMap()
+            .filter { term != nil && SDCourse.semesterPrefix(ofMoodleId: $0.key) == term }
+            .map(\.value)
+        return MoodleCourseStore(
+            courseId: courseId,
+            termCourseIds: termCourseIds,
+            context: MoodleCacheContext(
+                account: account,
+                cache: .shared,
+                isCurrent: { [weak authService] in authService?.loginGeneration == generation }
+            )
+        )
     }
 
     // MARK: - Header

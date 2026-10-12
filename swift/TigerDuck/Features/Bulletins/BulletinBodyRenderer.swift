@@ -1,4 +1,6 @@
 import Foundation
+import MarkdownUI
+import SwiftUI
 
 /// Cross-platform helpers for rendering a `BulletinAPI.BulletinDetail` body.
 ///
@@ -64,5 +66,35 @@ private nonisolated extension String {
     var trimmedNilIfEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+extension Theme {
+    /// MarkdownUI's theme for an article body, tuned to the app rather than MarkdownUI's
+    /// GitHub-flavoured defaults. School bulletins and Moodle posts share it.
+    static func bulletin(accent: Color) -> Theme {
+        Theme()
+            .text {
+                ForegroundColor(Color.textPrimary)
+            }
+            .link {
+                ForegroundColor(accent)
+                UnderlineStyle(.single)
+            }
+            .strong {
+                FontWeight(.bold)
+            }
+            .emphasis {
+                FontStyle(.italic)
+            }
+            .paragraph { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.25))
+                    .markdownMargin(top: .em(0.6))
+            }
+            .listItem { configuration in
+                configuration.label
+                    .markdownMargin(top: .em(0.3))
+            }
     }
 }
