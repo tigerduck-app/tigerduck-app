@@ -186,8 +186,10 @@ final class CloudSyncCoordinator {
 
         let syncsMarks = syncsAssignmentMarks
         await outbox.drain(holding: { op in
-            if case .assignmentOverride = op { return !syncsMarks() }
-            return false
+            switch op {
+            case .assignmentOverride, .courseIgnore: return !syncsMarks()
+            case .courseOverride: return false
+            }
         }) { [weak self] op in
             guard let self else { throw CancellationError() }
             try await self.execute(op)
@@ -250,6 +252,26 @@ final class CloudSyncCoordinator {
         return ids
     }
 
+    /// Awaitable for the same reason as `enqueueAssignmentOverride`.
+    func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
+        guard state != .disabled else { return }
+        await outbox.enqueue(.courseIgnore(
+            semester: semester, courseNo: courseNo, moodleId: moodleId,
+            moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()))
+    }
+
+    /// `CourseTombstone` keys of the courses whose ignore setting is queued or parked, not yet on
+    /// the server, which a pull leaves as they are here. A numeric id sent alone changes no setting.
+    func pendingCourseIgnoreKeys() async -> Set<String> {
+        var keys = Set<String>()
+        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
+            if case .courseIgnore(let semester, let courseNo, _, _, .some, _) = entry.op {
+                keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
+            }
+        }
+        return keys
+    }
+
     /// Gives each mark the server kept refusing one more try. Called by every full sync, and by
     /// each poll the change feed settles without one.
     func requeueParkedMarks() async {
@@ -266,7 +288,7 @@ final class CloudSyncCoordinator {
             switch op {
             case .courseOverride(let courseId, let colorHex, let customName, let locale):
                 _ = try await pushCoordinator.patchCourseOverride(
-                    moodleCourseId: courseId,
+                    moodleId: courseId,
                     colorHex: colorHex,
                     customName: customName,
                     locale: locale)
@@ -275,6 +297,12 @@ final class CloudSyncCoordinator {
                 try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: String(assignmentId),
                     localStatus: localStatus)
+
+            case .courseIgnore(let courseId, let moodleCourseId, let ignore):
+                _ = try await pushCoordinator.patchCourseOverride(
+                    moodleId: courseId,
+                    ignoreAssignments: ignore,
+                    moodleCourseId: moodleCourseId)
             }
         } catch {
             if isUnauthorized(error) {

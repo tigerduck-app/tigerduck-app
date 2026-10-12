@@ -171,19 +171,25 @@ final class PushAPIClient: Sendable {
         _ = try await execute(request)
     }
 
+    /// `moodleId` is the course's Moodle idnumber, or `{semester}{courseNo}` for a hand-added
+    /// course; `moodleCourseId` is its numeric Moodle id.
     func patchCourseOverride(
-        moodleCourseId: String,
+        moodleId: String,
         colorHex: String? = nil,
         customName: String? = nil,
-        locale: String? = nil
+        locale: String? = nil,
+        ignoreAssignments: Bool? = nil,
+        moodleCourseId: Int? = nil
     ) async throws -> PushAPI.CourseOverrideResponse {
         let body = PushAPI.CourseOverrideRequest(
             colorHex: colorHex,
             customName: customName,
-            locale: locale
+            locale: locale,
+            ignoreAssignments: ignoreAssignments,
+            moodleCourseId: moodleCourseId
         )
         return try await patch(
-            path: "/sync/courses/\(moodleCourseId)/override",
+            path: "/sync/courses/\(moodleId)/override",
             body: body,
             returning: PushAPI.CourseOverrideResponse.self
         )

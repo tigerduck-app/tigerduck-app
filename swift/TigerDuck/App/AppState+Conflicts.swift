@@ -218,8 +218,14 @@ extension AppState {
                     let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
                     let archivedMatch = localArchivedIds == serverArchivedIds
                     let completedMatch = localCompletedIds == serverCompletedIds
-                    AppLogger.sync.info("[reenable] assignments: localArchived=\(localArchivedIds.count, privacy: .public) serverArchived=\(serverArchivedIds.count, privacy: .public) match=\(archivedMatch, privacy: .public) | localCompleted=\(localCompletedIds.count, privacy: .public) serverCompleted=\(serverCompletedIds.count, privacy: .public) match=\(completedMatch, privacy: .public)")
-                    if !archivedMatch || !completedMatch {
+                    let coursesDiffer = Self.ignoredCoursesDiffer(
+                        server: Self.serverIgnoredCourses(json["course_overrides"] as? [[String: Any]] ?? [])
+                            .map { Set($0.map(\.key)) },
+                        local: DataCache.shared.loadIgnoredAssignmentCourses(),
+                        snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })
+                    )
+                    AppLogger.sync.info("[reenable] assignments: localArchived=\(localArchivedIds.count, privacy: .public) serverArchived=\(serverArchivedIds.count, privacy: .public) match=\(archivedMatch, privacy: .public) | localCompleted=\(localCompletedIds.count, privacy: .public) serverCompleted=\(serverCompletedIds.count, privacy: .public) match=\(completedMatch, privacy: .public) | ignoredCoursesDiffer=\(coursesDiffer, privacy: .public)")
+                    if !archivedMatch || !completedMatch || coursesDiffer {
                         diffs.append(String(localized: "sync_conflict_reenable_assignments_differ"))
                     }
                 }
@@ -348,6 +354,7 @@ extension AppState {
                     for id in DataCache.shared.loadLocallyCompletedAssignmentIds() {
                         syncAssignmentOverride(moodleId: id, status: "locally_completed")
                     }
+                    syncCourseIgnores(DataCache.shared.loadIgnoredAssignmentCourses())
                 }
             } else {
                 if conflict.categories.contains("courses") {
@@ -363,6 +370,7 @@ extension AppState {
                 if conflict.categories.contains("assignments") {
                     DataCache.shared.replaceArchivedAssignmentIds([])
                     DataCache.shared.replaceLocallyCompletedAssignmentIds([])
+                    DataCache.shared.replaceIgnoredAssignmentCourses([])
                 }
                 await syncOverridesFromBackend()
             }

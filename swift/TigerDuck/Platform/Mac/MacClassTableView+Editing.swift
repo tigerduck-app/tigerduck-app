@@ -161,6 +161,9 @@ extension MacClassTableView {
         DataCache.shared.setAssignmentsIgnored(ignore, semester: selectedSemester, courseNo: course.courseNo)
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        appState.syncCourseIgnore(
+            semester: selectedSemester, courseNo: course.courseNo, moodleIdNumber: course.moodleIdNumber, ignore: ignore
+        )
     }
 
     /// Right-click "Delete" — mirrors `ClassTableViewModel.deleteCourse` on

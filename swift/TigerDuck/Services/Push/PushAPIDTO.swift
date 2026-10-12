@@ -260,11 +260,17 @@ enum PushAPI {
         let colorHex: String?
         let customName: String?
         let locale: String?
+        var ignoreAssignments: Bool? = nil
+        /// The course's numeric Moodle id, which the assignments the server fetches itself carry;
+        /// the path names the course by its idnumber.
+        var moodleCourseId: Int? = nil
 
         enum CodingKeys: String, CodingKey {
             case colorHex = "color_hex"
             case customName = "custom_name"
             case locale
+            case ignoreAssignments = "ignore_assignments"
+            case moodleCourseId = "moodle_course_id"
         }
     }
 
