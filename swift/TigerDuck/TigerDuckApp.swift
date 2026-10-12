@@ -101,7 +101,9 @@ struct TigerDuckApp: App {
                     }
                     appState.backgroundSync()
                     appState.startCloudSyncIfEnabled()
-                    widgetSnapshotWriter.regenerate()
+                    // A turn later, behind the first frame: the snapshot reads every cache it
+                    // draws from and writes the App Group file.
+                    Task { widgetSnapshotWriter.regenerate() }
                     // `.onChange(of: scenePhase)` does not fire for the initial `.active`
                     // value, so the first background check starts here; later foreground
                     // returns go through the scene-phase observer.
