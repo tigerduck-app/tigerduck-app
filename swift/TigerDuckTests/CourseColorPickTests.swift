@@ -60,4 +60,25 @@ struct CourseColorPickTests {
         #expect(once["CS1"] != Self.red)
         #expect(apply(once) == once)
     }
+
+    @Test("With every preset taken, applying the same server colours again changes nothing")
+    func exhaustedPaletteStaysStable() {
+        var start: [String: UInt32] = [:]
+        for (index, hex) in TigerDuckTheme.coursePaletteHexes.enumerated() {
+            start[String(format: "XX%02d", index)] = hex
+        }
+        // Two rows sharing a colour, the later pick last.
+        let rows: [(courseNo: String, hex: UInt32)] = [("CS1", Self.red), ("CS2", Self.red)]
+        let apply = { (map: [String: UInt32]) in
+            rows.reduce(map) { TigerDuckTheme.assigning($1.hex, to: $1.courseNo, in: $0).map }
+        }
+
+        let once = apply(start)
+
+        #expect(once["CS2"] == Self.red)
+        #expect(Set(once.values).count == once.count)
+        #expect(apply(once) == once)
+        #expect(apply(start) == once)
+    }
 }
+

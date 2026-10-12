@@ -83,8 +83,8 @@ enum TigerDuckTheme {
 
     /// Ensure every passed-in courseNo has a unique assigned color. New
     /// courses pick the first unused preset (starting at their hash index for
-    /// stability); once the 20-color palette is exhausted, fresh random hex
-    /// values fill in.
+    /// stability); once the 20-color palette is exhausted, hex values derived
+    /// from the course number fill in.
     static func ensureAssignments(courseNos: [String]) {
         state.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes)
     }
@@ -110,7 +110,7 @@ enum TigerDuckTheme {
 
     /// Persist a user-picked color for this course. If another course
     /// currently holds the same hex, that other course is reassigned to the
-    /// first unused preset (or a random distinct hex when all 20 are taken)
+    /// first unused preset (or a distinct hex derived from its number when all 20 are taken)
     /// so the uniqueness invariant survives the edit. Returns every course
     /// whose colour changed, with its new colour, displaced ones included.
     @discardableResult
@@ -148,7 +148,7 @@ enum TigerDuckTheme {
     }
 
     /// Clear every assignment and rebuild from scratch using the preset
-    /// palette (falling back to random hex once exhausted). Powers the
+    /// palette (falling back to derived hex once exhausted). Powers the
     /// Settings "Reassign course colors" action.
     static func reassignAll(courseNos: [String]) {
         state.reassignAll(courseNos: courseNos, palette: coursePaletteHexes)
@@ -297,19 +297,22 @@ private final class ColorState: @unchecked Sendable {
     }
 
     /// Pick the first unused preset starting from the seed's hash slot. When
-    /// every preset is already claimed, fall through to a randomly generated
-    /// hex (re-rolled until distinct). The 24-bit color space has 16M values
-    /// against a roster size in the dozens, so the retry loop converges fast
-    /// in practice; the bounded attempt counter guards against a pathological
-    /// `used` set that somehow covers a large fraction of RGB.
+    /// every preset is already claimed, step through hex values derived from
+    /// the seed until one is free, so every device and every sync gives a
+    /// course the same colour. The 24-bit color space has 16M values against
+    /// a roster in the dozens, so this converges fast; the bounded attempt
+    /// counter guards against a `used` set covering a large fraction of RGB.
     private nonisolated static func pickUnusedHex(seed: String, used: Set<UInt32>, palette: [UInt32]) -> UInt32 {
         let start = hashIndex(for: seed, paletteCount: palette.count)
         for offset in 0..<palette.count {
             let candidate = palette[(start + offset) % palette.count]
             if !used.contains(candidate) { return candidate }
         }
+        var state: UInt32 = 2_166_136_261
+        for c in seed.unicodeScalars { state = (state ^ c.value) &* 16_777_619 }
         for _ in 0..<256 {
-            let candidate = UInt32.random(in: 0...0xFFFFFF)
+            state = state &* 1_664_525 &+ 1_013_904_223
+            let candidate = state >> 8
             if !used.contains(candidate) { return candidate }
         }
         // Reaching here implies over 16M assigned colors, impossible for a class
