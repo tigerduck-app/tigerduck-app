@@ -66,18 +66,28 @@ final class WidgetSnapshotWriter {
         }
     }
 
-    /// Every published school holiday, as `yyyy-MM-dd` keys, for the widget snapshot and the
-    /// Watch payload. Not windowed to the widget's horizon: only the app writes the snapshot,
-    /// and a widget keeps reloading the last one while the app stays closed. A
-    /// horizon measured from write time would expire while the snapshot lives
-    /// on, and the first holiday past it would render as a class that is not
-    /// happening. A term's holidays are a few dozen dates, so the whole
-    /// published set is cheaper than that bug.
+    private static let outsideTermHorizonDays = 366
+
+    /// The days classes do not meet, as `yyyy-MM-dd` keys, for the widget snapshot and the Watch
+    /// payload: every published holiday the user has left quiet, and the days outside the term in
+    /// the coming year. Holidays are not windowed: only the app writes the snapshot, and a widget
+    /// keeps reloading the last one while the app stays closed, so a horizon measured from write
+    /// time would expire while the snapshot lives on and show a class that is not happening. The
+    /// days after the last published term never end, so those stop a year out.
     static func quietDayKeys() -> Set<String> {
         let store = AcademicCalendarStore.shared
-        let optedIn = store.optedInHolidayIDs
-        let calendar = store.calendar
+        return quietDayKeys(calendar: store.calendar, optedIn: store.optedInHolidayIDs, now: AppClock.now())
+    }
+
+    static func quietDayKeys(calendar: AcademicCalendar, optedIn: Set<Int>, now: Date) -> Set<String> {
         var keys: Set<String> = []
+        let today = AcademicCalendar.startOfDay(now)
+        for offset in 0..<outsideTermHorizonDays {
+            guard let day = AcademicCalendar.calendar.date(byAdding: .day, value: offset, to: today),
+                  !calendar.isInSession(on: day)
+            else { continue }
+            keys.insert(WidgetTimelineDerivation.dateKey(for: day))
+        }
         for holiday in calendar.holidays {
             var day = AcademicCalendar.startOfDay(holiday.start)
             let last = AcademicCalendar.startOfDay(holiday.end)
@@ -130,7 +140,7 @@ final class WidgetSnapshotWriter {
 
     private func attachObservers() {
         let center = NotificationCenter.default
-        let names: [(name: Notification.Name, forceReload: Bool)] = [
+        var names: [(name: Notification.Name, forceReload: Bool)] = [
             (AppConstants.dataDidUpdate, false),
             // The widgets render their text in the new language, which no snapshot field
             // holds, so these two reload even when the snapshot is unchanged.
@@ -141,6 +151,10 @@ final class WidgetSnapshotWriter {
             (AppConstants.accentColorDidChange, false),
             (NSLocale.currentLocaleDidChangeNotification, true),
         ]
+        #if DEBUG
+        // The days outside the term are listed from the app clock's today.
+        names.append((DebugClockController.didChangeNotification, false))
+        #endif
         for (name, forceReload) in names {
             let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 // The queue is .main, but strict concurrency still needs a MainActor

@@ -82,4 +82,61 @@ struct WidgetSnapshotWriterTests {
         try await waitUntil { coordinator.pendingTask != reload }
         withExtendedLifetime(writer) {}
     }
+
+    // MARK: - Quiet days
+
+    private static func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        AcademicCalendar.calendar.date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    /// No class meets outside the term: between terms, or once the next term's timetable is in
+    /// but before its classes begin. The widgets and the Watch read these keys alone.
+    @Test func daysOutsideTheTermAreQuiet() {
+        let calendar = AcademicCalendar(
+            revision: 1,
+            terms: [
+                SemesterTerm(code: "1151", start: Self.day(2026, 9, 14), end: Self.day(2027, 1, 8)),
+                SemesterTerm(code: "1152", start: Self.day(2027, 2, 22), end: Self.day(2027, 6, 18)),
+            ],
+            holidays: [
+                Holiday(
+                    id: 1, nameZh: "國慶日", nameEn: "National Day",
+                    start: Self.day(2026, 10, 10), end: Self.day(2026, 10, 10)
+                ),
+            ]
+        )
+
+        let keys = WidgetSnapshotWriter.quietDayKeys(
+            calendar: calendar, optedIn: [], now: Self.day(2026, 9, 1).addingTimeInterval(9 * 3600)
+        )
+
+        #expect(keys.contains("2026-09-01"), "today, before the term begins")
+        #expect(keys.contains("2026-09-13"), "the day before the term begins")
+        #expect(!keys.contains("2026-09-14"), "the term's first day")
+        #expect(keys.contains("2026-10-10"), "a holiday in the term")
+        #expect(!keys.contains("2027-01-08"), "the term's last day")
+        #expect(keys.contains("2027-01-09"), "between terms")
+        #expect(keys.contains("2027-02-21"), "the day before the next term")
+        #expect(!keys.contains("2027-02-22"), "the next term's first day")
+        #expect(keys.contains("2027-06-19"), "after the last published term")
+    }
+
+    /// The days after the last published term never end, so the list stops a year out. With no
+    /// term known every day counts as in term, so a device that never reached the backend hides
+    /// nothing.
+    @Test func daysOutsideTheTermStopAYearOut() {
+        let ended = AcademicCalendar(
+            revision: 1,
+            terms: [SemesterTerm(code: "1142", start: Self.day(2026, 2, 16), end: Self.day(2026, 6, 19))],
+            holidays: []
+        )
+        let now = Self.day(2026, 10, 13).addingTimeInterval(9 * 3600)
+
+        let keys = WidgetSnapshotWriter.quietDayKeys(calendar: ended, optedIn: [], now: now)
+
+        #expect(keys.count == 366)
+        #expect(keys.min() == "2026-10-13")
+        #expect(keys.max() == "2027-10-13")
+        #expect(WidgetSnapshotWriter.quietDayKeys(calendar: .empty, optedIn: [], now: now).isEmpty)
+    }
 }

@@ -21,8 +21,8 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
     /// decodes it via `JSONDecoder().decode(ClockOverride.self, ...)`.
     /// `nil` when no debug override is active.
     public let clockOverrideJSON: String?
-    /// `yyyy-MM-dd` days classes do not meet: holidays the user has not opted back into.
-    /// Empty in a payload from a phone that does not send them.
+    /// `yyyy-MM-dd` days classes do not meet: holidays the user has not opted back into, and
+    /// days outside the term. Empty in a payload from a phone that does not send them.
     public let quietDays: Set<String>
 
     public static let defaultAccentHex = "#FF8800"
