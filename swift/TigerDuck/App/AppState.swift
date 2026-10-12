@@ -189,6 +189,9 @@ final class AppState {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
+        revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
+        revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin() ?? false }
+
         // Apply a stored in-app language override at launch so lookups use it. Skip
         // "system": apply() would remove AppleLanguages, wiping the per-app override
         // that iOS Settings writes to the same key.
@@ -198,7 +201,6 @@ final class AppState {
     }
 
     deinit {
-        revisionPollTimer?.invalidate()
         #if os(iOS)
         pendingRefreshTask?.cancel()
         boundaryRefreshTask?.cancel()
@@ -282,9 +284,9 @@ final class AppState {
     @ObservationIgnored
     var _lastKnownRevision: Int = 0
 
-    /// Repeating timer that fires every 10 s while the app is foregrounded.
+    /// Polls the revision while the app is in the foreground.
     @ObservationIgnored
-    var revisionPollTimer: Timer?
+    let revisionPoller = RevisionPoller()
 
     #if os(iOS)
     // MARK: - Live Activity (iOS only — ActivityKit is platform-restricted;

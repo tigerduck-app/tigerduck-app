@@ -122,6 +122,7 @@ extension AppState {
         NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
         guard Defaults[.cloudSyncEnabled] else { return }
         enqueueHolidayUpload(holidayID: holidayID)
+        revisionPoller.noteActivity()
     }
 
     /// Abandon queued holiday uploads. Called at logout: the queue holds the departing account's

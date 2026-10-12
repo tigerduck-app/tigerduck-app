@@ -342,6 +342,7 @@ extension AppState {
             pendingOverrides.remove(moodleId)
         }
         cloudSyncCoordinator.scheduleTick(after: 1)
+        revisionPoller.noteActivity()
     }
 
     func syncCourseOverride(
@@ -361,6 +362,7 @@ extension AppState {
                 moodleId: moodleCourseId, semester: semester, customName: customName, locale: locale)
         }
         cloudSyncCoordinator.scheduleTick(after: 1)
+        revisionPoller.noteActivity()
     }
 
     func deleteBackendCourse(courseNo: String, semester: String) {
@@ -373,6 +375,7 @@ extension AppState {
         // .../override takes, deletes nothing and writes no tombstone; the course comes back.
         let courseKey = "client:\(semester):\(courseNo)"
         let coordinator = pushCoordinator
+        revisionPoller.noteActivity()
         Task.detached {
             do {
                 try await coordinator.deleteCourse(courseKey: courseKey)
