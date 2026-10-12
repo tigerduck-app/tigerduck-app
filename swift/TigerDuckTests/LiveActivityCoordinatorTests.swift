@@ -16,12 +16,14 @@ struct LiveActivityCoordinatorTests {
         activityId: String,
         countdownTarget: Date?,
         scenario: LiveActivityScenarioKind = .inClass,
+        sourceId: String = "TEST100_20260925_3",
         hasPushToken: Bool = false,
         isLive: Bool = true
     ) -> LiveActivityCoordinator.RunningActivityFacts {
         .init(
             instanceId: instanceId,
             activityId: activityId,
+            sourceId: sourceId,
             scenario: scenario,
             countdownTarget: countdownTarget,
             hasPushToken: hasPushToken,
@@ -266,6 +268,62 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
+    // MARK: - Assignments no longer outstanding
+
+    /// The assignment cache: 901 submitted, 902 ignored, 903 marked done, 904 still open. No
+    /// assignment 905 is cached, as after a refresh that no longer lists it.
+    private static let cachedAssignments = [
+        SDAssignment(
+            assignmentId: "901", courseNo: "CS101", courseName: "Algorithms", title: "Lab 1",
+            dueDate: now.addingTimeInterval(3600), isCompleted: true
+        ),
+        SDAssignment(
+            assignmentId: "902", courseNo: "CS101", courseName: "Algorithms", title: "Lab 2",
+            dueDate: now.addingTimeInterval(3600), isArchived: true
+        ),
+        SDAssignment(
+            assignmentId: "903", courseNo: "CS101", courseName: "Algorithms", title: "Lab 3",
+            dueDate: now.addingTimeInterval(3600), isLocallyCompleted: true
+        ),
+        SDAssignment(
+            assignmentId: "904", courseNo: "CS101", courseName: "Algorithms", title: "Lab 4",
+            dueDate: now.addingTimeInterval(3600)
+        ),
+    ]
+
+    /// The lookup `AppState` installs, over `cachedAssignments`.
+    private static func isOutstanding(_ id: String) -> Bool? {
+        LiveActivityScenarioResolver.isOutstanding(assignmentId: id, in: cachedAssignments)
+    }
+
+    private static func assignmentFacts(
+        instanceId: String,
+        assignmentId: String
+    ) -> LiveActivityCoordinator.RunningActivityFacts {
+        facts(
+            instanceId: instanceId,
+            activityId: "assignmentUrgent::\(assignmentId)",
+            countdownTarget: now.addingTimeInterval(3600),
+            scenario: .assignmentUrgent,
+            sourceId: assignmentId
+        )
+    }
+
+    @Test func doneAssignmentsEndTheirActivities() {
+        // The backend ends a "due soon" activity only at the due date, so the device ends it once
+        // the cache says the assignment is submitted, ignored or marked done. 905 keeps its own.
+        let all = ["901", "902", "903", "904", "905"].enumerated().map { index, id in
+            Self.assignmentFacts(instanceId: "i\(index + 1)", assignmentId: id)
+        }
+
+        #expect(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
+        #expect(
+            Set(LiveActivityCoordinator.instanceIdsToEnd(
+                all, now: Self.now, isAvailable: true, isAssignmentOutstanding: Self.isOutstanding
+            )) == ["i1", "i2", "i3"]
+        )
+    }
+
     // MARK: - Handling one activity (shared by prune and newly appearing activities)
 
     @Test("新出現的不上課日子課堂活動會被結束，不會留下來註冊 token")
@@ -276,7 +334,11 @@ struct LiveActivityCoordinatorTests {
         let holidayEnds = Self.now.addingTimeInterval(12 * 3600)
         func reason(_ fact: LiveActivityCoordinator.RunningActivityFacts) -> LiveActivityCoordinator.EndReason? {
             LiveActivityCoordinator.endReason(
-                for: fact, now: Self.now, isAvailable: true, isQuietDay: { $0 < holidayEnds }
+                for: fact,
+                now: Self.now,
+                isAvailable: true,
+                isQuietDay: { $0 < holidayEnds },
+                isAssignmentOutstanding: { _ in nil }
             )
         }
 
@@ -304,6 +366,29 @@ struct LiveActivityCoordinatorTests {
         #expect(reason(schoolDayClass) == nil)
     }
 
+    @Test func doneAssignmentIsEndedNotKept() {
+        // A server-started activity for an assignment done since gets a reason on arrival, so its
+        // token is never registered. Only assignment activities are looked up in the cache.
+        func reason(_ fact: LiveActivityCoordinator.RunningActivityFacts) -> LiveActivityCoordinator.EndReason? {
+            LiveActivityCoordinator.endReason(
+                for: fact,
+                now: Self.now,
+                isAvailable: true,
+                isQuietDay: { _ in false },
+                isAssignmentOutstanding: { _ in false }
+            )
+        }
+        let preparing = Self.facts(
+            instanceId: "i2",
+            activityId: "classPreparing-B",
+            countdownTarget: Self.now.addingTimeInterval(3600),
+            scenario: .classPreparing
+        )
+
+        #expect(reason(Self.assignmentFacts(instanceId: "i1", assignmentId: "901")) == .assignmentDone)
+        #expect(reason(preparing) == nil)
+    }
+
     @Test("理由的先後：不可用、倒數已過、不上課")
     func endReasonPrecedence() {
         let expiredClass = Self.facts(
@@ -314,7 +399,11 @@ struct LiveActivityCoordinatorTests {
         )
         let reason = { (available: Bool) in
             LiveActivityCoordinator.endReason(
-                for: expiredClass, now: Self.now, isAvailable: available, isQuietDay: { _ in true }
+                for: expiredClass,
+                now: Self.now,
+                isAvailable: available,
+                isQuietDay: { _ in true },
+                isAssignmentOutstanding: { _ in nil }
             )
         }
 
@@ -326,7 +415,8 @@ struct LiveActivityCoordinatorTests {
 
     private static func snapshot(
         _ scenario: LiveActivityScenarioKind,
-        countdownTarget: Date?
+        countdownTarget: Date?,
+        sourceId: String = "TEST100_20260925_3"
     ) -> LiveActivitySnapshot {
         LiveActivitySnapshot(
             scenario: scenario,
@@ -338,7 +428,7 @@ struct LiveActivityCoordinatorTests {
             progressStart: nil,
             accentHex: 0,
             deepLink: nil,
-            sourceId: "TEST100_20260925_3"
+            sourceId: sourceId
         )
     }
 
@@ -358,7 +448,8 @@ struct LiveActivityCoordinatorTests {
             LiveActivityCoordinator.canStart(
                 Self.snapshot(scenario, countdownTarget: target),
                 isAvailable: available,
-                isQuietDay: isQuietDay
+                isQuietDay: isQuietDay,
+                isAssignmentOutstanding: { _ in nil }
             )
         }
 
@@ -367,6 +458,27 @@ struct LiveActivityCoordinatorTests {
         #expect(canStart(.assignmentUrgent, isQuietDay: quiet))
         #expect(canStart(.inClass, isQuietDay: schoolDay))
         #expect(!canStart(.assignmentUrgent, available: false, isQuietDay: schoolDay))
+    }
+
+    @Test func doneAssignmentStopsTheStart() {
+        // The resolver picked the assignment before the prune's await; one marked done meanwhile
+        // must not start. An open one starts, and so does one the cache does not hold.
+        func canStart(_ assignmentId: String) -> Bool {
+            LiveActivityCoordinator.canStart(
+                Self.snapshot(
+                    .assignmentUrgent,
+                    countdownTarget: Self.now.addingTimeInterval(3600),
+                    sourceId: assignmentId
+                ),
+                isAvailable: true,
+                isQuietDay: { _ in false },
+                isAssignmentOutstanding: Self.isOutstanding
+            )
+        }
+
+        #expect(!canStart("903"))
+        #expect(canStart("904"))
+        #expect(canStart("905"))
     }
 
     @Test("判斷的是課堂自己的那一天")

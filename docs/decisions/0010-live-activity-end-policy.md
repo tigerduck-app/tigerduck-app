@@ -1,4 +1,4 @@
-# 0010. End Live Activities only for expiry, duplicates, quiet days or unavailability
+# 0010. End Live Activities only for expiry, duplicates, quiet days, done assignments or unavailability
 
 Status: accepted
 
@@ -12,9 +12,11 @@ ends each with the end job it files when the device registers its update token
 resolver returns one snapshot at a time. ActivityKit does not end an activity when its
 `staleDate` passes. The backend checks holidays only when a start push fires
 (`server/push/pipeline.py`), so a holiday published later, or "still have class" switched off
-after an activity appeared, never reaches one already running. While Live Activity is
-unavailable (`effectiveLiveActivityEnabled` is false), the backend can still start activities
-from a schedule uploaded earlier.
+after an activity appeared, never reaches one already running. An assignment activity's end
+job is filed for its due date, so it stays until then after its assignment is submitted,
+ignored or marked done (https://github.com/tigerduck-app/tigerduck-app/issues/329). While Live
+Activity is unavailable (`effectiveLiveActivityEnabled` is false), the backend can still start
+activities from a schedule uploaded earlier.
 
 ## Decision
 
@@ -27,6 +29,9 @@ from a schedule uploaded earlier.
     lowest `Activity.id`;
   - class activities on a day classes do not meet, by the academic calendar and the user's
     "still have class" choices; assignment activities stay;
+  - assignment activities whose assignment is in the assignment cache and no longer outstanding
+    by `LiveActivityScenarioResolver.isOutstanding` (submitted, ignored or marked done), looked
+    up by `snapshot.sourceId`; one missing from the cache stays;
   - every activity while Live Activity is unavailable, with no update token registered.
 - The rules are static functions over `RunningActivityFacts`, testable without ActivityKit:
   `endReason` (`instanceIdsToEnd` is its batch form) and `duplicateInstanceIdsToEnd`. `apply`
