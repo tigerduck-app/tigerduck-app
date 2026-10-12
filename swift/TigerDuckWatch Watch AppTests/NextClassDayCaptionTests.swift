@@ -23,7 +23,7 @@ struct NextClassDayCaptionTests {
         String.localizedStringWithFormat(String(localized: "widget_tomorrow_time"), time)
     }
 
-    private var tue: String { String(localized: "weekday_tue_short") }
+    private var tue: String { String(localized: "weekday_tue_caption") }
 
     @Test func headline_namesTheDayTheClassMeets() {
         #expect(NextClassResolver.Day.today.headline == String(localized: "watch_next"))
@@ -32,8 +32,8 @@ struct NextClassDayCaptionTests {
     }
 
     @Test(arguments: zip(1...7, [
-        "weekday_mon_short", "weekday_tue_short", "weekday_wed_short", "weekday_thu_short",
-        "weekday_fri_short", "weekday_sat_short", "weekday_sun_short",
+        "weekday_mon_caption", "weekday_tue_caption", "weekday_wed_caption", "weekday_thu_caption",
+        "weekday_fri_caption", "weekday_sat_caption", "weekday_sun_caption",
     ]))
     func aLaterDay_isNamedByItsWeekday(weekday: Int, key: String) {
         let name = String(localized: String.LocalizationValue(key))
@@ -69,8 +69,8 @@ struct NextClassDayCaptionTests {
     @Test func captionKeysResolveInTheWatchAppAndTheComplication() throws {
         let keys = [
             "watch_next", "widget_tomorrow", "widget_tomorrow_time",
-            "weekday_mon_short", "weekday_tue_short", "weekday_wed_short", "weekday_thu_short",
-            "weekday_fri_short", "weekday_sat_short", "weekday_sun_short",
+            "weekday_mon_caption", "weekday_tue_caption", "weekday_wed_caption", "weekday_thu_caption",
+            "weekday_fri_caption", "weekday_sat_caption", "weekday_sun_caption",
         ]
         let appex = try #require(Bundle.main.builtInPlugInsURL?.appendingPathComponent("TigerDuckWatchWidgetExtension.appex"))
         let complication = try #require(Bundle(url: appex))
