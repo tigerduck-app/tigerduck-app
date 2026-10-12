@@ -19,7 +19,7 @@ enum WidgetSnapshotBuilder {
         let isLoggedIn: Bool
         let accentColorHex: UInt32
         let now: Date
-        /// School holidays the user has not opted back into, as
+        /// Days classes do not meet, `WidgetSnapshotWriter.quietDayKeys()`, as
         /// `yyyy-MM-dd` keys. Defaults to empty so a caller that has no
         /// calendar behaves as the widget did before holidays existed.
         var quietDayKeys: Set<String> = []

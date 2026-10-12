@@ -154,7 +154,7 @@ final class AppState {
             self?.isLiveActivityAvailable ?? false
         }
         liveActivityCoordinator.setQuietDayProvider { day in
-            AcademicCalendarStore.shared.suppressesClasses(on: day)
+            !AcademicCalendarStore.shared.isClassDay(day)
         }
         liveActivityCoordinator.setAssignmentOutstandingProvider { id in
             LiveActivityScenarioResolver.isOutstanding(
