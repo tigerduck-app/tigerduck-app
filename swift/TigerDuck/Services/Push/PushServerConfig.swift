@@ -79,7 +79,7 @@ nonisolated enum PushServerConfig {
         }
         // Should be unreachable: only the scheme changed on a URL that
         // URLComponents already parsed. Returning `url` revives the handshake
-        // failure this helper prevents, so assert and report it to Sentry.
+        // failure this helper prevents, so assert and log it.
         assertionFailure("PushServerConfig.normalize: URLComponents.url returned nil after scheme rewrite for \(url.absoluteString)")
         AppLogger.captureError(
             PushServerConfigError.schemeRewriteProducedNilURL,
@@ -208,7 +208,7 @@ nonisolated enum PushServerConfig {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist") else {
             // A missing file is the normal case: only contributors who point
             // a Debug build at a LAN backend create `Secrets.plist`.
-            // Stay silent here so we don't spam Sentry on every cold start.
+            // Stay silent here so every cold start does not log an error.
             return nil
         }
         do {
@@ -219,7 +219,7 @@ nonisolated enum PushServerConfig {
             return parsed as? NSDictionary
         } catch {
             // The file exists but does not parse (corrupt, wrong root type or
-            // format). Report it so the failure is diagnosable in Sentry.
+            // format). Log it so the failure is diagnosable.
             AppLogger.captureError(error, context: ["phase": "secretsPlist.parse"])
             return nil
         }

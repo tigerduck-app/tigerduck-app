@@ -1,6 +1,6 @@
 # TigerDuck 第三方庫導入遷移計畫
 
-> 現況（2026-10-10，依 `Package.resolved`）：Valet、SwiftSoup、Sentry、Defaults 已導入；Alamofire、Siren、WhatsNewKit、Pulse、Nuke 未導入，版本更新提醒與新功能介紹改由 App 自行實作（`Services/API/AppStoreUpdateService.swift`、`Features/Updates/`）。「附帶發現：架構債」中，SwiftData 與 DataCache 雙寫仍存在；Moodle 已改用 OIDC token，sesskey 重認證一項不再適用；`AppLogger` 已在送往 Sentry 前遮蔽敏感資訊。以下為 2026-04-18 的原始計畫，文中路徑以當時為準。
+> 現況（2026-10-10，依 `Package.resolved`）：Valet、SwiftSoup、Defaults 已導入，Sentry 導入後已於 2026-10-12 移除（#294）；Alamofire、Siren、WhatsNewKit、Pulse、Nuke 未導入，版本更新提醒與新功能介紹改由 App 自行實作（`Services/API/AppStoreUpdateService.swift`、`Features/Updates/`）。「附帶發現：架構債」中，SwiftData 與 DataCache 雙寫仍存在；Moodle 已改用 OIDC token，sesskey 重認證一項不再適用；`AppLogger` 只把錯誤寫進裝置上的系統日誌，寫入前遮蔽 token、密碼與網址的查詢字串。以下為 2026-04-18 的原始計畫，文中路徑以當時為準。
 
 > 版本：2026-04-18
 > 目標：將目前全手刻的核心元件逐步替換為業界成熟庫，以降低維護負擔、減少邊界案例 bug、提升可觀測性。
@@ -372,6 +372,8 @@ final class NTUSTAuthInterceptor: RequestInterceptor {
 ---
 
 ## ④ Crash / Error 監控 → Sentry
+
+> 2026-10-12 已移除（#294）：發布版本從未設定 DSN，Sentry 沒有收到過任何事件。錯誤現在只寫進裝置上的系統日誌（`Services/Logging/AppLogger.swift`）。以下保留原始計畫。
 
 - **分支**：`feature/lib-sentry`
 - **庫**：[Sentry Cocoa SDK](https://github.com/getsentry/sentry-cocoa)

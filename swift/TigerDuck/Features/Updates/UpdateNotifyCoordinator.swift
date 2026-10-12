@@ -52,7 +52,7 @@ final class UpdateNotifyCoordinator {
         case failed
     }
 
-    /// Where the check's errors go: Sentry in the app, a recorder in tests.
+    /// Where the check's errors go: `AppLogger` in the app, a recorder in tests.
     typealias ErrorReporter = @Sendable (any Error, [String: String]) -> Void
 
     private let bundleId: String
