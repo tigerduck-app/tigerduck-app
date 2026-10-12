@@ -210,4 +210,39 @@ struct WidgetSnapshotWriterTests {
             Issue.record("Expected the next term's first class, got \(derived)")
         }
     }
+
+    /// The Watch gets the same quiet days, may keep its last payload as long, and also looks a
+    /// week ahead: the evening before the term's last day it offers that day's class, and on the
+    /// last evening, a year after the payload, no class from the days after the term.
+    @Test func aYearOldWatchPayloadOffersNoClassAfterTheTerm() throws {
+        let written = Self.day(2026, 10, 13).addingTimeInterval(9 * 3600)
+        let lastDay = try #require(AcademicCalendar.calendar.date(byAdding: .day, value: 365, to: written))
+        let calendar = AcademicCalendar(
+            revision: 1,
+            terms: [
+                SemesterTerm(
+                    code: "1161", start: Self.day(2027, 9, 13), end: AcademicCalendar.startOfDay(lastDay)
+                ),
+            ],
+            holidays: []
+        )
+        let everyDay = SDCourse(
+            courseNo: "TEST100",
+            courseName: "Test",
+            schedule: Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        )
+        let payload = WatchPayloadEncoder.encode(
+            courses: [everyDay], customNames: [:], accentHex: "#FF8800", syncedAt: written,
+            loggedIn: true, languageTag: nil, visualPreset: .default,
+            quietDays: WidgetSnapshotWriter.quietDayKeys(calendar: calendar, optedIn: [], now: written)
+        )
+
+        let evening = lastDay.addingTimeInterval(11 * 3600)
+        let eveningBefore = try #require(AcademicCalendar.calendar.date(byAdding: .day, value: -1, to: evening))
+        let before = NextClassResolver.resolve(courses: payload.courses, now: eveningBefore, quietDays: payload.quietDays)
+        #expect(before.next != nil)
+        #expect(before.nextDay == .tomorrow)
+        let last = NextClassResolver.resolve(courses: payload.courses, now: evening, quietDays: payload.quietDays)
+        #expect(last.next == nil)
+    }
 }
