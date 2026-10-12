@@ -722,6 +722,8 @@ struct MailMessageViewModelTests {
     /// The rule list depends only on the image allowance. A light mode switch keeps it, so there
     /// is nothing to compile: the new page goes on at once, with no compile to wait behind. A
     /// change of allowance still compiles and installs its own list.
+    /// CI picks it by name to run after the other tests: see `webkit_tests` in
+    /// `.github/workflows/tests.yaml`.
     @Test func aLightModeSwitchReusesTheInstalledRules() async {
         let webView = WKWebView(frame: .zero, configuration: MailWebViewFactory.makeConfiguration(inlineImages: [:]))
         var view = MailHTMLView(html: "<p>x</p>", linkCount: 0, inlineImages: [:], allowRemoteImages: false,
