@@ -5,8 +5,6 @@ import Foundation
 /// fallback for a block the map has no room for. Compiled into the widget extension as well,
 /// which has no `SDCourse`, so it works on the map and strings alone.
 nonisolated enum CourseBlockRoom {
-    /// The distinct rooms of `periods` on `weekday`, in period order, or `fallback` when the
-    /// map holds none of them.
     static func room(
         weekday: Int,
         periods: [String],

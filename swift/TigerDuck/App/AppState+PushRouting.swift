@@ -30,8 +30,8 @@ extension AppState {
         }
     }
 
-    /// The cached assignment an assignment reminder names by `moodle_assignment_id`, or `nil`
-    /// for any other `kind` or an assignment this device has not fetched.
+    /// The reminder's `moodle_assignment_id` is the Moodle assign id `SDAssignment.assignmentId`
+    /// holds, so the cached row is found by it; an assignment not fetched here yet has none.
     static func remindedAssignment(
         from userInfo: [AnyHashable: Any],
         in assignments: [SDAssignment]

@@ -4,7 +4,6 @@ import Testing
 
 @MainActor
 struct CourseTimeSlotTests {
-    /// Tuesday 2026-09-22 in Taipei.
     private static let tuesday = AppConstants.taipeiCalendar.date(
         from: DateComponents(year: 2026, month: 9, day: 22, hour: 9)
     )!

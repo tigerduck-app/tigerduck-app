@@ -13,7 +13,6 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         var isPaired = true
         var isWatchAppInstalled = true
         var isReachable = true
-        /// How many of the next context pushes throw.
         var failingPushes = 0
         func updateApplicationContext(_ context: [String: Any]) throws {
             if failingPushes > 0 {
