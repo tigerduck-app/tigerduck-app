@@ -38,13 +38,15 @@ later build. Only the iOS build syncs the document: every synced field lives on
   foreign value found only in the hours field is not kept: every writer that knows the minutes
   field mirrors into it, so it can only come from a client older than that field. Both arrays
   are written descending, so the document is deterministic (`Set` order is not stable).
-- `courses` has no device switch: it syncs whenever cloud sync is on. Its
-  `reminder_offsets_minutes` holds the one class reminder lead time the app offers, in whole
-  minutes, as Android types the key `List<Int>?`. A list the app cannot show, a value it does not
-  offer or more than one, is written back as the document holds it until the user picks a lead
-  time on this device (`LiveActivityPreferencesStore.keepsForeignClassReminderOffsets`), so a
-  push for another setting does not replace another client's choice. A pull shows the list's
-  smallest value when the app offers it.
+- `courses` has no device switch: it syncs whenever cloud sync is on. The backend reads a
+  missing field as on and 10 minutes before (`course_reminder_default_offsets_minutes`), the
+  app's defaults too. `reminder_offsets_minutes` holds the one class reminder lead time the app
+  offers, in whole minutes, as Android types the key `List<Int>?`. A push writes it only when the
+  user picked a lead time on this device since the list was last adopted
+  (`LiveActivityPreferencesStore.hasPickedClassReminderLead`), or when the document has none;
+  otherwise the merge keeps the document's list, which may hold a value the app does not offer
+  or several, so a push for another setting never replaces another client's choice. A pull
+  shows the list's smallest value when the app offers it.
 
 ## Alternatives
 

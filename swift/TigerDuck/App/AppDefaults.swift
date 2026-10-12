@@ -102,9 +102,9 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.isClassReminderEnabled,
         default: true
     )
-    /// See `LiveActivityPreferencesStore.keepsForeignClassReminderOffsets`.
-    static let keepsForeignClassReminderOffsets = Key<Bool>(
-        AppConstants.UserDefaultsKeys.keepsForeignClassReminderOffsets,
+    /// See `LiveActivityPreferencesStore.hasPickedClassReminderLead`.
+    static let hasPickedClassReminderLead = Key<Bool>(
+        AppConstants.UserDefaultsKeys.hasPickedClassReminderLead,
         default: false
     )
     static let isLiveActivityEnabled = Key<Bool>(

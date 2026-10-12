@@ -68,15 +68,15 @@ final class LiveActivityPreferencesStore {
         didSet {
             Defaults[.classReminderLeadMinutes] = classReminderLeadMinutes
             guard !isApplyingRemoteUpdate else { return }
-            keepsForeignClassReminderOffsets = false
+            hasPickedClassReminderLead = true
             notifyChange(isRemoteOrigin: false)
         }
     }
-    /// The document holds class reminder offsets this build offers no choice for, from another
-    /// client or a newer build. A push writes them back as they are until the user picks a lead
-    /// time here (`NotificationSettingsSync.LocalPreferences.coursesSection`).
-    private(set) var keepsForeignClassReminderOffsets: Bool {
-        didSet { Defaults[.keepsForeignClassReminderOffsets] = keepsForeignClassReminderOffsets }
+    /// The user picked `classReminderLeadMinutes` here since the document's class reminder
+    /// offsets were last adopted. Until then a push leaves those offsets as they are: they may
+    /// hold values this build has no choice for, from another client or a newer build.
+    private(set) var hasPickedClassReminderLead: Bool {
+        didSet { Defaults[.hasPickedClassReminderLead] = hasPickedClassReminderLead }
     }
     var isLiveActivityEnabled: Bool {
         didSet {
@@ -144,7 +144,7 @@ final class LiveActivityPreferencesStore {
         isAssignmentReminderEnabled = Defaults[.isAssignmentReminderEnabled]
         isClassReminderEnabled = Defaults[.isClassReminderEnabled]
         classReminderLeadMinutes = Defaults[.classReminderLeadMinutes]
-        keepsForeignClassReminderOffsets = Defaults[.keepsForeignClassReminderOffsets]
+        hasPickedClassReminderLead = Defaults[.hasPickedClassReminderLead]
         isLiveActivityEnabled = Defaults[.isLiveActivityEnabled]
 
         // Clamp on load: a value persisted by an older build that used a
@@ -195,7 +195,7 @@ final class LiveActivityPreferencesStore {
         assignmentLiveActivityLeadTime: TimeInterval,
         isClassReminderEnabled: Bool,
         classReminderLeadMinutes: Int,
-        keepsForeignClassReminderOffsets: Bool
+        hasPickedClassReminderLead: Bool
     ) {
         // The fields this method owns, read through `LocalPreferences` rather than
         // re-listed so the before/after comparison cannot drift from what is assigned below.
@@ -218,7 +218,7 @@ final class LiveActivityPreferencesStore {
 
         self.isClassReminderEnabled = isClassReminderEnabled
         self.classReminderLeadMinutes = classReminderLeadMinutes
-        self.keepsForeignClassReminderOffsets = keepsForeignClassReminderOffsets
+        self.hasPickedClassReminderLead = hasPickedClassReminderLead
 
         // Cleared before the post, never by a `defer`: an observer woken by
         // it must not find the store still claiming to be mid-apply.

@@ -21,7 +21,7 @@ struct NotificationSettingsSyncTests {
         assignmentLiveActivityLeadTime: TimeInterval = 7200,
         isClassReminderEnabled: Bool = true,
         classReminderLeadMinutes: Int = 10,
-        keepsForeignClassReminderOffsets: Bool = false
+        hasPickedClassReminderLead: Bool = false
     ) -> NotificationSettingsSync.LocalPreferences {
         .init(
             isAssignmentReminderEnabled: isAssignmentReminderEnabled,
@@ -33,7 +33,7 @@ struct NotificationSettingsSyncTests {
             assignmentLiveActivityLeadTime: assignmentLiveActivityLeadTime,
             isClassReminderEnabled: isClassReminderEnabled,
             classReminderLeadMinutes: classReminderLeadMinutes,
-            keepsForeignClassReminderOffsets: keepsForeignClassReminderOffsets
+            hasPickedClassReminderLead: hasPickedClassReminderLead
         )
     }
 
@@ -165,9 +165,9 @@ struct NotificationSettingsSyncTests {
     @Test("courses carries the class reminder switch and its one lead time")
     func coursesSectionMapsTheSwitchAndLeadTime() {
         let section = Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 15)
-            .coursesSection(preservingForeignOffsetsIn: [:])
+            .coursesSection(preservingOffsetsIn: [:])
         #expect(section == .init(enabled: false, reminderOffsetsMinutes: [15]))
-        #expect(Self.local().coursesSection(preservingForeignOffsetsIn: [:])
+        #expect(Self.local().coursesSection(preservingOffsetsIn: [:])
             == .init(enabled: true, reminderOffsetsMinutes: [10]))
     }
 
@@ -188,7 +188,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
 
         try await NotificationSettingsSync.push(
-            local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 30),
+            local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 30, hasPickedClassReminderLead: true),
             client: client,
             cloudSyncEnabled: true
         )
@@ -239,7 +239,12 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 5)), for: url)
 
         try await NotificationSettingsSync.push(
-            local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: true, classReminderLeadMinutes: 15),
+            local: Self.local(
+                isAssignmentReminderEnabled: true,
+                showInClassScenario: true,
+                classReminderLeadMinutes: 15,
+                hasPickedClassReminderLead: true
+            ),
             client: client,
             cloudSyncEnabled: true
         )
@@ -272,8 +277,8 @@ struct NotificationSettingsSyncTests {
 
     @Test("a first-ever write sends the three sections this app owns, courses as the device has it")
     func firstEverWriteSendsCourses() async throws {
-        // The store's class reminder defaults, on and 10 minutes before, are the backend's own
-        // (`server/push/course_reminders.py`), so a first write changes no reminder by itself.
+        // The store's class reminder defaults, on and 10 minutes before, are the backend's own,
+        // so a first write changes no reminder by itself.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
@@ -740,11 +745,11 @@ struct NotificationSettingsSyncTests {
         #expect(retried["reminder_offsets_minutes"] as? [Int] == [1440, 77])
     }
 
-    @Test("class reminder offsets this build cannot show go back as the server holds them until the user picks")
-    func pushKeepsForeignClassReminderOffsets() async throws {
+    @Test("a push leaves the server's class reminder offsets alone until the user picks a lead time here")
+    func pushKeepsClassReminderOffsetsUntilAPick() async throws {
         // The page offers one lead time; two, or one it does not offer, came from another client
-        // or a newer build. A push for another setting must not replace them with this device's
-        // value, which the user never chose against them.
+        // or a newer build. A push for another setting, or one before this device ever adopted the
+        // document, must not replace them with a value the user never chose against them.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
@@ -757,7 +762,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
 
         try await NotificationSettingsSync.push(
-            local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 10, keepsForeignClassReminderOffsets: true),
+            local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 10),
             client: client,
             cloudSyncEnabled: true
         )
@@ -769,11 +774,12 @@ struct NotificationSettingsSyncTests {
         #expect(courses["reminder_offsets_minutes"] as? [Int] == [10, 45])
 
         // A lead time the user picks replaces them.
-        let picked = Self.local(classReminderLeadMinutes: 15).coursesSection(preservingForeignOffsetsIn: existing)
+        let picked = Self.local(classReminderLeadMinutes: 15, hasPickedClassReminderLead: true)
+            .coursesSection(preservingOffsetsIn: existing)
         #expect(picked.reminderOffsetsMinutes == [15])
-        // With no list left to keep, the lead time goes up.
-        let noList = Self.local(classReminderLeadMinutes: 30, keepsForeignClassReminderOffsets: true)
-            .coursesSection(preservingForeignOffsetsIn: ["courses": ["enabled": true]])
+        // With no list to keep, the lead time goes up, picked or not.
+        let noList = Self.local(classReminderLeadMinutes: 30)
+            .coursesSection(preservingOffsetsIn: ["courses": ["enabled": true]])
         #expect(noList.reminderOffsetsMinutes == [30])
     }
 
@@ -863,28 +869,23 @@ struct NotificationSettingsSyncTests {
         #expect(resolved == current)
     }
 
-    @Test("one class reminder lead time on offer is adopted, and any other list is kept")
-    func resolveClassReminderLeadAdoptsOnlyWhatThePageOffers() {
-        let rows: [(name: Comment, minutes: [Int]?, lead: Int, keeps: Bool)] = [
+    @Test("a pull shows the smallest class reminder lead time on offer, and any list it adopts clears the pick")
+    func resolveClassReminderLeadShowsWhatThePageOffers() {
+        let rows: [(name: Comment, minutes: [Int]?, lead: Int, picked: Bool)] = [
             ("one lead time on offer", [30], 30, false),
-            ("one the page does not offer: the current lead time stays", [45], 15, true),
-            ("several: the smallest shows, as it is on offer", [60, 10], 10, true),
-            ("several whose smallest is not on offer", [90, 45], 15, true),
-            ("an empty list, which no lead time shows", [], 15, true),
-            ("no list: nothing changes", nil, 15, false),
+            ("one the page does not offer: the current lead time stays", [45], 15, false),
+            ("several: the smallest shows, as it is on offer", [60, 10], 10, false),
+            ("several whose smallest is not on offer", [90, 45], 15, false),
+            ("an empty list, which no lead time shows", [], 15, false),
+            ("no list: nothing changes", nil, 15, true),
         ]
         for row in rows {
             let resolved = NotificationSettingsSync.resolveClassReminderLead(
-                documentMinutes: row.minutes, currentMinutes: 15, currentKeepsForeign: false
+                documentMinutes: row.minutes, currentMinutes: 15, currentPicked: true
             )
             #expect(resolved.minutes == row.lead, row.name)
-            #expect(resolved.keepsForeign == row.keeps, row.name)
+            #expect(resolved.picked == row.picked, row.name)
         }
-        // No list leaves the flag as it was too.
-        let untouched = NotificationSettingsSync.resolveClassReminderLead(
-            documentMinutes: nil, currentMinutes: 15, currentKeepsForeign: true
-        )
-        #expect(untouched.keepsForeign)
     }
 
     // MARK: - 6b. The same shapes the backend reads, resolved the same way
@@ -1154,8 +1155,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("a pull adopts the class reminder switch and a lead time on offer, and a push writes them back")
-    func pullAdoptsClassReminders() async {
-        await NotificationSettingsFixtures.withStore { store in
+    func pullAdoptsClassReminders() async throws {
+        try await NotificationSettingsFixtures.withStore { store in
             store.isClassReminderEnabled = true
             store.classReminderLeadMinutes = 10
 
@@ -1164,31 +1165,34 @@ struct NotificationSettingsApplyTests {
 
             #expect(store.isClassReminderEnabled == false)
             #expect(store.classReminderLeadMinutes == 30)
-            #expect(!store.keepsForeignClassReminderOffsets)
-            let section = NotificationSettingsSync.LocalPreferences(from: store)
-                .coursesSection(preservingForeignOffsetsIn: ["courses": ["enabled": false, "reminder_offsets_minutes": [30]]])
-            #expect(section == document.courses)
+            #expect(!store.hasPickedClassReminderLead)
+            let existing: [String: Any] = ["courses": ["enabled": false, "reminder_offsets_minutes": [30]]]
+            let updates = try NotificationSettingsSync.LocalPreferences(from: store).documentUpdates(existing: existing)
+            let courses = try #require(NotificationSettingsSync.merging(updates, into: existing)["courses"] as? [String: Any])
+            #expect(courses["enabled"] as? Bool == false)
+            #expect(courses["reminder_offsets_minutes"] as? [Int] == [30])
         }
     }
 
     @Test("a pull with class reminder offsets the page does not offer keeps them until the user picks a lead time")
-    func pullKeepsForeignClassReminderOffsetsUntilAPick() async {
+    func pullKeepsClassReminderOffsetsUntilAPick() async {
         await NotificationSettingsFixtures.withStore { store in
             store.classReminderLeadMinutes = 15
+            #expect(store.hasPickedClassReminderLead)
             let existing: [String: Any] = ["courses": ["reminder_offsets_minutes": [45]]]
 
             NotificationSettingsSync.apply(NotificationSettingsDocument(courses: .init(reminderOffsetsMinutes: [45])), to: store)
 
             #expect(store.classReminderLeadMinutes == 15)
-            #expect(store.keepsForeignClassReminderOffsets)
+            #expect(!store.hasPickedClassReminderLead)
             #expect(NotificationSettingsSync.LocalPreferences(from: store)
-                .coursesSection(preservingForeignOffsetsIn: existing).reminderOffsetsMinutes == nil)
+                .coursesSection(preservingOffsetsIn: existing).reminderOffsetsMinutes == nil)
 
             // The pick is a local edit, so it goes up, and it replaces the kept offsets.
             #expect(Self.recordedPushDecisions { store.classReminderLeadMinutes = 5 } == [true])
-            #expect(!store.keepsForeignClassReminderOffsets)
+            #expect(store.hasPickedClassReminderLead)
             #expect(NotificationSettingsSync.LocalPreferences(from: store)
-                .coursesSection(preservingForeignOffsetsIn: existing).reminderOffsetsMinutes == [5])
+                .coursesSection(preservingOffsetsIn: existing).reminderOffsetsMinutes == [5])
         }
     }
 

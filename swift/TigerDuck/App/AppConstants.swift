@@ -159,7 +159,7 @@ nonisolated enum AppConstants {
         static let isAssignmentReminderEnabled = "isAssignmentReminderEnabled"
         static let isClassReminderEnabled = "isClassReminderEnabled"
         static let classReminderLeadMinutes = "classReminderLeadMinutes"
-        static let keepsForeignClassReminderOffsets = "keepsForeignClassReminderOffsets"
+        static let hasPickedClassReminderLead = "hasPickedClassReminderLead"
         static let isLiveActivityEnabled = "isLiveActivityEnabled"
         static let assignmentLiveActivityLeadTime = "assignmentLiveActivityLeadTime"
         static let classPreparingLeadTime = "classPreparingLeadTime"

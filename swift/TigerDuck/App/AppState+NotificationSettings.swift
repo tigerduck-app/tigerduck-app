@@ -306,7 +306,7 @@ nonisolated enum NotificationSettingsSync {
     /// The field mapping is fixed: do not add or infer fields beyond these. Each maps to one
     /// field of the `assignments`, `live_activity` or `courses` section (`assignmentsSection(...)`,
     /// `liveActivitySection`, `coursesSection(...)`), except `assignmentReminderOffsets`, which
-    /// fills both offset arrays, and `keepsForeignClassReminderOffsets`, which says whether
+    /// fills both offset arrays, and `hasPickedClassReminderLead`, which says whether
     /// `courses.reminder_offsets_minutes` is written.
     struct LocalPreferences: Equatable, Sendable {
         var isAssignmentReminderEnabled: Bool
@@ -318,7 +318,7 @@ nonisolated enum NotificationSettingsSync {
         var assignmentLiveActivityLeadTime: TimeInterval
         var isClassReminderEnabled: Bool
         var classReminderLeadMinutes: Int
-        var keepsForeignClassReminderOffsets: Bool
+        var hasPickedClassReminderLead: Bool
 
         init(
             isAssignmentReminderEnabled: Bool,
@@ -330,7 +330,7 @@ nonisolated enum NotificationSettingsSync {
             assignmentLiveActivityLeadTime: TimeInterval,
             isClassReminderEnabled: Bool,
             classReminderLeadMinutes: Int,
-            keepsForeignClassReminderOffsets: Bool
+            hasPickedClassReminderLead: Bool
         ) {
             self.isAssignmentReminderEnabled = isAssignmentReminderEnabled
             self.assignmentReminderOffsets = assignmentReminderOffsets
@@ -341,7 +341,7 @@ nonisolated enum NotificationSettingsSync {
             self.assignmentLiveActivityLeadTime = assignmentLiveActivityLeadTime
             self.isClassReminderEnabled = isClassReminderEnabled
             self.classReminderLeadMinutes = classReminderLeadMinutes
-            self.keepsForeignClassReminderOffsets = keepsForeignClassReminderOffsets
+            self.hasPickedClassReminderLead = hasPickedClassReminderLead
         }
 
         @MainActor
@@ -356,7 +356,7 @@ nonisolated enum NotificationSettingsSync {
                 assignmentLiveActivityLeadTime: store.assignmentLiveActivityLeadTime,
                 isClassReminderEnabled: store.isClassReminderEnabled,
                 classReminderLeadMinutes: store.classReminderLeadMinutes,
-                keepsForeignClassReminderOffsets: store.keepsForeignClassReminderOffsets
+                hasPickedClassReminderLead: store.hasPickedClassReminderLead
             )
         }
 
@@ -400,18 +400,19 @@ nonisolated enum NotificationSettingsSync {
             )
         }
 
-        /// The `courses` section to write over `existing`, the document the server holds. While
-        /// that holds class reminder offsets this build offers no choice for and the user has not
-        /// picked a lead time since, `reminder_offsets_minutes` is left out, so the merge keeps
-        /// them. Otherwise it is the one lead time, in whole minutes, as Android reads the key.
+        /// The `courses` section to write over `existing`, the document the server holds. Its
+        /// `reminder_offsets_minutes` is left out, so the merge keeps the server's, unless the
+        /// user picked a lead time here since those were adopted or the server holds none: they
+        /// may be values this build has no choice for. The lead time goes up in whole minutes,
+        /// as Android reads the key.
         func coursesSection(
-            preservingForeignOffsetsIn existing: [String: Any]
+            preservingOffsetsIn existing: [String: Any]
         ) -> NotificationSettingsDocument.Courses {
-            let keepsDocumentOffsets = keepsForeignClassReminderOffsets
-                && NotificationSettingsSync.classReminderOffsets(in: existing) != nil
+            let writesLead = hasPickedClassReminderLead
+                || NotificationSettingsSync.classReminderOffsets(in: existing) == nil
             return .init(
                 enabled: isClassReminderEnabled,
-                reminderOffsetsMinutes: keepsDocumentOffsets ? nil : [classReminderLeadMinutes]
+                reminderOffsetsMinutes: writesLead ? [classReminderLeadMinutes] : nil
             )
         }
 
@@ -439,7 +440,7 @@ nonisolated enum NotificationSettingsSync {
             }
             if includeCourses {
                 updates["courses"] = try NotificationSettingsSync.jsonObject(
-                    coursesSection(preservingForeignOffsetsIn: existing)
+                    coursesSection(preservingOffsetsIn: existing)
                 )
             }
             return updates
@@ -787,22 +788,19 @@ nonisolated enum NotificationSettingsSync {
         return fromDocument.union(localSubHour)
     }
 
-    /// The class reminder lead time for the document's `courses.reminder_offsets_minutes`, and
-    /// whether a push keeps that list. A list of one lead time on offer is adopted. Any other list
-    /// is kept, showing its smallest value if that is on offer and the current lead time if not.
-    /// No list changes nothing.
+    /// The class reminder lead time to show for the document's `courses.reminder_offsets_minutes`:
+    /// its smallest value when that is on offer, the current lead time otherwise. Adopting a list
+    /// clears the pick, as the list is then this device's last pick or another client's choice,
+    /// and a push leaves it alone. No list changes nothing.
     static func resolveClassReminderLead(
         documentMinutes: [Int]?,
         currentMinutes: Int,
-        currentKeepsForeign: Bool
-    ) -> (minutes: Int, keepsForeign: Bool) {
-        guard let documentMinutes else { return (currentMinutes, currentKeepsForeign) }
+        currentPicked: Bool
+    ) -> (minutes: Int, picked: Bool) {
+        guard let documentMinutes else { return (currentMinutes, currentPicked) }
         let choices = LiveActivityPreferencesStore.classReminderLeadChoices.map { Int($0.timeInterval / 60) }
-        if documentMinutes.count == 1, let only = documentMinutes.first, choices.contains(only) {
-            return (only, false)
-        }
         let smallest = documentMinutes.min().flatMap { choices.contains($0) ? $0 : nil }
-        return (smallest ?? currentMinutes, true)
+        return (smallest ?? currentMinutes, false)
     }
 
     private static func offset(forMinutes minutes: Int) -> AssignmentReminderOffset? {
@@ -822,7 +820,7 @@ nonisolated enum NotificationSettingsSync {
         let classReminderLead = resolveClassReminderLead(
             documentMinutes: document.courses?.reminderOffsetsMinutes,
             currentMinutes: store.classReminderLeadMinutes,
-            currentKeepsForeign: store.keepsForeignClassReminderOffsets
+            currentPicked: store.hasPickedClassReminderLead
         )
         store.applyFromNotificationSettingsDocument(
             isAssignmentReminderEnabled: assignments?.enabled ?? store.isAssignmentReminderEnabled,
@@ -840,7 +838,7 @@ nonisolated enum NotificationSettingsSync {
                 ?? store.assignmentLiveActivityLeadTime,
             isClassReminderEnabled: document.courses?.enabled ?? store.isClassReminderEnabled,
             classReminderLeadMinutes: classReminderLead.minutes,
-            keepsForeignClassReminderOffsets: classReminderLead.keepsForeign
+            hasPickedClassReminderLead: classReminderLead.picked
         )
     }
 }
