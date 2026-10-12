@@ -442,9 +442,12 @@ private struct ConflictClusterView: View {
         // The name goes in the largest run, which is a full-width one where there is one.
         let label = runs.max { $0.width * $0.height < $1.width * $1.height } ?? .zero
         let hasBadge = showsBadge(for: course)
+        // A course can start below the cluster's first period; VoiceOver names its own.
+        let periods = viewModel.activePeriods
+        let firstPeriod = periods.firstIndex { $0.id == periodId }.flatMap { periods[safe: $0 + segment.offset] }
 
         return Button {
-            viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
+            viewModel.selectCourse(course, weekday: weekday, periodId: firstPeriod?.id ?? periodId)
         } label: {
             shape
                 .fill(course.color.opacity(0.4))
@@ -468,7 +471,7 @@ private struct ConflictClusterView: View {
             Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
                  String(format: String(localized: "a11y_timetable_cell"),
                         AppConstants.Periods.shortWeekdayLabel(weekday),
-                        viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                        firstPeriod?.displayLabel ?? periodId,
                         spokenCourse(course, hasAssignment: hasBadge)))
         )
         .contextMenu {
