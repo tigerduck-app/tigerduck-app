@@ -196,6 +196,8 @@ struct HTMLParserTests {
         </div>
         """
         #expect(HTMLParser.loginErrorMessage(in: alert) == "請輸入驗證碼 & 再試一次")
+        let nested = #"<div class="alert alert-danger"><strong>錯誤</strong> 帳號已停用</div>"#
+        #expect(HTMLParser.loginErrorMessage(in: nested) == "錯誤 帳號已停用")
     }
 
     @Test("an empty error element is passed over, and a page with no message gives none")
@@ -203,6 +205,8 @@ struct HTMLParserTests {
         let emptyFieldError = #"<span class="field-validation-error"> </span>"#
             + #"<div class="validation-summary-errors"><ul><li>驗證碼錯誤</li></ul></div>"#
         #expect(HTMLParser.loginErrorMessage(in: emptyFieldError) == "驗證碼錯誤")
+        let emptyOfTheSameClass = #"<span class="text-danger"></span><span class="text-danger">驗證碼錯誤</span>"#
+        #expect(HTMLParser.loginErrorMessage(in: emptyOfTheSameClass) == "驗證碼錯誤")
 
         let noMessage = [
             Pages.ssoam2Login,

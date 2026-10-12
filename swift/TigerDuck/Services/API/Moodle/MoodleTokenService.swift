@@ -592,7 +592,7 @@ actor MoodleTokenService {
             } else {
                 value = ""
             }
-            out[name] = HTMLParser.decodeHTMLEntities(value)
+            out[name] = decodeHTMLEntities(value)
         }
         return out
     }
@@ -610,5 +610,18 @@ actor MoodleTokenService {
             return nil
         }
         return ns.substring(with: m.range(at: 1))
+    }
+
+    private nonisolated static func decodeHTMLEntities(_ s: String) -> String {
+        var r = s
+        r = r.replacingOccurrences(of: "&amp;", with: "&")
+        r = r.replacingOccurrences(of: "&quot;", with: "\"")
+        r = r.replacingOccurrences(of: "&apos;", with: "'")
+        r = r.replacingOccurrences(of: "&lt;", with: "<")
+        r = r.replacingOccurrences(of: "&gt;", with: ">")
+        r = r.replacingOccurrences(of: "&#x2F;", with: "/")
+        r = r.replacingOccurrences(of: "&#x27;", with: "'")
+        r = r.replacingOccurrences(of: "&#39;", with: "'")
+        return r
     }
 }
