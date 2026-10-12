@@ -267,6 +267,28 @@ extension CourseIgnoreCoordinatorTests {
         #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
         #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
     }
+
+    @Test("Deleting a course drops its settings still on their way up, parked too, and a reset its term's")
+    func deleteAndResetDropTheirSettings() async {
+        let backend = Backend()
+        for _ in 0..<SyncOutbox.maxAttempts { backend.answer(Self.path, status: 404) }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+        for _ in 0..<SyncOutbox.maxAttempts { await coordinator.syncTick() }
+        #expect(await coordinator.outbox.parkedSnapshot().count == 1)
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "EE2005301", moodleId: "1151EE2005301",
+                                              moodleCourseId: nil, ignore: false)
+        await coordinator.enqueueCourseIgnore(semester: "1142", courseNo: "CS1001301", moodleId: "1142CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+
+        await coordinator.discardCourseIgnores(semester: "1151", courseNo: "CS1001301")
+        #expect(await coordinator.outbox.parkedSnapshot().isEmpty)
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:EE2005301", "1142:CS1001301"])
+
+        await coordinator.discardCourseIgnores(semester: "1151")
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1142:CS1001301"])
+    }
 }
 
 /// What a full sync reads from the snapshot's `course_overrides` (`AppState+BackendSync.swift`).

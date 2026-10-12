@@ -707,6 +707,8 @@ extension AppState {
         let courseKey = "client:\(semester):\(courseNo)"
         let coordinator = pushCoordinator
         revisionPoller.noteActivity()
+        // The server drops the course's setting with its row, so a PATCH still queued would 404.
+        Task { await cloudSyncCoordinator.discardCourseIgnores(semester: semester, courseNo: courseNo) }
         Task.detached {
             do {
                 try await coordinator.deleteCourse(courseKey: courseKey)
@@ -743,6 +745,7 @@ extension AppState {
             // The refetch's upload releases the reset's tombstones, and it usually matches the
             // list sent before the reset.
             pushCoordinator.forgetUploads(semester: semester)
+            await cloudSyncCoordinator.discardCourseIgnores(semester: semester)
             resetLocally()
             return true
         } catch {

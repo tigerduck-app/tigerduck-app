@@ -270,11 +270,13 @@ final class CloudSyncCoordinator {
             moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()))
     }
 
-    /// For Use Server, which takes the server's settings over the ones still on their way up.
-    func discardCourseIgnores() async {
+    /// Drops the course settings still on their way up: all of them for Use Server, which takes
+    /// the server's over them, or `semester`'s or one course's for a reset or a delete, after which
+    /// the server has no row to take them.
+    func discardCourseIgnores(semester: String? = nil, courseNo: String? = nil) async {
         await outbox.discard { op in
-            if case .courseIgnore = op { return true }
-            return false
+            guard case .courseIgnore(let opSemester, let opCourseNo, _, _, _, _) = op else { return false }
+            return (semester == nil || semester == opSemester) && (courseNo == nil || courseNo == opCourseNo)
         }
     }
 
