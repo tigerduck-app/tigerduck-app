@@ -112,7 +112,8 @@ extension AppState {
 
             let pendingConflicts = Defaults[.pendingConflictCategories]
             if let reason = Self.reasonToLeaveMarks(
-                syncsMarks: syncsMarks,
+                // Again after the await: the switch may have gone off while it waited.
+                syncsMarks: syncsMarks && Defaults[.syncAssignments],
                 conflictCheckPending: pendingConflicts.contains("assignments"),
                 uploadedLocalMarks: isMigrating,
                 editedDuringFetch: overrideEditGeneration != editGenerationAtFetch
