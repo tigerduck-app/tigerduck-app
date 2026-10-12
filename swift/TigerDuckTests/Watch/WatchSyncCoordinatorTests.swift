@@ -7,11 +7,19 @@ import XCTest
 final class WatchSyncCoordinatorTests: XCTestCase {
 
     final class StubSession: WatchSessionPushing {
+        struct PushFailed: Error {}
+
         var pushedContexts: [[String: Any]] = []
         var isPaired = true
         var isWatchAppInstalled = true
         var isReachable = true
+        /// How many of the next context pushes throw.
+        var failingPushes = 0
         func updateApplicationContext(_ context: [String: Any]) throws {
+            if failingPushes > 0 {
+                failingPushes -= 1
+                throw PushFailed()
+            }
             pushedContexts.append(context)
         }
         // These tests cover only the application-context path. The message and user-info members
@@ -136,6 +144,26 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.pushedContexts.count, 1)
 
         push(accent: "#BBBBBB")
+        XCTAssertEqual(session.pushedContexts.count, 2)
+    }
+
+    /// A failed answer to the Watch's request stays pending, and the next push of the same
+    /// content sends it rather than counting it as already delivered.
+    @MainActor
+    func test_failedForcedPush_isSentByTheNextUnchangedPush() {
+        let session = StubSession()
+        let coord = WatchSyncCoordinator(session: session)
+        func push(force: Bool) {
+            coord.push(courses: [], customNames: [:], accentHex: "#AAAAAA", loggedIn: true,
+                       languageTag: nil, visualPreset: .default, force: force)
+        }
+
+        push(force: false)
+        session.failingPushes = 1
+        push(force: true)
+        XCTAssertEqual(session.pushedContexts.count, 1)
+
+        push(force: false)
         XCTAssertEqual(session.pushedContexts.count, 2)
     }
 

@@ -137,10 +137,9 @@ final class WatchSyncCoordinator: NSObject {
                 visualPreset: visualPreset, quietDays: quietDays
             )
         }
-        // Only the stamp would differ, and every update wakes the Watch. A newer pending
-        // snapshot is dropped too: the Watch already shows what the phone has now.
-        if !force, let last = lastDelivered, snapshot(last.syncedAt) == last {
-            pendingSnapshot = nil
+        // Only the stamp would differ, and every update wakes the Watch. A snapshot still
+        // pending, such as a failed answer to the Watch's request, goes out again instead.
+        if !force, pendingSnapshot == nil, let last = lastDelivered, snapshot(last.syncedAt) == last {
             return
         }
         deliver(snapshot(Date()))
