@@ -35,6 +35,8 @@ struct MonthCalendarView: View {
                 Text(monthTitle)
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
                 Spacer()
                 Button(action: viewModel.nextMonth) {
                     Image(systemName: "chevron.right")
@@ -50,6 +52,8 @@ struct MonthCalendarView: View {
                     Text(symbol)
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.3)
                 }
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
