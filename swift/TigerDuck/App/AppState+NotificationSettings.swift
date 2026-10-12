@@ -1,5 +1,5 @@
-// The `notification` settings document: this app owns only `assignments` and `live_activity`,
-// so writes merge at the JSON level, keeping `courses` and every other key. iOS only, like
+// The `notification` settings document: this app owns `assignments`, `live_activity` and
+// `courses`, and writes merge at the JSON level, keeping every other key. iOS only, like
 // `LiveActivityPreferencesStore`. See docs/decisions/0002-notification-settings-json-merge.md.
 
 import Foundation
@@ -11,8 +11,8 @@ extension AppState {
 
     // MARK: - Public entry points
 
-    /// Pushes this device's `assignments` and `live_activity` preferences, each section only
-    /// while its device switch is on (see `NotificationSettingsSync.push`). Cloud sync and a
+    /// Pushes this device's notification preferences, `assignments` and `live_activity` only
+    /// while their device switch is on (see `NotificationSettingsSync.push`). Cloud sync and a
     /// session are checked first, not inferred from a 401: a revoked or expired session also
     /// gets a 401 and needs different handling. Failures are logged, not thrown, since no
     /// caller awaits this. The pending marker stays set until a write lands with nothing
@@ -303,10 +303,11 @@ nonisolated enum NotificationSettingsSync {
     /// Local preference snapshot, apart from `LiveActivityPreferencesStore` so tests can build
     /// one without a real store, which reads and writes `UserDefaults`.
     ///
-    /// The field mapping is fixed: do not add or infer fields beyond these seven. Each maps to
-    /// one field of the `assignments` or `live_activity` section (`assignmentsSection(...)`,
-    /// `liveActivitySection`), except `assignmentReminderOffsets`, which fills both
-    /// `reminder_offsets_minutes` and `reminder_offsets_hours`.
+    /// The field mapping is fixed: do not add or infer fields beyond these. Each maps to one
+    /// field of the `assignments`, `live_activity` or `courses` section (`assignmentsSection(...)`,
+    /// `liveActivitySection`, `coursesSection(...)`), except `assignmentReminderOffsets`, which
+    /// fills both offset arrays, and `keepsForeignClassReminderOffsets`, which says whether
+    /// `courses.reminder_offsets_minutes` is written.
     struct LocalPreferences: Equatable, Sendable {
         var isAssignmentReminderEnabled: Bool
         var assignmentReminderOffsets: Set<AssignmentReminderOffset>
@@ -315,6 +316,9 @@ nonisolated enum NotificationSettingsSync {
         var showAssignmentScenario: Bool
         var classPreparingLeadTime: TimeInterval
         var assignmentLiveActivityLeadTime: TimeInterval
+        var isClassReminderEnabled: Bool
+        var classReminderLeadMinutes: Int
+        var keepsForeignClassReminderOffsets: Bool
 
         init(
             isAssignmentReminderEnabled: Bool,
@@ -323,7 +327,10 @@ nonisolated enum NotificationSettingsSync {
             showInClassScenario: Bool,
             showAssignmentScenario: Bool,
             classPreparingLeadTime: TimeInterval,
-            assignmentLiveActivityLeadTime: TimeInterval
+            assignmentLiveActivityLeadTime: TimeInterval,
+            isClassReminderEnabled: Bool,
+            classReminderLeadMinutes: Int,
+            keepsForeignClassReminderOffsets: Bool
         ) {
             self.isAssignmentReminderEnabled = isAssignmentReminderEnabled
             self.assignmentReminderOffsets = assignmentReminderOffsets
@@ -332,6 +339,9 @@ nonisolated enum NotificationSettingsSync {
             self.showAssignmentScenario = showAssignmentScenario
             self.classPreparingLeadTime = classPreparingLeadTime
             self.assignmentLiveActivityLeadTime = assignmentLiveActivityLeadTime
+            self.isClassReminderEnabled = isClassReminderEnabled
+            self.classReminderLeadMinutes = classReminderLeadMinutes
+            self.keepsForeignClassReminderOffsets = keepsForeignClassReminderOffsets
         }
 
         @MainActor
@@ -343,7 +353,10 @@ nonisolated enum NotificationSettingsSync {
                 showInClassScenario: store.showInClassScenario,
                 showAssignmentScenario: store.showAssignmentScenario,
                 classPreparingLeadTime: store.classPreparingLeadTime,
-                assignmentLiveActivityLeadTime: store.assignmentLiveActivityLeadTime
+                assignmentLiveActivityLeadTime: store.assignmentLiveActivityLeadTime,
+                isClassReminderEnabled: store.isClassReminderEnabled,
+                classReminderLeadMinutes: store.classReminderLeadMinutes,
+                keepsForeignClassReminderOffsets: store.keepsForeignClassReminderOffsets
             )
         }
 
@@ -387,17 +400,33 @@ nonisolated enum NotificationSettingsSync {
             )
         }
 
+        /// The `courses` section to write over `existing`, the document the server holds. While
+        /// that holds class reminder offsets this build offers no choice for and the user has not
+        /// picked a lead time since, `reminder_offsets_minutes` is left out, so the merge keeps
+        /// them. Otherwise it is the one lead time, in whole minutes, as Android reads the key.
+        func coursesSection(
+            preservingForeignOffsetsIn existing: [String: Any]
+        ) -> NotificationSettingsDocument.Courses {
+            let keepsDocumentOffsets = keepsForeignClassReminderOffsets
+                && NotificationSettingsSync.classReminderOffsets(in: existing) != nil
+            return .init(
+                enabled: isClassReminderEnabled,
+                reminderOffsetsMinutes: keepsDocumentOffsets ? nil : [classReminderLeadMinutes]
+            )
+        }
+
         /// The keys this app owns, as JSON objects to splice over what the server holds. A
-        /// section is included only while its device switch is on; one left out stays as the
-        /// server holds it (`merging(_:into:)`), never overwritten with a local value.
+        /// section left out stays as the server holds it (`merging(_:into:)`), never
+        /// overwritten with a local value.
         ///
-        /// `existing` is the object the result is merged over, and the `assignments` section
-        /// depends on it. Recompute this against the document actually being written, including
-        /// after a 409 rebase adopts a different one.
+        /// `existing` is the object the result is merged over, and the `assignments` and
+        /// `courses` sections depend on it. Recompute this against the document actually being
+        /// written, including after a 409 rebase adopts a different one.
         func documentUpdates(
             existing: [String: Any],
             includeAssignments: Bool = true,
-            includeLiveActivity: Bool = true
+            includeLiveActivity: Bool = true,
+            includeCourses: Bool = true
         ) throws -> [String: Any] {
             var updates: [String: Any] = [:]
             if includeAssignments {
@@ -407,6 +436,11 @@ nonisolated enum NotificationSettingsSync {
             }
             if includeLiveActivity {
                 updates["live_activity"] = try NotificationSettingsSync.jsonObject(liveActivitySection)
+            }
+            if includeCourses {
+                updates["courses"] = try NotificationSettingsSync.jsonObject(
+                    coursesSection(preservingForeignOffsetsIn: existing)
+                )
             }
             return updates
         }
@@ -448,6 +482,13 @@ nonisolated enum NotificationSettingsSync {
             .filter { offset(forMinutes: $0) == nil }
     }
 
+    /// `existing`'s `courses.reminder_offsets_minutes`, read as a pull reads it.
+    static func classReminderOffsets(in existing: [String: Any]) -> [Int]? {
+        let section: NotificationSettingsDocument.Courses? =
+            decodedSection(existing[OwnedSection.courses.rawValue])
+        return section?.reminderOffsetsMinutes
+    }
+
     private static func jsonObject<T: Encodable>(_ value: T) throws -> [String: Any] {
         let data = try JSONEncoder().encode(value)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -458,11 +499,11 @@ nonisolated enum NotificationSettingsSync {
 
     // MARK: - Push
 
-    /// Read-modify-write of `assignments` and `live_activity`; every other key goes back as read
+    /// Read-modify-write of the sections this app owns; every other key goes back as read
     /// (``merging(_:into:)``). A 409 adopts the server's document and revision for one retry. A
-    /// section whose device switch is off is left as the server holds it. Returns `true` only if
-    /// a write landed, so a push that did not run cannot clear the pending marker: cloud sync
-    /// off, both switches off, or a logout. `isCurrent()` turns false on a logout and is checked
+    /// section whose device switch is off is left as the server holds it; `courses` has none.
+    /// Returns `true` only if a write landed, so a push that did not run cannot clear the pending
+    /// marker: cloud sync off or a logout. `isCurrent()` turns false on a logout and is checked
     /// before every write, so the departing account's document never lands on the next one's.
     /// The server's document is merged over, not decoded: aborting on a shape this build does
     /// not model would wedge every later push.
@@ -477,10 +518,6 @@ nonisolated enum NotificationSettingsSync {
         isCurrent: () -> Bool = { true }
     ) async throws -> Bool {
         guard cloudSyncEnabled else { return false }
-        // Neither section may sync — there is nothing to read or write.
-        // Mirrors the guard above: "didn't run" must report `false`, never
-        // `true`.
-        guard syncAssignmentRemindersEnabled || syncLiveActivityEnabled else { return false }
 
         var existing: [String: Any] = [:]
         var baseRevision: Int?
@@ -570,10 +607,11 @@ nonisolated enum NotificationSettingsSync {
 
     // MARK: - Read before write
 
-    /// The two sections of the document this app owns, by key.
+    /// The sections of the document this app owns, by key.
     enum OwnedSection: String, CaseIterable, Sendable {
         case assignments
         case liveActivity = "live_activity"
+        case courses
     }
 
     /// Where ``reconcile(store:client:cloudSyncEnabled:syncAssignmentRemindersEnabled:syncLiveActivityEnabled:isPushPending:isCurrent:source:)``
@@ -601,8 +639,7 @@ nonisolated enum NotificationSettingsSync {
     /// What one ``reconcile(store:client:cloudSyncEnabled:syncAssignmentRemindersEnabled:syncLiveActivityEnabled:isPushPending:isCurrent:source:)``
     /// run did.
     enum ReconcileOutcome: Equatable, Sendable {
-        /// Nothing to do — cloud sync is off, or neither section syncs on
-        /// this device. No request was made.
+        /// Cloud sync is off. No request was made.
         case skipped
         /// A local edit had not reached the server yet. It wins: nothing
         /// was adopted or written, and the caller runs its push instead.
@@ -614,9 +651,9 @@ nonisolated enum NotificationSettingsSync {
         case settled(adopted: Set<OwnedSection>, seeded: Set<OwnedSection>)
     }
 
-    /// Settles each section whose device switch is on against the `notification` document, read
-    /// first. A section the server has is adopted through ``apply(_:to:)``, and an absent or
-    /// malformed field keeps its local value. A section it lacks is written from local values.
+    /// Settles `courses` and each section whose device switch is on against the `notification`
+    /// document, read first. A section the server has is adopted through ``apply(_:to:)``, and an
+    /// absent or malformed field keeps its local value. A section it lacks is written from local values.
     /// An unacknowledged local edit wins, and its own push carries it: nothing is read while
     /// `isPushPending()`. After each round trip that and the local values are checked again, as
     /// an edit's marker may not be set yet, and so is `isCurrent()`: nothing from a logged-out
@@ -633,10 +670,10 @@ nonisolated enum NotificationSettingsSync {
         isCurrent: () -> Bool = { true },
         source: DocumentSource = .read
     ) async throws -> ReconcileOutcome {
-        var synced: Set<OwnedSection> = []
+        var synced: Set<OwnedSection> = [.courses]
         if syncAssignmentRemindersEnabled { synced.insert(.assignments) }
         if syncLiveActivityEnabled { synced.insert(.liveActivity) }
-        guard cloudSyncEnabled, !synced.isEmpty else { return .skipped }
+        guard cloudSyncEnabled else { return .skipped }
         guard !isPushPending() else { return .deferredToPendingPush }
 
         var expected = LocalPreferences(from: store)
@@ -673,7 +710,8 @@ nonisolated enum NotificationSettingsSync {
             let updates = try expected.documentUpdates(
                 existing: existing,
                 includeAssignments: missing.contains(.assignments),
-                includeLiveActivity: missing.contains(.liveActivity)
+                includeLiveActivity: missing.contains(.liveActivity),
+                includeCourses: missing.contains(.courses)
             )
             let body = try JSONSerialization.data(
                 withJSONObject: merging(updates, into: existing),
@@ -705,6 +743,9 @@ nonisolated enum NotificationSettingsSync {
         }
         if sections.contains(.liveActivity) {
             document.liveActivity = decodedSection(object[OwnedSection.liveActivity.rawValue])
+        }
+        if sections.contains(.courses) {
+            document.courses = decodedSection(object[OwnedSection.courses.rawValue])
         }
         return document
     }
@@ -746,22 +787,43 @@ nonisolated enum NotificationSettingsSync {
         return fromDocument.union(localSubHour)
     }
 
+    /// The class reminder lead time for the document's `courses.reminder_offsets_minutes`, and
+    /// whether a push keeps that list. A list of one lead time on offer is adopted. Any other list
+    /// is kept, showing its smallest value if that is on offer and the current lead time if not.
+    /// No list changes nothing.
+    static func resolveClassReminderLead(
+        documentMinutes: [Int]?,
+        currentMinutes: Int,
+        currentKeepsForeign: Bool
+    ) -> (minutes: Int, keepsForeign: Bool) {
+        guard let documentMinutes else { return (currentMinutes, currentKeepsForeign) }
+        let choices = LiveActivityPreferencesStore.classReminderLeadChoices.map { Int($0.timeInterval / 60) }
+        if documentMinutes.count == 1, let only = documentMinutes.first, choices.contains(only) {
+            return (only, false)
+        }
+        let smallest = documentMinutes.min().flatMap { choices.contains($0) ? $0 : nil }
+        return (smallest ?? currentMinutes, true)
+    }
+
     private static func offset(forMinutes minutes: Int) -> AssignmentReminderOffset? {
         AssignmentReminderOffset.allCases.first { Int($0.timeInterval / 60) == minutes }
     }
 
-    /// Reverse of `LocalPreferences` above: applies the document onto the
-    /// store. Every one of the seven mapped fields falls back to the
-    /// store's current value when the document does not carry it, so a
-    /// document written by a client that knows about fewer fields than this
-    /// one narrows what a pull changes — it never resets anything to a
-    /// guessed default.
+    /// Reverse of `LocalPreferences` above: applies the document onto the store. Every mapped
+    /// field falls back to the store's current value when the document does not carry it, so a
+    /// document written by a client that knows about fewer fields than this one narrows what a
+    /// pull changes and never resets anything to a guessed default.
     @MainActor
     static func apply(_ document: NotificationSettingsDocument, to store: LiveActivityPreferencesStore) {
         let assignments = document.assignments
         let liveActivity = document.liveActivity
         let classLeadSeconds = liveActivity?.classPreparingLeadSeconds
         let assignmentLeadSeconds = liveActivity?.assignmentLeadSeconds
+        let classReminderLead = resolveClassReminderLead(
+            documentMinutes: document.courses?.reminderOffsetsMinutes,
+            currentMinutes: store.classReminderLeadMinutes,
+            currentKeepsForeign: store.keepsForeignClassReminderOffsets
+        )
         store.applyFromNotificationSettingsDocument(
             isAssignmentReminderEnabled: assignments?.enabled ?? store.isAssignmentReminderEnabled,
             assignmentReminderOffsets: resolveOffsets(
@@ -775,7 +837,10 @@ nonisolated enum NotificationSettingsSync {
             classPreparingLeadTime: classLeadSeconds.map { TimeInterval($0) }
                 ?? store.classPreparingLeadTime,
             assignmentLiveActivityLeadTime: assignmentLeadSeconds.map { TimeInterval($0) }
-                ?? store.assignmentLiveActivityLeadTime
+                ?? store.assignmentLiveActivityLeadTime,
+            isClassReminderEnabled: document.courses?.enabled ?? store.isClassReminderEnabled,
+            classReminderLeadMinutes: classReminderLead.minutes,
+            keepsForeignClassReminderOffsets: classReminderLead.keepsForeign
         )
     }
 }

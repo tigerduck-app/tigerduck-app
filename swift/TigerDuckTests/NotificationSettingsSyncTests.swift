@@ -18,7 +18,10 @@ struct NotificationSettingsSyncTests {
         showInClassScenario: Bool = false,
         showAssignmentScenario: Bool = true,
         classPreparingLeadTime: TimeInterval = 3600,
-        assignmentLiveActivityLeadTime: TimeInterval = 7200
+        assignmentLiveActivityLeadTime: TimeInterval = 7200,
+        isClassReminderEnabled: Bool = true,
+        classReminderLeadMinutes: Int = 10,
+        keepsForeignClassReminderOffsets: Bool = false
     ) -> NotificationSettingsSync.LocalPreferences {
         .init(
             isAssignmentReminderEnabled: isAssignmentReminderEnabled,
@@ -27,7 +30,10 @@ struct NotificationSettingsSyncTests {
             showInClassScenario: showInClassScenario,
             showAssignmentScenario: showAssignmentScenario,
             classPreparingLeadTime: classPreparingLeadTime,
-            assignmentLiveActivityLeadTime: assignmentLiveActivityLeadTime
+            assignmentLiveActivityLeadTime: assignmentLiveActivityLeadTime,
+            isClassReminderEnabled: isClassReminderEnabled,
+            classReminderLeadMinutes: classReminderLeadMinutes,
+            keepsForeignClassReminderOffsets: keepsForeignClassReminderOffsets
         )
     }
 
@@ -156,31 +162,43 @@ struct NotificationSettingsSyncTests {
         #expect(flipped.showAssignment == false)
     }
 
+    @Test("courses carries the class reminder switch and its one lead time")
+    func coursesSectionMapsTheSwitchAndLeadTime() {
+        let section = Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 15)
+            .coursesSection(preservingForeignOffsetsIn: [:])
+        #expect(section == .init(enabled: false, reminderOffsetsMinutes: [15]))
+        #expect(Self.local().coursesSection(preservingForeignOffsetsIn: [:])
+            == .init(enabled: true, reminderOffsetsMinutes: [10]))
+    }
+
     // MARK: - 2. Everything this app does not own round-trips untouched
 
-    @Test("push preserves the server's existing courses section unchanged")
-    func pushPreservesExistingCourses() async throws {
+    @Test("push writes the courses section from the device's class reminder switch and lead time")
+    func pushWritesCoursesFromTheDevice() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
 
-        let existingCourses = NotificationSettingsDocument.Courses(enabled: true, reminderOffsetsMinutes: [10, 30])
         let existing = NotificationSettingsDocument(
             assignments: .init(enabled: false, reminderOffsetsHours: []),
-            courses: existingCourses,
+            courses: .init(enabled: true, reminderOffsetsMinutes: [10]),
             liveActivity: nil
         )
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(document: existing, revision: 1)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
 
-        try await NotificationSettingsSync.push(local: Self.local(), client: client, cloudSyncEnabled: true)
+        try await NotificationSettingsSync.push(
+            local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 30),
+            client: client,
+            cloudSyncEnabled: true
+        )
 
         let requests = SettingsAPIStub.requests(for: url)
         #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
 
         let sent = try Self.sentEnvelope(from: requests[1])
         let sentDocument = try Self.decodedDocument(from: sent["document"])
-        #expect(sentDocument.courses == existingCourses)
+        #expect(sentDocument.courses == .init(enabled: false, reminderOffsetsMinutes: [30]))
     }
 
     @Test("push preserves every key it does not own — whole sections, and keys inside the sections it does own")
@@ -199,7 +217,7 @@ struct NotificationSettingsSyncTests {
                 "reminder_offsets_hours": [1],
                 "assignments_future_key": "keep me",
             ],
-            // A section this app never writes, with a key inside it that
+            // Another section this app owns, with a key inside it that
             // this build's `Courses` type has no property for.
             "courses": [
                 "enabled": true,
@@ -221,7 +239,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 5)), for: url)
 
         try await NotificationSettingsSync.push(
-            local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: true),
+            local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: true, classReminderLeadMinutes: 15),
             client: client,
             cloudSyncEnabled: true
         )
@@ -232,11 +250,11 @@ struct NotificationSettingsSyncTests {
         let futureSection = try #require(sent["future_section"] as? [String: Any])
         #expect(futureSection["x"] as? Int == 1)
 
-        // `courses` survives whole, including the key this build cannot
-        // model — a typed round-trip would drop `courses_future_key`.
+        // `courses` takes the local values and keeps the key this build cannot
+        // model, which a typed round-trip would drop.
         let courses = try #require(sent["courses"] as? [String: Any])
         #expect(courses["enabled"] as? Bool == true)
-        #expect(courses["reminder_offsets_minutes"] as? [Int] == [10])
+        #expect(courses["reminder_offsets_minutes"] as? [Int] == [15])
         #expect(courses["courses_future_key"] as? Int == 7)
 
         // Inside a section this app *does* overwrite: the owned keys take
@@ -252,11 +270,10 @@ struct NotificationSettingsSyncTests {
         #expect(nested["nested"] as? Bool == true)
     }
 
-    @Test("a first-ever write sends only the two sections this app owns — it does not invent a courses section")
-    func firstEverWriteOmitsCourses() async throws {
-        // `server/push/course_reminders.py` reads `courses.enabled` with a default of true, so
-        // inventing `false` would turn off course reminders the server sends from its defaults.
-        // An absent `courses` key means "no opinion": this app does not own that section.
+    @Test("a first-ever write sends the three sections this app owns, courses as the device has it")
+    func firstEverWriteSendsCourses() async throws {
+        // The store's class reminder defaults, on and 10 minutes before, are the backend's own
+        // (`server/push/course_reminders.py`), so a first write changes no reminder by itself.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
@@ -270,32 +287,41 @@ struct NotificationSettingsSyncTests {
         let sent = try Self.sentEnvelope(from: requests[1])
         #expect(sent["base_revision"] is NSNull)
         let sentDocument = try #require(sent["document"] as? [String: Any])
-        #expect(Set(sentDocument.keys) == ["assignments", "live_activity"])
+        #expect(Set(sentDocument.keys) == ["assignments", "courses", "live_activity"])
+        let courses = try #require(sentDocument["courses"] as? [String: Any])
+        #expect(courses["enabled"] as? Bool == true)
+        #expect(courses["reminder_offsets_minutes"] as? [Int] == [10])
     }
 
     // MARK: - 3. 409 conflict: adopt server version, retry exactly once
 
-    @Test("a single conflict adopts the server's courses + revision and retries once, then succeeds")
+    @Test("a single conflict adopts the server's document + revision and retries once, then succeeds")
     func conflictRetriesOnceThenSucceeds() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
 
-        let staleCourses = NotificationSettingsDocument.Courses(enabled: true, reminderOffsetsMinutes: [5])
-        let stale = NotificationSettingsDocument(
-            assignments: .init(enabled: true, reminderOffsetsHours: [24]),
-            courses: staleCourses,
-            liveActivity: nil
+        let stale: [String: Any] = [
+            "assignments": ["enabled": true, "reminder_offsets_hours": [24]],
+            "future_section": ["x": 1],
+        ]
+        let serverWinner: [String: Any] = [
+            "assignments": ["enabled": true, "reminder_offsets_hours": [1]],
+            "future_section": ["x": 2],
+        ]
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: try Self.readEnvelope(documentObject: stale, revision: 1)),
+            for: url
         )
-        let serverCourses = NotificationSettingsDocument.Courses(enabled: false, reminderOffsetsMinutes: [])
-        let serverWinner = NotificationSettingsDocument(
-            assignments: .init(enabled: true, reminderOffsetsHours: [1]),
-            courses: serverCourses,
-            liveActivity: nil
+        SettingsAPIStub.enqueue(
+            .init(
+                statusCode: 409,
+                body: try JSONSerialization.data(withJSONObject: [
+                    "server": ["document": serverWinner, "revision": 5],
+                ])
+            ),
+            for: url
         )
-
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(document: stale, revision: 1)), for: url)
-        SettingsAPIStub.enqueue(.init(statusCode: 409, body: try Self.conflictEnvelope(document: serverWinner, revision: 5)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 6)), for: url)
 
         try await NotificationSettingsSync.push(local: Self.local(), client: client, cloudSyncEnabled: true)
@@ -303,10 +329,11 @@ struct NotificationSettingsSyncTests {
         let requests = SettingsAPIStub.requests(for: url)
         #expect(requests.map(\.httpMethod) == ["GET", "PUT", "PUT"])
 
+        // The retry is merged over the winner's document, not the one first read.
         let retry = try Self.sentEnvelope(from: requests[2])
         #expect(retry["base_revision"] as? Int == 5)
-        let retryDocument = try Self.decodedDocument(from: retry["document"])
-        #expect(retryDocument.courses == serverCourses)
+        let retryDocument = try #require(retry["document"] as? [String: Any])
+        #expect((retryDocument["future_section"] as? [String: Any])?["x"] as? Int == 2)
     }
 
     @Test("a second consecutive conflict gives up instead of retrying forever")
@@ -374,7 +401,7 @@ struct NotificationSettingsSyncTests {
 
     // MARK: - Per-device-switch section gating
     // `syncAssignmentRemindersEnabled` gates `assignments` and `syncLiveActivityEnabled` gates
-    // `live_activity`. An off section keeps the server's copy, and with both off nothing is sent.
+    // `live_activity`. An off section keeps the server's copy; `courses` has no switch.
 
     @Test("assignments off leaves that section exactly as the server holds it, but live_activity still updates")
     func assignmentsOffPreservesServerAssignmentsSection() async throws {
@@ -448,25 +475,37 @@ struct NotificationSettingsSyncTests {
         #expect(sentAssignments["enabled"] as? Bool == true)
     }
 
-    @Test("both device switches off sends no request whatsoever, and reports that it did not write")
-    func bothDeviceSwitchesOffSendsNothing() async throws {
+    @Test("both device switches off still write courses, and leave the other two sections as the server holds them")
+    func bothDeviceSwitchesOffWriteOnlyCourses() async throws {
+        // Class reminders have no device switch, so turning both switches off must not keep a
+        // change to them from reaching the backend, which sends the reminders.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-        // Deliberately nothing enqueued: if a request were sent anyway, the
-        // stub has nothing to serve and the call would throw instead of
-        // returning cleanly.
+
+        let existing: [String: Any] = [
+            "assignments": ["enabled": false],
+            "live_activity": ["show_in_class": true],
+        ]
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: try Self.readEnvelope(documentObject: existing, revision: 1)),
+            for: url
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(),
+            local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: false, isClassReminderEnabled: false),
             client: client,
             cloudSyncEnabled: true,
             syncAssignmentRemindersEnabled: false,
             syncLiveActivityEnabled: false
         )
 
-        #expect(written == false)
-        #expect(SettingsAPIStub.requests(for: url).isEmpty)
+        #expect(written)
+        let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
+        #expect((sent["assignments"] as? [String: Any])?["enabled"] as? Bool == false)
+        #expect((sent["live_activity"] as? [String: Any])?["show_in_class"] as? Bool == true)
+        #expect((sent["courses"] as? [String: Any])?["enabled"] as? Bool == false)
     }
 
     // MARK: - Pending marker
@@ -530,7 +569,7 @@ struct NotificationSettingsSyncTests {
         let requests = SettingsAPIStub.requests(for: url)
         #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
         let sent = try Self.sentDocumentObject(from: requests[1])
-        #expect(Set(sent.keys) == ["assignments", "live_activity"])
+        #expect(Set(sent.keys) == ["assignments", "courses", "live_activity"])
         // Still a compare-and-swap against the revision that was read.
         #expect(try Self.sentEnvelope(from: requests[1])["base_revision"] as? Int == 3)
     }
@@ -553,7 +592,7 @@ struct NotificationSettingsSyncTests {
 
         #expect(written)
         let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
-        #expect(Set(sent.keys) == ["assignments", "live_activity"])
+        #expect(Set(sent.keys) == ["assignments", "courses", "live_activity"])
     }
 
     // MARK: - 5b. Offsets this build has no case for survive a push
@@ -701,6 +740,43 @@ struct NotificationSettingsSyncTests {
         #expect(retried["reminder_offsets_minutes"] as? [Int] == [1440, 77])
     }
 
+    @Test("class reminder offsets this build cannot show go back as the server holds them until the user picks")
+    func pushKeepsForeignClassReminderOffsets() async throws {
+        // The page offers one lead time; two, or one it does not offer, came from another client
+        // or a newer build. A push for another setting must not replace them with this device's
+        // value, which the user never chose against them.
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+
+        let existing: [String: Any] = ["courses": ["enabled": true, "reminder_offsets_minutes": [10, 45]]]
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: try Self.readEnvelope(documentObject: existing, revision: 1)),
+            for: url
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
+
+        try await NotificationSettingsSync.push(
+            local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 10, keepsForeignClassReminderOffsets: true),
+            client: client,
+            cloudSyncEnabled: true
+        )
+
+        let courses = try #require(
+            try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])["courses"] as? [String: Any]
+        )
+        #expect(courses["enabled"] as? Bool == false)
+        #expect(courses["reminder_offsets_minutes"] as? [Int] == [10, 45])
+
+        // A lead time the user picks replaces them.
+        let picked = Self.local(classReminderLeadMinutes: 15).coursesSection(preservingForeignOffsetsIn: existing)
+        #expect(picked.reminderOffsetsMinutes == [15])
+        // With no list left to keep, the lead time goes up.
+        let noList = Self.local(classReminderLeadMinutes: 30, keepsForeignClassReminderOffsets: true)
+            .coursesSection(preservingForeignOffsetsIn: ["courses": ["enabled": true]])
+        #expect(noList.reminderOffsetsMinutes == [30])
+    }
+
     // MARK: - 6. Offset resolution on the pull side
 
     @Test("reminder_offsets_minutes is authoritative and complete, sub-hour offsets included")
@@ -785,6 +861,30 @@ struct NotificationSettingsSyncTests {
             currentLocal: current
         )
         #expect(resolved == current)
+    }
+
+    @Test("one class reminder lead time on offer is adopted, and any other list is kept")
+    func resolveClassReminderLeadAdoptsOnlyWhatThePageOffers() {
+        let rows: [(name: Comment, minutes: [Int]?, lead: Int, keeps: Bool)] = [
+            ("one lead time on offer", [30], 30, false),
+            ("one the page does not offer: the current lead time stays", [45], 15, true),
+            ("several: the smallest shows, as it is on offer", [60, 10], 10, true),
+            ("several whose smallest is not on offer", [90, 45], 15, true),
+            ("an empty list, which no lead time shows", [], 15, true),
+            ("no list: nothing changes", nil, 15, false),
+        ]
+        for row in rows {
+            let resolved = NotificationSettingsSync.resolveClassReminderLead(
+                documentMinutes: row.minutes, currentMinutes: 15, currentKeepsForeign: false
+            )
+            #expect(resolved.minutes == row.lead, row.name)
+            #expect(resolved.keepsForeign == row.keeps, row.name)
+        }
+        // No list leaves the flag as it was too.
+        let untouched = NotificationSettingsSync.resolveClassReminderLead(
+            documentMinutes: nil, currentMinutes: 15, currentKeepsForeign: true
+        )
+        #expect(untouched.keepsForeign)
     }
 
     // MARK: - 6b. The same shapes the backend reads, resolved the same way
@@ -1050,6 +1150,58 @@ struct NotificationSettingsApplyTests {
             #expect(store.showClassPreparingScenario)
             #expect(store.classPreparingLeadTime == 1800)
             #expect(store.assignmentLiveActivityLeadTime == 3600)
+        }
+    }
+
+    @Test("a pull adopts the class reminder switch and a lead time on offer, and a push writes them back")
+    func pullAdoptsClassReminders() async {
+        await NotificationSettingsFixtures.withStore { store in
+            store.isClassReminderEnabled = true
+            store.classReminderLeadMinutes = 10
+
+            let document = NotificationSettingsDocument(courses: .init(enabled: false, reminderOffsetsMinutes: [30]))
+            NotificationSettingsSync.apply(document, to: store)
+
+            #expect(store.isClassReminderEnabled == false)
+            #expect(store.classReminderLeadMinutes == 30)
+            #expect(!store.keepsForeignClassReminderOffsets)
+            let section = NotificationSettingsSync.LocalPreferences(from: store)
+                .coursesSection(preservingForeignOffsetsIn: ["courses": ["enabled": false, "reminder_offsets_minutes": [30]]])
+            #expect(section == document.courses)
+        }
+    }
+
+    @Test("a pull with class reminder offsets the page does not offer keeps them until the user picks a lead time")
+    func pullKeepsForeignClassReminderOffsetsUntilAPick() async {
+        await NotificationSettingsFixtures.withStore { store in
+            store.classReminderLeadMinutes = 15
+            let existing: [String: Any] = ["courses": ["reminder_offsets_minutes": [45]]]
+
+            NotificationSettingsSync.apply(NotificationSettingsDocument(courses: .init(reminderOffsetsMinutes: [45])), to: store)
+
+            #expect(store.classReminderLeadMinutes == 15)
+            #expect(store.keepsForeignClassReminderOffsets)
+            #expect(NotificationSettingsSync.LocalPreferences(from: store)
+                .coursesSection(preservingForeignOffsetsIn: existing).reminderOffsetsMinutes == nil)
+
+            // The pick is a local edit, so it goes up, and it replaces the kept offsets.
+            #expect(Self.recordedPushDecisions { store.classReminderLeadMinutes = 5 } == [true])
+            #expect(!store.keepsForeignClassReminderOffsets)
+            #expect(NotificationSettingsSync.LocalPreferences(from: store)
+                .coursesSection(preservingForeignOffsetsIn: existing).reminderOffsetsMinutes == [5])
+        }
+    }
+
+    @Test("resetting the Live Activity settings leaves the class reminders alone")
+    func resetLeavesClassRemindersAlone() async {
+        await NotificationSettingsFixtures.withStore { store in
+            store.isClassReminderEnabled = false
+            store.classReminderLeadMinutes = 30
+
+            store.resetToDefaults()
+
+            #expect(store.isClassReminderEnabled == false)
+            #expect(store.classReminderLeadMinutes == 30)
         }
     }
 

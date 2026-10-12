@@ -86,6 +86,7 @@ struct NotificationSettingsSeedMigrationTests {
                     [
                         "assignments": ["enabled": true, "reminder_offsets_minutes": [240, 60]],
                         "live_activity": ["show_in_class": false, "assignment_lead_seconds": 3600],
+                        "courses": ["enabled": true, "reminder_offsets_minutes": [10]],
                     ],
                     revision: 4
                 ),

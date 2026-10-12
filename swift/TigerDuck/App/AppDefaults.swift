@@ -92,6 +92,15 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.isAssignmentReminderEnabled,
         default: true
     )
+    static let isClassReminderEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.isClassReminderEnabled,
+        default: true
+    )
+    /// See `LiveActivityPreferencesStore.keepsForeignClassReminderOffsets`.
+    static let keepsForeignClassReminderOffsets = Key<Bool>(
+        AppConstants.UserDefaultsKeys.keepsForeignClassReminderOffsets,
+        default: false
+    )
     static let isLiveActivityEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.isLiveActivityEnabled,
         default: true
@@ -107,6 +116,10 @@ nonisolated extension Defaults.Keys {
     static let classPreparingLeadTime = Key<Double>(
         AppConstants.UserDefaultsKeys.classPreparingLeadTime,
         default: LiveActivityPreferencesStore.defaultClassPreparingLeadTime
+    )
+    static let classReminderLeadMinutes = Key<Int>(
+        AppConstants.UserDefaultsKeys.classReminderLeadMinutes,
+        default: LiveActivityPreferencesStore.defaultClassReminderLeadMinutes
     )
     #endif
     static let showAssignmentScenario = Key<Bool>(

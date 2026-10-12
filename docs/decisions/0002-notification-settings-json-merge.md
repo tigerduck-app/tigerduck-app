@@ -9,11 +9,10 @@ read and written through `SettingsDocumentClient`) has three writers: this app, 
 app and the backend's defaults. The backend accepts any JSON object without validating it, and
 each writer learns new sections and fields at its own pace.
 
-This app owns only the `assignments` and `live_activity` sections, with the field mapping fixed
-in `NotificationSettingsSync.LocalPreferences`; `courses` belongs to the course-reminder
-feature, and any other section to Android or a later build. Only the iOS build syncs the
-document: every synced field lives on `LiveActivityPreferencesStore`, which `AppState` creates
-only under `#if os(iOS)`.
+This app owns the `assignments`, `live_activity` and `courses` sections, with the field mapping
+fixed in `NotificationSettingsSync.LocalPreferences`; any other section belongs to Android or a
+later build. Only the iOS build syncs the document: every synced field lives on
+`LiveActivityPreferencesStore`, which `AppState` creates only under `#if os(iOS)`.
 
 ## Decision
 
@@ -39,12 +38,20 @@ only under `#if os(iOS)`.
   foreign value found only in the hours field is not kept: every writer that knows the minutes
   field mirrors into it, so it can only come from a client older than that field. Both arrays
   are written descending, so the document is deterministic (`Set` order is not stable).
+- `courses` has no device switch: it syncs whenever cloud sync is on. Its
+  `reminder_offsets_minutes` holds the one class reminder lead time the app offers, in whole
+  minutes, as Android types the key `List<Int>?`. A list the app cannot show, a value it does not
+  offer or more than one, is written back as the document holds it until the user picks a lead
+  time on this device (`LiveActivityPreferencesStore.keepsForeignClassReminderOffsets`), so a
+  push for another setting does not replace another client's choice. A pull shows the list's
+  smallest value when the app offers it.
 
 ## Alternatives
 
-- Re-encoding a typed struct on push: it would delete every key the struct does not carry, and
-  the backend reads a missing `courses` section as its defaults (`server/push/course_reminders.py`
-  in `tigerduck-app/tigerduck-backend`), so losing it silently resets the user's class reminders,
+- Re-encoding a typed struct on push: it would delete every key the struct does not carry, such
+  as a section another client adds or a field a newer build adds to one this app owns. The
+  backend reads a missing `courses` field as its default (`server/push/course_reminders.py` in
+  `tigerduck-app/tigerduck-backend`), so losing one silently resets the user's class reminders,
   with nothing on screen to say so.
 - A typed struct with a bag of unknown keys: it needs hand-written `init(from:)` and
   `encode(to:)` on the document and on every nested section, because unknown keys appear inside
@@ -54,5 +61,5 @@ only under `#if os(iOS)`.
 ## Consequences
 
 - New fields must be Optional, and a push must go through the merge.
-- `NotificationSettingsSyncTests` pins the merge, the preserved minute values and the hours
-  mirror.
+- `NotificationSettingsSyncTests` pins the merge, the preserved minute values, the hours mirror
+  and the class reminder offsets kept for another client.

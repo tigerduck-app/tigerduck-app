@@ -36,9 +36,9 @@ nonisolated struct NotificationSettingsDocument: Codable, Equatable, Sendable {
         }
     }
 
-    /// Course-start reminders. Owned by a different feature — this app only
-    /// ever passes the section through untouched (and, since the write path
-    /// merges at the JSON level, does not even need to decode it to do so).
+    /// Class reminders, which the backend pushes before each class. An absent field means
+    /// the backend's default, on and 10 minutes before (`server/push/course_reminders.py` in
+    /// `tigerduck-app/tigerduck-backend`).
     nonisolated struct Courses: Codable, Equatable, Sendable {
         var enabled: Bool?
         var reminderOffsetsMinutes: [Int]?
@@ -76,7 +76,7 @@ nonisolated struct NotificationSettingsDocument: Codable, Equatable, Sendable {
     }
 }
 
-// The two sections this app adopts decode field by field: a field of the wrong
+// The sections this app adopts decode field by field: a field of the wrong
 // type reads as absent, so `NotificationSettingsSync.apply` keeps its local value
 // and still adopts the fields beside it. In extensions so the memberwise initializers stay.
 nonisolated extension NotificationSettingsDocument.Assignments {
@@ -122,6 +122,14 @@ private nonisolated func wholeNumberList<Key: CodingKey>(
     let decoded = try? container.decodeIfPresent([WholeNumberElement].self, forKey: key)
     guard let elements = decoded.flatMap({ $0 }) else { return nil }
     return elements.compactMap(\.value)
+}
+
+nonisolated extension NotificationSettingsDocument.Courses {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try? container.decodeIfPresent(Bool.self, forKey: .enabled)
+        reminderOffsetsMinutes = wholeNumberList(in: container, forKey: .reminderOffsetsMinutes)
+    }
 }
 
 nonisolated extension NotificationSettingsDocument.LiveActivity {
