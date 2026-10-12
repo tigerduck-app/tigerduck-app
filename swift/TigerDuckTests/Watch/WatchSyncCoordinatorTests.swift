@@ -113,4 +113,55 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.pushedContexts[0][WatchWireFormat.Key.accentHex] as? String, "#123456")
         XCTAssertEqual(republished.count, 1)
     }
+
+    /// Every data change pushes, and most change nothing the Watch shows. Only the stamp would
+    /// differ, so the same content is not sent twice.
+    @MainActor
+    func test_unchangedContent_isNotPushedAgain() {
+        let session = StubSession()
+        let coord = WatchSyncCoordinator(session: session)
+        func push(accent: String) {
+            coord.push(courses: [], customNames: [:], accentHex: accent,
+                       loggedIn: true, languageTag: nil, visualPreset: .default)
+        }
+
+        push(accent: "#AAAAAA")
+        push(accent: "#AAAAAA")
+        XCTAssertEqual(session.pushedContexts.count, 1)
+
+        push(accent: "#BBBBBB")
+        XCTAssertEqual(session.pushedContexts.count, 2)
+    }
+
+    /// The Watch asks when it may have lost what it had, so its request is answered even when
+    /// nothing changed. Credentials go out on that request and on no ordinary push.
+    @MainActor
+    func test_syncRequest_pushesUnchangedContentAndOnlyItResendsCredentials() async throws {
+        let session = StubSession()
+        let timer = ManualSleeper()
+        let republished = Counter()
+        let coord = WatchSyncCoordinator(
+            session: session,
+            sleep: { await timer.sleep(for: $0) },
+            republishCredentials: { republished.count += 1 }
+        )
+        coord.setPayloadSource {
+            .init(courses: [], customNames: [:], accentHex: "#123456",
+                  loggedIn: true, languageTag: nil, visualPreset: .default)
+        }
+
+        coord.pushCurrentState()
+        try await timer.waitUntilArmed(atLeast: 1)
+        await timer.fire()
+        await coord.debounceTask?.value
+        XCTAssertEqual(session.pushedContexts.count, 1)
+        XCTAssertEqual(republished.count, 0)
+
+        coord.answerSyncRequest()
+        try await timer.waitUntilArmed(atLeast: 2)
+        await timer.fire()
+        await coord.debounceTask?.value
+        XCTAssertEqual(session.pushedContexts.count, 2)
+        XCTAssertEqual(republished.count, 1)
+    }
 }

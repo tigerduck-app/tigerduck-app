@@ -53,10 +53,6 @@ struct WatchSyncBridge: View {
 
     private func pushNow() {
         coordinator.pushCurrentState()
-        // Idempotent re-push, so a TTL-purged watch, or one that was off when the user logged
-        // in on the phone, gets credentials back the next time the phone foregrounds. The epoch
-        // is the last one sent, so a watch that has them rejects it as a replay.
-        WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed()
     }
 }
 

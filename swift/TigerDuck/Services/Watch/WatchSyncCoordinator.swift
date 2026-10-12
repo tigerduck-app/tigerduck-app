@@ -34,7 +34,9 @@ final class WatchSyncCoordinator: NSObject {
     private let session: WatchSessionPushing
     private(set) var debounceTask: Task<Void, Never>?
     private var pendingPayload: Payload?
+    private var pendingForce = false
     private var pendingSnapshot: WatchSnapshot?
+    private var lastDelivered: WatchSnapshot?
     private var payloadSource: (@MainActor () -> Payload)?
     private var isActivated = false
     private let debounceInterval: Duration = .milliseconds(500)
@@ -69,15 +71,17 @@ final class WatchSyncCoordinator: NSObject {
         payloadSource = source
     }
 
-    /// A debounced push of the current state, read through the payload source.
-    func pushCurrentState() {
+    /// A debounced push of the current state, read through the payload source. `force` sends
+    /// it even when the Watch already has the same content.
+    func pushCurrentState(force: Bool = false) {
         guard let payloadSource else { return }
-        scheduleDebouncedPush(payloadSource())
+        scheduleDebouncedPush(payloadSource(), force: force)
     }
 
-    /// The Watch asked for a sync: send the current state and the library credentials.
+    /// The Watch asked for a sync, so it may have lost what it had: send the current state
+    /// even if unchanged, and the library credentials, which go out only on such a request.
     func answerSyncRequest() {
-        pushCurrentState()
+        pushCurrentState(force: true)
         republishCredentials()
     }
 
@@ -89,14 +93,23 @@ final class WatchSyncCoordinator: NSObject {
         accentHex: String,
         loggedIn: Bool,
         languageTag: String?,
-        visualPreset: VisualPreset
+        visualPreset: VisualPreset,
+        force: Bool = false
     ) {
-        let snapshot = WatchPayloadEncoder.encode(
-            courses: courses, customNames: customNames, accentHex: accentHex,
-            syncedAt: Date(), loggedIn: loggedIn, languageTag: languageTag,
-            visualPreset: visualPreset
-        )
-        deliver(snapshot)
+        let snapshot = { (syncedAt: Date) in
+            WatchPayloadEncoder.encode(
+                courses: courses, customNames: customNames, accentHex: accentHex,
+                syncedAt: syncedAt, loggedIn: loggedIn, languageTag: languageTag,
+                visualPreset: visualPreset
+            )
+        }
+        // Only the stamp would differ, and every update wakes the Watch. A newer pending
+        // snapshot is dropped too: the Watch already shows what the phone has now.
+        if !force, let last = lastDelivered, snapshot(last.syncedAt) == last {
+            pendingSnapshot = nil
+            return
+        }
+        deliver(snapshot(Date()))
     }
 
     /// Attempt to deliver `snapshot` to the watch. If the watch isn't reachable
@@ -113,6 +126,7 @@ final class WatchSyncCoordinator: NSObject {
             let dict = try WatchPayloadCodec.encode(snapshot)
             try session.updateApplicationContext(dict)
             pendingSnapshot = nil
+            lastDelivered = snapshot
         } catch {
             AppLogger.network.error("watch context push failed: \(error.localizedDescription)")
             pendingSnapshot = snapshot
@@ -124,18 +138,22 @@ final class WatchSyncCoordinator: NSObject {
         deliver(snapshot)
     }
 
-    func scheduleDebouncedPush(_ payload: Payload) {
+    /// Coalesces a burst into one push of the last payload, forced if any push in it was.
+    func scheduleDebouncedPush(_ payload: Payload, force: Bool = false) {
         pendingPayload = payload
+        pendingForce = pendingForce || force
         debounceTask?.cancel()
         let sleep = self.sleep
         let interval = debounceInterval
         debounceTask = Task { [weak self] in
             await sleep(interval)
             guard !Task.isCancelled, let self, let p = self.pendingPayload else { return }
+            let force = self.pendingForce
             self.pendingPayload = nil
+            self.pendingForce = false
             self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
                       loggedIn: p.loggedIn, languageTag: p.languageTag,
-                      visualPreset: p.visualPreset)
+                      visualPreset: p.visualPreset, force: force)
         }
     }
 }
