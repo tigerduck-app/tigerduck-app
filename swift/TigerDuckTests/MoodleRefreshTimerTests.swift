@@ -36,8 +36,11 @@ struct MoodleRefreshTimerTests {
         #expect(MoodleRefreshTimer.wait(fetchedAt: now - 60, lastTry: nil, ttl: 300, now: now) == 240)
         #expect(MoodleRefreshTimer.wait(fetchedAt: now - 300, lastTry: nil, ttl: 300, now: now) == 0)
         #expect(MoodleRefreshTimer.wait(fetchedAt: now - 900, lastTry: now - 10, ttl: 300, now: now) == 290)
-        // A clock set back leaves the data stamped in the future; it is fetched again.
+        // A clock set back leaves the data stamped in the future; it is fetched again, but a try
+        // just made still holds the next one back, and a try stamped ahead waits no more than the TTL.
         #expect(MoodleRefreshTimer.wait(fetchedAt: now + 60, lastTry: nil, ttl: 300, now: now) == 0)
+        #expect(MoodleRefreshTimer.wait(fetchedAt: now + 60, lastTry: now - 10, ttl: 300, now: now) == 290)
+        #expect(MoodleRefreshTimer.wait(fetchedAt: nil, lastTry: now + 60, ttl: 300, now: now) == 300)
     }
 
     @Test("data with no fetch yet is fetched at once, and fetched again each time it ages past its freshness")

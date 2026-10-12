@@ -64,13 +64,13 @@ final class MoodleRefreshTimer {
         loop = nil
     }
 
-    /// Seconds until the next refresh, 0 when it is due. Data stamped ahead of the clock, left by
-    /// a clock set back, is due.
+    /// Seconds until the next refresh, 0 when it is due, never more than `ttl`. Data stamped
+    /// ahead of the clock, left by a clock set back, counts as old, but the last try still holds
+    /// the next one back, so a failing fetch is not repeated at once.
     nonisolated static func wait(fetchedAt: Date?, lastTry: Date?, ttl: TimeInterval, now: Date) -> TimeInterval {
-        guard let last = [fetchedAt, lastTry].compactMap(\.self).max() else { return 0 }
-        let age = now.timeIntervalSince(last)
-        guard age >= 0 else { return 0 }
-        return max(0, ttl - age)
+        let fetched = fetchedAt.flatMap { $0 <= now ? $0 : nil }
+        guard let last = [fetched, lastTry].compactMap(\.self).max() else { return 0 }
+        return min(ttl, max(0, ttl - now.timeIntervalSince(last)))
     }
 }
 
