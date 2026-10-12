@@ -20,8 +20,9 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
 - New TigerDuck backend clients copy the request construction, auth header and error handling
   of `Push/PushAPIClient.swift`, as `Sync/SettingsDocumentClient.swift` does. Cloud sync reaches
   the backend through `PushCoordinator`.
-- Logging goes through `AppLogger`, which scrubs URLs and breadcrumbs before they reach Sentry;
-  do not use `print`.
+- Logging goes through `AppLogger`, whose `os.Logger`s write to the system log on the device and
+  nowhere else. `captureError` and `breadcrumb` log as public, so they first scrub tokens,
+  passwords and URL query strings; do not use `print`.
 
 ## Anti-patterns
 
