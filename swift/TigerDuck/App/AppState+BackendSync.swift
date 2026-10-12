@@ -404,34 +404,34 @@ extension AppState {
         })
     }
 
-    /// Whether a pull takes the snapshot's word on `key`: not for a course hidden here, whose row
-    /// a delete may not have reached yet, nor in a term reset since the snapshot was fetched,
-    /// which still holds it from before the reset.
-    nonisolated static func pullApplies(to key: String, tombstones: Set<String>, resetSemesters: Set<String>) -> Bool {
-        guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return false }
-        return !resetSemesters.contains(semester)
-            && !CourseTombstone.isHidden(courseNo, semester: semester, in: tombstones)
+    /// The keys among `keys` a pull leaves as they are here: those of a course deleted here whose
+    /// DELETE may not have landed (`deleting`, course numbers), which the course reconcile keeps
+    /// hidden as long, and every key of a term reset since the snapshot was fetched or resetting.
+    nonisolated static func courseKeysPullLeaves(
+        _ keys: Set<String>,
+        deleting: Set<String>,
+        resetSemesters: Set<String>
+    ) -> Set<String> {
+        keys.filter { key in
+            guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return false }
+            return deleting.contains(courseNo) || resetSemesters.contains(semester)
+        }
     }
 
     /// The ignored courses after a pull, as `mergedIgnoredCourses` says, and the ones to send
     /// again (`resend`): ignored here and listed by the server with no device's setting, as when it
     /// dropped the settings with the course rows while no device synced courses. Those stay ignored.
-    /// The courses and terms `pullApplies(to:)` turns down are left out of the snapshot.
     nonisolated static func ignoredCoursesAfterPull(
         server: Set<String>,
         decided: Set<String>,
         listed: Set<String>,
         local: Set<String>,
         protected: Set<String>,
-        snapshotSemesters: Set<String>,
-        tombstones: Set<String> = [],
-        resetSemesters: Set<String> = []
+        snapshotSemesters: Set<String>
     ) -> (ignored: Set<String>, resend: Set<String>) {
-        let applies = { pullApplies(to: $0, tombstones: tombstones, resetSemesters: resetSemesters) }
-        let resend = local.intersection(listed.filter(applies)).subtracting(decided).subtracting(protected)
+        let resend = local.intersection(listed).subtracting(decided).subtracting(protected)
         let ignored = mergedIgnoredCourses(
-            server: server.filter(applies), local: local, protected: protected.union(resend),
-            snapshotSemesters: snapshotSemesters.subtracting(resetSemesters)
+            server: server, local: local, protected: protected.union(resend), snapshotSemesters: snapshotSemesters
         )
         return (ignored, resend)
     }
@@ -477,13 +477,18 @@ extension AppState {
         protected: Set<String>,
         fetchedAt: Date
     ) -> Bool {
-        let tombstones = Set(DataCache.shared.loadDeletedCourseNos())
+        let now = Date()
+        let deleting = recentCourseDeletions.filter { now.timeIntervalSince($0.value) < Self.courseDeleteGraceInterval }
         let resetSemesters = resettingSemesters.union(
             DataCache.shared.loadSemesterResetAt().filter { $0.value > fetchedAt }.keys
         )
-        let server = server.filter {
-            Self.pullApplies(to: $0.key, tombstones: tombstones, resetSemesters: resetSemesters)
-        }
+        let current = DataCache.shared.loadIgnoredAssignmentCourses()
+        let listed = Self.listedCourses(coursesArray)
+        let protected = protected.union(Self.courseKeysPullLeaves(
+            Set(server.map(\.key)).union(listed).union(current),
+            deleting: Set(deleting.keys),
+            resetSemesters: resetSemesters
+        ))
         let missingIds = Self.moodleCourseIdsToSend(server, protected: protected) {
             DataCache.shared.lookupMoodleCourseId(idnumber: $0)
         }
@@ -496,16 +501,13 @@ extension AppState {
         }
         if !missingIds.isEmpty { cloudSyncCoordinator.scheduleTick(after: 1) }
 
-        let current = DataCache.shared.loadIgnoredAssignmentCourses()
         let (merged, resend) = Self.ignoredCoursesAfterPull(
             server: Set(server.map(\.key)),
             decided: decided,
-            listed: Self.listedCourses(coursesArray),
+            listed: listed,
             local: current,
             protected: protected,
-            snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String }),
-            tombstones: tombstones,
-            resetSemesters: resetSemesters
+            snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })
         )
         if !resend.isEmpty {
             AppLogger.sync.info("[syncOverrides] sending \(resend.count, privacy: .public) course settings the server lost again")
