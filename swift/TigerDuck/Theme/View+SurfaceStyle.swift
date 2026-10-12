@@ -23,24 +23,11 @@ extension View {
         modifier(PresetChipModifier(policy: policy, isSelected: isSelected))
     }
 
-    /// Preset-aware row surface inside a grouped list. In the default
-    /// preset this wraps in a glass card; in iOS preset it just adds
-    /// horizontal padding and leaves the parent grouped surface to draw
-    /// the background + dividers.
-    func presetRow(policy: VisualStylePolicy) -> some View {
-        modifier(PresetRowModifier(policy: policy))
-    }
-
     /// Preset-aware container that groups several rows into one iOS-style
     /// grouped list surface. Under the default preset this is a no-op so
     /// existing card-per-row layouts are preserved.
     func presetGroupedListContainer(policy: VisualStylePolicy) -> some View {
         modifier(PresetGroupedListContainerModifier(policy: policy))
-    }
-
-    /// Preset-aware search-bar surface.
-    func presetSearchBarSurface(policy: VisualStylePolicy) -> some View {
-        modifier(PresetSearchBarModifier(policy: policy))
     }
 }
 
@@ -109,27 +96,6 @@ private struct PresetChipModifier: ViewModifier {
     }
 }
 
-private struct PresetRowModifier: ViewModifier {
-    let policy: VisualStylePolicy
-
-    func body(content: Content) -> some View {
-        switch policy.assignmentRowStyle {
-        case .card:
-            content
-                .cardPadding()
-                .background(
-                    RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
-                        .fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                )
-        case .groupedList:
-            content
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                .padding(.vertical, TigerDuckTheme.Spacing.md)
-        }
-    }
-}
-
 private struct PresetGroupedListContainerModifier: ViewModifier {
     let policy: VisualStylePolicy
 
@@ -146,31 +112,6 @@ private struct PresetGroupedListContainerModifier: ViewModifier {
                 .overlay(
                     RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
                         .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                )
-        }
-    }
-}
-
-private struct PresetSearchBarModifier: ViewModifier {
-    let policy: VisualStylePolicy
-
-    func body(content: Content) -> some View {
-        switch policy.searchBarSurface {
-        case .glass:
-            content
-                .padding(TigerDuckTheme.Spacing.sm)
-                .background(
-                    RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                        .fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                )
-        case .grouped:
-            content
-                .padding(.horizontal, TigerDuckTheme.Spacing.md)
-                .padding(.vertical, TigerDuckTheme.Spacing.sm)
-                .background(
-                    RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                        .fill(Color.white.opacity(0.08))
                 )
         }
     }

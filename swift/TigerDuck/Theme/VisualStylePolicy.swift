@@ -124,18 +124,4 @@ struct VisualStylePolicy: Sendable {
         case .iosInspired: return .secondary
         }
     }
-
-    // MARK: - Search-bar surface (announcements)
-
-    enum SearchBarSurface: Sendable {
-        case glass
-        case grouped
-    }
-
-    var searchBarSurface: SearchBarSurface {
-        switch preset {
-        case .default: return .glass
-        case .iosInspired: return .grouped
-        }
-    }
 }

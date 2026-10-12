@@ -25,12 +25,6 @@ struct AddCourseSheet: View {
     private static let liveSearchDebounce: Duration = .milliseconds(350)
 
     @State private var searchText = ""
-    /// Mirrors `searchText` but is only updated by the live-search `.task(id:)`
-    /// trigger or by an explicit Submit. Used to drive `.task(id:)` so an
-    /// in-flight fetch reflects exactly the query it ran with — and so Submit
-    /// can re-run an already-typed query (changing `submitTrigger` re-fires the
-    /// task even when `searchText` is unchanged).
-    @State private var searchTrigger: String = ""
     @State private var submitTrigger: Int = 0
     @State private var primaryResults: [CourseSearchResult] = []
     @State private var secondaryNamesByNo: [String: String] = [:]

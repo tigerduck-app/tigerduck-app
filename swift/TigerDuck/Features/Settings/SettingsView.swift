@@ -18,10 +18,6 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var notifyAssignments = true
-    @State private var notifyAnnouncements = true
-    @State private var notifyFreeLunch = true
-    @State private var notifyClubs = false
     @State private var showingTabEditor = false
     @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
