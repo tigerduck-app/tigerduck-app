@@ -278,12 +278,15 @@ enum PushAPI {
         let id: Int
         let colorHex: String?
         let customNames: [String: String]
+        /// Absent from a backend without the setting, which drops it from the request unread.
+        let ignoreAssignments: Bool?
         let updatedAt: String
 
         enum CodingKeys: String, CodingKey {
             case id
             case colorHex = "color_hex"
             case customNames = "custom_names"
+            case ignoreAssignments = "ignore_assignments"
             case updatedAt = "updated_at"
         }
     }

@@ -155,6 +155,12 @@ struct CourseIgnoreCoordinatorTests {
             let body = #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00"}"#
             SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(body.utf8)), for: url(path))
         }
+
+        /// The answer of a backend that predates the setting and drops it from the request.
+        func answerWithoutTheSetting(_ path: String) {
+            let body = #"{"id":1,"color_hex":null,"custom_names":{},"updated_at":"2026-10-13T00:00:00+00:00"}"#
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(body.utf8)), for: url(path))
+        }
     }
 
     private static let path = "sync/courses/1151CS1001301/override"
@@ -229,6 +235,23 @@ struct CourseIgnoreCoordinatorTests {
         await coordinator.syncTick()
         #expect(backend.bodies(Self.path).count == 1)
         #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
+    }
+
+    @Test("An answer without the setting, from a backend that predates it, is a refusal and parks it after five")
+    func answerWithoutTheSettingIsARefusal() async {
+        let backend = Backend()
+        for _ in 0..<SyncOutbox.maxAttempts { backend.answerWithoutTheSetting(Self.path) }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+
+        await coordinator.syncTick()
+        #expect(await coordinator.outbox.snapshot().map(\.attempts) == [1])
+
+        for _ in 1..<SyncOutbox.maxAttempts { await coordinator.syncTick() }
+        #expect(await coordinator.outbox.pendingCount() == 0)
+        #expect(await coordinator.outbox.parkedSnapshot().count == 1)
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
     }
 
     @Test("A setting still on its way up counts as pending, parked or not; a lone id does not")

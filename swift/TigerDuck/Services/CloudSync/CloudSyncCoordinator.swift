@@ -319,10 +319,13 @@ final class CloudSyncCoordinator {
                     localStatus: localStatus)
 
             case .courseIgnore(let courseId, let moodleCourseId, let ignore):
-                _ = try await pushCoordinator.patchCourseOverride(
+                let response = try await pushCoordinator.patchCourseOverride(
                     moodleId: courseId,
                     ignoreAssignments: ignore,
                     moodleCourseId: moodleCourseId)
+                // A backend without the setting answers 200 and drops it, so only an answer that
+                // names it settles the op; anything else counts as a refusal.
+                guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
             }
         } catch {
             if isUnauthorized(error) {
@@ -392,3 +395,6 @@ final class CloudSyncCoordinator {
         return false
     }
 }
+
+/// A course setting the backend answered without storing: one that predates the setting.
+nonisolated struct CourseIgnoreNotStoredError: Error {}
