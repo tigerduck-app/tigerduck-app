@@ -174,6 +174,43 @@ struct WidgetSnapshotWriterTests {
         #expect(WidgetTimelineDerivation.derive(snapshot: snapshot, at: evening) == .noMoreClasses)
     }
 
+    /// Between terms the timetable's class for today does not meet, and in the week before the
+    /// next term the Next class widget offers that term's first class, named by its weekday.
+    @Test func betweenTermsTheNextTermsFirstClassShows() {
+        let calendar = AcademicCalendar(
+            revision: 1,
+            terms: [
+                SemesterTerm(code: "1151", start: Self.day(2026, 9, 14), end: Self.day(2027, 1, 8)),
+                SemesterTerm(code: "1152", start: Self.day(2027, 2, 22), end: Self.day(2027, 6, 18)),
+            ],
+            holidays: []
+        )
+        // Thursday 10:40, inside the Thursday class, four days before the next term's first day,
+        // a Monday.
+        let now = Self.day(2027, 2, 18).addingTimeInterval(10 * 3600 + 40 * 60)
+        let snapshot = WidgetSnapshotBuilder.build(.init(
+            courses: [
+                SDCourse(courseNo: "THU100", courseName: "Thursday", schedule: [4: ["3", "4"]]),
+                SDCourse(courseNo: "MON100", courseName: "Monday", schedule: [1: ["3", "4"]]),
+            ],
+            customNames: [:],
+            colorMap: [:],
+            isLoggedIn: true,
+            accentColorHex: 0x007AFF,
+            now: now,
+            quietDayKeys: WidgetSnapshotWriter.quietDayKeys(calendar: calendar, optedIn: [], now: now)
+        ))
+
+        let derived = WidgetTimelineDerivation.derive(snapshot: snapshot, at: now)
+        if case .tomorrowFirst(let info) = derived {
+            #expect(info.course.courseNo == "MON100")
+            #expect(info.startTime == "10:20")
+            #expect(info.day == .later(weekday: 1))
+        } else {
+            Issue.record("Expected the next term's first class, got \(derived)")
+        }
+    }
+
     /// The Watch gets the same quiet days, may keep its last payload as long, and also looks a
     /// week ahead: the evening before the term's last day it offers that day's class, and on the
     /// last evening, a year after the payload, no class from the days after the term.

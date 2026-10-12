@@ -122,7 +122,6 @@ struct ClassTableView: View {
                     timeRange: viewModel.selectedCourseTimeRange,
                     weekday: viewModel.selectedWeekday
                 )
-                .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $viewModel.showAddCourse) {
                 AddCourseSheet(
