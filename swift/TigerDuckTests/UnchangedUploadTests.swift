@@ -92,4 +92,20 @@ struct UnchangedUploadTests {
         #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151"))
         #expect(backend.uploads == 2)
     }
+
+    @Test("An upload in flight across a reset records nothing, so the reset's refetch still goes")
+    func uploadAcrossAForgetRecordsNothing() {
+        var ledger = UploadLedger()
+        let key = UploadLedger.courses("1151")
+        let now = Date()
+
+        let started = ledger.generation
+        ledger.forget(key)
+        ledger.record(key, fingerprint: 1, at: now, startedIn: started)
+        #expect(ledger.isDue(key, fingerprint: 1, now: now))
+
+        ledger.record(key, fingerprint: 1, at: now, startedIn: ledger.generation)
+        #expect(!ledger.isDue(key, fingerprint: 1, now: now))
+    }
 }
+
