@@ -115,8 +115,8 @@ nonisolated struct NextClassProvider: TimelineProvider {
         return cal.date(from: dc)
     }
 
-    /// High while the next class starts within 30 minutes. Its time is put on the day it meets,
-    /// since a later day's class put on today's date can look about to start or already started.
+    /// The start time goes on the day the class meets: a later day's class put on today's date can
+    /// look about to start or already started.
     private func relevance(for r: NextClassResolver.Result, now: Date) -> TimelineEntryRelevance? {
         let low = TimelineEntryRelevance(score: 30, duration: 0)
         let daysAhead: Int

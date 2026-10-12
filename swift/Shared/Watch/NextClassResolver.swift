@@ -18,7 +18,6 @@ public nonisolated enum NextClassResolver {
         /// Further out than tomorrow. 1 = Monday to 7 = Sunday.
         case later(weekday: Int)
 
-        /// The Now & Next card's title for the next class.
         public var headline: String {
             switch self {
             case .today: return String(localized: "watch_next")
@@ -27,8 +26,6 @@ public nonisolated enum NextClassResolver {
             }
         }
 
-        /// `time` with the day in front ("Tomorrow 08:10", "Tue 08:10"), as the iPhone widget's
-        /// `WidgetDerivedState.Day.inlineCaption` writes it. A class today keeps the time alone.
         public func inlineCaption(_ time: String) -> String {
             switch self {
             case .today:
@@ -99,9 +96,9 @@ public nonisolated enum NextClassResolver {
             .sorted { minutes(of: $0.startHHmm) < minutes(of: $1.startHHmm) }
     }
 
-    /// The first class of the next day that has one, up to a week ahead, as the iPhone widget's
-    /// `WidgetTimelineDerivation.derive` looks. Day 7 is today's weekday next week, so a class that
-    /// meets once a week still shows once this week's meeting is over or called off.
+    /// Day 7 is today's weekday next week, so a class that meets once a week still shows once
+    /// this week's meeting is over or called off, as on the iPhone widget
+    /// (`WidgetTimelineDerivation.derive`).
     private static func firstClassAhead(courses: [WatchCourse], after now: Date, quietDays: Set<String>) -> Result {
         for offset in 1...7 {
             guard let day = SharedTaipei.calendar.date(byAdding: .day, value: offset, to: now),
