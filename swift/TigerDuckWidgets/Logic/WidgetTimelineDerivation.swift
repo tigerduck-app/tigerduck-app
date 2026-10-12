@@ -49,8 +49,8 @@ enum WidgetTimelineDerivation {
         let order = snapshot.periodOrder
         let todayKey = dateKey(for: date)
 
-        // No class meets on a school holiday, so there is no now or next. The Today and Week grids
-        // read `snapshot.courses` directly and keep the timetable on a day off. A nil set means a
+        // No class meets on a school holiday, so there is no now or next. The Week grid reads
+        // `snapshot.courses` directly and keeps the timetable on a day off. A nil set means a
         // snapshot from a build without holidays: treat it as no quiet days.
         if snapshot.quietDayKeys?.contains(todayKey) == true { return .noMoreClasses }
 
@@ -166,10 +166,11 @@ enum WidgetTimelineDerivation {
 
     /// Today's rows in start order, one per contiguous block, so a course meeting at periods
     /// 3-4 and 7-8 gets two rows, as `derive` and the Watch payload split it. Courses skipped
-    /// today are left out.
+    /// today are left out, and on a school holiday there are no rows, as `derive` has no class.
     static func todayRows(snapshot: WidgetSnapshot, at date: Date) -> [TodayRow] {
         let weekday = weekdayFor(date)
         let todayKey = dateKey(for: date)
+        if snapshot.quietDayKeys?.contains(todayKey) == true { return [] }
         let order = snapshot.periodOrder
         let rows = snapshot.courses
             .filter { !$0.skippedDates.contains(todayKey) }
