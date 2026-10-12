@@ -209,6 +209,41 @@ struct SSOServiceLoginTests {
         #expect(!outcome.rejected)
     }
 
+    @Test("a rejected password fails with the school's reason, shown in the sign-in's message")
+    func rejectionCarriesTheSchoolsReason() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, interactive: true) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Pages.ssoam2LoginRejected), for: Self.postURL)
+        }
+        guard case .failure(SSOLoginError.loginFailed(let reason)) = outcome.result else {
+            Issue.record("expected loginFailed, got \(outcome.result)")
+            return
+        }
+        #expect(reason == "帳號或密碼錯誤")
+        #expect(SSOLoginError.loginFailed(reason: reason).localizedDescription
+            == String(format: String(localized: "error_sso_sign_in_failed_with_reason"), "帳號或密碼錯誤"))
+    }
+
+    @Test("a rejection without a message on the page keeps the generic message")
+    func rejectionWithoutAReasonKeepsTheGenericMessage() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, interactive: true) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: Self.postURL)
+        }
+        guard case .failure(SSOLoginError.loginFailed(let reason)) = outcome.result else {
+            Issue.record("expected loginFailed, got \(outcome.result)")
+            return
+        }
+        #expect(reason == nil)
+        let generic = String(localized: "error_sso_sign_in_failed")
+        #expect(SSOLoginError.loginFailed(reason: nil).localizedDescription == generic)
+        #expect(SSOLoginError.loginFailed(reason: "").localizedDescription == generic)
+    }
+
     @Test("a mistyped password in a sign-in the user starts sets no latch")
     func interactiveRejectionDoesNotLatch() async {
         let service = Self.serviceURL()

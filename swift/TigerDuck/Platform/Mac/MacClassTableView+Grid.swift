@@ -228,10 +228,14 @@ extension MacClassTableView {
                     .fill(color.opacity(0.4))
             }
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(color.opacity(0.6), lineWidth: 0.5)
-        )
+        .overlay {
+            let edge = RoundedRectangle(cornerRadius: 8, style: .continuous)
+            if outlineRequiredCourses, course.isRequired {
+                edge.strokeBorder(color, lineWidth: 1)
+            } else {
+                edge.stroke(color.opacity(0.6), lineWidth: 0.5)
+            }
+        }
         .contentShape(Rectangle())
         .contextMenu {
             // Rename writes to a courseNo-keyed store shared across semesters;

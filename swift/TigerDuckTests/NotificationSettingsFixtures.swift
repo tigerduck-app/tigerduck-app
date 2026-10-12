@@ -29,6 +29,9 @@ enum NotificationSettingsFixtures {
             let savedShowAssignment = Defaults[.showAssignmentScenario]
             let savedShowClassPreparing = Defaults[.showClassPreparingScenario]
             let savedShowInClass = Defaults[.showInClassScenario]
+            let savedClassReminder = Defaults[.isClassReminderEnabled]
+            let savedClassReminderLead = Defaults[.classReminderLeadMinutes]
+            let savedPicked = Defaults[.hasPickedClassReminderLead]
             defer {
                 Defaults[.assignmentReminderOffsetsData] = savedOffsets
                 Defaults[.isAssignmentReminderEnabled] = savedEnabled
@@ -38,7 +41,12 @@ enum NotificationSettingsFixtures {
                 Defaults[.showAssignmentScenario] = savedShowAssignment
                 Defaults[.showClassPreparingScenario] = savedShowClassPreparing
                 Defaults[.showInClassScenario] = savedShowInClass
+                Defaults[.isClassReminderEnabled] = savedClassReminder
+                Defaults[.classReminderLeadMinutes] = savedClassReminderLead
+                Defaults[.hasPickedClassReminderLead] = savedPicked
             }
+            // Only a pull clears the pick, so a test could not clear one left behind.
+            Defaults[.hasPickedClassReminderLead] = false
             try await body(LiveActivityPreferencesStore())
         }
     }

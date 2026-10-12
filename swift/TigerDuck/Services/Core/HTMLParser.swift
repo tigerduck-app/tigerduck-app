@@ -88,7 +88,26 @@ nonisolated enum HTMLParser {
         return nil
     }
 
+    /// The message a sign-in page shows for a rejected attempt, as plain text: the first
+    /// element with text, trying the error classes in order.
+    static func loginErrorMessage(in html: String) -> String? {
+        guard let doc = try? SwiftSoup.parse(html) else { return nil }
+        for className in loginErrorClassNames {
+            for element in (try? doc.getElementsByClass(className).array()) ?? [] {
+                if let text = try? element.text(), !text.isEmpty { return text }
+            }
+        }
+        return nil
+    }
+
     // MARK: - Helpers
+
+    private static let loginErrorClassNames = [
+        "field-validation-error",
+        "validation-summary-errors",
+        "alert-danger",
+        "text-danger",
+    ]
 
     private static func formData(from form: Element) -> FormData? {
         let action = (try? form.attr("action")) ?? ""

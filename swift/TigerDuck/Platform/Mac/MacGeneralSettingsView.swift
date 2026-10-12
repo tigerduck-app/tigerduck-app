@@ -1,12 +1,14 @@
 #if os(macOS)
 import SwiftUI
 import AppKit
+import Defaults
 
 /// General tab — language, what the schedule shows, name-abbreviation
 /// toggles, and how links open. One of the six tabs assembled by
 /// `MacSettingsScene`.
 struct MacGeneralSettingsView: View {
     @Environment(AppState.self) private var appState
+    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
     /// Every language the app ships, in the order of their own names.
     private static let languageTags: [String] = LanguageManager.supportedLocaleTags()
@@ -54,6 +56,7 @@ struct MacGeneralSettingsView: View {
                     String(localized: "settings_show_classroom_on_class_table"),
                     isOn: $state.showClassroomInClassTable
                 )
+                Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $state.alwaysShowAllPeriods)
             }
 

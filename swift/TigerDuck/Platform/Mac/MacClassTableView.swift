@@ -16,6 +16,7 @@ struct MacClassTableView: View {
     /// Read through `@Default` rather than `Defaults[...]` so toggling the
     /// setting redraws the grid — a raw read registers no SwiftUI dependency.
     @Default(.alwaysShowAllPeriods) private var showsAllPeriods
+    @Default(.outlineRequiredCourses) var outlineRequiredCourses
 
     @State var selectedSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
@@ -192,7 +193,7 @@ struct MacClassTableView: View {
                 Text(String(
                     format: String(localized: "class_table_conflict_add_failed_message"),
                     err.newCourseName,
-                    "\(err.weekday)",
+                    AppConstants.Periods.shortWeekdayLabel(err.weekday),
                     err.periodId,
                     err.existingA.displayName,
                     err.existingB.displayName

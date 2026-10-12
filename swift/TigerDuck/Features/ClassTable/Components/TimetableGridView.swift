@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -12,6 +13,14 @@ private func spokenCourse(_ course: SDCourse, room: String? = nil, hasAssignment
     return parts.joined(separator: ", ")
 }
 
+private extension Shape {
+    /// A 1 pt line inside the edge, as `strokeBorder` draws one on an insettable shape: half of a
+    /// 2 pt stroke, clipped to the shape, so it stays off the course beside it in a conflict.
+    func innerOutline(_ color: Color) -> some View {
+        stroke(color, lineWidth: 2).clipShape(self)
+    }
+}
+
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
     /// Off for an exported image: the badge marks work still due, which is
@@ -23,6 +32,7 @@ struct TimetableGridView: View {
     /// environment. For an export, whose renderer cannot set that value itself.
     var differentiateWithoutColor: Bool? = nil
     @Environment(AppState.self) private var appState
+    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
     private let rowSpacing: CGFloat = 3
     private let colSpacing: CGFloat = 3
@@ -139,6 +149,12 @@ struct TimetableGridView: View {
                     // scroll view. See View+ScrollSafeGesture.
                     RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
                         .fill(course.color.opacity(0.4))
+                        .overlay {
+                            if outlineRequiredCourses, course.isRequired {
+                                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                                    .strokeBorder(course.color, lineWidth: 1)
+                            }
+                        }
                         .overlay {
                             Text(course.displayName)
                                 .font(.system(size: courseNameSize, weight: .medium))
@@ -277,6 +293,7 @@ private struct ConflictClusterView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var environmentDiffWithoutColor
     private var diffWithoutColor: Bool { differentiateWithoutColorOverride ?? environmentDiffWithoutColor }
     @Environment(AppState.self) private var appState
+    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
 
@@ -451,6 +468,9 @@ private struct ConflictClusterView: View {
         } label: {
             shape
                 .fill(course.color.opacity(0.4))
+                .overlay {
+                    if isOutlined(course) { shape.innerOutline(course.color) }
+                }
                 .overlay(alignment: .topLeading) {
                     Text(course.displayName)
                         .font(.system(size: courseNameSize, weight: .medium))
@@ -548,6 +568,10 @@ private struct ConflictClusterView: View {
         showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
     }
 
+    private func isOutlined(_ course: SDCourse) -> Bool {
+        outlineRequiredCourses && course.isRequired
+    }
+
     private func courseRegion(
         course: SDCourse,
         shape: ConflictLShape,
@@ -580,6 +604,9 @@ private struct ConflictClusterView: View {
                         .padding(3)
                 }
             }
+        }
+        .overlay {
+            if isOutlined(course) { shape.innerOutline(course.color) }
         }
         .clipShape(shape)
         .contentShape(shape)

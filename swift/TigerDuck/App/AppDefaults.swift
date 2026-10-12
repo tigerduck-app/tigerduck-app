@@ -57,6 +57,12 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.showClassroomInClassTable,
         default: false
     )
+    /// Outline each required course's class-table cell. On by default, as
+    /// https://github.com/tigerduck-app/tigerduck-app/issues/208 asks. Device-local.
+    static let outlineRequiredCourses = Key<Bool>(
+        AppConstants.UserDefaultsKeys.outlineRequiredCourses,
+        default: true
+    )
     static let configuredTabsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.configuredTabs
     )
@@ -92,6 +98,15 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.isAssignmentReminderEnabled,
         default: true
     )
+    static let isClassReminderEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.isClassReminderEnabled,
+        default: true
+    )
+    /// See `LiveActivityPreferencesStore.hasPickedClassReminderLead`.
+    static let hasPickedClassReminderLead = Key<Bool>(
+        AppConstants.UserDefaultsKeys.hasPickedClassReminderLead,
+        default: false
+    )
     static let isLiveActivityEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.isLiveActivityEnabled,
         default: true
@@ -107,6 +122,10 @@ nonisolated extension Defaults.Keys {
     static let classPreparingLeadTime = Key<Double>(
         AppConstants.UserDefaultsKeys.classPreparingLeadTime,
         default: LiveActivityPreferencesStore.defaultClassPreparingLeadTime
+    )
+    static let classReminderLeadMinutes = Key<Int>(
+        AppConstants.UserDefaultsKeys.classReminderLeadMinutes,
+        default: LiveActivityPreferencesStore.defaultClassReminderLeadMinutes
     )
     #endif
     static let showAssignmentScenario = Key<Bool>(

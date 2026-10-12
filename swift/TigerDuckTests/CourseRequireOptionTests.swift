@@ -1,9 +1,11 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
 
 /// QueryCourse's `RequireOption` ("R" required, "E" elective) rides along with each course from
-/// the lookup into the term's cache, as `dimension` and `allYear` do.
+/// the lookup into the term's cache, as `dimension` and `allYear` do, and names the course type
+/// in its details and outlines a required course on the class table.
 @MainActor
 struct CourseRequireOptionTests {
 
@@ -53,5 +55,25 @@ struct CourseRequireOptionTests {
         let loaded = cache.loadUserAddedCourses()
         #expect(loaded.first { $0.courseNo == "CS1003301" }?.requireOption == "R")
         #expect(loaded.first { $0.courseNo == "GE1001" }?.requireOption == "")
+    }
+
+    @Test func onlyRIsRequired() {
+        #expect(SDCourse(courseNo: "CS1003301", courseName: "計算機程式設計", requireOption: "R").isRequired)
+        #expect(SDCourse(courseNo: "CS1003301", courseName: "計算機程式設計", requireOption: "r").isRequired)
+        for option in ["E", "", "X"] {
+            #expect(!SDCourse(courseNo: "GE1001", courseName: "通識課", requireOption: option).isRequired)
+        }
+    }
+
+    /// An unknown value, the empty string of a row merged from another device included, shows no row.
+    @Test func theDetailRowNamesOnlyRequiredAndElective() {
+        #expect(CourseDetailSheet.requireOptionText("R") == String(localized: "course_detail_require_option_required"))
+        #expect(CourseDetailSheet.requireOptionText("e") == String(localized: "course_detail_require_option_elective"))
+        #expect(CourseDetailSheet.requireOptionText("") == nil)
+        #expect(CourseDetailSheet.requireOptionText("X") == nil)
+    }
+
+    @Test func requiredCoursesAreOutlinedUntilTheUserTurnsItOff() {
+        #expect(Defaults.Keys.outlineRequiredCourses.defaultValue)
     }
 }

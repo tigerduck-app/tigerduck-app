@@ -30,6 +30,14 @@ enum SSOPageFixtures {
     </html>
     """
 
+    /// The sign-in form again, as the school answers a rejected password, with its reason
+    /// beside the field.
+    static let ssoam2LoginRejected = ssoam2Login.replacingOccurrences(
+        of: #"<input id="Password" name="Password" type="password" />"#,
+        with: #"<input id="Password" name="Password" type="password" />"#
+            + #"<span class="text-danger field-validation-error" data-valmsg-for="Password">帳號或密碼錯誤</span>"#
+    )
+
     static let oidcBridge = """
     <html><head><title>Working...</title></head>
     <body onload="javascript:document.forms[0].submit()">
@@ -170,6 +178,44 @@ struct HTMLParserTests {
         ]
         for html in notBridges {
             #expect(HTMLParser.findOIDCBridgeForm(html) == nil)
+        }
+    }
+
+    @Test("a rejected sign-in gives the school's message as plain text")
+    func loginErrorMessage() {
+        #expect(HTMLParser.loginErrorMessage(in: Pages.ssoam2LoginRejected) == "帳號或密碼錯誤")
+        let summary = """
+        <div class="validation-summary-errors"><ul>
+          <li>帳號已鎖定，請 15 分鐘後再試</li>
+        </ul></div>
+        """
+        #expect(HTMLParser.loginErrorMessage(in: summary) == "帳號已鎖定，請 15 分鐘後再試")
+        let alert = """
+        <div class="alert alert-danger">
+          請輸入驗證碼 &amp; 再試一次
+        </div>
+        """
+        #expect(HTMLParser.loginErrorMessage(in: alert) == "請輸入驗證碼 & 再試一次")
+        let nested = #"<div class="alert alert-danger"><strong>錯誤</strong> 帳號已停用</div>"#
+        #expect(HTMLParser.loginErrorMessage(in: nested) == "錯誤 帳號已停用")
+    }
+
+    @Test("an empty error element is passed over, and a page with no message gives none")
+    func noLoginErrorMessage() {
+        let emptyFieldError = #"<span class="field-validation-error"> </span>"#
+            + #"<div class="validation-summary-errors"><ul><li>驗證碼錯誤</li></ul></div>"#
+        #expect(HTMLParser.loginErrorMessage(in: emptyFieldError) == "驗證碼錯誤")
+        let emptyOfTheSameClass = #"<span class="text-danger"></span><span class="text-danger">驗證碼錯誤</span>"#
+        #expect(HTMLParser.loginErrorMessage(in: emptyOfTheSameClass) == "驗證碼錯誤")
+
+        let noMessage = [
+            Pages.ssoam2Login,
+            Pages.maintenance,
+            #"<span class="field-validation-valid" data-valmsg-for="Password"></span>"#,
+            "",
+        ]
+        for html in noMessage {
+            #expect(HTMLParser.loginErrorMessage(in: html) == nil)
         }
     }
 }

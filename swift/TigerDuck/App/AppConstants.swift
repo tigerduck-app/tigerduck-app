@@ -139,6 +139,7 @@ nonisolated enum AppConstants {
         /// "always show every period" — keeping it carries the setting over.
         static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"
         static let showClassroomInClassTable = "showClassroomInClassTable"
+        static let outlineRequiredCourses = "outlineRequiredCourses"
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"
@@ -156,6 +157,9 @@ nonisolated enum AppConstants {
         // MARK: Live Activity / reminders
         static let assignmentReminderOffsets = "assignmentReminderOffsets"
         static let isAssignmentReminderEnabled = "isAssignmentReminderEnabled"
+        static let isClassReminderEnabled = "isClassReminderEnabled"
+        static let classReminderLeadMinutes = "classReminderLeadMinutes"
+        static let hasPickedClassReminderLead = "hasPickedClassReminderLead"
         static let isLiveActivityEnabled = "isLiveActivityEnabled"
         static let assignmentLiveActivityLeadTime = "assignmentLiveActivityLeadTime"
         static let classPreparingLeadTime = "classPreparingLeadTime"

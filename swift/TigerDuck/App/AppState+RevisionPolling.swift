@@ -87,13 +87,12 @@ extension AppState {
     }
 
     /// Adopts the notification settings document a feed read found changed, then moves the
-    /// watermark. The routine adopts nothing while neither section syncs here or a local edit waits
-    /// to go up, whose push comes back as a change of its own, and a Mac keeps no notification
-    /// settings: those cases move the watermark at once.
+    /// watermark. The routine adopts nothing while a local edit waits to go up, whose push comes
+    /// back as a change of its own, and a Mac keeps no notification settings: those cases move
+    /// the watermark at once.
     private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, generation: Int) async {
         #if os(iOS)
-        if Defaults[.syncAssignmentReminders] || Defaults[.syncLiveActivity],
-           !Defaults[.notificationSettingsPushPending] {
+        if !Defaults[.notificationSettingsPushPending] {
             await reconcileNotificationSettings(onSettled: { [weak self] in
                 self?.advanceRevision(from: since, to: revision, generation: generation)
             }).value

@@ -64,6 +64,20 @@ struct NotificationSettingsDocumentTests {
         #expect(partial.courses == nil)
     }
 
+    @Test("courses decodes field by field: a bad field reads as absent, a bad element is dropped")
+    func coursesDecodesFieldByField() throws {
+        // Decoded whole, one wrong type would fail the section and with it the whole document,
+        // so a pull would adopt nothing at all.
+        let json = Data(#"{"courses":{"enabled":"no","reminder_offsets_minutes":[10,"15",30.5]}}"#.utf8)
+        let doc = try JSONDecoder().decode(NotificationSettingsDocument.self, from: json)
+        #expect(doc.courses?.enabled == nil)
+        #expect(doc.courses?.reminderOffsetsMinutes == [10])
+
+        let notAList = Data(#"{"courses":{"enabled":false,"reminder_offsets_minutes":"10"}}"#.utf8)
+        let decoded = try JSONDecoder().decode(NotificationSettingsDocument.self, from: notAList)
+        #expect(decoded.courses == .init(enabled: false, reminderOffsetsMinutes: nil))
+    }
+
     @Test("round-trips through encode without losing or inventing keys")
     func roundTrips() throws {
         let doc = NotificationSettingsDocument(

@@ -56,6 +56,8 @@ final class SDCourse: Identifiable {
     /// device or cached before this field existed.
     var requireOption: String = ""
 
+    var isRequired: Bool { requireOption.uppercased() == "R" }
+
     /// Semester code for which this course was enrolled (e.g. "1142").
     /// Empty string = unknown / pre-feature cache; treated as current semester.
     var semester: String = ""

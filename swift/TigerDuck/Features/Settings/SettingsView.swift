@@ -14,6 +14,7 @@ struct SettingsView: View {
     /// The preference is the flag's only copy -- `appState.cloudSyncEnabled`
     /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
+    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -123,6 +124,7 @@ struct SettingsView: View {
                     String(localized: "settings_show_classroom_on_class_table"),
                     isOn: $appState.showClassroomInClassTable
                 )
+                Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowAllPeriods)
                 Toggle(String(localized: "settings_remember_bulletin_filter"), isOn: $appState.rememberAnnouncementFilter)
                 Picker(String(localized: "settings_link_opening_method"), selection: $appState.browserPreference) {
@@ -207,6 +209,12 @@ struct SettingsView: View {
                 #endif
 
                 Group {
+                    NavigationLink(String(localized: "settings_class_reminder")) {
+                        ClassReminderSettingsView(store: appState.liveActivityPreferences)
+                    }
+                    // The backend schedules class reminders from the courses a device
+                    // uploads, so with course sync off nothing set here would take effect.
+                    .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
                         AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
                     }
