@@ -6,7 +6,30 @@ import UserNotifications
 
 #if os(iOS)
 
+/// Unit tests run inside the app, and XCTest sets `XCTestConfigurationFilePath` there. They get
+/// an empty scene: `TigerDuckApp`'s launch work would sync a signed-in simulator with the school,
+/// write real Defaults and hold the main actor while the tests run.
 @main
+enum TigerDuckLauncher {
+    static func main() {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            UnitTestHostApp.main()
+        } else {
+            TigerDuckApp.main()
+        }
+    }
+}
+
+/// A window and nothing else, so hosted-view tests still find a scene in
+/// `UIApplication.shared.connectedScenes`.
+private struct UnitTestHostApp: App {
+    var body: some Scene {
+        WindowGroup {
+            Color.clear
+        }
+    }
+}
+
 struct TigerDuckApp: App {
     @State private var appState: AppState
     @State private var sceneRefreshTask: Task<Void, Never>?

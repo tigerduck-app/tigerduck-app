@@ -50,6 +50,9 @@ working in those directories.
 
 - Unit tests are in `swift/TigerDuckTests/` (Swift Testing and XCTest) and run in CI on every
   pull request to `main` and `dev`. UI tests in `swift/TigerDuckUITests/` do not run in CI.
+- The unit tests' host app shows an empty scene (`TigerDuckLauncher` in `TigerDuckApp.swift`),
+  so nothing from `TigerDuckApp` runs: a test installs the hooks it needs itself, as
+  `LiveMailClientTests` does with `SchoolMailCharsetHook.install()`.
 
 ## Gotchas
 
