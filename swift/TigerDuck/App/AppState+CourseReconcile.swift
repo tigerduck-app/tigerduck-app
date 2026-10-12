@@ -150,7 +150,7 @@ extension AppState {
         // device's language and today's roster.
         Task {
             for semester in mergedSemesters {
-                _ = await AppServiceBridge.refreshUserAddedCourses(semester: semester)
+                _ = await AppServiceBridge.refreshUserAddedCourses(semester: semester, authService: authService)
             }
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }

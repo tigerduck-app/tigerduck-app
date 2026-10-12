@@ -25,7 +25,10 @@ extension AppState {
             isSyncingOverrides = true
         }
         defer { if !retried { isSyncingOverrides = false } }
-        guard await authTokenManager.isLoggedIn else { return }
+        // Sign-out clears what this writes but cancels only `syncTask`, which a poll, a push or a
+        // pull does not run in. So no write below follows an await without this check.
+        let generation = authService.loginGeneration
+        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return }
         // Not awaited: this is a repair, not a precondition. Its pending
         // marker makes `applySyncedOverrides` sit out this cycle rather than
         // race it, and the next sync applies the settled state.
@@ -48,6 +51,7 @@ extension AppState {
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
             let json = try await pushCoordinator.fetchFullSync()
+            guard fullSyncMayWrite(since: generation) else { return }
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
 
             var serverArchivedIds = Set<String>()
@@ -88,6 +92,7 @@ extension AppState {
             // server — differences against the (possibly stale) pull payload
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
+            guard fullSyncMayWrite(since: generation) else { return }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
                 .union(inFlightOverrides)
@@ -143,11 +148,9 @@ extension AppState {
                 AppLogger.sync.info("applied: \(safeArchived.count, privacy: .public) archived, \(safeCompleted.count, privacy: .public) completed, \(conflicts.count, privacy: .public) conflicts pending")
 
                 if !conflicts.isEmpty {
-                    await MainActor.run {
-                        syncConflicts = conflicts.map { SyncConflictItem(id: $0.id, kind: $0.kind, label: $0.label, localStatus: $0.local, serverStatus: $0.server) }
-                        pendingSyncServerArchived = serverArchivedIds
-                        pendingSyncServerCompleted = serverCompletedIds
-                    }
+                    syncConflicts = conflicts.map { SyncConflictItem(id: $0.id, kind: $0.kind, label: $0.label, localStatus: $0.local, serverStatus: $0.server) }
+                    pendingSyncServerArchived = serverArchivedIds
+                    pendingSyncServerCompleted = serverCompletedIds
                 }
             }
 
@@ -212,6 +215,7 @@ extension AppState {
             reconcileNotificationSettings()
             #endif
         } catch {
+            guard fullSyncMayWrite(since: generation) else { return }
             ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
             if case PushAPIError.httpStatus(401, _) = error, !retried {
@@ -219,11 +223,27 @@ extension AppState {
                 if reloginOk {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
+                    guard fullSyncMayWrite(since: generation) else { return }
                     await syncOverridesFromBackend(retried: true)
                 }
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
         }
+    }
+
+    /// Whether a full sync begun under login `generation` may still write. A sign-out moves the
+    /// generation and clears the caches the sync writes, and turning Sync course information off
+    /// stops the sync from applying the server's state.
+    nonisolated static func fullSyncMayWrite(startedIn generation: Int, current: Int, cloudSyncEnabled: Bool) -> Bool {
+        generation == current && cloudSyncEnabled
+    }
+
+    func fullSyncMayWrite(since generation: Int) -> Bool {
+        Self.fullSyncMayWrite(
+            startedIn: generation,
+            current: authService.loginGeneration,
+            cloudSyncEnabled: Defaults[.cloudSyncEnabled]
+        )
     }
 
     private func applyCourseOverrides(_ overrides: [[String: Any]], coursesArray: [[String: Any]]) {

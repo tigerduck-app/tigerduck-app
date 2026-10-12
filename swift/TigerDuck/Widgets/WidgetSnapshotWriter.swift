@@ -7,30 +7,52 @@ import os
 /// `WidgetReloadCoordinator` for a debounced timeline reload.
 ///
 /// The host app creates it and calls `regenerate()` at cold start. Each call
-/// rebuilds the whole snapshot, acceptable with the 300 ms debounce. An accent
-/// change posts no notification; it shows after the next event or `regenerate()`.
+/// rebuilds the whole snapshot, acceptable with the 300 ms debounce.
 @MainActor
 final class WidgetSnapshotWriter {
     private let store: WidgetSnapshotStore
     private let coordinator: WidgetReloadCoordinator
-    private let appState: AppState
+    private let isLoggedIn: @MainActor () -> Bool
+    private let accentColorHex: @MainActor () -> Int
     private let courseProvider: CanonicalCourseProvider
     private let cache: DataCache
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "WidgetWriter")
 
     private var observers: [NSObjectProtocol] = []
 
-    // Defaults resolve in the body: under Swift 6 strict concurrency, default
-    // argument expressions are nonisolated even on a MainActor init, so the
-    // MainActor-isolated `DataCache.shared` and `WidgetReloadCoordinator()` warn there.
-    init(
+    convenience init(
         appState: AppState,
         cache: DataCache? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
         courseProvider: CanonicalCourseProvider? = nil
     ) {
-        self.appState = appState
+        self.init(
+            // Gate on stored credentials, not `isNTUSTLoggedIn`: it flips false when
+            // session cookies expire, flashing "Please sign in" although the next sync
+            // re-authenticates silently. Same rule as `ntustProtectedAccessState`.
+            isLoggedIn: { appState.authService.hasStoredCredentials },
+            accentColorHex: { appState.accentColorHex },
+            cache: cache,
+            store: store,
+            coordinator: coordinator,
+            courseProvider: courseProvider
+        )
+    }
+
+    // Defaults resolve in the body: under Swift 6 strict concurrency, default
+    // argument expressions are nonisolated even on a MainActor init, so the
+    // MainActor-isolated `DataCache.shared` and `WidgetReloadCoordinator()` warn there.
+    init(
+        isLoggedIn: @escaping @MainActor () -> Bool,
+        accentColorHex: @escaping @MainActor () -> Int,
+        cache: DataCache? = nil,
+        store: WidgetSnapshotStore? = nil,
+        coordinator: WidgetReloadCoordinator? = nil,
+        courseProvider: CanonicalCourseProvider? = nil
+    ) {
+        self.isLoggedIn = isLoggedIn
+        self.accentColorHex = accentColorHex
         self.cache = cache ?? .shared
         self.store = store ?? WidgetSnapshotStore()
         self.coordinator = coordinator ?? WidgetReloadCoordinator()
@@ -87,11 +109,8 @@ final class WidgetSnapshotWriter {
                 courses: courses,
                 customNames: customNames,
                 colorMap: colorMap,
-                // Gate on stored credentials, not `isNTUSTLoggedIn`: it flips false when
-                // session cookies expire, flashing "Please sign in" although the next sync
-                // re-authenticates silently. Same rule as `ntustProtectedAccessState`.
-                isLoggedIn: appState.authService.hasStoredCredentials,
-                accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: appState.accentColorHex)),
+                isLoggedIn: isLoggedIn(),
+                accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentColorHex())),
                 now: AppClock.now(),
                 quietDayKeys: Self.quietDayKeys()
             )
@@ -108,6 +127,7 @@ final class WidgetSnapshotWriter {
             AppConstants.courseSkipStateDidChange,
             AppConstants.holidayNotifyDidChange,
             AppConstants.courseColorMapDidChange,
+            AppConstants.accentColorDidChange,
             NSLocale.currentLocaleDidChangeNotification,
         ]
         for name in names {
