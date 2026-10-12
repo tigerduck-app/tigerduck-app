@@ -62,7 +62,6 @@ ClassTableViewModel.swift
 ClassTableViewModel+Grid.swift
 ClassTableViewModel+Editing.swift
 ClassTableViewModel+Loading.swift
-AssignmentBadge.swift
 ConflictCoursePickerSheet.swift
 ClassTableExportView.swift
 ConflictLShape.swift
@@ -78,7 +77,6 @@ TimeSliderSection.swift
 TimeSliderViewModel.swift
 TodayCourseCarousel.swift
 UpcomingAssignmentsView.swift
-WidgetGridEditMode.swift
 WidgetGridView.swift
 HomeView.swift
 HomeViewModel.swift
@@ -95,7 +93,6 @@ LibraryViewModel.swift
 # Features/More — iOS 'More' tab; macOS uses MacMoreView
 FeatureCardView.swift
 FeatureCategorySection.swift
-MoreEditModeView.swift
 MoreView.swift
 MoreViewModel.swift
 
@@ -174,7 +171,6 @@ GlassTextButtonModifier.swift
 HostScreenReader.swift
 InAppBrowserView.swift
 JustifiedText.swift
-LoadingShimmer.swift
 LoginRequiredView.swift
 NTUSTReauthErrorBanner.swift
 PullToRevealSearch.swift

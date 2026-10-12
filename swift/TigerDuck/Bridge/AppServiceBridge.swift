@@ -14,6 +14,7 @@ struct CourseData: Sendable {
     var classroomMap: [String: String]
     let dimension: String
     let allYear: String
+    let requireOption: String
 }
 
 enum AppServiceBridge {
@@ -220,7 +221,8 @@ enum AppServiceBridge {
                     semester: semester,
                     classroomMap: course.classroomMap,
                     dimension: course.dimension,
-                    allYear: course.allYear
+                    allYear: course.allYear,
+                    requireOption: course.requireOption
                 )
             }
 
@@ -427,7 +429,8 @@ enum AppServiceBridge {
             moodleIdNumber: course.moodleIdNumber,
             classroomMap: course.classroomMap,
             dimension: course.dimension,
-            allYear: course.allYear
+            allYear: course.allYear,
+            requireOption: course.requireOption
         )
         // Cache the raw API name so abbreviation toggles can re-derive
         // without a network round-trip.
@@ -559,7 +562,8 @@ enum AppServiceBridge {
                 moodleIdNumber: moodle.idnumber,
                 classroomMap: [:],
                 dimension: "",
-                allYear: ""
+                allYear: "",
+                requireOption: ""
             )
         }
         if let grade {
@@ -575,7 +579,8 @@ enum AppServiceBridge {
                 moodleIdNumber: nil,
                 classroomMap: [:],
                 dimension: "",
-                allYear: ""
+                allYear: "",
+                requireOption: ""
             )
         }
         return nil
@@ -630,7 +635,8 @@ enum AppServiceBridge {
             // First *non-empty* rather than first row: a course split across
             // rows only carries its dimension on some of them.
             dimension: results.compactMap(\.Dimension).first { !$0.isEmpty } ?? "",
-            allYear: results.compactMap(\.AllYear).first { !$0.isEmpty } ?? ""
+            allYear: results.compactMap(\.AllYear).first { !$0.isEmpty } ?? "",
+            requireOption: results.compactMap(\.RequireOption).first { !$0.isEmpty } ?? ""
         )
     }
 
@@ -655,7 +661,8 @@ private extension SDCourse {
             semester: semester,
             classroomMap: data.classroomMap,
             dimension: data.dimension,
-            allYear: data.allYear
+            allYear: data.allYear,
+            requireOption: data.requireOption
         )
     }
 }
@@ -674,7 +681,8 @@ private extension CourseData {
             moodleIdNumber: course.moodleIdNumber,
             classroomMap: course.classroomMap,
             dimension: course.dimension,
-            allYear: course.allYear
+            allYear: course.allYear,
+            requireOption: course.requireOption
         )
     }
 }

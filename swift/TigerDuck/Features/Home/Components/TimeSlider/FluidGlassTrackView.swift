@@ -44,11 +44,23 @@ struct FluidGlassTrackView: View {
                         let segOpacity = isActive
                             ? policy.timeSliderActiveSegmentOpacity
                             : policy.timeSliderInactiveSegmentOpacity
+                        // Clashing courses split the segment's height into flush lanes, as on
+                        // Android, so the band still reads as one block: only its outer corners round.
+                        let lane = viewModel.slotLanes[slot.id] ?? TimeSliderLane(lane: 0, count: 1)
+                        let laneHeight = TimeSliderMetrics.fluidSegmentHeight / CGFloat(lane.count)
+                        let laneTop = (trackHeight - TimeSliderMetrics.fluidSegmentHeight) / 2 + CGFloat(lane.lane) * laneHeight
+                        let top: CGFloat = lane.lane == 0 ? 4 : 0
+                        let bottom: CGFloat = lane.lane == lane.count - 1 ? 4 : 0
 
-                        RoundedRectangle(cornerRadius: 4)
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: top,
+                            bottomLeadingRadius: bottom,
+                            bottomTrailingRadius: bottom,
+                            topTrailingRadius: top
+                        )
                             .fill(slot.course.color.opacity(segOpacity))
-                            .frame(width: segWidth, height: TimeSliderMetrics.fluidSegmentHeight)
-                            .position(x: segCenterX, y: trackHeight / 2)
+                            .frame(width: segWidth, height: laneHeight)
+                            .position(x: segCenterX, y: laneTop + laneHeight / 2)
                             .animation(.smooth(duration: 0.2), value: isActive)
                     }
                 }

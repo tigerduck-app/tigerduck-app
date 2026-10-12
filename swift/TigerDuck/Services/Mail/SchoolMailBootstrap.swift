@@ -19,6 +19,9 @@ enum SchoolMailBootstrap {
         let account = account ?? .shared
         guard SchoolMailAvailability.isEnabled else { return }
         SchoolMailCharsetHook.install()
+        // Read now for `sceneDidEnterBackground`: the first activation after a launch does not
+        // reach `sceneDidBecomeActive`.
+        Task { _ = await MailNotificationPermission.isDenied() }
         // A sign-out whose cache wipe never finished (the app was killed part-way through a
         // directory delete) leaves the previous student's mail on disk; finish it now, before
         // anything can sign in.
@@ -47,23 +50,23 @@ enum SchoolMailBootstrap {
 
     static func sceneDidBecomeActive() {
         guard SchoolMailAvailability.isEnabled else { return }
+        // The permission may have changed in Settings while the app was away.
+        Task { _ = await MailNotificationPermission.isDenied() }
         Task { await MailForegroundCheck.runIfDue() }
     }
 
-    /// iOS expects the next refresh to be requested as the app leaves the foreground.
+    /// iOS expects the next refresh to be requested as the app leaves the foreground, and can
+    /// suspend it before an `await` returns, so this decides at once from the last permission read.
     static func sceneDidEnterBackground() {
         let account = MailAccountManager.shared
-        Task {
-            let denied = await MailNotificationPermission.isDenied()
-            guard MailBackgroundRefresh.shouldRescheduleAfterHandling(
-                featureEnabled: SchoolMailAvailability.isEnabled,
-                signedIn: account.isLoggedIn,
-                notificationsEnabled: account.notificationsEnabled,
-                authFailed: account.authFailed,
-                notificationsDenied: denied
-            ) else { return }
-            MailBackgroundRefresh.schedule()
-        }
+        guard MailBackgroundRefresh.shouldRescheduleAfterHandling(
+            featureEnabled: SchoolMailAvailability.isEnabled,
+            signedIn: account.isLoggedIn,
+            notificationsEnabled: account.notificationsEnabled,
+            authFailed: account.authFailed,
+            notificationsDenied: MailNotificationPermission.lastKnownDenied
+        ) else { return }
+        MailBackgroundRefresh.schedule()
     }
 }
 #endif

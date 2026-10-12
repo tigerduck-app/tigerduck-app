@@ -88,22 +88,6 @@ nonisolated enum HTMLParser {
         return nil
     }
 
-    /// Extract all <input> name/value pairs from HTML
-    static func extractInputFields(_ html: String) -> [(name: String, value: String)] {
-        guard let doc = try? SwiftSoup.parse(html) else { return [] }
-
-        let inputs: [Element] = (try? doc.select("input").array()) ?? []
-
-        return inputs.compactMap { input -> (name: String, value: String)? in
-            guard let name = try? input.attr("name"), !name.isEmpty else {
-                return nil
-            }
-
-            let value = (try? input.attr("value")) ?? ""
-            return (name, value)
-        }
-    }
-
     // MARK: - Helpers
 
     private static func formData(from form: Element) -> FormData? {

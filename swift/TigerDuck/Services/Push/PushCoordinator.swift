@@ -423,13 +423,14 @@ final class PushCoordinator {
 
     /// Crashes Debug builds at launch when the resolved server URL does not
     /// match the APNs environment baked into the binary (or each other).
-    /// Compiles down to a no-op in Release builds — `assert` is stripped
-    /// under `-O`, so end users never see this.
+    /// Empty in Release builds: `assert` is stripped under `-O`, but working out
+    /// its conditions would still read the Keychain twice before the first frame.
     ///
     /// Guards against the regression where someone flips `PushAPNsEnv` or
     /// `AppConstants.productionPushServerURL` without flipping the other,
     /// or seeds a stale UserDefaults override pointing the wrong way.
     nonisolated static func assertEnvConsistency() {
+        #if DEBUG
         let resolved = PushServerConfig.resolveServerURL()
         let host = resolved.host?.lowercased() ?? ""
         // A user-set endpoint skips the host check: self-hosted backends are
@@ -440,11 +441,7 @@ final class PushCoordinator {
             || host == "127.0.0.1"
             || PushServerConfig.isPrivateIPv4(host)
             || host == AppConstants.productionPushServerURL.host?.lowercased()
-        #if DEBUG
         let expectedEnv = "development"
-        #else
-        let expectedEnv = "production"
-        #endif
         assert(
             hostOK,
             "Push env mismatch: \(expectedEnv) build resolved to \(resolved)"
@@ -453,6 +450,7 @@ final class PushCoordinator {
             PushAPNsEnv.resolvedForBuild == expectedEnv,
             "Push env mismatch: build is \(expectedEnv) but PushAPNsEnv = \(PushAPNsEnv.resolvedForBuild)"
         )
+        #endif
     }
 }
 

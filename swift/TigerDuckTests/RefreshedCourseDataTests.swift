@@ -26,7 +26,8 @@ struct RefreshedCourseDataTests {
         moodleIdNumber: "1151CS1001301",
         classroomMap: ["1-3": "TR-313", "1-4": "TR-313", "4-6": "TR-409"],
         dimension: "",
-        allYear: "H"
+        allYear: "H",
+        requireOption: "R"
     )
 
     private static let moodle = MoodleEnrolledCourse(

@@ -131,19 +131,23 @@ extension MacClassTableView {
                 conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan, weekday: weekday)
             }
             .frame(height: blockHeight(combinedSpan))
-        case let .conflictMany(segments, combinedSpan):
-            // The same offset-aware columns as the two-course case, N wide: each segment's
-            // column is sized to its own span and placed at its offset, so in a staircase of
-            // overlaps each course paints only the rows it occupies.
+        case let .conflictMany(segments, combinedSpan, laneCount):
+            // The same offset-aware columns as the two-course case, one per lane: courses that
+            // never meet share a lane, so a chain of three takes two columns. A column's spacers
+            // are clear and take no clicks, so a lane's courses stack in one ZStack.
             HStack(spacing: rowSpacing) {
-                ForEach(segments, id: \.course.courseNo) { segment in
-                    conflictColumn(
-                        course: segment.course,
-                        span: segment.span,
-                        offset: segment.offset,
-                        combinedSpan: combinedSpan,
-                        weekday: weekday
-                    )
+                ForEach(0..<laneCount, id: \.self) { lane in
+                    ZStack(alignment: .top) {
+                        ForEach(segments.filter { $0.lane == lane }, id: \.course.courseNo) { segment in
+                            conflictColumn(
+                                course: segment.course,
+                                span: segment.span,
+                                offset: segment.offset,
+                                combinedSpan: combinedSpan,
+                                weekday: weekday
+                            )
+                        }
+                    }
                 }
             }
             .frame(height: blockHeight(combinedSpan))

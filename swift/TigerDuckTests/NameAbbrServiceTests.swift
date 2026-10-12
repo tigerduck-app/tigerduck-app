@@ -55,6 +55,8 @@ final class NameAbbrServiceTests: XCTestCase {
     func test_relabelInPlace_propagatesPinyinToClassroomMap() {
         let svc = NameAbbrService.shared
         svc.clearRawNameCache()
+        let savedLanguage = Defaults[.appLanguage]
+        defer { Defaults[.appLanguage] = savedLanguage }
         Defaults[.appLanguage] = "en"
 
         let course = SDCourse(
@@ -87,6 +89,8 @@ final class NameAbbrServiceTests: XCTestCase {
     func test_relabelInPlace_fallsBackToCourseClassroomMapWhenRawMissing() {
         let svc = NameAbbrService.shared
         svc.clearRawNameCache()
+        let savedLanguage = Defaults[.appLanguage]
+        defer { Defaults[.appLanguage] = savedLanguage }
         Defaults[.appLanguage] = "en"
 
         let course = SDCourse(

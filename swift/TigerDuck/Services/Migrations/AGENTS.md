@@ -7,12 +7,11 @@ Compatibility code for breaking changes goes in this folder and nowhere else.
 1. One migration per Swift file, with no references between files in this folder.
 2. Each migration owns its done flag, its static `runIfNeeded()` entry point and its failure
    handling. The flag is a private `<Name>.v1.done` UserDefaults key declared in the same file,
-   so deleting the file removes it. `MoodleTokenMigration` predates this rule and keeps its flag
-   as a Defaults key in `AppDefaults.swift`.
+   so deleting the file removes it.
 3. `AppState.runPendingMigrations()` runs them, once per launch, from `AppState.init()`.
 4. Feature services (`AuthService`, `MoodleAssignmentService`, `MoodleTokenService`, ...) must
    not reference types declared here.
-5. Name files `<Subject><Action>Migration.swift`, for example `MoodleTokenMigration` or
+5. Name files `<Subject><Action>Migration.swift`, for example `PendingReminderPurgeMigration` or
    `DefaultTabsPinMigration`.
 
 ## When a migration belongs here

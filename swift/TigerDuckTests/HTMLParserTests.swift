@@ -172,12 +172,4 @@ struct HTMLParserTests {
             #expect(HTMLParser.findOIDCBridgeForm(html) == nil)
         }
     }
-
-    @Test("input fields are read in order, unnamed ones skipped")
-    func inputFields() {
-        let html = #"<input name="a" value="1"><input value="unnamed"><input name="b"><input name="" value="x">"#
-        let fields = HTMLParser.extractInputFields(html)
-        #expect(fields.map(\.name) == ["a", "b"])
-        #expect(fields.map(\.value) == ["1", ""])
-    }
 }

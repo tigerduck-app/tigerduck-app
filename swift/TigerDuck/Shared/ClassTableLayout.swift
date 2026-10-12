@@ -5,15 +5,57 @@ import Foundation
 /// (measured from the cluster's earliest row); `span` is the course's
 /// own contiguous block length. Renderers stack these as offset-aware
 /// columns so a course only paints rows it's actually scheduled in.
+/// `lane` is the column the course takes: courses that never meet share one.
 public struct ClassTableConflictSegment<Course> {
     public let course: Course
     public let span: Int
     public let offset: Int
+    public let lane: Int
 
-    public init(course: Course, span: Int, offset: Int) {
+    public init(course: Course, span: Int, offset: Int, lane: Int) {
         self.course = course
         self.span = span
         self.offset = offset
+        self.lane = lane
+    }
+}
+
+/// Rows of one cluster member that keep one horizontal extent, in rows from the cluster's top.
+/// `lanes` is every lane where the member is the only course in those rows, else its own lane.
+public struct ClassTableLaneRun: Equatable {
+    public let firstRow: Int
+    public let rowCount: Int
+    public let lanes: Range<Int>
+
+    public init(firstRow: Int, rowCount: Int, lanes: Range<Int>) {
+        self.firstRow = firstRow
+        self.rowCount = rowCount
+        self.lanes = lanes
+    }
+}
+
+/// Greedy interval colouring for courses that overlap, shared by the class table and the Home
+/// time slider. Taken by start, each interval gets the lowest lane whose last one has ended, so
+/// there are only as many lanes as intervals meet at once, and courses that never meet share.
+public enum OverlapLanes {
+    /// Each interval's lane, in the order given, and the number of lanes. Intervals are
+    /// half-open: one that ends where the next starts leaves the lane free for it.
+    public static func assign<Bound: Comparable>(_ intervals: [(start: Bound, end: Bound)]) -> (lanes: [Int], count: Int) {
+        // Ties keep the order given, so the course listed first takes the lower lane.
+        let order = intervals.indices.sorted { (intervals[$0].start, $0) < (intervals[$1].start, $1) }
+        var laneEnds: [Bound] = []
+        var lanes = Array(repeating: 0, count: intervals.count)
+        for index in order {
+            let interval = intervals[index]
+            if let free = laneEnds.firstIndex(where: { $0 <= interval.start }) {
+                lanes[index] = free
+                laneEnds[free] = interval.end
+            } else {
+                lanes[index] = laneEnds.count
+                laneEnds.append(interval.end)
+            }
+        }
+        return (lanes, laneEnds.count)
     }
 }
 
@@ -35,15 +77,15 @@ public enum ClassTableCellRole<Course> {
     )
     /// 3+ overlapping courses sharing a single cluster. Each segment
     /// carries its own offset/span inside `combinedSpan` so renderers
-    /// can place a course only in the rows it's actually scheduled in —
-    /// previously this case dropped offsets and the cluster was emitted
-    /// per-slot instead, which duplicated middle courses across rows
-    /// (e.g. B appeared in both the A+B and the B+C clusters of an A/B/C
-    /// chain). Anchored-slot courses lead the array so column ordering
-    /// matches the cell the user tapped.
+    /// can place a course only in the rows it's actually scheduled in,
+    /// and its lane among `laneCount`: in an A/B/C chain A and C never
+    /// meet, so they share a lane and the cluster is two lanes wide.
+    /// Courses in the cluster's first row lead the array and take the
+    /// lowest lanes.
     case conflictMany(
         segments: [ClassTableConflictSegment<Course>],
-        combinedSpan: Int
+        combinedSpan: Int,
+        laneCount: Int
     )
     /// This cell is part of a SoloStart / ConflictStart cluster that began
     /// at an earlier row; the renderer must emit nothing here so the
@@ -136,17 +178,41 @@ public enum ClassTableLayout {
         let anchoredFirst = closure.filter { anchoredKeys.contains(keyOf($0.course)) }
         let rest = closure.filter { !anchoredKeys.contains(keyOf($0.course)) }
         let ordered = anchoredFirst + rest
-        let segments = ordered.map { entry in
+        let (lanes, laneCount) = OverlapLanes.assign(ordered.map { (start: $0.first, end: $0.first + $0.span) })
+        let segments = ordered.enumerated().map { index, entry in
             ClassTableConflictSegment(
                 course: entry.course,
                 span: entry.span,
-                offset: entry.first - clusterStart
+                offset: entry.first - clusterStart,
+                lane: lanes[index]
             )
         }
         let clusterEnd = closure.map { $0.first + $0.span }.max() ?? periodIndex
         return .conflictMany(
             segments: segments,
-            combinedSpan: clusterEnd - clusterStart
+            combinedSpan: clusterEnd - clusterStart,
+            laneCount: laneCount
         )
+    }
+
+    /// How `member` is drawn row by row: across every lane where no other member of its cluster
+    /// meets, as the two-course L shape takes the full width where a course is alone, and in its
+    /// own lane elsewhere. Consecutive rows with the same extent are one run.
+    public static func laneRuns<C>(
+        of member: ClassTableConflictSegment<C>,
+        among segments: [ClassTableConflictSegment<C>],
+        laneCount: Int
+    ) -> [ClassTableLaneRun] {
+        var runs: [ClassTableLaneRun] = []
+        for row in member.offset..<(member.offset + member.span) {
+            let meeting = segments.filter { $0.offset <= row && row < $0.offset + $0.span }.count
+            let lanes = meeting <= 1 ? 0..<laneCount : member.lane..<(member.lane + 1)
+            if let last = runs.last, last.lanes == lanes {
+                runs[runs.count - 1] = ClassTableLaneRun(firstRow: last.firstRow, rowCount: last.rowCount + 1, lanes: lanes)
+            } else {
+                runs.append(ClassTableLaneRun(firstRow: row, rowCount: 1, lanes: lanes))
+            }
+        }
+        return runs
     }
 }

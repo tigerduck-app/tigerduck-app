@@ -87,13 +87,15 @@ struct MoodleHomeworkRegressionTests {
     }
 
     @Test func semesterCacheIsolation_savingOneSemesterDoesNotAffectAnother() {
-        let cache = DataCache.shared
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoodleHomeworkRegressionTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = DataCache(
+            cacheDir: root.appendingPathComponent("cache", isDirectory: true),
+            persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
+        )
         let semA = "TEST_ISO_1142"
         let semB = "TEST_ISO_1141"
-        defer {
-            cache.saveCourses([], semester: semA)
-            cache.saveCourses([], semester: semB)
-        }
 
         let courseA = SDCourse(courseNo: "AAA001", courseName: "Course A", semester: semA)
         let courseB = SDCourse(courseNo: "BBB002", courseName: "Course B", semester: semB)

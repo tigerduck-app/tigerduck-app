@@ -6,7 +6,30 @@ import UserNotifications
 
 #if os(iOS)
 
+/// Unit tests run inside the app, and XCTest sets `XCTestConfigurationFilePath` there. They get
+/// an empty scene: `TigerDuckApp`'s launch work would sync a signed-in simulator with the school,
+/// write real Defaults and hold the main actor while the tests run.
 @main
+enum TigerDuckLauncher {
+    static func main() {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            UnitTestHostApp.main()
+        } else {
+            TigerDuckApp.main()
+        }
+    }
+}
+
+/// A window and nothing else, so hosted-view tests still find a scene in
+/// `UIApplication.shared.connectedScenes`.
+private struct UnitTestHostApp: App {
+    var body: some Scene {
+        WindowGroup {
+            Color.clear
+        }
+    }
+}
+
 struct TigerDuckApp: App {
     @State private var appState: AppState
     @State private var sceneRefreshTask: Task<Void, Never>?
@@ -50,53 +73,6 @@ struct TigerDuckApp: App {
         }
     }
 
-    /// `static` so the store is opened exactly once per process. As an
-    /// instance property this was rebuilt on every `App` initialisation —
-    /// SwiftData expects a single `ModelContainer` per on-disk store, and
-    /// the open (disk + schema compatibility check) is synchronous work
-    /// sitting directly in front of the first frame.
-    static let sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            SDCourse.self,
-            SDAssignment.self,
-            SDAnnouncement.self,
-            SDCalendarEvent.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
-            // Schema incompatible with existing store (e.g. upgrade from early version).
-            // Delete the old store and retry.
-            let storeURL = modelConfiguration.url
-            let relatedFiles = [
-                storeURL,
-                storeURL.appendingPathExtension("wal"),
-                storeURL.appendingPathExtension("shm"),
-            ]
-            for file in relatedFiles {
-                try? FileManager.default.removeItem(at: file)
-            }
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
-                // A full disk, a locked sandbox path or a file-coordination failure ends up
-                // here; crashing would brick every launch. An in-memory container shows an
-                // empty state for this session, and the next launch retries on disk.
-                do {
-                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                    return try ModelContainer(for: schema, configurations: [memoryConfig])
-                } catch {
-                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
-                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
-                }
-            }
-        }
-    }()
-
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -125,7 +101,9 @@ struct TigerDuckApp: App {
                     }
                     appState.backgroundSync()
                     appState.startCloudSyncIfEnabled()
-                    widgetSnapshotWriter.regenerate()
+                    // A turn later, behind the first frame: the snapshot reads every cache it
+                    // draws from and writes the App Group file.
+                    Task { widgetSnapshotWriter.regenerate() }
                     // `.onChange(of: scenePhase)` does not fire for the initial `.active`
                     // value, so the first background check starts here; later foreground
                     // returns go through the scene-phase observer.
@@ -274,52 +252,6 @@ struct TigerDuckApp: App {
     @NSApplicationDelegateAdaptor(MacPushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    /// `static` so the store is opened exactly once per process. As an
-    /// instance property this was rebuilt on every `App` initialisation —
-    /// SwiftData expects a single `ModelContainer` per on-disk store, and
-    /// the open (disk + schema compatibility check) is synchronous work
-    /// sitting directly in front of the first frame.
-    static let sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            SDCourse.self,
-            SDAssignment.self,
-            SDAnnouncement.self,
-            SDCalendarEvent.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
-            // Same on-disk-reset → in-memory fallback chain the iOS branch
-            // uses.
-            let storeURL = modelConfiguration.url
-            // SQLite sidecars append "-wal" / "-shm" to the full store filename
-            // (`default.store-wal`); `appendingPathExtension` would target
-            // `default.store.wal` and leave them, so the retry hits the same stale data.
-            let relatedFiles = [
-                storeURL,
-                URL(fileURLWithPath: storeURL.path + "-wal"),
-                URL(fileURLWithPath: storeURL.path + "-shm"),
-            ]
-            for file in relatedFiles {
-                try? FileManager.default.removeItem(at: file)
-            }
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
-                do {
-                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                    return try ModelContainer(for: schema, configurations: [memoryConfig])
-                } catch {
-                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
-                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
-                }
-            }
-        }
-    }()
-
     init() {
         AppLogger.start()
         PushCoordinator.assertEnvConsistency()
@@ -417,3 +349,55 @@ struct TigerDuckApp: App {
 }
 
 #endif
+
+extension TigerDuckApp {
+    /// `static` so the store is opened once per process: SwiftData expects one `ModelContainer`
+    /// per on-disk store, and the open (disk and schema check) runs in front of the first frame.
+    static let sharedModelContainer: ModelContainer = {
+        let schema = Schema([
+            SDCourse.self,
+            SDAssignment.self,
+            SDAnnouncement.self,
+            SDCalendarEvent.self,
+        ])
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        do {
+            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
+            // Schema incompatible with existing store (e.g. upgrade from early version).
+            // Delete the old store and retry.
+            deleteStoreFiles(at: modelConfiguration.url)
+            do {
+                return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
+                // A full disk, a locked sandbox path or a file-coordination failure ends up
+                // here; crashing would brick every launch. An in-memory container shows an
+                // empty state for this session, and the next launch retries on disk.
+                do {
+                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                    return try ModelContainer(for: schema, configurations: [memoryConfig])
+                } catch {
+                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
+                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
+                }
+            }
+        }
+    }()
+
+    /// Deletes the store and its SQLite sidecars. SQLite names them by appending "-wal" and
+    /// "-shm" to the store's file name (`default.store-wal`); one left behind hands the retry
+    /// the same stale data.
+    static func deleteStoreFiles(at storeURL: URL) {
+        let files = [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path + "-wal"),
+            URL(fileURLWithPath: storeURL.path + "-shm"),
+        ]
+        for file in files {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+}

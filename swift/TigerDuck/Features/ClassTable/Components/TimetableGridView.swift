@@ -203,43 +203,72 @@ struct TimetableGridView: View {
                 }
                 .zIndex(1)
 
-        case .conflictStart(let segments, let combinedSpan):
-            let clusterHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
-            Color.clear
-                .overlay(alignment: .top) {
-                    ConflictClusterView(
-                        viewModel: viewModel,
-                        showsAssignmentBadges: showsAssignmentBadges,
-                        differentiateWithoutColorOverride: differentiateWithoutColor,
-                        segments: segments,
-                        combinedSpan: combinedSpan,
-                        cellHeight: cellHeight,
-                        rowSpacing: rowSpacing,
-                        weekday: weekday,
-                        periodId: periodId
-                    )
-                    .frame(height: clusterHeight)
-                }
-                .zIndex(1)
+        case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
+            conflictCluster(
+                segments: [
+                    ClassTableConflictSegment(course: courseA, span: spanA, offset: offsetA, lane: 0),
+                    ClassTableConflictSegment(course: courseB, span: spanB, offset: offsetB, lane: 1),
+                ],
+                combinedSpan: combinedSpan,
+                laneCount: 2,
+                weekday: weekday,
+                periodId: periodId
+            )
+
+        case let .conflictMany(segments, combinedSpan, laneCount):
+            conflictCluster(
+                segments: segments,
+                combinedSpan: combinedSpan,
+                laneCount: laneCount,
+                weekday: weekday,
+                periodId: periodId
+            )
 
         case .skip:
             Color.clear
         }
     }
+
+    private func conflictCluster(
+        segments: [ClassTableConflictSegment<SDCourse>],
+        combinedSpan: Int,
+        laneCount: Int,
+        weekday: Int,
+        periodId: String
+    ) -> some View {
+        let clusterHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
+        return Color.clear
+            .overlay(alignment: .top) {
+                ConflictClusterView(
+                    viewModel: viewModel,
+                    showsAssignmentBadges: showsAssignmentBadges,
+                    differentiateWithoutColorOverride: differentiateWithoutColor,
+                    segments: segments,
+                    combinedSpan: combinedSpan,
+                    laneCount: laneCount,
+                    cellHeight: cellHeight,
+                    rowSpacing: rowSpacing,
+                    weekday: weekday,
+                    periodId: periodId
+                )
+                .frame(height: clusterHeight)
+            }
+            .zIndex(1)
+    }
 }
 
 /// Renders a conflict cluster. For two courses we draw the interlocking
 /// L-shapes (Γ + mirror-L) that follow the Android `ConflictCourseCell`
-/// geometry; for three or more we fall back to a column layout so every
-/// course keeps a visible region — the L-shape geometry only resolves
-/// cleanly for two interlocking blocks, and an N>=3 chain would otherwise
-/// bury a course's tail under a `.skip` with nothing drawn on top.
+/// geometry; for three or more, lanes, with a course across the whole
+/// width in the rows where it meets no other: the L-shape geometry only
+/// resolves for two interlocking blocks.
 private struct ConflictClusterView: View {
     let viewModel: ClassTableViewModel
     let showsAssignmentBadges: Bool
     let differentiateWithoutColorOverride: Bool?
-    let segments: [ClassTableViewModel.ConflictSegment]
+    let segments: [ClassTableConflictSegment<SDCourse>]
     let combinedSpan: Int
+    let laneCount: Int
     let cellHeight: CGFloat
     let rowSpacing: CGFloat
     let weekday: Int
@@ -271,10 +300,7 @@ private struct ConflictClusterView: View {
         if segments.count == 2 {
             lShapeLayout
         } else {
-            // Γ / mirror-L geometry only resolves for two interlocking blocks, so a 3+
-            // chain takes the N-column layout the Mac and widget renderers use.
-            // TODO: design a 3-course conflict visual; side-by-side bars lose the L look.
-            columnLayout
+            laneLayout
         }
     }
 
@@ -380,18 +406,22 @@ private struct ConflictClusterView: View {
         }
     }
 
-    /// N-column layout for 3+ overlapping courses. Each segment owns a
-    /// column sized to its own `span` and offset by `offset` rows so a
-    /// staircase like A(0-1) / B(1-2) / C(2-3) paints each course only
-    /// in the rows it actually meets. Per-column tap selects that course
-    /// directly — unlike the L-shape, there's no seam ambiguity that
-    /// requires routing through the picker.
-    private var columnLayout: some View {
-        // `rowSpacing` doubles as the horizontal seam between columns,
-        // matching the Mac renderer's `HStack(spacing: rowSpacing)`.
-        HStack(spacing: rowSpacing) {
-            ForEach(segments, id: \.course.courseNo) { segment in
-                conflictColumn(segment: segment)
+    /// Lanes for 3+ overlapping courses: courses that never meet share one, so a chain like
+    /// A(0-1) / B(1-2) / C(2-3) is two lanes wide, and each course takes the whole width in
+    /// the rows where it is alone. Each course is a button of its own, so a tap selects it
+    /// directly: unlike the L shapes, no seam leaves in doubt which course was meant.
+    private var laneLayout: some View {
+        GeometryReader { proxy in
+            let geometry = ConflictLaneGeometry(
+                width: proxy.size.width,
+                laneCount: laneCount,
+                cellHeight: cellHeight,
+                rowSpacing: rowSpacing
+            )
+            ZStack(alignment: .topLeading) {
+                ForEach(segments, id: \.course.courseNo) { segment in
+                    laneMember(segment, geometry: geometry)
+                }
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -405,67 +435,62 @@ private struct ConflictClusterView: View {
         }
     }
 
-    private func conflictColumn(segment: ClassTableViewModel.ConflictSegment) -> some View {
+    private func laneMember(_ segment: ClassTableConflictSegment<SDCourse>, geometry: ConflictLaneGeometry) -> some View {
         let course = segment.course
-        let span = segment.span
-        let offset = segment.offset
-        let bottomRows = max(combinedSpan - offset - span, 0)
-        let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
+        let runs = ClassTableLayout.laneRuns(of: segment, among: segments, laneCount: laneCount).map(geometry.rect)
+        let shape = ConflictLaneShape(runs: runs, cornerRadius: TigerDuckTheme.CornerRadius.sm)
+        // The name goes in the largest run, which is a full-width one where there is one.
+        let label = runs.max { $0.width * $0.height < $1.width * $1.height } ?? .zero
+        let hasBadge = showsBadge(for: course)
+        // A course can start below the cluster's first period; VoiceOver names its own.
+        let periods = viewModel.activePeriods
+        let firstPeriod = periods.firstIndex { $0.id == periodId }.flatMap { periods[safe: $0 + segment.offset] }
 
-        return VStack(spacing: rowSpacing) {
-            if offset > 0 {
-                Color.clear.frame(height: blockHeight(offset))
+        return Button {
+            viewModel.selectCourse(course, weekday: weekday, periodId: firstPeriod?.id ?? periodId)
+        } label: {
+            shape
+                .fill(course.color.opacity(0.4))
+                .overlay(alignment: .topLeading) {
+                    Text(course.displayName)
+                        .font(.system(size: courseNameSize, weight: .medium))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(label.height > cellHeight ? 3 : 2)
+                        .minimumScaleFactor(0.7)
+                        .multilineTextAlignment(.center)
+                        .padding(2)
+                        .frame(width: label.width, height: label.height)
+                        .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
+                        .offset(x: label.minX, y: label.minY)
+                }
+                .contentShape(shape)
+                .contentShape(.contextMenuPreview, shape)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
+                 String(format: String(localized: "a11y_timetable_cell"),
+                        AppConstants.Periods.shortWeekdayLabel(weekday),
+                        firstPeriod?.displayLabel ?? periodId,
+                        spokenCourse(course, hasAssignment: hasBadge)))
+        )
+        .contextMenu {
+            Button {
+                viewModel.startRename(course)
+            } label: {
+                Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
             }
             Button {
-                viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
+                viewModel.startRecolor(course)
             } label: {
-                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                    .fill(course.color.opacity(0.4))
-                    .overlay {
-                        Text(course.displayName)
-                            .font(.system(size: courseNameSize, weight: .medium))
-                            .foregroundStyle(Color.textPrimary)
-                            .lineLimit(span > 1 ? 3 : 2)
-                            .minimumScaleFactor(0.7)
-                            .multilineTextAlignment(.center)
-                            .padding(2)
-                    }
-                    .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
-                    .frame(height: blockHeight(span))
+                Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(
-                Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
-                     String(format: String(localized: "a11y_timetable_cell"),
-                            AppConstants.Periods.shortWeekdayLabel(weekday),
-                            viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
-                            spokenCourse(course, hasAssignment: hasBadge)))
-            )
-            .contextMenu {
-                Button {
-                    viewModel.startRename(course)
-                } label: {
-                    Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
-                }
-                Button {
-                    viewModel.startRecolor(course)
-                } label: {
-                    Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
-                }
-                Button(role: .destructive) {
-                    viewModel.deleteCourse(course)
-                } label: {
-                    Label(String(localized: "class_table_delete"), systemImage: "trash")
-                }
-            }
-            if bottomRows > 0 {
-                Color.clear.frame(height: blockHeight(bottomRows))
+            Button(role: .destructive) {
+                viewModel.deleteCourse(course)
+            } label: {
+                Label(String(localized: "class_table_delete"), systemImage: "trash")
             }
         }
-    }
-
-    private func blockHeight(_ span: Int) -> CGFloat {
-        CGFloat(span) * cellHeight + CGFloat(max(span - 1, 0)) * rowSpacing
     }
 
     @ViewBuilder
