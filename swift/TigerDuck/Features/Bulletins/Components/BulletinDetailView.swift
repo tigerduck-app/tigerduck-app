@@ -23,12 +23,10 @@ struct BulletinDetailView: View {
     @State private var isLoading: Bool = false
     @State private var showInAppBrowser: Bool = false
 
-    /// Hoisted to a static so the bulletin-detail nav push doesn't hit
-    /// Defaults + Keychain on every appearance just to reconstruct the
-    /// same client. Both the base URL and the shared secret are resolved
-    /// per-request through the default providers, so a Debug endpoint
-    /// override picks up immediately without an app relaunch and the
-    /// auth header tracks whichever backend the override points at.
+    /// Hoisted to a static so the bulletin-detail nav push doesn't build a
+    /// new client and URLSession on every appearance. The base URL is
+    /// resolved per request through the default provider, so a Debug
+    /// endpoint override picks up immediately without an app relaunch.
     private static let apiClient: BulletinAPIClient = BulletinAPIClient()
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Detail")
 

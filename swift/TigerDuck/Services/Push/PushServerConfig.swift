@@ -6,8 +6,8 @@ import Foundation
 /// backend override.
 ///
 /// Kept apart from `PushCoordinator` so other clients of the same backend,
-/// such as `BulletinAPIClient`, can resolve its URL and credentials without
-/// importing the iOS-only, ActivityKit-coupled coordinator.
+/// such as `BulletinAPIClient`, can resolve its URL without importing the
+/// iOS-only, ActivityKit-coupled coordinator.
 nonisolated enum PushServerConfig {
 
     /// Resolves the backend URL for this build. Every build first honours
@@ -206,8 +206,8 @@ nonisolated enum PushServerConfig {
 
     static func secretsPlistDict() -> NSDictionary? {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist") else {
-            // Missing file is the intentional dev path — contributors who
-            // don't need a backend secret simply don't ship `Secrets.plist`.
+            // A missing file is the normal case: only contributors who point
+            // a Debug build at a LAN backend create `Secrets.plist`.
             // Stay silent here so we don't spam Sentry on every cold start.
             return nil
         }
