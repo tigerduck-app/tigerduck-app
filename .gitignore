@@ -4,9 +4,8 @@ swift/buildServer.json
 .idea/
 .sisyphus/
 
-# iOS secrets — real values live only on the developer machine, synced
-# manually with the server's TIGERDUCK_API_SHARED_SECRET. The .example
-# counterpart is committed as a template.
+# Per-developer Debug settings (the DebugServerURL backend override). The
+# .example counterpart is committed as a template.
 swift/TigerDuck/Secrets.plist
 # Legacy xcconfig approach — kept ignored so stale local copies don't
 # accidentally get committed. Safe to delete from disk.
