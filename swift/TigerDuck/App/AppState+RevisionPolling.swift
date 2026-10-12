@@ -36,9 +36,9 @@ extension AppState {
             let serverRevision = try await pushCoordinator.fetchRevision()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self._lastKnownRevision)")
             guard serverRevision > _lastKnownRevision else { return .unchanged }
-            await syncChangesSinceLastRevision()
+            let outcome = await syncChangesSinceLastRevision()
             await cloudSyncCoordinator.onRevisionChanged()
-            return .changed
+            return outcome
         } catch PushAPIError.httpStatus(401, _) {
             return .unauthorized
         } catch {
@@ -50,13 +50,14 @@ extension AppState {
     /// Reads the change feed after ``_lastKnownRevision`` and does what ``ChangeFeedPlan`` makes of
     /// it. Until the launch or sign-in sync sets a watermark the feed cannot show what this device
     /// lacks, so the full sync runs instead. A full sync in flight covers the poll, and a read that
-    /// a sign-out or a full sync overtook is dropped.
-    func syncChangesSinceLastRevision() async {
+    /// a sign-out or a full sync overtook is dropped. Settings changes left unapplied, as when the
+    /// document read fails, make the poll `.failed`, so the poller backs off before the next read.
+    func syncChangesSinceLastRevision() async -> RevisionPollOutcome {
         let since = _lastKnownRevision
         let generation = authService.loginGeneration
         guard since > 0, !fullSyncGate.isRunning else {
             await syncOverridesFromBackend()
-            return
+            return .changed
         }
         let page: PushAPI.SyncChangesPage?
         do {
@@ -65,7 +66,9 @@ extension AppState {
             AppLogger.sync.info("[feed] read failed: \(error, privacy: .public)")
             page = nil
         }
-        guard mayAdvanceRevision(from: since, generation: generation), !fullSyncGate.isRunning else { return }
+        guard mayAdvanceRevision(from: since, generation: generation), !fullSyncGate.isRunning else {
+            return .changed
+        }
         let plan = ChangeFeedPlan(page, since: since)
         AppLogger.sync.info("[feed] since=\(since) plan=\(String(describing: plan), privacy: .public)")
         switch plan {
@@ -77,7 +80,10 @@ extension AppState {
         case .reconcileSettings(let revision):
             await retryUnsentEdits()
             await reconcileSettings(thenAdvanceFrom: since, to: revision, generation: generation)
+            // Still at `since` only when the reconcile ended unsettled and nothing overtook the read.
+            if _lastKnownRevision == since { return .failed }
         }
+        return .changed
     }
 
     /// Adopts the notification settings document a feed read found changed, then moves the
