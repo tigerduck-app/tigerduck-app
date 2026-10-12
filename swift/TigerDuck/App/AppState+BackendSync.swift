@@ -83,12 +83,16 @@ extension AppState {
             // still run, to pick up colour and name changes and cross-device deletions.
             let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
             let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
-            let isMigrating = serverArchivedIds.isEmpty && serverCompletedIds.isEmpty
-                && (!localArchivedIds.isEmpty || !localCompletedIds.isEmpty)
+            let isMigrating = Self.uploadsLocalMarksAsFirstSync(
+                syncedBefore: Defaults[.assignmentMarksSyncedOnce],
+                serverHasMarks: !serverArchivedIds.isEmpty || !serverCompletedIds.isEmpty,
+                localHasMarks: !localArchivedIds.isEmpty || !localCompletedIds.isEmpty
+            )
             if isMigrating {
                 for id in localArchivedIds { syncAssignmentOverride(moodleId: id, status: "archived") }
                 for id in localCompletedIds { syncAssignmentOverride(moodleId: id, status: "locally_completed") }
             }
+            Defaults[.assignmentMarksSyncedOnce] = true
 
             // Ops still queued in the outbox are local edits in flight to the
             // server — differences against the (possibly stale) pull payload
@@ -237,6 +241,17 @@ extension AppState {
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
         }
+    }
+
+    /// Whether a pull uploads this device's marks instead of applying the server's. Only the
+    /// account's first sync on this device does: later, a server with no marks means they were
+    /// cleared on another device, and a stale copy here would bring them back.
+    nonisolated static func uploadsLocalMarksAsFirstSync(
+        syncedBefore: Bool,
+        serverHasMarks: Bool,
+        localHasMarks: Bool
+    ) -> Bool {
+        !syncedBefore && !serverHasMarks && localHasMarks
     }
 
     /// One status's marks after a pull: the server's, except for marks with an edit not on the

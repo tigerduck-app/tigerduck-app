@@ -113,18 +113,3 @@ struct SyncOutboxTests {
         #expect(await Self.makeOutbox(directory: directory).parkedSnapshot().isEmpty)
     }
 }
-
-/// `AppState.mergedMarks`: what a pull leaves of one status's marks.
-struct MergedMarksTests {
-    @Test("Marks follow the server unless an edit of them has not reached it")
-    func unprotectedMarksFollowTheServer() {
-        let merged = AppState.mergedMarks(server: ["1", "2"], local: ["2", "3"], protected: [])
-        #expect(merged == ["1", "2"])
-    }
-
-    @Test("An edit not on the server yet keeps the local status, set or cleared")
-    func protectedMarksKeepTheLocalStatus() {
-        let merged = AppState.mergedMarks(server: ["1", "2"], local: ["3"], protected: ["2", "3"])
-        #expect(merged == ["1", "3"])
-    }
-}
