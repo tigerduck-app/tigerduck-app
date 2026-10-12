@@ -257,6 +257,17 @@ final class DataCache {
         save(Array(ids), to: "locally_completed_assignments.json", in: persistentDir)
     }
 
+    // MARK: - Closed assignments Moodle called unsubmitted
+
+    func loadClosedUnsubmittedAssignmentIds() -> Set<String> {
+        let ids: [String] = load(from: "closed_unsubmitted_assignments.json") ?? []
+        return Set(ids)
+    }
+
+    func replaceClosedUnsubmittedAssignmentIds(_ ids: Set<String>) {
+        save(Array(ids), to: "closed_unsubmitted_assignments.json")
+    }
+
     // MARK: - Bulletins
 
     /// Persist the full known list of bulletin summaries. Writes are
@@ -497,6 +508,7 @@ final class DataCache {
     func clearUserScopedData() {
         let filenames: [(String, URL)] = [
             ("assignments.json", cacheDir),
+            ("closed_unsubmitted_assignments.json", cacheDir),
             ("calendar_events.json", cacheDir),
             ("user_added_courses.json", persistentDir),
             ("deleted_courses.json", persistentDir),
