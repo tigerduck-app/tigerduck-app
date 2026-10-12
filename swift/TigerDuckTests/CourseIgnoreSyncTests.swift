@@ -272,14 +272,19 @@ extension CourseIgnoreCoordinatorTests {
 /// What a full sync reads from the snapshot's `course_overrides` (`AppState+BackendSync.swift`).
 @MainActor
 struct CourseIgnorePullTests {
+    /// A row of `course_overrides`; `setAt` is when a device last set the course's setting.
     private static func row(
-        _ courseNo: String, semester: String = "1151", ignored: Bool? = true, moodleCourseId: Int? = nil
+        _ courseNo: String, semester: String = "1151", ignored: Bool? = true, setAt: String? = nil,
+        moodleCourseId: Int? = nil
     ) -> [String: Any] {
         var row: [String: Any] = [
             "course_no": courseNo, "semester": semester, "moodle_id": "\(semester)\(courseNo)",
             "moodle_course_id": moodleCourseId.map { $0 as Any } ?? NSNull(),
         ]
-        if let ignored { row["ignore_assignments"] = ignored }
+        if let ignored {
+            row["ignore_assignments"] = ignored
+            row["ignore_assignments_updated_at"] = setAt.map { $0 as Any } ?? NSNull()
+        }
         return row
     }
 
@@ -330,9 +335,49 @@ struct CourseIgnorePullTests {
 
     @Test("The re-enabled switch's check finds a difference only where a pull would apply one")
     func reenableCheckComparesCoveredTerms() {
-        #expect(AppState.ignoredCoursesDiffer(server: ["1151:CS1"], local: [], snapshotSemesters: ["1151"]))
-        #expect(!AppState.ignoredCoursesDiffer(server: [], local: ["1142:CS1"], snapshotSemesters: ["1151"]))
-        #expect(!AppState.ignoredCoursesDiffer(server: nil, local: ["1151:CS1"], snapshotSemesters: ["1151"]))
+        let differ = { (server: Set<String>?, decided: Set<String>, local: Set<String>) in
+            AppState.ignoredCoursesDiffer(
+                server: server, decided: decided, listed: ["1151:CS1"], local: local, snapshotSemesters: ["1151"]
+            )
+        }
+        #expect(differ(["1151:CS1"], ["1151:CS1"], []))
+        #expect(differ([], ["1151:CS1"], ["1151:CS1"]))
+        #expect(!differ([], [], ["1142:CS1"]))
+        #expect(!differ(nil, [], ["1151:CS1"]))
+        // The server lost it: a pull keeps it and sends it again.
+        #expect(!differ([], [], ["1151:CS1"]))
+    }
+
+    @Test("A course's setting counts as set on the server once a device has sent it, either way")
+    func decidedCoursesAreTheOnesSent() {
+        let decided = AppState.serverDecidedCourses([
+            Self.row("CS1", setAt: "2026-10-13T00:00:00+00:00"),
+            Self.row("EE2", ignored: false, setAt: "2026-10-13T00:00:00+00:00"),
+            Self.row("GE3", ignored: false),
+            Self.row("PE4", ignored: nil),
+        ])
+        #expect(decided == ["1151:CS1", "1151:EE2"])
+    }
+
+    @Test("The snapshot's courses are keyed by term and course number, its own Moodle rows left out")
+    func listedCoursesAreKeyed() {
+        let listed = AppState.listedCourses([
+            ["semester": "1151", "course_no": "CS1"], ["semester": "", "course_no": "EE2"], ["semester": "1142"],
+        ])
+        #expect(listed == ["1151:CS1"])
+    }
+
+    @Test("A setting the server lost with its course rows stays and goes up again; one it holds does not")
+    func lostSettingsStayAndGoUpAgain() {
+        let pull = AppState.ignoredCoursesAfterPull(
+            server: [], decided: ["1151:EE2"], listed: ["1151:CS1", "1151:EE2", "1151:PE4"],
+            local: ["1151:CS1", "1151:EE2", "1151:GE3", "1151:PE4"], protected: ["1151:PE4"],
+            snapshotSemesters: ["1151"]
+        )
+        // CS1 the server lost; EE2 another device stopped ignoring; GE3 is gone from the server;
+        // PE4 is on its way up already.
+        #expect(pull.ignored == ["1151:CS1", "1151:PE4"])
+        #expect(pull.resend == ["1151:CS1"])
     }
 
     @Test("The numeric id goes up for an ignored course the server has none for, once this device knows it")

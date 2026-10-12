@@ -180,7 +180,8 @@ extension AppState {
                 // Read again: the switch may have gone off while the outbox was read.
                 if let serverIgnoredCourses, Defaults[.syncCourses] {
                     changed = applyIgnoredCourses(
-                        serverIgnoredCourses, coursesArray: coursesArray, protected: protectedOverrides
+                        serverIgnoredCourses, decided: Self.serverDecidedCourses(courseOverrides),
+                        coursesArray: coursesArray, protected: protectedOverrides
                     ) || changed
                 }
             }
@@ -381,16 +382,61 @@ extension AppState {
         server.filter { !local.contains($0.key) }
     }
 
+    /// Keys of the courses whose setting a device has sent, either way. A row the server made for
+    /// a colour or a name holds none, and neither does a course row it dropped and got back.
+    nonisolated static func serverDecidedCourses(_ overrides: [[String: Any]]) -> Set<String> {
+        Set(overrides.compactMap { row in
+            guard row["ignore_assignments"] as? Bool == true || row["ignore_assignments_updated_at"] is String,
+                  let semester = row["semester"] as? String, !semester.isEmpty,
+                  let courseNo = row["course_no"] as? String, !courseNo.isEmpty
+            else { return nil }
+            return CourseTombstone.key(semester: semester, courseNo: courseNo)
+        })
+    }
+
+    /// Keys of the courses a snapshot's `courses` lists.
+    nonisolated static func listedCourses(_ courses: [[String: Any]]) -> Set<String> {
+        Set(courses.compactMap { row in
+            guard let semester = row["semester"] as? String, !semester.isEmpty,
+                  let courseNo = row["course_no"] as? String, !courseNo.isEmpty
+            else { return nil }
+            return CourseTombstone.key(semester: semester, courseNo: courseNo)
+        })
+    }
+
+    /// The ignored courses after a pull, as `mergedIgnoredCourses` says, and the ones to send
+    /// again (`resend`): ignored here and listed by the server with no device's setting, as when it
+    /// dropped the settings with the course rows while no device synced courses. Those stay ignored.
+    nonisolated static func ignoredCoursesAfterPull(
+        server: Set<String>,
+        decided: Set<String>,
+        listed: Set<String>,
+        local: Set<String>,
+        protected: Set<String>,
+        snapshotSemesters: Set<String>
+    ) -> (ignored: Set<String>, resend: Set<String>) {
+        let resend = local.intersection(listed).subtracting(decided).subtracting(protected)
+        let ignored = mergedIgnoredCourses(
+            server: server, local: local, protected: protected.union(resend), snapshotSemesters: snapshotSemesters
+        )
+        return (ignored, resend)
+    }
+
     /// Whether the re-enabled Assignments switch's check finds the course settings differ, in the
-    /// terms a pull would apply them to. A backend without the setting has none to compare.
+    /// terms a pull would apply them to and as it would. A backend without the setting has none
+    /// to compare.
     nonisolated static func ignoredCoursesDiffer(
         server: Set<String>?,
+        decided: Set<String>,
+        listed: Set<String>,
         local: Set<String>,
         snapshotSemesters: Set<String>
     ) -> Bool {
         guard let server else { return false }
-        return mergedIgnoredCourses(server: server, local: local, protected: [], snapshotSemesters: snapshotSemesters)
-            != local
+        return ignoredCoursesAfterPull(
+            server: server, decided: decided, listed: listed, local: local, protected: [],
+            snapshotSemesters: snapshotSemesters
+        ).ignored != local
     }
 
     /// The ignored courses whose numeric Moodle id the server lacks and this device knows. The
@@ -408,10 +454,11 @@ extension AppState {
         }
     }
 
-    /// Takes the server's ignored courses as `mergedIgnoredCourses` says, and sends the numeric
-    /// Moodle ids the server lacks. Returns whether the local set changed.
+    /// Takes the server's ignored courses as `ignoredCoursesAfterPull` says, sends again the ones
+    /// it lost, and sends the numeric Moodle ids it lacks. Returns whether the local set changed.
     private func applyIgnoredCourses(
         _ server: [ServerIgnoredCourse],
+        decided: Set<String>,
         coursesArray: [[String: Any]],
         protected: Set<String>
     ) -> Bool {
@@ -428,12 +475,18 @@ extension AppState {
         if !missingIds.isEmpty { cloudSyncCoordinator.scheduleTick(after: 1) }
 
         let current = DataCache.shared.loadIgnoredAssignmentCourses()
-        let merged = Self.mergedIgnoredCourses(
+        let (merged, resend) = Self.ignoredCoursesAfterPull(
             server: Set(server.map(\.key)),
+            decided: decided,
+            listed: Self.listedCourses(coursesArray),
             local: current,
             protected: protected,
             snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })
         )
+        if !resend.isEmpty {
+            AppLogger.sync.info("[syncOverrides] sending \(resend.count, privacy: .public) course settings the server lost again")
+            syncCourseIgnores(resend)
+        }
         guard merged != current else { return false }
         DataCache.shared.replaceIgnoredAssignmentCourses(merged)
         return true
