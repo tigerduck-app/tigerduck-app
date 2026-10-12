@@ -17,8 +17,6 @@ extension AppState {
         // Cache-deleting migrations run synchronously, ahead of the task below. Once init()
         // returns, `backgroundSync()` may write fresh caches, and deleting them after its
         // warm pass leaves the grids blank. Each is a cheap doneKey-guarded one-shot.
-        ClassroomAbbrCacheMigration.runIfNeeded()
-        CustomNameCacheMigration.runIfNeeded()
         SemesterAttributionCacheMigration.runIfNeeded()
         #if os(iOS)
         // Inline because it costs three UserDefaults reads, not for order: the preferences it
@@ -36,8 +34,6 @@ extension AppState {
         #endif
         Task(priority: .utility) { @MainActor in
             #if os(iOS)
-            // First, because it is purely local: it must not wait behind the Moodle
-            // migration's network refresh while the reminders it removes are queued to fire.
             // iOS only and off the macOS allow-list: no Mac ever scheduled `LA-reminder-*`.
             await PendingReminderPurgeMigration.runIfNeeded()
             // Not in the macOS allow-list either. It queues and returns: the
@@ -46,8 +42,6 @@ extension AppState {
                 self.reconcileNotificationSettings(onSettled: onSettled)
             }
             #endif
-            await MoodleTokenMigration.runIfNeeded()
-            HomeSectionTitleMigration.runIfNeeded()
             // Add future migrations here in sequence. Anything that deletes
             // cached data belongs above the task, not in it.
         }

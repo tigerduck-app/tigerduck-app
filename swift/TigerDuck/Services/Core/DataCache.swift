@@ -35,8 +35,6 @@ final class DataCache {
             AppLogger.captureError(error, context: ["phase": "dataCache.createPersistentDir"])
         }
         persistentDir = persistent
-
-        absorbLegacyCourseCache()
     }
 
     // MARK: - Courses (semester + language-scoped)
@@ -570,10 +568,8 @@ final class DataCache {
         }
     }
 
-    /// Remove every `courses_<semester>.json` file. Used by the abbreviation
-    /// pipeline migration to drop pre-fix entries whose `classroomMapJSON`
-    /// may already be abbreviated and would no longer round-trip through the
-    /// raw classroom cache. The next fetch repopulates from the network.
+    /// Remove every `courses_*.json` file, for a migration whose cached courses cannot be
+    /// repaired in place. The next fetch repopulates them from the network.
     func clearCourseCaches() {
         let cacheContents = (try? FileManager.default.contentsOfDirectory(
             at: cacheDir,
@@ -655,32 +651,6 @@ final class DataCache {
                 "filename": filename,
             ])
             return nil
-        }
-    }
-
-    // Deletes legacy course caches: `courses.json` (before semester scoping) and
-    // `courses_<semester>.json` (before language scoping). The latter holds localized names in
-    // an unknown language, so it cannot be migrated; the next network refresh repopulates.
-    private func absorbLegacyCourseCache() {
-        let legacyURL = cacheDir.appendingPathComponent("courses.json")
-        if FileManager.default.fileExists(atPath: legacyURL.path) {
-            try? FileManager.default.removeItem(at: legacyURL)
-        }
-
-        let cacheContents = (try? FileManager.default.contentsOfDirectory(
-            at: cacheDir,
-            includingPropertiesForKeys: nil
-        )) ?? []
-        for url in cacheContents where url.pathExtension == "json" {
-            let name = url.deletingPathExtension().lastPathComponent
-            // Match the old `courses_<semester>` shape (exactly one
-            // underscore-delimited segment after the prefix). The new
-            // language-suffixed names have two segments and stay put.
-            guard name.hasPrefix("courses_") else { continue }
-            let suffix = String(name.dropFirst("courses_".count))
-            if !suffix.contains("_") {
-                try? FileManager.default.removeItem(at: url)
-            }
         }
     }
 }
