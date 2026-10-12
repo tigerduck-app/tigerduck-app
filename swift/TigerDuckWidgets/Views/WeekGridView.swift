@@ -159,23 +159,26 @@ struct WeekGridView: View {
                 }
                 .zIndex(1)
 
-        case let .conflictMany(segments, combinedSpan):
-            // Same offset-aware columns as the two-course case, N wide. Each segment is placed by
-            // its own span and offset, so a chain like A (rows 0-1), B (1-2), C (2-3) paints each
-            // course only where it meets.
+        case let .conflictMany(segments, combinedSpan, laneCount):
+            // Same offset-aware columns as the two-course case, one per lane: a chain like
+            // A (rows 0-1), B (1-2), C (2-3) puts A and C, which never meet, in one column.
             let totalHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
             Color.clear
                 .overlay(alignment: .top) {
                     HStack(spacing: 1) {
-                        ForEach(segments, id: \.course.courseNo) { segment in
-                            conflictColumn(
-                                segment.course,
-                                span: segment.span,
-                                offset: segment.offset,
-                                combinedSpan: combinedSpan,
-                                cellHeight: cellHeight,
-                                fontScale: fontScale
-                            )
+                        ForEach(0..<laneCount, id: \.self) { lane in
+                            ZStack(alignment: .top) {
+                                ForEach(segments.filter { $0.lane == lane }, id: \.course.courseNo) { segment in
+                                    conflictColumn(
+                                        segment.course,
+                                        span: segment.span,
+                                        offset: segment.offset,
+                                        combinedSpan: combinedSpan,
+                                        cellHeight: cellHeight,
+                                        fontScale: fontScale
+                                    )
+                                }
+                            }
                         }
                     }
                     .frame(height: totalHeight)
