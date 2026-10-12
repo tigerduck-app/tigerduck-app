@@ -270,7 +270,8 @@ extension AppServiceBridge {
             return assignmentsToPersist
         } catch {
             await MainActor.run {
-                ServerStatusTracker.shared.set(.failed, for: .moodle)
+                let note = (error as? MoodleWebserviceError) == .siteMaintenance ? error.localizedDescription : nil
+                ServerStatusTracker.shared.set(.failed, for: .moodle, note: note)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()

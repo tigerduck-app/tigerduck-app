@@ -38,9 +38,12 @@ final class ServerStatusTracker {
     static let shared = ServerStatusTracker()
 
     var statuses: [ServerKind: ServerStatus] = [:]
+    private(set) var notes: [ServerKind: String] = [:]
 
-    func set(_ status: ServerStatus, for server: ServerKind) {
+    /// `note` is shown under the status rows; a report without one clears the last.
+    func set(_ status: ServerStatus, for server: ServerKind, note: String? = nil) {
         statuses[server] = status
+        notes[server] = note
     }
 
     /// Report whether a *public* backend call got through.
@@ -83,8 +86,13 @@ final class ServerStatusTracker {
         statuses[server] ?? .unknown
     }
 
+    func note(for server: ServerKind) -> String? {
+        notes[server]
+    }
+
     func reset() {
         statuses.removeAll()
+        notes.removeAll()
     }
 }
 

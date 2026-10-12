@@ -136,8 +136,9 @@ struct SyncStatusDot: View {
     }
 
     private var errorMessage: String? {
-        if case .servers = mode, case .error(let message) = session.loadingState { return message }
-        return nil
+        guard case .servers(let servers) = mode else { return nil }
+        if case .error(let message) = session.loadingState { return message }
+        return servers.lazy.compactMap { tracker.note(for: $0) }.first
     }
 
     /// Signed out there is nothing syncing and nothing to report, so the
