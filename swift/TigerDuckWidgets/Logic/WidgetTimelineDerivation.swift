@@ -223,6 +223,15 @@ private extension Comparable {
 }
 
 extension WidgetTimelineDerivation {
+    /// The first Taipei midnight after `date`, when a widget with nothing to show asks again.
+    /// A single entry with `.atEnd` would make WidgetKit reload it at once, over and over; the
+    /// app reloads every timeline itself when it writes a snapshot.
+    static func nextMidnight(after date: Date, calendar: Calendar = WidgetTaipei.calendar) -> Date {
+        let startOfDay = calendar.startOfDay(for: date)
+        return calendar.date(byAdding: .day, value: 1, to: startOfDay)
+            ?? startOfDay.addingTimeInterval(86_400)
+    }
+
     /// Returns the dates at which the widget should refresh, deduplicated and sorted ascending:
     ///   - `now` itself
     ///   - the start and the end of every remaining period today

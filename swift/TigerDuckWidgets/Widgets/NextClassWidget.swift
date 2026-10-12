@@ -40,15 +40,9 @@ struct NextClassProvider: TimelineProvider {
         // With no courses or no signed-in user, `.atEnd` would make WidgetKit reload the single
         // placeholder entry in an immediate loop. Refreshing at midnight retries once a day.
         let hasCourses = snap.isLoggedIn && !snap.courses.isEmpty
-        let policy: TimelineReloadPolicy
-        if hasCourses {
-            policy = .atEnd
-        } else {
-            let startOfToday = Calendar.current.startOfDay(for: Date())
-            let midnight = Calendar.current.date(byAdding: .day, value: 1, to: startOfToday)
-                ?? startOfToday.addingTimeInterval(86400)
-            policy = .after(midnight)
-        }
+        let policy: TimelineReloadPolicy = hasCourses
+            ? .atEnd
+            : .after(WidgetTimelineDerivation.nextMidnight(after: Date()))
         completion(Timeline(entries: entries, policy: policy))
     }
 

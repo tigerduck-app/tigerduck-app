@@ -201,6 +201,17 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
+    /// Taipei's midnight wherever the device is, since the widget's day is Taipei's.
+    @Test func nextMidnight_isTaipeiMidnight() {
+        let taipei = WidgetTaipei.calendar
+        let lateEvening = taipei.date(from: DateComponents(year: 2026, month: 9, day: 22, hour: 23, minute: 30))!
+        let midnight = taipei.date(from: DateComponents(year: 2026, month: 9, day: 23))!
+        #expect(WidgetTimelineDerivation.nextMidnight(after: lateEvening) == midnight)
+        // At midnight itself the next one is a day later, never the same instant.
+        let nextDay = taipei.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        #expect(WidgetTimelineDerivation.nextMidnight(after: midnight) == nextDay)
+    }
+
     /// The evening before a school holiday, the scan passes the holiday as today's check
     /// does, instead of offering its class as tomorrow's.
     @Test func holidayTomorrow_advancesToTheNextClassDay() {
