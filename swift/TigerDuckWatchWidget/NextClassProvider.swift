@@ -3,6 +3,8 @@ import Foundation
 import os
 
 nonisolated struct NextClassProvider: TimelineProvider {
+    /// Where the Watch app saves the phone's last push. Tests point it at a file of their own.
+    var snapshotFileURL = SharedAppGroup.snapshotFileURL
 
     func placeholder(in context: Context) -> NextClassEntry {
         NextClassEntry(
@@ -17,56 +19,40 @@ nonisolated struct NextClassProvider: TimelineProvider {
 
     func getSnapshot(in context: Context, completion: @escaping (NextClassEntry) -> Void) {
         let snapshot = loadSnapshot()
-        let r = NextClassResolver.resolve(courses: snapshot?.courses ?? [], now: Date())
-        completion(NextClassEntry(
-            date: Date(),
-            current: r.current,
-            next: r.next,
-            accentHex: snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex,
-            languageTag: snapshot?.languageTag,
-            relevance: relevance(for: r, now: Date())
-        ))
+        completion(entry(for: snapshot, at: AppClock.now(), date: Date()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextClassEntry>) -> Void) {
         let snapshot = loadSnapshot()
-        let accent = snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex
-        let languageTag = snapshot?.languageTag
-        let courses = snapshot?.courses ?? []
+        completion(timeline(for: snapshot, now: AppClock.now()))
+    }
 
-        var entries: [NextClassEntry] = []
-        let now = Date()
+    /// `now` and the class times are on the app clock, which the debug clock can move. WidgetKit
+    /// runs on the real clock, so each entry and the reload are dated with their real instants.
+    func timeline(for snapshot: WatchSnapshot?, now: Date) -> Timeline<NextClassEntry> {
+        let courses = snapshot?.courses ?? []
+        let quietDays = snapshot?.quietDays ?? []
         // A Taipei calendar keeps class start/end and the 04:00 reload on Taiwan time, matching the
         // resolver and the iOS app. A device-zone calendar would shift the day anchors and reload
         // for a traveling wearer, leaving the face stale across class changes and midnight.
         let cal = SharedTaipei.calendar
 
-        // Cover today and tomorrow so after midnight the face does not show "no upcoming classes"
-        // until the 04:00 reload. NextClassResolver derives the weekday from each timestamp, so
-        // entries dated tomorrow morning show tomorrow's classes.
-        var boundaries: [Date] = [now]
+        // Cover today, the coming midnight and tomorrow, so from midnight the face shows the new
+        // day's first class without waiting for the 04:00 reload. Only classes that meet add a
+        // boundary: a holiday or a skipped date has nothing to change for.
+        var boundaries: Set<Date> = [now]
+        if let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) {
+            boundaries.insert(midnight)
+        }
         for dayOffset in 0...1 {
             guard let anchor = cal.date(byAdding: .day, value: dayOffset, to: now) else { continue }
-            let raw = cal.component(.weekday, from: anchor)
-            let iso = ((raw + 5) % 7) + 1
-            let dayCourses = courses.filter { $0.weekday == iso }
-            for c in dayCourses {
-                if let s = combine(hhmm: c.startHHmm, with: anchor), s > now { boundaries.append(s) }
-                if let e = combine(hhmm: c.endHHmm, with: anchor), e > now { boundaries.append(e) }
+            for c in NextClassResolver.todaysClasses(courses: courses, now: anchor, quietDays: quietDays) {
+                if let s = combine(hhmm: c.startHHmm, with: anchor), s > now { boundaries.insert(s) }
+                if let e = combine(hhmm: c.endHHmm, with: anchor), e > now { boundaries.insert(e) }
             }
         }
-        let unique = Array(Set(boundaries)).sorted()
-
-        for ts in unique {
-            let r = NextClassResolver.resolve(courses: courses, now: ts)
-            entries.append(NextClassEntry(
-                date: ts,
-                current: r.current,
-                next: r.next,
-                accentHex: accent,
-                languageTag: languageTag,
-                relevance: relevance(for: r, now: ts)
-            ))
+        let entries = boundaries.sorted().map { boundary in
+            entry(for: snapshot, at: boundary, date: AppClock.realTime(forApp: boundary))
         }
 
         // Reload tomorrow at 04:00. We've already emitted tomorrow's entries
@@ -77,25 +63,46 @@ nonisolated struct NextClassProvider: TimelineProvider {
             matchingPolicy: .nextTime
         ) ?? now.addingTimeInterval(6 * 3600)
 
-        completion(Timeline(entries: entries, policy: .after(reloadAt)))
+        return Timeline(entries: entries, policy: .after(AppClock.realTime(forApp: reloadAt)))
     }
 
     // MARK: - Helpers
 
-    private func loadSnapshot() -> WatchSnapshot? {
-        let url = SharedAppGroup.snapshotFileURL
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        do {
-            let data = try Data(contentsOf: url)
-            return try JSONDecoder().decode(WatchSnapshot.self, from: data)
-        } catch {
-            WatchAppLogger.widget.error("widget loadSnapshot failed: \(error.localizedDescription)")
-            return nil
+    /// The phone's last push as the Watch app saved it. Also applies the push's debug clock
+    /// override: the widget runs in its own process, so its `AppClock` follows the phone's only
+    /// through this file, as the Watch app's does through `ScheduleStore`.
+    func loadSnapshot() -> WatchSnapshot? {
+        var snapshot: WatchSnapshot?
+        if FileManager.default.fileExists(atPath: snapshotFileURL.path) {
+            do {
+                let data = try Data(contentsOf: snapshotFileURL)
+                snapshot = try JSONDecoder().decode(WatchSnapshot.self, from: data)
+            } catch {
+                WatchAppLogger.widget.error("widget loadSnapshot failed: \(error.localizedDescription)")
+            }
         }
+        AppClock.setOverride(ClockOverride.decode(snapshotJSON: snapshot?.clockOverrideJSON))
+        return snapshot
+    }
+
+    /// The state at `appNow` on the app clock, shown from `date` on the real clock. Holidays and
+    /// skipped dates leave no class, as on the Watch's Now & Next tab.
+    private func entry(for snapshot: WatchSnapshot?, at appNow: Date, date: Date) -> NextClassEntry {
+        let r = NextClassResolver.resolve(
+            courses: snapshot?.courses ?? [], now: appNow, quietDays: snapshot?.quietDays ?? []
+        )
+        return NextClassEntry(
+            date: date,
+            current: r.current,
+            next: r.next,
+            accentHex: snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex,
+            languageTag: snapshot?.languageTag,
+            relevance: relevance(for: r, now: appNow)
+        )
     }
 
     private func combine(hhmm: String, with anchor: Date) -> Date? {
-        // Must match the calendar in `getTimeline(...)` so the date taken from `anchor` and the
+        // Must match the calendar in `timeline(for:now:)` so the date taken from `anchor` and the
         // hh:mm put back share one time zone; otherwise a device outside Taipei time produces
         // start and end instants offset from what the resolver expects.
         let cal = SharedTaipei.calendar
