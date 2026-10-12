@@ -2,7 +2,7 @@ import Foundation
 
 nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let version: Int
-    let generatedAt: Date
+    var generatedAt: Date
     let isLoggedIn: Bool
     let accentColorHex: UInt32
     let courses: [SnapshotCourse]
