@@ -232,6 +232,11 @@ AppState+NotificationSettings.swift
 NotificationSettingsSeedMigration.swift
 PendingReminderPurgeMigration.swift
 
+# LiveActivitySnapshotPurgeMigration.swift: deletes the snapshot the removed, iOS-only
+# SharedSnapshotStore kept in the App Group defaults. Called from the `#if os(iOS)` block
+# in `runPendingMigrations()`; a Mac never wrote it.
+LiveActivitySnapshotPurgeMigration.swift
+
 # BulletinPushOptOutMigration.swift — the upgrade fix-up for the 2.1.0
 # bulletin-push opt-out (spec §6 item 5). Called from its own `#if os(iOS)`
 # guard in `runPendingMigrations()`. iOS-only because the feature it repairs
