@@ -5,7 +5,7 @@ enum SSOLoginError: LocalizedError {
     case loginFormNotFound
     /// The service sent the sign-in to ssoam's NetIQ form, which only a browser can submit.
     case interactiveLoginRequired
-    case loginFailed
+    case loginFailed(reason: String?)
     case networkError(Error)
     case invalidResponse
 
@@ -13,6 +13,8 @@ enum SSOLoginError: LocalizedError {
         switch self {
         case .loginFormNotFound, .interactiveLoginRequired:
             return String(localized: "error_sso_sign_in_form_not_found")
+        case .loginFailed(let reason?) where !reason.isEmpty:
+            return String(format: String(localized: "error_sso_sign_in_failed_with_reason"), reason)
         case .loginFailed: return String(localized: "error_sso_sign_in_failed")
         case .networkError(let e): return String(format: String(localized: "error_network_format"), e.localizedDescription)
         case .invalidResponse: return String(localized: "error_invalid_server_response")
@@ -143,7 +145,7 @@ enum SSOLoginService {
                 }
             }
 
-            if !interactive, storedPasswordRejected { throw SSOLoginError.loginFailed }
+            if !interactive, storedPasswordRejected { throw SSOLoginError.loginFailed(reason: nil) }
 
             // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
             // device-change warnings. They are in the session's jar, the NTUST-private one:
@@ -188,13 +190,13 @@ enum SSOLoginService {
             guard let actionHost = actionURL.host,
                   ssoActionHostAllowlist.contains(actionHost) else {
                 AppLogger.captureError(
-                    SSOLoginError.loginFailed,
+                    SSOLoginError.loginFailed(reason: nil),
                     context: [
                         "service": "ssoEnsureServiceLogin",
                         "rejectedActionHost": actionURL.host ?? "<nil>",
                     ]
                 )
-                throw SSOLoginError.loginFailed
+                throw SSOLoginError.loginFailed(reason: nil)
             }
             let (loginData, loginResponse) = try await postForm(
                 session: session, url: actionURL, fields: payload, generation: generation
@@ -216,15 +218,15 @@ enum SSOLoginService {
                 if !interactive, NTUSTSessionManager.shared.generation == generation {
                     storedPasswordRejected = true
                 }
-                throw SSOLoginError.loginFailed
+                throw SSOLoginError.loginFailed(reason: HTMLParser.loginErrorMessage(in: currentHTML))
             }
 
             guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                 throw SSOLoginError.invalidResponse
             }
             return true
-        } catch SSOLoginError.loginFailed {
-            throw SSOLoginError.loginFailed
+        } catch SSOLoginError.loginFailed(let reason) {
+            throw SSOLoginError.loginFailed(reason: reason)
         } catch {
             AppLogger.captureError(error, context: ["service": "ssoEnsureServiceLogin"])
             throw error

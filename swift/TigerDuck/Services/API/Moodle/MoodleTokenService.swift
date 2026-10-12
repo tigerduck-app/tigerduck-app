@@ -77,18 +77,6 @@ actor MoodleTokenService {
         pattern: #"["']moodlemobile://token=([A-Za-z0-9+/=_-]+)["']"#,
         options: []
     )
-    /// One precompiled regex per error-class name, lined up with `loginErrorClassNames`.
-    private static let loginErrorClassNames: [String] = [
-        "field-validation-error",
-        "validation-summary-errors",
-        "alert-danger",
-        "text-danger",
-    ]
-    private static let loginErrorRegexes: [NSRegularExpression] = loginErrorClassNames.map { className in
-        let pattern = #"<[^>]*class=["'][^"']*\b\#(className)\b[^"']*["'][^>]*>([\s\S]*?)</[^>]+>"#
-        return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
-    }
-
     init(
         storedCredentials: @escaping @Sendable () -> (studentId: String, password: String)?,
         harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
@@ -406,7 +394,7 @@ actor MoodleTokenService {
             if fields.antiforgery.isEmpty {
                 if responseURL.path.contains("/account/login") {
                     throw MoodleWebserviceError.ssoLoginRejected(
-                        reason: extractLoginError(from: html),
+                        reason: HTMLParser.loginErrorMessage(in: html),
                     )
                 }
                 throw MoodleWebserviceError.malformedResponse(
@@ -449,7 +437,7 @@ actor MoodleTokenService {
                extractMoodleMobileToken(from: nextHTML) == nil,
                parseOIDCBridge(from: nextHTML) == nil {
                 throw MoodleWebserviceError.ssoLoginRejected(
-                    reason: extractLoginError(from: nextHTML),
+                    reason: HTMLParser.loginErrorMessage(in: nextHTML),
                 )
             }
             return try await resolveTokenTriple(
@@ -554,23 +542,6 @@ actor MoodleTokenService {
         return result
     }
 
-    private nonisolated static func extractLoginError(from html: String) -> String? {
-        let ns = html as NSString
-        let range = NSRange(location: 0, length: ns.length)
-        for re in loginErrorRegexes {
-            guard let match = re.firstMatch(in: html, options: [], range: range),
-                  match.numberOfRanges >= 2 else {
-                continue
-            }
-            let fragment = ns.substring(with: match.range(at: 1))
-            let text = plainText(fromHTMLFragment: fragment)
-            if !text.isEmpty {
-                return text
-            }
-        }
-        return nil
-    }
-
     private nonisolated static func extractFormAction(from formTag: String) -> String? {
         let ns = formTag as NSString
         guard let m = formActionRegex.firstMatch(
@@ -621,7 +592,7 @@ actor MoodleTokenService {
             } else {
                 value = ""
             }
-            out[name] = decodeHTMLEntities(value)
+            out[name] = HTMLParser.decodeHTMLEntities(value)
         }
         return out
     }
@@ -639,33 +610,5 @@ actor MoodleTokenService {
             return nil
         }
         return ns.substring(with: m.range(at: 1))
-    }
-
-    private nonisolated static func decodeHTMLEntities(_ s: String) -> String {
-        var r = s
-        r = r.replacingOccurrences(of: "&amp;", with: "&")
-        r = r.replacingOccurrences(of: "&quot;", with: "\"")
-        r = r.replacingOccurrences(of: "&apos;", with: "'")
-        r = r.replacingOccurrences(of: "&lt;", with: "<")
-        r = r.replacingOccurrences(of: "&gt;", with: ">")
-        r = r.replacingOccurrences(of: "&#x2F;", with: "/")
-        r = r.replacingOccurrences(of: "&#x27;", with: "'")
-        r = r.replacingOccurrences(of: "&#39;", with: "'")
-        return r
-    }
-
-    private nonisolated static func plainText(fromHTMLFragment fragment: String) -> String {
-        let withoutTags = fragment.replacingOccurrences(
-            of: "<[^>]+>",
-            with: " ",
-            options: .regularExpression,
-        )
-        let decoded = decodeHTMLEntities(withoutTags)
-        return decoded.replacingOccurrences(
-            of: #"\s+"#,
-            with: " ",
-            options: .regularExpression,
-        )
-        .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

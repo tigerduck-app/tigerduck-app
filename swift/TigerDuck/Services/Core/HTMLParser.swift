@@ -88,7 +88,58 @@ nonisolated enum HTMLParser {
         return nil
     }
 
+    /// The message a sign-in page shows for a rejected attempt, as plain text: the first
+    /// element with one of the error classes that holds any text.
+    static func loginErrorMessage(in html: String) -> String? {
+        let ns = html as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        for re in loginErrorRegexes {
+            guard let match = re.firstMatch(in: html, options: [], range: range),
+                  match.numberOfRanges >= 2 else {
+                continue
+            }
+            let fragment = ns.substring(with: match.range(at: 1))
+            let text = plainText(fromHTMLFragment: fragment)
+            if !text.isEmpty {
+                return text
+            }
+        }
+        return nil
+    }
+
+    static func decodeHTMLEntities(_ s: String) -> String {
+        var r = s
+        r = r.replacingOccurrences(of: "&amp;", with: "&")
+        r = r.replacingOccurrences(of: "&quot;", with: "\"")
+        r = r.replacingOccurrences(of: "&apos;", with: "'")
+        r = r.replacingOccurrences(of: "&lt;", with: "<")
+        r = r.replacingOccurrences(of: "&gt;", with: ">")
+        r = r.replacingOccurrences(of: "&#x2F;", with: "/")
+        r = r.replacingOccurrences(of: "&#x27;", with: "'")
+        r = r.replacingOccurrences(of: "&#39;", with: "'")
+        return r
+    }
+
     // MARK: - Helpers
+
+    /// One precompiled regex per error-class name, lined up with `loginErrorClassNames`.
+    private static let loginErrorClassNames: [String] = [
+        "field-validation-error",
+        "validation-summary-errors",
+        "alert-danger",
+        "text-danger",
+    ]
+    private static let loginErrorRegexes: [NSRegularExpression] = loginErrorClassNames.map { className in
+        let pattern = #"<[^>]*class=["'][^"']*\b\#(className)\b[^"']*["'][^>]*>([\s\S]*?)</[^>]+>"#
+        return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    }
+
+    private static func plainText(fromHTMLFragment fragment: String) -> String {
+        let withoutTags = fragment.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        return decodeHTMLEntities(withoutTags)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     private static func formData(from form: Element) -> FormData? {
         let action = (try? form.attr("action")) ?? ""
