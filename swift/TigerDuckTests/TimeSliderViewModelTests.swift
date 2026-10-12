@@ -9,15 +9,15 @@ import Foundation
 struct TimeSliderViewModelTests {
 
     @Test func dateFromTimeString_parsesCorrectly() {
-        let ref = Calendar.current.startOfDay(for: Date())
+        let ref = AppConstants.taipeiCalendar.startOfDay(for: AppClock.now())
         let date = CourseTimeSlot.dateFromTimeString("10:20", on: ref)!
-        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let comps = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
         #expect(comps.hour == 10)
         #expect(comps.minute == 20)
     }
 
     @Test func dateFromTimeString_invalidReturnsNil() {
-        let ref = Date()
+        let ref = AppClock.now()
         #expect(CourseTimeSlot.dateFromTimeString("invalid", on: ref) == nil)
         #expect(CourseTimeSlot.dateFromTimeString("", on: ref) == nil)
     }
@@ -65,8 +65,8 @@ struct TimeSliderViewModelTests {
         let vm = TimeSliderViewModel()
         vm.configure(courses: [])
 
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let now = calendar.date(byAdding: .hour, value: 10, to: today)!
         vm.selectedTime = now
 
@@ -80,8 +80,8 @@ struct TimeSliderViewModelTests {
 
     @Test func xOffset_returnsCorrectPixels() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
 
         // Course with periods "3","4" (10:20–12:10) every weekday so anchors are built
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
@@ -108,8 +108,8 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_inClass() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let slot = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 10, to: today)!,
@@ -131,8 +131,8 @@ struct TimeSliderViewModelTests {
     /// would come from timeline order rather than any choice the reader made.
     @Test func courseState_inClass_keepsEveryOverlappingCourse() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let earlier = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 10, to: today)!,
@@ -159,8 +159,8 @@ struct TimeSliderViewModelTests {
     /// is therefore load-bearing, not cosmetic: it decides which of two
     /// overlapping courses the lock screen names.
     @Test func timelineResolver_inClass_ordersOverlapsAsGiven() {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let earlier = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 10, to: today)!,
@@ -185,8 +185,8 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_beforeFirst() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let slot = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 10, to: today)!,
@@ -205,8 +205,8 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_between() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let slot1 = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 8, to: today)!,
@@ -234,8 +234,8 @@ struct TimeSliderViewModelTests {
     /// monotonic and dragging forward keeps advancing past the clash.
     @Test func drag_advancesPastOverlappingCourses() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
 
         let periods34 = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let periods45 = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["4", "5"]) })

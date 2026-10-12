@@ -17,24 +17,30 @@ final class DataCache {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    private init() {
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("TigerDuckCache", isDirectory: true)
+    private convenience init() {
+        self.init(
+            cacheDir: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("TigerDuckCache", isDirectory: true),
+            persistentDir: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("TigerDuckData", isDirectory: true)
+        )
+    }
+
+    /// The app uses ``shared``; a test passes directories of its own, out of the app's caches.
+    init(cacheDir: URL, persistentDir: URL) {
         do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
         } catch {
             AppLogger.captureError(error, context: ["phase": "dataCache.createCacheDir"])
         }
-        cacheDir = dir
+        self.cacheDir = cacheDir
 
-        let persistent = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("TigerDuckData", isDirectory: true)
         do {
-            try FileManager.default.createDirectory(at: persistent, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: persistentDir, withIntermediateDirectories: true)
         } catch {
             AppLogger.captureError(error, context: ["phase": "dataCache.createPersistentDir"])
         }
-        persistentDir = persistent
+        self.persistentDir = persistentDir
     }
 
     // MARK: - Courses (semester + language-scoped)
