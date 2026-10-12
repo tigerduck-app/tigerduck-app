@@ -2,7 +2,7 @@ import WidgetKit
 import Foundation
 import os
 
-struct NextClassProvider: TimelineProvider {
+nonisolated struct NextClassProvider: TimelineProvider {
 
     func placeholder(in context: Context) -> NextClassEntry {
         NextClassEntry(

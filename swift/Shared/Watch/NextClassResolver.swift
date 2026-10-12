@@ -1,6 +1,6 @@
 import Foundation
 
-public enum NextClassResolver {
+public nonisolated enum NextClassResolver {
 
     public struct Result: Equatable {
         public let current: WatchCourse?
