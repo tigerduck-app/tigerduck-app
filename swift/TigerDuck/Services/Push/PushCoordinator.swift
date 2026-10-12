@@ -216,6 +216,10 @@ final class PushCoordinator {
         try await apiClient.uploadCourses(request)
     }
 
+    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {
+        try await apiClient.uploadAssignments(request)
+    }
+
     func deleteAllCourses(semester: String? = nil) async throws {
         try await apiClient.deleteAllCourses(semester: semester)
     }

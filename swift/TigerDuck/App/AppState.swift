@@ -192,6 +192,9 @@ final class AppState {
         AppServiceBridge.courseUploader = { [weak self] courses, semester in
             self?.uploadCourses(courses, semester: semester)
         }
+        AppServiceBridge.assignmentUploader = { [weak self] request in
+            self?.uploadAssignments(request)
+        }
         revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
         revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin() ?? false }
 

@@ -52,8 +52,14 @@ extension AppState {
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
+            #if os(iOS)
+            let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
+            #endif
             let json = try await pushCoordinator.fetchFullSync()
             guard fullSyncMayWrite(since: generation) else { return }
+            // Whether this sync changed anything on the device. Only then does it post
+            // `dataDidUpdate`, which reloads every page, the widgets, the Watch and the schedule.
+            var changed = false
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
 
             var serverArchivedIds = Set<String>()
@@ -134,14 +140,16 @@ extension AppState {
 
                 // Always apply non-conflicting items
                 let conflictIds = Set(conflicts.map(\.id))
+                let currentArchived = DataCache.shared.loadArchivedAssignmentIds()
+                let currentCompleted = DataCache.shared.loadLocallyCompletedAssignmentIds()
                 var safeArchived = Self.mergedMarks(
                     server: serverArchivedIds.subtracting(conflictIds),
-                    local: DataCache.shared.loadArchivedAssignmentIds(),
+                    local: currentArchived,
                     protected: protectedOverrides
                 )
                 var safeCompleted = Self.mergedMarks(
                     server: serverCompletedIds.subtracting(conflictIds),
-                    local: DataCache.shared.loadLocallyCompletedAssignmentIds(),
+                    local: currentCompleted,
                     protected: protectedOverrides
                 )
                 // Preserve local state for conflicting items until user resolves
@@ -152,8 +160,14 @@ extension AppState {
                     default: break
                     }
                 }
-                DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
-                DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+                if safeArchived != currentArchived {
+                    DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
+                    changed = true
+                }
+                if safeCompleted != currentCompleted {
+                    DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+                    changed = true
+                }
 
                 AppLogger.sync.info("applied: \(safeArchived.count, privacy: .public) archived, \(safeCompleted.count, privacy: .public) completed, \(conflicts.count, privacy: .public) conflicts pending")
 
@@ -169,7 +183,7 @@ extension AppState {
             if pendingConflicts.contains("course_colors") || pendingConflicts.contains("course_names") {
                 AppLogger.sync.info("[syncOverrides] skipping course overrides — conflict check pending")
             } else if !courseOverrides.isEmpty {
-                applyCourseOverrides(courseOverrides, coursesArray: coursesArray)
+                changed = applyCourseOverrides(courseOverrides, coursesArray: coursesArray) || changed
             }
 
             // Holiday exceptions are a notification setting, not course or assignment data,
@@ -185,7 +199,7 @@ extension AppState {
                         return row["holiday_id"] as? Int
                     }
                 )
-                AcademicCalendarStore.shared.applySyncedOverrides(optedIn, fetchedAt: fetchedAt)
+                changed = AcademicCalendarStore.shared.applySyncedOverrides(optedIn, fetchedAt: fetchedAt) || changed
             }
 
             // Conflict resolution: detect reset + process tombstones
@@ -197,13 +211,15 @@ extension AppState {
             if let resetAt = coursesResetAt, let syncAt = lastCourseSyncAt, resetAt > syncAt {
                 DataCache.shared.saveUserAddedCourses([])
                 DataCache.shared.saveDeletedCourseNos([])
+                changed = true
                 AppLogger.sync.info("[sync] courses reset detected (reset=\(resetAt, privacy: .public) > lastSync=\(syncAt, privacy: .public)), wiped local state")
             }
 
             if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             } else if Defaults[.syncCourses] {
-                reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray, fetchedAt: fetchedAt)
+                changed = reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray, fetchedAt: fetchedAt)
+                    || changed
             }
 
             // Advance the revision watermark so the poller does not re-trigger after a full
@@ -215,14 +231,19 @@ extension AppState {
             }
 
             UserDefaults.standard.set(Date(), forKey: "lastCourseSyncAt")
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            if changed {
+                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            }
             ServerStatusTracker.shared.noteSyncResult(true)
             recordSyncSource(.backend)
             #if os(iOS)
             // The fetch landed, so there is a network and a session: settle the notification
             // settings document too, so changes from other devices show up. This runs after the
             // retry queued at the top, and the routine never reads over an edit waiting to go up.
-            reconcileNotificationSettings()
+            reconcileNotificationSettings(
+                snapshot: NotificationSettingsSync.documentSource(fromSnapshot: json),
+                linksBeforeSnapshot: settingsLinksBeforeFetch
+            )
             #endif
         } catch {
             guard fullSyncMayWrite(since: generation) else { return }
@@ -294,7 +315,8 @@ extension AppState {
         )
     }
 
-    private func applyCourseOverrides(_ overrides: [[String: Any]], coursesArray: [[String: Any]]) {
+    /// Returns whether a colour or name changed.
+    private func applyCourseOverrides(_ overrides: [[String: Any]], coursesArray: [[String: Any]]) -> Bool {
         // Build moodleId → courseNo from courses array
         var moodleIdToNo: [String: String] = [:]
         for c in coursesArray {
@@ -309,7 +331,9 @@ extension AppState {
         }
         AppLogger.sync.info("moodleIdToNo: \(moodleIdToNo.count, privacy: .public) entries, overrides: \(overrides.count, privacy: .public)")
 
-        var customNames = DataCache.shared.loadCourseCustomNames()
+        let colorsBefore = TigerDuckTheme.courseColorMap
+        let namesBefore = DataCache.shared.loadCourseCustomNames()
+        var customNames = namesBefore
         var colorCount = 0
         var nameCount = 0
         for o in overrides {
@@ -336,9 +360,11 @@ extension AppState {
                 AppLogger.sync.debug("course custom names updated")
             }
         }
-        if nameCount > 0 {
+        let namesChanged = nameCount > 0 && customNames != namesBefore
+        if namesChanged {
             DataCache.shared.saveCourseCustomNames(customNames)
         }
+        return namesChanged || TigerDuckTheme.courseColorMap != colorsBefore
     }
 
     func attemptBackendRelogin() async -> Bool {
@@ -471,29 +497,46 @@ extension AppState {
         guard CourseUploadPolicy.uploadsCourses else { return }
         let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         let generation = authService.loginGeneration
+        let coordinator = pushCoordinator
         Task { [weak self] in
-            await self?.sendCourseUpload(request, generation: generation)
+            await self?.sendUpload("uploadCourses", generation: generation) {
+                try await coordinator.uploadCourses(request)
+            }
         }
     }
 
-    private func sendCourseUpload(
-        _ request: PushAPI.CourseUploadRequest,
+    /// Uploads an assignment round's list, which the backend's reminders are built from.
+    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        let generation = authService.loginGeneration
+        let coordinator = pushCoordinator
+        Task { [weak self] in
+            await self?.sendUpload("uploadAssignments", generation: generation) {
+                try await coordinator.uploadAssignments(request)
+            }
+        }
+    }
+
+    /// Sends one upload queued under login `generation`, with one relogin on a 401. A sign-out
+    /// since drops it: the data is the departing account's, and the session the next one's.
+    private func sendUpload(
+        _ label: String,
         generation: Int,
-        retried: Bool = false
+        retried: Bool = false,
+        _ send: () async throws -> Void
     ) async {
-        // A sign-out since: the list is the departing account's, and the session the next one's.
-        guard authService.loginGeneration == generation, CourseUploadPolicy.uploadsCourses else { return }
+        guard authService.loginGeneration == generation, Defaults[.cloudSyncEnabled] else { return }
         do {
-            try await pushCoordinator.uploadCourses(request)
-            AppLogger.sync.info("uploadCourses: \(request.courses.count, privacy: .public) courses sent")
+            try await send()
+            AppLogger.sync.info("\(label, privacy: .public) sent")
         } catch PushAPIError.httpStatus(401, _) where !retried {
             guard await attemptBackendRelogin() else {
-                AppLogger.sync.error("uploadCourses failed: 401, relogin failed")
+                AppLogger.sync.error("\(label, privacy: .public) failed: 401, relogin failed")
                 return
             }
-            await sendCourseUpload(request, generation: generation, retried: true)
+            await sendUpload(label, generation: generation, retried: true, send)
         } catch {
-            AppLogger.sync.error("uploadCourses failed: \(error, privacy: .public)")
+            AppLogger.sync.error("\(label, privacy: .public) failed: \(error, privacy: .public)")
         }
     }
 

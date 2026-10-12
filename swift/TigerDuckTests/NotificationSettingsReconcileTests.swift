@@ -46,7 +46,8 @@ struct NotificationSettingsReconcileTests {
         cloudSyncEnabled: Bool = true,
         syncAssignments: Bool = true,
         syncLiveActivity: Bool = true,
-        isPushPending: () -> Bool = { false }
+        isPushPending: () -> Bool = { false },
+        source: NotificationSettingsSync.DocumentSource = .read
     ) async throws -> NotificationSettingsSync.ReconcileOutcome {
         try await NotificationSettingsSync.reconcile(
             store: store,
@@ -54,7 +55,8 @@ struct NotificationSettingsReconcileTests {
             cloudSyncEnabled: cloudSyncEnabled,
             syncAssignmentRemindersEnabled: syncAssignments,
             syncLiveActivityEnabled: syncLiveActivity,
-            isPushPending: isPushPending
+            isPushPending: isPushPending,
+            source: source
         )
     }
 
@@ -453,4 +455,68 @@ struct NotificationSettingsReconcileTests {
             #expect(try Fixtures.sentEnvelope(freshRequests[1])["base_revision"] is NSNull)
         }
     }
+
+    // MARK: - The copy a full sync fetched
+
+    @Test("the document a full sync already fetched is adopted without reading it again")
+    func snapshotDocumentIsAdoptedWithoutARead() async throws {
+        try await Fixtures.withStore { store in
+            Self.setDeviceValues(store)
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let document = try JSONSerialization.data(withJSONObject: [
+                "assignments": Self.serverAssignments(), "live_activity": Self.serverLiveActivity(),
+            ])
+
+            let outcome = try await Self.reconcile(
+                store, client: SettingsAPIStub.makeClient(baseURL: baseURL),
+                source: .snapshot((document: document, revision: 7))
+            )
+
+            #expect(outcome == .settled(adopted: [.assignments, .liveActivity], seeded: []))
+            #expect(SettingsAPIStub.requests(for: Fixtures.documentURL(baseURL)).isEmpty)
+            #expect(store.isAssignmentReminderEnabled == true)
+            #expect(store.classPreparingLeadTime == 900)
+        }
+    }
+
+    @Test("a snapshot without the document seeds it with a create, and reads nothing")
+    func snapshotWithoutTheDocumentSeedsIt() async throws {
+        try await Fixtures.withStore { store in
+            Self.setDeviceValues(store)
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = Fixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(try Fixtures.written(revision: 1), for: url)
+
+            let outcome = try await Self.reconcile(
+                store, client: SettingsAPIStub.makeClient(baseURL: baseURL), source: .snapshot(nil)
+            )
+
+            #expect(outcome == .settled(adopted: [], seeded: [.assignments, .liveActivity]))
+            let requests = SettingsAPIStub.requests(for: url)
+            try #require(requests.map(\.httpMethod) == ["PUT"])
+            #expect(try Fixtures.sentEnvelope(requests[0])["base_revision"] is NSNull)
+        }
+    }
+
+    @Test("a snapshot gives its notification document, none, or nothing to go on")
+    func documentSourceFromTheSnapshot() throws {
+        let entry: [String: Any] = ["namespace": "notification", "document": ["assignments": ["enabled": true]], "revision": 7]
+        guard case .snapshot(let copy?) = NotificationSettingsSync.documentSource(fromSnapshot: ["settings_documents": [entry]]) else {
+            Issue.record("the snapshot's document was not used")
+            return
+        }
+        #expect(copy.revision == 7)
+        let document = try #require(try JSONSerialization.jsonObject(with: copy.document) as? [String: Any])
+        #expect((document["assignments"] as? [String: Any])?["enabled"] as? Bool == true)
+
+        guard case .snapshot(nil) = NotificationSettingsSync.documentSource(fromSnapshot: ["settings_documents": []]) else {
+            Issue.record("an account without the document should be seeded")
+            return
+        }
+        guard case .read = NotificationSettingsSync.documentSource(fromSnapshot: [:]) else {
+            Issue.record("an older backend's snapshot carries no documents, so the reconcile reads")
+            return
+        }
+    }
 }
+

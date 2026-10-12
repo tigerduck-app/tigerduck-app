@@ -91,6 +91,16 @@ struct AcademicCalendarStoreTests {
         }
     }
 
+    @Test("a snapshot that matches the local set reports no change, so the sync posts none")
+    func unchangedSnapshotReportsNoChange() {
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            #expect(store.applySyncedOverrides([1, 2], fetchedAt: Date()))
+            #expect(!store.applySyncedOverrides([2, 1], fetchedAt: Date().addingTimeInterval(1)))
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2])
+        }
+    }
+
     @Test("a snapshot older than the local edit is ignored even once the upload lands")
     func staleSnapshotIgnoredAfterUpload() {
         Self.withCleanHolidayDefaults {

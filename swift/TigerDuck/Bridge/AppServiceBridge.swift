@@ -21,6 +21,8 @@ enum AppServiceBridge {
     /// Hands a refreshed term to cloud sync (`AppState.uploadCourses`), which `AppState` installs
     /// at launch. Unset, as in tests, a refresh uploads nothing.
     static var courseUploader: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    /// The same for an assignment round's list (`AppState.uploadAssignments`).
+    static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
 
     /// Fetch and enrich enrolled courses.
     ///
