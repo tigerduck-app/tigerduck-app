@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Settings page for class reminders, which the backend pushes before each class: a switch and
-/// one lead time. Lives behind a NavigationLink in SettingsView, beside
-/// AssignmentReminderSettingsView.
 struct ClassReminderSettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
     @Environment(AppState.self) private var appState

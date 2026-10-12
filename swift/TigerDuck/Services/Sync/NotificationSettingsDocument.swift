@@ -37,8 +37,8 @@ nonisolated struct NotificationSettingsDocument: Codable, Equatable, Sendable {
     }
 
     /// Class reminders, which the backend pushes before each class. An absent field means
-    /// the backend's default, on and 10 minutes before (`server/push/course_reminders.py` in
-    /// `tigerduck-app/tigerduck-backend`).
+    /// the backend's default, on and 10 minutes before; see
+    /// docs/decisions/0002-notification-settings-json-merge.md.
     nonisolated struct Courses: Codable, Equatable, Sendable {
         var enabled: Bool?
         var reminderOffsetsMinutes: [Int]?
