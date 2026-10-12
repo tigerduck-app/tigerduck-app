@@ -24,12 +24,8 @@ struct CalendarTabView: View {
         }
     }
 
-    /// Holding the load until there is an account keeps the EventKit
-    /// permission prompt off a screen that is showing a sign-in wall —
-    /// asking for the device calendar to populate a grid the user cannot
-    /// see would be a bad trade for them and a poor look for us. `load` is
-    /// idempotent, so re-firing it on the sign-in transition is what
-    /// actually fills the screen once the user gets an account.
+    /// Signed out, the page shows only the sign-in wall, so the load waits for an account.
+    /// `load` is idempotent, so re-firing it on the sign-in transition fills the screen.
     private var gatedContent: some View {
         content
             .onChange(of: pageAccessState, initial: true) { _, state in

@@ -58,7 +58,6 @@ final class CalendarViewModel {
         hasLoaded = true
 
         setEvents(DataCache.shared.loadCalendarEvents())
-        requestCalendarAccess()
 
         // backgroundSync() on app launch handles the network refresh
         dataObserver = NotificationCenter.default.addObserver(
@@ -130,7 +129,6 @@ final class CalendarViewModel {
             setEvents(updated)
             // Save only non-system events to cache
             DataCache.shared.saveCalendarEvents(updated.filter { $0.source != .system })
-            loadSystemCalendarEvents()
             manager.loadingState = .loaded
         }
     }
@@ -144,6 +142,8 @@ final class CalendarViewModel {
         await CalendarService.fetchAndParseICS()
     }
 
+    // Not called: the app declares no calendar usage description, so iOS would deny the request.
+    // Kept for calendar sync, https://github.com/tigerduck-app/tigerduck-app/issues/268.
     func requestCalendarAccess() {
         Task {
             do {
