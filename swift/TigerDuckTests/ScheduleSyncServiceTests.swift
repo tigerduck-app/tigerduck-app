@@ -197,6 +197,33 @@ struct ScheduleSyncServiceTests {
         #expect(Set(events.map(\.scenario)) == [.classPreparing, .inClass, .assignmentUrgent])
     }
 
+    /// Once the next term's timetable is in but before its classes begin, or between terms, no
+    /// class meets, so none is uploaded for the server to start, as on a holiday.
+    @Test func outsideTheTerm_dropsClassEventsButKeepsAssignments() {
+        let ctx = Self.context()
+        let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
+        let tuesday = AcademicCalendar.startOfDay(Self.tuesdayAt(8))
+        let calendar = AcademicCalendar(
+            revision: 1,
+            terms: [
+                SemesterTerm(
+                    code: "1151",
+                    start: AcademicCalendar.calendar.date(byAdding: .day, value: 7, to: tuesday)!,
+                    end: AcademicCalendar.calendar.date(byAdding: .day, value: 120, to: tuesday)!
+                ),
+            ],
+            holidays: []
+        )
+
+        let events = ScheduleSyncService.buildEvents(
+            inputs: Self.defaultInputs(courses: [course], assignments: [assignment], calendar: calendar),
+            now: now,
+            horizonEnd: now.addingTimeInterval(48 * 3600)
+        )
+
+        #expect(events.map(\.scenario) == [.assignmentUrgent])
+    }
+
     /// Tuesday periods 3-4 and a deadline at Tuesday noon, seen from the
     /// Monday evening before. The caller holds `context` for as long as it
     /// uses the models.

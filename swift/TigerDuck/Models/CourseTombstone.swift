@@ -13,6 +13,12 @@ nonisolated enum CourseTombstone {
         "\(semester):\(courseNo)"
     }
 
+    /// The term and course number of a scoped key, or nil for a legacy bare entry.
+    static func parts(of key: String) -> (semester: String, courseNo: String)? {
+        guard let colon = key.firstIndex(of: ":") else { return nil }
+        return (String(key[..<colon]), String(key[key.index(after: colon)...]))
+    }
+
     static func isHidden(_ courseNo: String, semester: String, in tombstones: Set<String>) -> Bool {
         tombstones.contains(courseNo)
             || tombstones.contains(key(semester: semester, courseNo: courseNo))

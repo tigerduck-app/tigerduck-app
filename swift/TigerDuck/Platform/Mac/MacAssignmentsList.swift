@@ -119,9 +119,18 @@ struct MacAssignmentsList: View {
             } label: {
                 Label(String(localized: "desktop_action_open_in_moodle"), systemImage: "arrow.up.right.square")
             }
-            Divider()
+            if !assignment.isIgnoredByCourse {
+                Divider()
+            }
         }
+        // A row its course's setting ignores takes no mark of its own; the class table undoes it.
+        if !assignment.isIgnoredByCourse {
+            markItems(for: assignment, status: status)
+        }
+    }
 
+    @ViewBuilder
+    private func markItems(for assignment: SDAssignment, status: AssignmentStatus) -> some View {
         switch status {
         case .pending, .overdueAcceptable, .overdueRejected:
             Button {

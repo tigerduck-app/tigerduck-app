@@ -37,10 +37,9 @@ struct LiveActivityScenarioResolver {
             cloudSyncEnabled: cloudSyncEnabled
         ) else { return nil }
 
-        // The class scenarios go quiet on a school holiday. The assignment
-        // scenario deliberately does not: a deadline on a day off is still
-        // a deadline, and holidays are about classes not meeting.
-        let classesQuiet = calendar.suppressesClasses(on: now, optedIn: optedInHolidayIDs)
+        // The class scenarios go quiet outside the term and on a holiday the user has left
+        // quiet. The assignment scenario does not: a deadline on a day off is still a deadline.
+        let classesQuiet = !calendar.isClassDay(now, optedIn: optedInHolidayIDs)
 
         let timeline = timelineResolver.timeline(for: courses, around: now)
 

@@ -180,7 +180,7 @@ extension MacClassTableView {
             courseCell(course)
                 .frame(height: blockHeight(span))
                 .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
-                .accessibilityLabel(Text(course.displayName))
+                .accessibilityLabel(Text(spokenName(course)))
             if bottom > 0 {
                 Color.clear.frame(height: blockHeight(bottom))
             }
@@ -196,8 +196,21 @@ extension MacClassTableView {
             )
     }
 
+    private static let ignoredMarkSize: CGFloat = 11
+
+    private func ignoresAssignments(_ course: SDCourse) -> Bool {
+        ignoredAssignmentCourses.contains(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo))
+    }
+
+    /// A conflict column's label replaces what its cell reads, so it names the ignored mark too.
+    private func spokenName(_ course: SDCourse) -> String {
+        guard ignoresAssignments(course) else { return course.displayName }
+        return course.displayName + ", " + String(localized: "a11y_class_table_cell_assignments_ignored")
+    }
+
     private func courseCell(_ course: SDCourse, roomHint: String? = nil) -> some View {
         let color = TigerDuckTheme.courseColor(for: course.courseNo)
+        let ignored = ignoresAssignments(course)
         return VStack(alignment: .leading, spacing: 3) {
             Text(course.displayName)
                 .font(.callout.weight(.semibold))
@@ -216,6 +229,7 @@ extension MacClassTableView {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .padding(.trailing, ignored ? Self.ignoredMarkSize + 6 : 0)
             }
         }
         .padding(8)
@@ -236,6 +250,7 @@ extension MacClassTableView {
                 edge.stroke(color.opacity(0.6), lineWidth: 0.5)
             }
         }
+        .ignoredAssignmentsBadge(show: ignored, iconSize: Self.ignoredMarkSize, padding: 8)
         .contentShape(Rectangle())
         .contextMenu {
             // Rename writes to a courseNo-keyed store shared across semesters;
@@ -254,6 +269,16 @@ extension MacClassTableView {
                 Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
             }
             if isViewingCurrentSemester {
+                // Assignments are fetched for the current term only.
+                Button {
+                    setIgnoresAssignments(!ignored, for: course)
+                } label: {
+                    if ignored {
+                        Label(String(localized: "class_table_ignore_assignments_undo"), systemImage: "arrow.uturn.backward")
+                    } else {
+                        Label(String(localized: "class_table_ignore_assignments"), systemImage: "archivebox")
+                    }
+                }
                 Divider()
                 Button(role: .destructive) {
                     deleteCourse(course)
