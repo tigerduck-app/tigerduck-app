@@ -102,8 +102,8 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
         holidays.filter { $0.contains(day) }
     }
 
-    /// Whether class reminders, the Live Activity and the next-class widgets
-    /// stay quiet on `day`.
+    /// Whether a school holiday keeps classes quiet on `day`. A surface that hides classes asks
+    /// `isClassDay`, which also counts the days outside the term.
     ///
     /// Opting in to *any* holiday covering the day un-suppresses it: the user
     /// is saying "I have class that day", and a second overlapping holiday

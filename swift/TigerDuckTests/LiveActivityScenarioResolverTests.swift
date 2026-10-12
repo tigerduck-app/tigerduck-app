@@ -40,6 +40,7 @@ enum LiveActivityScenarioCases {
         var skipped: Set<String> = []
         var dues: [Due] = []
         var holiday = HolidayToday.none
+        var inTerm = true
         var liveActivityOn = true
         var showAssignment = true
         var showInClass = true
@@ -155,6 +156,19 @@ enum LiveActivityScenarioCases {
             expected: .inClass, expectedSourceId: firstClass
         ),
         Case(
+            testDescription: "outside the term no class is in progress",
+            now: tuesday(11), inTerm: false
+        ),
+        Case(
+            testDescription: "outside the term no class is about to start",
+            now: tuesday(12, 30), inTerm: false
+        ),
+        Case(
+            testDescription: "a deadline outside the term still shows",
+            now: tuesday(11), dues: [Due(dueIn: 3600)], inTerm: false,
+            expected: .assignmentUrgent, expectedSourceId: "a1"
+        ),
+        Case(
             testDescription: "a skipped class in progress does not show",
             now: tuesday(11), skipped: ["CS101"]
         ),
@@ -180,8 +194,8 @@ enum LiveActivityScenarioCases {
 }
 
 /// Pins which snapshot `LiveActivityScenarioResolver.resolve` picks: a deadline before the class
-/// in progress before the class about to start, holidays silencing classes but not deadlines,
-/// skipped classes, and the lead-time edges.
+/// in progress before the class about to start, holidays and days outside the term silencing
+/// classes but not deadlines, skipped classes, and the lead-time edges.
 @MainActor
 struct LiveActivityScenarioResolverTests {
 
@@ -215,14 +229,21 @@ struct LiveActivityScenarioResolverTests {
         )
     }
 
-    /// A calendar whose only holiday is the Taipei day of `day`, with id 1.
-    private static func calendar(holidayOn day: Date) -> AcademicCalendar {
-        let date = AcademicCalendar.startOfDay(day)
-        return AcademicCalendar(
-            revision: 1,
-            terms: [],
-            holidays: [Holiday(id: 1, nameZh: "國慶日", nameEn: "National Day", start: date, end: date)]
-        )
+    /// The case's calendar: a holiday on its day, with id 1, when it names one, and outside the
+    /// term a term that begins the week after. With no term known every day counts as in term.
+    private static func calendar(for c: LiveActivityScenarioCases.Case) -> AcademicCalendar {
+        let day = AcademicCalendar.startOfDay(c.now)
+        let holidays = c.holiday == .none
+            ? []
+            : [Holiday(id: 1, nameZh: "國慶日", nameEn: "National Day", start: day, end: day)]
+        let terms = c.inTerm ? [] : [
+            SemesterTerm(
+                code: "1151",
+                start: AcademicCalendar.calendar.date(byAdding: .day, value: 7, to: day)!,
+                end: AcademicCalendar.calendar.date(byAdding: .day, value: 120, to: day)!
+            ),
+        ]
+        return AcademicCalendar(revision: 1, terms: terms, holidays: holidays)
     }
 
     private static func resolve(
@@ -242,7 +263,7 @@ struct LiveActivityScenarioResolverTests {
             cloudSyncEnabled: true,
             accentHex: 0x007AFF,
             now: c.now,
-            calendar: c.holiday == .none ? .empty : calendar(holidayOn: c.now),
+            calendar: calendar(for: c),
             optedInHolidayIDs: c.holiday == .optedIn ? [1] : []
         )
     }

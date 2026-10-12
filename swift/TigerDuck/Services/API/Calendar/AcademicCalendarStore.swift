@@ -66,12 +66,6 @@ final class AcademicCalendarStore {
         Defaults[.holidayOverridesAwaitingUpload] = ids.sorted()
     }
 
-    /// Whether class reminders, the Live Activity and the next-class widgets
-    /// stay quiet on `day`.
-    func suppressesClasses(on day: Date = Date()) -> Bool {
-        calendar.suppressesClasses(on: day, optedIn: optedInHolidayIDs)
-    }
-
     /// Whether `day` is a class day — in term, and not a quiet holiday.
     func isClassDay(_ day: Date) -> Bool {
         calendar.isClassDay(day, optedIn: optedInHolidayIDs)
