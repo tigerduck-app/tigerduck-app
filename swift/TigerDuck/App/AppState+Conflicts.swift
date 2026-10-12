@@ -32,11 +32,15 @@ extension AppState {
                 // in flight to the server and must survive "keep server".
                 let inFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 let protectedOverrides = pendingOverrides.union(inFlight)
-                let safeArchived = serverArchived.union(
-                    DataCache.shared.loadArchivedAssignmentIds().filter { protectedOverrides.contains($0) }
+                let safeArchived = Self.mergedMarks(
+                    server: serverArchived,
+                    local: DataCache.shared.loadArchivedAssignmentIds(),
+                    protected: protectedOverrides
                 )
-                let safeCompleted = serverCompleted.union(
-                    DataCache.shared.loadLocallyCompletedAssignmentIds().filter { protectedOverrides.contains($0) }
+                let safeCompleted = Self.mergedMarks(
+                    server: serverCompleted,
+                    local: DataCache.shared.loadLocallyCompletedAssignmentIds(),
+                    protected: protectedOverrides
                 )
                 DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
                 DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
@@ -54,6 +58,8 @@ extension AppState {
     }
 
     func markCategoryReenabled(_ category: String) {
+        // The server may have dropped the lists while the category was off on every device.
+        pushCoordinator.forgetUploads()
         Defaults[.pendingConflictCategories].insert(category)
         AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
     }
@@ -63,11 +69,13 @@ extension AppState {
     }
 
     /// - Parameter isRetry: `true` only for the controlled re-entry from our
-    ///   own 401 handler, which reuses the in-flight flag the outer call holds.
+    ///   own 401 handler, which takes over the in-flight flag the outer call holds
+    ///   and releases it when it ends, as the outer call would have.
     func checkPendingConflicts(retriesLeft: Int, isRetry: Bool) {
         let pending = Defaults[.pendingConflictCategories]
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
+            if isRetry { endConflictCheck(checked: pending) }
             return
         }
         // One check at a time: a verdict is valid only for its `pending` snapshot, and a slower
@@ -88,17 +96,8 @@ extension AppState {
             // would let an unrelated caller start while it is still in flight.
             var handedOffToRetry = false
             defer {
-                if !isRetry && !handedOffToRetry {
-                    Task { @MainActor in
-                        self.isCheckingConflicts = false
-                        // A category marked mid-check was turned away by the guard; re-run now
-                        // rather than strand it until the next Settings visit. This terminates:
-                        // the re-run snapshots the grown set, so its completion sees no growth.
-                        let current = Defaults[.pendingConflictCategories]
-                        if self.reenableConflict == nil, !current.subtracting(pending).isEmpty {
-                            self.checkPendingConflicts()
-                        }
-                    }
+                if !handedOffToRetry {
+                    Task { @MainActor in self.endConflictCheck(checked: pending) }
                 }
             }
             do {
@@ -258,13 +257,24 @@ extension AppState {
                     if reloginOk {
                         AppLogger.sync.info("[reenable] relogin succeeded, retrying conflict check")
                         try? await Task.sleep(for: .milliseconds(500))
-                        handedOffToRetry = !isRetry
+                        handedOffToRetry = true
                         await MainActor.run {
                             self.checkPendingConflicts(retriesLeft: retriesLeft - 1, isRetry: true)
                         }
                     }
                 }
             }
+        }
+    }
+
+    private func endConflictCheck(checked pending: Set<String>) {
+        isCheckingConflicts = false
+        // A category marked mid-check was turned away by the guard; re-run now
+        // rather than strand it until the next Settings visit. This terminates:
+        // the re-run snapshots the grown set, so its completion sees no growth.
+        let current = Defaults[.pendingConflictCategories]
+        if reenableConflict == nil, !current.subtracting(pending).isEmpty {
+            checkPendingConflicts()
         }
     }
 

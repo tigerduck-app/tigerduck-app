@@ -11,8 +11,9 @@ extension AppState {
     /// Applies the server's course list to the local caches, one semester
     /// at a time. `serverRows` is the `courses` array of `/sync/full`,
     /// `tombstones` its `course_tombstones`, `fetchedAt` when the request
-    /// went out — what the snapshot is as of.
-    func reconcileCourses(serverRows: [[String: Any]], tombstones: [[String: Any]], fetchedAt: Date) {
+    /// went out — what the snapshot is as of. Returns whether it changed the caches.
+    @discardableResult
+    func reconcileCourses(serverRows: [[String: Any]], tombstones: [[String: Any]], fetchedAt: Date) -> Bool {
         // Client-uploaded rows carry the term they belong to. The server's
         // own Moodle mirror rows ("moodle:" keys) carry "" and are not a
         // roster, so they drop out here.
@@ -86,7 +87,7 @@ extension AppState {
             guard !serverNos.isEmpty else {
                 let uploadable = localCourses.filter { !isHidden($0.courseNo) }
                 if !uploadable.isEmpty {
-                    uploadCourses(uploadable, semester: semester)
+                    uploadCourses(uploadable, semester: semester, resend: true)
                     AppLogger.sync.info("[sync] \(semester, privacy: .public): server empty, uploaded \(uploadable.count, privacy: .public) local courses")
                 }
                 // Only rows stamped with this term: an unstamped legacy row
@@ -143,7 +144,7 @@ extension AppState {
         if deletedChanged {
             DataCache.shared.saveDeletedCourseNos(Array(deletedNos))
         }
-        guard !mergedSemesters.isEmpty else { return }
+        guard !mergedSemesters.isEmpty else { return deletedChanged }
         DataCache.shared.saveUserAddedCourses(userAdded)
         // Rows merged from the server carry whatever the other device
         // uploaded; re-query them so names, rooms and headcounts match this
@@ -154,6 +155,7 @@ extension AppState {
             }
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
+        return true
     }
 
     /// Whether a server row really belongs to `semester`. A row whose Moodle id names

@@ -206,12 +206,10 @@ struct MacClassTableView: View {
                 course: course,
                 isCurrent: { authService.loginGeneration == generation },
                 onSelect: { hex in
-                    TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
+                    let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
                     cacheRevision &+= 1
                     NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-                    if let moodleId = course.moodleIdNumber {
-                        appState.syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
-                    }
+                    appState.syncColorPick(hex, for: course, changed: changed)
                 }
             )
             .frame(minWidth: 360, minHeight: 480)

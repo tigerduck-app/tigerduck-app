@@ -256,18 +256,6 @@ enum PushAPI {
         }
     }
 
-    struct AssignmentOverrideResponse: Decodable, Sendable {
-        let id: Int
-        let localStatus: String
-        let updatedAt: String
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case localStatus = "local_status"
-            case updatedAt = "updated_at"
-        }
-    }
-
     struct CourseOverrideRequest: Encodable, Sendable {
         let colorHex: String?
         let customName: String?

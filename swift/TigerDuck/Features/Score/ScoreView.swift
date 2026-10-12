@@ -12,9 +12,11 @@ struct ScoreView: View {
         if embedded {
             content
                 .onAppear { viewModel.load(authService: appState.authService) }
+                .onChange(of: appState.authService.loginGeneration) { viewModel.load(authService: appState.authService) }
         } else {
             NavigationStack { content }
                 .onAppear { viewModel.load(authService: appState.authService) }
+                .onChange(of: appState.authService.loginGeneration) { viewModel.load(authService: appState.authService) }
         }
     }
 

@@ -189,6 +189,15 @@ final class AppState {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
+        AppServiceBridge.courseUploader = { [weak self] courses, semester in
+            self?.uploadCourses(courses, semester: semester)
+        }
+        AppServiceBridge.assignmentUploader = { [weak self] request in
+            self?.uploadAssignments(request)
+        }
+        revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
+        revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin() ?? false }
+
         // Apply a stored in-app language override at launch so lookups use it. Skip
         // "system": apply() would remove AppleLanguages, wiping the per-app override
         // that iOS Settings writes to the same key.
@@ -198,7 +207,6 @@ final class AppState {
     }
 
     deinit {
-        revisionPollTimer?.invalidate()
         #if os(iOS)
         pendingRefreshTask?.cancel()
         boundaryRefreshTask?.cancel()
@@ -244,12 +252,10 @@ final class AppState {
     /// its server payload is stale relative to the edit.
     var overrideEditGeneration = 0
 
-    /// Reentrancy guard for `syncOverridesFromBackend`. The revision poll,
-    /// pull-to-refresh, and sync_trigger push can all invoke it concurrently;
-    /// they run on the MainActor but interleave at await suspension points, so
-    /// without this they clobber each other's cache read-modify-writes and can
-    /// resurrect a just-dismissed conflict alert.
-    var isSyncingOverrides = false
+    /// One `syncOverridesFromBackend` at a time, for the revision poll, a pull
+    /// to refresh and a sync trigger push alike.
+    @ObservationIgnored
+    let fullSyncGate = FullSyncGate()
 
     /// In-flight guard for ``checkPendingConflicts``. See the comment there.
     var isCheckingConflicts = false
@@ -282,9 +288,9 @@ final class AppState {
     @ObservationIgnored
     var _lastKnownRevision: Int = 0
 
-    /// Repeating timer that fires every 10 s while the app is foregrounded.
+    /// Polls the revision while the app is in the foreground.
     @ObservationIgnored
-    var revisionPollTimer: Timer?
+    let revisionPoller = RevisionPoller()
 
     #if os(iOS)
     // MARK: - Live Activity (iOS only — ActivityKit is platform-restricted;
@@ -419,6 +425,7 @@ final class AppState {
         // which cancels every start the server queued for this device.
         requestPushScheduleSync()
         if enabled {
+            pushCoordinator.forgetUploads()
             startRevisionPolling()
             #if os(iOS)
             // Resumes without a relaunch. `isLiveActivityEnabled` itself

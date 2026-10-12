@@ -18,6 +18,11 @@ struct CourseData: Sendable {
 
 enum AppServiceBridge {
 
+    /// Hands a refreshed term to cloud sync. `AppState` installs `uploadCourses` here at launch:
+    /// uploads go through its `pushCoordinator`, which this static bridge cannot reach.
+    static var courseUploader: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
+
     /// Fetch and enrich enrolled courses.
     ///
     /// Pass `forceRefresh: true` to bust the `CourseService`
@@ -219,47 +224,15 @@ enum AppServiceBridge {
                 )
             }
 
-            // Skip the write if the Task was cancelled (`AppState.syncTask`) or the
-            // login generation moved on: Home, Class Table and Calendar refreshes run
-            // in Tasks that `syncTask?.cancel()` does not reach.
-            if !courses.isEmpty,
-               !Task.isCancelled,
-               authService.loginGeneration == startGeneration {
+            // Cancelled (`AppState.syncTask`) or signed out since: Home, Class Table and Calendar
+            // refreshes run in Tasks `syncTask?.cancel()` does not reach, and show what this
+            // returns, so they get the current cache, never the previous account's list.
+            guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
+                return DataCache.shared.loadCourses(semester: semester)
+            }
+            if !courses.isEmpty {
                 DataCache.shared.saveCourses(courses, semester: semester)
-
-                if CourseUploadPolicy.uploadsCourses, let atm = authService.authTokenManager {
-                    let entries = courses.map { c in
-                        PushAPI.CourseUploadEntry(
-                            semester: semester,
-                            courseNo: c.courseNo,
-                            courseName: c.courseName,
-                            courseNameEn: nil,
-                            moodleId: c.moodleIdNumber,
-                            credits: c.credits > 0 ? c.credits : nil,
-                            classroom: c.classroom.isEmpty ? nil : c.classroom,
-                            instructors: c.instructor.isEmpty ? nil : [c.instructor],
-                            scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),
-                            classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
-                        )
-                    }
-                    let colorMap = TigerDuckTheme.courseColorMap
-                    let sendColors = CourseUploadPolicy.uploadsCourseColors
-                    let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
-                        guard sendColors, let hex = colorMap[c.courseNo] else { return nil }
-                        return PushAPI.CourseOverrideUploadEntry(
-                            courseKey: "client:\(semester):\(c.courseNo)",
-                            colorHex: String(format: "#%06X", hex)
-                        )
-                    }
-                    let client = PushAPIClient(
-                        authHeaderProvider: { await atm.authorizationHeader() }
-                    )
-                    Task.detached {
-                        try? await client.uploadCourses(
-                            PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides)
-                        )
-                    }
-                }
+                courseUploader?(courses, semester)
             }
             return courses
         } catch {
@@ -393,10 +366,10 @@ enum AppServiceBridge {
 
     /// One course of a term refresh: its lookup's answer, or what stands in for it.
     ///
-    /// A failed lookup keeps `cached`. The term's list replaces its cache and is uploaded, and
-    /// the backend's upsert overwrites times and rooms, so a stand-in without them would blank
-    /// the course on every device. An answer with no rows, as for a term NTUST no longer
-    /// indexes, falls back to Moodle or the transcript.
+    /// A failed lookup, or an answer with no rows as for a term NTUST no longer indexes, keeps
+    /// `cached`. The term's list replaces its cache and is uploaded, and the backend's upsert
+    /// overwrites times and rooms, so a stand-in without them would blank the course on every
+    /// device. Only a course not cached yet falls back to Moodle or the transcript.
     static func refreshedCourseData(
         courseNo: String,
         semester: String,
@@ -409,7 +382,7 @@ enum AppServiceBridge {
         do {
             let results = try await lookup()
             guard !results.isEmpty else {
-                return fallbackCourseData(courseNo: courseNo, moodle: moodle, grade: grade)
+                return cached ?? fallbackCourseData(courseNo: courseNo, moodle: moodle, grade: grade)
             }
             return enrichedCourseData(
                 from: results,
@@ -520,7 +493,8 @@ enum AppServiceBridge {
     /// rooms are announced late, and a lookup that failed once used to
     /// leave the cell blank until the next pull-to-refresh. Persists the
     /// rows that now carry one and returns whether anything changed.
-    static func refreshCoursesMissingClassroom(semester: String) async -> Bool {
+    static func refreshCoursesMissingClassroom(semester: String, authService: AuthService) async -> Bool {
+        let startGeneration = authService.loginGeneration
         let enrolled = DataCache.shared.loadCourses(semester: semester)
         let userAdded = DataCache.shared.loadUserAddedCourses()
         let isUserAddedHere: (SDCourse) -> Bool = { DataCache.userAddedCourse($0, belongsTo: semester) }
@@ -542,7 +516,8 @@ enum AppServiceBridge {
             return data.classroom.isEmpty ? nil : (courseNo, data)
         }
         let found = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
-        guard !found.isEmpty else { return false }
+        // A sign-out during the lookups cleared the lists this would write back.
+        guard authService.loginGeneration == startGeneration, !found.isEmpty else { return false }
 
         if enrolled.contains(where: { found[$0.courseNo] != nil }) {
             DataCache.shared.saveCourses(

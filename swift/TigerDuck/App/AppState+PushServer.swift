@@ -16,7 +16,7 @@ extension AppState {
     func bindPushDelegate(_ delegate: some PushTokenSource) {
         pushCoordinator.bindTokenForwarding(delegate)
         delegate.onSyncTrigger = { [weak self] in
-            await self?.syncOverridesFromBackend()
+            await self?.syncOverridesFromBackend(followUpIfBusy: true)
             await self?.cloudSyncCoordinator.onSyncTrigger()
         }
     }
@@ -122,6 +122,7 @@ extension AppState {
         NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
         guard Defaults[.cloudSyncEnabled] else { return }
         enqueueHolidayUpload(holidayID: holidayID)
+        revisionPoller.noteActivity()
     }
 
     /// Abandon queued holiday uploads. Called at logout: the queue holds the departing account's

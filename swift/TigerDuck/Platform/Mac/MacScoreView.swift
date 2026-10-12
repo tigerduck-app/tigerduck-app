@@ -63,6 +63,9 @@ struct MacScoreView: View {
         .task {
             viewModel.load(authService: appState.authService)
         }
+        .onChange(of: appState.authService.loginGeneration) {
+            viewModel.load(authService: appState.authService)
+        }
     }
 
     // MARK: - Sections

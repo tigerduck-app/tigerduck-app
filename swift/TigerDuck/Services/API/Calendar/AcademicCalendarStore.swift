@@ -201,25 +201,27 @@ final class AcademicCalendarStore {
         calendar = .empty
     }
 
-    /// Replace the local set from a cloud-sync snapshot taken at `fetchedAt`.
-    ///
-    /// A response that crosses a tap carries the pre-tap state and would flip
+    /// Replace the local set from a cloud-sync snapshot taken at `fetchedAt`, returning whether
+    /// it changed. A response that crosses a tap carries the pre-tap state and would flip
     /// the switch back. So it is ignored unless `fetchedAt` is after the last
     /// local edit and no upload is pending (a fetch after the tap can still
     /// predate the upload); the next sync settles it. Unacknowledged toggles are
     /// re-imposed on the snapshot, as `setHolidayNotify` promises a local setting
     /// stands even if its upload failed; the payload's other holidays still land.
-    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date) {
+    @discardableResult
+    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date) -> Bool {
         guard pendingHolidayUploads == 0, fetchedAt > lastHolidayEditAt else {
             logger.info("holiday overrides from sync ignored — a local toggle is newer")
-            return
+            return false
         }
         let local = optedInHolidayIDs
         var merged = ids
         for id in unacknowledgedHolidayIDs {
             if local.contains(id) { merged.insert(id) } else { merged.remove(id) }
         }
+        guard merged != local else { return false }
         Defaults[.holidayNotifyOverrides] = merged.sorted()
+        return true
     }
 
     /// Brackets an in-flight holiday upload, so ``applySyncedOverrides(_:)``
