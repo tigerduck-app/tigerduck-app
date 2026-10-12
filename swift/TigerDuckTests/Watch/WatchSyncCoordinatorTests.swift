@@ -1,4 +1,5 @@
 import Testing
+import UIKit
 import WatchConnectivity
 import XCTest
 @testable import TigerDuck
@@ -85,6 +86,11 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         var count = 0
     }
 
+    @MainActor
+    private final class Flag {
+        var value = false
+    }
+
     /// iOS can launch the app in the background for a Watch message, with no scene and so no
     /// `WatchSyncBridge`, so the coordinator answers from the source installed at launch.
     @MainActor
@@ -163,5 +169,33 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         await coord.debounceTask?.value
         XCTAssertEqual(session.pushedContexts.count, 2)
         XCTAssertEqual(republished.count, 1)
+    }
+
+    /// A Watch message can launch the app behind the lock screen, where the library password
+    /// cannot be read; the Watch does not ask again, so the credentials follow the unlock.
+    @MainActor
+    func test_syncRequestWhileLocked_sendsTheCredentialsAfterTheUnlock() {
+        let center = NotificationCenter()
+        let unlocked = Flag()
+        let republished = Counter()
+        let coord = WatchSyncCoordinator(
+            session: StubSession(),
+            sleep: { _ in },
+            republishCredentials: { republished.count += 1 },
+            isProtectedDataAvailable: { unlocked.value },
+            notificationCenter: center
+        )
+
+        coord.answerSyncRequest()
+        XCTAssertEqual(republished.count, 0)
+
+        unlocked.value = true
+        center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+        XCTAssertEqual(republished.count, 1)
+
+        // Owed once: a later return to the app sends nothing more.
+        center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        XCTAssertEqual(republished.count, 1)
+        withExtendedLifetime(coord) {}
     }
 }

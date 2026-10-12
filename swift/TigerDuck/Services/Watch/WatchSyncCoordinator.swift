@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WatchConnectivity
 import Combine
 import os
@@ -21,7 +22,6 @@ extension WCSession: WatchSessionPushing {}
 @MainActor
 final class WatchSyncCoordinator: NSObject {
 
-    /// What one push sends: the courses and the settings the Watch renders them with.
     struct Payload {
         let courses: [SDCourse]
         let customNames: [String: String]
@@ -44,20 +44,45 @@ final class WatchSyncCoordinator: NSObject {
     /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
     private let sleep: @Sendable (Duration) async -> Void
     private let republishCredentials: @MainActor () -> Void
+    private let isProtectedDataAvailable: @MainActor () -> Bool
+    /// A sync request arrived while the keychain could not be read, so its credentials are
+    /// still owed to the Watch, which does not ask again for them.
+    private var owesCredentials = false
+    private let notificationCenter: NotificationCenter
+    private var observers: [NSObjectProtocol] = []
 
     init(
         session: WatchSessionPushing = WCSession.default,
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0, clock: .suspending) },
-        republishCredentials: (@MainActor () -> Void)? = nil
+        republishCredentials: (@MainActor () -> Void)? = nil,
+        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil,
+        notificationCenter: NotificationCenter = .default
     ) {
         self.session = session
         self.sleep = sleep
         self.republishCredentials = republishCredentials
             ?? { WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed() }
+        self.isProtectedDataAvailable = isProtectedDataAvailable
+            ?? { UIApplication.shared.isProtectedDataAvailable }
+        self.notificationCenter = notificationCenter
         super.init()
+        // An unlock may come while the app is suspended, so a return to the app retries too.
+        observers = [
+            UIApplication.protectedDataDidBecomeAvailableNotification,
+            UIApplication.didBecomeActiveNotification,
+        ].map { name in
+            notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sendOwedCredentials() }
+            }
+        }
     }
 
-    /// Activates the session the first time; later calls do nothing.
+    deinit {
+        for observer in observers {
+            notificationCenter.removeObserver(observer)
+        }
+    }
+
     func activate() {
         guard !isActivated, let wcSession = session as? WCSession else { return }
         isActivated = true
@@ -72,8 +97,6 @@ final class WatchSyncCoordinator: NSObject {
         payloadSource = source
     }
 
-    /// A debounced push of the current state, read through the payload source. `force` sends
-    /// it even when the Watch already has the same content.
     func pushCurrentState(force: Bool = false) {
         guard let payloadSource else { return }
         scheduleDebouncedPush(payloadSource(), force: force)
@@ -83,6 +106,15 @@ final class WatchSyncCoordinator: NSObject {
     /// even if unchanged, and the library credentials, which go out only on such a request.
     func answerSyncRequest() {
         pushCurrentState(force: true)
+        owesCredentials = true
+        sendOwedCredentials()
+    }
+
+    /// The library password is readable only while the phone is unlocked, and a Watch message
+    /// can launch the app behind the lock screen.
+    private func sendOwedCredentials() {
+        guard owesCredentials, isProtectedDataAvailable() else { return }
+        owesCredentials = false
         republishCredentials()
     }
 
@@ -140,7 +172,6 @@ final class WatchSyncCoordinator: NSObject {
         deliver(snapshot)
     }
 
-    /// Coalesces a burst into one push of the last payload, forced if any push in it was.
     func scheduleDebouncedPush(_ payload: Payload, force: Bool = false) {
         pendingPayload = payload
         pendingForce = pendingForce || force
