@@ -136,7 +136,7 @@ actor DemoMailClient: MailClient {
                                   filename: nil, contentID: nil, size: stored.text.utf8.count, isAttachment: false)]
         parts += stored.attachments.keys.sorted { $0.section < $1.section }
         return MailMessageDetail(summary: stored.summary, messageID: "<demo-\(uid)@\(MailConstants.addressDomain)>",
-                                 inReplyTo: nil, references: nil, parts: parts, textBody: stored.text,
+                                 inReplyTo: nil, references: nil, replyTo: "", parts: parts, textBody: stored.text,
                                  htmlBody: stored.html, inlineImages: nil)
     }
 

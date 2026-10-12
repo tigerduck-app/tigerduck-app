@@ -372,8 +372,8 @@ struct MailComposeViewModelTests {
 
     // MARK: Prefill fallbacks and the draft replacement guard
 
-    // A mail without Reply-To, or opened through the fetch that carries no header section, is
-    // answered to the sender's own address, with threading and "mark answered" intact.
+    // A mail without Reply-To is answered to the sender's own address, with threading and "mark
+    // answered" intact, and nothing is downloaded to find that out.
     @Test func aReplyWithoutReplyToGoesToTheSenderAndMarksAnswered() async {
         let fake = Self.fake()
         var context = Self.originalContext(.reply)
@@ -382,10 +382,37 @@ struct MailComposeViewModelTests {
         await model.prepare()
         #expect(model.loadError == nil)
         #expect(model.to == "林老師 <teacher@mail.ntust.edu.tw>")
+        #expect(await !fake.calls.contains { $0.hasPrefix("rawSource") })
         await model.send()
         #expect(await fake.calls.contains("setFlag answered true [3]"))
         let raw = String(decoding: await fake.sent.first?.message ?? Data(), as: UTF8.self)
         #expect(raw.contains("In-Reply-To: <m3@mail.ntust.edu.tw>"))
+    }
+
+    // Opened without its header section, or from a body cached by an older build, a mail does not
+    // say whether it has a Reply-To, so the reply reads it from the raw message.
+    @Test func anUnknownReplyToIsReadFromTheRawMessage() async {
+        let fake = Self.fake()
+        var context = Self.originalContext(.reply)
+        context.original?.replyTo = nil
+        let model = Self.model(context, fake: fake)
+        await model.prepare()
+        #expect(model.to == "office@mail.ntust.edu.tw")
+        #expect(await fake.calls.contains("rawSource INBOX 3"))
+    }
+
+    // That download is best-effort: when it fails the reply goes to the sender, as for mail
+    // without Reply-To, and the rest of the prefill stands.
+    @Test func aFailedReplyToDownloadAnswersTheSender() async {
+        let fake = Self.fake()
+        await fake.update { $0.rawSourceError = .unreachable }
+        var context = Self.originalContext(.reply)
+        context.original?.replyTo = nil
+        let model = Self.model(context, fake: fake)
+        await model.prepare()
+        #expect(model.loadError == nil)
+        #expect(model.to == "林老師 <teacher@mail.ntust.edu.tw>")
+        #expect(model.subject == "Re: 作業")
     }
 
     // After a successful retry, an edit made before it must still count as unsaved: the

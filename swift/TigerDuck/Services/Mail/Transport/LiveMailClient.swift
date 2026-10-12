@@ -744,9 +744,10 @@ actor LiveMailClient: MailClient {
     }
 
     /// `Reply-To` off the same header section as `returnPath`, decoded the way `MailAddress.parseList`
-    /// expects.
+    /// expects: empty when the section has none, nil when no section was fetched.
     nonisolated static func replyTo(from info: MessageInfo) -> String? {
-        info.additionalHeaderFields?.first { $0.name.lowercased() == "reply-to" }.map { RFC2047.decode($0.value) }
+        guard let fields = info.additionalHeaderFields else { return nil }
+        return fields.first { $0.name.lowercased() == "reply-to" }.map { RFC2047.decode($0.value) } ?? ""
     }
 
     nonisolated static func isAttachment(_ part: MessagePart) -> Bool {

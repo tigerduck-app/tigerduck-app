@@ -207,7 +207,14 @@ final class MailComposeViewModel {
             let dateText = original.date.map(MailDateFormatter.detailString(for:)) ?? ""
             switch mode {
             case .reply, .replyAll:
-                let recipients = MailReplyComposer.replyRecipients(to: original, replyTo: original.replyTo,
+                // An opened mail that does not say whether it has a Reply-To has it read from the raw
+                // message. Best-effort: a failed download answers the sender, as mail without one is.
+                var replyTo = original.replyTo
+                if replyTo == nil, let folder, let uid,
+                   let raw = try? await session.use({ client in try await client.rawSource(folder: folder, uid: uid) }) {
+                    replyTo = MailRawHeaders.value(named: "Reply-To", in: raw).map(MailAddress.parseList) ?? []
+                }
+                let recipients = MailReplyComposer.replyRecipients(to: original, replyTo: replyTo ?? [],
                                                                    me: sender.address, replyAll: mode == .replyAll)
                 applyPrefill(
                     to: Self.format(recipients.to),

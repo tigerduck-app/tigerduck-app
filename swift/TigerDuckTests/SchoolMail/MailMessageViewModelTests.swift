@@ -67,7 +67,16 @@ struct MailMessageViewModelTests {
         let h = Self.harness(FakeMailClient.message(uid: 5, from: "teacher@mail.ntust.edu.tw",
                                                     replyTo: "教務處 <office@mail.ntust.edu.tw>, b@x.tw"))
         await h.model.load()
-        #expect(h.model.original?.replyTo.map(\.address) == ["office@mail.ntust.edu.tw", "b@x.tw"])
+        #expect(h.model.original?.replyTo?.map(\.address) == ["office@mail.ntust.edu.tw", "b@x.tw"])
+    }
+
+    /// A detail that does not say whether the mail has a Reply-To must not read as one without:
+    /// compose would answer the sender instead of looking it up.
+    @Test func aDetailWithoutItsHeaderSectionLeavesReplyToUnknown() async throws {
+        let h = Self.harness(FakeMailClient.message(uid: 5, replyTo: nil))
+        await h.model.load()
+        let original = try #require(h.model.original)
+        #expect(original.replyTo == nil)
     }
 
     @Test func htmlOnlyMailGetsAPlainTextView() async {

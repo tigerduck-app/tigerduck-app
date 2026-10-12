@@ -107,6 +107,9 @@ struct LiveMailClientParsingTests {
             additionalHeaderFields: [HeaderField(name: "Reply-To", value: "=?UTF-8?B?5pWZ5YuZ6JmV?= <office@mail.ntust.edu.tw>")]
         )
         #expect(LiveMailClient.replyTo(from: info) == "教務處 <office@mail.ntust.edu.tw>")
+        // A header section without the field says there is none; no section says nothing.
+        let without = MessageInfo(sequenceNumber: SequenceNumber(1), additionalHeaderFields: [HeaderField(name: "Received", value: "x")])
+        #expect(LiveMailClient.replyTo(from: without) == "")
         #expect(LiveMailClient.replyTo(from: MessageInfo(sequenceNumber: SequenceNumber(1))) == nil)
     }
 

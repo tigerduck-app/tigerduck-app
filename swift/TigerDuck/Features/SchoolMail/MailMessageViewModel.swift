@@ -228,7 +228,7 @@ final class MailMessageViewModel {
             messageID: detail.messageID,
             references: detail.references ?? [],
             bodyText: plainText,
-            replyTo: detail.replyTo.map(MailAddress.parseList) ?? []
+            replyTo: detail.replyTo.map(MailAddress.parseList)
         )
     }
 

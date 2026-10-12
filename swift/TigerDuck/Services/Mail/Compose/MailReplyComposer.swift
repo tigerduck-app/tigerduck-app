@@ -11,7 +11,8 @@ nonisolated struct MailOriginal: Sendable {
     var messageID: String?
     var references: [String]
     var bodyText: String
-    var replyTo: [MailAddress] = []
+    /// Nil when the opened mail does not say whether it has one (`MailMessageDetail.replyTo`).
+    var replyTo: [MailAddress]? = nil
 }
 
 /// Reply and forward rules.

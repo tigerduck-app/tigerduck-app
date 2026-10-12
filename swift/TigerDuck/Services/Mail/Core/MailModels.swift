@@ -196,7 +196,8 @@ nonisolated struct MailMessageDetail: Codable, Sendable {
     /// simply reads back nil, and the mail is judged exactly as it was before) and so the
     /// existing call sites need no change.
     var returnPath: String? = nil
-    /// The `Reply-To` header, RFC 2047 decoded. Nil where `returnPath` is, and for mail without one.
+    /// The `Reply-To` header, RFC 2047 decoded, and empty for mail without one. Nil when that is
+    /// unknown: the fetch carried no header section, or the body was cached before this field.
     var replyTo: String? = nil
     var parts: [MailBodyPart]
     var textBody: String?
