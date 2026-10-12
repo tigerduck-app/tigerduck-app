@@ -162,7 +162,7 @@ final class LiveActivityCoordinator {
                 observeUpdateToken(for: activity)
                 scheduleAutomaticEnd(for: targetId, snapshot: snapshot, now: now)
             } catch {
-                logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
+                logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .private)")
                 AppLogger.captureError(error, context: [
                     "phase": "liveActivity.requestStart",
                     "activityId": targetId,
