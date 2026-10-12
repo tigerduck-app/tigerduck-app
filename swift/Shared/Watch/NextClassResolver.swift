@@ -17,6 +17,40 @@ public nonisolated enum NextClassResolver {
         case tomorrow
         /// Further out than tomorrow. 1 = Monday to 7 = Sunday.
         case later(weekday: Int)
+
+        /// The Now & Next card's title for the next class.
+        public var headline: String {
+            switch self {
+            case .today: return String(localized: "watch_next")
+            case .tomorrow: return String(localized: "widget_tomorrow")
+            case .later(let weekday): return Self.shortName(of: weekday)
+            }
+        }
+
+        /// `time` with the day in front ("Tomorrow 08:10", "Tue 08:10"), as the iPhone widget's
+        /// `WidgetDerivedState.Day.inlineCaption` writes it. A class today keeps the time alone.
+        public func inlineCaption(_ time: String) -> String {
+            switch self {
+            case .today:
+                return time
+            case .tomorrow:
+                return String.localizedStringWithFormat(String(localized: "widget_tomorrow_time"), time)
+            case .later(let weekday):
+                return "\(Self.shortName(of: weekday)) \(time)"
+            }
+        }
+
+        private static func shortName(of weekday: Int) -> String {
+            switch weekday {
+            case 1: return String(localized: "weekday_mon_short")
+            case 2: return String(localized: "weekday_tue_short")
+            case 3: return String(localized: "weekday_wed_short")
+            case 4: return String(localized: "weekday_thu_short")
+            case 5: return String(localized: "weekday_fri_short")
+            case 6: return String(localized: "weekday_sat_short")
+            default: return String(localized: "weekday_sun_short")
+            }
+        }
     }
 
     /// Given the watch's full course list and the current instant, return the class currently in
