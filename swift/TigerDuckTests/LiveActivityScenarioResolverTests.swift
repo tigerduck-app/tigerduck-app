@@ -118,6 +118,20 @@ enum LiveActivityScenarioCases {
             now: tuesday(8), dues: [Due(dueIn: 3600, isCompleted: true)]
         ),
         Case(
+            testDescription: "an ignored assignment",
+            now: tuesday(8), dues: [Due(dueIn: 3600, isArchived: true)]
+        ),
+        Case(
+            testDescription: "an assignment marked done",
+            now: tuesday(8), dues: [Due(dueIn: 3600, isLocallyCompleted: true)]
+        ),
+        Case(
+            testDescription: "the deadline after an ignored one",
+            now: tuesday(8),
+            dues: [Due(id: "a1", dueIn: 3600, isArchived: true), Due(id: "a2", dueIn: 2 * 3600)],
+            expected: .assignmentUrgent, expectedSourceId: "a2"
+        ),
+        Case(
             testDescription: "the earliest of several deadlines",
             now: tuesday(8), dues: [Due(id: "a2", dueIn: 3 * 3600), Due(id: "a1", dueIn: 3600)],
             expected: .assignmentUrgent, expectedSourceId: "a1"
