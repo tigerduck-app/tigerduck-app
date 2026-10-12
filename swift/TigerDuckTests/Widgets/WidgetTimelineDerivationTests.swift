@@ -201,6 +201,36 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
+    /// A course meeting twice in a day gets a row per block, not one row spanning the gap.
+    @Test func todayRows_splitACourseIntoItsBlocks() {
+        let now = monday(8, 0)
+        let snap = snapshot(courses: [
+            course(courseNo: "X", displayName: "Twice", weekday: 1, periods: ["C", "A"]),
+            course(courseNo: "Y", displayName: "Long", weekday: 1, periods: ["A", "B"]),
+            course(courseNo: "Z", displayName: "Tuesday", weekday: 2, periods: ["A"]),
+        ])
+
+        let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: now)
+
+        #expect(rows.map(\.id) == ["X-A", "Y-A", "X-C"])
+        #expect(rows.map(\.periodRange) == ["A", "A–B", "C"])
+        #expect(rows.map(\.startTime) == ["08:10", "08:10", "10:20"])
+        #expect(rows.map(\.endTime) == ["09:00", "10:00", "11:10"])
+    }
+
+    @Test func todayRows_leaveOutACourseSkippedToday() {
+        let now = monday(8, 0)
+        let snap = snapshot(courses: [
+            course(
+                courseNo: "X", displayName: "Skipped", weekday: 1, periods: ["A"],
+                skippedDates: [WidgetTimelineDerivation.dateKey(for: now)]
+            ),
+            course(courseNo: "Y", displayName: "Kept", weekday: 1, periods: ["B"]),
+        ])
+
+        #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map(\.id) == ["Y-B"])
+    }
+
     /// Taipei's midnight wherever the device is, since the widget's day is Taipei's.
     @Test func nextMidnight_isTaipeiMidnight() {
         let taipei = WidgetTaipei.calendar

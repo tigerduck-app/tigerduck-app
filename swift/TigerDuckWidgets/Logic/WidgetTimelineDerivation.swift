@@ -134,6 +134,42 @@ enum WidgetTimelineDerivation {
         return .noMoreClasses
     }
 
+    /// One row of the Today widget: one contiguous block of a course's periods.
+    struct TodayRow: nonisolated Equatable, Identifiable, Sendable {
+        let course: SnapshotCourse
+        /// Never empty, in `periodOrder`.
+        let periods: [String]
+        let startTime: String
+        let endTime: String
+
+        var id: String { "\(course.courseNo)-\(periods[0])" }
+        var periodRange: String { periods.count > 1 ? "\(periods[0])–\(periods[periods.count - 1])" : periods[0] }
+    }
+
+    /// Today's rows in start order, one per contiguous block, so a course meeting at periods
+    /// 3-4 and 7-8 gets two rows, as `derive` and the Watch payload split it. Courses skipped
+    /// today are left out.
+    static func todayRows(snapshot: WidgetSnapshot, at date: Date) -> [TodayRow] {
+        let weekday = weekdayFor(date)
+        let todayKey = dateKey(for: date)
+        let order = snapshot.periodOrder
+        let rows = snapshot.courses
+            .filter { !$0.skippedDates.contains(todayKey) }
+            .flatMap { course in
+                contiguousRuns(sortPeriods(course.schedule[weekday] ?? [], by: order), by: order).map { run in
+                    TodayRow(
+                        course: course,
+                        periods: run,
+                        startTime: snapshot.periodTimes[run[0]]?.start ?? "",
+                        endTime: snapshot.periodTimes[run[run.count - 1]]?.end ?? ""
+                    )
+                }
+            }
+        return rows.sorted { lhs, rhs in
+            (order.firstIndex(of: lhs.periods[0]) ?? Int.max) < (order.firstIndex(of: rhs.periods[0]) ?? Int.max)
+        }
+    }
+
     /// `yyyy-MM-dd` in Asia/Taipei — must mirror `SDCourse.isoFormatter`
     /// so a `Set<String>` lookup against `SnapshotCourse.skippedDates`
     /// matches. Both sides pin to Taipei so a student traveling abroad
