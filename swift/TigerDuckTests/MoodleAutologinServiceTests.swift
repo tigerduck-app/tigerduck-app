@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -12,30 +13,24 @@ struct MoodleAutologinServiceTests {
         string: autologinLink + "?userid=42&key=k3y&urltogo=https%3A%2F%2Fmoodle2.ntust.edu.tw%2Fmod%2Fassign%2Fview.php%3Fid%3D5501"
     )!
 
+    private static let start = Date(timeIntervalSince1970: 1_800_000_000)
+
     private actor KeyRequests {
         private(set) var count = 0
         func record() { count += 1 }
     }
 
-    private final class TestClock: @unchecked Sendable {
-        var now = Date(timeIntervalSince1970: 1_800_000_000)
-    }
-
-    private final class URLBox: @unchecked Sendable {
-        var url: URL?
-    }
-
     private static func service(
         answering key: MoodleAutologinService.Key? = key,
         requests: KeyRequests = KeyRequests(),
-        clock: TestClock = TestClock()
+        clock: OSAllocatedUnfairLock<Date> = OSAllocatedUnfairLock(initialState: start)
     ) -> MoodleAutologinService {
         MoodleAutologinService(
             keySource: {
                 await requests.record()
                 return key
             },
-            now: { clock.now }
+            now: { clock.withLock { $0 } }
         )
     }
 
@@ -91,20 +86,20 @@ struct MoodleAutologinServiceTests {
     @Test("within six minutes of a key a page opens as it is, without asking Moodle")
     func oneKeyPerInterval() async {
         let requests = KeyRequests()
-        let clock = TestClock()
+        let clock = OSAllocatedUnfairLock(initialState: Self.start)
         let service = Self.service(requests: requests, clock: clock)
 
         #expect(await service.url(for: Self.page) == Self.signedInPage)
-        clock.now += MoodleAutologinService.keyInterval - 1
+        clock.withLock { $0 += MoodleAutologinService.keyInterval - 1 }
         #expect(await service.url(for: Self.page) == Self.page)
         #expect(await requests.count == 1)
 
-        clock.now += 1
+        clock.withLock { $0 += 1 }
         #expect(await service.url(for: Self.page) == Self.signedInPage)
         #expect(await requests.count == 2)
 
         // A clock set back leaves the last key in the future; Moodle's own clock decides.
-        clock.now -= 3600
+        clock.withLock { $0 -= 3600 }
         #expect(await service.url(for: Self.page) == Self.signedInPage)
         #expect(await requests.count == 3)
     }
@@ -121,14 +116,17 @@ struct MoodleAutologinServiceTests {
 
         let first = Task { await service.url(for: Self.page) }
         try await sleeper.waitUntilArmed()
-        // Waited on through a box, so a second request parked behind the first fails the wait
-        // instead of hanging the test.
-        let second = URLBox()
-        Task { second.url = await service.url(for: Self.page) }
-        try await waitUntil { second.url != nil }
+        // The second open runs on its own task, so one parked behind the first request fails
+        // the wait instead of hanging the test.
+        let second = OSAllocatedUnfairLock<URL?>(initialState: nil)
+        Task {
+            let url = await service.url(for: Self.page)
+            second.withLock { $0 = url }
+        }
+        try await waitUntil { second.withLock { $0 } != nil }
         await sleeper.fire()
 
-        #expect(second.url == Self.page)
+        #expect(second.withLock { $0 } == Self.page)
         #expect(await first.value == Self.signedInPage)
         #expect(await requests.count == 1)
     }
@@ -223,27 +221,23 @@ struct MoodleAutologinServiceTests {
         #expect(body == "privatetoken=pr1vate")
     }
 
-    private final class StoredPrivateToken: @unchecked Sendable {
-        var value = "pr1vate"
-    }
-
     @Test("a renewed token sends the private token stored with it")
     func renewedTokenSendsItsOwnPrivateToken() async throws {
         let old = UUID().uuidString
         let new = UUID().uuidString
         Self.answer(#"{"exception":"moodle_exception","errorcode":"invalidtoken"}"#, token: old)
         Self.answer(#"{"key":"k3y","autologinurl":"\#(Self.autologinLink)","warnings":[]}"#, token: new)
-        let stored = StoredPrivateToken()
+        let stored = OSAllocatedUnfairLock<String?>(initialState: "pr1vate")
 
         let key = try await MoodleAutologinService.requestKey(
             tokens: MoodleWebserviceClient.TokenSource(
                 stored: { old },
                 renew: { _ in
-                    stored.value = "r3newed"
+                    stored.withLock { $0 = "r3newed" }
                     return new
                 }
             ),
-            privateToken: { stored.value },
+            privateToken: { stored.withLock { $0 } },
             userId: { _ in 42 },
             session: Self.session(),
             siteURL: Self.site
@@ -253,6 +247,33 @@ struct MoodleAutologinServiceTests {
         let request = try #require(SettingsAPIStub.requests(for: Self.endpoint(token: new)).first)
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
         #expect(body == "privatetoken=r3newed")
+    }
+
+    @Test(
+        "a key that arrives after a sign-out or another account's sign-in is dropped",
+        arguments: [nil, "0ther"] as [String?]
+    )
+    func accountChangedWhileKeyWasOnItsWay(_ storedAfterward: String?) async throws {
+        let token = UUID().uuidString
+        Self.answer(#"{"key":"k3y","autologinurl":"\#(Self.autologinLink)","warnings":[]}"#, token: token)
+        let stored = OSAllocatedUnfairLock<String?>(initialState: "pr1vate")
+
+        let key = try await MoodleAutologinService.requestKey(
+            tokens: MoodleWebserviceClient.TokenSource(
+                stored: { token },
+                renew: { _ in throw MoodleWebserviceError.missingStoredCredentials }
+            ),
+            privateToken: { stored.withLock { $0 } },
+            userId: { _ in
+                stored.withLock { $0 = storedAfterward }
+                return 42
+            },
+            session: Self.session(),
+            siteURL: Self.site
+        )
+
+        #expect(key == nil)
+        #expect(SettingsAPIStub.requests(for: Self.endpoint(token: token)).count == 1)
     }
 
     @Test("without a private token nothing is sent and no token is renewed")

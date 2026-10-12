@@ -32,8 +32,9 @@ actor MoodleAutologinService {
     }
 
     /// `url` behind a one-time sign-in when it is an HTTPS page on the Moodle site, else `url`.
-    /// `url` also comes back as it is while a key is on its way, within ``keyInterval`` of the
-    /// last key, and when the request fails, which is not retried.
+    /// Without a key the page opens signed out rather than later: Moodle refuses a key within
+    /// ``keyInterval`` of the last one, a request already on its way gets the only key coming,
+    /// and the user is waiting on the page, so a failed request is not retried.
     func url(for url: URL) async -> URL {
         guard Self.isMoodlePage(url), !isRequesting, isKeyDue() else { return url }
         isRequesting = true
@@ -79,7 +80,9 @@ actor MoodleAutologinService {
 
     /// Asks Moodle for a key under the stored token, which is renewed as for any Moodle call. The
     /// private token goes in the POST body, since Moodle refuses one in the query, and is read
-    /// again inside because a renewed token comes with its own. Nil without a private token.
+    /// again inside because a renewed token comes with its own. Nil without a private token, and
+    /// when the stored one changed while the key was on its way: sign-out drops it and another
+    /// sign-in stores its own, and the key would sign the browser in to the account that left.
     nonisolated static func requestKey(
         tokens: MoodleWebserviceClient.TokenSource = .keychain,
         privateToken: () -> String? = {
@@ -91,16 +94,17 @@ actor MoodleAutologinService {
     ) async throws -> Key? {
         guard privateToken() != nil else { return nil }
         return try await MoodleWebserviceClient.withToken(tokens) { token in
-            guard let privateToken = privateToken() else { return nil }
+            guard let sent = privateToken() else { return nil }
             let userId = try await userId(token)
             let answer = try await MoodleWebserviceClient.call(
                 "tool_mobile_get_autologin_key",
-                params: [("privatetoken", privateToken)],
+                params: [("privatetoken", sent)],
                 token: token,
                 as: KeyAnswer.self,
                 session: session,
                 siteURL: siteURL
             )
+            guard privateToken() == sent else { return nil }
             return Key(userId: userId, value: answer.key, autologinURL: answer.autologinurl)
         }
     }

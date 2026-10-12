@@ -32,7 +32,6 @@ struct MoodleHomeworkRegressionTests {
         func record() { count += 1 }
     }
 
-    /// Signs every Moodle page in with one key and counts the keys asked for.
     private static func autologin(counting requests: KeyRequests = KeyRequests()) -> MoodleAutologinService {
         MoodleAutologinService(keySource: {
             await requests.record()
