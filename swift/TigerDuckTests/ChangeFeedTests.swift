@@ -1,6 +1,3 @@
-// The revision poll's change feed (https://github.com/tigerduck-app/tigerduck-app/issues/241):
-// what `ChangeFeedPlan` makes of a page, when a read may move the watermark, and how
-// `PushAPIClient.fetchChanges` reads the backend's bodies, linked from `PushAPI.SyncChangesPage`.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -68,8 +65,6 @@ struct ChangeFeedPlanTests {
     }
 }
 
-/// The rule `AppState.syncChangesSinceLastRevision` checks after the read and before it moves
-/// the watermark.
 struct ChangeFeedWatermarkTests {
     @Test("A read that nothing overtook may move the watermark")
     func readNothingOvertookMayAdvance() {

@@ -374,8 +374,6 @@ final class PushAPIClient: Sendable {
         request.setValue(header, forHTTPHeaderField: "Authorization")
     }
 
-    /// `expectedFailure` turns a failure its caller handles into the error to throw, and that
-    /// failure is not reported to `versionGate`.
     private func execute(
         _ request: URLRequest,
         expectedFailure: (_ statusCode: Int, _ body: Data) -> PushAPIError? = { _, _ in nil }
