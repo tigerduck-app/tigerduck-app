@@ -5,8 +5,10 @@ import Testing
 
 /// A report on screen belongs to whoever was signed in when it was read. Sign-out deletes the
 /// cached report, not the copy the screen holds, so the account change has to take that down,
-/// and a refresh still in flight for the previous account must not put it back.
+/// and a refresh still in flight for the previous account must not put it back. Serialized:
+/// the refreshes write the process-wide `NTUSTSessionManager.shared.loadingState`.
 @MainActor
+@Suite(.serialized)
 struct ScoreViewModelAccountTests {
     /// A sign-in that a test ends while a refresh waits.
     private final class SignIn: Sendable {
@@ -19,6 +21,7 @@ struct ScoreViewModelAccountTests {
     /// test releases it.
     @MainActor
     private final class School {
+        var isOnline = true
         var holdsProbe = false
         var holdsFetch = false
         private(set) var fetches = 0
@@ -27,7 +30,7 @@ struct ScoreViewModelAccountTests {
 
         func probe() async -> Bool {
             if holdsProbe { await withCheckedContinuation { held.append($0) } }
-            return true
+            return isOnline
         }
 
         func fetch(_ report: ScoreReport) async -> ScoreReport {
@@ -185,6 +188,54 @@ struct ScoreViewModelAccountTests {
         await first.value
         #expect(model.report.student == next)
         #expect(!model.isRefreshing)
+    }
+
+    @Test func aDiscardedFetchLeavesTheNextAccountsProgressAlone() async throws {
+        let model = ScoreViewModel()
+        let departing = SignIn()
+        let slowSchool = School()
+        slowSchool.holdsFetch = true
+        let first = Task {
+            await Self.refresh(model, for: Self.testStudentId(), generation: 1, signIn: departing, school: slowSchool)
+        }
+        try await waitUntil { slowSchool.isHolding }
+
+        departing.signOut()
+        let nextSchool = School()
+        nextSchool.holdsFetch = true
+        let next = Task {
+            await Self.refresh(model, for: Self.testStudentId(), generation: 2, signIn: SignIn(), school: nextSchool)
+        }
+        try await waitUntil { nextSchool.isHolding }
+        slowSchool.release()
+        await first.value
+
+        #expect(NTUSTSessionManager.shared.loadingState == .loading)
+        nextSchool.release()
+        await next.value
+        #expect(NTUSTSessionManager.shared.loadingState == .loaded)
+    }
+
+    @Test func aDiscardedFetchLeavesTheNextAccountsOfflineErrorAlone() async throws {
+        let model = ScoreViewModel()
+        let departing = SignIn()
+        let slowSchool = School()
+        slowSchool.holdsFetch = true
+        let first = Task {
+            await Self.refresh(model, for: Self.testStudentId(), generation: 1, signIn: departing, school: slowSchool)
+        }
+        try await waitUntil { slowSchool.isHolding }
+
+        departing.signOut()
+        let offline = School()
+        offline.isOnline = false
+        await Self.refresh(model, for: Self.testStudentId(), generation: 2, signIn: SignIn(), school: offline)
+        let offlineState = NTUSTSessionManager.shared.loadingState
+        slowSchool.release()
+        await first.value
+
+        #expect(offlineState == .error(String(localized: "error_network_unavailable")))
+        #expect(NTUSTSessionManager.shared.loadingState == offlineState)
     }
 
     @Test func aSecondRefreshForTheSameSignInSharesTheFirst() async throws {

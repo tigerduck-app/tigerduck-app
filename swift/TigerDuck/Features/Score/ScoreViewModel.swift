@@ -181,6 +181,7 @@ final class ScoreViewModel {
             return
         }
         manager.loadingState = .loading
+        let starts = manager.loadingStarts
 
         let outcome: Result<ScoreReport, any Error>
         do {
@@ -192,9 +193,12 @@ final class ScoreViewModel {
             outcome = .failure(error)
         }
         // Signed out, or the screen moved to another account, while the fetch ran: the answer
-        // and its error belong to the previous account.
+        // and its error belong to the previous account. The indicator stays with whatever has
+        // started loading or reported an error since.
         guard isCurrent(), inFlightRefresh == owner else {
-            manager.loadingState = .loaded
+            if manager.loadingStarts == starts, manager.loadingState == .loading {
+                manager.loadingState = .loaded
+            }
             return
         }
         switch outcome {
