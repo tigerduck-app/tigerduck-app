@@ -8,7 +8,7 @@ import AppKit
 /// Modal detail for a single course row. Visual structure:
 ///   1. Color bar and course title, with an optional Moodle jump button
 ///   2. Two emphasis cards side by side: classroom | time
-///   3. Flat InfoRow list: instructor, code, dimension, duration, credits, enrollment
+///   3. Flat InfoRow list: instructor, code, dimension, duration, course type, credits, enrollment
 ///   4. Outstanding assignments
 ///
 /// Classroom and time get their own cards because they are the fields users
@@ -153,6 +153,12 @@ struct CourseDetailSheet: View {
                     value: duration
                 )
             }
+            if let requireOption = Self.requireOptionText(course.requireOption) {
+                InfoRow(
+                    label: String(localized: "course_detail_require_option_label"),
+                    value: requireOption
+                )
+            }
             InfoRow(
                 label: String(localized: "course_detail_credits_label"),
                 value: course.credits.creditsText
@@ -174,6 +180,16 @@ struct CourseDetailSheet: View {
         switch course.allYear.uppercased() {
         case "F": return String(localized: "course_detail_duration_full_year")
         case "H": return String(localized: "course_detail_duration_one_semester")
+        default: return nil
+        }
+    }
+
+    /// QueryCourse's `RequireOption`, "R" required or "E" elective. Anything else, such as the
+    /// empty string of a row merged from another device, says nothing, so the row is left out.
+    static func requireOptionText(_ requireOption: String) -> String? {
+        switch requireOption.uppercased() {
+        case "R": return String(localized: "course_detail_require_option_required")
+        case "E": return String(localized: "course_detail_require_option_elective")
         default: return nil
         }
     }

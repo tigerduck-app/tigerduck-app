@@ -3,7 +3,8 @@ import Testing
 @testable import TigerDuck
 
 /// QueryCourse's `RequireOption` ("R" required, "E" elective) rides along with each course from
-/// the lookup into the term's cache, as `dimension` and `allYear` do.
+/// the lookup into the term's cache, as `dimension` and `allYear` do, and names the course type
+/// in its details.
 @MainActor
 struct CourseRequireOptionTests {
 
@@ -53,5 +54,13 @@ struct CourseRequireOptionTests {
         let loaded = cache.loadUserAddedCourses()
         #expect(loaded.first { $0.courseNo == "CS1003301" }?.requireOption == "R")
         #expect(loaded.first { $0.courseNo == "GE1001" }?.requireOption == "")
+    }
+
+    /// An unknown value, the empty string of a row merged from another device included, shows no row.
+    @Test func theDetailRowNamesOnlyRequiredAndElective() {
+        #expect(CourseDetailSheet.requireOptionText("R") == String(localized: "course_detail_require_option_required"))
+        #expect(CourseDetailSheet.requireOptionText("e") == String(localized: "course_detail_require_option_elective"))
+        #expect(CourseDetailSheet.requireOptionText("") == nil)
+        #expect(CourseDetailSheet.requireOptionText("X") == nil)
     }
 }
