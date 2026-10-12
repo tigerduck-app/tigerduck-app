@@ -91,9 +91,8 @@ struct MoodleWebserviceClientTests {
     private static func tokens(stored: String?, renewed: String, log: TokenLog) -> MoodleWebserviceClient.TokenSource {
         MoodleWebserviceClient.TokenSource(
             stored: { stored },
-            discard: { await log.record("discard") },
-            renew: {
-                await log.record("renew")
+            renew: { rejected in
+                await log.record("renew \(rejected ?? "none")")
                 return renewed
             }
         )
@@ -107,7 +106,7 @@ struct MoodleWebserviceClientTests {
         #expect(await log.events.isEmpty)
     }
 
-    @Test("a token Moodle calls invalid is dropped and renewed, and the call runs once more")
+    @Test("a token Moodle calls invalid is renewed in its place, and the call runs once more")
     func invalidTokenIsRenewedOnce() async throws {
         let log = TokenLog()
         var tried: [String] = []
@@ -118,7 +117,7 @@ struct MoodleWebserviceClientTests {
         }
         #expect(used == "new")
         #expect(tried == ["old", "new"])
-        #expect(await log.events == ["discard", "renew"])
+        #expect(await log.events == ["renew old"])
 
         var attempts = 0
         await #expect(throws: MoodleWebserviceError.invalidToken) {
@@ -128,6 +127,45 @@ struct MoodleWebserviceClientTests {
             }
         }
         #expect(attempts == 2)
+    }
+
+    @Test("an access error is tried once more with the same token and renews nothing")
+    func accessErrorIsNotRenewed() async {
+        let log = TokenLog()
+        var tried: [String] = []
+        await #expect(throws: MoodleWebserviceError.accessDenied) {
+            try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { token -> String in
+                tried.append(token)
+                throw MoodleWebserviceError.accessDenied
+            }
+        }
+        #expect(tried == ["old", "old"])
+        #expect(await log.events.isEmpty)
+    }
+
+    @Test("an expired token's access error renews the token once Moodle calls it invalid")
+    func expiredTokenIsRenewed() async throws {
+        let log = TokenLog()
+        var answers: [MoodleWebserviceError] = [.accessDenied, .invalidToken]
+        let used = try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { token in
+            if !answers.isEmpty { throw answers.removeFirst() }
+            return token
+        }
+        #expect(used == "new")
+        #expect(await log.events == ["renew old"])
+    }
+
+    @Test("an access error from the renewed token is final")
+    func accessErrorAfterRenewal() async {
+        let log = TokenLog()
+        var answers: [MoodleWebserviceError] = [.invalidToken, .accessDenied]
+        await #expect(throws: MoodleWebserviceError.accessDenied) {
+            try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { _ -> String in
+                throw answers.removeFirst()
+            }
+        }
+        #expect(answers.isEmpty)
+        #expect(await log.events == ["renew old"])
     }
 
     @Test("another failure is not retried, and no stored token is renewed first")
@@ -145,6 +183,6 @@ struct MoodleWebserviceClientTests {
 
         let used = try await MoodleWebserviceClient.withToken(Self.tokens(stored: nil, renewed: "new", log: log)) { $0 }
         #expect(used == "new")
-        #expect(await log.events == ["renew"])
+        #expect(await log.events == ["renew none"])
     }
 }

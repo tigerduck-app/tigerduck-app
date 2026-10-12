@@ -12,6 +12,19 @@ struct SchoolDataAgeTextTests {
         #expect(SyncStatusDot.glyph(.unknown) == nil)
     }
 
+    @Test("a failure's note lasts until the server's next report, and a reset clears it")
+    func failureNote() {
+        let tracker = ServerStatusTracker()
+        tracker.set(.failed, for: .moodle, note: "maintenance")
+        #expect(tracker.note(for: .moodle) == "maintenance")
+        tracker.set(.ok, for: .moodle)
+        #expect(tracker.note(for: .moodle) == nil)
+
+        tracker.set(.failed, for: .moodle, note: "maintenance")
+        tracker.reset()
+        #expect(tracker.note(for: .moodle) == nil)
+    }
+
     @Test("the age reads never synced, just now, then minutes, hours and days")
     func ageSteps() {
         let now = Date()

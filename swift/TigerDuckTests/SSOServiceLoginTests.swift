@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -279,18 +280,26 @@ struct SSOServiceLoginTests {
         }
     }
 
+    /// A harvest without `failure` hands out the token "new". `token` stands in for the keychain.
     private func tokenService(
         log: HarvestLog,
-        failure: MoodleWebserviceError,
+        failure: MoodleWebserviceError?,
         stored: StoredPassword = StoredPassword("unused"),
-        duringHarvest: @escaping @Sendable () -> Void = {}
+        token: OSAllocatedUnfairLock<String?> = OSAllocatedUnfairLock(initialState: nil),
+        duringHarvest: @escaping @Sendable () async -> Void = {}
     ) -> MoodleTokenService {
         MoodleTokenService(
             storedCredentials: { (studentId: "b00000000", password: stored.current) },
+            tokens: MoodleTokenService.TokenStore(
+                load: { token.withLock { $0 } },
+                save: { triple in token.withLock { $0 = triple.wstoken } },
+                drop: { token.withLock { $0 = nil } }
+            ),
             harvest: { _, _ in
                 await log.record()
-                duringHarvest()
-                throw failure
+                await duringHarvest()
+                if let failure { throw failure }
+                return MoodleTokenService.TokenTriple(signature: "", wstoken: "new", privatetoken: nil)
             }
         )
     }
@@ -342,5 +351,43 @@ struct SSOServiceLoginTests {
         }
         #expect(!rejected)
         #expect(await log.calls == 2)
+    }
+
+    @Test("a renewal still running is shared, and a later one gets its result")
+    func renewalServesEveryCallerThatMetTheOldToken() async {
+        let log = HarvestLog()
+        let token = OSAllocatedUnfairLock<String?>(initialState: "old")
+        let released = OSAllocatedUnfairLock(initialState: false)
+        let service = tokenService(log: log, failure: nil, token: token) {
+            while !released.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
+        }
+        let answers = await withLatch(false) { () async -> [String?] in
+            async let first = try? service.refreshTokenIfNeeded(replacing: "old")
+            while await log.calls == 0 { try? await Task.sleep(for: .milliseconds(5)) }
+            // The held harvest has dropped the old token, so a second call that did not join it
+            // would harvest again.
+            async let second = try? service.refreshTokenIfNeeded(replacing: "old")
+            try? await Task.sleep(for: .milliseconds(100))
+            released.withLock { $0 = true }
+            let together = await [first, second]
+            return together + [try? await service.refreshTokenIfNeeded(replacing: "old")]
+        }
+        #expect(answers == ["new", "new", "new"])
+        #expect(token.withLock { $0 } == "new")
+        #expect(await log.calls == 1)
+    }
+
+    @Test("a failed renewal leaves no rejected token behind")
+    func failedRenewalDropsTheRejectedToken() async {
+        let log = HarvestLog()
+        let token = OSAllocatedUnfairLock<String?>(initialState: "old")
+        let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"), token: token)
+        _ = await withLatch(false) {
+            await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: "offline")) {
+                try await service.refreshTokenIfNeeded(replacing: "old")
+            }
+        }
+        #expect(token.withLock { $0 } == nil)
+        #expect(await log.calls == 1)
     }
 }
