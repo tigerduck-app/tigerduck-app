@@ -669,11 +669,12 @@ extension AppState {
         revisionPoller.noteActivity()
     }
 
-    /// Queues a course's "ignore assignments" setting, which the server's reminders follow. The
-    /// Assignments sync switch covers it, as it covers the marks, and the outbox holds it while
-    /// the Courses switch is off.
+    /// Queues a course's "ignore assignments" setting, which the server's reminders follow. Unlike
+    /// a mark it is queued with the Assignments or Courses switch off too, and the outbox holds it
+    /// (`CloudSyncCoordinator.sendsCourseIgnores`): the re-enable check compares no course settings
+    /// while Courses is off, so a change made then would otherwise be lost to the server's.
     func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) {
-        guard Defaults[.cloudSyncEnabled], Defaults[.syncAssignments] else { return }
+        guard Defaults[.cloudSyncEnabled] else { return }
         // The server keys a course without an idnumber, a hand-added one, by term and number.
         let moodleId = moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
         let moodleCourseId = DataCache.shared.lookupMoodleCourseId(idnumber: moodleId)

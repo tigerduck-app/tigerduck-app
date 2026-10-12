@@ -237,6 +237,14 @@ struct CourseIgnoreCoordinatorTests {
         #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
     }
 
+    @Test("A setting goes out only with both switches on and the re-enabled Assignments switch's check settled")
+    func settingsGoOutWithBothSwitchesOnAndNoCheckPending() {
+        #expect(CloudSyncCoordinator.sendsCourseIgnores(assignments: true, courses: true, pendingChecks: ["courses"]))
+        #expect(!CloudSyncCoordinator.sendsCourseIgnores(assignments: true, courses: false, pendingChecks: []))
+        #expect(!CloudSyncCoordinator.sendsCourseIgnores(assignments: false, courses: true, pendingChecks: []))
+        #expect(!CloudSyncCoordinator.sendsCourseIgnores(assignments: true, courses: true, pendingChecks: ["assignments"]))
+    }
+
     @Test("An answer without the setting, from a backend that predates it, is a refusal and parks it after five")
     func answerWithoutTheSettingIsARefusal() async {
         let backend = Backend()

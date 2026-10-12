@@ -51,9 +51,8 @@ final class CloudSyncCoordinator {
     /// The Assignments sync switch, read before each mark goes out. A mark queued before it went
     /// off waits for it to come back.
     @ObservationIgnored private let syncsAssignmentMarks: @Sendable () -> Bool
-    /// The Assignments and Courses sync switches together, read before each course's ignore
-    /// setting goes out: the server drops the setting with the course rows once no device syncs
-    /// courses. A setting queued while either is off waits.
+    /// `sendsCourseIgnores`, read before each course's ignore setting goes out. A setting queued
+    /// while it is false waits.
     @ObservationIgnored private let syncsCourseIgnores: @Sendable () -> Bool
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
@@ -75,7 +74,11 @@ final class CloudSyncCoordinator {
         isEnabled: Bool = Defaults[.cloudSyncEnabled],
         syncsAssignmentMarks: @escaping @Sendable () -> Bool = { Defaults[.syncAssignments] },
         syncsCourseIgnores: @escaping @Sendable () -> Bool = {
-            Defaults[.syncAssignments] && Defaults[.syncCourses]
+            CloudSyncCoordinator.sendsCourseIgnores(
+                assignments: Defaults[.syncAssignments],
+                courses: Defaults[.syncCourses],
+                pendingChecks: Defaults[.pendingConflictCategories]
+            )
         }
     ) {
         self.pushCoordinator = pushCoordinator
@@ -86,6 +89,14 @@ final class CloudSyncCoordinator {
         if isEnabled {
             state = .active
         }
+    }
+
+    /// Whether a course's ignore setting may go out: with the Assignments and Courses switches on,
+    /// as the server drops the setting with the course rows once no device syncs courses, and not
+    /// while the re-enabled Assignments switch's check is pending, which may take the server's
+    /// settings over the ones queued here.
+    nonisolated static func sendsCourseIgnores(assignments: Bool, courses: Bool, pendingChecks: Set<String>) -> Bool {
+        assignments && courses && !pendingChecks.contains("assignments")
     }
 
     // MARK: - Following the preference
