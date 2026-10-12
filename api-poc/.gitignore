@@ -1,5 +1,6 @@
 api/runtime/*
 !api/runtime/.gitkeep
-api/.env
+api/.env*
+!api/.env.template
 __pycache__/
 .venv/

@@ -31,7 +31,9 @@ OIDC_MARKERS: tuple[frozenset[str], ...] = (
 )
 
 logger = logging.getLogger(__name__)
+# INFO logs from httpx/httpcore include full request URLs, which can carry auth tokens.
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 # ---------------- HTML helpers ----------------

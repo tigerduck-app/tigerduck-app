@@ -395,6 +395,9 @@ class ClassroomClient:
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+    # INFO logs from httpx/httpcore include full request URLs, which can carry auth tokens.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     try:
         sid, pwd = load_creds()
     except RuntimeError as e:
