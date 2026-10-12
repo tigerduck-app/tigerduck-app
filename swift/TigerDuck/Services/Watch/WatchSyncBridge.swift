@@ -2,18 +2,16 @@ import SwiftUI
 
 /// Hidden view that pushes a fresh `WatchSnapshot` whenever the phone's courses, accent color,
 /// language or login flag change. Living in the view tree lets `AppState`'s `@Observable`
-/// tracking drive the pushes; `TigerDuckApp` passes in the activated `WatchSyncCoordinator`.
+/// tracking drive the pushes; `TigerDuckApp` passes in the `WatchSyncCoordinator`, whose
+/// payload source reads `WatchSyncCoordinator.Payload(appState:)`.
 ///
-/// Courses come from `CanonicalCourseProvider`: the course list lives in `DataCache` files,
-/// never in the model container, so a SwiftData `@Query` would return `[]`. The bridge re-reads
-/// on `AppConstants.dataDidUpdate`, posted by `AppState.backgroundSync` after
-/// `DataCache.saveCourses`.
+/// The bridge re-reads on `AppConstants.dataDidUpdate`, posted by `AppState.backgroundSync`
+/// after `DataCache.saveCourses`. The Watch's own sync requests go to the coordinator.
 struct WatchSyncBridge: View {
 
     @Environment(AppState.self) private var appState
 
     let coordinator: WatchSyncCoordinator
-    private let courseProvider = CanonicalCourseProvider()
 
     var body: some View {
         Color.clear
@@ -22,11 +20,6 @@ struct WatchSyncBridge: View {
             // Pump once on appear so the watch gets the current state even
             // when nothing's mutated since launch.
             .task(id: changeToken) {
-                pushNow()
-            }
-            .onReceive(
-                NotificationCenter.default.publisher(for: .watchSyncRequested)
-            ) { _ in
                 pushNow()
             }
             .onReceive(
@@ -59,20 +52,26 @@ struct WatchSyncBridge: View {
     }
 
     private func pushNow() {
-        let accentHex = String(format: "#%06X", UInt(bitPattern: Int(appState.accentColorHex)) & 0xFFFFFF)
-        let lang = appState.appLanguage == LanguageManager.system ? nil : appState.appLanguage
-        let customNames = DataCache.shared.loadCourseCustomNamesFlat()
-        coordinator.scheduleDebouncedPush(
-            courses: courseProvider.currentCourses(),
-            customNames: customNames,
-            accentHex: accentHex,
-            loggedIn: appState.authService.hasStoredCredentials,
-            languageTag: lang,
-            visualPreset: appState.visualPreset
-        )
+        coordinator.pushCurrentState()
         // Idempotent re-push, so a TTL-purged watch, or one that was off when the user logged
         // in on the phone, gets credentials back the next time the phone foregrounds. The epoch
         // is the last one sent, so a watch that has them rejects it as a replay.
         WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed()
+    }
+}
+
+extension WatchSyncCoordinator.Payload {
+    /// The phone's state as the Watch shows it. Courses come from `CanonicalCourseProvider`:
+    /// the course list lives in `DataCache` files, never in the model container, so a
+    /// SwiftData `@Query` would return `[]`.
+    init(appState: AppState) {
+        self.init(
+            courses: CanonicalCourseProvider().currentCourses(),
+            customNames: DataCache.shared.loadCourseCustomNamesFlat(),
+            accentHex: String(format: "#%06X", UInt(bitPattern: Int(appState.accentColorHex)) & 0xFFFFFF),
+            loggedIn: appState.authService.hasStoredCredentials,
+            languageTag: appState.appLanguage == LanguageManager.system ? nil : appState.appLanguage,
+            visualPreset: appState.visualPreset
+        )
     }
 }

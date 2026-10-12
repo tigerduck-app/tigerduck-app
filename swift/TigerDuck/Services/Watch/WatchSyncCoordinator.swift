@@ -21,15 +21,8 @@ extension WCSession: WatchSessionPushing {}
 @MainActor
 final class WatchSyncCoordinator: NSObject {
 
-    private let session: WatchSessionPushing
-    private(set) var debounceTask: Task<Void, Never>?
-    private var pendingPayload: PendingPayload?
-    private var pendingSnapshot: WatchSnapshot?
-    private let debounceInterval: Duration = .milliseconds(500)
-    /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
-    private let sleep: @Sendable (Duration) async -> Void
-
-    private struct PendingPayload {
+    /// What one push sends: the courses and the settings the Watch renders them with.
+    struct Payload {
         let courses: [SDCourse]
         let customNames: [String: String]
         let accentHex: String
@@ -38,19 +31,54 @@ final class WatchSyncCoordinator: NSObject {
         let visualPreset: VisualPreset
     }
 
+    private let session: WatchSessionPushing
+    private(set) var debounceTask: Task<Void, Never>?
+    private var pendingPayload: Payload?
+    private var pendingSnapshot: WatchSnapshot?
+    private var payloadSource: (@MainActor () -> Payload)?
+    private var isActivated = false
+    private let debounceInterval: Duration = .milliseconds(500)
+    /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
+    private let sleep: @Sendable (Duration) async -> Void
+    private let republishCredentials: @MainActor () -> Void
+
     init(
         session: WatchSessionPushing = WCSession.default,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0, clock: .suspending) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0, clock: .suspending) },
+        republishCredentials: (@MainActor () -> Void)? = nil
     ) {
         self.session = session
         self.sleep = sleep
+        self.republishCredentials = republishCredentials
+            ?? { WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed() }
         super.init()
     }
 
+    /// Activates the session the first time; later calls do nothing.
     func activate() {
-        guard let wcSession = session as? WCSession else { return }
+        guard !isActivated, let wcSession = session as? WCSession else { return }
+        isActivated = true
         wcSession.delegate = self
         wcSession.activate()
+    }
+
+    /// Sets what `pushCurrentState()` reads at each push. Installed at launch, so a sync
+    /// request from the Watch is answered when iOS launches the app in the background,
+    /// where no scene and so no `WatchSyncBridge` exists.
+    func setPayloadSource(_ source: @escaping @MainActor () -> Payload) {
+        payloadSource = source
+    }
+
+    /// A debounced push of the current state, read through the payload source.
+    func pushCurrentState() {
+        guard let payloadSource else { return }
+        scheduleDebouncedPush(payloadSource())
+    }
+
+    /// The Watch asked for a sync: send the current state and the library credentials.
+    func answerSyncRequest() {
+        pushCurrentState()
+        republishCredentials()
     }
 
     /// Push immediately (used in tests). Production code uses
@@ -96,19 +124,8 @@ final class WatchSyncCoordinator: NSObject {
         deliver(snapshot)
     }
 
-    func scheduleDebouncedPush(
-        courses: [SDCourse],
-        customNames: [String: String],
-        accentHex: String,
-        loggedIn: Bool,
-        languageTag: String?,
-        visualPreset: VisualPreset
-    ) {
-        pendingPayload = PendingPayload(
-            courses: courses, customNames: customNames,
-            accentHex: accentHex, loggedIn: loggedIn, languageTag: languageTag,
-            visualPreset: visualPreset
-        )
+    func scheduleDebouncedPush(_ payload: Payload) {
+        pendingPayload = payload
         debounceTask?.cancel()
         let sleep = self.sleep
         let interval = debounceInterval
@@ -151,10 +168,7 @@ extension WatchSyncCoordinator: WCSessionDelegate {
                              didReceiveMessage message: [String: Any]) {
         guard let kind = message[WatchWireFormat.MessageKey.kind] as? String,
               kind == WatchWireFormat.MessageKind.syncRequest else { return }
-        Task { @MainActor in
-            // Future subscribers will hook into this to re-emit current state.
-            NotificationCenter.default.post(name: .watchSyncRequested, object: nil)
-        }
+        Task { @MainActor in self.answerSyncRequest() }
     }
 
     /// Reply-expecting messages. The watch asks for a library QR here so it
@@ -194,8 +208,4 @@ extension WatchSyncCoordinator: WCSessionDelegate {
             }
         }
     }
-}
-
-extension Notification.Name {
-    static let watchSyncRequested = Notification.Name("watchSyncRequested")
 }

@@ -64,8 +64,8 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         let coord = WatchSyncCoordinator(session: session, sleep: { await timer.sleep(for: $0) })
         var windows: [Task<Void, Never>] = []
         for accent in ["#A", "#B", "#C"] {
-            coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: accent,
-                                        loggedIn: true, languageTag: nil, visualPreset: .default)
+            coord.scheduleDebouncedPush(.init(courses: [], customNames: [:], accentHex: accent,
+                                              loggedIn: true, languageTag: nil, visualPreset: .default))
             windows.append(try XCTUnwrap(coord.debounceTask))
         }
         try await timer.waitUntilArmed(atLeast: 3)
@@ -78,5 +78,39 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         for window in windows { await window.value }
         XCTAssertEqual(session.pushedContexts.count, 1)
         XCTAssertEqual(session.pushedContexts[0][WatchWireFormat.Key.accentHex] as? String, "#C")
+    }
+
+    @MainActor
+    private final class Counter {
+        var count = 0
+    }
+
+    /// iOS can launch the app in the background for a Watch message, with no scene and so no
+    /// `WatchSyncBridge`, so the coordinator answers from the source installed at launch.
+    @MainActor
+    func test_syncRequest_isAnsweredFromThePayloadSource() async throws {
+        let session = StubSession()
+        let timer = ManualSleeper()
+        let republished = Counter()
+        let coord = WatchSyncCoordinator(
+            session: session,
+            sleep: { await timer.sleep(for: $0) },
+            republishCredentials: { republished.count += 1 }
+        )
+        coord.setPayloadSource {
+            .init(courses: [], customNames: [:], accentHex: "#123456",
+                  loggedIn: true, languageTag: nil, visualPreset: .default)
+        }
+
+        coord.session(WCSession.default, didReceiveMessage: [
+            WatchWireFormat.MessageKey.kind: WatchWireFormat.MessageKind.syncRequest,
+        ])
+        try await timer.waitUntilArmed()
+        await timer.fire()
+        await coord.debounceTask?.value
+
+        XCTAssertEqual(session.pushedContexts.count, 1)
+        XCTAssertEqual(session.pushedContexts[0][WatchWireFormat.Key.accentHex] as? String, "#123456")
+        XCTAssertEqual(republished.count, 1)
     }
 }

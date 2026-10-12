@@ -8,17 +8,23 @@ import UserNotifications
 
 @main
 struct TigerDuckApp: App {
-    @State private var appState = AppState()
+    @State private var appState: AppState
     @State private var sceneRefreshTask: Task<Void, Never>?
     @State private var rootLanguageId = UUID()
-    @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
+    @State private var widgetSnapshotWriter: WidgetSnapshotWriter
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var watchSyncCoordinator = WatchSyncCoordinator()
-    @State private var watchSyncActivated = false
+    @State private var watchSyncCoordinator: WatchSyncCoordinator
 
     init() {
+        // Built here, not as property defaults, so the launch work below can hold them. A silent
+        // push or a Watch message can launch the app in the background, where no scene appears
+        // and `.onAppear` never runs.
+        let appState = AppState()
+        let watchSync = WatchSyncCoordinator()
+        _appState = State(initialValue: appState)
+        _watchSyncCoordinator = State(initialValue: watchSync)
         AppLogger.start()
         #if DEBUG
         // Scaffolding for the Library freeze: tells a blocked main thread
@@ -32,6 +38,16 @@ struct TigerDuckApp: App {
         #endif
         PushCoordinator.assertEnvConsistency()
         SchoolMailBootstrap.install()
+        _widgetSnapshotWriter = State(initialValue: WidgetSnapshotWriter(appState: appState))
+        watchSync.setPayloadSource { WatchSyncCoordinator.Payload(appState: appState) }
+        // Sync triggers reach the backend, so they wait for onboarding as `AppState.init` does;
+        // `.onAppear` binds them again for a user who finishes onboarding in this session.
+        PushAppDelegate.launchWork = { delegate in
+            if appState.hasCompletedOnboarding {
+                appState.bindPushDelegate(delegate)
+            }
+            watchSync.activate()
+        }
     }
 
     /// `static` so the store is opened exactly once per process. As an
@@ -91,10 +107,7 @@ struct TigerDuckApp: App {
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .environment(appState)
                 .onAppear {
-                    if !watchSyncActivated {
-                        watchSyncActivated = true
-                        watchSyncCoordinator.activate()
-                    }
+                    watchSyncCoordinator.activate()
                     appState.bindPushDelegate(pushAppDelegate)
                     // Route custom-push taps into AppState. Capture the
                     // class instance weakly to avoid a retain cycle
@@ -112,10 +125,7 @@ struct TigerDuckApp: App {
                     }
                     appState.backgroundSync()
                     appState.startCloudSyncIfEnabled()
-                    if widgetSnapshotWriter == nil {
-                        widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
-                        widgetSnapshotWriter?.regenerate()
-                    }
+                    widgetSnapshotWriter.regenerate()
                     // `.onChange(of: scenePhase)` does not fire for the initial `.active`
                     // value, so the first background check starts here; later foreground
                     // returns go through the scene-phase observer.
@@ -148,7 +158,7 @@ struct TigerDuckApp: App {
                         Task {
                             if await AcademicCalendarStore.shared.refresh() {
                                 await appState.refreshLiveActivity()
-                                widgetSnapshotWriter?.regenerate()
+                                widgetSnapshotWriter.regenerate()
                             }
                         }
                         // Cancel the previous activation's refresh so rapid scene toggles do not
@@ -164,7 +174,7 @@ struct TigerDuckApp: App {
                             Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
                         }
                         appState.startRevisionPolling()
-                        widgetSnapshotWriter?.regenerate()
+                        widgetSnapshotWriter.regenerate()
                         // App Store update check, throttled inside to once per
                         // ``AppConstants/updateCheckThrottle`` so rapid scene
                         // toggles don't generate iTunes Lookup traffic.
