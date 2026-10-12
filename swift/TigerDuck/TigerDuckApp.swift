@@ -48,7 +48,6 @@ struct TigerDuckApp: App {
         let watchSync = WatchSyncCoordinator()
         _appState = State(initialValue: appState)
         _watchSyncCoordinator = State(initialValue: watchSync)
-        AppLogger.start()
         #if DEBUG
         // Scaffolding for the Library freeze: tells a blocked main thread
         // apart from swallowed touches, which a spinning ProgressView
@@ -260,7 +259,6 @@ struct TigerDuckApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        AppLogger.start()
         PushCoordinator.assertEnvConsistency()
     }
 
