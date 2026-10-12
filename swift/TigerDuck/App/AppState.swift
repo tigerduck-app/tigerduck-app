@@ -246,12 +246,10 @@ final class AppState {
     /// its server payload is stale relative to the edit.
     var overrideEditGeneration = 0
 
-    /// Reentrancy guard for `syncOverridesFromBackend`. The revision poll,
-    /// pull-to-refresh, and sync_trigger push can all invoke it concurrently;
-    /// they run on the MainActor but interleave at await suspension points, so
-    /// without this they clobber each other's cache read-modify-writes and can
-    /// resurrect a just-dismissed conflict alert.
-    var isSyncingOverrides = false
+    /// One `syncOverridesFromBackend` at a time, for the revision poll, a pull
+    /// to refresh and a sync trigger push alike.
+    @ObservationIgnored
+    let fullSyncGate = FullSyncGate()
 
     /// In-flight guard for ``checkPendingConflicts``. See the comment there.
     var isCheckingConflicts = false

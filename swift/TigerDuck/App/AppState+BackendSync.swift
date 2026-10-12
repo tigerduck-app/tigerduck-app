@@ -12,19 +12,20 @@ extension AppState {
     /// Fetch override state (done/ignored) from the backend and apply it
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
-    func syncOverridesFromBackend(retried: Bool = false) async {
+    ///
+    /// One runs at a time. `followUpIfBusy` is for a sync trigger push: one that arrives during
+    /// a pull waits for one more, since that pull may predate the change it announces.
+    func syncOverridesFromBackend(followUpIfBusy: Bool = false) async {
         guard Defaults[.cloudSyncEnabled] else { return }
-        // Reentrancy guard, set before the first await so two MainActor callers cannot both
-        // pass. The 401 retry (`retried: true`) re-enters from our own catch, so it skips the
-        // guard and reuses the flag the outer call still holds.
-        if !retried {
-            guard !isSyncingOverrides else {
-                AppLogger.sync.info("[syncOverrides] skipped — already in flight")
-                return
-            }
-            isSyncingOverrides = true
+        if fullSyncGate.isRunning {
+            AppLogger.sync.info("[syncOverrides] already in flight, follow-up: \(followUpIfBusy, privacy: .public)")
         }
-        defer { if !retried { isSyncingOverrides = false } }
+        await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
+            await runFullSync(retried: false)
+        }
+    }
+
+    private func runFullSync(retried: Bool) async {
         // Sign-out clears what this writes but cancels only `syncTask`, which a poll, a push or a
         // pull does not run in. So no write below follows an await without this check.
         let generation = authService.loginGeneration
@@ -231,7 +232,7 @@ extension AppState {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
                     guard fullSyncMayWrite(since: generation) else { return }
-                    await syncOverridesFromBackend(retried: true)
+                    await runFullSync(retried: true)
                 }
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
@@ -471,6 +472,36 @@ extension AppState {
         // and an upload only fills a blank `color_hex`: generated ones would stick account-wide.
         // Picks go through `syncCourseOverride`, whose PATCH overwrites; Android sends only those.
         return PushAPI.CourseUploadRequest(courses: entries, forceKeys: forceKeys)
+    }
+}
+
+/// Runs one full sync at a time. Callers on the main actor interleave at its awaits and would
+/// clobber each other's cache read-modify-writes, or bring back a dismissed conflict alert.
+@MainActor
+final class FullSyncGate {
+    private(set) var isRunning = false
+    private var followUpWaiters: [CheckedContinuation<Void, Never>] = []
+
+    var queuedFollowUps: Int { followUpWaiters.count }
+
+    /// Runs `body` unless a run is in flight. Then a call with `followUp` waits for one more run
+    /// that starts after the current one, shared by every call that asked meanwhile; one without
+    /// returns at once. `mayFollow` is checked before each follow-up.
+    func run(followUp: Bool, mayFollow: () -> Bool, _ body: () async -> Void) async {
+        guard !isRunning else {
+            guard followUp else { return }
+            await withCheckedContinuation { followUpWaiters.append($0) }
+            return
+        }
+        isRunning = true
+        await body()
+        while !followUpWaiters.isEmpty {
+            let waiters = followUpWaiters
+            followUpWaiters = []
+            if mayFollow() { await body() }
+            for waiter in waiters { waiter.resume() }
+        }
+        isRunning = false
     }
 }
 
