@@ -1,48 +1,74 @@
 import Foundation
 
-/// Wraps `core_webservice_get_site_info`, memoizing the authenticated user's
-/// `userid` for the wstoken that asked.
+/// Wraps `core_webservice_get_site_info`, memoizing the authenticated user's `userid` and the
+/// web service functions the site allows, for the wstoken that asked.
 ///
 /// Keyed by the token because a token belongs to one account: an answer that lands
 /// after a sign-out or an account switch can never stand for the next account.
 actor MoodleSiteInfoService {
     static let shared = MoodleSiteInfoService()
 
-    private var cached: (token: String, userId: Int)?
-    private var inFlight: (token: String, task: Task<Int, Error>)?
+    nonisolated struct SiteInfo: Sendable, Equatable {
+        let userId: Int
+        /// A feature hides when a function it calls is missing here, rather than learning it from
+        /// the `accessexception` the call would get.
+        let functions: Set<String>
+    }
+
+    private var cached: (token: String, info: SiteInfo)?
+    private var inFlight: (token: String, task: Task<SiteInfo, Error>)?
 
     private init() {}
 
     /// The Moodle userid of the account `token` belongs to. Callers that hit
     /// `.invalidToken` refresh the token and ask again with the new one.
     func userId(token: String) async throws -> Int {
+        try await siteInfo(token: token).userId
+    }
+
+    /// The functions the site lets `token` call.
+    func functions(token: String) async throws -> Set<String> {
+        try await siteInfo(token: token).functions
+    }
+
+    private func siteInfo(token: String) async throws -> SiteInfo {
         if let cached, cached.token == token {
-            return cached.userId
+            return cached.info
         }
         if let inFlight, inFlight.token == token {
             return try await inFlight.task.value
         }
-        let task = Task { try await Self.fetchUserId(token: token) }
+        let task = Task { try await Self.fetchSiteInfo(token: token) }
         inFlight = (token, task)
         defer { if inFlight?.task == task { inFlight = nil } }
-        let userId = try await task.value
-        cached = (token, userId)
-        return userId
+        let info = try await task.value
+        cached = (token, info)
+        return info
     }
 
-    /// Drop the memoized userid. Called when the Moodle token is cleared.
+    /// Drop the memoized answer. Called when the Moodle token is cleared.
     func invalidateCache() {
         cached = nil
         inFlight = nil
     }
 
-    private nonisolated static func fetchUserId(token: String) async throws -> Int {
-        try await MoodleWebserviceClient.call(
-            "core_webservice_get_site_info", token: token, as: SiteInfo.self
-        ).userid
+    nonisolated static func fetchSiteInfo(
+        token: String,
+        session: URLSession = MoodleWebserviceClient.session,
+        siteURL: URL = AppConstants.moodleBaseURL
+    ) async throws -> SiteInfo {
+        let answer = try await MoodleWebserviceClient.call(
+            "core_webservice_get_site_info", token: token, as: RawSiteInfo.self, session: session, siteURL: siteURL
+        )
+        return SiteInfo(userId: answer.userid, functions: Set((answer.functions ?? []).map(\.name)))
     }
 
-    private nonisolated struct SiteInfo: Decodable, Sendable {
+    private nonisolated struct RawSiteInfo: Decodable, Sendable {
+        struct Function: Decodable, Sendable {
+            let name: String
+        }
+
         let userid: Int
+        let functions: [Function]?
     }
 }
