@@ -155,6 +155,19 @@ struct MoodleWebserviceClientTests {
         #expect(await log.events == ["renew old"])
     }
 
+    @Test("an access error from the renewed token is final")
+    func accessErrorAfterRenewal() async {
+        let log = TokenLog()
+        var answers: [MoodleWebserviceError] = [.invalidToken, .accessDenied]
+        await #expect(throws: MoodleWebserviceError.accessDenied) {
+            try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { _ -> String in
+                throw answers.removeFirst()
+            }
+        }
+        #expect(answers.isEmpty)
+        #expect(await log.events == ["renew old"])
+    }
+
     @Test("another failure is not retried, and no stored token is renewed first")
     func otherFailuresAndMissingToken() async throws {
         let log = TokenLog()

@@ -16,15 +16,37 @@ actor MoodleTokenService {
             }
             return (studentId, password)
         },
-        storedToken: { KeychainManager.loadString(key: AppConstants.KeychainKeys.moodleToken) },
+        tokens: .keychain,
         harvest: { try await performOidcLogin(studentId: $0, password: $1) }
     )
 
     /// The keychain's NTUST account and Moodle token, and the OIDC harvest. Tests pass stand-ins,
     /// so no request reaches the school.
     private let storedCredentials: @Sendable () -> (studentId: String, password: String)?
-    private let storedToken: @Sendable () -> String?
+    private let tokens: TokenStore
     private let harvest: @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
+
+    struct TokenStore: Sendable {
+        let load: @Sendable () -> String?
+        let save: @Sendable (TokenTriple) -> Void
+        let drop: @Sendable () -> Void
+
+        static let keychain = TokenStore(
+            load: { KeychainManager.loadString(key: AppConstants.KeychainKeys.moodleToken) },
+            save: { triple in
+                KeychainManager.saveString(key: AppConstants.KeychainKeys.moodleToken, value: triple.wstoken)
+                if let pt = triple.privatetoken, !pt.isEmpty {
+                    KeychainManager.saveString(key: AppConstants.KeychainKeys.moodlePrivateToken, value: pt)
+                } else {
+                    KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
+                }
+            },
+            drop: {
+                KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
+                KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
+            }
+        )
+    }
 
     private static let ssoBaseURL = URL(string: "https://ssoam2.ntust.edu.tw")!
     private static let service = "moodle_mobile_app"
@@ -81,11 +103,11 @@ actor MoodleTokenService {
     )
     init(
         storedCredentials: @escaping @Sendable () -> (studentId: String, password: String)?,
-        storedToken: @escaping @Sendable () -> String?,
+        tokens: TokenStore,
         harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
     ) {
         self.storedCredentials = storedCredentials
-        self.storedToken = storedToken
+        self.tokens = tokens
         self.harvest = harvest
     }
 
@@ -111,7 +133,7 @@ actor MoodleTokenService {
         let task = Task<String, Error> {
             let triple = try await harvest(normalizedId, password)
             guard signInGeneration == generation else { throw CancellationError() }
-            Self.persist(triple: triple)
+            tokens.save(triple)
             return triple.wstoken
         }
         inFlightTokenTask = (key, task)
@@ -122,14 +144,16 @@ actor MoodleTokenService {
     }
 
     /// Silently refresh the Moodle token using stored NTUST credentials, unless another call has
-    /// already replaced `rejected`: then the stored token comes back. The rejected token stays
-    /// until a harvest succeeds. Concurrent calls share the same in-flight refresh task.
+    /// already replaced `rejected`: then the stored token comes back. Moodle keeps no token it
+    /// calls invalid, so a rejected one still stored is dropped before the harvest rather than
+    /// sent to the backend. Concurrent calls share the same in-flight refresh task.
     func refreshTokenIfNeeded(replacing rejected: String? = nil) async throws -> String {
         if let existing = inFlightRefreshTask {
             return try await existing.value
         }
-        if let current = storedToken(), current != rejected {
-            return current
+        if let current = tokens.load() {
+            guard current == rejected else { return current }
+            tokens.drop()
         }
         // The harvest posts the stored password, so it stops as the SSO sign-ins do.
         guard !SSOLoginService.storedPasswordRejected else {
@@ -155,7 +179,7 @@ actor MoodleTokenService {
                 throw error
             }
             guard signInGeneration == generation else { throw CancellationError() }
-            Self.persist(triple: triple)
+            tokens.save(triple)
             return triple.wstoken
         }
         inFlightRefreshTask = task
@@ -175,11 +199,10 @@ actor MoodleTokenService {
         await clearToken()
     }
 
-    /// Only sign-out clears the token and the cookies. A renewal leaves the cookies alone, since
-    /// a harvest that another call started may be using them.
+    /// Sign-out only. A renewal leaves the cookies alone, since a harvest that another call
+    /// started may be using them.
     private func clearToken() async {
-        KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
-        KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
+        tokens.drop()
         // Purge SSO and Moodle cookies so stale anti-forgery and session cookies do not bleed
         // into the next login. Parent domains count, since `Domain=ntust.edu.tw` applies to
         // ssoam2; other NTUST subdomains share the jar (WebView sessions) and keep theirs.
@@ -196,7 +219,7 @@ actor MoodleTokenService {
 
     /// Return the currently stored token, or nil if none.
     func currentToken() async -> String? {
-        storedToken()
+        tokens.load()
     }
 
     // MARK: - OIDC flow
@@ -205,23 +228,6 @@ actor MoodleTokenService {
         let signature: String
         let wstoken: String
         let privatetoken: String?
-    }
-
-    private nonisolated static func persist(triple: TokenTriple) {
-        KeychainManager.saveString(
-            key: AppConstants.KeychainKeys.moodleToken,
-            value: triple.wstoken,
-        )
-        if let pt = triple.privatetoken, !pt.isEmpty {
-            KeychainManager.saveString(
-                key: AppConstants.KeychainKeys.moodlePrivateToken,
-                value: pt,
-            )
-        } else {
-            KeychainManager.delete(
-                key: AppConstants.KeychainKeys.moodlePrivateToken,
-            )
-        }
     }
 
     private nonisolated static func performOidcLogin(
