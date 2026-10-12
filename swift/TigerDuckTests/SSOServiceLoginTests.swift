@@ -286,7 +286,7 @@ struct SSOServiceLoginTests {
         failure: MoodleWebserviceError?,
         stored: StoredPassword = StoredPassword("unused"),
         token: OSAllocatedUnfairLock<String?> = OSAllocatedUnfairLock(initialState: nil),
-        duringHarvest: @escaping @Sendable () -> Void = {}
+        duringHarvest: @escaping @Sendable () async -> Void = {}
     ) -> MoodleTokenService {
         MoodleTokenService(
             storedCredentials: { (studentId: "b00000000", password: stored.current) },
@@ -297,7 +297,7 @@ struct SSOServiceLoginTests {
             ),
             harvest: { _, _ in
                 await log.record()
-                duringHarvest()
+                await duringHarvest()
                 if let failure { throw failure }
                 return MoodleTokenService.TokenTriple(signature: "", wstoken: "new", privatetoken: nil)
             }
@@ -353,14 +353,22 @@ struct SSOServiceLoginTests {
         #expect(await log.calls == 2)
     }
 
-    @Test("parallel renewals of a rejected token share one harvest, and a later one gets its result")
+    @Test("a renewal still running is shared, and a later one gets its result")
     func renewalServesEveryCallerThatMetTheOldToken() async {
         let log = HarvestLog()
         let token = OSAllocatedUnfairLock<String?>(initialState: "old")
-        let service = tokenService(log: log, failure: nil, token: token)
+        let released = OSAllocatedUnfairLock(initialState: false)
+        let service = tokenService(log: log, failure: nil, token: token) {
+            while !released.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
+        }
         let answers = await withLatch(false) { () async -> [String?] in
             async let first = try? service.refreshTokenIfNeeded(replacing: "old")
+            while await log.calls == 0 { try? await Task.sleep(for: .milliseconds(5)) }
+            // The held harvest has dropped the old token, so a second call that did not join it
+            // would harvest again.
             async let second = try? service.refreshTokenIfNeeded(replacing: "old")
+            try? await Task.sleep(for: .milliseconds(100))
+            released.withLock { $0 = true }
             let together = await [first, second]
             return together + [try? await service.refreshTokenIfNeeded(replacing: "old")]
         }
