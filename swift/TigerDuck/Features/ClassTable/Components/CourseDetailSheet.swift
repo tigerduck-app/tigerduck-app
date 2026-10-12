@@ -210,7 +210,8 @@ struct CourseDetailSheet: View {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
                     if let url = assignment.moodleOpenURL {
-                        openURL(url, fallback: assignment.moodleWebURL)
+                        let web = assignment.moodleWebURL
+                        Task { await openURL(url, fallback: web) }
                     }
                 } label: {
                     HStack {
@@ -247,7 +248,8 @@ struct CourseDetailSheet: View {
     /// `moodleOpenURL` returns the HTTPS URL instead.
     private func openMoodleCourse() {
         guard let url = course.moodleOpenURL else { return }
-        openURL(url, fallback: course.moodleWebURL)
+        let web = course.moodleWebURL
+        Task { await openURL(url, fallback: web) }
     }
 
     /// The course code is what students paste into course add/drop, the portal

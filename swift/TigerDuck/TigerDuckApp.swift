@@ -232,17 +232,16 @@ struct TigerDuckApp: App {
         }
     }
 
-    /// Opens the assignment in the Moodle app, as its Home row does, or its web page when iOS
-    /// refuses the `moodlemobile://` link because the app is not installed.
+    /// Opens the assignment in the Moodle app, as its Home row does, or its web page, signed in,
+    /// when iOS refuses the `moodlemobile://` link because the app is not installed.
     @MainActor
     private static func openInMoodle(_ assignment: SDAssignment) {
+        let link = assignment.moodleDeepLink
         let web = assignment.moodleWebURL
-        guard let link = assignment.moodleDeepLink else {
-            if let web { UIApplication.shared.open(web) }
-            return
-        }
-        UIApplication.shared.open(link) { opened in
-            if !opened, let web { UIApplication.shared.open(web) }
+        Task {
+            if let link, await UIApplication.shared.open(link) { return }
+            guard let web else { return }
+            await UIApplication.shared.open(await MoodleAutologinService.shared.url(for: web))
         }
     }
 }

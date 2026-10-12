@@ -27,7 +27,26 @@ struct MoodleHomeworkRegressionTests {
         var urls: [URL] = []
     }
 
-    @Test func moodleLink_opensTheWebPageWhenNoAppTakesTheDeepLink() async throws {
+    private actor KeyRequests {
+        private(set) var count = 0
+        func record() { count += 1 }
+    }
+
+    private static func autologin(counting requests: KeyRequests = KeyRequests()) -> MoodleAutologinService {
+        MoodleAutologinService(
+            keySource: {
+                await requests.record()
+                return MoodleAutologinService.Key(
+                    userId: 42,
+                    value: "k3y",
+                    autologinURL: "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
+                )
+            },
+            signInGeneration: { 0 }
+        )
+    }
+
+    @Test func moodleLink_opensTheWebPageSignedInWhenNoAppTakesTheDeepLink() async throws {
         let assignment = SDAssignment(
             assignmentId: "event-42",
             courseNo: "EC1013701",
@@ -45,10 +64,12 @@ struct MoodleHomeworkRegressionTests {
             return url.scheme == "https" ? .handled : .discarded
         }
 
-        openURL(deepLink, fallback: webPage)
+        let signedIn = try #require(URL(string: "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
+            + "?userid=42&key=k3y&urltogo=https%3A%2F%2Fmoodle2.ntust.edu.tw%2Fmod%2Fassign%2Fview.php%3Fid%3D12345"))
 
-        try await waitUntil { opened.urls.count == 2 }
-        #expect(opened.urls == [deepLink, webPage])
+        await openURL(deepLink, fallback: webPage, autologin: Self.autologin())
+
+        #expect(opened.urls == [deepLink, signedIn])
     }
 
     @Test func moodleLink_staysInTheMoodleAppWhenItTakesTheDeepLink() async throws {
@@ -59,13 +80,29 @@ struct MoodleHomeworkRegressionTests {
             opened.urls.append(url)
             return .handled
         }
+        let requests = KeyRequests()
 
-        openURL(deepLink, fallback: webPage)
+        await openURL(deepLink, fallback: webPage, autologin: Self.autologin(counting: requests))
 
-        try await waitUntil { !opened.urls.isEmpty }
-        // A late fallback would arrive within a hop of the first open.
-        try await Task.sleep(for: .milliseconds(50))
         #expect(opened.urls == [deepLink])
+        #expect(await requests.count == 0)
+    }
+
+    /// The Mac's browser setting hands the web page over as the link and as its fallback.
+    @Test func moodleLink_opensAWebPageLinkSignedInOnce() async throws {
+        let webPage = try #require(URL(string: "https://moodle2.ntust.edu.tw/course/view.php?id=7"))
+        let opened = OpenedURLs()
+        let openURL = OpenURLAction { url in
+            opened.urls.append(url)
+            return .handled
+        }
+
+        let signedIn = try #require(URL(string: "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
+            + "?userid=42&key=k3y&urltogo=https%3A%2F%2Fmoodle2.ntust.edu.tw%2Fcourse%2Fview.php%3Fid%3D7"))
+
+        await openURL(webPage, fallback: webPage, autologin: Self.autologin())
+
+        #expect(opened.urls == [signedIn])
     }
 
     @Test func courseNoFromMoodleId_onlyStripsNumericSemesterPrefix() {
