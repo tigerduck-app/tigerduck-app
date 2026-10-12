@@ -57,7 +57,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 - **Now & Next** 主畫面：當下 / 下一節課，以及進行中課程的進度
 - **Today** 列表與課程詳情頁
 - 抬腕即見**入館 QR-Code**，全螢幕顯示、閒置自動淡出頁碼
-- **Complication** 把下一節課放到錶面（圓形 / 矩形 / 單行 / 邊角四種）
+- **Complication** 把下一節課放到錶面（圓形 / 矩形 / 單行 / 邊角四種），下一版推出
 - 透過 WatchConnectivity 自動同步課表與登入憑證，無需在 Watch 上重新登入
 
 ### 🧩 **小工具**
@@ -203,7 +203,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 ### ⌚ Apple Watch / 🧩 小工具 / 💻 macOS
 - [x] **Apple Watch App** – 圖書證 QR、WatchConnectivity 憑證同步 `v1.7.0`
 - [x] **Watch Now & Next / Today / 課程詳情** `v1.7.0`
-- [x] **Watch Complication** – 下一節課直接顯示在錶面 `v1.7.0`
+- [ ] **Watch Complication** – 下一節課直接顯示在錶面，下一版推出
 - [x] **iOS / macOS 小工具** – 下一節課、今日 / 本週課表、鎖定畫面 Accessory、圖書證 QR 捷徑 `v1.7.0`
 - [x] **macOS App** – 原生側邊欄版面 `v1.7.0`、推播與帳號同步 `v2.0.0`
 

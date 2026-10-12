@@ -25,8 +25,9 @@ working in those directories.
   debug clock override applies.
 - Persistence is split: SwiftData models in `Models/SwiftData/` and JSON caches in
   `Services/Core/DataCache.swift`.
-- Code the Watch app also needs goes in `swift/Shared/`, which both targets compile. The widget
-  extensions do not compile it and keep their own copies, such as `WidgetTaipei`.
+- Code the Watch app also needs goes in `swift/Shared/`, which both targets compile. The
+  `TigerDuckWidgets` and Live Activity extensions do not compile it and keep their own copies,
+  such as `WidgetTaipei`.
 
 ## Anti-patterns
 

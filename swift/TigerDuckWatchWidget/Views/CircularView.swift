@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct CircularView: View {
     let entry: NextClassEntry

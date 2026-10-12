@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct InlineView: View {
     let entry: NextClassEntry

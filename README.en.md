@@ -57,7 +57,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 - **Now & Next** home screen: the current and next class, with progress for the one in session
 - **Today** list and per-course detail
 - Raise your wrist for the **library entry QR code** — fullscreen, with idle-fade page dots
-- **Complication** puts the next class on the watch face (circular / rectangular / inline / corner)
+- **Complication** puts the next class on the watch face (circular / rectangular / inline / corner), coming in the next release
 - Schedule and credentials sync over WatchConnectivity — no separate sign-in on the Watch
 
 ### 🧩 **Widgets**
@@ -202,7 +202,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 ### ⌚ Apple Watch / 🧩 Widgets / 💻 macOS
 - [x] **Apple Watch app** — Library QR, WatchConnectivity credential sync `v1.7.0`
 - [x] **Watch Now & Next / Today / course detail** `v1.7.0`
-- [x] **Watch complication** — Next class straight on the watch face `v1.7.0`
+- [ ] **Watch complication** — Next class straight on the watch face, coming in the next release
 - [x] **iOS / macOS widgets** — Next class, today's and this week's timetable, Lock Screen accessories, library QR shortcut `v1.7.0`
 - [x] **macOS app** — Native sidebar layout `v1.7.0`, push and account sync `v2.0.0`
 

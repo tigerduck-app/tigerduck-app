@@ -6,9 +6,9 @@ import Foundation
 /// `Calendar.current` follows the device and would be up to a day off abroad.
 ///
 /// The phone app re-exports these as `AppConstants.taipeiTimeZone` and
-/// `AppConstants.taipeiCalendar`. The widget extension keeps its own copy,
-/// `WidgetTaipei`, because `Shared/` is not in its target membership.
-public enum SharedTaipei {
+/// `AppConstants.taipeiCalendar`. The `TigerDuckWidgets` extension keeps its own
+/// copy, `WidgetTaipei`, because `Shared/` is not in its target membership.
+public nonisolated enum SharedTaipei {
     public static let timeZone: TimeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
 
     public static let calendar: Calendar = {
