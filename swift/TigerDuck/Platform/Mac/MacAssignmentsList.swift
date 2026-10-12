@@ -184,7 +184,7 @@ struct MacAssignmentsList: View {
 
     private func openInBrowser(_ assignment: SDAssignment) {
         guard let url = assignment.moodleOpenURL else { return }
-        NSWorkspace.shared.open(url)
+        Task { NSWorkspace.shared.open(await MoodleAutologinService.shared.url(for: url)) }
     }
 
     @ViewBuilder
