@@ -1,8 +1,0 @@
-{
-  "lsp": {
-    "marksman": {
-      "command": ["marksman", "server"],
-      "extensions": [".md"]
-    }
-  }
-}

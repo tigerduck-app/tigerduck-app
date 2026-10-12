@@ -1,7 +1,7 @@
 name: Tests
 
-# Unit tests only: simulator UI automation flakes, so TigerDuckUITests stays out, and the
-# macOS destination is not tested here. The phone and watch suites run as parallel jobs.
+# Unit tests only: simulator UI automation flakes, so TigerDuckUITests stays out. The phone and
+# watch suites run as parallel jobs, next to a build of the macOS app, whose tests are not run.
 
 
 on:
@@ -282,6 +282,83 @@ jobs:
           name: xcresults-${{ matrix.leg }}
           path: Tests.xcresult
           retention-days: 7
+
+  # A Mac-only compile error passes both legs above and `tools/check_macos_sources.py`, which
+  # checks only which files the Mac build compiles. A job of its own, not a leg: it shares none
+  # of their simulator and test steps. It runs nothing, so it builds unsigned.
+  mac-build:
+    name: macOS build
+    runs-on: macos-26
+    timeout-minutes: 60
+    # As in `unit-tests`: a push run deletes the cache it started from once it saved a newer one.
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # app-translation carries the .xcstrings the app target compiles.
+          submodules: true
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      # Skips the steps, not the job, for the documentation-only pull requests `unit-tests` skips.
+      - name: Changed paths
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only HEAD^1 HEAD)
+            if [ -n "$files" ] && ! printf '%s\n' "$files" \
+                | grep -qvE '\.md$|^(docs|openspec|\.claude|\.agents|\.greptile)/'; then
+              run=false
+              echo "Documentation-only change: skipping the build."
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - name: Xcode version
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          xcodebuild -version
+          sysctl -n machdep.cpu.brand_string hw.ncpu
+
+      # The same cache action and rules as `unit-tests`, under its own `mac` key.
+      - name: Restore the last build
+        if: steps.changes.outputs.run == 'true'
+        uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
+        with:
+          key: xcode-mac-${{ github.sha }}
+          restore-keys: xcode-mac-
+          deriveddata-directory: ${{ runner.temp }}/DerivedData
+          sourcepackages-directory: ${{ runner.temp }}/SourcePackages
+          swiftpm-cache-key: xcode-packages-mac-${{ hashFiles('swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-mtime-targets: |
+            swift/**/*.icon
+            swift/**/*.icon/**/*
+          cache-read-only: ${{ github.event_name != 'push' }}
+          delete-used-deriveddata-cache: ${{ github.event_name == 'push' }}
+
+      - name: Build
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          log="$RUNNER_TEMP/build.log"
+          if ! xcodebuild build \
+              -project swift/TigerDuck.xcodeproj \
+              -scheme TigerDuck \
+              -destination 'platform=macOS' \
+              -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+              -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+              -showBuildTimingSummary \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              > "$log" 2>&1; then
+            grep -E "error:" "$log" | sort -u | head -50
+            tail -n 30 "$log"
+            exit 1
+          fi
+          sed -n '/Build Timing Summary/,$p' "$log" | grep -v '^$' | head -10
 
   # The vendored SwiftMail carries local patches (swift/Packages/SwiftMail/VENDORED.md), and its
   # SwiftPM tests are in no Xcode scheme, so only this job runs them. They need no simulator

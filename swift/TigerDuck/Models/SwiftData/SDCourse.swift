@@ -51,6 +51,11 @@ final class SDCourse: Identifiable {
     /// which is how a row cached before this field existed reads.
     var allYear: String = ""
 
+    /// Required or elective from QueryCourse (`RequireOption`): "R" required, "E" elective, as
+    /// the public course search answers. Empty when unknown, as for a row merged from another
+    /// device or cached before this field existed.
+    var requireOption: String = ""
+
     /// Semester code for which this course was enrolled (e.g. "1142").
     /// Empty string = unknown / pre-feature cache; treated as current semester.
     var semester: String = ""
@@ -75,7 +80,8 @@ final class SDCourse: Identifiable {
         semester: String = "",
         classroomMap: [String: String] = [:],
         dimension: String = "",
-        allYear: String = ""
+        allYear: String = "",
+        requireOption: String = ""
     ) {
         self.courseNo = courseNo
         self.courseName = courseName
@@ -93,6 +99,7 @@ final class SDCourse: Identifiable {
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         self.dimension = dimension
         self.allYear = allYear
+        self.requireOption = requireOption
     }
 
     var schedule: [Int: [String]] {

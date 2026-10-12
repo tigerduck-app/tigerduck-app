@@ -132,12 +132,6 @@ final class PushAPIClient: Sendable {
     }
     #endif
 
-    /// v3: device identity comes from the JWT; only `sourceId` is needed in the path.
-    func cancelSchedule(sourceId: String) async throws {
-        let safeSource = Self.percentEncoded(sourceId)
-        try await delete(path: "/schedule/\(safeSource)")
-    }
-
     // MARK: - Credential refresh
 
     func updateCredentials(

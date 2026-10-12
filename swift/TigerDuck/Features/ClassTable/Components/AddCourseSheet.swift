@@ -493,24 +493,6 @@ struct AddCourseSheet: View {
         text.applyingTransform(hansHantTransform, reverse: false) ?? text
     }
 
-    /// Returns "zh" if the query contains any CJK Unified Ideograph
-    /// (traditional, simplified, or extension blocks); otherwise "en".
-    static func queryLanguage(of query: String) -> String {
-        for scalar in query.unicodeScalars {
-            switch scalar.value {
-            case 0x3400...0x4DBF,    // CJK Unified Ideographs Extension A
-                 0x4E00...0x9FFF,    // CJK Unified Ideographs
-                 0x20000...0x2A6DF,  // Extension B
-                 0x2A700...0x2EBEF,  // Extensions C, D, E, F
-                 0x30000...0x3134F:  // Extension G
-                return "zh"
-            default:
-                continue
-            }
-        }
-        return "en"
-    }
-
     // MARK: - Group & Add
 
     private struct GroupedCourse {
@@ -535,6 +517,7 @@ struct AddCourseSheet: View {
         /// its dimension / term span without waiting for the next refresh.
         let dimension: String
         let allYear: String
+        let requireOption: String
 
         var displayName: String {
             guard let secondary = secondaryName,
@@ -598,7 +581,8 @@ struct AddCourseSheet: View {
                     // Same first-non-empty rule as `buildSDCourse`: the row
                     // that names the dimension may not be the one seen first.
                     dimension: existing.dimension.isEmpty ? (result.Dimension ?? "") : existing.dimension,
-                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear
+                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear,
+                    requireOption: existing.requireOption.isEmpty ? (result.RequireOption ?? "") : existing.requireOption
                 )
                 seen[key] = existing
             } else {
@@ -624,7 +608,8 @@ struct AddCourseSheet: View {
                     schedule: partial,
                     nodeDisplay: result.Node ?? "",
                     dimension: result.Dimension ?? "",
-                    allYear: result.AllYear ?? ""
+                    allYear: result.AllYear ?? "",
+                    requireOption: result.RequireOption ?? ""
                 )
             }
         }
@@ -646,7 +631,8 @@ struct AddCourseSheet: View {
             semester: semester,
             classroomMap: group.classroomMap,
             dimension: group.dimension,
-            allYear: group.allYear
+            allYear: group.allYear,
+            requireOption: group.requireOption
         )
         if onAdd(course) {
             sessionAddedCourseNos.insert(group.courseNo)

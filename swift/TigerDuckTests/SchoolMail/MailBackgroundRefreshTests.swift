@@ -44,6 +44,16 @@ struct MailBackgroundRefreshTests {
             featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: true))
     }
 
+    /// Leaving the foreground cannot wait for a permission read, so it decides from the last
+    /// one, which every read records. Every reader here records the simulator's real answer.
+    @Test func leavingTheForegroundDecidesFromTheLastPermissionRead() async {
+        let denied = await MailNotificationPermission.isDenied()
+        #expect(MailNotificationPermission.lastKnownDenied == denied)
+        #expect(MailBackgroundRefresh.shouldRescheduleAfterHandling(
+            featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false,
+            notificationsDenied: MailNotificationPermission.lastKnownDenied) == !denied)
+    }
+
     /// Installs onto its own `MailAccountManager` and `MailNotifier` — never
     /// `MailAccountManager.shared`, whose preferences are the app's real `UserDefaults` — and
     /// then *runs* the hooks. The previous version only asserted the five closures were

@@ -1,6 +1,7 @@
 #if os(iOS)
 import BackgroundTasks
 import Foundation
+import os
 import UserNotifications
 
 /// School Mail's Background App Refresh. iOS decides when it runs, often hours apart, so the
@@ -112,7 +113,15 @@ nonisolated enum MailNotificationPermission {
     }
 
     static func isDenied() async -> Bool {
-        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
+        let denied = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
+        lastRead.withLock { $0 = denied }
+        return denied
     }
+
+    /// What the last ``isDenied()`` found, `false` before any. Leaving the foreground decides
+    /// from this: iOS can suspend the app before a fresh read returns, and no refresh is asked for.
+    static var lastKnownDenied: Bool { lastRead.withLock { $0 } }
+
+    private static let lastRead = OSAllocatedUnfairLock(initialState: false)
 }
 #endif

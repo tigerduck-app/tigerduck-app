@@ -272,12 +272,6 @@ final class HomeViewModel {
         isUpdatingFromNetwork = false
     }
 
-    // From the whole cache, not `upcomingAssignments`: under the Ignored filter that list
-    // holds only ignored rows, and a course's sheet still lists what is due.
-    func hasUnfinishedAssignment(for courseNo: String) -> Bool {
-        allAssignmentsCache.hasUnfinished(for: courseNo)
-    }
-
     func assignmentsFor(courseNo: String) -> [SDAssignment] {
         allAssignmentsCache.unfinished(for: courseNo).sorted { $0.dueDate < $1.dueDate }
     }

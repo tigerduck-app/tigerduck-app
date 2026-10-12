@@ -17,26 +17,30 @@ final class DataCache {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    private init() {
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("TigerDuckCache", isDirectory: true)
+    private convenience init() {
+        self.init(
+            cacheDir: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("TigerDuckCache", isDirectory: true),
+            persistentDir: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("TigerDuckData", isDirectory: true)
+        )
+    }
+
+    /// The app uses ``shared``; a test passes directories of its own, out of the app's caches.
+    init(cacheDir: URL, persistentDir: URL) {
         do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
         } catch {
             AppLogger.captureError(error, context: ["phase": "dataCache.createCacheDir"])
         }
-        cacheDir = dir
+        self.cacheDir = cacheDir
 
-        let persistent = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("TigerDuckData", isDirectory: true)
         do {
-            try FileManager.default.createDirectory(at: persistent, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: persistentDir, withIntermediateDirectories: true)
         } catch {
             AppLogger.captureError(error, context: ["phase": "dataCache.createPersistentDir"])
         }
-        persistentDir = persistent
-
-        absorbLegacyCourseCache()
+        self.persistentDir = persistentDir
     }
 
     // MARK: - Courses (semester + language-scoped)
@@ -570,10 +574,8 @@ final class DataCache {
         }
     }
 
-    /// Remove every `courses_<semester>.json` file. Used by the abbreviation
-    /// pipeline migration to drop pre-fix entries whose `classroomMapJSON`
-    /// may already be abbreviated and would no longer round-trip through the
-    /// raw classroom cache. The next fetch repopulates from the network.
+    /// Remove every `courses_*.json` file, for a migration whose cached courses cannot be
+    /// repaired in place. The next fetch repopulates them from the network.
     func clearCourseCaches() {
         let cacheContents = (try? FileManager.default.contentsOfDirectory(
             at: cacheDir,
@@ -657,32 +659,6 @@ final class DataCache {
             return nil
         }
     }
-
-    // Deletes legacy course caches: `courses.json` (before semester scoping) and
-    // `courses_<semester>.json` (before language scoping). The latter holds localized names in
-    // an unknown language, so it cannot be migrated; the next network refresh repopulates.
-    private func absorbLegacyCourseCache() {
-        let legacyURL = cacheDir.appendingPathComponent("courses.json")
-        if FileManager.default.fileExists(atPath: legacyURL.path) {
-            try? FileManager.default.removeItem(at: legacyURL)
-        }
-
-        let cacheContents = (try? FileManager.default.contentsOfDirectory(
-            at: cacheDir,
-            includingPropertiesForKeys: nil
-        )) ?? []
-        for url in cacheContents where url.pathExtension == "json" {
-            let name = url.deletingPathExtension().lastPathComponent
-            // Match the old `courses_<semester>` shape (exactly one
-            // underscore-delimited segment after the prefix). The new
-            // language-suffixed names have two segments and stay put.
-            guard name.hasPrefix("courses_") else { continue }
-            let suffix = String(name.dropFirst("courses_".count))
-            if !suffix.contains("_") {
-                try? FileManager.default.removeItem(at: url)
-            }
-        }
-    }
 }
 
 // MARK: - Codable DTOs
@@ -710,6 +686,7 @@ private struct CachedCourse: Codable {
     /// fills them in for a cache written before they existed.
     let dimension: String?
     let allYear: String?
+    let requireOption: String?
 
     init(from course: SDCourse) {
         courseNo = course.courseNo
@@ -726,6 +703,7 @@ private struct CachedCourse: Codable {
         skippedDatesJSON = course.skippedDatesJSON
         dimension = course.dimension.isEmpty ? nil : course.dimension
         allYear = course.allYear.isEmpty ? nil : course.allYear
+        requireOption = course.requireOption.isEmpty ? nil : course.requireOption
     }
 
     func toSDCourse() -> SDCourse {
@@ -763,7 +741,8 @@ private struct CachedCourse: Codable {
             semester: semester ?? CourseSelectionService.currentSemesterCode(),
             classroomMap: classroomMap,
             dimension: dimension ?? "",
-            allYear: allYear ?? ""
+            allYear: allYear ?? "",
+            requireOption: requireOption ?? ""
         )
         course.skippedDatesJSON = skippedDatesJSON ?? "[]"
         return course

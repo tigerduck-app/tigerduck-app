@@ -6,7 +6,12 @@ final class TimeSliderViewModel {
     private var prefersReducedMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
     // MARK: - Data
-    var timeSlots: [CourseTimeSlot] = []
+    var timeSlots: [CourseTimeSlot] = [] {
+        didSet { slotLanes = Self.lanes(for: timeSlots) }
+    }
+
+    /// The lane of each slot that overlaps another, by slot id; see `lanes(for:)`.
+    private(set) var slotLanes: [String: TimeSliderLane] = [:]
 
     // MARK: - State
     var selectedTime: Date = AppClock.now()
@@ -163,6 +168,35 @@ final class TimeSliderViewModel {
             }
         }
         return result
+    }
+
+    /// Clashing courses stack in lanes on the track instead of one drawing over the other.
+    /// Slots that overlap, directly or through a third, form a group, as `busyIntervals`
+    /// merges them, and take their lanes from `OverlapLanes`; a slot alone is left out.
+    static func lanes(for slots: [CourseTimeSlot]) -> [String: TimeSliderLane] {
+        var lanes: [String: TimeSliderLane] = [:]
+        var group: [CourseTimeSlot] = []
+        var groupEnd = Date.distantPast
+        func assignGroup() {
+            guard group.count > 1 else { return }
+            let assigned = OverlapLanes.assign(group.map { (start: $0.start, end: $0.end) })
+            for (slot, lane) in zip(group, assigned.lanes) {
+                lanes[slot.id] = TimeSliderLane(lane: lane, count: assigned.count)
+            }
+        }
+        let byStart = slots.enumerated().sorted { ($0.element.start, $0.offset) < ($1.element.start, $1.offset) }
+        for slot in byStart.map(\.element) {
+            if slot.start < groupEnd {
+                group.append(slot)
+                groupEnd = max(groupEnd, slot.end)
+            } else {
+                assignGroup()
+                group = [slot]
+                groupEnd = slot.end
+            }
+        }
+        assignGroup()
+        return lanes
     }
 
     /// Compress a gap of `minutes` into a visual width.
@@ -338,4 +372,10 @@ final class TimeSliderViewModel {
     }
 
 
+}
+
+/// Where a clashing slot sits on the track: lane `lane` of `count`, top to bottom.
+struct TimeSliderLane: Equatable {
+    let lane: Int
+    let count: Int
 }
