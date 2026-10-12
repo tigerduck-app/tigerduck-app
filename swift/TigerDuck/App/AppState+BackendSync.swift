@@ -34,13 +34,13 @@ extension AppState {
         // marker makes `applySyncedOverrides` sit out this cycle rather than
         // race it, and the next sync applies the settled state.
         retryUnacknowledgedHolidayOverrides()
-        await cloudSyncCoordinator.requeueParkedMarks()
         #if os(iOS)
         // Same repair for a reminder or Live Activity preference whose settings document
         // write never landed (dropped debounce, expired session, offline, 5xx). A no-op
         // unless something is outstanding.
         retryUnacknowledgedNotificationSettings()
         #endif
+        await cloudSyncCoordinator.requeueParkedMarks()
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)

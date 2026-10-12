@@ -217,7 +217,8 @@ final class PushCoordinator {
     }
 
     /// How often an unchanged course or assignment list goes to the server again. The backend
-    /// upserts every row of an upload; an unchanged one moves no revision, so a skip loses nothing.
+    /// upserts every row of an upload, but an unchanged one moves no revision, so skipping it
+    /// loses only the server's bookkeeping: `last_seen_at`, a log row, its sync push-back.
     static let unchangedUploadInterval: TimeInterval = 6 * 3600
 
     /// The last list the server accepted, per term for courses. In memory, so a relaunch sends
