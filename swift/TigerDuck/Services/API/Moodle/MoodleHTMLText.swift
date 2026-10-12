@@ -219,7 +219,8 @@ private nonisolated struct MarkdownWriter {
 
     private func list(_ element: Element, ordered: Bool) -> String {
         var lines: [String] = []
-        var number = Int((try? element.attr("start")) ?? "") ?? 1
+        // CommonMark numbers a list with at most nine digits, and a bound keeps `+= 1` from overflowing.
+        var number = min(max(Int((try? element.attr("start")) ?? "") ?? 1, 0), 999_999_000)
         for item in element.children().array() where item.tagName().lowercased() == "li" {
             let marker = ordered ? "\(number). " : "- "
             let content = blocks(in: item).joined(separator: "\n")
@@ -237,7 +238,6 @@ private nonisolated struct MarkdownWriter {
         return lines.joined(separator: "\n")
     }
 
-    /// Whether `tag` sets its content apart from the text around it.
     static func separatesText(_ tag: String) -> Bool {
         blockTags.contains(tag) || headingLevel(tag) != nil
             || ["ul", "ol", "li", "blockquote", "pre", "hr"].contains(tag)

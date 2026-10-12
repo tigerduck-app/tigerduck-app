@@ -30,6 +30,14 @@ struct MoodleHTMLTextTests {
         """)
     }
 
+    @Test("a list numbers from its start, kept within what CommonMark reads and what an Int holds")
+    func listStart() {
+        #expect(MoodleHTMLText.markdown(fromHTML: #"<ol start="3"><li>c</li><li>d</li></ol>"#) == "3. c\n4. d")
+        #expect(MoodleHTMLText.markdown(fromHTML: #"<ol start="-2"><li>a</li></ol>"#) == "0. a")
+        #expect(MoodleHTMLText.markdown(fromHTML: #"<ol start="9223372036854775807"><li>a</li><li>b</li></ol>"#)
+            == "999999000. a\n999999001. b")
+    }
+
     @Test("links resolve against the site, and only web and mail links stay links")
     func links() {
         let html = """
