@@ -55,6 +55,9 @@ extension AppState {
     struct ReenableConflict {
         let categories: [String]
         let description: String
+        /// What the check found, for Keep Local to clear the ones this device does not ignore, or
+        /// nil when it compared no course settings: the resolution then leaves them alone too.
+        var serverIgnoredCourses: [ServerIgnoredCourse]?
     }
 
     func markCategoryReenabled(_ category: String) {
@@ -105,6 +108,9 @@ extension AppState {
                 var diffs: [String] = []
 
                 let coursesArray = json["courses"] as? [[String: Any]] ?? []
+                let serverIgnoredCourses = Self.serverIgnoredCourses(
+                    json["course_overrides"] as? [[String: Any]] ?? [], syncsCourses: Defaults[.syncCourses]
+                )
 
                 if pending.contains("courses") {
                     // Compare term by term, user-added courses included (they are uploaded,
@@ -218,8 +224,15 @@ extension AppState {
                     let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
                     let archivedMatch = localArchivedIds == serverArchivedIds
                     let completedMatch = localCompletedIds == serverCompletedIds
-                    AppLogger.sync.info("[reenable] assignments: localArchived=\(localArchivedIds.count, privacy: .public) serverArchived=\(serverArchivedIds.count, privacy: .public) match=\(archivedMatch, privacy: .public) | localCompleted=\(localCompletedIds.count, privacy: .public) serverCompleted=\(serverCompletedIds.count, privacy: .public) match=\(completedMatch, privacy: .public)")
-                    if !archivedMatch || !completedMatch {
+                    let coursesDiffer = Self.ignoredCoursesDiffer(
+                        server: serverIgnoredCourses.map { Set($0.map(\.key)) },
+                        decided: Self.serverDecidedCourses(json["course_overrides"] as? [[String: Any]] ?? []),
+                        listed: Self.listedCourses(coursesArray),
+                        local: DataCache.shared.loadIgnoredAssignmentCourses(),
+                        snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })
+                    )
+                    AppLogger.sync.info("[reenable] assignments: localArchived=\(localArchivedIds.count, privacy: .public) serverArchived=\(serverArchivedIds.count, privacy: .public) match=\(archivedMatch, privacy: .public) | localCompleted=\(localCompletedIds.count, privacy: .public) serverCompleted=\(serverCompletedIds.count, privacy: .public) match=\(completedMatch, privacy: .public) | ignoredCoursesDiffer=\(coursesDiffer, privacy: .public)")
+                    if !archivedMatch || !completedMatch || coursesDiffer {
                         diffs.append(String(localized: "sync_conflict_reenable_assignments_differ"))
                     }
                 }
@@ -244,7 +257,8 @@ extension AppState {
                     if !diffs.isEmpty {
                         reenableConflict = ReenableConflict(
                             categories: Array(checked),
-                            description: diffs.joined(separator: "\n")
+                            description: diffs.joined(separator: "\n"),
+                            serverIgnoredCourses: serverIgnoredCourses
                         )
                     } else {
                         Defaults[.pendingConflictCategories].subtract(checked)
@@ -348,6 +362,16 @@ extension AppState {
                     for id in DataCache.shared.loadLocallyCompletedAssignmentIds() {
                         syncAssignmentOverride(moodleId: id, status: "locally_completed")
                     }
+                    if let serverIgnoredCourses = conflict.serverIgnoredCourses {
+                        let ignoredCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+                        syncCourseIgnores(ignoredCourses)
+                        for course in Self.courseIgnoresToClear(server: serverIgnoredCourses, local: ignoredCourses) {
+                            syncCourseIgnore(
+                                semester: course.semester, courseNo: course.courseNo,
+                                moodleIdNumber: course.moodleId, ignore: false
+                            )
+                        }
+                    }
                 }
             } else {
                 if conflict.categories.contains("courses") {
@@ -363,6 +387,10 @@ extension AppState {
                 if conflict.categories.contains("assignments") {
                     DataCache.shared.replaceArchivedAssignmentIds([])
                     DataCache.shared.replaceLocallyCompletedAssignmentIds([])
+                    if conflict.serverIgnoredCourses != nil {
+                        await cloudSyncCoordinator.discardCourseIgnores()
+                        DataCache.shared.replaceIgnoredAssignmentCourses([])
+                    }
                 }
                 await syncOverridesFromBackend()
             }

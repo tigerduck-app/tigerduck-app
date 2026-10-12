@@ -203,16 +203,48 @@ final class DataCache {
         save(dtos, to: "assignments.json")
     }
 
-    func loadAssignments() -> [SDAssignment] {
+    func loadAssignments(semester: String = CourseSelectionService.currentSemesterCode()) -> [SDAssignment] {
         let dtos: [CachedAssignment] = load(from: "assignments.json") ?? []
-        let archivedIds = loadArchivedAssignmentIds()
-        let locallyCompletedIds = loadLocallyCompletedAssignmentIds()
-        return dtos.map { dto in
-            let a = dto.toSDAssignment()
-            if archivedIds.contains(a.assignmentId) { a.isArchived = true }
-            if locallyCompletedIds.contains(a.assignmentId) { a.isLocallyCompleted = true }
-            return a
-        }
+        let marks = assignmentMarks(semester: semester)
+        return dtos.map { marks.apply(to: $0.toSDAssignment()) }
+    }
+
+    /// The marks ``loadAssignments(semester:)`` applies, for a fetch building its rows from
+    /// Moodle's answer. `semester` is the term the assignments are fetched for.
+    func assignmentMarks(semester: String) -> AssignmentMarks {
+        AssignmentMarks(
+            archivedIds: loadArchivedAssignmentIds(),
+            locallyCompletedIds: loadLocallyCompletedAssignmentIds(),
+            ignoredCourses: loadIgnoredAssignmentCourses(),
+            semester: semester
+        )
+    }
+
+    // MARK: - Courses whose assignments are all ignored (local, persistent)
+
+    /// `CourseTombstone.key(semester:courseNo:)` keys of the courses the user ignores every
+    /// assignment of. Applied on each load rather than written to the assignments' marks, so an
+    /// assignment Moodle adds later is ignored too.
+    func loadIgnoredAssignmentCourses() -> Set<String> {
+        let keys: [String] = load(from: "ignored_courses.json", in: persistentDir) ?? []
+        return Set(keys)
+    }
+
+    func replaceIgnoredAssignmentCourses(_ keys: Set<String>) {
+        save(keys.sorted(), to: "ignored_courses.json", in: persistentDir)
+    }
+
+    func setAssignmentsIgnored(_ ignored: Bool, semester: String, courseNo: String) {
+        var keys = loadIgnoredAssignmentCourses()
+        let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        if ignored { keys.insert(key) } else { keys.remove(key) }
+        replaceIgnoredAssignmentCourses(keys)
+    }
+
+    /// For a reset of `semester`, which starts its courses over.
+    func clearIgnoredAssignmentCourses(semester: String) {
+        let prefix = CourseTombstone.key(semester: semester, courseNo: "")
+        replaceIgnoredAssignmentCourses(loadIgnoredAssignmentCourses().filter { !$0.hasPrefix(prefix) })
     }
 
     // MARK: - Archived Assignment IDs (local, persistent, survives Moodle refresh)
@@ -521,6 +553,7 @@ final class DataCache {
             ("course_color_map.json", persistentDir),
             ("archived_assignments.json", persistentDir),
             ("locally_completed_assignments.json", persistentDir),
+            ("ignored_courses.json", persistentDir),
             ("bulletin_summaries.json", cacheDir),
             ("moodle_course_id_map.json", persistentDir),
         ]
@@ -658,6 +691,30 @@ final class DataCache {
             ])
             return nil
         }
+    }
+}
+
+/// The user's own marks on the assignments Moodle lists: each assignment's done or ignored mark,
+/// and the courses whose assignments are all ignored. A row gets them when it is built, never
+/// from the assignment cache, which stores only what Moodle said.
+struct AssignmentMarks {
+    let archivedIds: Set<String>
+    let locallyCompletedIds: Set<String>
+    /// `CourseTombstone.key(semester:courseNo:)` keys; only `semester`'s apply.
+    let ignoredCourses: Set<String>
+    /// The term the assignments are fetched for.
+    let semester: String
+
+    func apply(to assignment: SDAssignment) -> SDAssignment {
+        if archivedIds.contains(assignment.assignmentId) { assignment.isArchived = true }
+        if locallyCompletedIds.contains(assignment.assignmentId) { assignment.isLocallyCompleted = true }
+        if ignoredCourses.contains(CourseTombstone.key(semester: semester, courseNo: assignment.courseNo)) {
+            // Shown as ignored even when marked done; the mark returns with the course setting off.
+            assignment.isArchived = true
+            assignment.isLocallyCompleted = false
+            assignment.isIgnoredByCourse = true
+        }
+        return assignment
     }
 }
 

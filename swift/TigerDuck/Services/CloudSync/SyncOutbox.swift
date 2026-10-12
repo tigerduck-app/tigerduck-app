@@ -11,15 +11,22 @@ nonisolated enum SyncOp: Codable, Sendable {
     /// course_key, which that endpoint never consults.
     case courseOverride(semester: String, moodleId: String, customName: String?, colorHex: String?, locale: String?, stamp: Date)
     case assignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, stamp: Date)
+    /// Ignores every assignment of a course, or stops, by the same `moodleId` as
+    /// `courseOverride`. `moodleCourseId` is the numeric Moodle id; with `ignore` nil the op
+    /// sends that id alone, to a server that ignores the course without it.
+    case courseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, stamp: Date)
 
     private enum CodingKeys: String, CodingKey {
-        case courseOverride, assignmentOverride
+        case courseOverride, assignmentOverride, courseIgnore
     }
     private enum CourseOverrideKeys: String, CodingKey {
         case semester, moodleId, courseKey, customName, colorHex, locale, stamp
     }
     private enum AssignmentOverrideKeys: String, CodingKey {
         case moodleCourseId, moodleAssignmentId, localStatus, stamp
+    }
+    private enum CourseIgnoreKeys: String, CodingKey {
+        case semester, courseNo, moodleId, moodleCourseId, ignore, stamp
     }
 
     /// Manual decode only: `moodleId` was persisted as `courseKey` before the
@@ -45,6 +52,15 @@ nonisolated enum SyncOp: Codable, Sendable {
                 moodleAssignmentId: try c.decode(Int.self, forKey: .moodleAssignmentId),
                 localStatus: try c.decode(String.self, forKey: .localStatus),
                 stamp: try c.decode(Date.self, forKey: .stamp))
+        } else if container.contains(.courseIgnore) {
+            let c = try container.nestedContainer(keyedBy: CourseIgnoreKeys.self, forKey: .courseIgnore)
+            self = .courseIgnore(
+                semester: try c.decode(String.self, forKey: .semester),
+                courseNo: try c.decode(String.self, forKey: .courseNo),
+                moodleId: try c.decode(String.self, forKey: .moodleId),
+                moodleCourseId: try c.decodeIfPresent(Int.self, forKey: .moodleCourseId),
+                ignore: try c.decodeIfPresent(Bool.self, forKey: .ignore),
+                stamp: try c.decode(Date.self, forKey: .stamp))
         } else {
             throw DecodingError.dataCorrupted(DecodingError.Context(
                 codingPath: decoder.codingPath,
@@ -66,6 +82,8 @@ nonisolated enum SyncOp: Codable, Sendable {
             return "co|\(semester)|\(moodleId)|\(fields)|\(locale ?? "")"
         case .assignmentOverride(let moodleCourseId, let moodleAssignmentId, _, _):
             return "ao|\(moodleCourseId)|\(moodleAssignmentId)"
+        case .courseIgnore(let semester, _, let moodleId, _, _, _):
+            return "ci|\(semester)|\(moodleId)"
         }
     }
 }
@@ -77,6 +95,7 @@ nonisolated enum SyncOp: Codable, Sendable {
 nonisolated enum ResolvedSyncOp: Sendable {
     case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?)
     case assignmentOverride(assignmentId: Int, localStatus: String)
+    case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?)
 }
 
 // MARK: - OutboxEntry
@@ -133,6 +152,14 @@ actor SyncOutbox {
         entries = []
         parked = []
         generation += 1
+        persist()
+    }
+
+    /// Drops the queued and parked ops `isDropped` names, edits the user chose to throw away. A
+    /// drain under way keeps none of them; one already sent stays sent.
+    func discard(where isDropped: @Sendable (SyncOp) -> Bool) {
+        entries.removeAll { isDropped($0.op) }
+        parked.removeAll { isDropped($0.op) }
         persist()
     }
 
@@ -193,9 +220,11 @@ actor SyncOutbox {
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
             // A mid-drain enqueue can share a dedupKey with a retained entry. The new op is the
             // last writer, so drop the retained entry it supersedes; keeping both would make the
-            // next drain PATCH the stale value before the fresh one.
+            // next drain PATCH the stale value before the fresh one. A discarded one goes too.
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
-            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) } + newlyEnqueued
+            let stillQueued = Set(entries.map(\.id))
+            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && stillQueued.contains($0.id) }
+                + newlyEnqueued
             parked.removeAll { freshKeys.contains($0.op.dedupKey) }
             persist()
         }
@@ -203,6 +232,11 @@ actor SyncOutbox {
         while index < snapshot.count {
             guard generation == startGeneration else { return entries.isEmpty }
             let entry = snapshot[index]
+            // Discarded or superseded since the snapshot: not sent.
+            guard entries.contains(where: { $0.id == entry.id }) else {
+                index += 1
+                continue
+            }
             if isHeld(entry.op) {
                 kept.append(entry)
                 index += 1
@@ -236,17 +270,21 @@ actor SyncOutbox {
         return entries.isEmpty
     }
 
-    /// Reports an entry the server refused `maxAttempts` times. A mark is parked, a course
-    /// override dropped: the next full sync applies the server's colour or name over it.
+    /// Reports an entry the server refused `maxAttempts` times. A mark or a course's ignore
+    /// setting is parked; a course override, or a numeric course id sent alone, is dropped: the
+    /// next full sync applies the server's colour or name over it, and sends the id again.
     private func giveUp(on entry: OutboxEntry, after error: Error) {
         let kind: String
+        let parks: Bool
         switch entry.op {
-        case .courseOverride: kind = "courseOverride"
-        case .assignmentOverride: kind = "assignmentOverride"
+        case .courseOverride: (kind, parks) = ("courseOverride", false)
+        case .assignmentOverride: (kind, parks) = ("assignmentOverride", true)
+        case .courseIgnore(_, _, _, _, let ignore, _): (kind, parks) = ("courseIgnore", ignore != nil)
         }
         logger.warning("Outbox: gave up on \(kind, privacy: .public) after \(Self.maxAttempts) attempts")
         AppLogger.captureError(error, context: ["phase": "cloudSync.outbox.giveUp", "op": kind])
-        guard case .assignmentOverride = entry.op else { return }
+        // One discarded or superseded while its request was out is not parked either.
+        guard parks, entries.contains(where: { $0.id == entry.id }) else { return }
         parked.removeAll { $0.op.dedupKey == entry.op.dedupKey }
         parked.append(entry)
     }
@@ -266,6 +304,9 @@ actor SyncOutbox {
 
         case .assignmentOverride(_, let moodleAssignmentId, let localStatus, _):
             return .assignmentOverride(assignmentId: moodleAssignmentId, localStatus: localStatus)
+
+        case .courseIgnore(_, _, let moodleId, let moodleCourseId, let ignore, _):
+            return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore)
         }
     }
 

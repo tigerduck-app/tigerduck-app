@@ -59,6 +59,13 @@ struct MacClassTableView: View {
         let semester: String
         let revision: Int
     }
+    @State private var ignoredCoursesMemo = ViewMemo<Int, Set<String>>()
+
+    /// `CourseTombstone` keys of the courses whose assignments are all ignored, read once per
+    /// `cacheRevision` like `courses`, since every cell asks.
+    var ignoredAssignmentCourses: Set<String> {
+        ignoredCoursesMemo.value(for: cacheRevision) { DataCache.shared.loadIgnoredAssignmentCourses() }
+    }
     @State private var hasWarmedCaches = false
     @State private var isLoadingSemester = false
     @State var tripleConflictError: TripleConflictError?

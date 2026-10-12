@@ -51,6 +51,9 @@ final class CloudSyncCoordinator {
     /// The Assignments sync switch, read before each mark goes out. A mark queued before it went
     /// off waits for it to come back.
     @ObservationIgnored private let syncsAssignmentMarks: @Sendable () -> Bool
+    /// `sendsCourseIgnores`, read before each course's ignore setting goes out. A setting queued
+    /// while it is false waits.
+    @ObservationIgnored private let syncsCourseIgnores: @Sendable () -> Bool
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -69,15 +72,31 @@ final class CloudSyncCoordinator {
         pushCoordinator: PushCoordinator,
         outbox: SyncOutbox = SyncOutbox(),
         isEnabled: Bool = Defaults[.cloudSyncEnabled],
-        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { Defaults[.syncAssignments] }
+        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { Defaults[.syncAssignments] },
+        syncsCourseIgnores: @escaping @Sendable () -> Bool = {
+            CloudSyncCoordinator.sendsCourseIgnores(
+                assignments: Defaults[.syncAssignments],
+                courses: Defaults[.syncCourses],
+                pendingChecks: Defaults[.pendingConflictCategories]
+            )
+        }
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
         self.syncsAssignmentMarks = syncsAssignmentMarks
+        self.syncsCourseIgnores = syncsCourseIgnores
 
         if isEnabled {
             state = .active
         }
+    }
+
+    /// Whether a course's ignore setting may go out: with the Assignments and Courses switches on,
+    /// as the server drops the setting with the course rows once no device syncs courses, and not
+    /// while the re-enabled Assignments switch's check is pending, which may take the server's
+    /// settings over the ones queued here.
+    nonisolated static func sendsCourseIgnores(assignments: Bool, courses: Bool, pendingChecks: Set<String>) -> Bool {
+        assignments && courses && !pendingChecks.contains("assignments")
     }
 
     // MARK: - Following the preference
@@ -185,9 +204,13 @@ final class CloudSyncCoordinator {
         guard await outbox.pendingCount() > 0 else { return }
 
         let syncsMarks = syncsAssignmentMarks
+        let syncsIgnores = syncsCourseIgnores
         await outbox.drain(holding: { op in
-            if case .assignmentOverride = op { return !syncsMarks() }
-            return false
+            switch op {
+            case .assignmentOverride: return !syncsMarks()
+            case .courseIgnore: return !syncsIgnores()
+            case .courseOverride: return false
+            }
         }) { [weak self] op in
             guard let self else { throw CancellationError() }
             try await self.execute(op)
@@ -250,6 +273,36 @@ final class CloudSyncCoordinator {
         return ids
     }
 
+    /// Awaitable for the same reason as `enqueueAssignmentOverride`.
+    func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
+        guard state != .disabled else { return }
+        await outbox.enqueue(.courseIgnore(
+            semester: semester, courseNo: courseNo, moodleId: moodleId,
+            moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()))
+    }
+
+    /// Drops the course settings still on their way up: all of them for Use Server, which takes
+    /// the server's over them, or `semester`'s or one course's for a reset or a delete, after which
+    /// the server has no row to take them.
+    func discardCourseIgnores(semester: String? = nil, courseNo: String? = nil) async {
+        await outbox.discard { op in
+            guard case .courseIgnore(let opSemester, let opCourseNo, _, _, _, _) = op else { return false }
+            return (semester == nil || semester == opSemester) && (courseNo == nil || courseNo == opCourseNo)
+        }
+    }
+
+    /// `CourseTombstone` keys of the courses whose ignore setting is queued or parked, not yet on
+    /// the server, which a pull leaves as they are here. A numeric id sent alone changes no setting.
+    func pendingCourseIgnoreKeys() async -> Set<String> {
+        var keys = Set<String>()
+        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
+            if case .courseIgnore(let semester, let courseNo, _, _, .some, _) = entry.op {
+                keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
+            }
+        }
+        return keys
+    }
+
     /// Gives each mark the server kept refusing one more try. Called by every full sync, and by
     /// each poll the change feed settles without one.
     func requeueParkedMarks() async {
@@ -266,7 +319,7 @@ final class CloudSyncCoordinator {
             switch op {
             case .courseOverride(let courseId, let colorHex, let customName, let locale):
                 _ = try await pushCoordinator.patchCourseOverride(
-                    moodleCourseId: courseId,
+                    moodleId: courseId,
                     colorHex: colorHex,
                     customName: customName,
                     locale: locale)
@@ -275,6 +328,15 @@ final class CloudSyncCoordinator {
                 try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: String(assignmentId),
                     localStatus: localStatus)
+
+            case .courseIgnore(let courseId, let moodleCourseId, let ignore):
+                let response = try await pushCoordinator.patchCourseOverride(
+                    moodleId: courseId,
+                    ignoreAssignments: ignore,
+                    moodleCourseId: moodleCourseId)
+                // A backend without the setting answers 200 and drops it, so only an answer that
+                // names it settles the op; anything else counts as a refusal.
+                guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
             }
         } catch {
             if isUnauthorized(error) {
@@ -344,3 +406,6 @@ final class CloudSyncCoordinator {
         return false
     }
 }
+
+/// A course setting the backend answered without storing: one that predates the setting.
+nonisolated struct CourseIgnoreNotStoredError: Error {}

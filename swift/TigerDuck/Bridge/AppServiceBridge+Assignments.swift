@@ -189,31 +189,14 @@ extension AppServiceBridge {
             }
             let statuses = Dictionary(answers.compactMap { $0 }, uniquingKeysWith: { first, _ in first })
 
-            let locallyCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
-            let archivedIds = DataCache.shared.loadArchivedAssignmentIds()
-
-            let freshAssignments: [SDAssignment] = records.compactMap { record in
-                guard let dueDate = record.dueDate else { return nil }
-                guard !record.noSubmissions else { return nil }
-
-                let moodleCourse = moodleCoursesById[record.courseId]
-                let status = statuses[record.assignId]
-                let assignmentId = String(record.assignId)
-                let confirmedAt = confirmed[assignmentId]
-                return SDAssignment(
-                    assignmentId: assignmentId,
-                    courseNo: moodleCourse.flatMap { courseNoByMoodleId[$0.id] } ?? "",
-                    courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
-                    title: record.name,
-                    dueDate: dueDate,
-                    isCompleted: status?.isSubmitted ?? (confirmedAt != nil),
-                    isArchived: archivedIds.contains(assignmentId),
-                    isLocallyCompleted: locallyCompletedIds.contains(assignmentId),
-                    moodleUrl: "\(AppConstants.moodleBaseURL.absoluteString)/mod/assign/view.php?id=\(record.cmId)",
-                    cutoffDate: record.cutoffDate,
-                    submittedAt: status?.submittedAt ?? confirmedAt
-                )
-            }
+            let freshAssignments = assignments(
+                from: records,
+                moodleCoursesById: moodleCoursesById,
+                courseNoByMoodleId: courseNoByMoodleId,
+                statuses: statuses,
+                confirmed: confirmed,
+                marks: DataCache.shared.assignmentMarks(semester: currentSemester)
+            )
 
             let assignmentsToPersist: [SDAssignment]
             if statuses.count < recordsToAsk.count {
@@ -275,6 +258,38 @@ extension AppServiceBridge {
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()
+        }
+    }
+
+    /// A round's assignments, one per record with a due date and a submission, with the user's
+    /// marks applied as `DataCache.loadAssignments` applies them.
+    static func assignments(
+        from records: [MoodleAssignmentRecord],
+        moodleCoursesById: [Int: MoodleEnrolledCourse],
+        courseNoByMoodleId: [Int: String],
+        statuses: [Int: MoodleSubmissionStatus],
+        confirmed: [String: Date],
+        marks: AssignmentMarks
+    ) -> [SDAssignment] {
+        records.compactMap { record in
+            guard let dueDate = record.dueDate else { return nil }
+            guard !record.noSubmissions else { return nil }
+
+            let moodleCourse = moodleCoursesById[record.courseId]
+            let status = statuses[record.assignId]
+            let assignmentId = String(record.assignId)
+            let confirmedAt = confirmed[assignmentId]
+            return marks.apply(to: SDAssignment(
+                assignmentId: assignmentId,
+                courseNo: moodleCourse.flatMap { courseNoByMoodleId[$0.id] } ?? "",
+                courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
+                title: record.name,
+                dueDate: dueDate,
+                isCompleted: status?.isSubmitted ?? (confirmedAt != nil),
+                moodleUrl: "\(AppConstants.moodleBaseURL.absoluteString)/mod/assign/view.php?id=\(record.cmId)",
+                cutoffDate: record.cutoffDate,
+                submittedAt: status?.submittedAt ?? confirmedAt
+            ))
         }
     }
 

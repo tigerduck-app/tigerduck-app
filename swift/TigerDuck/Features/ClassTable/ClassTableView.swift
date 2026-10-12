@@ -26,6 +26,9 @@ struct ClassTableView: View {
                     viewModel.refreshMissingClassrooms(authService: appState.authService)
                     viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
                     viewModel.onSyncColorPick = { appState.syncColorPick($0, for: $1, changed: $2) }
+                    viewModel.onSyncCourseIgnore = {
+                        appState.syncCourseIgnore(semester: $1, courseNo: $0.courseNo, moodleIdNumber: $0.moodleIdNumber, ignore: $2)
+                    }
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
@@ -42,6 +45,9 @@ struct ClassTableView: View {
                     viewModel.refreshMissingClassrooms(authService: appState.authService)
                     viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
                     viewModel.onSyncColorPick = { appState.syncColorPick($0, for: $1, changed: $2) }
+                    viewModel.onSyncCourseIgnore = {
+                        appState.syncCourseIgnore(semester: $1, courseNo: $0.courseNo, moodleIdNumber: $0.moodleIdNumber, ignore: $2)
+                    }
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }

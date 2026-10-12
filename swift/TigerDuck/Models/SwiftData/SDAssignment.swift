@@ -21,6 +21,10 @@ final class SDAssignment {
     /// is true and this is greater than `dueDate`, the submission was late
     /// (``AssignmentStatus/submittedLate``).
     var submittedAt: Date?
+    /// Set with `isArchived` while the user ignores every assignment of the course
+    /// (`AssignmentMarks`). Not stored: the course setting is applied on each load, so the
+    /// assignment's own marks come back once the course is no longer ignored.
+    @Transient var isIgnoredByCourse = false
 
     init(
         assignmentId: String,

@@ -112,10 +112,12 @@ struct UpcomingAssignmentsView: View {
         )
     }
 
-    private func rowSwipeActions(
+    func rowSwipeActions(
         for assignment: SDAssignment,
         now: Date
     ) -> (trailing: SwipeActionDescriptor?, leading: SwipeActionDescriptor?) {
+        // A row its course's setting ignores takes no mark of its own; the class table undoes it.
+        guard !assignment.isIgnoredByCourse else { return (nil, nil) }
         let status = assignment.status(now: now)
         let gray = Color(.systemGray)
 
@@ -278,7 +280,7 @@ struct UpcomingAssignmentsView: View {
 
 // MARK: - Swipe gesture helpers
 
-private struct SwipeActionDescriptor {
+struct SwipeActionDescriptor {
     let label: String
     let systemImage: String
     let tint: Color
