@@ -163,6 +163,11 @@ final class ClassTableViewModel {
     private nonisolated(unsafe) var dataObserver: Any?
     @ObservationIgnored
     private nonisolated(unsafe) var languageObserver: Any?
+    @ObservationIgnored
+    private nonisolated(unsafe) var holidayObserver: Any?
+    /// Bumped on a "still have class" toggle, which `isClassDay` reads where Observation
+    /// cannot see it.
+    private var classDayRevision = 0
 
     /// Mirrors `Defaults[.alwaysShowAllPeriods]`. `activePeriods` has to read
     /// this rather than the key directly: a raw `Defaults` read registers no
@@ -219,6 +224,14 @@ final class ClassTableViewModel {
             }
         }
 
+        holidayObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.holidayNotifyDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.classDayRevision &+= 1 }
+        }
+
         languageObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.languageDidChange,
             object: nil,
@@ -237,6 +250,9 @@ final class ClassTableViewModel {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = languageObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = holidayObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -338,9 +354,9 @@ final class ClassTableViewModel {
         // SwiftUI aware of debug time-override flips.
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
+        _ = classDayRevision
         // Empty outside the term, where the carousel would show a stale day, and on a
         // holiday the user has not opted back into, as the Live Activity and widgets do.
-        // Empty hides the section; the 5 s tick above catches a calendar-tab toggle.
         guard isClassDay(AppClock.now()) else { return [] }
         return currentSemesterCourses.coursesForToday()
     }
@@ -361,10 +377,10 @@ final class ClassTableViewModel {
         )
     }
 
-    /// 5-second ticker that re-publishes minute-of-day-derived state.
-    /// Matches Android's `_currentDayTime` poll so the "Current class"
-    /// card slides into view within a few seconds of the wall-clock
-    /// minute boundary, not up to a minute later.
+    /// Re-publishes minute-of-day-derived state when the minute changes,
+    /// checked every 5 seconds like Android's `_currentDayTime` poll, so the
+    /// "Current class" card slides into view within a few seconds of the
+    /// wall-clock minute boundary, not up to a minute later.
     @ObservationIgnored
     private let minuteTicker = MinuteTicker()
 
