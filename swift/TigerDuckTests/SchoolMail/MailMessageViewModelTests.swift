@@ -468,6 +468,29 @@ struct MailMessageViewModelTests {
         #expect(await h.fake.attachmentPins == [1])
     }
 
+    /// A large attachment takes a minute to arrive, so a second tap is expected. It must not queue
+    /// another whole download on the connection the list's poll waits for too.
+    @Test func aRepeatTapDuringAnAttachmentDownloadIsIgnored() async {
+        let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
+                                filename: "課程.pdf", contentID: nil, size: 4, isAttachment: true)
+        var message = FakeMailClient.message(uid: 5)
+        message.detail?.parts = [part]
+        message.attachments = ["2": Data("%PDF".utf8)]
+        let h = Self.harness(message)
+        await h.model.load()
+        await h.fake.hold("attachment")
+        let first = Task { await h.model.prepareAttachment(part) }
+        await h.fake.waitForArrival("attachment")
+        #expect(h.model.downloading == ["2"])
+        let second = Task { await h.model.prepareAttachment(part) }
+        await Task.yield()
+        await h.fake.release("attachment")
+        #expect(await first.value != nil)
+        #expect(await second.value == nil)
+        #expect(h.model.downloading.isEmpty)
+        #expect((await h.fake.calls).filter { $0.hasPrefix("attachment ") }.count == 1)
+    }
+
     /// `prepareAttachment` is where a mail's bytes leave the app — into a temp file, then Quick
     /// Look or the share sheet. `load()` pins its `detail`, but the part fetch that follows used
     /// to carry no pin at all, so a folder recreated between opening the mail and tapping the
@@ -486,6 +509,8 @@ struct MailMessageViewModelTests {
         #expect(await h.model.prepareAttachment(part) == nil)
         #expect(h.model.actionError == MailAccountManager.LoginError(MailClientError.folderChanged).message)
         #expect(await h.fake.attachmentPins == [1])
+        // A failed download gives the row its actions back.
+        #expect(h.model.downloading.isEmpty)
     }
 
     /// Mirrors Android's `SchoolMailMessageViewModel.needsConfirmation`: a `text/html` or

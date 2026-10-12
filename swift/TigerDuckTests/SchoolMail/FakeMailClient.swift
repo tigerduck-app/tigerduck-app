@@ -93,8 +93,8 @@ actor FakeMailClient: MailClient {
     private(set) var sent: [(message: Data, from: String, to: [String])] = []
     /// Commands currently gated by `hold(_:)`.
     private var heldCommands: Set<String> = []
-    /// One suspended, held command per name, waiting for `release(_:)`.
-    private var releaseGates: [String: CheckedContinuation<Void, Never>] = [:]
+    /// The suspended calls of each held command, waiting for `release(_:)`.
+    private var releaseGates: [String: [CheckedContinuation<Void, Never>]] = [:]
     /// Commands that have reached the gate at least once, which `waitForArrival(_:)` polls, so
     /// one that runs after the fact returns at once.
     private var arrivedCommands: Set<String> = []
@@ -120,7 +120,7 @@ actor FakeMailClient: MailClient {
     /// Lets a held command continue (and stops holding later ones).
     func release(_ command: String) {
         heldCommands.remove(command)
-        if let gate = releaseGates.removeValue(forKey: command) { gate.resume() }
+        for gate in releaseGates.removeValue(forKey: command) ?? [] { gate.resume() }
     }
 
     /// Returns once the named command has reached its gate, so the call really is in flight
@@ -133,7 +133,7 @@ actor FakeMailClient: MailClient {
     private func gate(_ command: String) async {
         arrivedCommands.insert(command)
         guard heldCommands.contains(command) else { return }
-        await withCheckedContinuation { releaseGates[command] = $0 }
+        await withCheckedContinuation { releaseGates[command, default: []].append($0) }
     }
 
     func releaseStatus() {
@@ -291,6 +291,7 @@ actor FakeMailClient: MailClient {
     func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data {
         calls.append("attachment \(uid) \(part.section)")
         attachmentPins.append(expectedUIDValidity)
+        await gate("attachment")
         try assertUIDValidity(expectedUIDValidity, folder: folder)
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.attachments[part.section] ?? Data()
     }

@@ -21,6 +21,7 @@ nonisolated enum MailConstants {
     static let foregroundCheckThrottle: TimeInterval = 60
     static let pageSize = 50
     static let bodyCacheLimitBytes = 20 * 1024 * 1024
+    static let openedAttachmentLifetime: TimeInterval = 24 * 60 * 60
     static let maxEncodedMessageBytes = 50 * 1024 * 1024
     static let maxInlineImageBytes = 5 * 1024 * 1024
     /// The largest message `LiveMailClient` downloads whole to parse its MIME locally, when the
