@@ -83,7 +83,8 @@ extension AppState {
             // still run, to pick up colour and name changes and cross-device deletions.
             let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
             let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
-            let isMigrating = Self.uploadsLocalMarksAsFirstSync(
+            let syncsMarks = Defaults[.syncAssignments]
+            let isMigrating = syncsMarks && Self.uploadsLocalMarksAsFirstSync(
                 syncedBefore: Defaults[.assignmentMarksSyncedOnce],
                 serverHasMarks: !serverArchivedIds.isEmpty || !serverCompletedIds.isEmpty,
                 localHasMarks: !localArchivedIds.isEmpty || !localCompletedIds.isEmpty
@@ -92,7 +93,7 @@ extension AppState {
                 for id in localArchivedIds { syncAssignmentOverride(moodleId: id, status: "archived") }
                 for id in localCompletedIds { syncAssignmentOverride(moodleId: id, status: "locally_completed") }
             }
-            Defaults[.assignmentMarksSyncedOnce] = true
+            if syncsMarks { Defaults[.assignmentMarksSyncedOnce] = true }
 
             // Ops still queued in the outbox are local edits in flight to the
             // server — differences against the (possibly stale) pull payload
@@ -104,16 +105,13 @@ extension AppState {
                 .union(inFlightOverrides)
 
             let pendingConflicts = Defaults[.pendingConflictCategories]
-            if pendingConflicts.contains("assignments") {
-                AppLogger.sync.info("[syncOverrides] skipping assignment overrides — conflict check pending")
-            } else if isMigrating {
-                // Local overrides were just uploaded above; nothing to
-                // reconcile until the server echoes them back.
-            } else if overrideEditGeneration != editGenerationAtFetch {
-                // An edit landed while the pull was in flight; the payload
-                // predates it. Defer to the next pull (the drain's revision
-                // bump re-triggers one) instead of comparing stale state.
-                AppLogger.sync.info("[syncOverrides] skipping assignment overrides — local edit during fetch")
+            if let reason = Self.reasonToLeaveMarks(
+                syncsMarks: syncsMarks,
+                conflictCheckPending: pendingConflicts.contains("assignments"),
+                uploadedLocalMarks: isMigrating,
+                editedDuringFetch: overrideEditGeneration != editGenerationAtFetch
+            ) {
+                AppLogger.sync.info("[syncOverrides] skipping assignment overrides — \(reason, privacy: .public)")
             } else {
                 var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
                 let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
@@ -243,6 +241,23 @@ extension AppState {
         }
     }
 
+    /// Why a pull leaves the server's marks unapplied, or nil to apply them. With the Assignments
+    /// switch off, marks stay on this device. Marks just uploaded have nothing to reconcile until
+    /// the server echoes them, and a payload fetched before a local edit predates it: the next
+    /// pull, which the edit's revision bump starts, compares the settled state.
+    nonisolated static func reasonToLeaveMarks(
+        syncsMarks: Bool,
+        conflictCheckPending: Bool,
+        uploadedLocalMarks: Bool,
+        editedDuringFetch: Bool
+    ) -> String? {
+        if !syncsMarks { return "Assignments sync is off" }
+        if conflictCheckPending { return "conflict check pending" }
+        if uploadedLocalMarks { return "local marks just uploaded" }
+        if editedDuringFetch { return "local edit during fetch" }
+        return nil
+    }
+
     /// Whether a pull uploads this device's marks instead of applying the server's. Only the
     /// account's first sync on this device does: later, a server with no marks means they were
     /// cleared on another device, and a stale copy here would bring them back.
@@ -356,9 +371,10 @@ extension AppState {
     }
 
     /// Fire-and-forget override sync to the backend. Local state is already
-    /// updated by the ViewModel; this propagates to other devices.
+    /// updated by the ViewModel; this propagates to other devices. The
+    /// Assignments sync switch covers these marks.
     func syncAssignmentOverride(moodleId: String, status: String) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+        guard Defaults[.cloudSyncEnabled], Defaults[.syncAssignments] else { return }
         AppLogger.sync.debug("override enqueue: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         guard let moodleAssignmentId = Int(moodleId) else { return }
         overrideEditGeneration &+= 1

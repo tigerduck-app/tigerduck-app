@@ -112,4 +112,27 @@ struct SyncOutboxTests {
         await relaunched.clearAll()
         #expect(await Self.makeOutbox(directory: directory).parkedSnapshot().isEmpty)
     }
+
+    @Test("A held mark stays queued and untried while the edits behind it go")
+    func heldMarkWaitsWhileOthersGo() async {
+        let outbox = Self.makeOutbox()
+        await outbox.enqueue(Self.mark)
+        await outbox.enqueue(Self.colour)
+        let sent = Sent()
+
+        await outbox.drain(holding: { op in
+            if case .assignmentOverride = op { return true }
+            return false
+        }) { op in await sent.add(op) }
+
+        #expect(await sent.count == 1)
+        #expect(await outbox.snapshot().map(\.op.dedupKey) == [Self.mark.dedupKey])
+        #expect(await outbox.snapshot().first?.attempts == 0)
+    }
+
+    private actor Sent {
+        private(set) var count = 0
+        func add(_ op: ResolvedSyncOp) { count += 1 }
+    }
 }
+

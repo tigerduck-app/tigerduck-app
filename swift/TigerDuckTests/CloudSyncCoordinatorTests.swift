@@ -18,7 +18,10 @@ struct CloudSyncCoordinatorTests {
         }
     }
 
-    private static func makeCoordinator(_ backend: Backend) -> CloudSyncCoordinator {
+    private static func makeCoordinator(
+        _ backend: Backend,
+        syncsAssignmentMarks: @escaping () -> Bool = { true }
+    ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
@@ -28,7 +31,10 @@ struct CloudSyncCoordinatorTests {
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("CloudSyncCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
-        return CloudSyncCoordinator(pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true)
+        return CloudSyncCoordinator(
+            pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
+            syncsAssignmentMarks: syncsAssignmentMarks
+        )
     }
 
     private static let markReply = #"{"id":1,"local_status":"ignored","updated_at":"2026-10-12T00:00:00+00:00"}"#
@@ -99,4 +105,34 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
         #expect(await coordinator.pendingAssignmentOverrideIds().isEmpty)
     }
+
+    @Test("With the Assignments switch off a queued mark waits, and a queued colour still goes")
+    func switchOffHoldsQueuedMarks() async {
+        let backend = Backend()
+        backend.answer("sync/courses/1151CS1001301/override", body: Self.colourReply)
+        backend.answer("sync/assignments/42/override", body: Self.markReply)
+        var syncsMarks = false
+        let coordinator = Self.makeCoordinator(backend) { syncsMarks }
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+        coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")
+        // The colour is queued from a task of its own.
+        for _ in 0..<2000 {
+            if await coordinator.outbox.pendingCount() == 2 { break }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+
+        await coordinator.syncTick()
+        #expect(backend.requests("sync/courses/1151CS1001301/override").count == 1)
+        #expect(backend.requests("sync/assignments/42/override").isEmpty)
+        #expect(await coordinator.outbox.pendingCount() == 1)
+
+        syncsMarks = true
+        await coordinator.syncTick()
+        #expect(backend.requests("sync/assignments/42/override").count == 1)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    private static let colourReply =
+        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##
 }
+

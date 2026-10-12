@@ -35,3 +35,24 @@ struct FirstSyncMarkUploadTests {
         #expect(!AppState.uploadsLocalMarksAsFirstSync(syncedBefore: false, serverHasMarks: true, localHasMarks: true))
     }
 }
+
+/// `AppState.reasonToLeaveMarks`. The Assignments sync switch used to change nothing on the
+/// device: marks were still pulled and pushed.
+struct MarkPullGateTests {
+    @Test("With the Assignments switch off, the server's marks are never applied",
+          arguments: [false, true], [false, true])
+    func switchOffLeavesMarks(conflictCheckPending: Bool, editedDuringFetch: Bool) {
+        let reason = AppState.reasonToLeaveMarks(
+            syncsMarks: false, conflictCheckPending: conflictCheckPending,
+            uploadedLocalMarks: false, editedDuringFetch: editedDuringFetch
+        )
+        #expect(reason == "Assignments sync is off")
+    }
+
+    @Test("With the switch on and nothing in the way, the server's marks are applied")
+    func switchOnAppliesMarks() {
+        #expect(AppState.reasonToLeaveMarks(
+            syncsMarks: true, conflictCheckPending: false, uploadedLocalMarks: false, editedDuringFetch: false
+        ) == nil)
+    }
+}

@@ -165,10 +165,11 @@ actor SyncOutbox {
 
     // MARK: - Drain
 
-    /// Process entries in order via the provided executor.
-    /// Returns `true` if the queue is empty at the end.
+    /// Process entries in order via the provided executor, leaving the ones `isHeld` names
+    /// queued and untried. Returns `true` if the queue is empty at the end.
     @discardableResult
     func drain(
+        holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
         execute: @Sendable (ResolvedSyncOp) async throws -> Void
     ) async -> Bool {
         // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
@@ -196,6 +197,11 @@ actor SyncOutbox {
         while index < snapshot.count {
             guard generation == startGeneration else { return entries.isEmpty }
             let entry = snapshot[index]
+            if isHeld(entry.op) {
+                kept.append(entry)
+                index += 1
+                continue
+            }
 
             do {
                 try await execute(resolve(entry.op))

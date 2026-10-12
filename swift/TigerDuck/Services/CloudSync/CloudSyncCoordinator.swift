@@ -49,6 +49,8 @@ final class CloudSyncCoordinator {
 
     @ObservationIgnored private let pushCoordinator: PushCoordinator
     @ObservationIgnored let outbox: SyncOutbox
+    /// The Assignments sync switch. A mark queued before it went off waits for it to come back.
+    @ObservationIgnored private let syncsAssignmentMarks: () -> Bool
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -67,10 +69,12 @@ final class CloudSyncCoordinator {
     init(
         pushCoordinator: PushCoordinator,
         outbox: SyncOutbox = SyncOutbox(),
-        isEnabled: Bool = Defaults[.cloudSyncEnabled]
+        isEnabled: Bool = Defaults[.cloudSyncEnabled],
+        syncsAssignmentMarks: @escaping () -> Bool = { Defaults[.syncAssignments] }
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
+        self.syncsAssignmentMarks = syncsAssignmentMarks
 
         if isEnabled {
             state = .active
@@ -181,7 +185,11 @@ final class CloudSyncCoordinator {
 
         guard await outbox.pendingCount() > 0 else { return }
 
-        await outbox.drain { [weak self] op in
+        let holdsMarks = !syncsAssignmentMarks()
+        await outbox.drain(holding: { op in
+            if case .assignmentOverride = op { return holdsMarks }
+            return false
+        }) { [weak self] op in
             guard let self else { throw CancellationError() }
             try await self.execute(op)
         }
