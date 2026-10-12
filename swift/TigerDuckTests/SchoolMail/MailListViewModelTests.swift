@@ -472,6 +472,52 @@ struct MailListViewModelTests {
         #expect(h.model.rows.map(\.uid) == [10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == 10)
     }
+
+    /// A previous visit cached rows below the newest window, and a refresh renews only the window.
+    /// Paging back lists those rows again, so mail read on webmail since shows read and mail
+    /// deleted there goes, instead of both staying as cached on every later launch.
+    @Test func pagingBackRelistsTheRowsAPreviousVisitCached() async throws {
+        let h = Self.harness(inboxCount: 120)
+        h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 120,
+                                        summaries: (UInt32(21)...120).reversed().map { SchoolMailTestDoubles.summary(uid: $0) },
+                                        oldestLoadedSequence: 21, uidNext: 121))
+        await h.fake.update { fake in
+            fake.folders["INBOX"] = fake.folders["INBOX"]?.map { message in
+                var message = message
+                if message.summary.uid == 69 { message.summary.isSeen = true }
+                if message.summary.uid == 60 { message.summary.isDeleted = true }
+                return message
+            }
+        }
+        await h.model.load()
+        let last = try #require(h.model.rows.last)
+        #expect(last.uid == 21)
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.rows.first { $0.uid == 69 }?.summary.isSeen == true)
+        #expect(!h.model.rows.contains { $0.uid == 60 })
+        // The relisted rows added no last row to page from, so the same call went on to older mail.
+        #expect(h.model.rows.last?.uid == 1)
+        #expect(h.model.rows.count == 119)
+    }
+
+    /// However far a folder was paged, its cache keeps the newest rows only, and that copy pages
+    /// back from the newest window: the dropped rows' cursor would skip the mail between them and
+    /// the last row kept.
+    @Test func theCacheKeepsTheNewestRowsAndPagesBackFromTheNewestWindow() async throws {
+        let h = Self.harness(inboxCount: 260)
+        await h.model.load()
+        for _ in 1...5 {
+            let last = try #require(h.model.rows.last)
+            await h.model.loadMoreIfNeeded(after: last)
+        }
+        #expect(h.model.rows.count == 260)
+        await h.model.load()
+        let cached = try #require(h.cache.loadPage(folder: "INBOX"))
+        #expect(cached.summaries.map(\.uid) == Array((UInt32(61)...260).reversed()))
+        #expect(cached.oldestLoadedSequence == 211)
+        // The list on screen keeps everything it was paged to.
+        #expect(h.model.rows.count == 260)
+    }
     /// A UID is only unique within its folder. `removeLocally`/`markSeenLocally` are called by
     /// the *message* screen, which can still be reporting on INBOX after a deep link switched
     /// the list to another folder — matching on UID alone stripped a same-UID row of a different

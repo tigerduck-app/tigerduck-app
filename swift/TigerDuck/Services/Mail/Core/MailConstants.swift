@@ -20,6 +20,9 @@ nonisolated enum MailConstants {
     static let pagePollInterval: TimeInterval = 60
     static let foregroundCheckThrottle: TimeInterval = 60
     static let pageSize = 50
+    /// Rows per folder the list caches. A later visit lists those below the newest window again as
+    /// the user pages (`MailListViewModel.loadMoreIfNeeded`), so this bounds what it fetches twice.
+    static let cachedPageRows = 200
     static let bodyCacheLimitBytes = 20 * 1024 * 1024
     static let openedAttachmentLifetime: TimeInterval = 24 * 60 * 60
     static let maxEncodedMessageBytes = 50 * 1024 * 1024
