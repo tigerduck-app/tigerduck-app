@@ -264,7 +264,7 @@ final class CloudSyncCoordinator {
                     locale: locale)
 
             case .assignmentOverride(let assignmentId, let localStatus):
-                _ = try await pushCoordinator.patchAssignmentOverride(
+                try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: String(assignmentId),
                     localStatus: localStatus)
             }

@@ -191,7 +191,7 @@ final class PushCoordinator {
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String
-    ) async throws -> PushAPI.AssignmentOverrideResponse {
+    ) async throws {
         try await apiClient.patchAssignmentOverride(
             moodleAssignmentId: moodleAssignmentId,
             localStatus: localStatus

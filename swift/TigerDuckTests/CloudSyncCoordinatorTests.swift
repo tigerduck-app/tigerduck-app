@@ -85,4 +85,18 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
         #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
     }
+
+    @Test("Clearing a mark leaves the outbox after one request, though its reply is not the row")
+    func clearedMarkIsSentOnce() async {
+        let backend = Backend()
+        backend.answer("sync/assignments/42/override", body: #"{"deleted": true}"#)
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "none")
+
+        for _ in 0..<SyncOutbox.maxAttempts { await coordinator.syncTick() }
+
+        #expect(backend.requests("sync/assignments/42/override").count == 1)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+        #expect(await coordinator.pendingAssignmentOverrideIds().isEmpty)
+    }
 }

@@ -157,16 +157,19 @@ final class PushAPIClient: Sendable {
 
     // MARK: - Override sync
 
+    /// The reply is not read: the backend answers a cleared mark (`"none"`) with
+    /// `{"deleted": true}` rather than the override row, and no caller needs either.
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String
-    ) async throws -> PushAPI.AssignmentOverrideResponse {
-        let body = PushAPI.AssignmentOverrideRequest(localStatus: localStatus)
-        return try await patch(
+    ) async throws {
+        var request = try await makePostRequest(
             path: "/sync/assignments/\(moodleAssignmentId)/override",
-            body: body,
-            returning: PushAPI.AssignmentOverrideResponse.self
+            body: PushAPI.AssignmentOverrideRequest(localStatus: localStatus)
         )
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        _ = try await execute(request)
     }
 
     func patchCourseOverride(
