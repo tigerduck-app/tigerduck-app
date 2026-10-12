@@ -337,9 +337,10 @@ actor LiveMailClient: MailClient {
         return MailCharset.decode(data, label: part.declaredCharset)
     }
 
-    func rawSource(folder: String, uid: UInt32) async throws -> Data {
+    func rawSource(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> Data {
         try await run {
-            _ = try await self.imap.examineMailbox(folder)
+            let selection = try await self.imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             return try await self.imap.fetchRawMessage(identifier: UID(uid))
         }
     }

@@ -353,7 +353,7 @@ struct MailAccountManagerTests {
         let part = try #require(withAttachment.attachments.first)
         #expect(try await demo.attachment(folder: "INBOX", uid: 3, part: part,
                                           expectedUIDValidity: page.uidValidity) == Data(base64Encoded: "JVBERi0xLjQK"))
-        #expect(!(try await demo.rawSource(folder: "INBOX", uid: 4)).isEmpty)
+        #expect(!(try await demo.rawSource(folder: "INBOX", uid: 4, expectedUIDValidity: nil)).isEmpty)
     }
 
     /// The sign-out cache wipe is a directory delete on a detached task, so a process death

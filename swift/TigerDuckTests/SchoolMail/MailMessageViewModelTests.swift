@@ -234,6 +234,18 @@ struct MailMessageViewModelTests {
 
     /// A failed source load must end the spinner in a terminal, retryable state rather than
     /// spinning forever.
+    /// The source is pinned to the generation the mail was opened under: after a folder
+    /// recreation its UID names another message, which must be neither shown nor cached here.
+    @Test func aSourceFetchAfterAFolderRecreationIsRefused() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        await h.model.loadSource()
+        #expect(h.model.source == nil)
+        #expect(h.model.sourceLoadFailed)
+        #expect(h.cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
+    }
+
     @Test func aFailedSourceLoadEndsTheSpinnerWithARetryableFailedState() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()

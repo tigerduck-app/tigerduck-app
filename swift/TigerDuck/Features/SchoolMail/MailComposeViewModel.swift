@@ -208,11 +208,15 @@ final class MailComposeViewModel {
             switch mode {
             case .reply, .replyAll:
                 // An opened mail that does not say whether it has a Reply-To has it read from the raw
-                // message. Best-effort: a failed download answers the sender, as mail without one is.
+                // message, pinned like the forward branch below. Best-effort: a failed download
+                // answers the sender, as mail without one is.
                 var replyTo = original.replyTo
-                if replyTo == nil, let folder, let uid,
-                   let raw = try? await session.use({ client in try await client.rawSource(folder: folder, uid: uid) }) {
-                    replyTo = MailRawHeaders.value(named: "Reply-To", in: raw).map(MailAddress.parseList) ?? []
+                if replyTo == nil, let folder, let uid {
+                    let pin = await cachedPageUIDValidity(of: folder)
+                    let raw = try? await session.use { client in
+                        try await client.rawSource(folder: folder, uid: uid, expectedUIDValidity: pin)
+                    }
+                    replyTo = raw.map { MailRawHeaders.value(named: "Reply-To", in: $0).map(MailAddress.parseList) ?? [] }
                 }
                 let recipients = MailReplyComposer.replyRecipients(to: original, replyTo: replyTo ?? [],
                                                                    me: sender.address, replyAll: mode == .replyAll)

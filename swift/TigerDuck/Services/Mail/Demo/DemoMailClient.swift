@@ -141,7 +141,8 @@ actor DemoMailClient: MailClient {
                                  htmlBody: stored.html, inlineImages: nil)
     }
 
-    func rawSource(folder: String, uid: UInt32) async throws -> Data {
+    func rawSource(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> Data {
+        try assertUIDValidity(expectedUIDValidity)
         let stored = try find(folder: folder, uid: uid)
         let mail = OutgoingMail(
             from: MailAddress(name: stored.summary.fromName, address: stored.summary.fromAddress ?? ""),

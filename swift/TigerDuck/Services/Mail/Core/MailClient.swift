@@ -50,8 +50,10 @@ protocol MailClient: Actor {
     /// as `setFlag` allows. `inlineImages: false` leaves out the `cid:` images, for a prefetch:
     /// opening the mail fetches it again with them.
     func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages: Bool) async throws -> MailMessageDetail
-    /// `BODY.PEEK[]` — does not mark the message read.
-    func rawSource(folder: String, uid: UInt32) async throws -> Data
+    /// `BODY.PEEK[]`, which does not mark the message read. `expectedUIDValidity` as in `detail`:
+    /// after a folder recreation the same UID names another message, whose bytes would be shown
+    /// or read for the one the caller means.
+    func rawSource(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> Data
     /// `expectedUIDValidity` as in `detail`, one step further along the same chain: this returns
     /// the *bytes* of a part, and unlike a body they do not stay on the screen they were fetched
     /// for — a forward carries them into a new message, a draft re-attaches them to the one being

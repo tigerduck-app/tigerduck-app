@@ -401,6 +401,21 @@ struct MailComposeViewModelTests {
         #expect(await fake.calls.contains("rawSource INBOX 3"))
     }
 
+    // After a folder recreation the same UID names another mail, whose Reply-To must not address a
+    // reply quoting this one: the download is pinned to the cached page's generation and refused.
+    @Test func anUnknownReplyToIsNeverReadFromAnotherGeneration() async {
+        let fake = Self.fake()
+        await fake.update { $0.uidValidity["INBOX"] = 2 }
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        var context = Self.originalContext(.reply)
+        context.original?.replyTo = nil
+        let model = Self.model(context, fake: fake, cache: cache)
+        await model.prepare()
+        #expect(await fake.calls.contains("rawSource INBOX 3"))
+        #expect(model.to == "林老師 <teacher@mail.ntust.edu.tw>")
+    }
+
     // That download is best-effort: when it fails the reply goes to the sender, as for mail
     // without Reply-To, and the rest of the prefill stands.
     @Test func aFailedReplyToDownloadAnswersTheSender() async {

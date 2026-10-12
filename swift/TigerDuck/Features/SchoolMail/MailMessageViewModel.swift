@@ -338,7 +338,9 @@ final class MailMessageViewModel {
             return
         }
         do {
-            let data = try await session.use { client in try await client.rawSource(folder: folder, uid: uid) }
+            let data = try await session.use { client in
+                try await client.rawSource(folder: folder, uid: uid, expectedUIDValidity: validity)
+            }
             let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
             source = text
             // As in `load()`: never filed under a student other than the one it was fetched for.
