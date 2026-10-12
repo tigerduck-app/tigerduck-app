@@ -197,8 +197,8 @@ final class AuthService {
             return success
         } catch {
             // SSOLoginError.loginFailed is a user-facing outcome (wrong
-            // credentials); reporting it would inflate Sentry counts and
-            // drown out real infrastructure failures.
+            // credentials); logging it as an error would drown out real
+            // infrastructure failures.
             if case SSOLoginError.loginFailed = error {} else {
                 AppLogger.captureError(error, context: ["flow": "ntustLogin"])
             }
