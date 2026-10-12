@@ -43,6 +43,11 @@ jobs:
             runtime: iOS
             device: iPhone
             only_testing: TigerDuckTests
+            # The tests that load a page into a WKWebView, which run in a step of their own. A Swift
+            # Testing function's identifier carries its argument labels.
+            webkit_tests: >-
+              TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
+              TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
           # The watch app is a companion app with its own scheme and destination; Xcode pairs the
           # watch simulator with a phone one. The scheme builds the phone app for running only:
           # built for testing on a watch destination it compiled twice the phone leg's code.
@@ -51,6 +56,7 @@ jobs:
             runtime: watchOS
             device: Apple Watch
             only_testing: ""
+            webkit_tests: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -229,21 +235,44 @@ jobs:
       # resolve packages again. Newest first: the restored DerivedData can hold an older one.
       - name: Unit tests (${{ matrix.leg }})
         if: steps.changes.outputs.run == 'true'
+        id: tests
         env:
           UDID: ${{ steps.sim.outputs.udid }}
           ONLY_TESTING: ${{ matrix.only_testing }}
+          WEBKIT_TESTS: ${{ matrix.webkit_tests }}
         run: |
           xctestrun=$(ls -t "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun | head -n 1)
           echo "$xctestrun"
+          skip=()
+          for id in $WEBKIT_TESTS; do skip+=("-skip-testing:$id"); done
           xcodebuild test-without-building \
             -xctestrun "$xctestrun" \
             -destination "id=$UDID" \
             ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"} \
+            "${skip[@]}" \
             -resultBundlePath Tests.xcresult \
             -quiet
 
+      # WebKit's processes can take a minute to launch on a simulator that has just booted, and the
+      # other tests stalled while they did (#333). After the rest, the simulator has settled and a
+      # slow launch holds up only these. Not quiet: the log shows each test and any slow launch.
+      - name: WebKit tests
+        if: ${{ !cancelled() && matrix.webkit_tests != '' && steps.tests.outcome != 'skipped' }}
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+          WEBKIT_TESTS: ${{ matrix.webkit_tests }}
+        run: |
+          xctestrun=$(ls -t "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun | head -n 1)
+          only=()
+          for id in $WEBKIT_TESTS; do only+=("-only-testing:$id"); done
+          xcodebuild test-without-building \
+            -xctestrun "$xctestrun" \
+            -destination "id=$UDID" \
+            "${only[@]}" \
+            -resultBundlePath WebKitTests.xcresult
+
       # `-quiet` hides the test count and the failure messages, and a run that executed nothing
-      # exits 0, so this prints both. "Ran for" is the bundle's own run; the test step minus it is
+      # exits 0, so this prints both. "Ran for" is a bundle's own run; its test step minus it is
       # install, launch and teardown. Tests queue for the main actor, so per-test times mislead.
       - name: Test summary
         if: always() && steps.changes.outputs.run == 'true'
@@ -252,10 +281,21 @@ jobs:
         # green run must not turn red because jq could not find a key.
         run: |
           set +e -u
-          bundle=Tests.xcresult
-          if [ ! -d "$bundle" ]; then
+          bundles=()
+          for b in Tests.xcresult WebKitTests.xcresult; do
+            if [ -d "$b" ]; then bundles+=("$b"); fi
+          done
+          if [ ${#bundles[@]} -eq 0 ]; then
             echo "not produced (the step before it did not get that far)"
             exit 0
+          fi
+          bundle=${bundles[0]}
+          if [ ${#bundles[@]} -gt 1 ]; then
+            if xcrun xcresulttool merge "${bundles[@]}" --output-path Merged.xcresult > /dev/null; then
+              bundle=Merged.xcresult
+            else
+              echo "could not merge ${bundles[*]}: the counts below are $bundle's alone"
+            fi
           fi
           summary=$(xcrun xcresulttool get test-results summary --path "$bundle")
           tests=$(mktemp)
@@ -268,19 +308,24 @@ jobs:
                  | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"' "$tests" \
             || echo "could not read the failures — see the uploaded bundle"
           echo "-- timing"
-          echo "$summary" | jq -r '"ran for \((.finishTime - .startTime) | floor)s"' \
-            || echo "could not read the run's start and finish"
+          for b in "${bundles[@]}"; do
+            xcrun xcresulttool get test-results summary --path "$b" \
+              | jq -r --arg b "$b" '"\($b): \(.totalTestCount) tests, ran for \((.finishTime - .startTime) | floor)s"' \
+              || echo "could not read the count, start and finish of $b"
+          done
           exit 0
 
       # The summary above is a best effort against a JSON shape Apple changes
-      # between Xcode releases. Keep the bundle itself so a failure can be
+      # between Xcode releases. Keep the bundles themselves so a failure can be
       # opened locally when it does not.
-      - name: Keep the result bundle
+      - name: Keep the result bundles
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: xcresults-${{ matrix.leg }}
-          path: Tests.xcresult
+          path: |
+            Tests.xcresult
+            WebKitTests.xcresult
           retention-days: 7
 
   # A Mac-only compile error passes both legs above and `tools/check_macos_sources.py`, which
