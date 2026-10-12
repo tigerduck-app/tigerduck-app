@@ -50,6 +50,14 @@ struct MacClassTableView: View {
     /// `courses` computed read includes this to trigger re-render
     /// (Observation can't see plain `DataCache` mutations).
     @State var cacheRevision: Int = 0
+    /// The term's merged courses per `cacheRevision`. A memo, not state a `.task` rebuilds, so
+    /// the edits, which bump the revision and read `courses` at once, see the new list.
+    @State private var coursesMemo = ViewMemo<CoursesKey, [SDCourse]>()
+
+    private struct CoursesKey: Equatable {
+        let semester: String
+        let revision: Int
+    }
     @State private var hasWarmedCaches = false
     @State private var isLoadingSemester = false
     @State var tripleConflictError: TripleConflictError?
@@ -90,20 +98,22 @@ struct MacClassTableView: View {
         return options.contains(selectedSemester) ? options : options + [selectedSemester]
     }
 
+    /// Every cell reads this, and the merge decodes four cache files, so it is built once per
+    /// term and `cacheRevision`.
     var courses: [SDCourse] {
-        _ = cacheRevision
-        // Use the canonical merge so the deletedCourseNos tombstones and customNames overlay
-        // apply. Not `currentCourses()`: it is pinned to the live `CourseSelectionService`
-        // semester, and the Mac picker can show a past one, so feed `merge` per-semester inputs.
-        let cached = DataCache.shared.loadCourses(semester: selectedSemester)
-        let userAdded = DataCache.shared.loadUserAddedCourses(semester: selectedSemester)
-        return CanonicalCourseProvider.merge(
-            primary: cached,
-            userAdded: userAdded,
-            semester: selectedSemester,
-            deletedCourseNos: Set(DataCache.shared.loadDeletedCourseNos()),
-            customNames: DataCache.shared.loadCourseCustomNamesFlat()
-        )
+        let semester = selectedSemester
+        return coursesMemo.value(for: CoursesKey(semester: semester, revision: cacheRevision)) {
+            // Use the canonical merge so the deletedCourseNos tombstones and customNames overlay
+            // apply. Not `currentCourses()`: it is pinned to the live `CourseSelectionService`
+            // semester, and the Mac picker can show a past one, so feed `merge` per-semester inputs.
+            CanonicalCourseProvider.merge(
+                primary: DataCache.shared.loadCourses(semester: semester),
+                userAdded: DataCache.shared.loadUserAddedCourses(semester: semester),
+                semester: semester,
+                deletedCourseNos: Set(DataCache.shared.loadDeletedCourseNos()),
+                customNames: DataCache.shared.loadCourseCustomNamesFlat()
+            )
+        }
     }
 
     var visiblePeriods: [String] {

@@ -15,6 +15,7 @@ struct MacCalendarView: View {
     @State private var selectedDate: Date = Date()
     @State private var displayedMonth: Date = Date()
     @State private var cacheRevision: Int = 0
+    @State private var eventsMemo = ViewMemo<Int, [DateComponents: [SDCalendarEvent]]>()
 
     private let weekdaySymbols: [String] = [
         String(localized: "weekday_sun_short"),
@@ -36,16 +37,18 @@ struct MacCalendarView: View {
     /// `AcademicCalendarStore` posts `dataDidUpdate` after a successful fetch, so `cacheRevision`
     /// re-reads this when the calendar lands.
     private var allEvents: [SDCalendarEvent] {
-        _ = cacheRevision
         let cached = DataCache.shared.loadCalendarEvents()
             .filter { $0.source != .holiday && $0.source != .semester }
         return cached + AcademicCalendarStore.shared.calendar.calendarEvents()
     }
 
+    /// Every day cell reads this, so the cache file is decoded once per `cacheRevision`.
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] {
-        let cal = AppConstants.taipeiCalendar
-        return Dictionary(grouping: allEvents) { event in
-            cal.dateComponents([.year, .month, .day], from: event.date)
+        eventsMemo.value(for: cacheRevision) {
+            let cal = AppConstants.taipeiCalendar
+            return Dictionary(grouping: allEvents) { event in
+                cal.dateComponents([.year, .month, .day], from: event.date)
+            }
         }
     }
 
