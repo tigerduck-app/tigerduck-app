@@ -74,7 +74,7 @@ struct MoodleForumServiceTests {
     ], "warnings": []}
     """#
 
-    @Test("forums ask for every course of the term in one call and decode the news forum's counts")
+    @Test("forums ask for every course of the term in one call and decode their counts and descriptions")
     func forums() async throws {
         let token = UUID().uuidString
         Self.answer(Self.forums, function: MoodleForumService.forumsFunction, token: token)
@@ -87,9 +87,9 @@ struct MoodleForumServiceTests {
             == "courseids%5B0%5D=20119&courseids%5B1%5D=20103")
         #expect(forums == [
             MoodleForum(id: 501, courseId: 20119, type: "news", name: "Announcements & news", cmid: 9001,
-                        discussionCount: 6, unreadPostCount: 2),
+                        discussionCount: 6, unreadPostCount: 2, intro: "General news and announcements"),
             MoodleForum(id: 502, courseId: 20103, type: "general", name: "Q&A", cmid: 9002,
-                        discussionCount: 3, unreadPostCount: 0),
+                        discussionCount: 3, unreadPostCount: 0, intro: nil),
         ])
         #expect(forums[0].isNews && !forums[1].isNews)
     }
@@ -139,6 +139,90 @@ struct MoodleForumServiceTests {
         #expect(second.preview.isEmpty)
         #expect(second.replyCount == 2)
         #expect(!second.isPinned)
+    }
+
+    static let posts = #"""
+    {"posts": [
+      {"id": 7101, "subject": "Lab 1 checksum &amp; pseudo header", "replysubject": "Re: Lab 1 checksum",
+       "message": "<p>Which fields does the <strong>UDP</strong> checksum cover?</p>", "messageformat": 1,
+       "author": {"id": 3, "fullname": "B11399001 @ Tiger Duck", "isdeleted": false, "groups": [],
+                  "urls": {"profile": "https://moodle-stub.invalid/user/view.php?id=3",
+                           "profileimage": "https://moodle-stub.invalid/theme/image.php/moove/core/1/u/f1"}},
+       "discussionid": 901, "hasparent": false, "parentid": null, "timecreated": 1792030000,
+       "timemodified": 1792030000, "unread": true, "isdeleted": false, "isprivatereply": false,
+       "haswordcount": false, "wordcount": null, "charcount": null,
+       "capabilities": {"view": true, "edit": false, "delete": false, "split": false, "reply": false,
+                        "selfenrol": false, "export": false, "controlreadstatus": false, "canreplyprivately": false},
+       "urls": {"view": "https://moodle-stub.invalid/mod/forum/discuss.php?d=901#p7101"},
+       "attachments": [{"contextid": 55, "component": "mod_forum", "filearea": "attachment", "itemid": 7101,
+         "filepath": "/", "filename": "capture.pcapng", "isdir": false, "isimage": false,
+         "timemodified": 1792030000, "timecreated": 1792030000, "filesize": 20480, "author": "Tiger Duck",
+         "license": "unknown", "filenameshort": "capture.pcapng", "filesizeformatted": "20 KB", "icon": "f/unknown",
+         "timecreatedformatted": "", "timemodifiedformatted": "",
+         "url": "https://moodle-stub.invalid/pluginfile.php/55/mod_forum/attachment/7101/capture.pcapng?forcedownload=1",
+         "urls": {"export": null}, "html": {"plagiarism": null}}],
+       "messageinlinefiles": [], "tags": [], "html": {"rating": null, "taglist": null, "authorsubheading": ""}},
+      {"id": 7102, "subject": "Re: Lab 1 checksum", "replysubject": "Re: Lab 1 checksum",
+       "message": "<p>Source and destination address, a zero, the protocol and the length.</p>", "messageformat": 1,
+       "author": {"id": 4, "fullname": "B11399002 @ Duck Tiger", "urls": {}},
+       "discussionid": 901, "hasparent": true, "parentid": 7101, "timecreated": 1792032100,
+       "timemodified": 1792032100, "unread": false, "isdeleted": false, "isprivatereply": false,
+       "haswordcount": false, "capabilities": {}, "attachments": []},
+      {"id": 7103, "subject": "This forum post has been removed", "replysubject": "",
+       "message": "The content of this forum post has been removed and can no longer be accessed.",
+       "messageformat": 1, "author": {"urls": {}}, "discussionid": 901, "hasparent": true, "parentid": 7102,
+       "timecreated": null, "timemodified": null, "isdeleted": true, "isprivatereply": false,
+       "haswordcount": false, "capabilities": {}, "attachments": []}
+    ], "forumid": 502, "courseid": 20119, "ratinginfo": {"contextid": 55, "component": "mod_forum",
+     "ratingarea": "post", "canviewall": null, "canviewany": null, "scales": [], "ratings": []}, "warnings": []}
+    """#
+
+    @Test("a discussion's posts ask for every post at once, oldest first, with filters on")
+    func postsRequest() async throws {
+        let token = UUID().uuidString
+        Self.answer(Self.posts, function: MoodleForumService.discussionPostsFunction, token: token)
+
+        _ = try await MoodleForumService.posts(discussionId: 901, token: token, session: Self.session(), siteURL: Self.site)
+
+        #expect(try Self.body(of: MoodleForumService.discussionPostsFunction, token: token)
+            == "discussionid=901&sortby=created&sortdirection=ASC&moodlewssettingfilter=true")
+    }
+
+    @Test("a post decodes its parent, author, time, read state and attachments, and a deleted one Moodle's note")
+    func postsDecode() async throws {
+        let token = UUID().uuidString
+        Self.answer(Self.posts, function: MoodleForumService.discussionPostsFunction, token: token)
+
+        let posts = try await MoodleForumService.posts(
+            discussionId: 901, token: token, session: Self.session(), siteURL: Self.site
+        )
+
+        #expect(posts.map(\.id) == [7101, 7102, 7103])
+        let first = posts[0]
+        #expect(first.parentId == nil)
+        #expect(first.subject == "Lab 1 checksum & pseudo header")
+        #expect(first.message == "<p>Which fields does the <strong>UDP</strong> checksum cover?</p>")
+        #expect(first.authorName == "B11399001 @ Tiger Duck")
+        #expect(first.created == Date(timeIntervalSince1970: 1_792_030_000))
+        #expect(first.isUnread)
+        #expect(!first.isDeleted)
+        #expect(first.attachments == [MoodleFile(
+            name: "capture.pcapng", size: 20480,
+            url: "https://moodle-stub.invalid/pluginfile.php/55/mod_forum/attachment/7101/capture.pcapng?forcedownload=1",
+            mimeType: nil, modified: Date(timeIntervalSince1970: 1_792_030_000)
+        )])
+
+        #expect(posts[1].parentId == 7101)
+        #expect(!posts[1].isUnread)
+        #expect(posts[1].attachments.isEmpty)
+
+        let removed = posts[2]
+        #expect(removed.parentId == 7102)
+        #expect(removed.isDeleted)
+        #expect(removed.authorName == nil)
+        #expect(removed.created == nil)
+        #expect(!removed.isUnread)
+        #expect(removed.message == "The content of this forum post has been removed and can no longer be accessed.")
     }
 
     @Test("marking a discussion viewed posts its discussion id, not its first post's")
