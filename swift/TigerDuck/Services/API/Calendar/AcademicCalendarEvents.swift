@@ -1,19 +1,13 @@
 import Foundation
 
 /// Turns the published academic calendar into rows the Calendar screens list
-/// alongside Moodle deadlines and school events.
-///
-/// Lives here rather than on `CalendarViewModel` because the Mac needs it
-/// too, and that view model is excluded from the macOS build — it pulls in
-/// EventKit, which the Mac surface deliberately stays out of to avoid the
-/// Calendar TCC entitlement. Both the iPhone view model and `MacCalendarView`
-/// call in here so the two screens cannot drift on what a semester boundary
-/// or a holiday looks like.
-///
-/// These rows are never persisted. `DataCache` holds only what came off the
-/// network, and every load path rebuilds these from the in-memory calendar —
-/// so a boundary written by an older build under the wrong source doesn't
-/// survive in the cache forever.
+/// alongside Moodle deadlines and school events. Not on `CalendarViewModel`,
+/// because the Mac needs it and that view model is out of the macOS build: it
+/// pulls in EventKit, which the Mac leaves out to avoid the Calendar TCC
+/// entitlement. The iPhone view model and `MacCalendarView` both call it, so
+/// they agree on semester boundaries and holidays. Rows are never persisted:
+/// `DataCache` holds only network data and every load rebuilds these, so a
+/// boundary an older build stored under the wrong source does not survive.
 nonisolated extension AcademicCalendar {
 
     /// Marks an event id as a holiday's, so `holidayID(for:)` can read the
@@ -22,13 +16,11 @@ nonisolated extension AcademicCalendar {
 
     /// Semester boundaries and school holidays, as calendar rows.
     ///
-    /// Rebuilt on every call rather than cached: the holiday name is
-    /// locale-dependent and the app language can change under us. Cheap —
-    /// a few dozen rows off an in-memory value.
-    ///
-    /// One row per holiday and one at each end of a term, never one per day:
-    /// a week-long 寒假 is a single thing that happened, and eight identical
-    /// rows would bury the Moodle deadlines this screen exists to show.
+    /// Rebuilt on every call, not cached: holiday names depend on the locale,
+    /// and the app language can change under us. Cheap: a few dozen rows from
+    /// an in-memory value. One row per holiday and one at each end of a term,
+    /// never one per day: a week-long winter break is one event, and eight
+    /// identical rows would bury the Moodle deadlines this screen is for.
     func calendarEvents(locale: Locale = .current) -> [SDCalendarEvent] {
         let holidayRows = holidays.map { holiday in
             SDCalendarEvent(

@@ -20,8 +20,8 @@ struct ScheduleSyncServiceTests {
     private static func context() -> ModelContext { ModelContext(container) }
 
     private static func tuesdayAt(_ hour: Int, minute: Int = 0, secondsFromNow: TimeInterval = 0) -> Date {
-        // Anchor "now" at a deterministic Tuesday 08:00 local to make all
-        // future class starts computable without leaking across DST edges.
+        // A fixed Tuesday in Taipei time, which class periods are read in, so every class
+        // start is computable wherever the tests run.
         var comps = DateComponents()
         comps.year = 2026
         comps.month = 4
@@ -29,7 +29,7 @@ struct ScheduleSyncServiceTests {
         comps.hour = hour
         comps.minute = minute
         comps.second = 0
-        return Calendar.current.date(from: comps)!.addingTimeInterval(secondsFromNow)
+        return AppConstants.taipeiCalendar.date(from: comps)!.addingTimeInterval(secondsFromNow)
     }
 
     private static func makeCourse(
@@ -99,7 +99,7 @@ struct ScheduleSyncServiceTests {
         #expect(events.isEmpty)
     }
 
-    // MARK: - Live Activity availability (spec §6)
+    // MARK: - Live Activity availability
 
     /// The server starts a Live Activity from every event this device
     /// uploads, whether or not the app is running. With course sync off, or
@@ -195,6 +195,33 @@ struct ScheduleSyncServiceTests {
         )
 
         #expect(Set(events.map(\.scenario)) == [.classPreparing, .inClass, .assignmentUrgent])
+    }
+
+    /// Once the next term's timetable is in but before its classes begin, or between terms, no
+    /// class meets, so none is uploaded for the server to start, as on a holiday.
+    @Test func outsideTheTerm_dropsClassEventsButKeepsAssignments() {
+        let ctx = Self.context()
+        let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
+        let tuesday = AcademicCalendar.startOfDay(Self.tuesdayAt(8))
+        let calendar = AcademicCalendar(
+            revision: 1,
+            terms: [
+                SemesterTerm(
+                    code: "1151",
+                    start: AcademicCalendar.calendar.date(byAdding: .day, value: 7, to: tuesday)!,
+                    end: AcademicCalendar.calendar.date(byAdding: .day, value: 120, to: tuesday)!
+                ),
+            ],
+            holidays: []
+        )
+
+        let events = ScheduleSyncService.buildEvents(
+            inputs: Self.defaultInputs(courses: [course], assignments: [assignment], calendar: calendar),
+            now: now,
+            horizonEnd: now.addingTimeInterval(48 * 3600)
+        )
+
+        #expect(events.map(\.scenario) == [.assignmentUrgent])
     }
 
     /// Tuesday periods 3-4 and a deadline at Tuesday noon, seen from the
@@ -355,6 +382,8 @@ struct ScheduleSyncServiceTests {
         #expect(event?.scenario == .assignmentUrgent)
         #expect(event?.snapshot.title == "Final Project")
         #expect(event?.sourceId == "a-1000")
+        // The server starts its activity from this snapshot, so a tap there opens the same link.
+        #expect(event?.snapshot.deepLink?.absoluteString == "tigerduck://assignment/a-1000")
     }
 
     @Test func classPreparingLeadTimePast_firesImmediately() {
@@ -412,6 +441,36 @@ struct ScheduleSyncServiceTests {
         #expect(prep == nil)
         // inClass still scheduled normally
         #expect(events.contains { $0.scenario == .inClass })
+    }
+
+    /// The server starts the "due soon" activity from this list, so an assignment the user
+    /// ignored or marked done stays out of it, as it stays out of the backend's reminders.
+    @Test func ignoredAndLocallyCompletedAssignments_areSkipped() {
+        let ctx = Self.context()
+        let assignments = [
+            SDAssignment(
+                assignmentId: "a-ignored", courseNo: "CS101", courseName: "Algorithms",
+                title: "Ignored", dueDate: Self.tuesdayAt(20), isArchived: true
+            ),
+            SDAssignment(
+                assignmentId: "a-marked", courseNo: "CS101", courseName: "Algorithms",
+                title: "Marked done", dueDate: Self.tuesdayAt(20), isLocallyCompleted: true
+            ),
+            SDAssignment(
+                assignmentId: "a-open", courseNo: "CS101", courseName: "Algorithms",
+                title: "Open", dueDate: Self.tuesdayAt(20)
+            ),
+        ]
+        assignments.forEach(ctx.insert)
+
+        let now = Self.tuesdayAt(8)
+        let events = ScheduleSyncService.buildEvents(
+            inputs: Self.defaultInputs(courses: [], assignments: assignments),
+            now: now,
+            horizonEnd: now.addingTimeInterval(48 * 3600)
+        )
+
+        #expect(events.map(\.sourceId) == ["a-open"])
     }
 
     @Test func completedAssignment_isSkipped() {

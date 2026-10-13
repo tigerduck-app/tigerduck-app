@@ -1,9 +1,6 @@
-// User edits to the class table — split out of ClassTableViewModel.swift.
-//
-// Adding, deleting, renaming and recolouring courses, plus the writes
-// that make those survive a refresh. Every path here has to both persist
-// locally and tell the backend, which is why the sync hooks are called
-// from here rather than from the views.
+// User edits to the class table: adding, deleting, renaming and recolouring
+// courses, plus the writes that make them survive a refresh. Every path must
+// persist locally and tell the backend, so the sync hooks run here, not in views.
 
 import Defaults
 import SwiftUI
@@ -15,11 +12,10 @@ extension ClassTableViewModel {
     /// the next tap into routing through `removeUserAddedCourse`.
     @discardableResult
     func addCourse(_ course: SDCourse) -> Bool {
-        // Self-heal the inconsistent state where a course is BOTH tombstoned
-        // and currently present in `courses` (e.g. a refresh re-fetched it
-        // while a stale tombstone lingered). Done before the early-return so
-        // future reloads stop filtering it. Reports `false` since nothing
-        // was newly appended — the row was already in the timetable.
+        guard shownPerson == nil else { return false }
+        // A course both tombstoned and in `courses` (a refresh re-fetched it past
+        // a stale tombstone) is un-hidden before returning, so later reloads stop
+        // filtering it. Returns `false`: the row was already in the timetable.
         if courses.contains(where: { $0.courseNo == course.courseNo }) {
             if CourseTombstone.unhide(course.courseNo, semester: currentSemester, from: &deletedCourseNos) {
                 DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
@@ -27,11 +23,9 @@ extension ClassTableViewModel {
             return false
         }
 
-        // Refuse if any slot it occupies already has 2 courses — three
-        // concurrent courses don't have a sensible rendering (Android caps
-        // at 2 with a warning; we surface an alert instead). Must come
-        // BEFORE we clear the tombstone, otherwise a rejected add leaves
-        // the tombstone cleared and the next reload resurrects the course.
+        // Refuse when a slot it needs already holds 2 courses: three have no
+        // sensible rendering (Android also caps at 2). Check before clearing the
+        // tombstone, or a rejected add un-hides the course on the next reload.
         if let err = wouldCauseTripleConflict(course) {
             tripleConflictError = err
             return false
@@ -67,10 +61,9 @@ extension ClassTableViewModel {
             classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
         )
 
-        // Apply the custom-name overlay if one persists for this course
-        // (e.g. user removed and re-added). Stored separately from the
-        // canonical courseName so abbreviation toggles and refreshes still
-        // round-trip the API value through `NameAbbrService`.
+        // Reapply a persisted custom name, as after a remove and re-add. It is kept
+        // apart from `courseName` so abbreviation toggles and refreshes still run
+        // the API value through `NameAbbrService`.
         course.customName = courseCustomNames[course.courseNo]?[currentLocale]
 
         courses.append(course)
@@ -92,19 +85,17 @@ extension ClassTableViewModel {
     /// merge surfaced all semesters' rows in every timetable; scoping the
     /// merge is what makes the wholesale write destructive.
     private func persistUserAddedCourses() {
+        // `courses` holds someone else's then, and would replace the user's own additions.
+        guard shownPerson == nil else { return }
         let mine = courses.filter { $0.moodleIdNumber == nil }
         // Stamp rows that predate per-semester tracking with the semester
         // they are being shown in, so they stop leaking into all of them.
         for course in mine where course.semester.isEmpty {
             course.semester = currentSemester
         }
-        // Keep everything `mine` does not stand in for. An unstamped row is
-        // only replaced when it actually surfaced here — `mergeWithUserAdded`
-        // drops a manual row whose courseNo a fetched course already owns, so
-        // matching it on semester alone would erase it from the store, and
-        // with no semester recorded there is no other slice it could return
-        // in. A row stamped for this semester is replaced unconditionally:
-        // that is how a delete removes it.
+        // A row stamped for this term is always replaced; that is how a delete removes
+        // it. An unstamped row is replaced only if in `mine`: `mergeWithUserAdded` hides
+        // one whose courseNo a fetched course owns, and with no term nothing restores it.
         let survivingNos = Set(mine.map(\.courseNo))
         let others = DataCache.shared.loadUserAddedCourses().filter { stored in
             if stored.semester == currentSemester { return false }
@@ -124,10 +115,16 @@ extension ClassTableViewModel {
     }
 
     func deleteCourse(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         let courseNo = course.courseNo
         courses.removeAll { $0.courseNo == courseNo }
         deletedCourseNos.insert(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+        // The server drops the setting with the course's row.
+        if ignoresAssignments(of: courseNo) {
+            DataCache.shared.setAssignmentsIgnored(false, semester: currentSemester, courseNo: courseNo)
+            ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+        }
         persistUserAddedCourses()
         broadcastLocalChange()
         onCourseDeleted?(courseNo, currentSemester)
@@ -140,6 +137,7 @@ extension ClassTableViewModel {
     /// the course-selection system and the grade report. Other terms are
     /// untouched.
     func resetCourses(authService: AuthService) {
+        guard shownPerson == nil else { return }
         let semester = currentSemester
         // One at a time per term: two refetches racing each other's
         // uploads is nothing anyone needs.
@@ -148,11 +146,9 @@ extension ClassTableViewModel {
         Task { [weak self] in
             guard let self else { return }
             defer { self.resettingSemesters.remove(semester) }
-            // The backend first, and the local wipe only once it has
-            // forgotten the term — `AppState.deleteBackendCourses` runs the
-            // closure on success, keeps the term latched against the
-            // revision poll across both, and stamps the reset. Offline or
-            // unauthorised, nothing is touched and the user is told.
+            // Backend first. `AppState.deleteBackendCourses` runs the local wipe on
+            // success only, latches the term against the revision poll across both,
+            // and stamps the reset; offline or unauthorised, nothing is touched.
             let resetLocally: @MainActor () -> Void = { self.resetLocalCourses(semester: semester) }
             let backendOk: Bool
             if let onResetBackendCourses {
@@ -165,11 +161,9 @@ extension ClassTableViewModel {
                 self.showResetFailedAlert = true
                 return
             }
-            // Then the refetch, whose upload is what releases this
-            // device's reset tombstones: for the captured term, not
-            // whatever the picker shows by now, and after any
-            // pull-to-refresh still running rather than beside it — the
-            // two would race each other's cache writes.
+            // Then refetch; its upload releases this device's reset tombstones. Use
+            // the captured term, not the picker's current one, and wait out any
+            // running pull-to-refresh, as the two would race on cache writes.
             while self.isRefreshing {
                 try? await Task.sleep(for: .milliseconds(100))
             }
@@ -189,49 +183,45 @@ extension ClassTableViewModel {
             courseCustomNames.removeValue(forKey: courseNo)
         }
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
-        // The portal cache goes too, in every language. A reset means
-        // "start this term over", and the roster the refetch returns is
-        // the whole of it. Also load-bearing for sync: with the old roster
-        // still on disk next to an empty server term, a poll would push it
-        // back up, and this device's upload releases its own reset
-        // tombstones — the reset would undo itself.
+        DataCache.shared.clearIgnoredAssignmentCourses(semester: semester)
+        // Clear the portal cache too, in every language: a reset starts the term over.
+        // An old roster left beside an empty server term would go back up on a poll,
+        // and this device's upload releases its reset tombstones, undoing the reset.
         DataCache.shared.clearCourses(semester: semester)
         reloadFromCache()
     }
 
-    /// Undo a not-yet-committed user-added course without tombstoning the
-    /// `courseNo`. Used by AddCourseSheet's tap-to-toggle path so the user
-    /// can add a course, then immediately tap it again to back out, without
-    /// poisoning `deletedCourseNos` — which would later hide any real
-    /// enrolled course sharing the same `courseNo` from cache/network merges
-    /// (see `applyCustomizations`).
+    /// Undo a just-added user course without tombstoning its `courseNo`, for
+    /// AddCourseSheet's tap-to-toggle: add a course, tap again to back out. A
+    /// tombstone in `deletedCourseNos` would later hide a real enrolled course
+    /// with the same `courseNo` from cache and network merges (see `applyCustomizations`).
     ///
-    /// Defensive: only removes courses that came from the user-added cache
-    /// (`moodleIdNumber == nil`). A stray call against a real enrolled course
-    /// is a no-op, so callers can route through this without risking the
-    /// regular drop/hide flow.
+    /// Only removes user-added courses (`moodleIdNumber == nil`); a stray call for
+    /// a real enrolled course is a no-op, so enrolled courses leave only through
+    /// the regular drop and hide flow.
     func removeUserAddedCourse(courseNo: String) {
-        guard let course = courses.first(where: { $0.courseNo == courseNo }),
+        guard shownPerson == nil,
+              let course = courses.first(where: { $0.courseNo == courseNo }),
               course.moodleIdNumber == nil
         else { return }
         courses.removeAll { $0.courseNo == courseNo }
         persistUserAddedCourses()
         broadcastLocalChange()
-        // The add already uploaded the row; drop it server-side too or the
-        // next full sync brings the course back. ponytail: the add's POST and
-        // this DELETE are independent tasks, so a tap-tap faster than one
-        // round trip can still leave the row; a reset clears it.
+        // The add already uploaded the row, so delete it server-side or the next full
+        // sync brings it back. ponytail: the POST and this DELETE are independent tasks,
+        // so a tap-tap within one round trip can leave the row; a reset clears it.
         onCourseDeleted?(courseNo, currentSemester)
     }
 
     func startRename(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         courseToRename = course
         renameText = course.displayName
         showRenameAlert = true
     }
 
     func confirmRename() {
-        guard let course = courseToRename else { return }
+        guard shownPerson == nil, let course = courseToRename else { return }
         // Trim whitespace *and* newlines so a pasted "\nDefault\n" still
         // collapses to empty and routes through the revert path instead of
         // saving an invisible/line-breaking alias.
@@ -255,6 +245,7 @@ extension ClassTableViewModel {
     }
 
     func revertRename(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         let locale = currentLocale
         courseCustomNames[course.courseNo]?[locale] = nil
         // Remove the outer entry entirely when no locale overrides remain
@@ -271,31 +262,33 @@ extension ClassTableViewModel {
     }
 
     func startRecolor(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         courseToRecolor = course
     }
 
-    /// Apply a user-picked color (preset or fully custom) for this course.
-    /// Writes through TigerDuckTheme — which also displaces any other course
-    /// currently holding the same hex so the "no two courses share a color"
-    /// invariant survives the edit — then broadcasts so Home, Class Table,
-    /// widgets and the Live Activity all refresh.
-    ///
-    /// Intentionally does *not* clear `courseToRecolor`: the ColorPicker
-    /// emits a continuous stream of `onSelect` ticks while the user drags
-    /// the slider, so auto-dismissing here would close the sheet after the
-    /// first intermediate value and strand the rest of the gesture.
-    /// `CourseColorPickerSheet` calls `dismiss()` itself when a preset tap
-    /// (or the Close button) actually finishes the picking session.
-    func setColor(hex: UInt32, for course: SDCourse) {
-        TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
+    /// Ignores every assignment of `course`, the ones Moodle adds later included, or stops.
+    func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
+        guard offersIgnoreAssignments else { return }
+        let semester = currentSemester
+        DataCache.shared.setAssignmentsIgnored(ignore, semester: semester, courseNo: course.courseNo)
+        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+        assignments = DataCache.shared.loadAssignments()
         broadcastLocalChange()
-        syncColorOverride(course: course, hex: hex)
+        onSyncCourseIgnore?(course, semester, ignore)
     }
 
-    private func syncColorOverride(course: SDCourse, hex: UInt32) {
-        guard let moodleId = course.moodleIdNumber else { return }
-        let hexStr = String(format: "#%06X", hex)
-        onSyncCourseOverride?(moodleId, hexStr, nil, nil)
+    /// Apply a picked color, preset or custom. Writes through `TigerDuckTheme`,
+    /// which moves any other course off the same hex so no two courses share a color,
+    /// then broadcasts so Home, Class Table, widgets and the Live Activity refresh.
+    ///
+    /// Leaves `courseToRecolor` set: the ColorPicker sends `onSelect` ticks
+    /// throughout a drag, and dismissing here would close the sheet on the first.
+    /// `CourseColorPickerSheet` calls `dismiss()` itself on a preset tap or Close.
+    func setColor(hex: UInt32, for course: SDCourse) {
+        guard shownPerson == nil else { return }
+        let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
+        broadcastLocalChange()
+        onSyncColorPick?(hex, course, changed)
     }
 
     private func syncNameOverride(course: SDCourse, customName: String, locale: String) {

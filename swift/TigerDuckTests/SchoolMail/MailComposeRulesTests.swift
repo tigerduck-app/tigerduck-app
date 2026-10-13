@@ -98,6 +98,16 @@ struct MailComposeRulesTests {
         #expect(text.hasSuffix("--B--\r\n"))
     }
 
+    @Test func attachmentsAreBase64InLinesOf76() {
+        let data = Data((0..<200).map { UInt8($0) })
+        let text = Self.text(Self.mail(attachments: [OutgoingAttachment(filename: "a.bin", mimeType: "application/octet-stream", data: data)]))
+        let encoded = data.base64EncodedString()
+        let lines = stride(from: 0, to: encoded.count, by: 76).map { start in
+            String(encoded.dropFirst(start).prefix(76))
+        }
+        #expect(text.contains("\r\n\r\n" + lines.joined(separator: "\r\n") + "\r\n--B--\r\n"))
+    }
+
     /// A hostile `mimeType` (whitespace, a control character, or anything else that
     /// isn't a plain `type/subtype` token) must never be written into the `Content-Type`
     /// header verbatim; it falls back to a safe default instead.
@@ -182,11 +192,10 @@ struct MailComposeRulesTests {
         #expect(MailReplyComposer.quotedBody(of: original, dateText: "2026/09/16").hasSuffix("\n> a\n> b"))
     }
 
-    /// The forward header block's exact wording comes from `app-translation` (Task 18) and
-    /// isn't available yet at this point in the plan, so — like `quotesTheOriginalBody`
-    /// above — this only checks the structure: two blank lines, a 5-line header block
-    /// (forwarded-message marker, From, Date, Subject, To — design doc §6.4, matches
-    /// Android's `ComposePrefill.forward`), a blank line, then the original text unquoted.
+    /// The forward header block's wording comes from `app-translation`, so, like
+    /// `quotesTheOriginalBody` above, this checks only the structure: two blank lines, a 5-line
+    /// header block (forwarded-message marker, From, Date, Subject, To, matching Android's
+    /// `ComposePrefill.forward`), a blank line, then the original text unquoted.
     @Test func forwardsWithAStructuredHeaderBlock() {
         let original = MailOriginal(
             from: MailAddress(name: "教務處", address: "a@mail.ntust.edu.tw"),

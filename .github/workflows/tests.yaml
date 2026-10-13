@@ -1,34 +1,15 @@
 name: Tests
 
-# Unit-test gate for PRs. Until this existed no workflow in the repo ever
-# invoked xcodebuild, so the ~200 tests in `swift/TigerDuckTests/` only ran when
-# someone remembered to press Cmd-U, and a break could sit there for weeks with
-# nothing saying so. The watch tests were worse off still: they were in no
-# shared scheme, so `xcodebuild -scheme TigerDuck` never even compiled them.
-# The Android repo has had the equivalent gate (.github/workflows/ci.yaml) for
-# a while; this is its counterpart.
-#
-# Deliberately unit tests only, matching that workflow's stance: no
-# TigerDuckUITests (simulator UI automation is the usual source of CI flake,
-# and its runner already fails to launch on some local simulators), and no
-# second pass on the macOS destination.
-#
-# The phone and watch suites run on runners of their own, side by side. They
-# used to run back to back in one job, so the gate took the sum of the two
-# (8-14 min) where it now takes the slower one. Each leg's time is almost all
-# build plus simulator boot — the tests themselves finish in seconds — so
-# splitting either suite across more runners would only pay for the build
-# again.
-#
-# Note there is no `CODE_SIGNING_ALLOWED=NO` here, the usual CI shorthand for
-# "this machine has no certificates". A simulator build signs ad-hoc and needs
-# none, and turning signing off drops the app's entitlements with it — which
-# takes the App Group container away, which makes the DEBUG guard in
-# `WidgetSnapshotStore` and friends trap during launch, which crashes the test
-# host before a single test runs.
+# Unit tests only: simulator UI automation flakes, so TigerDuckUITests stays out. The phone and
+# watch suites run as parallel jobs, next to a build of the macOS app, whose tests are not run.
+
 
 on:
   pull_request:
+    branches: [main, dev]
+  # What lands on dev and main is tested too, and those runs are the only
+  # ones that save the build caches pull requests start from.
+  push:
     branches: [main, dev]
 
 concurrency:
@@ -40,14 +21,17 @@ permissions:
 
 jobs:
   unit-tests:
-    # macOS is the only image that can run xcodebuild, and the sources need an
-    # Xcode 26 SDK — `glassEffect` and friends sit behind `if #available(iOS
-    # 26)`, which still has to *compile*. If a future image defaults to
-    # something older, select one explicitly with `sudo xcode-select -s`; the
-    # version is printed below so a failure says which one it got.
+    # The sources need the Xcode 26 SDK, because code behind `if #available(iOS 26)` must still
+    # compile; pick one with `sudo xcode-select -s` if an image defaults to an older Xcode.
     name: unit-tests (${{ matrix.leg }})
     runs-on: macos-26
     timeout-minutes: 60
+    # `actions: write` lets a push run delete the cache it started from once
+    # it has saved a newer one. A fork's pull request gets a read-only
+    # token whatever this says, and pull requests never delete anyway.
+    permissions:
+      contents: read
+      actions: write
     strategy:
       # Let both legs report: a phone failure must not cancel the watch run
       # and hide whatever it would have found.
@@ -59,14 +43,21 @@ jobs:
             runtime: iOS
             device: iPhone
             only_testing: TigerDuckTests
-          # The watch app is a companion app, so it needs its own scheme and
-          # its own destination; the phone scheme's test action does not reach
-          # it. Xcode pairs the watch simulator with a phone one on its own.
+            # The tests that load a page into a WKWebView, which run in a step of their own. A Swift
+            # Testing function's identifier carries its argument labels.
+            webkit_tests: >-
+              TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
+              TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
+              TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
+          # The watch app is a companion app with its own scheme and destination; Xcode pairs the
+          # watch simulator with a phone one. The scheme builds the phone app for running only:
+          # built for testing on a watch destination it compiled twice the phone leg's code.
           - leg: watch
             scheme: TigerDuckWatch Watch App
             runtime: watchOS
             device: Apple Watch
             only_testing: ""
+            webkit_tests: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -74,27 +65,57 @@ jobs:
           # Without it the build fails on missing resources rather than on
           # anything this workflow is meant to catch.
           submodules: true
+          # Two commits on a pull request, the merge and its base, for the path check below.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
 
+      # A documentation-only pull request skips the steps below rather than the job: a skipped
+      # matrix job never reports `unit-tests (phone)` to a required check.
+      - name: Changed paths
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only HEAD^1 HEAD)
+            if [ -n "$files" ] && ! printf '%s\n' "$files" \
+                | grep -qvE '\.md$|^(docs|openspec|\.claude|\.agents|\.greptile)/'; then
+              run=false
+              echo "Documentation-only change: skipping the build and tests."
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      # The core count is what the test timings below have to be read
+      # against: Swift Testing runs tests side by side, so a suite a dev Mac
+      # finishes in seconds can take minutes on a runner a quarter its size.
       - name: Xcode version
-        run: xcodebuild -version
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          xcodebuild -version
+          sysctl -n machdep.cpu.brand_string hw.ncpu
 
-      # Naming a simulator is how this breaks six months from now: images add
-      # and drop devices, and `OS=latest` resolves to a runtime the named
-      # device may not exist on. (That exact mismatch — iPhone 17 Pro Max
-      # present on 26.5 while `latest` meant 27.0 — is what it does locally.)
-      # Take whichever devices the image actually has.
+      # Test fixtures use `Calendar.current` but the app pins Asia/Taipei (`AcademicCalendar`,
+      # `WidgetTaipei`), so a UTC runner shifts every fixture by eight hours. A simulator takes
+      # the host's zone when it boots, so this runs before the boot.
+      - name: Run in the school's timezone
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          sudo systemsetup -settimezone Asia/Taipei
+          date
+
+      # Take whichever devices the image has instead of naming one: images add and drop devices,
+      # and `OS=latest` can resolve to a runtime the named device does not exist on.
       - name: Pick a simulator
+        if: steps.changes.outputs.run == 'true'
         id: sim
         env:
           RUNTIME: ${{ matrix.runtime }}
           DEVICE: ${{ matrix.device }}
         run: |
           set -euo pipefail
-          # Newest runtime wins. A runner image ships one matched set of
-          # runtimes per Xcode, so the newest watchOS pairs with the newest
-          # iOS the watch leg's phone half will come from; a dev machine that
-          # has accumulated several may not, and that is the case to notice if
-          # the watch leg ever fails to pair.
+          # Newest runtime wins. A runner image ships one matched set of runtimes per Xcode, so the
+          # newest watchOS pairs with the newest iOS; a machine with several sets may not.
           udid=$(xcrun simctl list devices available --json | jq -r --arg os "$RUNTIME" --arg name "$DEVICE" '
             [ .devices
               | to_entries[]
@@ -112,85 +133,282 @@ jobs:
           xcrun simctl list devices available | grep -E "$udid"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
-      # Every date in this app is a Taiwan school day: `AcademicCalendar.calendar`
-      # and `WidgetTaipei.calendar` are hard-pinned to Asia/Taipei, while the
-      # tests build their fixtures with `Calendar.current`. On the machines
-      # these were written on those agree. On a UTC runner they are eight hours
-      # apart, so a fixture meaning "Monday 09:30" arrives as Monday 17:30 —
-      # `.ongoing` comes back `.tomorrowFirst`, and `(comps.hour → 2) == 10`
-      # misses by exactly the offset. A simulator takes the host's zone, so
-      # this is the one place to say it.
-      - name: Run in the school's timezone
-        run: |
-          sudo systemsetup -settimezone Asia/Taipei
-          date
+      # Restores this leg's last build so only changed files recompile. A fresh checkout gives
+      # every file a new mtime, so the action also puts back the old mtime of each unchanged
+      # file. A stale cache (a package bump, a new Xcode) means a 12 to 15 minute build.
+      - name: Restore the last build
+        if: steps.changes.outputs.run == 'true'
+        uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
+        with:
+          key: xcode-${{ matrix.leg }}-${{ github.sha }}
+          restore-keys: xcode-${{ matrix.leg }}-
+          # Outside the checkout, so the action's mtime scan does not walk into them.
+          deriveddata-directory: ${{ runner.temp }}/DerivedData
+          sourcepackages-directory: ${{ runner.temp }}/SourcePackages
+          # Per leg: DerivedData remembers the mtimes of the package clone it compiled, so a clone
+          # shared by both legs made the other leg rebuild every package.
+          swiftpm-cache-key: xcode-packages-${{ matrix.leg }}-${{ hashFiles('swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          # The action skips Icon Composer bundles unless listed, and actool then re-renders the icon.
+          restore-mtime-targets: |
+            swift/**/*.icon
+            swift/**/*.icon/**/*
+          # Only pushes save, and a push that saved a newer build deletes the one it restored, so
+          # each leg keeps one cache per branch; per-PR caches would crowd the 10 GB limit.
+          cache-read-only: ${{ github.event_name != 'push' }}
+          delete-used-deriveddata-cache: ${{ github.event_name == 'push' }}
 
-      - name: Unit tests (${{ matrix.leg }})
+      # The next steps split `xcodebuild test` into resolve, build, boot and run, so the job view
+      # times each part.
+      - name: Resolve packages
+        if: steps.changes.outputs.run == 'true'
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        run: >
+          xcodebuild -resolvePackageDependencies
+          -project swift/TigerDuck.xcodeproj
+          -scheme "$SCHEME"
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
+
+      # No index store: nothing here reads it, and writing it costs compile time and cache space.
+      # The log goes to a file with arrival times; the step prints where the time went, compiles
+      # per target (a warm build compiles little) and xcodebuild's timing summary.
+      - name: Build for testing
+        if: steps.changes.outputs.run == 'true'
         env:
           SCHEME: ${{ matrix.scheme }}
           UDID: ${{ steps.sim.outputs.udid }}
           ONLY_TESTING: ${{ matrix.only_testing }}
-        run: >
-          xcodebuild test
-          -project swift/TigerDuck.xcodeproj
-          -scheme "$SCHEME"
-          -destination "id=$UDID"
-          ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"}
-          -resultBundlePath Tests.xcresult
-          -quiet
+        run: |
+          set -o pipefail
+          log="$RUNNER_TEMP/build.log"
+          now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+          start=$(now)
+          # Signing stays on: CODE_SIGNING_ALLOWED=NO drops the entitlements and with them the App
+          # Group container, and the DEBUG guard in `WidgetSnapshotStore` then crashes the test host.
+          if ! xcodebuild build-for-testing \
+              -project swift/TigerDuck.xcodeproj \
+              -scheme "$SCHEME" \
+              -destination "id=$UDID" \
+              ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"} \
+              -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+              -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+              -showBuildTimingSummary \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              2>&1 | perl -MTime::HiRes=time -ne 'printf "%.1f %s", time, $_' > "$log"; then
+            cut -d' ' -f2- "$log" | grep -E "error:" | sort -u | head -50
+            tail -n 30 "$log" | cut -d' ' -f2-
+            exit 1
+          fi
+          end=$(now)
+          set +o pipefail
+          # A stretch of silence is charged to the next task line: the blank
+          # and command lines around a task print with it, not before it.
+          echo "-- where the $(perl -e "printf '%.0f', $end - $start") s went, by the task line that ended each stretch"
+          awk -v start="$start" -v end="$end" '
+              { line = substr($0, index($0, " ") + 1); gap = (NR == 1 ? $1 - start : $1 - prev); prev = $1 }
+              NR == 1 { sum["(xcodebuild starting up)"] += gap; next }
+              match(line, /^[A-Z][A-Za-z]+ /) { sum[substr(line, 1, RLENGTH - 1)] += pending + gap; pending = 0; next }
+              { pending += gap }
+              END {
+                sum["(after the last task)"] += pending + end - prev
+                for (k in sum) printf "%7.1f  %s\n", sum[k], k
+              }' "$log" | sort -rn 2>/dev/null | head -8
+          echo "-- compiles by target"
+          cut -d' ' -f2- "$log" | grep -E '^(SwiftCompile|CompileC) ' \
+            | grep -oE "in target '[^']+' from project '[^']+'" | sort | uniq -c | sort -rn | head -15
+          echo "-- xcodebuild timing summary"
+          cut -d' ' -f2- "$log" | sed -n '/Build Timing Summary/,$p' | grep -v '^$' | head -10
+          true
 
-      # `-quiet` keeps the log readable but also hides the test count, and a
-      # run that silently executed nothing exits 0 exactly like a real pass.
-      # Read the counts back out so the log says what actually ran. `always()`
-      # so a failing run still reports which tests failed.
-      #
-      # The per-failure detail matters more than it looks: `-quiet` also hides
-      # *why* a test failed, and a mid-run crash marks every remaining test
-      # failed with no message attached — so a bare list of names cannot tell
-      # "173 real failures" apart from "one crash, 172 casualties".
+      # Boot after the build, not during it: on the 3-core runner a first boot cut the cache
+      # download from about 70 MB/s to 4, and during the build it cost xcodebuild 68 to 171 s of
+      # start-up and 33 to 96 s of package graph. bootstatus prints a line a second.
+      - name: Boot the simulator
+        if: steps.changes.outputs.run == 'true'
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -o pipefail
+          xcrun simctl bootstatus "$UDID" -b | tail -n 3
+
+      # Run from the .xctestrun the build wrote, so xcodebuild does not load the project and
+      # resolve packages again. Newest first: the restored DerivedData can hold an older one.
+      - name: Unit tests (${{ matrix.leg }})
+        if: steps.changes.outputs.run == 'true'
+        id: tests
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+          ONLY_TESTING: ${{ matrix.only_testing }}
+          WEBKIT_TESTS: ${{ matrix.webkit_tests }}
+        run: |
+          xctestrun=$(ls -t "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun | head -n 1)
+          echo "$xctestrun"
+          skip=()
+          for id in $WEBKIT_TESTS; do skip+=("-skip-testing:$id"); done
+          xcodebuild test-without-building \
+            -xctestrun "$xctestrun" \
+            -destination "id=$UDID" \
+            ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"} \
+            "${skip[@]}" \
+            -resultBundlePath Tests.xcresult \
+            -quiet
+
+      # WebKit's processes can take a minute to launch on a simulator that has just booted, and the
+      # other tests stalled while they did (#333). After the rest, the simulator has settled and a
+      # slow launch holds up only these. Not quiet: the log shows each test and any slow launch.
+      - name: WebKit tests
+        if: ${{ !cancelled() && matrix.webkit_tests != '' && steps.tests.outcome != 'skipped' }}
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+          WEBKIT_TESTS: ${{ matrix.webkit_tests }}
+        run: |
+          xctestrun=$(ls -t "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun | head -n 1)
+          only=()
+          for id in $WEBKIT_TESTS; do only+=("-only-testing:$id"); done
+          xcodebuild test-without-building \
+            -xctestrun "$xctestrun" \
+            -destination "id=$UDID" \
+            "${only[@]}" \
+            -resultBundlePath WebKitTests.xcresult
+
+      # `-quiet` hides the test count and the failure messages, and a run that executed nothing
+      # exits 0, so this prints both. "Ran for" is a bundle's own run; its test step minus it is
+      # install, launch and teardown. Tests queue for the main actor, so per-test times mislead.
       - name: Test summary
-        if: always()
+        if: always() && steps.changes.outputs.run == 'true'
         # `set +e`: the job's verdict is the test step's, not this step's. It
         # reads a JSON shape Apple reshuffles between Xcode releases, and a
         # green run must not turn red because jq could not find a key.
         run: |
           set +e -u
-          bundle=Tests.xcresult
-          if [ ! -d "$bundle" ]; then
+          bundles=()
+          for b in Tests.xcresult WebKitTests.xcresult; do
+            if [ -d "$b" ]; then bundles+=("$b"); fi
+          done
+          if [ ${#bundles[@]} -eq 0 ]; then
             echo "not produced (the step before it did not get that far)"
             exit 0
           fi
-          xcrun xcresulttool get test-results summary --path "$bundle" \
+          bundle=${bundles[0]}
+          if [ ${#bundles[@]} -gt 1 ]; then
+            if xcrun xcresulttool merge "${bundles[@]}" --output-path Merged.xcresult > /dev/null; then
+              bundle=Merged.xcresult
+            else
+              echo "could not merge ${bundles[*]}: the counts below are $bundle's alone"
+            fi
+          fi
+          summary=$(xcrun xcresulttool get test-results summary --path "$bundle")
+          tests=$(mktemp)
+          xcrun xcresulttool get test-results tests --path "$bundle" > "$tests"
+          echo "$summary" \
             | jq '{result, totalTestCount, passedTests, failedTests, skippedTests}' \
             || echo "could not read the summary — see the uploaded bundle"
           echo "-- failures"
-          xcrun xcresulttool get test-results tests --path "$bundle" \
-            | jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
-                     | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"' \
+          jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
+                 | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"' "$tests" \
             || echo "could not read the failures — see the uploaded bundle"
+          echo "-- timing"
+          for b in "${bundles[@]}"; do
+            xcrun xcresulttool get test-results summary --path "$b" \
+              | jq -r --arg b "$b" '"\($b): \(.totalTestCount) tests, ran for \((.finishTime - .startTime) | floor)s"' \
+              || echo "could not read the count, start and finish of $b"
+          done
           exit 0
 
       # The summary above is a best effort against a JSON shape Apple changes
-      # between Xcode releases. Keep the bundle itself so a failure can be
+      # between Xcode releases. Keep the bundles themselves so a failure can be
       # opened locally when it does not.
-      - name: Keep the result bundle
+      - name: Keep the result bundles
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: xcresults-${{ matrix.leg }}
-          path: Tests.xcresult
+          path: |
+            Tests.xcresult
+            WebKitTests.xcresult
           retention-days: 7
 
-  # The vendored SwiftMail carries nine local patches on top of upstream 1.11.0
-  # (see swift/Packages/SwiftMail/VENDORED.md). Its own SwiftPM test targets are
-  # in no Xcode scheme, so `xcodebuild -scheme TigerDuck` never compiled them and
-  # the tests pinning those patches ran only when someone typed `swift test` by
-  # hand. Patches 2, 5 and 6 happen to have cover in TigerDuckTests; patches 3
-  # (send CHARSET only for non-ASCII SEARCH criteria) and 4 had none at all, so a
-  # re-vendor could have dropped either with nothing going red.
-  #
-  # No simulator and no timezone step: these are pure SwiftPM tests against a
-  # loopback IMAP/SMTP server, so they need neither a device nor Asia/Taipei.
+  # A Mac-only compile error passes both legs above and `tools/check_macos_sources.py`, which
+  # checks only which files the Mac build compiles. A job of its own, not a leg: it shares none
+  # of their simulator and test steps. It runs nothing, so it builds unsigned.
+  mac-build:
+    name: macOS build
+    runs-on: macos-26
+    timeout-minutes: 60
+    # As in `unit-tests`: a push run deletes the cache it started from once it saved a newer one.
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # app-translation carries the .xcstrings the app target compiles.
+          submodules: true
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      # Skips the steps, not the job, for the documentation-only pull requests `unit-tests` skips.
+      - name: Changed paths
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only HEAD^1 HEAD)
+            if [ -n "$files" ] && ! printf '%s\n' "$files" \
+                | grep -qvE '\.md$|^(docs|openspec|\.claude|\.agents|\.greptile)/'; then
+              run=false
+              echo "Documentation-only change: skipping the build."
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - name: Xcode version
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          xcodebuild -version
+          sysctl -n machdep.cpu.brand_string hw.ncpu
+
+      # The same cache action and rules as `unit-tests`, under its own `mac` key.
+      - name: Restore the last build
+        if: steps.changes.outputs.run == 'true'
+        uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
+        with:
+          key: xcode-mac-${{ github.sha }}
+          restore-keys: xcode-mac-
+          deriveddata-directory: ${{ runner.temp }}/DerivedData
+          sourcepackages-directory: ${{ runner.temp }}/SourcePackages
+          swiftpm-cache-key: xcode-packages-mac-${{ hashFiles('swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-mtime-targets: |
+            swift/**/*.icon
+            swift/**/*.icon/**/*
+          cache-read-only: ${{ github.event_name != 'push' }}
+          delete-used-deriveddata-cache: ${{ github.event_name == 'push' }}
+
+      - name: Build
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          log="$RUNNER_TEMP/build.log"
+          if ! xcodebuild build \
+              -project swift/TigerDuck.xcodeproj \
+              -scheme TigerDuck \
+              -destination 'platform=macOS' \
+              -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+              -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+              -showBuildTimingSummary \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              > "$log" 2>&1; then
+            grep -E "error:" "$log" | sort -u | head -50
+            tail -n 30 "$log"
+            exit 1
+          fi
+          sed -n '/Build Timing Summary/,$p' "$log" | grep -v '^$' | head -10
+
+  # The vendored SwiftMail carries local patches (swift/Packages/SwiftMail/VENDORED.md), and its
+  # SwiftPM tests are in no Xcode scheme, so only this job runs them. They need no simulator
+  # and no timezone: they run against a loopback IMAP and SMTP server.
   vendored-package:
     name: vendored SwiftMail
     runs-on: macos-26
@@ -198,10 +416,31 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         # No submodules: this package does not read app-translation.
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      # On a pull request the package tests run only for a change to the package or to this
+      # file; pushes always run them.
+      - name: Changed paths
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only HEAD^1 HEAD)
+            if ! printf '%s\n' "$files" | grep -qE '^swift/Packages/SwiftMail/|^\.github/workflows/tests\.yaml$'; then
+              run=false
+              echo "No change under swift/Packages/SwiftMail/ or to tests.yaml: skipping the package tests."
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
       - name: Xcode version
+        if: steps.changes.outputs.run == 'true'
         run: xcodebuild -version
 
       - name: Package tests
+        if: steps.changes.outputs.run == 'true'
         working-directory: swift/Packages/SwiftMail
         run: swift test

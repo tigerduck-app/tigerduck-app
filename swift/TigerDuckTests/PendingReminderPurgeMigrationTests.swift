@@ -1,26 +1,6 @@
-// Pins `PendingReminderPurgeMigration`'s three behaviours against a fake
-// `PendingReminderPurgeCenter` — never the real, process-global
-// `UNUserNotificationCenter`:
-//
-//   1. `LA-reminder-*` pending requests are removed.
-//   2. Requests under any other prefix are left alone — the fake below
-//      always mixes reminder and non-reminder identifiers in the same
-//      pending list so this can't pass just because there was nothing
-//      else to leave alone.
-//   3. A second call, after the flag is set, does nothing — proven by
-//      handing the second call a *fresh* `LA-reminder-*` request that
-//      would be removed if the guard were not working, then asserting it
-//      still survives.
-//
-// `doneKey` mirrors `PendingReminderPurgeMigration`'s own private
-// `UserDefaults.standard` flag literal ("PendingReminderPurgeMigration.v1.done").
-// It has to be duplicated here rather than referenced because the
-// production constant is intentionally `private` (matching every other
-// migration in this folder) — see Services/Migrations/AGENTS.md. Suite is
-// `.serialized` and every test resets the key first because the flag lives
-// in real, process-wide `UserDefaults.standard`; without both, Swift
-// Testing's default parallel execution would let these three tests race on
-// the same key.
+// Runs against `FakePurgeCenter`, never the process-global `UNUserNotificationCenter`. `doneKey`
+// mirrors the migration's flag literal, private per swift/TigerDuck/Services/Migrations/AGENTS.md.
+// The flag is real, process-wide state, so the suite is `.serialized` and `init` clears it first.
 import Foundation
 import Testing
 import UserNotifications
@@ -94,12 +74,11 @@ struct PendingReminderPurgeMigrationTests {
 /// Records what the migration asked it to remove; never touches the real
 /// notification centre.
 ///
-/// `nonisolated`, matching `SettingsAPIStub`'s rationale in this same test
-/// target: Swift Testing invokes `@Test` bodies off the main actor, but
-/// this module's default actor isolation is `MainActor`, so a plain class
-/// here would be main-actor-isolated and every call from a test body would
-/// warn about crossing an actor boundary. Safe without synchronization —
-/// each test constructs and uses its own instance sequentially.
+/// `nonisolated` because Swift Testing runs `@Test` bodies off the main actor
+/// while this module defaults to `MainActor` isolation: a plain class would be
+/// main-actor-isolated and warn on every call from a test body. It needs no
+/// synchronization, since each test creates its own instance and uses it
+/// sequentially.
 private nonisolated final class FakePurgeCenter: PendingReminderPurgeCenter {
     private(set) var pendingRequests: [UNNotificationRequest]
     private(set) var removedIdentifiers: [String] = []

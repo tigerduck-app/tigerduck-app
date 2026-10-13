@@ -29,20 +29,21 @@ enum CourseSelectionService {
         forceRefresh: Bool = false,
         persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> [String] {
-        // The D01 page returns whichever term 選課 is open for, which runs
-        // ahead of the term in session — cache it under that term, not under
-        // the month heuristic's guess.
+        // The D01 page returns whichever term course selection is open for, which runs ahead
+        // of the term in session, so cache under that term, not the month heuristic's guess.
         let semester = SemesterCatalog.selectionSemesterCode()
         if !forceRefresh, let cached = loadEnrolledCoursesCache(studentId: studentId, semester: semester) {
             return cached
         }
 
+        let generation = NTUSTSessionManager.shared.generation
         if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
         }
@@ -52,18 +53,19 @@ enum CourseSelectionService {
             throw CourseServiceError.noCourseData
         }
 
-        // Trigger silent re-auth on either an ssoam2 redirect *or* an
-        // inline-rendered SSO login body returned with HTTP 200 from
-        // the course-selection host. URL-only detection misses the
-        // inline case and the regex falls through to "no courses".
-        let landedOnSSO = (response as? HTTPURLResponse)?.url?.host == "ssoam2.ntust.edu.tw"
+        // Re-auth silently when the list came from another host (ssoam2, or the campus portal a
+        // lapsed course-selection session is sent to) or as an SSO login body served inline
+        // with HTTP 200. Either way the regex would fall through to "no courses".
+        let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != courseListURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
-        if landedOnSSO || bodyIsSSO {
+        if landedElsewhere || bodyIsSSO {
+            NTUSTSessionManager.shared.dropServiceCookies(for: courseListURL)
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
 
@@ -72,7 +74,7 @@ enum CourseSelectionService {
                 throw CourseServiceError.noCourseData
             }
             let retryHost = (retryResponse as? HTTPURLResponse)?.url?.host
-            if retryHost == "ssoam2.ntust.edu.tw" || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
+            if retryHost != courseListURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw CourseServiceError.redirectedToSSO
             }
             let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }
@@ -90,6 +92,13 @@ enum CourseSelectionService {
             saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
         }
         return courseNos
+    }
+
+    /// Whether fetching `semester` would scrape the course-selection list, the one sync fetch
+    /// that needs the SSO session. The list serves a single term, and a day-long cache covers it.
+    nonisolated static func needsSchoolSession(studentId: String, semester: String) -> Bool {
+        semester == SemesterCatalog.selectionSemesterCode()
+            && loadEnrolledCoursesCache(studentId: studentId, semester: semester) == nil
     }
 
     nonisolated static let enrolledCoursesCacheTTL: TimeInterval = 86_400
@@ -162,10 +171,9 @@ enum CourseSelectionService {
     /// During those windows callers may briefly see the previous term's
     /// data; if precision is required, prefer a server-driven term code.
     nonisolated static func currentSemesterCode() -> String {
-        // The school's published calendar, not a guess and not a pinned
-        // constant. The heuristic below still says 114-2 through August,
-        // which mislabels a term the school opened early — it is the
-        // last resort for a device that has never reached the backend.
+        // The school's published calendar comes first, not a guess or a pinned constant. The
+        // month heuristic mislabels a term the school opens early, so it is only the last
+        // resort for a device that has never reached the backend.
         AcademicCalendar.cached.currentTerm()?.code ?? heuristicSemesterCode()
     }
 

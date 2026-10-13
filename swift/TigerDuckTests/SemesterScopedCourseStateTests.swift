@@ -79,6 +79,7 @@ struct MisfiledServerRowTests {
     }
 }
 
+@MainActor
 struct ServerRowCourseMetadataTests {
     private static let row: [String: Any] = [
         "course_no": "GE1001",
@@ -95,9 +96,10 @@ struct ServerRowCourseMetadataTests {
     @Test func rebuildingAnExistingRowKeepsItsDimensionAndDuration() {
         let course = AppState.course(fromServerRow: Self.row, courseNo: "GE1001",
                                      semester: "1151", name: "通識課",
-                                     dimension: "C", allYear: "全學年")
+                                     dimension: "C", allYear: "全學年", requireOption: "E")
         #expect(course.dimension == "C")
         #expect(course.allYear == "全學年")
+        #expect(course.requireOption == "E")
         #expect(course.credits == 0.5)
         #expect(course.schedule[1] == ["2", "3"])
     }
@@ -109,5 +111,6 @@ struct ServerRowCourseMetadataTests {
                                      semester: "1151", name: nil)
         #expect(course.dimension.isEmpty)
         #expect(course.allYear.isEmpty)
+        #expect(course.requireOption.isEmpty)
     }
 }

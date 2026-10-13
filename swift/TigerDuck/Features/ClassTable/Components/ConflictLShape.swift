@@ -319,3 +319,97 @@ struct ConflictLShape: Shape {
         return path
     }
 }
+
+/// Where the runs of a lane layout fall in the cluster's frame. Lanes are as wide as the frame
+/// allows with `rowSpacing` between them, the same seam the rows have.
+struct ConflictLaneGeometry {
+    let width: CGFloat
+    let laneCount: Int
+    let cellHeight: CGFloat
+    let rowSpacing: CGFloat
+
+    func rect(_ run: ClassTableLaneRun) -> CGRect {
+        let laneStep = (width + rowSpacing) / CGFloat(max(laneCount, 1))
+        let rowStep = cellHeight + rowSpacing
+        return CGRect(
+            x: CGFloat(run.lanes.lowerBound) * laneStep,
+            y: CGFloat(run.firstRow) * rowStep,
+            width: CGFloat(run.lanes.count) * laneStep - rowSpacing,
+            height: CGFloat(run.rowCount) * rowStep - rowSpacing
+        )
+    }
+}
+
+/// One course of a lane layout: a single rounded outline around its runs, top to bottom, with
+/// the seam between two runs bridged across their shared width, so a course that widens where
+/// it meets no other reads as one shape and keeps its seam to the courses beside it.
+struct ConflictLaneShape: Shape {
+    let runs: [CGRect]
+    let cornerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        guard let first = runs.first else { return Path() }
+        var strips = [first]
+        for run in runs.dropFirst() {
+            let above = strips[strips.count - 1]
+            let left = max(above.minX, run.minX)
+            let right = min(above.maxX, run.maxX)
+            if run.minY > above.maxY, right > left {
+                strips.append(CGRect(x: left, y: above.maxY, width: right - left, height: run.minY - above.maxY))
+            }
+            strips.append(run)
+        }
+        // Down the right edges and back up the left ones; every edge is level or upright.
+        var points: [CGPoint] = []
+        for strip in strips {
+            points.append(CGPoint(x: strip.maxX, y: strip.minY))
+            points.append(CGPoint(x: strip.maxX, y: strip.maxY))
+        }
+        for strip in strips.reversed() {
+            points.append(CGPoint(x: strip.minX, y: strip.maxY))
+            points.append(CGPoint(x: strip.minX, y: strip.minY))
+        }
+        return Self.roundedOutline(through: Self.corners(of: points), radius: cornerRadius)
+    }
+
+    /// The outline's corners: no repeated point, and no point midway along a straight edge.
+    static func corners(of points: [CGPoint]) -> [CGPoint] {
+        var corners = points
+        var changed = true
+        while changed, corners.count > 2 {
+            changed = false
+            for index in corners.indices {
+                let previous = corners[(index + corners.count - 1) % corners.count]
+                let point = corners[index]
+                let next = corners[(index + 1) % corners.count]
+                let repeated = point == previous
+                let straight = (previous.x == point.x && point.x == next.x) || (previous.y == point.y && point.y == next.y)
+                if repeated || straight {
+                    corners.remove(at: index)
+                    changed = true
+                    break
+                }
+            }
+        }
+        return corners
+    }
+
+    /// Rounds each corner, convex or not, by at most half of either edge it joins.
+    private static func roundedOutline(through corners: [CGPoint], radius: CGFloat) -> Path {
+        var path = Path()
+        guard corners.count > 2 else { return path }
+        let count = corners.count
+        func length(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(b.x - a.x, b.y - a.y) }
+        let last = corners[count - 1]
+        path.move(to: CGPoint(x: (last.x + corners[0].x) / 2, y: (last.y + corners[0].y) / 2))
+        for index in 0..<count {
+            let previous = corners[(index + count - 1) % count]
+            let corner = corners[index]
+            let next = corners[(index + 1) % count]
+            let fitted = min(radius, length(previous, corner) / 2, length(corner, next) / 2)
+            path.addArc(tangent1End: corner, tangent2End: next, radius: fitted)
+        }
+        path.closeSubpath()
+        return path
+    }
+}

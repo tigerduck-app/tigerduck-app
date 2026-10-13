@@ -1,9 +1,6 @@
-// Loading and refresh for the class table — split out of
-// ClassTableViewModel.swift.
-//
-// Also the local-change broadcast: Class Table edits have to wake Home
-// and the Live Activity coordinator, which they do by posting the same
-// `dataDidUpdate` notification a network sync would.
+// Loading and refresh for the class table, plus the local-change broadcast:
+// Class Table edits must wake Home and the Live Activity coordinator, so they
+// post the same `dataDidUpdate` notification a network sync would.
 
 import Defaults
 import SwiftUI
@@ -37,6 +34,8 @@ extension ClassTableViewModel {
         if !merged.isEmpty {
             courses = merged
         }
+        // Another tab or page may have switched class tables since this model was made.
+        if shownPerson != nil || importedTables.shownPerson != nil { showShownTable() }
         // backgroundSync() on app launch handles the network refresh
     }
 
@@ -47,11 +46,11 @@ extension ClassTableViewModel {
     /// Runs on every appearance, not just the first load: any course of the
     /// shown semester that still has no classroom gets looked up again, and
     /// a hit is broadcast so Home and the Live Activity pick it up too.
-    func refreshMissingClassrooms() {
+    func refreshMissingClassrooms(authService: AuthService) {
         let semester = currentSemester
         Task { [weak self] in
             guard await NetworkMonitor.shared.isReachable(),
-                  await AppServiceBridge.refreshCoursesMissingClassroom(semester: semester)
+                  await AppServiceBridge.refreshCoursesMissingClassroom(semester: semester, authService: authService)
             else { return }
             self?.broadcastLocalChange()
         }
@@ -69,11 +68,9 @@ extension ClassTableViewModel {
         isRefreshing = true
         Task { [weak self] in
             guard let self else { return }
-            // Pre-flight gates BOTH the fetchData round-trip and the
-            // semester-rollover fetchCourses below — gating only
-            // fetchData leaves the rollover path firing pinned-host
-            // calls under captive Wi-Fi, surfacing the exact TLS-pin
-            // error the pre-flight is meant to hide.
+            // Gate both fetchData and the semester-rollover fetchCourses below.
+            // Gating only fetchData lets rollover hit pinned hosts on captive
+            // Wi-Fi, surfacing the TLS-pin error the pre-flight is meant to hide.
             guard await NetworkMonitor.shared.isReachable() else {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
@@ -105,46 +102,66 @@ extension ClassTableViewModel {
     private func fetchData(authService: AuthService, semester: String? = nil) async {
         let manager = NTUSTSessionManager.shared
         let targetSemester = semester ?? currentSemester
-        // Pre-flight here too so the `refresh(authService:)` entry
-        // point (used outside triggerRefresh) is also gated. The probe
-        // is memoised inside NetworkMonitor so paying for it twice on
-        // the triggerRefresh path is effectively free.
+        let generation = await MainActor.run { authService.loginGeneration }
+        // Pre-flight here too so `refresh(authService:)`, used outside
+        // triggerRefresh, is gated as well. NetworkMonitor memoises the probe,
+        // so the second check on the triggerRefresh path is effectively free.
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
         }
         await MainActor.run { manager.loadingState = .loading }
 
-        // ClassTable pull-to-refresh is the explicit "show me the
-        // latest enrolment" gesture — bust the CourseService cache so
-        // add/drop shows up immediately instead of waiting out the 24h
-        // TTL that absorbs cheaper background refreshes.
+        // Class Table's pull-to-refresh asks for the latest enrolment, so skip
+        // the CourseService cache: add/drop shows up at once instead of after
+        // the 24h TTL that absorbs cheaper background refreshes.
+        MoodleEnrolledCoursesService.dropSharedAnswer()
         async let coursesTask = AppServiceBridge.fetchCourses(
             authService: authService,
             semester: targetSemester,
             forceRefresh: true,
         )
-        async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService)
+        async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
         // Manual and cross-device courses only ever held the snapshot
         // taken when they were added; the pull is the "latest of
         // everything" gesture, so re-query them too.
-        async let userAddedTask = AppServiceBridge.refreshUserAddedCourses(semester: targetSemester)
+        async let userAddedTask = AppServiceBridge.refreshUserAddedCourses(
+            semester: targetSemester, authService: authService
+        )
 
         let fetchedCourses = await coursesTask
         let fetchedAssignments = await assignmentsTask
         let userAdded = await userAddedTask
 
         await MainActor.run {
-            isUpdatingFromNetwork = true
-            courses = buildCourseList(fetchedCourses, userAdded)
-            if targetSemester == CourseSelectionService.currentSemesterCode() {
-                currentSemesterCourses = courses
-                refreshCourseColors()
-            }
-            assignments = fetchedAssignments
-            manager.loadingState = .loaded
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            isUpdatingFromNetwork = false
+            showFetched(
+                buildCourseList(fetchedCourses, userAdded), assignments: fetchedAssignments, of: targetSemester,
+                startedUnder: generation, loginGeneration: authService.loginGeneration
+            )
         }
+    }
+
+    /// A sign-out during the fetch leaves the screen to the next account. Someone else's class
+    /// table, or another term picked during the fetch, may be on screen, and the share code reads
+    /// `courses` as the term on screen.
+    func showFetched(
+        _ fetched: [SDCourse], assignments fetchedAssignments: [SDAssignment], of targetSemester: String,
+        startedUnder generation: Int, loginGeneration: Int
+    ) {
+        let manager = NTUSTSessionManager.shared
+        guard loginGeneration == generation else {
+            manager.loadingState = .loaded
+            return
+        }
+        isUpdatingFromNetwork = true
+        if shownPerson == nil, currentSemester == targetSemester { courses = fetched }
+        if targetSemester == CourseSelectionService.currentSemesterCode() {
+            currentSemesterCourses = fetched
+            refreshCourseColors()
+        }
+        assignments = fetchedAssignments
+        manager.loadingState = .loaded
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        isUpdatingFromNetwork = false
     }
 }

@@ -3,21 +3,14 @@ import Foundation
 import Security
 import os
 
-/// Certificate check for the School Mail IMAP and SMTP connections.
-///
-/// The same rules as `TLSPinningDelegate`: the system chain and the hostname must pass
-/// first; then some certificate's SPKI must be in the host's pin set. After the pin set's
-/// expiration date the check falls back to system trust alone (fail-soft, issue #92).
-/// There is no way to bypass a failure (design doc §7.1).
-///
-/// - Important: the chain and hostname evaluation below is not belt-and-braces over something
-///   NIOSSL is also doing. Installing a `NIOSSLCustomVerificationCallback` **replaces** all of
-///   BoringSSL's verification, hostname checking included, and on Darwin it overwrites the
-///   Security.framework callback NIOSSL installs in `NIOSSLContext.createConnection()`.
-///   `.fullVerification` in `MailTransportSecurity` only keeps the callback from being skipped.
-///   So `SecTrustCreateWithCertificates` + `SecPolicyCreateSSL(true, host)` +
-///   `SecTrustEvaluateWithError` here *are* the connection's only validation — remove them for
-///   a pin-only check and School Mail accepts any chain from any issuer for any name.
+/// Certificate check for the School Mail IMAP and SMTP connections. Same rules as
+/// `TLSPinningDelegate`: the system chain and hostname must pass, then some certificate's SPKI
+/// must be in the host's pin set; after the pin set expires, system trust alone decides
+/// (fail-soft, issue #92). A failure cannot be bypassed. The `SecTrust` evaluation below is the
+/// connection's only validation: a custom NIOSSL callback replaces all of BoringSSL's checks,
+/// hostname included, and on Darwin also the Security.framework callback NIOSSL installs;
+/// `.fullVerification` in `MailTransportSecurity` only keeps it from being skipped. Without the
+/// evaluation, any chain passes for any name. See docs/decisions/0001-tls-pinning.md.
 nonisolated enum MailTLSVerifier {
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.TLS")
 
@@ -32,10 +25,9 @@ nonisolated enum MailTLSVerifier {
         now: Date = Date(),
         pinPolicy: TLSPinningDelegate.PinPolicy? = nil
     ) -> Bool {
-        // NIOSSL hands the peer chain leaf-first (TLS wire order), and that order is load-
-        // bearing here, not just a logging nicety: `SecTrustCreateWithCertificates` treats the
-        // first certificate in its input array as the leaf when building the trust chain, so
-        // passing anything else first would evaluate trust against the wrong certificate.
+        // NIOSSL hands the peer chain leaf-first (TLS wire order), and the order matters:
+        // `SecTrustCreateWithCertificates` takes the first certificate as the leaf, so anything
+        // else first would evaluate trust against the wrong certificate.
         let certificates = derChain.compactMap { SecCertificateCreateWithData(nil, Data($0) as CFData) }
         guard !certificates.isEmpty, certificates.count == derChain.count else {
             logger.error("Mail TLS certificate parsing failed for \(host, privacy: .public)")
@@ -52,10 +44,9 @@ nonisolated enum MailTLSVerifier {
         SecTrustSetVerifyDate(trust, now as CFDate)
         var error: CFError?
         guard SecTrustEvaluateWithError(trust, &error) else {
-            // The numeric CFError code identifies no one and is safe to log in the clear
-            // (unlike the full description, which can carry hostnames or paths); it also
-            // survives independently of whether the description's `.private(mask: .hash)`
-            // hides anything actionable in a bug report.
+            // The numeric CFError code identifies no one, so it is logged in the clear; the
+            // description can carry hostnames or paths and is hashed. The code stays useful in a
+            // bug report even when the hash hides everything actionable.
             let code = error.map { String(CFErrorGetCode($0)) } ?? "unknown"
             let description = error.map { String(describing: $0) } ?? "unknown"
             logger.error(

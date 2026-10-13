@@ -2,21 +2,14 @@
 import CoreMotion
 import Foundation
 
-/// Detects a sustained "phone face-down" gesture using CoreMotion's device-
-/// motion stream. Pure helpers (`isFaceDown`, `nextState`) carry the math
-/// and the debounce machine; the rest is `CMMotionManager` glue.
+/// Detects a sustained face-down phone from CoreMotion's device-motion stream; the pure helpers
+/// `isFaceDown` and `nextState` hold the math and the debounce machine. It is wired up only for
+/// the `.phone` idiom.
 ///
-/// Emits exactly one `onFaceDown` callback per Upright → FaceDown transition;
-/// flickers under the debounce window are filtered out. The cold-start
-/// `Unknown` phase ensures opening the app while the phone is already
-/// face-down does NOT auto-fire.
-///
-/// Phone-only — `CMMotionManager` is iOS-only and the gesture is only wired
-/// up under `UIDevice.current.userInterfaceIdiom == .phone`. This mirrors the
-/// Android port (`FlipDetector.kt`), modulo the coordinate flip: Android uses
-/// `R[8] <= -0.85` on the world-frame screen-normal Z; iOS gravity in the
-/// device frame points to +Z when the screen faces the ground, so the same
-/// "within ~32° of perfectly inverted" window is `gravity.z >= 0.85`.
+/// Fires `onFaceDown` once per upright-to-face-down transition, ignoring flickers shorter than
+/// the debounce window. The cold-start `unknown` phase keeps a phone already face-down at launch
+/// from firing. Android's `FlipDetector.kt` tests `R[8] <= -0.85` on the world-frame screen
+/// normal; device-frame gravity on iOS points to +Z with the screen down: `gravity.z >= 0.85`.
 final class FlipDetector {
 
     /// `gravity.z >= faceDownThreshold` captures both "screen facing the
@@ -82,12 +75,9 @@ final class FlipDetector {
     }
 
     deinit {
-        // CMMotionManager retains its update closure until
-        // stopDeviceMotionUpdates is called — relying on `onDisappear` alone
-        // leaves a window where ARC tears the detector down without
-        // releasing the hardware. Call directly on the manager (avoids
-        // touching `stateLock` from deinit which would violate Swift's
-        // exclusivity rules in -O builds).
+        // CMMotionManager keeps its update closure until stopped, so `onDisappear` alone can let
+        // ARC free the detector without releasing the sensor. Stop the manager directly: taking
+        // `stateLock` in deinit would violate Swift's exclusivity rules in -O builds.
         if motionManager.isDeviceMotionActive {
             motionManager.stopDeviceMotionUpdates()
         }
@@ -148,18 +138,13 @@ final class FlipDetector {
         gravityZ >= faceDownThreshold
     }
 
-    /// Advance the debounce machine by one sensor event.
+    /// Advances the debounce machine by one sensor event.
     ///
-    /// The committed `phase` only transitions when the predicate has held for
-    /// at least `debounceInterval`. `didFire` is `true` only on the specific
-    /// transition Upright → FaceDown; all other transitions (including the
-    /// cold-start Unknown → FaceDown) leave `didFire = false`.
-    ///
-    /// A gap > `maxEventGap` between consecutive events is treated as a
-    /// discontinuity (device sleep, sensor restart) and resets the window so
-    /// the next debounce restarts from zero — without this, a sleep gap of
-    /// minutes can make a single post-wake event instantly satisfy
-    /// `elapsed >= debounceInterval` and fire on the very first read.
+    /// `phase` commits only after the predicate has held for `debounceInterval`. `didFire` is
+    /// `true` only for upright to face-down; every other transition, including the cold-start
+    /// unknown to face-down, leaves it `false`. A gap over `maxEventGap` (sleep, sensor restart)
+    /// restarts the window; otherwise one event after minutes asleep would satisfy
+    /// `elapsed >= debounceInterval` and fire on the first read.
     static func nextState(
         current: State,
         isFaceDown: Bool,

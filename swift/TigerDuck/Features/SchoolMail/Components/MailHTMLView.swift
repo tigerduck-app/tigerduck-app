@@ -4,8 +4,8 @@ import WebKit
 
 /// Sanitized mail HTML, grown to its content height so the message scrolls as one page. `html`
 /// must already be `MailHTMLSanitizer.rewriteLinks`' output: every `<a href>` in it is
-/// `https://link.invalid/<n>`, and `onLinkTap` is called with `n` — never a URL — so no WebKit
-/// canonicalization quirk can retarget a tap (message-screen dispatch, 2026-09-16 addition 1).
+/// `https://link.invalid/<n>`, and `onLinkTap` is called with `n`, never a URL, so no WebKit
+/// canonicalization quirk can retarget a tap.
 struct MailHTMLView: UIViewRepresentable {
     let html: String
     let linkCount: Int
@@ -18,14 +18,11 @@ struct MailHTMLView: UIViewRepresentable {
     /// The tallest this view will grow, whatever the document's content size says.
     ///
     /// `height` and `min-height` are in `MailCSSFilter.allowedProperties`, so the sender writes
-    /// `scrollView.contentSize.height` — and that went straight into `.frame(height:)` with only
-    /// a lower bound. A message could therefore ask for an arbitrarily tall view. 50 000 points
-    /// is far past any real mail (roughly sixty screens) and far short of a size that costs
-    /// anything to lay out.
-    ///
-    /// `nonisolated` because `clampedHeight` is: the project defaults every declaration to
-    /// `@MainActor`, so an unannotated `static let` here cannot be read from the nonisolated
-    /// helper that exists precisely so the clamp can be unit-tested off the main actor.
+    /// `scrollView.contentSize.height`, which feeds `.frame(height:)`. Without this cap a message
+    /// could ask for an arbitrarily tall view. 50 000 points is far past any real mail (roughly
+    /// sixty screens) and far short of a size that costs anything to lay out. `nonisolated`
+    /// because the project defaults every declaration to `@MainActor`, and `clampedHeight`,
+    /// which reads it, is nonisolated so the clamp can be unit-tested off the main actor.
     nonisolated static let maximumContentHeight: CGFloat = 50_000
 
     /// The observed content size, made safe to put in a frame: clamped at both ends, and with
@@ -39,7 +36,9 @@ struct MailHTMLView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: MailWebViewFactory.makeConfiguration(inlineImages: inlineImages))
+        let webView = WKWebView(
+            frame: .zero, configuration: MailWebViewFactory.makeConfiguration(cidHandler: context.coordinator.cidHandler)
+        )
         webView.navigationDelegate = context.coordinator
         webView.allowsLinkPreview = false
         webView.scrollView.isScrollEnabled = false
@@ -65,7 +64,8 @@ struct MailHTMLView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var parent: MailHTMLView
-        private var loadedKey: String?
+        let cidHandler: MailCIDSchemeHandler
+        private(set) var loadedKey: String?
         /// Bumped by every load; a load whose compile finishes after a newer one started drops
         /// itself instead of installing its rules and document over the newer ones.
         private var loadGeneration = 0
@@ -77,7 +77,10 @@ struct MailHTMLView: UIViewRepresentable {
         private(set) var installedRulesAllowRemoteImages: Bool?
         private var heightObservation: NSKeyValueObservation?
 
-        init(parent: MailHTMLView) { self.parent = parent }
+        init(parent: MailHTMLView) {
+            self.parent = parent
+            cidHandler = MailCIDSchemeHandler(images: parent.inlineImages)
+        }
 
         /// `[weak self]` keeps the observation from retaining the coordinator (the coordinator
         /// owns the observation, so a strong capture would be a cycle). The weak binding is
@@ -93,21 +96,20 @@ struct MailHTMLView: UIViewRepresentable {
             }
         }
 
-        /// "Load images" loads twice in quick succession — the image allowance flips first, then
-        /// the re-sanitized HTML arrives — and each load compiles its rule list asynchronously.
-        /// Nothing orders those compiles, so the first load's could finish last and put the
-        /// image-stripped document back on screen, under an allowance that says images are on
-        /// and with the banner that offered them already gone. So only the newest load installs
-        /// anything, and it installs its rules, its page colour and its document together — a
-        /// switch to or from light mode repaints the view in the same step as the document that
-        /// matches it, never around a document still drawn on the other page.
-        ///
-        /// A load that keeps the allowance the installed rules were compiled for — a light mode
-        /// switch, or new HTML under the same allowance — has nothing to compile, so it paints and
-        /// loads at once. It still cancels any compile in flight: that one was for an allowance
-        /// this newer load no longer asks for.
+        /// "Load images" loads twice in quick succession (the image allowance flips, then the
+        /// re-sanitized HTML arrives), and each load compiles its rule list asynchronously. The
+        /// compiles are unordered, so the first could finish last and put the image-stripped
+        /// document back under an images-on allowance, with the banner already gone. So only the
+        /// newest load installs anything, and it installs its rules, page colour and document
+        /// together: a light mode switch repaints in the same step as the matching document. A
+        /// load under the installed rules' allowance has nothing to compile, so it paints and loads
+        /// at once. It still cancels any compile in flight, which was for another allowance.
         func load(into webView: WKWebView) {
-            let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)"
+            // A cached body can come without its inline images, which the detail replacing it
+            // brings; the handler serves the newest, and their arrival loads the page again.
+            cidHandler.images = parent.inlineImages
+            let images = parent.inlineImages.keys.sorted()
+            let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)|\(images)"
             guard key != loadedKey else { return }
             loadedKey = key
             let theme = parent.theme

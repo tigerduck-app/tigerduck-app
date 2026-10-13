@@ -12,14 +12,9 @@ struct ShareSheet: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        // Inside `.sheet` the activity controller is a child, not the
-        // presented controller, so when it finishes on its own SwiftUI's
-        // item binding stays set: the sheet is left blank, or gone while
-        // SwiftUI still thinks it is up — and the next share of the same
-        // file, same URL and so same id, never presents. Close through
-        // SwiftUI instead, whatever the outcome: UIKit calls this once the
-        // activity controller has been dismissed — an activity completed,
-        // one chosen and then cancelled, or the sheet closed outright.
+        // In `.sheet` the controller is a child, so finishing on its own leaves the
+        // item binding set and the next share of the same file (same id) never shows.
+        // UIKit calls this after any dismissal, so close through SwiftUI every time.
         let dismiss = context.environment.dismiss
         controller.completionWithItemsHandler = { _, _, _, _ in dismiss() }
         return controller

@@ -1,32 +1,13 @@
 import Foundation
 
-/// One localized "What's new" summary block, decoded from `whatsnew.json`.
-/// The summary is the last page of the What's New flow — the Apple-style
-/// list of a release's highlights. Feature pages that precede it are
-/// defined in code (``WhatsNewCatalog``), not here.
-///
-/// ```json
-/// {
-///   "2.3.0": {
-///     "zh-TW": { "title": "...", "items": [{ "symbol": "...", "title": "...", "body": "..." }] },
-///     "en":    { "title": "...", "items": [{ "symbol": "...", "title": "...", "body": "..." }] }
-///   }
-/// }
-/// ```
-///
-/// Top-level keys are `CFBundleShortVersionString` values (iOS marketing
-/// version, e.g. `"2.3.0"`). Each entry holds a per-locale map; the
-/// repository picks the locale that best matches the resolved app
-/// language tag, falling back to `en`.
-///
-/// Entries written before the item rows existed carry `highlights` — a
-/// plain list of sentences — instead of `items`. Both still decode;
-/// `items` wins when an entry has both.
-///
-/// Fields are optional defensively — a release with no JSON edit should
-/// silently skip the summary instead of crashing on decode. The
-/// repository's selector treats an entry with missing/blank `title` or
-/// no usable rows as absent.
+/// One localized summary block from `whatsnew.json`: the Apple-style list
+/// of a release's highlights that ends the What's New flow, after the
+/// feature pages in ``WhatsNewCatalog``. The file maps each marketing
+/// version (`CFBundleShortVersionString`) to a per-locale map of these.
+/// Older entries carry `highlights`, plain sentences, instead of `items`; both
+/// decode, and `items` wins when both exist. Fields are optional so a release
+/// with no JSON edit skips the summary instead of failing to decode. The
+/// repository drops an entry with a missing or blank `title` or no usable rows.
 struct WhatsNewEntry: Decodable, Equatable {
     let title: String?
     let items: [WhatsNewItem]?

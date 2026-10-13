@@ -1,10 +1,3 @@
-//
-//  TigerDuckWatch_Watch_AppUITestsLaunchTests.swift
-//  TigerDuckWatch Watch AppUITests
-//
-//  Created by Sam Wang on 2026/5/16.
-//
-
 import XCTest
 
 final class TigerDuckWatch_Watch_AppUITestsLaunchTests: XCTestCase {
@@ -22,9 +15,8 @@ final class TigerDuckWatch_Watch_AppUITestsLaunchTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
-        // XCUIAutomation Documentation
+        // Insert steps to run after launch and before the screenshot here, such as
+        // signing in to a test account or navigating somewhere. XCUIAutomation docs:
         // https://developer.apple.com/documentation/xcuiautomation
 
         let attachment = XCTAttachment(screenshot: app.screenshot())

@@ -3,19 +3,14 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Sub-page for picking the course-name font scale used in the class
-/// table and home-screen widgets. The selection flows through
-/// `AppState.courseCardFontScale` → `CourseCardFontScaleStore`
-/// (App Group `UserDefaults`) and is applied at the specific course-name
-/// `Text` views in `TimetableGridView` plus the widget course-name labels.
-/// Widgets read the same value on their next render after `AppState`'s
-/// `didSet` triggers `WidgetCenter.reloadAllTimelines()`.
+/// Sub-page for the course-name font scale used in the class table and the
+/// home-screen widgets. The value flows through `AppState.courseCardFontScale`
+/// to `CourseCardFontScaleStore` (App Group `UserDefaults`) and is applied to
+/// the course-name `Text` in `TimetableGridView` and the widget labels, which
+/// read it on the render after `AppState`'s `didSet` reloads their timelines.
 ///
-/// Layout: a `Preview` section at the top renders a mock class-table
-/// cluster so the user can see the effect on the actual UI surface, and
-/// a `Slider` section below drives the scale. The mock includes one
-/// "solo" cell and a two-course conflict cluster so the live preview
-/// covers both rendering modes the user will see in the real timetable.
+/// The preview mocks a solo cell and a two-course conflict cluster, so it
+/// covers both rendering modes of the real timetable.
 struct FontSizeSettingsView: View {
     @Environment(AppState.self) private var appState
     #if os(iOS)
@@ -74,12 +69,9 @@ struct FontSizeSettingsView: View {
                 }
                 .padding(.vertical, 4)
                 #if os(iOS)
-                // Slider with `step:` fires onChange on every snapped
-                // tick. Gate the haptic on the normalized value so a
-                // drag from 1.00× to 1.30× produces six discrete buzzes
-                // (one per 0.05× boundary) and not one per render frame.
-                // Mirrors the `TimeSliderViewModel` selectionChanged()
-                // cadence the user already knows from Home.
+                // `onChange` fires on every snapped tick; gating the haptic on the
+                // normalized value buzzes once per 0.05× boundary, not per render frame,
+                // matching the `TimeSliderViewModel` cadence the user knows from Home.
                 .onChange(of: appState.courseCardFontScale) { _, newValue in
                     let snapped = CourseCardFontScale.normalize(newValue)
                     defer { lastHapticScale = snapped }

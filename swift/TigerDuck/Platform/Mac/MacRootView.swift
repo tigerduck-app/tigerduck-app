@@ -3,14 +3,11 @@ import SwiftUI
 
 /// Root scene content for the macOS app.
 ///
-/// Routes between the login wall (`MacLoginView`) and the main sidebar
-/// layout (`MacContentView`) based on `authService.hasStoredCredentials`,
-/// with an in-session bypass via `appState.didSkipMacLogin` (set by the
-/// "Skip for now" button on `MacLoginView`). The bypass is intentionally
-/// transient: first launch and post-logout always show the login wall
-/// again. Silent re-auth failures keep the sidebar visible and surface
-/// through `appState.ntustReauthErrorMessage` instead, mirroring the
-/// iOS cached-first contract.
+/// Shows the login wall (`MacLoginView`) or the sidebar layout (`MacContentView`) by
+/// `authService.hasStoredCredentials`, bypassed for the session by `appState.didSkipMacLogin`
+/// ("Skip for now" on `MacLoginView`). The bypass is transient: first launch and logout show
+/// the wall again. Silent re-auth failures keep the sidebar and surface through
+/// `appState.ntustReauthErrorMessage`, as in the iOS cached-first contract.
 struct MacRootView: View {
     @Environment(AppState.self) private var appState
 
@@ -76,6 +73,8 @@ struct MacContentView: View {
         guard let destination = appState.pendingWidgetDestination else { return }
         switch destination {
         case .classTable:
+            // The widget draws the user's own class table.
+            ImportedClassTableStore.shared.show(nil)
             if pinnedFeatures.contains(.classTable) {
                 selection = .feature(.classTable)
             } else {
@@ -179,27 +178,26 @@ struct MacContentView: View {
 
 /// Switchboard between per-feature detail views.
 ///
-/// The global refresh toolbar lives here (rather than on the outer
-/// `NavigationSplitView` detail) so it follows the feature regardless of
-/// entry path — sidebar selection or pushed from `MacMoreView`. Putting
-/// it on the outer split detail loses the button as soon as More's inner
-/// `NavigationStack` pushes a destination, because that inner stack owns
-/// the toolbar slot for the pushed view on macOS.
+/// The global refresh toolbar lives here so it follows the feature whether the sidebar shows
+/// it or `MacMoreView` pushes it. On the outer `NavigationSplitView` detail, the button
+/// would vanish on a push: on macOS More's inner `NavigationStack` owns the pushed view's toolbar.
 ///
-/// Scores opts out: it already exposes its own per-feature refresh button
-/// (which re-fetches scores — `backgroundSync` doesn't touch the score
-/// service), so adding the global one would double up in `.primaryAction`.
+/// Scores and Bulletins opt out: each has its own refresh button for data `backgroundSync`
+/// does not fetch, and a second button would double up in `.primaryAction`.
 struct MacFeatureDetail: View {
     let feature: AppFeature
 
+    @State private var refreshShortcutClaimed = false
+
     var body: some View {
         content
+            .onPreferenceChange(MacRefreshShortcutClaimKey.self) { refreshShortcutClaimed = $0 }
             .toolbar {
-                if feature != .gpa {
+                if feature != .gpa && feature != .announcements {
                     ToolbarItem(placement: .primaryAction) {
                         HStack(spacing: 8) {
                             SyncStatusDot(servers: serversForFeature)
-                            MacGlobalRefreshButton()
+                            MacGlobalRefreshButton(takesShortcut: !refreshShortcutClaimed)
                         }
                     }
                 }
@@ -213,7 +211,6 @@ struct MacFeatureDetail: View {
         // Backend included for the same reason as the iPhone tab: the holiday
         // and term-boundary rows come from its published academic calendar.
         case .calendar: [.moodle, .courseSelection, .backend]
-        case .announcements: [.backend]
         default: ServerKind.allCases
         }
     }
@@ -240,20 +237,33 @@ struct MacFeatureDetail: View {
     }
 }
 
+/// True while a view in a feature answers ⌘R for what it shows, such as a Moodle list in the
+/// class table's course overlay, so the global refresh lets the shortcut go.
+struct MacRefreshShortcutClaimKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 /// Triggers `AppState.backgroundSync()` and swaps to a spinner while
 /// `sessionManager.loadingState == .loading`. The button stays mounted
 /// under the spinner so ⌘R keeps working without separate tracking.
 struct MacGlobalRefreshButton: View {
+    /// False while a view the feature shows answers ⌘R itself.
+    var takesShortcut = true
+
     @Environment(AppState.self) private var appState
 
     var body: some View {
         ZStack {
             Button {
-                appState.backgroundSync()
+                appState.backgroundSync(recheckSubmissions: true)
             } label: {
                 Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
             }
-            .keyboardShortcut("r", modifiers: .command)
+            .keyboardShortcut(takesShortcut ? KeyboardShortcut("r", modifiers: .command) : nil)
             .help(String(localized: "desktop_action_refresh_help"))
             .opacity(isSyncing ? 0 : 1)
             .disabled(isSyncing)

@@ -115,8 +115,8 @@ struct MacLicensesView: View {
         }
     }
 
-    /// The list did not load — `LicenseCatalog.load` has already told
-    /// Sentry why. The sidebar has nothing to list and nothing to select,
+    /// The list did not load, and `LicenseCatalog.load` has already logged
+    /// why. The sidebar has nothing to list and nothing to select,
     /// so the whole of what is left to say goes in the detail pane: an
     /// empty window would quietly drop the attribution MIT and BSD ask
     /// for and the offer of source the AGPL makes, and the repository

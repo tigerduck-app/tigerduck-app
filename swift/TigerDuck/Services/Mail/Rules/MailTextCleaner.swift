@@ -23,30 +23,28 @@ nonisolated enum MailTextCleaner {
         .union(0x000E...0x001F)
         .union([0x007F])
 
-    /// Java's `\s`, which is ASCII-only (space, tab, newline, vertical tab, form feed
-    /// and carriage return), not Unicode whitespace.
+    /// Java's `\s`, which is ASCII-only (space, tab, newline, vertical tab, form feed and
+    /// carriage return), not Unicode whitespace.
     ///
     /// Spelled out rather than taken from Foundation: `CharacterSet.whitespaces` contains
-    /// U+200B ZERO WIDTH SPACE on Darwin, so collapsing with it would rewrite
-    /// `ntust.e<U+200B>du.tw` as `ntust.e du.tw` — breaking one host into two words where
-    /// Android leaves it whole, and turning an invisible-character attack into a *different*
-    /// wrong answer instead of the right one. Removing U+200B is `visibleText`'s job.
-    /// (U+000B and U+000C never actually reach this step; `controls` removed them already.)
+    /// U+200B ZERO WIDTH SPACE on Darwin, so collapsing with it would turn `ntust.e<U+200B>du.tw`
+    /// into `ntust.e du.tw`: two words where Android keeps one host, a different wrong answer to
+    /// an invisible-character attack. Removing U+200B is `visibleText`'s job. U+000B and U+000C
+    /// never reach this step; `controls` removed them already.
     private static let asciiWhitespace: Set<UInt32> = [0x0020, 0x0009, 0x000A, 0x000B, 0x000C, 0x000D]
 
-    // Android also exposes a `stripBidi`-only entry point. Every iOS caller of this type —
-    // `LiveMailClient`, `MailNotifier`, `MailHTMLSanitizer`, `MailMessageViewModel` and
-    // `MailWarnings` — wants the full clean, so there is no second entry point here to go
-    // stale; add one only when something actually needs bidi-only behaviour.
+    // Android also has a `stripBidi`-only entry point. Every caller here (`LiveMailClient`,
+    // `MailNotifier`, `MailHTMLSanitizer`, `MailMessageViewModel`, `MailWarnings`) wants the full
+    // clean, so there is none to go stale; add one only when something needs bidi-only behaviour.
 
     /// Bidi controls out, control characters out, runs of whitespace collapsed to one space,
-    /// then trimmed — Android's `TextCleaning.clean`.
+    /// then trimmed: Android's `TextCleaning.clean`.
     ///
-    /// The trim uses Foundation's whitespace-and-newline set where Kotlin's `trim()` uses
-    /// `Character.isWhitespace`; the difference is a handful of code points (U+00A0, U+2007,
-    /// U+202F, U+0085, U+200B) that Foundation trims and Kotlin does not. Every one of them is
-    /// in the direction of trimming *more*, which can only expose a file extension or a host
-    /// the checks would otherwise have missed — never hide one.
+    /// The trim uses Foundation's whitespace-and-newline set and Kotlin's `trim()` uses
+    /// `Char.isWhitespace`, which includes `Character.isSpaceChar`; here they differ only on U+0085
+    /// and U+200B, which Foundation removes and Kotlin keeps. Trimming more can only expose a file
+    /// extension or a host the checks would otherwise miss, never hide one.
+    /// See docs/decisions/0018-mail-warnings-android-parity.md.
     static func clean(_ text: String) -> String {
         var scalars = String.UnicodeScalarView()
         var pendingSpace = false
@@ -65,49 +63,26 @@ nonisolated enum MailTextCleaner {
         return String(scalars).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// What the reader actually sees: every character that draws nothing removed outright —
-    /// every Unicode format character (`Cf` — the bidi marks, word joiner U+2060, soft hyphen
-    /// U+00AD, BOM U+FEFF), every control character (`Cc`, C0 and C1), and everything Unicode
-    /// itself marks `Default_Ignorable_Code_Point`. Android's `MailWarnings.INVISIBLE` is the
-    /// `Cf`/`Cc` half only, so the wider class is still open there — a cross-platform
-    /// follow-up, not something this side should match by weakening.
-    ///
-    /// This is deliberately *not* folded into `clean`. `clean` produces text that is shown to
-    /// the user, so it keeps word boundaries: `\t`/`\n`/`\r` become a space. The warning rules
-    /// need the opposite — the characters joined back up, because `ntust.e<U+200B>du.tw` reads
-    /// as one host and must be compared as one. Every rule that decides whether to warn runs
-    /// `visibleText`; every string that is merely displayed runs `clean`.
-    ///
-    /// The comparison fails *open* without this: `ntust.edu.tw` with a trailing word joiner
-    /// matches no host pattern at all, so a link pointing somewhere else is reported as having
-    /// nothing to compare rather than as a mismatch, and a crafted mail ends up with fewer
-    /// banners than an ordinary one.
+    /// What the reader sees: every character that draws nothing removed, meaning every format
+    /// (`Cf`: bidi marks, U+2060, U+00AD, U+FEFF) and control (`Cc`, C0 and C1) character and all
+    /// of `Default_Ignorable_Code_Point`. Android's `MailWarnings.INVISIBLE` has only `Cf`/`Cc`, so
+    /// the rest is still open there; do not weaken this to match. Not part of `clean`, which makes
+    /// display text and keeps word boundaries (`\t`/`\n`/`\r` become a space): a warning must
+    /// compare `ntust.e<U+200B>du.tw` as the one host it reads as. Warning rules run this,
+    /// displayed text runs `clean`. Without it the check fails open: `ntust.edu.tw` plus a word
+    /// joiner matches no host pattern, so a link elsewhere is nothing to compare, not a mismatch.
     static func visibleText(_ text: String) -> String {
         String(String.UnicodeScalarView(text.unicodeScalars.filter { !isInvisible($0) }))
     }
 
-    /// Named character by character rather than by attack, because enumerating attacks is how
-    /// this check kept failing open: `Cf`/`Cc` alone left the combining grapheme joiner
-    /// (U+034F), every variation selector (U+FE00–FE0F, U+E0100–), the reserved
-    /// default-ignorables (U+2065) and the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0)
-    /// able to hide inside a host, a file extension or a keyword. They are all
-    /// `Default_Ignorable_Code_Point`, which is Unicode's own name for "renders as nothing",
-    /// and which excludes `White_Space`, so an ordinary space still separates two words here.
-    ///
-    /// Two are spelled out because the property does not cover them:
-    ///
-    /// - **U+200B** reports `.format` on this toolchain, but the property is answered from the
-    ///   platform's Unicode tables at run time and this character's category has moved between
-    ///   Unicode versions — which is exactly why Android spells it out too.
-    /// - **U+2800 BRAILLE PATTERN BLANK** is not default-ignorable and is not meant to be: it
-    ///   is a printing character (`So`), a real braille cell that happens to have no raised
-    ///   dots. Unicode is right and it is still invisible to someone reading a filename or a
-    ///   host, which is the only question this function answers, so it is removed here and
-    ///   nowhere else. `clean` — the display path — leaves it alone, so braille text still
-    ///   renders with its blank cells intact; it is dropped only when deciding whether to warn,
-    ///   where removing a cell can add a warning but never take one away.
-    ///
-    /// `MailTextRulesTests` pins all of it.
+    /// Classified by what a character is, not by attack: listing attacks kept failing open, as
+    /// `Cf`/`Cc` alone let the combining grapheme joiner, variation selectors, reserved
+    /// default-ignorables and Hangul fillers hide in a host, a file extension or a keyword. All are
+    /// `Default_Ignorable_Code_Point` ("renders as nothing"), which excludes `White_Space`, so a
+    /// space still separates words. U+200B is listed because its category comes from the run-time
+    /// Unicode tables and has moved between versions; Android lists it too. U+2800, a printing
+    /// braille cell (`So`), shows nothing: `clean` keeps it for display, and dropping it here can
+    /// add a warning but never remove one. `MailTextRulesTests` pins all of it.
     private static func isInvisible(_ scalar: Unicode.Scalar) -> Bool {
         if scalar.value == 0x200B || scalar.value == 0x2800 { return true }
         if scalar.properties.isDefaultIgnorableCodePoint { return true }

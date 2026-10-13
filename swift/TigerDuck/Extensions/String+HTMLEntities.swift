@@ -1,17 +1,13 @@
 import Foundation
 
 extension String {
-    /// Decode HTML character references that Moodle may emit in assignment
-    /// titles and course full-names. Handles three forms:
+    /// Decodes HTML character references that Moodle may emit in assignment titles and course
+    /// full names: decimal (`&#38;`), hexadecimal (`&#x26;`, `&#X26;`) and named (`&amp;`, `&lt;`,
+    /// `&rsquo;`, `&mdash;`, …).
     ///
-    ///   • Numeric decimal — `&#38;` → `&`
-    ///   • Numeric hexadecimal — `&#x26;` / `&#X26;` → `&`
-    ///   • Named — `&amp;`, `&lt;`, `&rsquo;`, `&mdash;`, …
-    ///
-    /// Decoding is a single left-to-right pass — `&amp;lt;` therefore
-    /// resolves to the literal `&lt;` (not `<`), preserving doubly-encoded
-    /// text. Unknown entities are left intact rather than dropped, so a
-    /// stray `&foo;` survives untouched instead of disappearing.
+    /// Decoding is a single left-to-right pass, so `&amp;lt;` resolves to the literal `&lt;`, not
+    /// `<`, preserving doubly encoded text. Unknown entities such as `&foo;` are left intact
+    /// rather than dropped.
     func decodingHTMLEntities() -> String {
         guard contains("&") else { return self }
 

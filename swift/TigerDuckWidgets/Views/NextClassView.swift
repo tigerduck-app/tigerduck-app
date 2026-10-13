@@ -108,8 +108,8 @@ struct NextClassView: View {
             Text("\(info.startTime)–\(info.endTime)  \(info.periodRange)")
                 .font(.caption)
                 .foregroundStyle(palette.onSurfaceVariant)
-            if !info.course.classroom.isEmpty {
-                Text(info.course.classroom)
+            if !info.classroom.isEmpty {
+                Text(info.classroom)
                     .font(.caption)
                     .foregroundStyle(palette.onSurfaceVariant)
             }
@@ -139,8 +139,8 @@ struct NextClassView: View {
             Text(info.startTime)
                 .font(.caption)
                 .foregroundStyle(palette.onSurfaceVariant)
-            if !info.course.classroom.isEmpty {
-                Text(info.course.classroom)
+            if !info.classroom.isEmpty {
+                Text(info.classroom)
                     .font(.caption)
                     .foregroundStyle(palette.onSurfaceVariant)
             }
@@ -165,7 +165,7 @@ extension WidgetDerivedState.Day {
         switch self {
         case .today: return String(localized: "widget_next_class")
         case .tomorrow: return String(localized: "widget_tomorrow")
-        case .later(let weekday): return Self.shortName(of: weekday)
+        case .later(let weekday): return Self.caption(of: weekday)
         }
     }
 
@@ -174,7 +174,7 @@ extension WidgetDerivedState.Day {
     func inlineCaption(_ trailing: String) -> String {
         switch self {
         case .later(let weekday):
-            return "\(Self.shortName(of: weekday)) \(trailing)"
+            return "\(Self.caption(of: weekday)) \(trailing)"
         case .today, .tomorrow:
             return String.localizedStringWithFormat(
                 String(localized: "widget_tomorrow_time"), trailing)
@@ -182,15 +182,15 @@ extension WidgetDerivedState.Day {
     }
 
     /// 1 = Monday … 7 = Sunday, matching `WidgetTimelineDerivation.weekdayFor`.
-    private static func shortName(of weekday: Int) -> String {
+    private static func caption(of weekday: Int) -> String {
         switch weekday {
-        case 1: return String(localized: "weekday_mon_short")
-        case 2: return String(localized: "weekday_tue_short")
-        case 3: return String(localized: "weekday_wed_short")
-        case 4: return String(localized: "weekday_thu_short")
-        case 5: return String(localized: "weekday_fri_short")
-        case 6: return String(localized: "weekday_sat_short")
-        default: return String(localized: "weekday_sun_short")
+        case 1: return String(localized: "weekday_mon_caption")
+        case 2: return String(localized: "weekday_tue_caption")
+        case 3: return String(localized: "weekday_wed_caption")
+        case 4: return String(localized: "weekday_thu_caption")
+        case 5: return String(localized: "weekday_fri_caption")
+        case 6: return String(localized: "weekday_sat_caption")
+        default: return String(localized: "weekday_sun_caption")
         }
     }
 }

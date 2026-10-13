@@ -1,18 +1,14 @@
 #if os(iOS)
 import Foundation
 
-/// A minimal FIFO async mutex: at most one `withLock`/`acquire`-`release` section runs at a
-/// time, and queued callers are granted the lock in the exact order they asked for it.
+/// A minimal FIFO async mutex: at most one `withLock` or `acquire`/`release` section runs at a
+/// time, and queued callers get the lock in the order they asked for it. It knows nothing of
+/// IMAP, so tests cover exclusion, FIFO order and release after a throw without a network.
 ///
-/// `LiveMailClient` uses one of these to serialize its whole `run` body — including the
-/// liveness probe/reconnect — against every other `run` call. Plain actor isolation on its own
-/// does not do this: it only excludes *synchronous* execution, not the suspension points inside
-/// an `async` body, so without a lock a second call's SELECT could land between a first call's
-/// SELECT and the STORE/COPY/EXPUNGE it guards.
-///
-/// This type owns no other state and makes no assumption about what it's protecting, so it's
-/// independently testable (mutual exclusion, strict FIFO order, and that a throwing body still
-/// releases) without any IMAP/network dependency.
+/// `LiveMailClient` serializes each whole `run` body, liveness probe and reconnect included,
+/// with one. Actor isolation alone does not: it excludes only synchronous execution, so a
+/// second call's SELECT could run at a suspension point between a first call's SELECT and the
+/// STORE/COPY/EXPUNGE it guards.
 actor AsyncSerialLock {
     private var isHeld = false
     private var waiters: [CheckedContinuation<Void, Never>] = []

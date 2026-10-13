@@ -45,7 +45,7 @@ struct MailTextRulesTests {
     }
 
     /// Mail2000 routinely labels a part `us-ascii` and then puts UTF-8 bytes in it. The label
-    /// resolves, so decoding it leniently succeeds on every byte and turns the `親愛的同學您好`
+    /// resolves, so decoding it leniently succeeds on every byte and turns the Chinese greeting
     /// below into `è¦ªæ„›çš„…`. Strict UTF-8 therefore runs before the lenient path: a body that
     /// is valid UTF-8 is UTF-8, whatever the header claims.
     @Test(arguments: ["us-ascii", "US-ASCII", "ascii", "\"us-ascii\""])
@@ -255,7 +255,7 @@ struct MailTextRulesTests {
     /// and the whole message rendered as mojibake.
     @Test func aLabelledBodyWithOneBadByteStillDecodesAsThatCharset() {
         var bytes = Array("這是中文測試".utf8)
-        bytes.insert(0xE4, at: 6) // a stray UTF-8 lead byte between 是 and 中
+        bytes.insert(0xE4, at: 6) // a stray UTF-8 lead byte between the second and third characters
         let text = MailCharset.decode(Data(bytes), label: "utf-8")
         #expect(text.contains("這是"))
         #expect(text.contains("中文測試"))

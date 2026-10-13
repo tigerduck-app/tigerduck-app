@@ -1,19 +1,24 @@
+import Defaults
 import Testing
 import Foundation
 @testable import TigerDuck
 
+/// On the main actor, like `TimeSliderViewModel`, whose init prepares a `UIFeedbackGenerator`
+/// and can crash the test host off the main thread. The Swift 5 language mode does not flag a
+/// test that builds the model off the main actor.
+@MainActor
 struct TimeSliderViewModelTests {
 
     @Test func dateFromTimeString_parsesCorrectly() {
-        let ref = Calendar.current.startOfDay(for: Date())
+        let ref = AppConstants.taipeiCalendar.startOfDay(for: AppClock.now())
         let date = CourseTimeSlot.dateFromTimeString("10:20", on: ref)!
-        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let comps = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
         #expect(comps.hour == 10)
         #expect(comps.minute == 20)
     }
 
     @Test func dateFromTimeString_invalidReturnsNil() {
-        let ref = Date()
+        let ref = AppClock.now()
         #expect(CourseTimeSlot.dateFromTimeString("invalid", on: ref) == nil)
         #expect(CourseTimeSlot.dateFromTimeString("", on: ref) == nil)
     }
@@ -39,7 +44,7 @@ struct TimeSliderViewModelTests {
     /// Which days are quiet can change while the courses do not — a
     /// "still have class" toggle, a holiday published — and the timeline
     /// follows without waiting for the slider to reappear.
-    @Test @MainActor func quietDayChange_rebuildsTheTimeline() async throws {
+    @Test func quietDayChange_rebuildsTheTimeline() async throws {
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
         let today = AcademicCalendar.startOfDay(AppClock.now())
@@ -57,12 +62,30 @@ struct TimeSliderViewModelTests {
         try await waitUntil { !viewModel.timeSlots.contains(where: onToday) }
     }
 
+    /// Home's slider spans weeks, so near the end of a term it reaches days after it, when no
+    /// class meets. Those are left off, as a quiet holiday is.
+    @Test func homeSlider_leavesOffDaysOutsideTheTerm() throws {
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
+        let today = AcademicCalendar.startOfDay(AppClock.now())
+        let weekAgo = try #require(AcademicCalendar.calendar.date(byAdding: .day, value: -7, to: today))
+        let term = SemesterTerm(code: "1151", start: weekAgo, end: today)
+        let store = try calendarStore(holding: AcademicCalendar(revision: 1, terms: [term], holidays: []))
+
+        let viewModel = TimeSliderViewModel(calendarStore: store)
+        viewModel.configure(courses: [course])
+
+        let days = Set(viewModel.timeSlots.map { AcademicCalendar.startOfDay($0.date) })
+        #expect(days.count == 8)
+        #expect(days.allSatisfy(term.contains))
+    }
+
     @Test func xOffset_returnsZeroWithNoCourses() {
         let vm = TimeSliderViewModel()
         vm.configure(courses: [])
 
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let now = calendar.date(byAdding: .hour, value: 10, to: today)!
         vm.selectedTime = now
 
@@ -76,8 +99,8 @@ struct TimeSliderViewModelTests {
 
     @Test func xOffset_returnsCorrectPixels() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
 
         // Course with periods "3","4" (10:20–12:10) every weekday so anchors are built
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
@@ -104,8 +127,8 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_inClass() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let slot = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 10, to: today)!,
@@ -122,14 +145,13 @@ struct TimeSliderViewModelTests {
         }
     }
 
-    /// 衝堂: two courses on one period. Both belong on screen — keeping
-    /// only the first match showed one and dropped the other, and which
-    /// one survived came out of timeline order rather than any choice the
-    /// reader made.
+    /// Overlapping courses: two courses in one period. Both belong on screen.
+    /// Keeping only the first match would drop one, and which one survived
+    /// would come from timeline order rather than any choice the reader made.
     @Test func courseState_inClass_keepsEveryOverlappingCourse() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let earlier = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 10, to: today)!,
@@ -154,10 +176,10 @@ struct TimeSliderViewModelTests {
     /// The same resolution backs the Live Activity, which can only show
     /// one class and so takes `first`. The order the overlap comes back in
     /// is therefore load-bearing, not cosmetic: it decides which of two
-    /// 衝堂 courses the lock screen names.
+    /// overlapping courses the lock screen names.
     @Test func timelineResolver_inClass_ordersOverlapsAsGiven() {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let earlier = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 10, to: today)!,
@@ -182,8 +204,8 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_beforeFirst() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let slot = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 10, to: today)!,
@@ -202,8 +224,8 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_between() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
         let slot1 = makeMockSlot(
             courseNo: "MATH101",
             start: calendar.date(byAdding: .hour, value: 8, to: today)!,
@@ -231,8 +253,8 @@ struct TimeSliderViewModelTests {
     /// monotonic and dragging forward keeps advancing past the clash.
     @Test func drag_advancesPastOverlappingCourses() {
         let vm = TimeSliderViewModel()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
 
         let periods34 = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let periods45 = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["4", "5"]) })
@@ -263,6 +285,50 @@ struct TimeSliderViewModelTests {
         let blockEnd = calendar.date(byAdding: DateComponents(hour: 13, minute: 10), to: today)!
         #expect(vm.selectedTime > blockEnd)
         vm.isUserDragging = false
+    }
+
+    /// Clashing courses stack in lanes on the track: A and C never meet, so beside B they share
+    /// one of two lanes, and a course that meets none keeps the full height.
+    @Test func clashingSlotsStackInLanes() {
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
+        func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
+        let vm = TimeSliderViewModel()
+
+        vm.timeSlots = [
+            makeMockSlot(courseNo: "A", start: at(9), end: at(11)),
+            makeMockSlot(courseNo: "B", start: at(10), end: at(12)),
+            makeMockSlot(courseNo: "C", start: at(11), end: at(13)),
+            makeMockSlot(courseNo: "D", start: at(14), end: at(15)),
+        ]
+
+        #expect(vm.slotLanes["A"] == TimeSliderLane(lane: 0, count: 2))
+        #expect(vm.slotLanes["B"] == TimeSliderLane(lane: 1, count: 2))
+        #expect(vm.slotLanes["C"] == TimeSliderLane(lane: 0, count: 2))
+        #expect(vm.slotLanes["D"] == nil)
+    }
+
+    /// A class that ends as the next one starts does not clash with it.
+    @Test func backToBackSlotsKeepTheFullHeight() {
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
+        func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
+
+        let lanes = TimeSliderViewModel.lanes(for: [
+            makeMockSlot(courseNo: "A", start: at(9), end: at(10)),
+            makeMockSlot(courseNo: "B", start: at(10), end: at(11)),
+        ])
+
+        #expect(lanes.isEmpty)
+    }
+
+    /// The store reads its cache once, at init, so the device's own cache is back before the
+    /// test goes on.
+    private func calendarStore(holding calendar: AcademicCalendar) throws -> AcademicCalendarStore {
+        let saved = Defaults[.academicCalendarCache]
+        defer { Defaults[.academicCalendarCache] = saved }
+        Defaults[.academicCalendarCache] = try JSONEncoder().encode(calendar)
+        return AcademicCalendarStore()
     }
 
     private func makeMockSlot(courseNo: String, start: Date, end: Date) -> CourseTimeSlot {

@@ -2,22 +2,14 @@
 import SwiftUI
 import UIKit
 
-/// Reports the `UIScreen` currently hosting this view, and re-reports
-/// whenever the view lands on a different one.
+/// Reports the `UIScreen` hosting this view, and re-reports whenever the view
+/// lands on a different one. `CapturedScreenReader` in `PasswordField` does the
+/// same for `isCaptured`.
 ///
-/// `UIScreen.main` is deprecated on iOS 16+ and on a foldable it is
-/// actively wrong: folding the device moves the window from the inner
-/// display to the outer one, so anything keyed on `.main` goes on
-/// addressing a screen the user is no longer looking at. Brightness is the
-/// sharp case — the library QR pins its screen bright to stay scannable,
-/// and pinning the wrong panel leaves the code dim at the reader.
-///
-/// From the app's point of view a fold simply *is* the window changing
-/// screens, so `didMoveToWindow` is the notification for it; no hinge API
-/// is involved and this works back to iOS 18.
-///
-/// Mirrors `CapturedScreenReader` in `PasswordField`, which solves the same
-/// problem for `isCaptured`.
+/// `UIScreen.main` is deprecated on iOS 16+, and on a foldable it keeps naming
+/// the panel the window just left. The library QR pins its screen bright to stay
+/// scannable, so the wrong panel leaves the code dim. A fold is just a screen
+/// change to the app, so this needs no hinge API and works back to iOS 18.
 struct HostScreenReader: UIViewRepresentable {
     let onChange: (UIScreen?) -> Void
 
@@ -58,15 +50,13 @@ final class HostScreenReaderView: UIView {
         reportHostScreen()
     }
 
-    /// `didMoveToWindow` alone is not the whole signal.
+    /// `didMoveToWindow` alone misses the case this reader exists for.
     ///
-    /// A fold — and a Stage Manager window dragged to another display —
-    /// reassigns `UIWindowScene.screen` underneath a window that never
-    /// changes, so no view is added or removed and `didMoveToWindow` never
-    /// fires. That is precisely the case this reader exists for, so the
-    /// screen is re-read on layout too, which a geometry change always
-    /// drives. `CapturedScreenReader` pairs the same callback with a
-    /// notification observer for the same reason.
+    /// A fold, or a Stage Manager window dragged to another display, reassigns
+    /// `UIWindowScene.screen` under an unchanged window, so no view is added or
+    /// removed and `didMoveToWindow` never fires. The screen is re-read on layout
+    /// too, which a geometry change always drives. `CapturedScreenReader` pairs
+    /// the same callback with a notification observer for the same reason.
     override func layoutSubviews() {
         super.layoutSubviews()
         reportHostScreen()

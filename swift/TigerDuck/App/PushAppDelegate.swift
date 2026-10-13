@@ -10,23 +10,12 @@ import os
 /// the token to a `forwardTo` closure, which `TigerDuckApp` wires to the
 /// shared `PushRegistrationService`.
 final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
-    /// Set by `TigerDuckApp` before the first token arrives. Called on the
-    /// main thread with the raw token data.
-    ///
-    /// Lifetime contract: this delegate, the `TigerDuckApp`, and the shared
-    /// `PushRegistrationService` all live for the entire app process. The
-    /// closure does **not** weak-capture the registration service — there is
-    /// no shorter lifetime to escape from, and a `[weak]` capture here would
-    /// silently drop the token if scene-phase plumbing ever ran the closure
-    /// before the strong reference had been established.
-    ///
-    /// `AppState.init` triggers `registerForRemoteNotifications()` before
-    /// SwiftUI runs `.onAppear` — the appearance hook is what wires the
-    /// forwarders, so APNs can race ahead and deliver the token while the
-    /// closure is still nil. Any token/error that arrives in that gap is
-    /// stashed in `bufferedToken`/`bufferedError` and replayed by the
-    /// `didSet`s below when the closures are finally installed, so a
-    /// launch token never gets dropped on the floor.
+    /// Set at launch and again in `TigerDuckApp`'s `.onAppear` through
+    /// `PushCoordinator.bindTokenForwarding`, and called on the main thread with the raw token
+    /// data. This delegate, the app and the coordinator live for the whole process, so the
+    /// closure's weak capture of the coordinator never drops a token. APNs can deliver a token
+    /// or error before it is set; `bufferedToken` and `bufferedError` hold it until the
+    /// `didSet`s below replay it.
     var forwardToken: ((Data) -> Void)? {
         didSet {
             guard let forward = forwardToken, let token = bufferedToken else { return }
@@ -56,14 +45,18 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Delegate")
 
+    /// Wiring that cannot wait for a scene, run once by `didFinishLaunching`: iOS can launch the
+    /// app in the background for a silent push or a Watch message, and then no `.onAppear` runs.
+    /// `TigerDuckApp.init` sets it; SwiftUI builds the app before it creates this delegate.
+    static var launchWork: ((PushAppDelegate) -> Void)?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Install the notification delegate BEFORE any push can arrive so
-        // a cold-launch tap (where iOS launches the app from a tapped
-        // notification) is routed through `routeTap` instead of falling
-        // back to the OS default open behaviour.
+        // Install the notification delegate before any push can arrive, so a tap
+        // that cold-launches the app goes through `routeTap` instead of the OS
+        // default open behaviour.
         let nd = NotificationDelegate()
         UNUserNotificationCenter.current().delegate = nd
         self.notificationDelegate = nd
@@ -73,6 +66,8 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
             MailBackgroundRefresh.register()
         }
         #endif
+        Self.launchWork?(self)
+        Self.launchWork = nil
         return true
     }
 
@@ -94,7 +89,7 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .private)")
         if let forward = forwardError {
             forward(error)
         } else {

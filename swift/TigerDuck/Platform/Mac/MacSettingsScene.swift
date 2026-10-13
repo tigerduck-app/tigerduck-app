@@ -3,18 +3,12 @@ import SwiftUI
 
 /// Mac-native Settings window (⌘,).
 ///
-/// Mirrors the subset of `AppState` properties that have meaningful Mac
-/// equivalents: appearance (accent + course palette), language,
-/// display and abbreviation toggles, link-open preference, the API
-/// endpoint override, TigerSync (its sync switches and status), and —
-/// Mac-only — sidebar customisation (which features get pinned and in
-/// what order). Push / Live Activity /
-/// library settings are intentionally omitted: they're either iOS-only
-/// or filtered out for Mac in `AppFeature.macHiddenFeatures`.
+/// Covers the `AppState` settings that mean something on a Mac: appearance (accent and
+/// course palette), language, display and abbreviation toggles, link opening, the API
+/// endpoint override, TigerSync, and the Mac-only sidebar pins and their order. Push, Live
+/// Activity and library settings are left out as iOS-only or in `AppFeature.macHiddenFeatures`.
 ///
-/// Debug builds additionally surface a Developer tab with the clock
-/// override controls so QA can scrub fake time on the Mac the same way
-/// they can on iPhone.
+/// Debug builds add a Developer tab so QA can scrub fake time on the Mac as on the iPhone.
 struct MacSettingsScene: View {
     @Environment(AppState.self) private var appState
 

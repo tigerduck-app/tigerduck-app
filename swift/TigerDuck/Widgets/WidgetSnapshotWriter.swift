@@ -1,49 +1,68 @@
 import Foundation
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
-/// Owns the widget snapshot write pipeline. Listens for the existing app-side
-/// notifications that signal state worth reflecting in widgets (data refresh
-/// completion, language change, system locale change), rebuilds the snapshot
-/// via `WidgetSnapshotBuilder`, persists it through the App Group store, and
-/// asks `WidgetReloadCoordinator` to refresh widget timelines (debounced).
+/// Owns the widget snapshot write pipeline. On the app notifications that change
+/// widget content (see `attachObservers()`), it rebuilds the snapshot with
+/// `WidgetSnapshotBuilder`, writes it to the App Group store and asks
+/// `WidgetReloadCoordinator` for a debounced timeline reload.
 ///
-/// Not auto-wired: the host app explicitly creates this and calls
-/// `regenerate()` at cold-start; thereafter the observer paths drive
-/// regeneration. Called paths are deliberately coarse — `regenerate()`
-/// rebuilds the entire snapshot every time. Coupled with the coordinator's
-/// 300 ms debounce, this is acceptable for v1; if profiling shows the
-/// rebuild cost is meaningful we can split into per-source paths later.
-///
-/// Known gap: accent-color changes in `AppState` do NOT post a notification
-/// today, so a pure accent tweak won't trigger a regeneration on its own.
-/// The next observed event (data sync, language change, locale change, or
-/// any explicit `regenerate()` call) will pick up the new accent. Wire an
-/// explicit notification post when/if this becomes user-visible.
+/// The host app creates it and calls `regenerate()` at cold start. Each call
+/// rebuilds the whole snapshot, but writes and reloads only when it changed.
 @MainActor
 final class WidgetSnapshotWriter {
     private let store: WidgetSnapshotStore
     private let coordinator: WidgetReloadCoordinator
-    private let appState: AppState
+    private let isLoggedIn: @MainActor () -> Bool
+    private let accentColorHex: @MainActor () -> Int
     private let courseProvider: CanonicalCourseProvider
     private let cache: DataCache
+    private let isProtectedDataAvailable: @MainActor () -> Bool
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "WidgetWriter")
 
     private var observers: [NSObjectProtocol] = []
 
-    // Defaults are resolved in the init body rather than as parameter
-    // default expressions because `DataCache.shared` and the nested
-    // `WidgetReloadCoordinator()` factory call land in MainActor-isolated
-    // code; under Swift 6 strict concurrency parameter default
-    // expressions evaluate in a nonisolated context even on a
-    // MainActor-isolated init, so the MainActor references warn there.
-    init(
+    convenience init(
         appState: AppState,
         cache: DataCache? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
         courseProvider: CanonicalCourseProvider? = nil
     ) {
-        self.appState = appState
+        self.init(
+            // Gate on stored credentials, not `isNTUSTLoggedIn`: it flips false when
+            // session cookies expire, flashing "Please sign in" although the next sync
+            // re-authenticates silently. Same rule as `ntustProtectedAccessState`.
+            isLoggedIn: { appState.authService.hasStoredCredentials },
+            accentColorHex: { appState.accentColorHex },
+            cache: cache,
+            store: store,
+            coordinator: coordinator,
+            courseProvider: courseProvider
+        )
+    }
+
+    // Defaults resolve in the body: under Swift 6 strict concurrency, default
+    // argument expressions are nonisolated even on a MainActor init, so the
+    // MainActor-isolated `DataCache.shared` and `WidgetReloadCoordinator()` warn there.
+    init(
+        isLoggedIn: @escaping @MainActor () -> Bool,
+        accentColorHex: @escaping @MainActor () -> Int,
+        cache: DataCache? = nil,
+        store: WidgetSnapshotStore? = nil,
+        coordinator: WidgetReloadCoordinator? = nil,
+        courseProvider: CanonicalCourseProvider? = nil,
+        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil
+    ) {
+        #if os(iOS)
+        self.isProtectedDataAvailable = isProtectedDataAvailable ?? { UIApplication.shared.isProtectedDataAvailable }
+        #else
+        self.isProtectedDataAvailable = isProtectedDataAvailable ?? { true }
+        #endif
+        self.isLoggedIn = isLoggedIn
+        self.accentColorHex = accentColorHex
         self.cache = cache ?? .shared
         self.store = store ?? WidgetSnapshotStore()
         self.coordinator = coordinator ?? WidgetReloadCoordinator()
@@ -57,21 +76,30 @@ final class WidgetSnapshotWriter {
         }
     }
 
-    /// Every published school holiday, as `yyyy-MM-dd` keys.
-    ///
-    /// Deliberately not windowed to the widget's own horizon. Only the app
-    /// writes this snapshot, and a widget keeps reloading the last one it
-    /// was given for as long as the app stays closed — so a horizon measured
-    /// from write time expires while the snapshot it lives in does not, and
-    /// the first holiday past the edge renders as an ordinary class day.
-    /// Failing that way round is the bad one: the widget claims a class that
-    /// is not happening. A term's holidays are a few dozen dates, so the
-    /// whole published set is cheaper than the bug.
-    private static func quietDayKeys() -> Set<String> {
+    /// A snapshot serves for a year after it is written, and on each of those days the Next class
+    /// widget looks up to seven days ahead (`WidgetTimelineDerivation.derive`).
+    private static let outsideTermHorizonDays = 366 + 7
+
+    /// The days classes do not meet, as `yyyy-MM-dd` keys, for the widget snapshot and the Watch
+    /// payload: every published holiday the user has left quiet, and the days outside the term in
+    /// the next year and a week. Holidays are not windowed: only the app writes the snapshot, and
+    /// a widget keeps reloading the last one while the app stays closed, so a horizon measured
+    /// from write time would expire while the snapshot lives on and show a class that is not
+    /// happening. The days after the last published term never end, so those need one.
+    static func quietDayKeys() -> Set<String> {
         let store = AcademicCalendarStore.shared
-        let optedIn = store.optedInHolidayIDs
-        let calendar = store.calendar
+        return quietDayKeys(calendar: store.calendar, optedIn: store.optedInHolidayIDs, now: AppClock.now())
+    }
+
+    static func quietDayKeys(calendar: AcademicCalendar, optedIn: Set<Int>, now: Date) -> Set<String> {
         var keys: Set<String> = []
+        let today = AcademicCalendar.startOfDay(now)
+        for offset in 0..<outsideTermHorizonDays {
+            guard let day = AcademicCalendar.calendar.date(byAdding: .day, value: offset, to: today),
+                  !calendar.isInSession(on: day)
+            else { continue }
+            keys.insert(WidgetTimelineDerivation.dateKey(for: day))
+        }
         for holiday in calendar.holidays {
             var day = AcademicCalendar.startOfDay(holiday.start)
             let last = AcademicCalendar.startOfDay(holiday.end)
@@ -91,9 +119,12 @@ final class WidgetSnapshotWriter {
         return keys
     }
 
-    /// Idempotent — call at app cold-start and again whenever you want to
-    /// force a fresh snapshot. Observer paths call this internally.
-    func regenerate() {
+    /// An unchanged snapshot is neither written nor reloaded: this runs on every return to the
+    /// app and every data change, and each reload spends the widgets' budget.
+    func regenerate(forceReload: Bool = false) {
+        // Behind the lock screen the caches cannot be opened and read as empty; the widgets keep
+        // the last snapshot, and the next return to the app writes a new one.
+        guard isProtectedDataAvailable() else { return }
         let courses = courseProvider.currentCourses()
         let customNames = cache.loadCourseCustomNamesFlat()
         let colorMap = cache.loadCourseColorMap()
@@ -102,39 +133,49 @@ final class WidgetSnapshotWriter {
                 courses: courses,
                 customNames: customNames,
                 colorMap: colorMap,
-                // Gate widget UI on stored credentials, not live session
-                // state: `isNTUSTLoggedIn` flips false the moment session
-                // cookies TTL, which would falsely flash the "Please sign in"
-                // empty state on the widget even though the next sync will
-                // silently re-authenticate. Matches `ntustProtectedAccessState`.
-                isLoggedIn: appState.authService.hasStoredCredentials,
-                accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: appState.accentColorHex)),
+                isLoggedIn: isLoggedIn(),
+                accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentColorHex())),
                 now: AppClock.now(),
                 quietDayKeys: Self.quietDayKeys()
             )
         )
+        if !forceReload, let stored = store.readSnapshot(), Self.hasSameContent(snapshot, as: stored) {
+            return
+        }
         store.writeSnapshot(snapshot)
         coordinator.requestReload()
     }
 
+    /// Equal but for `generatedAt`, which every build stamps afresh and no widget reads.
+    static func hasSameContent(_ snapshot: WidgetSnapshot, as other: WidgetSnapshot) -> Bool {
+        var candidate = snapshot
+        candidate.generatedAt = other.generatedAt
+        return candidate == other
+    }
+
     private func attachObservers() {
         let center = NotificationCenter.default
-        let names: [Notification.Name] = [
-            AppConstants.dataDidUpdate,
-            AppConstants.languageDidChange,
-            AppConstants.courseSkipStateDidChange,
-            AppConstants.holidayNotifyDidChange,
-            AppConstants.courseColorMapDidChange,
-            NSLocale.currentLocaleDidChangeNotification,
+        var names: [(name: Notification.Name, forceReload: Bool)] = [
+            (AppConstants.dataDidUpdate, false),
+            // The widgets render their text in the new language, which no snapshot field
+            // holds, so these two reload even when the snapshot is unchanged.
+            (AppConstants.languageDidChange, true),
+            (AppConstants.courseSkipStateDidChange, false),
+            (AppConstants.holidayNotifyDidChange, false),
+            (AppConstants.courseColorMapDidChange, false),
+            (AppConstants.accentColorDidChange, false),
+            (NSLocale.currentLocaleDidChangeNotification, true),
         ]
-        for name in names {
+        #if DEBUG
+        // The days outside the term are listed from the app clock's today.
+        names.append((DebugClockController.didChangeNotification, false))
+        #endif
+        for (name, forceReload) in names {
             let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                // Hop to the writer's MainActor before touching any state. The
-                // notification queue is .main, but we can still bounce through
-                // a Task to satisfy strict concurrency on touching the writer
-                // from the closure context.
+                // The queue is .main, but strict concurrency still needs a MainActor
+                // hop to touch the writer from this closure, so go through a Task.
                 Task { @MainActor [weak self] in
-                    self?.regenerate()
+                    self?.regenerate(forceReload: forceReload)
                 }
             }
             observers.append(token)

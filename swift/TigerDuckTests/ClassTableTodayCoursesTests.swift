@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 @testable import TigerDuck
 
@@ -24,6 +25,27 @@ struct ClassTableTodayCoursesTests {
         viewModel.currentSemesterCourses = [Self.everyDay]
 
         #expect(viewModel.todayCourses.isEmpty)
+    }
+
+    /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
+    private final class Flag: @unchecked Sendable {
+        var raised = false
+    }
+
+    @Test func holidayToggle_redrawsTodaysCourses() {
+        // A "still have class" toggle changes what `isClassDay` answers and no course, so the
+        // carousel must not wait for the next minute to drop or bring back today's classes.
+        let viewModel = ClassTableViewModel(isClassDay: { _ in true })
+        let redrawn = Flag()
+        withObservationTracking {
+            _ = viewModel.todayCourses
+        } onChange: {
+            redrawn.raised = true
+        }
+
+        NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
+
+        #expect(redrawn.raised)
     }
 
     // MARK: - What counts as a class day

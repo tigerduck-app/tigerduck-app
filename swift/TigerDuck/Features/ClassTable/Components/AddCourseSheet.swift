@@ -25,12 +25,6 @@ struct AddCourseSheet: View {
     private static let liveSearchDebounce: Duration = .milliseconds(350)
 
     @State private var searchText = ""
-    /// Mirrors `searchText` but is only updated by the live-search `.task(id:)`
-    /// trigger or by an explicit Submit. Used to drive `.task(id:)` so an
-    /// in-flight fetch reflects exactly the query it ran with — and so Submit
-    /// can re-run an already-typed query (changing `submitTrigger` re-fires the
-    /// task even when `searchText` is unchanged).
-    @State private var searchTrigger: String = ""
     @State private var submitTrigger: Int = 0
     @State private var primaryResults: [CourseSearchResult] = []
     @State private var secondaryNamesByNo: [String: String] = [:]
@@ -96,13 +90,9 @@ struct AddCourseSheet: View {
                     }
                 }
             }
-            // Tap-to-dismiss the keyboard lives on the background ONLY — a
-            // `.simultaneousGesture` on the Form swallows row Buttons (the
-            // "+" add-course button stops firing). Putting the tap on the
-            // background means row Buttons still get their taps; only taps
-            // that fall through the section gaps / footer reach the
-            // background and dismiss. `.scrollDismissesKeyboard` covers the
-            // drag-down gesture independently.
+            // Dismiss the keyboard from the background only: a `.simultaneousGesture` on
+            // the Form swallows row Buttons, so "+" stops firing. Taps in section gaps or
+            // the footer reach the background; `.scrollDismissesKeyboard` handles drags.
             .background(
                 Color.backgroundPrimary
                     .contentShape(Rectangle())
@@ -117,22 +107,15 @@ struct AddCourseSheet: View {
                 }
             }
         }
-        // The Form's `.background(Color.backgroundPrimary)` only paints the
-        // scrollable area — at the .medium detent the nav bar at the top
-        // and the bottom safe-area inset fall back to the sheet's default
-        // translucent backing and visibly show the underlying class table
-        // bleeding through. `.presentationBackground` paints the entire
-        // sheet container so the popup reads as one solid panel.
+        // The Form's `.background` paints only the scrollable area, so at the .medium
+        // detent the nav bar and bottom safe area stay translucent and the class table
+        // shows through. `.presentationBackground` paints the whole sheet container.
         .presentationBackground(Color.backgroundPrimary)
     }
 
     // MARK: - macOS body
-    // Native macOS sheet: a compact prominent search field at the top, a
-    // List of results below in `.inset` style (rounded macOS-y rows), and a
-    // bottom-bar Close button. Avoids `Form` because its inline-row sectioned
-    // chrome makes the search field tiny on macOS and the footer label
-    // anchored to the wrong side. Frame stays modest so the sheet doesn't
-    // dwarf the underlying window.
+    // No `Form`: on macOS it makes the search field tiny and anchors the footer label
+    // to the wrong side. The frame stays modest so the sheet does not dwarf the window.
 
     private var macBody: some View {
         VStack(spacing: 0) {
@@ -227,11 +210,9 @@ struct AddCourseSheet: View {
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
-            // Strip the default macOS bordered-button chrome from each row
-            // — otherwise every result renders inside its own rounded button
-            // frame, which shifts the leading text edge and makes the
-            // course-no / instructor / classroom column stack look uneven
-            // across rows.
+            // Strip the default macOS bordered-button chrome from each row. Otherwise
+            // each result sits in its own rounded button frame, which shifts the leading
+            // text edge and makes the course-no / instructor / classroom column uneven.
             .buttonStyle(.plain)
         }
     }
@@ -321,10 +302,8 @@ struct AddCourseSheet: View {
                 }
                 .contentShape(Rectangle())
             }
-            // Pre-existing enrolled courses are not removable from this sheet
-            // — the user already has them, and tap-to-remove here would be a
-            // dangerous escape hatch. Only courses added in *this* session
-            // can be toggled off.
+            // Courses the user already has are not removable here: tap-to-remove would
+            // be a dangerous escape hatch. Only courses added in this session toggle off.
             .disabled(isPreExisting && !isSessionAdded)
         }
     }
@@ -339,16 +318,14 @@ struct AddCourseSheet: View {
         secondaryNamesByNo = [:]
 
         let isCourseCode = Self.looksLikeCourseCode(query)
-        // Primary name always follows the UI language: a Chinese UI shows
-        // "中文 (English)" regardless of which language the query was typed
-        // in, an English UI shows "English (中文)". The persisted course also
-        // takes its `courseName` from this primary list, so a course added on
-        // a Chinese device lands with the Chinese canonical name in storage.
+        // The primary name follows the UI language, not the query's: a Chinese UI shows
+        // "Chinese (English)", an English UI "English (Chinese)". The saved `courseName`
+        // also comes from this list, so an add on a Chinese device stores the Chinese name.
         let primaryLanguage = LanguageManager.resolvedCourseApiLanguage(
             appLanguage: Defaults[.appLanguage]
         )
-        // Send the traditional form to the zh API so simplified queries
-        // ("隐私") still match traditional course names ("隱私與資訊安全").
+        // Send the traditional form to the zh API so simplified-Chinese queries
+        // still match traditional course names.
         let zhQuery = Self.toTraditional(query)
         let enQuery = query
 
@@ -367,12 +344,9 @@ struct AddCourseSheet: View {
             let primaryResultsRaw = primaryLanguage == "en" ? enResults : zhResults
             let secondaryResultsRaw = primaryLanguage == "en" ? zhResults : enResults
 
-            // Fast path: the primary-language API returned matches. Show them
-            // immediately with whatever parentheticals the secondary call
-            // happened to return for the same codes — do NOT block on the
-            // cross-language `lookupCourse` fan-out (which fires one HTTP
-            // request per missing code and easily costs 3+ seconds for a
-            // broad query like "calculus").
+            // Fast path: show primary-language matches at once, with whatever secondary
+            // names came back for the same codes. Don't wait for the `lookupCourse`
+            // fan-out: one request per missing code, often 3+ seconds on a broad query.
             if !primaryResultsRaw.isEmpty {
                 primaryResults = primaryResultsRaw
                 secondaryNamesByNo = Dictionary(
@@ -424,7 +398,7 @@ struct AddCourseSheet: View {
     ) async throws -> [CourseSearchResult] {
         if isCourseCode {
             return try await CourseLookupService.lookupCourse(
-                semester: semester, courseNo: query, language: language
+                semester: semester, courseNo: query, language: language, fresh: true
             )
         }
         async let byNameTask = CourseLookupService.searchCourses(
@@ -434,11 +408,9 @@ struct AddCourseSheet: View {
             semester: semester, teacher: query, language: language
         )
 
-        // Best-effort merge of the two name endpoints: tolerate one failing
-        // (the teacher endpoint commonly throws when the query is clearly
-        // not a teacher name), but if BOTH fail propagate the error so the
-        // caller can surface `add_course_search_failed` instead of the
-        // misleading `add_course_not_found` empty-results path.
+        // Tolerate one endpoint failing (the teacher one often throws for a query that
+        // is clearly not a teacher's name), but rethrow when both fail so the caller
+        // shows `add_course_search_failed` rather than a misleading `add_course_not_found`.
         var nameResults: [CourseSearchResult] = []
         var teacherResults: [CourseSearchResult] = []
         var nameError: Error?
@@ -466,7 +438,7 @@ struct AddCourseSheet: View {
             for no in missingZh {
                 group.addTask {
                     (try? await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: no, language: "zh"
+                        semester: semester, courseNo: no, language: "zh", fresh: true
                     )) ?? []
                 }
             }
@@ -476,7 +448,7 @@ struct AddCourseSheet: View {
             for no in missingEn {
                 group.addTask {
                     (try? await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: no, language: "en"
+                        semester: semester, courseNo: no, language: "en", fresh: true
                     )) ?? []
                 }
             }
@@ -515,27 +487,6 @@ struct AddCourseSheet: View {
         text.applyingTransform(hansHantTransform, reverse: false) ?? text
     }
 
-    /// Returns "zh" if the query contains any CJK Unified Ideograph
-    /// (traditional, simplified, or extension blocks); otherwise "en".
-    /// The result drives which language's result list is shown as primary,
-    /// independent of the UI language — so an English-typing user gets
-    /// "Calculus (微積分)" and a Mandarin-typing user gets "微積分 (Calculus)".
-    static func queryLanguage(of query: String) -> String {
-        for scalar in query.unicodeScalars {
-            switch scalar.value {
-            case 0x3400...0x4DBF,    // CJK Unified Ideographs Extension A
-                 0x4E00...0x9FFF,    // CJK Unified Ideographs
-                 0x20000...0x2A6DF,  // Extension B
-                 0x2A700...0x2EBEF,  // Extensions C, D, E, F
-                 0x30000...0x3134F:  // Extension G
-                return "zh"
-            default:
-                continue
-            }
-        }
-        return "en"
-    }
-
     // MARK: - Group & Add
 
     private struct GroupedCourse {
@@ -560,6 +511,7 @@ struct AddCourseSheet: View {
         /// its dimension / term span without waiting for the next refresh.
         let dimension: String
         let allYear: String
+        let requireOption: String
 
         var displayName: String {
             guard let secondary = secondaryName,
@@ -577,10 +529,9 @@ struct AddCourseSheet: View {
         for result in primaryResults {
             let key = result.CourseNo
             let partial = CourseLookupService.parseNodeToSchedule(result.Node)
-            // Mirror AppServiceBridge.buildSDCourse: dedupe a row's rooms,
-            // then assign the joined string to every (day, period) the row
-            // covers. Without this, `classroom(for:)` falls back to the
-            // combined room list and can display the wrong day's room.
+            // Mirror AppServiceBridge.buildSDCourse: dedupe a row's rooms and assign the
+            // joined string to every (day, period) the row covers, or `classroom(for:)`
+            // falls back to the combined room list and can show the wrong day's room.
             var rowSeen = Set<String>()
             let rowRoomParts = SDCourse.splitRoom(result.ClassRoomNo ?? "")
                 .filter { rowSeen.insert($0).inserted }
@@ -624,7 +575,8 @@ struct AddCourseSheet: View {
                     // Same first-non-empty rule as `buildSDCourse`: the row
                     // that names the dimension may not be the one seen first.
                     dimension: existing.dimension.isEmpty ? (result.Dimension ?? "") : existing.dimension,
-                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear
+                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear,
+                    requireOption: existing.requireOption.isEmpty ? (result.RequireOption ?? "") : existing.requireOption
                 )
                 seen[key] = existing
             } else {
@@ -650,7 +602,8 @@ struct AddCourseSheet: View {
                     schedule: partial,
                     nodeDisplay: result.Node ?? "",
                     dimension: result.Dimension ?? "",
-                    allYear: result.AllYear ?? ""
+                    allYear: result.AllYear ?? "",
+                    requireOption: result.RequireOption ?? ""
                 )
             }
         }
@@ -672,7 +625,8 @@ struct AddCourseSheet: View {
             semester: semester,
             classroomMap: group.classroomMap,
             dimension: group.dimension,
-            allYear: group.allYear
+            allYear: group.allYear,
+            requireOption: group.requireOption
         )
         if onAdd(course) {
             sessionAddedCourseNos.insert(group.courseNo)

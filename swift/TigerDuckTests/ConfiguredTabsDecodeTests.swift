@@ -1,7 +1,6 @@
-// `AppState.decodeConfiguredTabs` — the pure decode step behind `configuredTabs`
-// (`AppState.swift`). Exercises it directly, without touching `Defaults`, so a hidden
-// or unrecognised feature surviving in a persisted/synced tab list is covered by a
-// test rather than only by reading the code.
+// `AppState.decodeConfiguredTabs`, the pure decode step behind `configuredTabs` in
+// `AppState.swift`, tested directly without `Defaults`, so a hidden or unrecognised
+// feature surviving in a persisted or synced tab list is caught by a test.
 import Foundation
 import Testing
 @testable import TigerDuck

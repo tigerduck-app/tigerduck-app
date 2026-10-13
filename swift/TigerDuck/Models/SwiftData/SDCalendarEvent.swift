@@ -64,9 +64,9 @@ enum EventSource: String, Codable {
 
     /// The first or last day of a term, from the same feed.
     ///
-    /// Deliberately not `.holiday`: a term boundary is an announcement,
-    /// there is still class that day, and nothing is silenced. Folding the
-    /// two together made these rows read "假日", which was simply wrong.
+    /// Not `.holiday`: a term boundary is an announcement, there is still
+    /// class that day, and nothing is silenced. Sharing `.holiday` would
+    /// label these rows "Holiday", which is wrong.
     case semester
 
     var color: Color {

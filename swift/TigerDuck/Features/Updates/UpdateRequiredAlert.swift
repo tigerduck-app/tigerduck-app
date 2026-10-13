@@ -1,19 +1,13 @@
 import SwiftUI
 
-/// Blocking notice for a build the server no longer answers.
+/// Blocking notice for a build whose API version the server has retired.
 ///
-/// Deliberately unlike the "a newer version is available" nudge in
-/// ``UpdatePromptView``: that one is optional and dismissible because the
-/// current build still works. This one fires on a 410, which means every
-/// backend call from this build now fails, so there is nothing to postpone
-/// and a Later button would only hide the reason the app looks broken.
-///
-/// It still cannot be a hard wall. Plenty of the app is local — the class
-/// table, the time machine, cached bulletins — and it would be worse to
-/// lock a student out of their own timetable than to let them read it while
-/// the sync stays broken. So: no cancel button, but the alert can be
-/// dismissed once it has been read, and it comes back the next time a
-/// request fails and the view re-appears.
+/// The ``UpdatePromptView`` nudge is optional because the build still works.
+/// A 410 means every backend call from this build fails, so a Later button
+/// would only hide why the app looks broken. Nor is this a hard wall: the
+/// class table, time machine and cached bulletins are local, and a student
+/// should still read their timetable. It can be dismissed once read, and
+/// returns the next time a request fails and the view re-appears.
 private struct UpdateRequiredAlert: ViewModifier {
     @Environment(\.openURL) private var openURL
     @State private var gate = APIVersionGate.shared

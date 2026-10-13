@@ -45,6 +45,7 @@ struct NTUSTGradePointsTests {
     }
 }
 
+@MainActor
 struct GPATrendPointTests {
     @Test func publishedRankingWinsAndUnrankedTermGetsProvisionalPoint() {
         let report = ScoreReport(

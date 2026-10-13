@@ -2,6 +2,7 @@ import XCTest
 import SwiftData
 @testable import TigerDuck
 
+@MainActor
 final class WatchPayloadEncoderTests: XCTestCase {
 
     private func makeCourse(
@@ -107,10 +108,9 @@ final class WatchPayloadEncoderTests: XCTestCase {
     }
 
     func test_loggedOut_dropsCachedCourses() {
-        // Logout posts a data update before SwiftData rows are deleted, and
-        // the watch UI shows non-empty `courses` ahead of the signed-out
-        // empty state — so the encoder must strip courses when loggedIn is
-        // false to avoid leaking the previous user's schedule.
+        // Logout posts a data update before SwiftData rows are deleted, and the watch shows
+        // non-empty `courses` ahead of its signed-out state, so the encoder must strip courses
+        // when `loggedIn` is false or the previous user's schedule leaks.
         let c = makeCourse()
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",
@@ -118,5 +118,29 @@ final class WatchPayloadEncoderTests: XCTestCase {
         )
         XCTAssertFalse(snap.loggedIn)
         XCTAssertTrue(snap.courses.isEmpty)
+    }
+
+    func test_quietDaysAndSkippedDates_reachThePayload() {
+        let c = makeCourse()
+        c.skippedDates = ["2026-10-09"]
+        let snap = WatchPayloadEncoder.encode(
+            courses: [c], customNames: [:], accentHex: "#000", syncedAt: Date(),
+            loggedIn: true, languageTag: nil, visualPreset: .default, quietDays: ["2026-10-10"]
+        )
+        XCTAssertEqual(snap.quietDays, ["2026-10-10"])
+        XCTAssertEqual(snap.courses.first?.skippedDates, ["2026-10-09"])
+    }
+
+    /// The Watch keys today with `SharedTaipei.dayKey`, and the phone sends holidays keyed by
+    /// the widget's `dateKey`; the two must agree, including on a device outside Taiwan.
+    func test_watchDayKeyMatchesTheWidgetKey() {
+        let days = [
+            Date(timeIntervalSince1970: 1_790_000_000),
+            Date(timeIntervalSince1970: 1_767_196_800),  // 2025-12-31 16:00 UTC, Taipei midnight
+            Date(timeIntervalSince1970: 1_767_196_799),
+        ]
+        for day in days {
+            XCTAssertEqual(SharedTaipei.dayKey(for: day), WidgetTimelineDerivation.dateKey(for: day))
+        }
     }
 }

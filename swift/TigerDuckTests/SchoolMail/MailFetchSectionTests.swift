@@ -8,19 +8,14 @@ import SwiftMail
 import Testing
 @testable import TigerDuck
 
-/// Why the message screen may never ask for a *named* header-field list, and why a response it
+/// Why the message screen may never ask for a named header-field list, and why a response it
 /// cannot decode must not be reported as an unreachable server.
 ///
-/// On a real device every message open failed with "Can't reach the mail server" while the list
-/// loaded fine. The list fetch asks for envelope/flags/size/bodystructure; the detail fetch was
-/// the one call site that also passed `headerFields: ["References"]`, which SwiftMail encodes as
-/// `BODY.PEEK[HEADER.FIELDS ("References")]` — the field name quoted, as RFC 3501 allows.
-/// Mail2000 echoes that section back uppercased *and* quoted a second time, and the response
-/// stops being IMAP.
-///
-/// Nothing below is a stand-in. The responses are fed through `IMAPClientHandler`, the same NIO
-/// handler SwiftMail installs on its own channel, so a failing case produces the real
-/// `IMAPDecoderError` SwiftMail hands to `LiveMailClient.map(_:)`.
+/// SwiftMail sends `headerFields: ["References"]` as `BODY.PEEK[HEADER.FIELDS ("References")]`,
+/// quoting the name as RFC 3501 allows. Mail2000 echoes the section uppercased and quoted again,
+/// and the response stops being IMAP. The responses here go through `IMAPClientHandler`, the
+/// NIO handler SwiftMail installs on its own channel, so a failing case produces the real
+/// `IMAPDecoderError` that `LiveMailClient.map(_:)` receives.
 struct MailFetchSectionTests {
 
     // MARK: Server responses
@@ -100,11 +95,9 @@ struct MailFetchSectionTests {
     }
 
     @Test func theFullHeaderSectionStillCarriesReferences() throws {
-        // What `BODY.PEEK[HEADER]` delivers is a `.body` section of kind `.header` whose bytes
-        // are the message's whole header block — which is what SwiftMail's
-        // `FetchMessageInfoHandler` collects (it gates on exactly `.header`/`.headerFields`) and
-        // parses `References:` out of into `MessageInfo.references`. Threading survives the
-        // switch away from the named field list.
+        // `BODY.PEEK[HEADER]` arrives as a `.body` section of kind `.header` with the whole header
+        // block. SwiftMail's `FetchMessageInfoHandler` collects only `.header`/`.headerFields`
+        // and parses `References:` into `MessageInfo.references`: threading needs no field list.
         guard case .success(let responses) = Self.decode(Self.fullHeaderEcho) else {
             Issue.record("BODY[HEADER] must decode")
             return
@@ -129,10 +122,9 @@ struct MailFetchSectionTests {
     // MARK: How the failure is reported to the user
 
     @Test func aDecodeFailureIsAProtocolErrorNotAnUnreachableServer() throws {
-        // The whole misdiagnosis: `map(_:)` used to end in `classify(..., fallback: .unreachable)`,
-        // an `IMAPDecoderError` matches none of the known shapes, so a parser failure became
-        // `.unreachable` → `LoginError.network` → "Can't reach the mail server" on a device
-        // whose network was fine. A response this client cannot read is a protocol failure.
+        // An `IMAPDecoderError` matches none of the known shapes, so a `.unreachable` fallback
+        // would turn a parser failure into "Can't reach the mail server" on a working network.
+        // A response this client cannot read is a protocol failure.
         let error = try Self.decodeFailure(Self.mail2000Echo)
         #expect(LiveMailClient.map(error) == .protocolError(String(describing: error)))
     }

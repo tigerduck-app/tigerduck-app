@@ -70,36 +70,14 @@ nonisolated enum DevMailProbeCredentials: Equatable, Sendable {
     case unavailable(String)
 }
 
-/// The Test connection diagnostic behind `Settings → Developer → Email`.
-///
-/// It exists because the app's own error reporting cannot answer the question a developer
-/// pointing School Mail at their own server actually has. `MailClientError` has five cases and
-/// `MailAccountManager.LoginError` turns those into five sentences, so a name that does not
-/// resolve, a port nothing is listening on, a port a firewall is dropping, a TLS handshake the
-/// system will not trust and a password the server rejected all arrive on screen as
-/// "Can't reach the mail server". **Nothing here goes through that classification.** Every failure
-/// is reported as the error that was actually thrown.
-///
-/// The run is staged, and each stage answers exactly one question:
-///
-/// - `DNS` — does the name resolve, and to what? Run with `getaddrinfo`, so the addresses
-///   themselves are on screen: "it resolves but nothing answers" is the shape of the case this
-///   was written for, and it is only visible if the resolution is a step of its own.
-/// - `TCP` — does anything accept a connection there? A plain `NWConnection`, so a refusal is
-///   `ECONNREFUSED` and a filtered port is a timeout rather than both being "unreachable".
-/// - `TLS` — does a handshake complete under ordinary system trust? Also `NWConnection`, which
-///   surfaces a trust failure as an `OSStatus` the system can name. Implicit TLS only; STARTTLS
-///   is negotiated inside the protocol, so for that the `CONNECT` stage below is the handshake.
-/// - `CONNECT` — the same thing again through **the app's own path**: SwiftMail, with
-///   `MailTLSVerifier` installed exactly as `LiveMailClient` installs it. A server the system
-///   trusts but this client does not fails here and nowhere else.
-/// - `AUTH` — IMAP `LOGIN` / SMTP `AUTH`, when there are credentials that may be sent.
-///
-/// Two things it will not do. It never connects to the school server (`refusal(for:)`), and it
-/// never sends the school account's password to a server that is not the school's
-/// (`credentials(username:password:appliedIsOverridden:)`). It also never touches
-/// `MailAccountManager`, the cache or the credential store: everything below builds its own
-/// connections, uses them and closes them.
+/// The Test connection diagnostic behind `Settings → Developer → Email`. School Mail shows an
+/// unresolvable name, a refused or filtered port and a handshake failure naming no certificate all
+/// as "Can't reach the mail server", so each stage reports the error thrown: DNS (`getaddrinfo`,
+/// addresses shown), TCP and implicit TLS (`NWConnection`, system trust), CONNECT (SwiftMail with
+/// `MailTLSVerifier` as `LiveMailClient` installs it, covering STARTTLS) and AUTH. It never
+/// connects to the school server (`refusal(for:)`), never sends the school password elsewhere
+/// (`credentials(username:password:appliedIsOverridden:)`) and never touches `MailAccountManager`,
+/// the cache or the credential store. See docs/decisions/0007-dev-mail-server-override.md.
 nonisolated enum DevMailConnectionProbe {
     /// How long any one stage may take before it is reported as a hang. A filtered port is the
     /// case this bounds: left alone, the socket sits there for a minute or more, and "it hung" is
@@ -151,15 +129,12 @@ nonisolated enum DevMailConnectionProbe {
 
     /// Whether the saved password may be sent to the server under test.
     ///
-    /// Testing without one is a first-class case: the probe connects and hands shakes and reports
-    /// that authentication was not attempted. That is also the common case, because a sign-in that
-    /// failed never saved a password — `MailAccountManager.login` stores it only after the server
-    /// has accepted it — so the developer whose server will not connect has nothing saved for it.
-    ///
-    /// `appliedIsOverridden` is the safety rule, and it is the same rule as refusing to test the
-    /// school host, pointed the other way: while the *applied* configuration is still the school's,
-    /// the saved password is the school account's, and a diagnostic must not send it to somebody
-    /// else's server. Apply the override, sign in to the test account, and it becomes testable.
+    /// Without one, the probe still connects and handshakes and reports that it did not try to
+    /// authenticate. That is the common case: `MailAccountManager.login` saves a password only
+    /// after the server accepts it, so a server that will not connect has nothing saved for it.
+    /// `appliedIsOverridden` is the safety rule: while the applied configuration is the school's,
+    /// the saved password is the school account's and must not go to anyone else's server. Apply
+    /// the override and sign in to the test account to make it testable.
     static func credentials(
         username: String?,
         password: String?,

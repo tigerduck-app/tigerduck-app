@@ -2,26 +2,14 @@
 import SwiftUI
 import UIKit
 
-/// Raw mail source, scrolled by `UITextView`.
-///
-/// SwiftUI's `Text` lays a string out eagerly and in full, on the main thread, with no
-/// virtualization — and `.textSelection(.enabled)` on top of that costs more again. Raw
-/// source is routinely hundreds of KB and occasionally megabytes, so the old
-/// `ScrollView(.horizontal) { Text(source) }` froze the screen for as long as that layout
-/// took. The horizontal scroll made it worse in two ways: the `Text` was handed an
-/// unbounded width, so every line had to be measured whole and nothing ever wrapped, and
-/// there was no vertical scrolling at all — one endless line, broken even for small mail.
-///
-/// `UITextView` is TextKit-backed and lays out only the visible viewport, which is the
-/// standard iOS answer for a multi-megabyte document. It wraps and scrolls vertically, so
-/// this matches what Android's message screen already does (chunked `items()` in a
-/// `LazyColumn`) — the behaviour, not the mechanism.
-///
-/// Deliberate settings: `dataDetectorTypes = []` because link detection would walk the
-/// whole string (undoing the virtualization, and raw source is full of URL-shaped text
-/// nobody should be able to tap); `.byCharWrapping` because source is base64 runs and
-/// header lines, not words; `isEditable = false` with `isSelectable = true` so Select and
-/// Copy still work.
+/// Raw mail source, scrolled by `UITextView`: source is routinely hundreds of KB and sometimes
+/// megabytes. SwiftUI's `Text` lays a string out eagerly and in full on the main thread, with no
+/// virtualization (`.textSelection(.enabled)` costs more again), so it freezes the screen. In a
+/// horizontal `ScrollView` it also measures every line whole and wraps nothing. TextKit lays out
+/// only the visible viewport, and this view wraps and scrolls vertically like Android's message
+/// screen. `dataDetectorTypes = []`: link detection would walk the whole string, and URL-shaped
+/// text in source must not be tappable. `.byCharWrapping`: source is base64 runs and header
+/// lines, not words. Not editable but selectable, so Select and Copy still work.
 struct MailSourceTextView: UIViewRepresentable {
     let text: String
     var textStyle: UIFont.TextStyle = .caption1
@@ -48,10 +36,9 @@ struct MailSourceTextView: UIViewRepresentable {
 
     func updateUIView(_ view: UITextView, context: Context) {
         _ = dynamicTypeSize
-        // Assigning `text` re-runs TextKit's bookkeeping over the whole string, so a
-        // multi-megabyte source is written once and not on every unrelated re-render
-        // (a Dynamic Type change, a toolbar toggle). Comparing `view.text` instead
-        // would itself be an O(n) copy-and-compare of that same string.
+        // Assigning `text` re-runs TextKit's bookkeeping over the whole string, so the source is
+        // written once, not on every unrelated re-render. Comparing against `view.text` would
+        // itself be an O(n) copy-and-compare of that string.
         if context.coordinator.appliedText != text {
             context.coordinator.appliedText = text
             view.text = text

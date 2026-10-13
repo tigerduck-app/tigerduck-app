@@ -38,14 +38,20 @@ struct WidgetLocalizationKeysTests {
         "weekday_fri_short",
         "weekday_sat_short",
         "weekday_sun_short",
+        // Weekday captions (used by the Next class views)
+        "weekday_mon_caption",
+        "weekday_tue_caption",
+        "weekday_wed_caption",
+        "weekday_thu_caption",
+        "weekday_fri_caption",
+        "weekday_sat_caption",
+        "weekday_sun_caption",
     ]
 
     @Test func everyKeyResolvesInMainBundle() {
-        // We can't load the widget extension's bundle from the test target
-        // directly, but the keys live in the same shared `app-translation/`
-        // submodule that symlinks into both the app and widget targets'
-        // Localizable.strings. If they resolve in the main app's bundle
-        // they resolve in the widget bundle too.
+        // The test target cannot load the widget extension's bundle, but both targets'
+        // Localizable.strings are symlinks into the shared `app-translation/` submodule,
+        // so a key that resolves in the main bundle resolves in the widget bundle too.
         for key in keys {
             let resolved = String(localized: String.LocalizationValue(key), bundle: .main)
             #expect(!resolved.isEmpty, "Key \(key) resolved to empty")

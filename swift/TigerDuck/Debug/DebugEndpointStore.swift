@@ -1,32 +1,35 @@
 import Foundation
+import os
+#if os(iOS)
+import UIKit
+#endif
 
-/// Keychain-backed storage for the user-set API endpoint override
-/// (Settings → Other settings → API endpoint, and the same screen offered
-/// from onboarding's sign-in page). Honoured by every build; the name
-/// predates the row leaving the Developer section.
-///
-/// Lives in Keychain (not UserDefaults) so the override survives an app
-/// uninstall + reinstall — useful for repeatedly wiping the app to retest
-/// fresh-install flows against a staging or self-hosted backend without
-/// having to re-enter the URL after every install. ``SecureStore`` keeps
-/// it at `.afterFirstUnlockThisDeviceOnly`: on the device it was set on,
-/// never restored via iCloud Keychain, and readable by a launch behind a
-/// locked screen, which would otherwise talk to the default backend.
-///
-/// See ``PushServerConfig/resolveServerURL()`` for the full resolution
-/// chain this override participates in. All write paths funnel through
-/// ``PushServerConfig/isOverrideAllowed(_:)`` and
-/// ``EndpointHealthCheck/probe(_:)``, so a value that no longer meets the
-/// transport rules — or that nothing is serving — cannot be stored.
-///
-/// Both write paths also call ``AcademicCalendarStore/endpointDidChange()``:
-/// the academic calendar is cached with an opaque ETag that says nothing
-/// about which backend issued it, so without this the next server's
-/// conditional GET can be answered 304 against the previous server's dates.
+/// Keychain-backed API endpoint override, set in Settings → Other settings → API endpoint or on
+/// onboarding's sign-in page, and honoured by every build. Keychain, not UserDefaults, so it
+/// survives the reinstalls done to retest fresh installs against another backend. ``SecureStore``
+/// keeps it `.afterFirstUnlockThisDeviceOnly`: never restored via iCloud Keychain, and readable by
+/// a launch behind the lock screen, which would otherwise use the default backend. A value is
+/// stored only if ``PushServerConfig/isOverrideAllowed(_:)`` and ``EndpointHealthCheck/probe(_:)``
+/// accept it. Set and clear call ``AcademicCalendarStore/endpointDidChange()``: the calendar's ETag
+/// does not name its backend, so the next server could answer 304 against the old server's dates.
 nonisolated enum DebugEndpointStore {
     /// Internal (not private) so the erase-everything action can name the
     /// one key it deliberately preserves.
     static let keychainKey = "debug_api_endpoint_override"
+
+    /// Every backend request resolves its URL through ``currentOverride()``, the revision poll
+    /// included, so the Keychain is read once and again only after a change or an unlock.
+    #if os(iOS)
+    private static let stored = KeychainReadCache(
+        load: { KeychainManager.loadString(key: keychainKey) },
+        forgetOn: [
+            UIApplication.protectedDataDidBecomeAvailableNotification,
+            UIApplication.didBecomeActiveNotification,
+        ]
+    )
+    #else
+    private static let stored = KeychainReadCache(load: { KeychainManager.loadString(key: keychainKey) })
+    #endif
 
     enum SetOverrideResult: Equatable {
         case success
@@ -45,7 +48,7 @@ nonisolated enum DebugEndpointStore {
     /// the stored value no longer passes the safety gate (e.g. the
     /// transport rules tightened after the value was saved).
     static func currentOverride() -> String? {
-        guard let raw = KeychainManager.loadString(key: keychainKey),
+        guard let raw = stored.value(),
               !raw.isEmpty,
               let url = URL(string: raw),
               PushServerConfig.isOverrideAllowed(url)
@@ -53,17 +56,14 @@ nonisolated enum DebugEndpointStore {
         return raw
     }
 
-    /// Returns a value that was previously saved but no longer passes
-    /// ``PushServerConfig/isOverrideAllowed(_:)`` (e.g. the transport rules
-    /// tightened in a later build). Lets the UI explain why the override
-    /// the user set last week silently stopped taking effect, instead of
-    /// just falling back to the default without a breadcrumb.
+    /// Returns the stored override when it fails ``PushServerConfig/isOverrideAllowed(_:)``, for
+    /// example after a later build tightened the transport rules, so the UI can explain why a
+    /// saved override stopped taking effect instead of falling back to the default without a word.
     ///
-    /// Note this is a *validation* check, not a liveness one: an endpoint
-    /// that is merely down still reads as the active override, because
-    /// that is what the app is genuinely still trying to talk to.
+    /// This checks validation, not liveness: an endpoint that is merely down still reads as the
+    /// active override, because the app is still trying to talk to it.
     static func storedButRejectedOverride() -> String? {
-        guard let raw = KeychainManager.loadString(key: keychainKey),
+        guard let raw = stored.value(),
               !raw.isEmpty
         else { return nil }
         if let url = URL(string: raw), PushServerConfig.isOverrideAllowed(url) {
@@ -100,6 +100,7 @@ nonisolated enum DebugEndpointStore {
         let written = KeychainManager.saveStringReportingSuccess(
             key: keychainKey, value: url.absoluteString
         )
+        stored.forget()
         if written { await AcademicCalendarStore.shared.endpointDidChange() }
         return written ? .success : .keychainWriteFailed
     }
@@ -109,6 +110,54 @@ nonisolated enum DebugEndpointStore {
     @MainActor
     static func clearOverride() {
         KeychainManager.delete(key: keychainKey)
+        stored.forget()
         AcademicCalendarStore.shared.endpointDidChange()
+    }
+}
+
+/// A Keychain string kept in memory after its first read. A read behind a locked screen finds
+/// nothing, so the value is dropped on the notifications given (an unlock, a return to the app)
+/// as well as by ``forget()``, which the value's writers call after each change.
+nonisolated final class KeychainReadCache: Sendable {
+    private struct State {
+        /// `nil` until read; `.some(nil)` is a read that found nothing.
+        var value: String??
+        /// Moved by each ``forget()``, so a read that a change overtook does not keep its value.
+        var generation = 0
+    }
+
+    private let load: @Sendable () -> String?
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    init(
+        load: @escaping @Sendable () -> String?,
+        forgetOn names: [Notification.Name] = [],
+        center: NotificationCenter = .default
+    ) {
+        self.load = load
+        for name in names {
+            // Never removed: `[weak self]` makes the observer a no-op once this cache is gone,
+            // which for the store's static one is never.
+            _ = center.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+                self?.forget()
+            }
+        }
+    }
+
+    func value() -> String? {
+        let (cached, generation) = state.withLock { ($0.value, $0.generation) }
+        if let cached { return cached }
+        let loaded = load()
+        state.withLock { state in
+            if state.generation == generation { state.value = .some(loaded) }
+        }
+        return loaded
+    }
+
+    func forget() {
+        state.withLock { state in
+            state.value = nil
+            state.generation &+= 1
+        }
     }
 }

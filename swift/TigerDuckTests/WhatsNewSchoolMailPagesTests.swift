@@ -1,8 +1,5 @@
-// The 2.3.0 School Mail What's New pages: which bar the "recommended
-// arrangement" question offers (Mail in Calendar's slot, else appended
-// when there's room, else nothing — every other tab stays), that they skip
-// a bar that already has Mail, and that both pages are registered for the
-// release.
+// The 2.3.0 School Mail What's New pages: the "recommended arrangement" puts Mail in Calendar's
+// slot, else appends it if there is room, else offers nothing. A bar with Mail skips both pages.
 // iPhone/iPad-only like the pages; the test target also builds for macOS.
 #if os(iOS)
 import Foundation
@@ -37,11 +34,6 @@ struct WhatsNewSchoolMailPagesTests {
     @Test func aBarThatAlreadyHasMailIsNotAsked() {
         #expect(WhatsNewPage.recommendedTabsWithMail([.home, .schoolMail, .calendar]) == nil)
         #expect(WhatsNewPage.recommendedTabsWithMail([.home, .schoolMail]) == nil)
-    }
-
-    @Test func aHiddenLibraryTabDoesNotTakeASlot() {
-        let visible = AppFeature.visibleTabs([.home, .classTable, .gpa, .library], libraryEnabled: false)
-        #expect(WhatsNewPage.recommendedTabsWithMail(visible) == [.home, .classTable, .gpa, .schoolMail])
     }
 
     @Test func aBarWithoutMailGetsTheMailPages() {
@@ -87,13 +79,6 @@ struct WhatsNewSchoolMailPagesTests {
         #expect(bar.configuredTabs == full)
     }
 
-    @Test func aHiddenLibraryTabLeavesRoomForMail() {
-        let bar = StandInBar([.home, .classTable, .gpa, .library], libraryEnabled: false)
-        #expect(WhatsNewPage.asksAboutMail(bar))
-        WhatsNewPage.applyMailRecommendation(to: bar)
-        #expect(bar.configuredTabs == [.home, .classTable, .gpa, .schoolMail])
-    }
-
     // MARK: - Registration
 
     @Test func theMailPagesAreRegisteredFor230() throws {
@@ -127,11 +112,9 @@ struct WhatsNewSchoolMailPagesTests {
 @MainActor
 private final class StandInBar: WhatsNewBottomBarState {
     var configuredTabs: [AppFeature]
-    let libraryFeatureEnabled: Bool
 
-    init(_ configuredTabs: [AppFeature], libraryEnabled: Bool = true) {
+    init(_ configuredTabs: [AppFeature]) {
         self.configuredTabs = configuredTabs
-        self.libraryFeatureEnabled = libraryEnabled
     }
 }
 #endif

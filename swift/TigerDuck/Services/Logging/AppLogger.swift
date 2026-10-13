@@ -1,12 +1,9 @@
 import Foundation
-import Sentry
 import os
 
-// `nonisolated` so the static Loggers can be referenced from nonisolated
-// parsers / off-main URLSession handlers without crossing actor boundaries.
-// `os.Logger` is Sendable; the default-MainActor isolation Swift 6 applies
-// to module enums otherwise blocks every off-main caller (e.g.
-// `CourseLookupService.parseNodeToSchedule` is `nonisolated static`).
+// `nonisolated` so nonisolated parsers (`CourseLookupService.parseNodeToSchedule`) and off-main
+// URLSession handlers can use the static Loggers. `os.Logger` is Sendable; the module's default
+// MainActor isolation would block every off-main caller.
 nonisolated enum AppLogger {
     private static let subsystem = "org.ntust.app.TigerDuck"
 
@@ -15,60 +12,31 @@ nonisolated enum AppLogger {
     static let moodle = Logger(subsystem: subsystem, category: "Moodle")
     static let persistence = Logger(subsystem: subsystem, category: "Persistence")
     static let sync = Logger(subsystem: subsystem, category: "Sync")
-
-    static func start() {
-        let dsn = (Bundle.main.object(forInfoDictionaryKey: "SENTRY_DSN") as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        SentrySDK.start { options in
-            options.dsn = (dsn?.isEmpty == false) ? dsn : nil
-            options.debug = false
-            options.tracesSampleRate = 0.2
-            options.sendDefaultPii = false
-            options.beforeSend = { event in
-                if let url = event.request?.url {
-                    event.request?.url = scrubSensitive(url)
-                }
-                return event
-            }
-            // Performance spans auto-instrumented from URLSession store the
-            // request URL under `url` and the query string under `http.query`;
-            // without this hook session-scoped params bypass beforeSend.
-            options.beforeSendSpan = { span in
-                for key in ["url", "http.url", "http.query"] {
-                    guard let value = span.data[key] as? String else { continue }
-                    let scrubbed = scrubSensitive(value)
-                    if scrubbed != value {
-                        span.setData(value: scrubbed, key: key)
-                    }
-                }
-                return span
-            }
-        }
-    }
+    private static let diagnostics = Logger(subsystem: subsystem, category: "Diagnostics")
 
     static func captureError(_ error: any Error, context: [String: String] = [:]) {
-        for (key, value) in context.sorted(by: { $0.key < $1.key }) {
-            breadcrumb("\(key)=\(value)", category: "context")
-        }
-
-        SentrySDK.capture(error: error)
+        diagnostics.error("\(errorLine(error, context: context), privacy: .private)")
     }
 
-    static func breadcrumb(_ message: String, category: String, level: SentryLevel = .info) {
-        let crumb = Breadcrumb()
-        crumb.level = level
-        crumb.category = category
-        crumb.message = scrubSensitive(message)
-        SentrySDK.addBreadcrumb(crumb)
+    static func breadcrumb(_ message: String, category: String) {
+        diagnostics.info("\(category, privacy: .public): \(scrubSensitive(message), privacy: .private)")
     }
 
-    /// Scrub credential-bearing tokens from any string before it leaves
-    /// the device. Covers query-string tokens (`token=`, `wstoken=`),
-    /// path-style Moodle tokens (`/wstoken/<...>`), OIDC password POST
-    /// bodies (`Password=` / `password=`) and `Authorization: Bearer ...`
-    /// headers that might be threaded into URLError userInfo or
-    /// breadcrumbs.
+    static func errorLine(_ error: any Error, context: [String: String]) -> String {
+        let fields = context.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+        let line = fields.isEmpty
+            ? String(reflecting: error)
+            : "\(fields.joined(separator: " ")): \(String(reflecting: error))"
+        return scrubSensitive(line)
+    }
+
+    /// Scrubs credentials from a string before it is logged as private, which Console and a
+    /// sysdiagnose still show on a device with a logging profile that enables private data.
+    /// Drops the query string of any `scheme://` URL, which can carry `wstoken=` or an OIDC
+    /// `code=`, and masks `token=`, `wstoken=`, `/wstoken/<...>`, the access key of a
+    /// `/tokenpluginfile.php/<key>/` file URL, password fields and `Bearer ...` values elsewhere,
+    /// such as in `moodlemobile://token=` or a form body. An error's description or user info can
+    /// hold any of these.
     static func scrubSensitive(_ value: String) -> String {
         var out = value
         for pattern in scrubPatterns {
@@ -87,8 +55,10 @@ nonisolated enum AppLogger {
     }
 
     private static let scrubPatterns: [ScrubPattern] = [
+        ScrubPattern(pattern: #"([a-z][a-z0-9+.-]*://[^\s?#"']*)\?[^\s#"']+"#, replacement: "$1?***"),
         ScrubPattern(pattern: #"(wstoken|token)=[^&\s"']+"#, replacement: "$1=***"),
         ScrubPattern(pattern: #"/wstoken/[A-Za-z0-9+/=_-]+"#, replacement: "/wstoken/***"),
+        ScrubPattern(pattern: #"/tokenpluginfile\.php/(?!wstoken/)[^/\s?#"']+"#, replacement: "/tokenpluginfile.php/***"),
         ScrubPattern(pattern: #"(password|passwd|pwd)=[^&\s"']+"#, replacement: "$1=***"),
         ScrubPattern(pattern: #"Bearer\s+[A-Za-z0-9._\-+/=]+"#, replacement: "Bearer ***"),
     ]

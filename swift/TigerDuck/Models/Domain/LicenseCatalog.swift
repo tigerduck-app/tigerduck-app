@@ -73,10 +73,9 @@ struct LicenseCatalog: Decodable {
         do {
             return try JSONDecoder().decode(Self.self, from: data)
         } catch {
-            // Decoding is all or nothing: one entry the generator wrote
-            // wrong takes TigerDuck's own AGPL text down with every
-            // package. The error names the key path that failed, which is
-            // the one thing a blank page in the field cannot tell us.
+            // Decoding is all or nothing: one entry the generator got wrong
+            // drops TigerDuck's own AGPL text along with every package. The
+            // error names the failing key path; a blank page in the field can't.
             AppLogger.captureError(error, context: ["phase": "licenseCatalog.decode"])
             return nil
         }

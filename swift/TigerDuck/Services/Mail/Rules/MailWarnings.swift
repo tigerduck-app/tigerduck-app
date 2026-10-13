@@ -58,36 +58,30 @@ nonisolated enum MailWarnings {
     ]
     static let archiveExtensions: Set<String> = ["zip", "rar", "7z", "tar", "gz", "tgz"]
     static let archivePasswordHints = ["密碼", "password", "解壓縮"]
-    /// Extensions whose attachments are never rendered inside the app (§9.5).
+    /// Extensions whose attachments are never rendered inside the app.
     static let neverRenderInApp: Set<String> = ["html", "htm", "shtml", "xhtml", "mht", "mhtml", "svg"]
 
-    /// Delimiter-based, mirroring Android's `EMAIL` (parity fix): the local part, the host and
-    /// the TLD are "everything up to the next delimiter", not an ASCII allowlist. The old
-    /// ASCII-only pattern silently matched nothing — and so produced no display-name or
-    /// `mailto:` mismatch warning at all — for a display name with Han characters before the
-    /// `@`, for a non-ASCII host, and for a single-letter TLD, all of which warn on Android.
+    /// Delimiter-based, like Android's `EMAIL`: the local part, host and TLD each run to the next
+    /// delimiter, not over an ASCII allowlist. For Han characters before the `@`, a non-ASCII host
+    /// or a one-letter TLD, all of which warn on Android, an ASCII-only pattern matches nothing and
+    /// so warns of no display-name or `mailto:` mismatch.
     ///
-    /// The ASCII whitespace class is spelled out instead of written `\s`: Java's `\s` is
-    /// ASCII-only where ICU's, which `NSRegularExpression` uses, is Unicode-wide, so a bare
-    /// `\s` here would end the match at characters Android runs straight through. No
-    /// `.caseInsensitive` — there are no letter ranges left for it to fold.
+    /// The ASCII whitespace class is spelled out instead of `\s`: Java's `\s` is ASCII-only but
+    /// ICU's, which `NSRegularExpression` uses, is Unicode-wide, so `\s` would end the match where
+    /// Android runs on. No `.caseInsensitive`: there are no letter ranges for it to fold.
     private static let emailDelimiters = "\\x{20}\\x{09}\\x{0A}\\x{0B}\\x{0C}\\x{0D}@<>()\",;:"
     private static let emailPattern = try! NSRegularExpression(
         pattern: "[^\(emailDelimiters)]+@[^\(emailDelimiters)]+\\.[^\(emailDelimiters)]+"
     )
 
-    /// The text a link claims to point at (spec A.4 rule 2, link mismatch). Unicode-aware
-    /// (`\p{L}`/`\p{N}`) so a homograph host spelled in another script is still recognized as
-    /// host-shaped text and checked against the real host, instead of being silently skipped
-    /// (parity fix, mirrors Android's `HOST_LIKE`). `www.` is stripped afterwards by the
-    /// caller, not inside this pattern.
+    /// The text a link claims to point at, for the link-mismatch warning. Unicode-aware
+    /// (`\p{L}`/`\p{N}`), like Android's `HOST_LIKE`, so a homograph host in another script is
+    /// still read as a host and checked against the real one. The caller strips `www.` afterwards.
     ///
-    /// ICU's `.` (used by `NSRegularExpression`) excludes more "line terminator" code points
-    /// than Java's `.` does — notably U+000B and U+000C, which Java's `.` matches like any
-    /// other character — and ICU's `\d` is Unicode-wide where Java's is ASCII-only. Both
-    /// patterns spell these out explicitly instead, so the two platforms agree:
-    /// `[^\n\r\u0085\u2028\u2029]` for "any character Java's `.` would match" (written with
-    /// ASCII regex escapes in the pattern string, not Swift's `\u{...}`) and `[0-9]` for `\d`.
+    /// ICU's `.` (`NSRegularExpression`) excludes more line terminators than Java's, among them
+    /// U+000B and U+000C, and ICU's `\d` is Unicode-wide where Java's is ASCII. So this pattern and
+    /// `plainHttpLinkPattern` spell out `[^\n\r\u0085\u2028\u2029]` for Java's `.`, as regex
+    /// escapes in the pattern string rather than Swift's `\u{...}`, and `[0-9]` for `\d`.
     private static let shownHostPattern = try! NSRegularExpression(
         pattern: "^(?:[a-z][a-z0-9+.-]*://)?((?:[\\p{L}\\p{N}-]+\\.)+[\\p{L}]{2,})(?::[0-9]+)?(?:[/?#][^\\n\\r\\u0085\\u2028\\u2029]*)?$",
         options: [.caseInsensitive]
@@ -102,19 +96,14 @@ nonisolated enum MailWarnings {
         pattern: "^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^/?#@]*@)?([^/?#:]+)", options: [.caseInsensitive]
     )
 
-    /// A whole href counts as a "plain" link ONLY in the form browsers would treat as
-    /// unambiguous: `http(s)://`, a host of ASCII letters/digits/-/. only, an optional
-    /// `:port`, then end of string or `/ ? #` (spec A.4 rule 3, password bait). Anything else
-    /// (userinfo, backslashes, missing or extra slashes, percent-escapes or non-ASCII in the
-    /// authority, whitespace) fails this and counts as an outside link.
-    ///
-    /// No `.caseInsensitive`: that option also turns on Unicode case folding, which makes
-    /// `[A-Za-z]` accept lookalikes such as the Kelvin sign (U+212A, folds to `k`), dotted and
-    /// dotless I (U+0130/U+0131), and Latin small letter long s (U+017F, folds to `s`, so it
-    /// could pass inside `https`) — letting a non-ASCII host or scheme pass as if it were
-    /// ASCII. The scheme is spelled out per letter instead so it stays exactly `http`/`https`.
-    /// (Same ICU-`.`-vs-Java-`.` note as `shownHostPattern` above applies to the trailing
-    /// `[/?#]...` group here.)
+    /// An href is a "plain" link, for the password-bait warning, only in the form browsers treat
+    /// as unambiguous: `http(s)://`, a host of ASCII letters, digits, `-` and `.`, an optional
+    /// `:port`, then the end or `/ ? #`. Anything else (userinfo, backslashes, missing or extra
+    /// slashes, percent-escapes or non-ASCII in the authority, whitespace) is an outside link.
+    /// No `.caseInsensitive`: its Unicode case folding lets `[A-Za-z]` match lookalikes such as the
+    /// Kelvin sign U+212A, dotted and dotless I (U+0130, U+0131) and the long s U+017F, which can
+    /// pass inside `https`, letting a non-ASCII host or scheme pass as ASCII. The scheme is spelled
+    /// out per letter. The trailing `[/?#]` group spells out Java's `.` as in `shownHostPattern`.
     private static let plainHttpLinkPattern = try! NSRegularExpression(
         pattern: "^[Hh][Tt][Tt][Pp][Ss]?://([A-Za-z0-9.-]+)(?::[0-9]+)?(?:[/?#][^\\n\\r\\u0085\\u2028\\u2029]*)?$"
     )
@@ -127,21 +116,14 @@ nonisolated enum MailWarnings {
         return domain
     }
 
-    /// Whether `raw` is inside the organization whose mail this is — `ntust.edu.tw` and its
-    /// subdomains on the real path, and the overridden address domain (and its subdomains)
-    /// under the DEBUG developer override.
-    ///
-    /// The rule has to follow the override or the whole warning layer reads as noise on a test
-    /// mailbox: left hard-coded, every single message in a Gmail account is badged External,
-    /// including the ones the developer sent themselves. `MailServerConfig.school`'s
-    /// `organizationDomain` is `ntust.edu.tw`, so with no override in force this is exactly the
-    /// comparison it has always been, character for character — which is what keeps the shared
-    /// `warnings.json` fixture agreeing with Android.
-    ///
-    /// The `config:` overload is the real rule; the no-argument form is the effective
-    /// configuration applied to it. Callers that already know which configuration they mean
-    /// (tests, and `evaluate` below, which resolves it once per message) pass it explicitly
-    /// rather than each rule re-reading the global.
+    /// Whether `raw` is inside the organization whose mail this is: `ntust.edu.tw` and its
+    /// subdomains, or under the DEBUG developer override, the overridden address domain and its
+    /// subdomains. It follows the override, or every message in a Gmail test mailbox is badged
+    /// External, even the developer's own. With no override, `MailServerConfig.school`'s
+    /// `organizationDomain` is `ntust.edu.tw`, which keeps the shared `warnings.json` fixture
+    /// agreeing with Android. The `config:` overload is the rule; this form applies the effective
+    /// configuration. Callers that know theirs (tests, and `evaluate`, which resolves it once per
+    /// message) pass it rather than have each rule re-read the global.
     static func isSchoolDomain(_ raw: String) -> Bool {
         isSchoolDomain(raw, config: MailServerConfig.effective)
     }
@@ -167,29 +149,14 @@ nonisolated enum MailWarnings {
     /// Two, not one, so a transposition (`ntsut`) counts — plain Levenshtein scores that as two.
     private static let maxDomainTypoEdits = 2
 
-    /// RFC 5321 §4.5.5: a delivery status notification is sent with the null reverse-path, and
-    /// the **receiving** server writes that down as `Return-Path: <>`. The header therefore comes
-    /// from our own side of the delivery, unlike the `From` display name ("Mail Deliver System"),
-    /// which any sender can type — so it is the only signal here worth treating as a bounce
-    /// marker.
-    ///
-    /// What can read it, per site, and why the two differ:
-    ///
-    /// - The **opened message** can. `LiveMailClient.detailOptions` already fetches the whole
-    ///   header section (`BODY.PEEK[HEADER]`), so `Return-Path` is already on the wire; it costs
-    ///   nothing to read and rides into the cached body on `MailMessageDetail`.
-    /// - The **folder list** cannot, and is deliberately left as it is. Its fetch is ENVELOPE
-    ///   only, which carries no `Return-Path`, and the one way to ask for just that field —
-    ///   `BODY.PEEK[HEADER.FIELDS (…)]` — is exactly the request Mail2000 mangles (it echoes the
-    ///   section back with the field name double-quoted, which no IMAP parser can read; see
-    ///   `detailOptions`). The remaining option, a full header for all 50 rows of every page, is
-    ///   a real download for a badge that is already right: `LiveMailClient.summary` sets
-    ///   `MailSummary.isExternal` from the parsed address, and a Mail2000 bounce has no address
-    ///   at all, so it is already false. The list therefore decides on the weaker signal — a
-    ///   sender with no domain — and the opened message on this one. They agree on the mail that
-    ///   prompted this; where they could differ is a *forged* bounce whose `From` names a real
-    ///   outside domain, and both call that external, because the exemption below only ever
-    ///   applies when there is no domain at all.
+    /// RFC 5321 §4.5.5: a delivery status notification is sent with the null reverse-path, which
+    /// the receiving server records as `Return-Path: <>`. That header comes from our side of the
+    /// delivery, unlike the `From` display name ("Mail Deliver System"), which any sender can
+    /// type, so it is the only bounce marker worth trusting. Only the opened message has it, from
+    /// the full header `LiveMailClient.detailOptions` fetches; the list's ENVELOPE fetch lacks it,
+    /// so the list goes by a sender with no domain. Both call a forged bounce whose `From` names
+    /// an outside domain external, since a bounce is exempted only when it has no domain.
+    /// See docs/decisions/0013-mail-bounce-detection.md.
     static func isBounce(returnPath: String?) -> Bool {
         guard let returnPath else { return false }
         return returnPath.filter { !$0.isWhitespace } == "<>"
@@ -287,19 +254,9 @@ nonisolated enum MailWarnings {
         return zip(textScalars, otherScalars).allSatisfy { asciiLowercased($0) == $1 }
     }
 
-    // Minor, accepted parity differences from Android that never widen what counts as a
-    // school link (they never hide an outside link or suppress a real mismatch):
-    //  - the surrounding-whitespace trim (`.trimmingCharacters(in: .whitespacesAndNewlines)`,
-    //    applied after `sanitizeHref`) strips a broader Unicode whitespace set than WHATWG's
-    //    C0-control-and-space-only trim; `sanitizeHref`'s own leading trim already matches
-    //    WHATWG exactly, so this only ever trims *more*, never less.
-    //  - `toASCII` follows UTS46 (via `URLComponents`); Android's `java.net.IDN` follows the
-    //    older IDNA2003 mapping tables, which can disagree on a handful of deprecated
-    //    characters (e.g. German sharp s, Greek final sigma).
-    //  - a scheme with a combining mark spliced into the letters themselves, e.g.
-    //    `http\u{0307}s://...`, is not `http`/`https` per WHATWG either (no real browser
-    //    parses it as that scheme), so `schemePattern` failing to match it and `hostOf`
-    //    falling through is the same outcome a browser would reach.
+    // Accepted differences from Android, none widening what counts as a school link: a broader
+    // whitespace trim after `sanitizeHref`, UTS46 rather than IDNA2003 in `toASCII`, and a
+    // combining mark inside a scheme. See docs/decisions/0018-mail-warnings-android-parity.md.
 
     /// IDNA-to-ASCII, a no-op for a host that is already pure ASCII (so an IPv6 literal's
     /// `[...]` brackets, ports already stripped by the caller, etc. pass through unchanged —
@@ -392,58 +349,34 @@ nonisolated enum MailWarnings {
     /// the override while it is being evaluated.
     static func evaluate(_ input: MailWarningInput, config: MailServerConfig = .effective) -> [MailWarning] {
         var warnings: [MailWarning] = []
-        // The real sender address is deliberately NOT run through `visibleText`: removing an
-        // invisible character here could turn `x@mail.ntust.e<U+200B>du.tw` into a school
-        // domain and suppress the external-sender banner. `clean` alone leaves it external,
-        // which is the safe direction.
+        // Not `visibleText`: removing an invisible character could turn the real sender
+        // `x@mail.ntust.e<U+200B>du.tw` into a school domain and suppress the external-sender
+        // banner. `clean` alone leaves it external, the safe direction.
         let address = MailTextCleaner.clean(input.fromAddress)
         let senderDomain = domain(ofAddress: address)
-        // A sender with no domain at all is the one case a confirmed bounce is exempted from,
-        // and that exemption deliberately reverses what this used to assume. A Mail2000
-        // delivery failure arrives as `From: "Mail Deliver System" <MAILER-DAEMON>` — a bare
-        // local part — so "no domain, therefore outside" called the school's own mail system an
-        // outside sender, which is wrong on its face and teaches people to ignore the warning.
-        // The exemption is read from `Return-Path: <>`, which the receiving server writes, never
-        // from the display name, which anyone can set.
-        //
-        // It stays safe. `external` feeds the banner below and the password-bait gate, and that
-        // gate fires on `keywordHit && (external || linksOutside)` — so a forged "bounce"
-        // carrying a phishing link to a non-school host is still caught through the link. What
-        // is left is a forged, link-free bounce (anyone may send `MAIL FROM:<>`, so this is not
-        // proof of origin), which has nothing to click. And the exemption is narrow: a bounce
-        // whose `From` does name a real outside domain stays external exactly as before.
+        // No domain means external unless `Return-Path: <>` marks a bounce, as Mail2000 sends its
+        // own failure notices from a bare `<MAILER-DAEMON>`. The password-bait gate still counts a
+        // forged bounce's outside links. See docs/decisions/0013-mail-bounce-detection.md.
         let bounce = isBounce(returnPath: input.returnPath)
         let external = senderDomain.isEmpty ? !bounce : !isSchoolDomain(senderDomain, config: config)
-        // An empty address means the From header gave none this app will route to
-        // (`MailAddress.parseSender`) — a Mail2000 bounce's `<MAILER-DAEMON>`, say. It still
-        // counts as "outside" for the password-bait gate below, because it is certainly not
-        // a school address, but it gets no external-sender banner of its own: that banner
-        // names the address, and naming nothing on every delivery-failure notice is how a
-        // warning stops being read. The case that matters — a display name that *claims* an
-        // address the header cannot back up — is caught by the mismatch check just below,
-        // which compares against this same empty string and so still fires.
+        // An empty address (none `MailAddress.parseSender` would route to) gets no external-sender
+        // banner, though `external` still counts for password bait: one naming nothing on every
+        // failure notice stops being read. A display name claiming an address still fires below.
         if external, !address.isEmpty {
             warnings.append(.externalSender(address: address))
         }
-        // The display name is the opposite case: it is the *claim*, so it is read the way the
-        // reader reads it. `From: "no-reply@ntust.e<U+200B>du.tw" <b10123456@mail.ntust.edu.tw>`
-        // renders as a school no-reply address; without `visibleText` no address-shaped
-        // substring is found, no mismatch is reported, and — the sender being a real school
-        // account — no external-sender banner fires either, so the mail passes silently while
-        // the message screen prints the fake address as the sender headline.
+        // The display name is the claim, so it is read as the reader sees it (`visibleText`): a
+        // name `no-reply@ntust.e<U+200B>du.tw` on a real school account would otherwise match no
+        // address and warn about nothing, while the message screen headlines the fake address.
         if let name = input.fromName.map({ MailTextCleaner.visibleText(MailTextCleaner.clean($0)) }),
            let embedded = firstEmail(in: name),
            embedded.lowercased() != address.lowercased() {
             warnings.append(.displayNameMismatch(address: address))
         }
 
-        // Subject and body together, so a keyword hidden behind a bidi override in either one
-        // still counts (controller ruling, 2026-09-16: the brief only cleaned the subject,
-        // leaving the body's bidi controls in place), and `visibleText` on top so that
-        // `pass<U+200B>word` or `密<U+200B>碼` — which read exactly like the keyword — are
-        // matched as the keyword. A.4 rule 3 says to apply A.3 cleaning, and A.3 as written is
-        // bidi-only, so this is deliberately stricter than the spec: the rule is worth nothing
-        // if one character nobody can see turns it off.
+        // Subject and body are both cleaned, so a keyword behind a bidi override in either counts,
+        // and `visibleText` makes `pass<U+200B>word`, or a Chinese keyword split that way, match.
+        // Bidi-only cleaning is not enough: one character nobody can see must not turn this off.
         let haystack = MailTextCleaner.visibleText(MailTextCleaner.clean(input.subject + "\n" + input.plainText)).lowercased()
         let keywordHit = passwordKeywords.contains { haystack.contains($0.lowercased()) }
         let linksOutside = input.links.contains { link in
@@ -475,21 +408,14 @@ nonisolated enum MailWarnings {
         return name
     }
 
-    /// The name the extension checks read, which is `displayFilename` with every invisible
-    /// character taken out as well.
-    ///
-    /// `payload.ex<U+200B>e` and `report.ht<U+200B>ml` display and open exactly like
-    /// `payload.exe` and `report.html`, but their last dot-separated piece is `ex\u{200B}e`,
-    /// which is in no extension set — so `attachmentRisk` returned nil, `neverRenderedInApp`
-    /// returned false, and the message screen skipped the confirmation dialog and handed the
-    /// file straight to Quick Look or the share sheet, with only the attacker's own
-    /// Content-Type left between the mail and an in-process render (§9.5).
-    ///
-    /// Invisible characters go before the trailing-dot-and-space trim, so `payload.exe.<U+200B>`
-    /// trims down to `payload.exe` rather than stopping at the character it cannot see.
-    /// This is stricter than Android, whose `cleanFileName` removes control characters but not
-    /// format characters, so the zero-width cases above are still open there — a cross-platform
-    /// follow-up, not something this side should match by weakening.
+    /// The name the extension checks read: `displayFilename` with every invisible character
+    /// taken out too. `payload.ex<U+200B>e` displays and opens like `payload.exe`, but its last
+    /// piece `ex\u{200B}e` is in no extension set, so `attachmentRisk` and `neverRenderedInApp`
+    /// would miss it: no confirmation, and Quick Look or the share sheet gets the file with only
+    /// the attacker's Content-Type between it and an in-process render. Invisible characters go
+    /// before the trailing dot and space trim, so `payload.exe.<U+200B>` trims to `payload.exe`.
+    /// Android's `cleanFileName` keeps format characters, so these cases are still open there; do
+    /// not weaken this to match.
     private static func scannedFilename(_ raw: String) -> String {
         var name = MailTextCleaner.visibleText(MailTextCleaner.clean(raw))
         while let last = name.last, last == "." || last.isWhitespace { name.removeLast() }
@@ -521,9 +447,8 @@ nonisolated enum MailWarnings {
     }
 
     /// `"Application/PDF; name=x.pdf"` -> `"application/pdf"`. Not `private`: the message
-    /// screen's `isNeverRenderedInApp(_:)` compares a content type the same parameter-stripped
-    /// way this uses internally for `attachmentRisk` (fix round 2, critical 1 leftover) — a raw
-    /// equality check against a real part's `type/subtype; charset=…` value never matches.
+    /// screen's `isNeverRenderedInApp(_:)` strips parameters the same way `attachmentRisk` does,
+    /// since a raw equality check never matches a real part's `type/subtype; charset=…` value.
     static func contentTypeWithoutParameters(_ raw: String?) -> String? {
         guard let raw else { return nil }
         return raw.lowercased().split(separator: ";", maxSplits: 1).first
@@ -539,15 +464,9 @@ nonisolated enum MailWarnings {
 
     static func linkIssues(text rawText: String, href rawHref: String) -> [MailLinkIssue] {
         let href = sanitizeHref(rawHref).trimmingCharacters(in: .whitespacesAndNewlines)
-        // `visibleText`, not `clean`, and before BOTH branches below — Android's `checkLink`
-        // does the same. What is compared has to be what the reader sees, joined back up:
-        // `<a href="https://evil.example/login">ntust.edu.tw&#8288;</a>` renders as plain
-        // `ntust.edu.tw`, but the word joiner breaks `shownHostPattern`'s `^…$` anchor, so
-        // `hostShown` returns nil, the mismatch branch never runs, and the link is shown with
-        // no banner at all while `insecure`/`punycode` stay silent on an https host. The
-        // `mailto:` branch fails the same way through `firstEmail`. `clean` would not do: it
-        // collapses `\t`/`\n`/`\r` into a space to keep words apart for display, which is the
-        // opposite of what a host split across a line break needs.
+        // `visibleText` before both branches, like Android's `checkLink`: a word joiner after
+        // `ntust.edu.tw` in the link text breaks `shownHostPattern`, and `firstEmail` for
+        // `mailto:`, so no banner shows. Not `clean`: it turns a line break in a host into a space.
         let text = MailTextCleaner.visibleText(rawText).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if hasASCIICaseInsensitivePrefix(href, "mailto:") {
@@ -589,18 +508,14 @@ nonisolated enum MailWarnings {
         return email
     }
 
-    /// `visibleText` joins a host back up when what split it is invisible, but it cannot join
-    /// one that a *space* splits — and by the time link text reaches here a line break has
-    /// already become a space twice over: SwiftSoup's `Element.text()` normalizes an anchor's
-    /// whitespace, and `MailTextCleaner.clean` collapses what is left, both on purpose, so that
-    /// displayed text keeps its word boundaries. A host wrapped across a line in the source
-    /// therefore arrives as `ntust. edu.tw`, matches no host pattern, and a link pointing
-    /// somewhere else was reported as having nothing to compare rather than as a mismatch.
-    ///
-    /// So the host pattern is tried a second time with the whitespace that touches a dot taken
-    /// out. Only whitespace touching a dot: `請見 ntust.edu.tw 公告` is prose with a host in it,
-    /// not a claim that the whole line is one host, and joining it wholesale would invent a
-    /// shown host out of the words around the link.
+    /// `visibleText` rejoins a host split by an invisible character, not one split by a space,
+    /// and by here a line break is a space twice over: SwiftSoup's `Element.text()` normalizes
+    /// an anchor's whitespace and `MailTextCleaner.clean` collapses the rest, both so displayed
+    /// text keeps its word boundaries. A host wrapped across a line arrives as `ntust. edu.tw`,
+    /// matches no host pattern, and a link elsewhere would count as nothing to compare, not as a
+    /// mismatch. So the pattern is retried with whitespace touching a dot removed, and only that:
+    /// `see the ntust.edu.tw notice` is prose with a host in it, and joining it wholesale would
+    /// invent a shown host out of the words around the link.
     private static func hostShown(in text: String) -> String? {
         if let host = matchedHost(in: text) { return host }
         let rejoined = joiningWhitespaceTouchingADot(text)
@@ -615,7 +530,7 @@ nonisolated enum MailWarnings {
         return stripWWW(toASCII(normalizedDomain(String(text[hostRange]))))
     }
 
-    /// `"ntust. edu.tw"` -> `"ntust.edu.tw"`; `"請見 ntust.edu.tw 公告"` unchanged. Every
+    /// `"ntust. edu.tw"` -> `"ntust.edu.tw"`; `"see the ntust.edu.tw notice"` unchanged. Every
     /// Unicode whitespace character counts, so a no-break space or an ideographic space splits
     /// a host no more successfully than a plain one does.
     private static func joiningWhitespaceTouchingADot(_ text: String) -> String {
@@ -642,7 +557,7 @@ nonisolated enum MailWarnings {
         host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 
-    // MARK: Canonicalization (message-screen dispatch addition 2)
+    // MARK: Canonicalization
 
     private struct BrowserURLParts {
         var host: String
@@ -665,22 +580,14 @@ nonisolated enum MailWarnings {
         return set
     }()
 
-    /// The href judged, shown and opened for a tapped link (message-screen dispatch,
-    /// 2026-09-16 addition 2). For `http`/`https` (scheme matched ASCII case-insensitively),
-    /// canonicalized once the way a browser would, using the same scalar-level authority
-    /// parsing `browserHostOf` uses above: a backslash anywhere after the scheme folds to
-    /// `/` (WHATWG: `\` is a path/authority separator for a "special" scheme), the authority
-    /// ends at the first unescaped `/`, `?` or `#`, userinfo ends at the LAST `@`, a host
-    /// starting with `[` runs to the matching `]` (IPv6), the default port for the scheme is
-    /// dropped, and any byte in the path/query/fragment outside a safe set is freshly
-    /// percent-encoded — an *existing* `%XX` escape is left exactly as it is (its hex digits
-    /// uppercased) rather than decoded, since decoding it would change what the href means: a
-    /// redirect/safelink URL's own `%2F`/`%23`/percent-encoded nested URL must survive intact.
-    /// Any other scheme
-    /// (`mailto:`, etc.) is returned trimmed and otherwise unchanged — never canonicalized.
-    /// `nil` only when the href claims `http`/`https` but doesn't parse as `scheme://host…`
-    /// with a non-empty host; the caller then shows the href as written, without an Open
-    /// action, rather than guessing.
+    /// The href judged, shown and opened for a tapped link. An `http`/`https` href (scheme
+    /// matched ASCII case-insensitively) is canonicalized once as a browser would, reading the
+    /// authority like `browserHostOf`: `\` folds to `/` (WHATWG special scheme), the authority
+    /// ends at the first unescaped `/`, `?` or `#`, userinfo at the last `@`, a host starting
+    /// with `[` runs to its `]` (IPv6), the default port goes, and path, query and fragment bytes
+    /// outside `pathSafeBytes` are percent-encoded; an existing `%XX` stays, hex uppercased, never
+    /// decoded (`canonicalPathComponent`). Any other scheme comes back trimmed. `nil` only for an
+    /// empty host or an unparsable port; the caller shows it as written, with no Open action.
     static func canonicalHref(_ rawHref: String) -> String? {
         let href = sanitizeHref(rawHref).trimmingCharacters(in: .whitespacesAndNewlines)
         let range = NSRange(href.startIndex..., in: href)
@@ -779,15 +686,13 @@ nonisolated enum MailWarnings {
         (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "f")) ? byte - 0x20 : byte
     }
 
-    /// Never decodes (fix round 1, important 3: a decode-then-re-encode step here turned
-    /// `/a%2Fb` into `/a/b` and `?u=https%3A%2F%2Fx` into a nested URL — exactly the shape of a
-    /// redirect/safelink URL in real mail, so decoding changed what the href actually meant).
-    /// Walks `raw` byte by byte instead: an existing well-formed `%XX` escape passes through
-    /// unchanged except its hex is uppercased, and any other byte outside `pathSafeBytes` is
-    /// freshly percent-encoded. Mirrors what Android's own display/open path does (OkHttp's
-    /// `HttpUrl` preserves existing escapes) — the scalar-level parsing this type mirrors from
-    /// `browserHostOf` is only ever used by Android as a *comparison key*, never as what's shown
-    /// or opened.
+    /// Never decodes: decoding then re-encoding turns `/a%2Fb` into `/a/b` and
+    /// `?u=https%3A%2F%2Fx` into a nested URL, the shape of a redirect or safelink URL in real
+    /// mail, and so changes what the href means. Walks `raw` byte by byte instead: a well-formed
+    /// `%XX` escape passes through with its hex uppercased, and any other byte outside
+    /// `pathSafeBytes` is percent-encoded. Mirrors Android's display and open path (OkHttp's
+    /// `HttpUrl` keeps existing escapes); Android uses the scalar-level parsing borrowed from
+    /// `browserHostOf` only as a comparison key, never as what is shown or opened.
     private static func canonicalPathComponent(_ raw: String) -> String {
         guard !raw.isEmpty else { return raw }
         let bytes = Array(raw.utf8)

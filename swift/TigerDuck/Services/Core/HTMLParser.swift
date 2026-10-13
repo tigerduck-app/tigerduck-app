@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSoup
 
-enum HTMLParser {
+nonisolated enum HTMLParser {
 
     struct FormData {
         let action: String
@@ -25,11 +25,24 @@ enum HTMLParser {
     /// would miss that case and the HTML parser would fall through
     /// to `.empty`.
     static func looksLikeSSOLoginBody(_ html: String) -> Bool {
-        guard let doc = try? SwiftSoup.parse(html) else { return false }
+        // Most pages checked are the service's own. One without either marker cannot match the
+        // selectors below, whose attribute values match in any case, so only a hit is parsed.
+        guard html.contains("loginForm") || html.range(of: "username", options: .caseInsensitive) != nil,
+              let doc = try? SwiftSoup.parse(html) else { return false }
 
         return (try? doc.select("form#loginForm").first()) != nil ||
             ((try? doc.select("input[name=Username]").first()) != nil &&
                 (try? doc.select("input[name=Password]").first()) != nil)
+    }
+
+    /// Check if a response landed on the NetIQ sign-in form of the other SSO host, ssoam. It
+    /// submits through an invisible reCAPTCHA, so only a browser can sign in there.
+    static func isNetIQLoginPage(html: String, url: URL) -> Bool {
+        guard url.host == "ssoam.ntust.edu.tw", let doc = try? SwiftSoup.parse(html) else { return false }
+
+        return (try? doc.select("form#IDPLogin").first()) != nil ||
+            ((try? doc.select("input[name=Ecom_User_ID]").first()) != nil &&
+                (try? doc.select("input[name=Ecom_Password]").first()) != nil)
     }
 
     /// Find a form by its id attribute and extract action + input fields
@@ -75,23 +88,26 @@ enum HTMLParser {
         return nil
     }
 
-    /// Extract all <input> name/value pairs from HTML
-    static func extractInputFields(_ html: String) -> [(name: String, value: String)] {
-        guard let doc = try? SwiftSoup.parse(html) else { return [] }
-
-        let inputs: [Element] = (try? doc.select("input").array()) ?? []
-
-        return inputs.compactMap { input -> (name: String, value: String)? in
-            guard let name = try? input.attr("name"), !name.isEmpty else {
-                return nil
+    /// The message a sign-in page shows for a rejected attempt, as plain text: the first
+    /// element with text, trying the error classes in order.
+    static func loginErrorMessage(in html: String) -> String? {
+        guard let doc = try? SwiftSoup.parse(html) else { return nil }
+        for className in loginErrorClassNames {
+            for element in (try? doc.getElementsByClass(className).array()) ?? [] {
+                if let text = try? element.text(), !text.isEmpty { return text }
             }
-
-            let value = (try? input.attr("value")) ?? ""
-            return (name, value)
         }
+        return nil
     }
 
     // MARK: - Helpers
+
+    private static let loginErrorClassNames = [
+        "field-validation-error",
+        "validation-summary-errors",
+        "alert-danger",
+        "text-danger",
+    ]
 
     private static func formData(from form: Element) -> FormData? {
         let action = (try? form.attr("action")) ?? ""

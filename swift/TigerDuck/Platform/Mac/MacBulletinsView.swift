@@ -29,11 +29,9 @@ struct MacBulletinsView: View {
     var body: some View {
         HSplitView {
             listPane
-                // Tighter cap than before: HSplitView lets `maxWidth: 420`
-                // drift the divider past the user's intent when the right
-                // pane has short content, and the list column ends up
-                // hogging width. Pinning a narrower ceiling keeps the
-                // bulletin reader the visual focus once one is selected.
+                // With `maxWidth: 420`, HSplitView drifts the divider past the user's intent when
+                // the detail pane has short content, and the list hogs the width. This ceiling
+                // keeps the selected bulletin the visual focus.
                 .frame(minWidth: 260, idealWidth: 300, maxWidth: 340)
             detailPane
                 .frame(minWidth: 420, maxWidth: .infinity)
@@ -44,12 +42,30 @@ struct MacBulletinsView: View {
             viewModel.searchText = searchText
             await viewModel.loadIfNeeded()
             await taxonomy.loadIfNeeded()
-            // `loadState` is `.private` because `.failed(String)` carries
-            // `error.localizedDescription` from `BulletinAPIError`, which
-            // for `.httpStatus` embeds up to 512 bytes of server-controlled
-            // response body — the same payload `execute(_:)` already marks
-            // `.private` for (correlation tokens, echoed headers, etc).
+            // `loadState` is `.private`: `.failed(String)` holds `BulletinAPIError`'s description,
+            // which for `.httpStatus` embeds up to 512 bytes of server-controlled body, the payload
+            // `execute(_:)` also marks `.private` (correlation tokens, echoed headers).
             logger.info("MacBulletinsView .task done — items=\(viewModel.filteredItems.count, privacy: .public) state=\(String(describing: viewModel.loadState), privacy: .private)")
+        }
+        .onDisappear { viewModel.pausePrefetch() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 8) {
+                    SyncStatusDot(servers: [.backend])
+                    Button {
+                        Task { await viewModel.refresh() }
+                    } label: {
+                        if viewModel.loadState == .loading {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(viewModel.loadState == .loading)
+                    .help(String(localized: "desktop_action_refresh_help"))
+                }
+            }
         }
         .onChange(of: searchText) { _, newValue in
             viewModel.searchText = newValue

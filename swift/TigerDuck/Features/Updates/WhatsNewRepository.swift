@@ -1,25 +1,13 @@
 import Foundation
 
-/// Loads maintainer-authored "What's new" summaries from the bundled
-/// `whatsnew.json` asset. Ported from the Android `WhatsNewRepository`:
-/// the JSON is a versionString → per-locale map; this repo picks the
-/// locale block that best matches the resolved app language tag and
-/// surfaces it as a ``ResolvedWhatsNew`` — the summary page that ends
-/// the What's New flow.
-///
-/// **Maintainer ritual** (matches the Android side): every release
-/// worth surfacing in-app adds a new top-level entry to
-/// `whatsnew.json` BEFORE the version is tagged / merged to main. Pure
-/// bug-fix releases can be skipped — the gate stays quiet when no
-/// entry (and no ``WhatsNewCatalog`` page) is registered.
-///
-/// **Locale resolution**: every Sinitic-family language (Mandarin
-/// `zh-Hant*` / `zh-Hans*`, Cantonese `yue`, Wu `wuu`, Min Nan `nan`,
-/// Hakka `hak`, Classical `lzh`) falls back to the `zh-TW` block when
-/// no closer match is authored — a Chinese-language reader gets
-/// readable Chinese text rather than English. Simplified-script tags
-/// additionally prefer a `zh-Hans` block first when one is authored.
-/// Non-Sinitic languages fall back to `en`.
+/// Loads the maintainer-written summaries in the bundled `whatsnew.json`
+/// (version → per-locale map) and returns the block that best matches the
+/// app language as a ``ResolvedWhatsNew``, the page that ends the What's New
+/// flow. Counterpart of the Android `WhatsNewRepository`. Every marketing
+/// version gets an entry before it is tagged; with neither an entry nor a
+/// ``WhatsNewCatalog`` page, nothing shows. Sinitic tags fall back to `zh-TW`
+/// before `en` so Chinese readers get Chinese text, and Simplified-script tags
+/// try `zh-Hans` first. Other languages fall back to `en`.
 struct WhatsNewRepository {
     /// Resolved entry for the current locale — what the UI actually
     /// renders. Decoupled from the on-disk ``WhatsNewEntry`` so the
@@ -70,11 +58,9 @@ struct WhatsNewRepository {
     /// summary ahead of its bump keeps replaying its own.
     func latestEntry(languageTag: String, upTo: AppVersion? = nil) -> ResolvedWhatsNew? {
         guard let byVersion = loadByVersion(), !byVersion.isEmpty else { return nil }
-        // Sort by parsed AppVersion so "1.10.0" outranks "1.9.0" (lexical
-        // sort would invert them). With no ceiling, falls back to lexical
-        // ordering when every key fails to parse — a maintainer typo, where
-        // surfacing *something* beats surfacing nothing; a ceiling can't be
-        // checked against an unparseable key, so it skips them.
+        // Compare parsed versions so "1.10.0" outranks "1.9.0". If no key
+        // parses (a typo), showing something beats nothing, so fall back to
+        // lexical order; not under a ceiling, which can't check such keys.
         let pairs = byVersion.keys.compactMap { key -> (String, AppVersion)? in
             guard let v = AppVersion(key) else { return nil }
             if let upTo, upTo < v { return nil }
@@ -178,10 +164,9 @@ struct WhatsNewRepository {
         // prefers Traditional Chinese over English when no closer block exists.
         guard WhatsNewLanguage.isChineseFamily(languageTag) else { return ["en"] }
         let locale = Locale(identifier: languageTag)
-        // Simplified-script readers (`zh-Hans*`, `zh-CN`, `zh-SG`) prefer
-        // an authored Simplified block when one exists; everyone in the
-        // Sinitic family — including Cantonese, Wu, Hakka, etc. — falls
-        // back to Traditional (`zh-TW`) before ever reaching English.
+        // Simplified-script readers (`zh-Hans*`, `zh-CN`, `zh-SG`) prefer an
+        // authored Simplified block; every Sinitic reader (Cantonese, Wu and
+        // Hakka included) falls back to `zh-TW` before English.
         let isSimplified: Bool = {
             if let script = locale.language.script?.identifier { return script == "Hans" }
             if let region = locale.region?.identifier { return region == "CN" || region == "SG" }

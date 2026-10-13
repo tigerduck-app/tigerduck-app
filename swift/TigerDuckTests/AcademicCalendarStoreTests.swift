@@ -76,10 +76,9 @@ struct AcademicCalendarStoreTests {
             store.applySyncedOverrides([1, 2], fetchedAt: Date())
             #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2])
 
-            // The user taps holiday 9 on, and its upload is still in flight.
-            // The snapshot below was fetched *after* the tap, so its timestamp
-            // is no help — only the pending count knows the server has not
-            // heard yet.
+            // The user taps holiday 9 on, and its upload is still in flight. The snapshot
+            // below was fetched after the tap, so its timestamp is no help; only the pending
+            // count knows the server has not heard yet.
             store.setNotify(true, forHoliday: 9)
             store.beginHolidayUpload()
             store.applySyncedOverrides([1, 2], fetchedAt: Date().addingTimeInterval(1))
@@ -89,6 +88,16 @@ struct AcademicCalendarStoreTests {
             store.endHolidayUpload()
             store.applySyncedOverrides([1, 2, 9], fetchedAt: Date().addingTimeInterval(1))
             #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2, 9])
+        }
+    }
+
+    @Test("a snapshot that matches the local set reports no change, so the sync posts none")
+    func unchangedSnapshotReportsNoChange() {
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            #expect(store.applySyncedOverrides([1, 2], fetchedAt: Date()))
+            #expect(!store.applySyncedOverrides([2, 1], fetchedAt: Date().addingTimeInterval(1)))
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2])
         }
     }
 

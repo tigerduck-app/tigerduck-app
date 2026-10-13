@@ -1,33 +1,68 @@
 import Foundation
 
-public enum NextClassResolver {
+public nonisolated enum NextClassResolver {
 
     public struct Result: Equatable {
         public let current: WatchCourse?
         public let next: WatchCourse?
+        /// The day `next` meets on; `.today` when there is no next class.
+        public let nextDay: Day
     }
 
-    /// Given the watch's full course list and the current instant, return
-    /// the class currently in progress (if any) and the next class the wearer
-    /// still has to get to today (if any). Other weekdays are ignored.
-    public static func resolve(courses: [WatchCourse], now: Date) -> Result {
-        // Pinned to Taipei: NTUST's class times are authored in Taiwan
-        // wall time, so the watch must answer "what's happening now" in
-        // that frame regardless of where the wearer is physically. Without
-        // the pin a student abroad would see no classes during what is
-        // morning in Taipei.
-        let cal = SharedTaipei.calendar
-        // Gregorian weekday: 1=Sun..7=Sat; convert to 1=Mon..7=Sun.
-        let raw = cal.component(.weekday, from: now)
-        let isoWeekday = ((raw + 5) % 7) + 1
+    /// Which day the next class meets on, relative to the instant it was resolved for, as the
+    /// iPhone widget's `WidgetDerivedState.Day` tells them apart: the look-ahead runs up to a week,
+    /// so a Friday-evening wearer with no weekend classes is shown Monday's, not "tomorrow".
+    public nonisolated enum Day: Equatable, Sendable {
+        case today
+        case tomorrow
+        /// Further out than tomorrow. 1 = Monday to 7 = Sunday.
+        case later(weekday: Int)
 
+        public var headline: String {
+            switch self {
+            case .today: return String(localized: "watch_next")
+            case .tomorrow: return String(localized: "widget_tomorrow")
+            case .later(let weekday): return Self.caption(of: weekday)
+            }
+        }
+
+        public func inlineCaption(_ time: String) -> String {
+            switch self {
+            case .today:
+                return time
+            case .tomorrow:
+                return String.localizedStringWithFormat(String(localized: "widget_tomorrow_time"), time)
+            case .later(let weekday):
+                return "\(Self.caption(of: weekday)) \(time)"
+            }
+        }
+
+        private static func caption(of weekday: Int) -> String {
+            switch weekday {
+            case 1: return String(localized: "weekday_mon_caption")
+            case 2: return String(localized: "weekday_tue_caption")
+            case 3: return String(localized: "weekday_wed_caption")
+            case 4: return String(localized: "weekday_thu_caption")
+            case 5: return String(localized: "weekday_fri_caption")
+            case 6: return String(localized: "weekday_sat_caption")
+            default: return String(localized: "weekday_sun_caption")
+            }
+        }
+    }
+
+    /// Given the watch's full course list and the current instant, return the class currently in
+    /// progress (if any) and the next class the wearer still has to get to (if any). With no class
+    /// on now and none left today, that is the first class of the next day within a week that has
+    /// one. A day in `quietDays` has no classes, and a course has none on a date it skips.
+    public static func resolve(courses: [WatchCourse], now: Date, quietDays: Set<String> = []) -> Result {
+        let today = todaysClasses(courses: courses, now: now, quietDays: quietDays)
+        // Taipei, not the device zone: class times are Taiwan wall time, so a
+        // wearer abroad must still see "now" in that frame. Without the pin
+        // they would see no classes during the Taipei morning.
+        let cal = SharedTaipei.calendar
         let hh = cal.component(.hour, from: now)
         let mm = cal.component(.minute, from: now)
         let nowMin = hh * 60 + mm
-
-        let today = courses
-            .filter { $0.weekday == isoWeekday }
-            .sorted { minutes(of: $0.startHHmm) < minutes(of: $1.startHHmm) }
 
         let current = today.first { c in
             let s = minutes(of: c.startHHmm)
@@ -35,18 +70,44 @@ public enum NextClassResolver {
             return nowMin >= s && nowMin < e
         }
 
-        // "Still ahead of you", not "starts later" — the two only differ when
-        // two classes overlap, and there the second reading loses one of them
-        // entirely: it has already started, so it is not `next`, and `current`
-        // is a single value that the earlier-starting class already won.
-        // Conflicting enrolments are a modelled state in this app (the class
-        // table draws them as interlocking L-shapes), so a wearer with one
-        // would have seen the second class simply not appear.
+        // `next` is the first class not yet over, not the next to start: when two
+        // classes overlap, the later one has already started and `current` holds
+        // the earlier, so it would vanish. Conflicting enrolments are a modelled state.
         let next = today.first { c in
             c.id != current?.id && minutes(of: c.endHHmm) > nowMin
         }
 
-        return Result(current: current, next: next)
+        if current != nil || next != nil {
+            return Result(current: current, next: next, nextDay: .today)
+        }
+        return firstClassAhead(courses: courses, after: now, quietDays: quietDays)
+    }
+
+    /// Today's classes in start order, as the Today tab lists them and `resolve` reads them.
+    /// Empty when today is in `quietDays`; a course that skips today is left out.
+    public static func todaysClasses(courses: [WatchCourse], now: Date, quietDays: Set<String>) -> [WatchCourse] {
+        let todayKey = SharedTaipei.dayKey(for: now)
+        guard !quietDays.contains(todayKey) else { return [] }
+        // Gregorian weekday: 1=Sun..7=Sat; convert to 1=Mon..7=Sun.
+        let raw = SharedTaipei.calendar.component(.weekday, from: now)
+        let isoWeekday = ((raw + 5) % 7) + 1
+        return courses
+            .filter { $0.weekday == isoWeekday && $0.skippedDates?.contains(todayKey) != true }
+            .sorted { minutes(of: $0.startHHmm) < minutes(of: $1.startHHmm) }
+    }
+
+    /// Day 7 is today's weekday next week, so a class that meets once a week still shows once
+    /// this week's meeting is over or called off, as on the iPhone widget
+    /// (`WidgetTimelineDerivation.derive`).
+    private static func firstClassAhead(courses: [WatchCourse], after now: Date, quietDays: Set<String>) -> Result {
+        for offset in 1...7 {
+            guard let day = SharedTaipei.calendar.date(byAdding: .day, value: offset, to: now),
+                  let first = todaysClasses(courses: courses, now: day, quietDays: quietDays).first
+            else { continue }
+            let nextDay: Day = offset == 1 ? .tomorrow : .later(weekday: first.weekday)
+            return Result(current: nil, next: first, nextDay: nextDay)
+        }
+        return Result(current: nil, next: nil, nextDay: .today)
     }
 
     private static func minutes(of hhmm: String) -> Int {

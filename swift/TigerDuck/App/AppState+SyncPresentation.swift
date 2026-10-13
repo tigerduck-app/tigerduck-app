@@ -1,10 +1,6 @@
-// Sync/conflict presentation types — split out of AppState.swift.
-//
-// `SyncConflictItem` and `SyncSource` back the stored `syncConflicts` /
-// `lastSyncSource` properties that have to stay on the class itself
-// (Observation tracking, and extensions can't hold stored properties);
-// this file only holds the type declarations. Conflict *resolution*
-// logic lives in AppState+Conflicts.swift.
+// Types behind the stored `syncConflicts` and `lastSyncSource`, which must stay on the
+// class for Observation tracking (extensions cannot hold stored properties). Conflict
+// resolution lives in AppState+Conflicts.swift.
 
 import Foundation
 import Defaults

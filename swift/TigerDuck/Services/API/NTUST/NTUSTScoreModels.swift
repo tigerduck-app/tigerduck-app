@@ -107,9 +107,9 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
     /// terms when a student retakes, so `code` alone is not unique.
     var id: String { "\(term)-\(code)-\(index ?? -1)" }
 
-    /// The school backend returns pass/fail text in its own language
-    /// ("通過"/"不通過"), so this must be derived from raw payload values
-    /// rather than UI localization.
+    /// The school backend returns pass/fail as Chinese text whatever the UI
+    /// language, so this must be derived from raw payload values rather than
+    /// UI localization.
     var isPassStatusPassed: Bool {
         let normalized = grade.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.isEmpty { return true }

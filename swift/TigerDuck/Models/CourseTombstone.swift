@@ -4,15 +4,19 @@ import Foundation
 /// `deleted_courses.json`.
 ///
 /// A key is `"<semester>:<courseNo>"`, so hiding a course in 115-1 leaves
-/// the same course number alone in every other term (a retaken course
-/// reuses its number). Entries written before the semester scope existed
-/// are a bare course number and are honoured as "hidden in every
-/// semester" rather than migrated — the per-term cache needed to attribute
-/// them is not guaranteed to exist at upgrade time. Un-hiding or resetting
-/// drops both shapes, after which every write is scoped.
+/// that number alone in other terms (a retaken course reuses its number).
+/// A legacy bare course number means hidden in every semester. It is not
+/// migrated: the per-term cache needed to attribute it may be missing at
+/// upgrade time. Un-hiding or resetting drops both shapes; every write is scoped.
 nonisolated enum CourseTombstone {
     static func key(semester: String, courseNo: String) -> String {
         "\(semester):\(courseNo)"
+    }
+
+    /// The term and course number of a scoped key, or nil for a legacy bare entry.
+    static func parts(of key: String) -> (semester: String, courseNo: String)? {
+        guard let colon = key.firstIndex(of: ":") else { return nil }
+        return (String(key[..<colon]), String(key[key.index(after: colon)...]))
     }
 
     static func isHidden(_ courseNo: String, semester: String, in tombstones: Set<String>) -> Bool {
@@ -33,6 +37,14 @@ nonisolated enum CourseTombstone {
     /// bare entry (those hide in all terms, so a reset has to lift them).
     static func entries(resetting semester: String, in tombstones: Set<String>) -> Set<String> {
         tombstones.filter { $0.hasPrefix("\(semester):") || !$0.contains(":") }
+    }
+
+    /// The course numbers `isHidden` hides in `semester`: its scoped keys plus every legacy bare entry.
+    static func courseNos(hiddenIn semester: String, in tombstones: Set<String>) -> Set<String> {
+        let prefix = key(semester: semester, courseNo: "")
+        return Set(entries(resetting: semester, in: tombstones).map {
+            $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : $0
+        })
     }
 
     /// Upgrade path for stores written before the semester scope: a bare

@@ -1,11 +1,10 @@
 import Foundation
 
-/// One-shot migration: drops cached `courses_<semester>.json` files written by
-/// builds that filed 選課清單 enrolments under `currentSemesterCode()` instead
-/// of the term the 選課 system was actually serving. Whenever NTUST opened a
-/// term ahead of the month heuristic, the outgoing term's cache absorbed the
-/// incoming term's courses and rendered both in one grid — see
-/// ``SemesterCatalog``. Clearing forces the next fetch to rebuild each
+/// One-shot migration: drops cached `courses_<semester>.json` files written by builds that
+/// filed course selection list enrolments under `currentSemesterCode()` instead of the term the
+/// course selection system was serving. Whenever NTUST opened a term ahead of the month
+/// heuristic, the outgoing term's cache absorbed the incoming term's courses and rendered both
+/// in one grid; see ``SemesterCatalog``. Clearing forces the next fetch to rebuild each
 /// semester from its own sources.
 enum SemesterAttributionCacheMigration {
     private static let doneKey = "SemesterAttributionCacheMigration.v1.done"

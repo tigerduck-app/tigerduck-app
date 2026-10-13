@@ -36,7 +36,7 @@ struct MailServerConfigTests {
 
     // MARK: The school configuration, and the override being inert when off
 
-    /// Spec §1.1, still exactly what it says: 993 and 465, both implicit TLS, one host.
+    /// The school's own values: IMAP 993 and SMTP 465, both implicit TLS, on one host.
     @Test func theSchoolConfigurationIsTheSpecValues() {
         let school = MailServerConfig.school
         #expect(school.imapHost == "mail.ntust.edu.tw")

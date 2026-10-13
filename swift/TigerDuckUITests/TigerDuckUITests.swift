@@ -1,10 +1,3 @@
-//
-//  TigerDuckUITests.swift
-//  TigerDuckUITests
-//
-//  Created by xinshou on 2026/3/21.
-//
-
 import XCTest
 
 final class TigerDuckUITests: XCTestCase {

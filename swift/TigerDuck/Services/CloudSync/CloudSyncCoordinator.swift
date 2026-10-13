@@ -29,14 +29,12 @@ final class CloudSyncCoordinator {
     // MARK: Tunables
 
     enum Tunables {
-        static let dataUpdateDebounce: TimeInterval = 30
         static let tickInterval: TimeInterval = 5 * 60
     }
 
     // MARK: Observable state
 
     private(set) var state: CloudSyncState = .disabled
-    private(set) var lastError: String?
 
     // MARK: Shared instance
 
@@ -50,6 +48,12 @@ final class CloudSyncCoordinator {
 
     @ObservationIgnored private let pushCoordinator: PushCoordinator
     @ObservationIgnored let outbox: SyncOutbox
+    /// `sendsAssignmentMarks`, read before each mark goes out. A mark queued while it is false
+    /// waits.
+    @ObservationIgnored private let syncsAssignmentMarks: @Sendable () -> Bool
+    /// `sendsCourseIgnores`, read before each course's ignore setting goes out. A setting queued
+    /// while it is false waits.
+    @ObservationIgnored private let syncsCourseIgnores: @Sendable () -> Bool
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -61,20 +65,49 @@ final class CloudSyncCoordinator {
     // Observer plumbing
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
-    @ObservationIgnored var dataDebounceTask: Task<Void, Never>?
 
     // MARK: Init
 
     init(
         pushCoordinator: PushCoordinator,
-        outbox: SyncOutbox = SyncOutbox()
+        outbox: SyncOutbox = SyncOutbox(),
+        isEnabled: Bool = Defaults[.cloudSyncEnabled],
+        syncsAssignmentMarks: @escaping @Sendable () -> Bool = {
+            CloudSyncCoordinator.sendsAssignmentMarks(
+                assignments: Defaults[.syncAssignments],
+                pendingChecks: Defaults[.pendingConflictCategories]
+            )
+        },
+        syncsCourseIgnores: @escaping @Sendable () -> Bool = {
+            CloudSyncCoordinator.sendsCourseIgnores(
+                assignments: Defaults[.syncAssignments],
+                courses: Defaults[.syncCourses],
+                pendingChecks: Defaults[.pendingConflictCategories]
+            )
+        }
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
+        self.syncsAssignmentMarks = syncsAssignmentMarks
+        self.syncsCourseIgnores = syncsCourseIgnores
 
-        if Defaults[.cloudSyncEnabled] {
+        if isEnabled {
             state = .active
         }
+    }
+
+    /// Whether a mark may go out: with the Assignments switch on, and not while its re-enable check
+    /// is pending, which may take the server's marks over the ones queued here.
+    nonisolated static func sendsAssignmentMarks(assignments: Bool, pendingChecks: Set<String>) -> Bool {
+        assignments && !pendingChecks.contains("assignments")
+    }
+
+    /// Whether a course's ignore setting may go out: with the Assignments and Courses switches on,
+    /// as the server drops the setting with the course rows once no device syncs courses, and not
+    /// while the re-enabled Assignments switch's check is pending, which may take the server's
+    /// settings over the ones queued here.
+    nonisolated static func sendsCourseIgnores(assignments: Bool, courses: Bool, pendingChecks: Set<String>) -> Bool {
+        assignments && courses && !pendingChecks.contains("assignments")
     }
 
     // MARK: - Following the preference
@@ -87,8 +120,8 @@ final class CloudSyncCoordinator {
     /// they run to completion one at a time.
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
 
-    /// Brings the lifecycle in line with 同步課程資訊. `AppState` calls this on
-    /// every change to the preference, whichever writer made it.
+    /// Brings the lifecycle in line with the Sync course information preference.
+    /// `AppState` calls this on every change to it, whichever writer made it.
     ///
     /// Queued behind any transition still running, and the preference is read
     /// when its turn comes rather than when it was asked for, so a burst of
@@ -141,27 +174,18 @@ final class CloudSyncCoordinator {
     private func performEnable() async {
         if case .enabling = state { return }
         state = .enabling(step: "register")
-        lastError = nil
 
         pushCoordinator.enable()
-
-        do {
-            await pushCoordinator.registration.updateCloudSyncEnabled(true)
-            state = .enabling(step: "sync")
-            try await pullFullSync()
-        } catch {
-            lastError = String(describing: error)
-            AppLogger.captureError(error, context: ["phase": "cloudSync.enable"])
-        }
+        await pushCoordinator.registration.updateCloudSyncEnabled(true)
 
         state = .active
-        // Start even when the initial pull failed (e.g. enabled while
+        // Start even when the PATCH above failed (e.g. enabled while
         // offline): the timer and observers are how sync self-heals, and
         // a relaunch would start them in this state anyway.
         start()
-        // Flush any edits queued during the .enabling pull window now that
+        // Flush any edits queued during the .enabling window now that
         // we're active (their scheduleTick fired while draining was gated).
-        await drainOutbox()
+        await syncTick()
     }
 
     // MARK: - Disable
@@ -169,79 +193,56 @@ final class CloudSyncCoordinator {
     private func performDisable() async {
         stop()
 
-        // Leave the push stack up: the device stays registered with
-        // cloud_sync_enabled=false so bulletins and operator pushes keep
-        // arriving — neither is gated on this flag. Live Activity is not in
-        // that list any more: spec §6 makes it unavailable with sync off, and
-        // the schedule this device uploads goes empty. (Relaunch re-enables
-        // the push stack anyway, so tearing it down here only ever produced a
-        // temporary mismatch.)
+        // Keep the push stack up, registered with cloud_sync_enabled=false: bulletins and
+        // operator pushes are not gated on the flag, and a relaunch restores the stack anyway.
+        // Live Activity is unavailable with sync off; the schedule this device uploads goes empty.
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
 
         await outbox.clearAll()
 
-        lastError = nil
         state = .disabled
     }
 
     // MARK: - Sync tick
 
+    /// Drains the outbox. Pulls belong to `AppState.syncOverridesFromBackend`,
+    /// which applies what it fetches; a tick has no use for a snapshot.
     func syncTick() async {
-        guard state == .active, !tickInFlight else { return }
-        tickInFlight = true
-        defer { tickInFlight = false }
-
-        do {
-            try await pullFullSync()
-        } catch {
-            // 401 means the JWT lapsed; AppState's relogin machinery
-            // refreshes it, so retry on a later tick like any transient.
-            // Blocking here would also drop local edits from the queue.
-            if error is URLError || isUnauthorized(error) { return }
-            lastError = String(describing: error)
-        }
-
-        guard state == .active else { return }
-
-        await outbox.drain { [weak self] op in
-            guard let self else { throw CancellationError() }
-            try await self.execute(op)
-        }
-    }
-
-    /// Called by the revision poller when the server revision is ahead.
-    /// The caller has already pulled and applied server data via
-    /// `syncOverridesFromBackend()`, so only the push half runs here.
-    func onRevisionChanged() async {
-        await drainOutbox()
-    }
-
-    /// Called when a sync_trigger push notification arrives. Same contract
-    /// as `onRevisionChanged()`: the pull already happened, push only.
-    func onSyncTrigger() async {
-        await drainOutbox()
-    }
-
-    /// Push half of `syncTick()`: drain pending outbox entries without the
-    /// full-sync pull. The pull would be redundant here (the caller just
-    /// pulled), and a transient pull failure must not abort the drain.
-    private func drainOutbox() async {
         guard state == .active, !tickInFlight else { return }
         tickInFlight = true
         defer { tickInFlight = false }
 
         guard await outbox.pendingCount() > 0 else { return }
 
-        await outbox.drain { [weak self] op in
+        let syncsMarks = syncsAssignmentMarks
+        let syncsIgnores = syncsCourseIgnores
+        await outbox.drain(holding: { op in
+            switch op {
+            case .assignmentOverride: return !syncsMarks()
+            case .courseIgnore: return !syncsIgnores()
+            case .courseOverride: return false
+            }
+        }) { [weak self] op in
             guard let self else { throw CancellationError() }
             try await self.execute(op)
         }
     }
 
+    /// Called by the revision poller when the server revision is ahead,
+    /// after `AppState.syncChangesSinceLastRevision()` has applied what moved.
+    func onRevisionChanged() async {
+        await syncTick()
+    }
+
+    /// Called when a sync_trigger push notification arrives, after the pull.
+    func onSyncTrigger() async {
+        await syncTick()
+    }
+
     // MARK: - Enqueue helpers
 
     func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) {
-        // Accept edits during the enable() pull window (.enabling) too: the op
+        // Accept edits during the enable() window (.enabling) too: the op
         // queues durably in the outbox and drains once state flips to .active.
         // Gating on == .active would silently drop them.
         guard state != .disabled else { return }
@@ -270,12 +271,12 @@ final class CloudSyncCoordinator {
         await outbox.enqueue(op)
     }
 
-    /// Moodle assignment ids (as strings) with a queued outbox op that has
-    /// not yet reached the server. Conflict detection must treat these as
-    /// local-pending rather than cross-device conflicts.
+    /// Moodle assignment ids (as strings) with a queued or parked outbox op
+    /// that has not yet reached the server. Conflict detection must treat
+    /// these as local-pending rather than cross-device conflicts.
     func pendingAssignmentOverrideIds() async -> Set<String> {
         var ids = Set<String>()
-        for entry in await outbox.snapshot() {
+        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
             if case .assignmentOverride(_, let moodleAssignmentId, _, _) = entry.op {
                 ids.insert(String(moodleAssignmentId))
             }
@@ -283,34 +284,80 @@ final class CloudSyncCoordinator {
         return ids
     }
 
-    // MARK: - Pull
+    /// For the re-enabled Assignments switch's Use Server, which takes the server's marks over the
+    /// ones still on their way up.
+    func discardAssignmentOverrides() async {
+        await outbox.discard { op in
+            if case .assignmentOverride = op { return true }
+            return false
+        }
+    }
 
-    /// Fetch the full sync payload. Applying server data to local caches is
-    /// AppState's job (via `syncOverridesFromBackend`); this pull validates
-    /// connectivity and auth before the outbox drain.
-    private func pullFullSync() async throws {
-        _ = try await pushCoordinator.fetchFullSync()
+    /// Awaitable for the same reason as `enqueueAssignmentOverride`.
+    func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
+        guard state != .disabled else { return }
+        await outbox.enqueue(.courseIgnore(
+            semester: semester, courseNo: courseNo, moodleId: moodleId,
+            moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()))
+    }
+
+    /// Drops the course settings still on their way up: all of them for Use Server, which takes
+    /// the server's over them, or `semester`'s or one course's for a reset or a delete, after which
+    /// the server has no row to take them.
+    func discardCourseIgnores(semester: String? = nil, courseNo: String? = nil) async {
+        await outbox.discard { op in
+            guard case .courseIgnore(let opSemester, let opCourseNo, _, _, _, _) = op else { return false }
+            return (semester == nil || semester == opSemester) && (courseNo == nil || courseNo == opCourseNo)
+        }
+    }
+
+    /// `CourseTombstone` keys of the courses whose ignore setting is queued or parked, not yet on
+    /// the server, which a pull leaves as they are here. A numeric id sent alone changes no setting.
+    func pendingCourseIgnoreKeys() async -> Set<String> {
+        var keys = Set<String>()
+        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
+            if case .courseIgnore(let semester, let courseNo, _, _, .some, _) = entry.op {
+                keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
+            }
+        }
+        return keys
+    }
+
+    /// Gives each mark the server kept refusing one more try. Called by every full sync, and by
+    /// each poll the change feed settles without one.
+    func requeueParkedMarks() async {
+        await outbox.requeueParked()
     }
 
     // MARK: - Execute resolved op
 
     /// 401s are rethrown as `SyncOutboxAuthError` so the drain aborts and
     /// retains the queue without burning retry attempts — the token layer
-    /// refreshes the JWT, and a later tick delivers the ops.
+    /// refreshes the JWT, and a later tick delivers the ops. So is a request
+    /// that was not sent for want of a session.
     private func execute(_ op: ResolvedSyncOp) async throws {
         do {
             switch op {
             case .courseOverride(let courseId, let colorHex, let customName, let locale):
                 _ = try await pushCoordinator.patchCourseOverride(
-                    moodleCourseId: courseId,
+                    moodleId: courseId,
                     colorHex: colorHex,
                     customName: customName,
                     locale: locale)
 
             case .assignmentOverride(let assignmentId, let localStatus):
-                _ = try await pushCoordinator.patchAssignmentOverride(
+                try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: String(assignmentId),
                     localStatus: localStatus)
+
+            case .courseIgnore(let courseId, let moodleCourseId, let ignore):
+                let response = try await pushCoordinator.patchCourseOverride(
+                    moodleId: courseId,
+                    ignoreAssignments: ignore,
+                    moodleCourseId: moodleCourseId)
+                // A backend without the setting answers 200 and drops it, so only an answer that
+                // names it settles the op; anything else counts as a refusal.
+                guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
             }
         } catch {
             if isUnauthorized(error) {
@@ -343,8 +390,6 @@ final class CloudSyncCoordinator {
             NotificationCenter.default.removeObserver(token)
         }
         notificationTokens = []
-        dataDebounceTask?.cancel()
-        dataDebounceTask = nil
         started = false
     }
 
@@ -379,6 +424,10 @@ final class CloudSyncCoordinator {
 
     private func isUnauthorized(_ error: Error) -> Bool {
         if case PushAPIError.httpStatus(401, _) = error { return true }
+        if case PushAPIError.notSignedIn = error { return true }
         return false
     }
 }
+
+/// A course setting the backend answered without storing: one that predates the setting.
+nonisolated struct CourseIgnoreNotStoredError: Error {}

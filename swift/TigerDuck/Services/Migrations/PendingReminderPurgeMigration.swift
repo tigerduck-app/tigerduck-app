@@ -1,22 +1,14 @@
 import Foundation
 import UserNotifications
 
-/// One-shot migration: purges any locally-scheduled assignment reminder
-/// notifications left behind after reminders moved server-side.
+/// One-shot migration: purges the assignment reminders 2.0.x scheduled on the device, now that
+/// the backend sends them.
 ///
-/// Context: the deleted `AssignmentReminderScheduler`
-/// (`LiveActivity/Scheduling/AssignmentReminderScheduler.swift`) used to
-/// schedule up to 60 pending `UNUserNotificationCenter` requests per user,
-/// identified by the `"LA-reminder-"` prefix. Removing that type does not
-/// cancel requests it already scheduled — they keep sitting in the
-/// notification centre and will fire on their original due-date-relative
-/// schedule days or weeks later, duplicating the reminders the backend now
-/// sends. This migration removes them once, on the upgrade that drops local
-/// scheduling, and flags itself done so it never re-scans on every launch.
-///
-/// Keep until the minimum supported version is past 2.1.0: until then a
-/// device can still arrive here straight from 2.0.x with those requests
-/// queued.
+/// The deleted `AssignmentReminderScheduler` queued up to 60 `UNUserNotificationCenter`
+/// requests per user under the `"LA-reminder-"` prefix. Deleting the type cancels none of them:
+/// they would still fire days or weeks later and duplicate the backend's reminders. The done
+/// flag stops a rescan on every launch. Keep until the minimum supported version is past 2.1.0,
+/// as a device can still arrive straight from 2.0.x with those requests queued.
 enum PendingReminderPurgeMigration {
     /// Copy of the deleted `AssignmentReminderScheduler.requestPrefix`. That
     /// type is gone, so this migration owns its own copy rather than

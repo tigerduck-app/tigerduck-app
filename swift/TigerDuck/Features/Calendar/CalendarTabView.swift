@@ -6,12 +6,12 @@ struct CalendarTabView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = CalendarViewModel()
 
-    /// The calendar is a 校務系統-protected surface like the class table and
-    /// scores: without an account there are no Moodle deadlines to place and
-    /// no semester to mark, and a bare month grid is a date picker, not a
-    /// feature. Unlike those two it has no separate empty state — an account
-    /// with nothing due still gets the grid — so `isEmpty: false` leaves the
-    /// signed-in / signed-out distinction as the only one that matters.
+    /// The calendar sits behind the NTUST sign-in like the class table and
+    /// scores: without an account there are no Moodle deadlines to place and no
+    /// semester to mark, and a bare month grid is a date picker, not a feature.
+    /// Unlike those two it has no separate empty state, since an account with
+    /// nothing due still gets the grid, so `isEmpty: false` leaves signed in
+    /// versus signed out as the only distinction that matters.
     private var pageAccessState: NTUSTProtectedAccessState {
         appState.ntustProtectedAccessState(isEmpty: false)
     }
@@ -24,12 +24,8 @@ struct CalendarTabView: View {
         }
     }
 
-    /// Holding the load until there is an account keeps the EventKit
-    /// permission prompt off a screen that is showing a sign-in wall —
-    /// asking for the device calendar to populate a grid the user cannot
-    /// see would be a bad trade for them and a poor look for us. `load` is
-    /// idempotent, so re-firing it on the sign-in transition is what
-    /// actually fills the screen once the user gets an account.
+    /// Signed out, the page shows only the sign-in wall, so the load waits for an account.
+    /// `load` is idempotent, so re-firing it on the sign-in transition fills the screen.
     private var gatedContent: some View {
         content
             .onChange(of: pageAccessState, initial: true) { _, state in
@@ -78,10 +74,9 @@ struct CalendarTabView: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            // TigerSync as well as Moodle: the deadlines are Moodle's, but the
-            // holidays and term boundaries on this screen come from the
-            // backend's published academic calendar, so a backend the app
-            // cannot reach is a source this screen is missing rows from.
+            // TigerSync as well as Moodle: deadlines are Moodle's, but holidays and
+            // term boundaries come from the backend's academic calendar, so an
+            // unreachable backend means rows missing from this screen.
             SyncStatusDot(servers: [.moodle, .backend])
             Button {
                 viewModel.goToToday()

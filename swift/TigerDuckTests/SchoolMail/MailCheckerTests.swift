@@ -21,8 +21,8 @@ actor Counter {
 }
 
 /// Records the inbox marker's value at the moment `notify` is awaited, to prove the checker
-/// notifies before it persists the marker (fix round 1: a background-task expiration or process
-/// kill during the awaited notify must never lose those notifications).
+/// notifies before it persists the marker: a background-task expiration or process kill during
+/// the awaited notify must never lose those notifications.
 final class OrderingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var wasCalled = false
@@ -105,6 +105,22 @@ final class AccountSwitchingNotificationCenter: MailNotificationCenter, @uncheck
     func removeAllMailNotifications() async { lock.withLock { _requestsAtRemoveAll.append(_requests.count) } }
 }
 
+/// Moves the inbox marker while a notification is posted, the way the open mail list's poll can
+/// while a check awaits its notifications.
+final class MarkerMovingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
+    private let prefs: any MailPreferences
+    private let moveTo: UInt32
+
+    init(prefs: any MailPreferences, moveTo: UInt32) {
+        self.prefs = prefs
+        self.moveTo = moveTo
+    }
+
+    func add(_ request: UNNotificationRequest) async throws { prefs.inboxNextUID = moveTo }
+    func removeDelivered(withIdentifiers identifiers: [String]) {}
+    func removeAllMailNotifications() async {}
+}
+
 struct MailCheckerTests {
     struct Harness {
         let checker: MailChecker
@@ -115,7 +131,7 @@ struct MailCheckerTests {
     }
 
     static func harness(inbox: [FakeMailClient.Message], validity: UInt32? = 1, marker: UInt32? = nil,
-                        cache: MailCache? = nil) -> Harness {
+                        cache: MailCache? = nil, notificationsDenied: Bool = false) -> Harness {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
         prefs.inboxUIDValidity = validity
@@ -131,7 +147,8 @@ struct MailCheckerTests {
                 prefs.authFailed = true
                 await authFailures.increment()
             },
-            cache: cache
+            cache: cache,
+            notificationsDenied: { notificationsDenied }
         )
         return Harness(checker: checker, prefs: prefs, fake: fake, center: center, authFailures: authFailures)
     }
@@ -160,8 +177,8 @@ struct MailCheckerTests {
         #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(2))
         #expect(h.prefs.inboxNextUID == 5)
         #expect(h.center.requests.map(\.identifier) == ["school-mail-1-3", "school-mail-1-4"])
-        // Title = subject, body = sender (design doc §8.6 has this reversed; the ordering
-        // here is a deliberate override — see MailNotifier).
+        // Title = subject, body = sender: a product decision, not a bug, and the order the
+        // Android app uses (see `MailNotifier`).
         let first = try #require(h.center.requests.first?.content)
         #expect(first.title == "Hi")
         #expect(first.body == "Someone")
@@ -214,11 +231,42 @@ struct MailCheckerTests {
         #expect(h.center.requests.map(\.identifier) == [MailNotifier.summaryIdentifier])
     }
 
-    @Test func thePageTriggerAdvancesTheMarkerButNeverNotifies() async {
-        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3)], marker: 3)
-        #expect(await h.checker.check(trigger: .page) == .newMail(1))
-        #expect(h.prefs.inboxNextUID == 4)
+    @Test func theOpenListMovesTheMarkerUpButNeverBack() async {
+        let h = Self.harness(inbox: [], marker: 5)
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 8))
+        #expect(h.prefs.inboxNextUID == 8)
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 6))
+        #expect(h.prefs.inboxNextUID == 8)
         #expect(h.center.requests.isEmpty)
+    }
+
+    @Test func theOpenListAdoptsANewGeneration() async {
+        let h = Self.harness(inbox: [], marker: 5)
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 2, uidNext: 3))
+        #expect(h.prefs.inboxUIDValidity == 2)
+        #expect(h.prefs.inboxNextUID == 3)
+    }
+
+    @Test func theOpenListWritesNothingSignedOut() async {
+        let h = Self.harness(inbox: [], marker: 5)
+        h.prefs.studentID = nil
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 8))
+        #expect(h.prefs.inboxNextUID == 5)
+    }
+
+    /// The open list can move the marker while a check awaits its notifications. The check's own
+    /// advance must not take it back, or the next check announces mail the list already showed.
+    @Test func aCheckKeepsTheMarkerTheOpenListMovedDuringItsNotify() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 3
+        let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3)]])
+        let center = MarkerMovingNotificationCenter(prefs: prefs, moveTo: 9)
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: {})
+        #expect(await checker.check(trigger: .foreground) == .newMail(1))
+        #expect(prefs.inboxNextUID == 9)
     }
 
     @Test func aRejectedPasswordStopsFurtherChecks() async {
@@ -246,11 +294,41 @@ struct MailCheckerTests {
         #expect(await first.value == .baselineReset)
     }
 
-    @Test func disabledNotificationsSkipBackgroundChecksButNotThePage() async {
+    @Test func disabledNotificationsSkipEveryCheck() async {
         let h = Self.harness(inbox: [FakeMailClient.message(uid: 1)], marker: nil)
         h.prefs.notificationsEnabled = false
         #expect(await h.checker.check(trigger: .backgroundTask) == .skippedDisabled)
-        #expect(await h.checker.check(trigger: .page) == .baselineReset)
+        #expect(await h.checker.check(trigger: .foreground) == .skippedDisabled)
+    }
+
+    /// With the in-app switch on but notifications denied in iOS, nothing a check finds can be
+    /// shown, so it must not sign in at all.
+    @Test func deniedNotificationPermissionSkipsEveryCheckWithoutSigningIn() async {
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 1)], marker: nil, notificationsDenied: true)
+        #expect(await h.checker.check(trigger: .backgroundTask) == .skippedDisabled)
+        #expect(await h.checker.check(trigger: .foreground) == .skippedDisabled)
+        #expect(await h.fake.calls.isEmpty)
+        #expect(h.prefs.lastCheckAt == nil)
+        #expect(h.prefs.inboxNextUID == nil)
+    }
+
+    /// Reading the permission is an await, and a sign-out during it must not be followed by this
+    /// run stamping its check time, which would hold off the next student's first check.
+    @Test func aSignOutWhileThePermissionIsReadWritesNothing() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 1)]])
+        let checker = MailChecker(
+            prefs: prefs, notifier: MailNotifier(center: RecordingNotificationCenter()),
+            openSession: { fake }, onAuthFailure: {},
+            notificationsDenied: {
+                prefs.studentID = nil
+                return false
+            }
+        )
+        #expect(await checker.check(trigger: .foreground) == .skippedSignedOut)
+        #expect(prefs.lastCheckAt == nil)
+        #expect(await fake.calls.isEmpty)
     }
 
     @Test func signedOutSkipsEverything() async {
@@ -262,23 +340,23 @@ struct MailCheckerTests {
     /// Alternating triggers, so "newest first" is actually pinned: with twelve identical records
     /// the ordering assertion held for any permutation, including the ring buffer keeping the ten
     /// *oldest*. Call 1 (no marker yet) is the baseline reset and calls 2–12 are `noNewMail`, so
-    /// the surviving ten are calls 3–12: newest is call 12 (`page`), oldest kept is call 3
-    /// (`foreground`), and the baseline reset must have been evicted.
+    /// the surviving ten are calls 3–12: newest is call 12 (`backgroundTask`), oldest kept is call
+    /// 3 (`foreground`), and the baseline reset must have been evicted.
     @Test func diagnosticsKeepTheTenNewest() async {
         let h = Self.harness(inbox: [], marker: nil)
         for index in 0..<12 {
-            _ = await h.checker.check(trigger: index.isMultiple(of: 2) ? .foreground : .page)
+            _ = await h.checker.check(trigger: index.isMultiple(of: 2) ? .foreground : .backgroundTask)
         }
         #expect(h.prefs.diagnostics.count == 10)
-        #expect(h.prefs.diagnostics.first?.trigger == "page")
+        #expect(h.prefs.diagnostics.first?.trigger == "backgroundTask")
         #expect(h.prefs.diagnostics.last?.trigger == "foreground")
         #expect(!h.prefs.diagnostics.contains { $0.result == MailCheckOutcome.baselineReset.diagnosticText })
         #expect(h.prefs.lastCheckAt != nil)
     }
 
-    /// §8.5's contract is notify, *then* advance. A notification the system refuses is a failure
-    /// the marker must respect too: advancing past it means that mail is never notified and never
-    /// reconsidered by any trigger.
+    /// The checker notifies, then advances the marker. A notification the system refuses is a
+    /// failure the marker must respect too: advancing past it means that mail is never notified
+    /// and never reconsidered by any trigger.
     @Test func aRefusedNotificationHoldsTheMarkerSoTheMailIsReconsidered() async {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
@@ -495,6 +573,9 @@ struct MailCheckerTests {
         let h = Self.harness(inbox: [FakeMailClient.message(uid: 3, text: "hello")], marker: 3, cache: cache)
         #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(1))
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 3)?.textBody == "hello")
+        // Inline images can be megabytes each, on cellular in Background App Refresh; opening the
+        // mail fetches it again with them.
+        #expect(await h.fake.detailsWithoutImages == [3])
     }
 
     @Test func aBurstPrefetchesOnlyTheNewestFive() async {
@@ -544,14 +625,6 @@ struct MailCheckerTests {
         let quiet = Self.harness(inbox: [FakeMailClient.message(uid: 3)], marker: 4, cache: cache)
         #expect(await quiet.checker.check(trigger: .backgroundTask) == .noNewMail)
         #expect(await !quiet.fake.calls.contains { $0.hasPrefix("detail") })
-    }
-
-    /// The page trigger runs on the list's own connection, and the list fetches what it shows.
-    @Test func thePageTriggerPrefetchesNothing() async {
-        let cache = SchoolMailTestDoubles.temporaryCache()
-        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3)], marker: 3, cache: cache)
-        #expect(await h.checker.check(trigger: .page, using: h.fake) == .newMail(1))
-        #expect(await !h.fake.calls.contains { $0.hasPrefix("detail") })
     }
 
     /// The prefetch runs after the marker is written, so a process death partway through it

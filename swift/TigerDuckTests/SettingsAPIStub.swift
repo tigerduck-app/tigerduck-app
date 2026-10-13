@@ -1,33 +1,6 @@
-// Shared `URLProtocol` double for `SettingsDocumentClient`.
-//
-// **Do not delete this as redundant.** Two suites drive the real client
-// through it and nothing else exercises `SettingsDocumentClient` at all:
-//
-// - `SettingsDocumentClientTests` — the client's own surface: the
-//   `{"schema_version","document","base_revision"}` envelope, 404 → `nil`,
-//   409 → `.conflict`, malformed bodies, the `APIVersionGate` hook.
-// - `NotificationSettingsSyncTests` — `NotificationSettingsSync` end to
-//   end, which reaches the same code paths from above.
-//
-// `PushRegistrationServiceTests` also routes a `PushAPIClient` through it:
-// that client takes a `URLSession` in its `init` the same way.
-//
-// `SettingsDocumentClient` is a concrete `actor`, not a protocol, so it
-// cannot be swapped for a lightweight fake; its `init` takes a
-// `URLSession`, which is the seam this uses.
-//
-// Explicitly `nonisolated`: this target defaults unannotated declarations
-// to `@MainActor` (`SWIFT_DEFAULT_ACTOR_ISOLATION`), but `startLoading()`
-// is invoked by `URLSession` on an arbitrary background queue,
-// synchronously — it has no way to `await` its way onto the main actor.
-// `nonisolated(unsafe)` on the two dictionaries is the manual-
-// synchronization escape hatch (guarded by `lock`), the same justification
-// `SettingsDocumentClient.swift` and `NotificationSettingsDocument.swift`
-// give for their own explicit `nonisolated`.
-//
-// Scoped per test via a unique base URL (`SettingsAPIStub.uniqueBaseURL()`)
-// rather than one shared queue, so Swift Testing's default parallel test
-// execution cannot let one test consume another's canned response.
+// `URLProtocol` double and the only test seam into `SettingsDocumentClient`, a concrete actor
+// whose `init` takes a `URLSession`. Must stay `nonisolated`: `URLSession` calls `startLoading()`
+// synchronously on a background queue. `lock` guards the two `nonisolated(unsafe)` dictionaries.
 import Foundation
 @testable import TigerDuck
 
@@ -35,6 +8,21 @@ nonisolated final class SettingsAPIStub: URLProtocol {
     nonisolated struct StubResponse {
         let statusCode: Int
         let body: Data
+        var headerFields: [String: String] = [:]
+        /// Fails the request after the stub has logged it, the way a reply lost in transit does.
+        var failure: URLError.Code?
+        /// Holds the reply back until the gate opens, so a test can act while the request is out.
+        var gate: ReplyGate?
+
+        static var noReply: StubResponse {
+            StubResponse(statusCode: 0, body: Data(), failure: .networkConnectionLost)
+        }
+    }
+
+    nonisolated final class ReplyGate: Sendable {
+        private let opened = DispatchSemaphore(value: 0)
+        func open() { opened.signal() }
+        fileprivate func wait() { opened.wait() }
     }
 
     private static let lock = NSLock()
@@ -114,9 +102,36 @@ nonisolated final class SettingsAPIStub: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.unknown))
             return
         }
+        guard let gate = next.gate else {
+            reply(next, for: url)
+            return
+        }
+        // A protocol's client takes its calls on the thread that called `startLoading()`, so the
+        // held reply goes back to that thread's run loop.
+        let held = HeldReply(stub: self, runLoop: CFRunLoopGetCurrent())
+        DispatchQueue.global().async {
+            gate.wait()
+            CFRunLoopPerformBlock(held.runLoop, CFRunLoopMode.defaultMode.rawValue) {
+                held.stub.reply(next, for: url)
+            }
+            CFRunLoopWakeUp(held.runLoop)
+        }
+    }
+
+    /// Only the loading thread touches these, once the reply is back on its run loop.
+    private struct HeldReply: @unchecked Sendable {
+        let stub: SettingsAPIStub
+        let runLoop: CFRunLoop
+    }
+
+    private func reply(_ next: StubResponse, for url: URL) {
+        if let failure = next.failure {
+            client?.urlProtocol(self, didFailWithError: URLError(failure))
+            return
+        }
         let response = HTTPURLResponse(
             url: url, statusCode: next.statusCode, httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: ["Content-Type": "application/json"].merging(next.headerFields) { $1 }
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: next.body)

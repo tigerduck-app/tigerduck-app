@@ -2,25 +2,14 @@
 import Foundation
 import os
 
-/// Reports how long the main thread goes unresponsive, and for how long.
+/// Reports main-thread stalls and how long they last. DEBUG-only scaffolding, cheap at one
+/// timer and one empty main-queue block per tick; delete once the Library freeze is understood.
 ///
-/// This exists to settle one question about the Library freeze that
-/// watching the screen cannot answer. A `ProgressView` spinner is a
-/// CoreAnimation animation driven by the render server, so it keeps
-/// turning even when the app's main thread is completely blocked.
-/// "The screen still moves but nothing responds" is therefore equally
-/// consistent with a blocked main thread and with touches being swallowed
-/// somewhere in the view hierarchy — and those two have nothing in common
-/// as fixes, so guessing between them is how the wrong thing gets fixed.
-///
-/// A background timer posts an empty block to the main queue and measures
-/// how long it waits. A long wait means the main thread was busy for at
-/// least that long. **Silence during a freeze is itself the answer**: the
-/// main thread was healthy and the touches were going somewhere else.
-///
-/// DEBUG only, and cheap — one timer, one empty main-queue block per tick.
-/// Delete once the Library freeze is understood; it is scaffolding, not a
-/// feature.
+/// A `ProgressView` spinner is a CoreAnimation animation the render server drives, so it keeps
+/// turning while the main thread is blocked. A frozen screen with a moving spinner fits a
+/// blocked main thread and touches swallowed in the view hierarchy alike, and the two need
+/// unrelated fixes. A long wait for the empty block means the main thread was busy at least
+/// that long; silence during a freeze means it was healthy and the touches went elsewhere.
 enum MainThreadWatchdog {
     private static let log = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "Hang"

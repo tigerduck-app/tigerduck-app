@@ -11,9 +11,11 @@ nonisolated struct MailOriginal: Sendable {
     var messageID: String?
     var references: [String]
     var bodyText: String
+    /// Nil when the opened mail does not say whether it has one (`MailMessageDetail.replyTo`).
+    var replyTo: [MailAddress]? = nil
 }
 
-/// Reply and forward rules (design doc §6.4).
+/// Reply and forward rules.
 nonisolated enum MailReplyComposer {
     /// RFC 5322 specials: a display name containing any of these must be quoted so the
     /// formatted address round-trips through `MailAddress.parseList`. Matches Android's
@@ -34,11 +36,10 @@ nonisolated enum MailReplyComposer {
         return "\n\n\(header(original, dateText: dateText))\n\(quoted)"
     }
 
-    /// Forwards carry a structured header block — blank line, blank line, the forwarded-
-    /// message marker, From/Date/Subject/To, blank line, then the original text unquoted
-    /// underneath (design doc §6.4; matches Android's `ComposePrefill.forward`). The four
-    /// header keys plus `school_mail_details_to` are `shared`-group keys already added by
-    /// the Android strings task (Task 18), not new `apple`-group ones.
+    /// Forwards carry a structured header block: blank line, blank line, the forwarded-message
+    /// marker, From/Date/Subject/To, blank line, then the original text unquoted underneath
+    /// (matches Android's `ComposePrefill.forward`). The four header keys and
+    /// `school_mail_details_to` are `shared`-group keys, not `apple`-group ones.
     static func forwardBody(of original: MailOriginal, dateText: String) -> String {
         let block = [
             String(localized: "school_mail_forwarded_header"),

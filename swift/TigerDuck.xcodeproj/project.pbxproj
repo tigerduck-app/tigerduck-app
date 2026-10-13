@@ -14,13 +14,15 @@
 		44361EB2FDF34C1180AAA293 /* SwiftMail in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = 286A28B6C50C02BAA1C53862 /* SwiftMail */; };
 		60A0A00130AA000100000001 /* Valet in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20130AA000100000001 /* Valet */; };
 		60A0A00230AA000100000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20230AA000100000001 /* SwiftSoup */; };
-		60A0A00330AA000100000001 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20330AA000100000001 /* Sentry */; };
 		60A0A00430AA000100000001 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20430AA000100000001 /* Defaults */; };
 		60A0A00530AA000100000001 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20530AA000100000001 /* MarkdownUI */; };
 		B21DC6B22FB887DA00AE2430 /* TigerDuckWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B21DC6922FB887D900AE2430 /* TigerDuckWatch Watch App.app */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B244D7502FB87B580040D6FA /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */; };
 		B244D7512FB87B580040D6FA /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
 		B244D75C2FB87B590040D6FA /* TigerDuckWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B244D74F2FB87B580040D6FA /* TigerDuckWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C3D0F1012FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C3D0F1062FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C3D0F1022FC0A00000AE2430 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */; };
+		C3D0F1032FC0A00000AE2430 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +75,13 @@
 			remoteGlobalIDString = B244D74E2FB87B580040D6FA;
 			remoteInfo = TigerDuckWidgetsExtension;
 		};
+		C3D0F1042FC0A00000AE2430 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 424C464E2F6E763C009D1DDA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C3D0F1102FC0A00000AE2430;
+			remoteInfo = TigerDuckWatchWidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -99,6 +108,17 @@
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C3D0F1052FC0A00000AE2430 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C3D0F1012FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -114,6 +134,7 @@
 		B21DC69E2FB887DA00AE2430 /* TigerDuckWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TigerDuckWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B21DC6A82FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TigerDuckWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B244D74F2FB87B580040D6FA /* TigerDuckWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TigerDuckWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3D0F1062FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TigerDuckWatchWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -142,7 +163,6 @@
 				Clock/ClockOverride.swift,
 				LiveActivity/Models/LiveActivityScenarioKind.swift,
 				LiveActivity/Models/LiveActivitySnapshot.swift,
-				LiveActivity/Runtime/SharedSnapshotStore.swift,
 				LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
 			);
 			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
@@ -168,6 +188,7 @@
 				Clock/AppClock.swift,
 				Clock/ClockOverride.swift,
 				Shared/ClassTableLayout.swift,
+				Shared/CourseBlockRoom.swift,
 				Shared/CourseCardFontScale.swift,
 				Widgets/WidgetSnapshot.swift,
 			);
@@ -182,6 +203,54 @@
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};
+		C3D0F1072FC0A00000AE2430 /* Exceptions for "TigerDuckWatchWidget" folder in "TigerDuckWatchWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
+		};
+		C3D0F1082FC0A00000AE2430 /* Exceptions for "Shared" folder in "TigerDuckWatchWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				TaipeiCalendar.swift,
+				Theme/VisualPreset.swift,
+				Watch/NextClassResolver.swift,
+				Watch/WatchCourse.swift,
+				Watch/WatchSnapshot.swift,
+				Watch/WatchWireFormat.swift,
+			);
+			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
+		};
+		C3D0F1092FC0A00000AE2430 /* Exceptions for "TigerDuckWatch Watch App" folder in "TigerDuckWatchWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Services/SharedAppGroup.swift,
+				Services/WatchAppLogger.swift,
+				UI/WatchTheme.swift,
+			);
+			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
+		};
+		C3D0F10A2FC0A00000AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatchWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Clock/AppClock.swift,
+				Clock/ClockOverride.swift,
+			);
+			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
+		};
+		C3D0F10B2FC0A00000AE2430 /* Exceptions for "TigerDuckWatchWidget" folder in "TigerDuckWatch Watch App" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				NextClassEntry.swift,
+				NextClassProvider.swift,
+				Views/CircularView.swift,
+				Views/CornerView.swift,
+				Views/InlineView.swift,
+				Views/RectangularView.swift,
+			);
+			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -192,6 +261,7 @@
 				42B9BC852F90EC9D00D3B5A1 /* Exceptions for "TigerDuck" folder in "TigerDuckLiveActivityExtension" target */,
 				B244D7902FB87B590040D6FA /* Exceptions for "TigerDuck" folder in "TigerDuckWidgetsExtension" target */,
 				B21DC7402FB8901100AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatch Watch App" target */,
+				C3D0F10A2FC0A00000AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatchWidgetExtension" target */,
 			);
 			path = TigerDuck;
 			sourceTree = "<group>";
@@ -216,6 +286,9 @@
 		};
 		B21DC6932FB887D900AE2430 /* TigerDuckWatch Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C3D0F1092FC0A00000AE2430 /* Exceptions for "TigerDuckWatch Watch App" folder in "TigerDuckWatchWidgetExtension" target */,
+			);
 			path = "TigerDuckWatch Watch App";
 			sourceTree = "<group>";
 		};
@@ -231,6 +304,9 @@
 		};
 		B21DC7232FB8883500AE2430 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C3D0F1082FC0A00000AE2430 /* Exceptions for "Shared" folder in "TigerDuckWatchWidgetExtension" target */,
+			);
 			path = Shared;
 			sourceTree = "<group>";
 		};
@@ -243,6 +319,15 @@
 			path = TigerDuckWidgets;
 			sourceTree = "<group>";
 		};
+		C3D0F10C2FC0A00000AE2430 /* TigerDuckWatchWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C3D0F10B2FC0A00000AE2430 /* Exceptions for "TigerDuckWatchWidget" folder in "TigerDuckWatch Watch App" target */,
+				C3D0F1072FC0A00000AE2430 /* Exceptions for "TigerDuckWatchWidget" folder in "TigerDuckWatchWidgetExtension" target */,
+			);
+			path = TigerDuckWatchWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -252,7 +337,6 @@
 			files = (
 				60A0A00430AA000100000001 /* Defaults in Frameworks */,
 				60A0A00530AA000100000001 /* MarkdownUI in Frameworks */,
-				60A0A00330AA000100000001 /* Sentry in Frameworks */,
 				60A0A00230AA000100000001 /* SwiftSoup in Frameworks */,
 				60A0A00130AA000100000001 /* Valet in Frameworks */,
 				44361EB2FDF34C1180AAA293 /* SwiftMail in Frameworks */,
@@ -312,6 +396,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C3D0F10D2FC0A00000AE2430 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3D0F1032FC0A00000AE2430 /* SwiftUI.framework in Frameworks */,
+				C3D0F1022FC0A00000AE2430 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -328,6 +421,7 @@
 				B21DC6932FB887D900AE2430 /* TigerDuckWatch Watch App */,
 				B21DC6A12FB887DA00AE2430 /* TigerDuckWatch Watch AppTests */,
 				B21DC6AB2FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */,
+				C3D0F10C2FC0A00000AE2430 /* TigerDuckWatchWidget */,
 				42B9BBFF2F90EBFA00D3B5A1 /* Frameworks */,
 				424C46572F6E763C009D1DDA /* Products */,
 				42D2EEAC2F73B4B300973752 /* tigerduck.icon */,
@@ -345,6 +439,7 @@
 				B21DC6922FB887D900AE2430 /* TigerDuckWatch Watch App.app */,
 				B21DC69E2FB887DA00AE2430 /* TigerDuckWatch Watch AppTests.xctest */,
 				B21DC6A82FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests.xctest */,
+				C3D0F1062FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -387,7 +482,6 @@
 			packageProductDependencies = (
 				60A0A20130AA000100000001 /* Valet */,
 				60A0A20230AA000100000001 /* SwiftSoup */,
-				60A0A20330AA000100000001 /* Sentry */,
 				60A0A20430AA000100000001 /* Defaults */,
 				60A0A20530AA000100000001 /* MarkdownUI */,
 				286A28B6C50C02BAA1C53862 /* SwiftMail */,
@@ -471,10 +565,12 @@
 				B21DC68E2FB887D900AE2430 /* Sources */,
 				B21DC68F2FB887D900AE2430 /* Frameworks */,
 				B21DC6902FB887D900AE2430 /* Resources */,
+				C3D0F1052FC0A00000AE2430 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C3D0F1112FC0A00000AE2430 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B21DC6932FB887D900AE2430 /* TigerDuckWatch Watch App */,
@@ -555,6 +651,28 @@
 			productReference = B244D74F2FB87B580040D6FA /* TigerDuckWidgetsExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C3D0F1142FC0A00000AE2430 /* Build configuration list for PBXNativeTarget "TigerDuckWatchWidgetExtension" */;
+			buildPhases = (
+				C3D0F10E2FC0A00000AE2430 /* Sources */,
+				C3D0F10D2FC0A00000AE2430 /* Frameworks */,
+				C3D0F10F2FC0A00000AE2430 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C3D0F10C2FC0A00000AE2430 /* TigerDuckWatchWidget */,
+			);
+			name = TigerDuckWatchWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = TigerDuckWatchWidgetExtension;
+			productReference = C3D0F1062FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -592,6 +710,9 @@
 					};
 					B244D74E2FB87B580040D6FA = {
 						CreatedOnToolsVersion = 26.4.1;
+					};
+					C3D0F1102FC0A00000AE2430 = {
+						CreatedOnToolsVersion = 27.1;
 					};
 				};
 			};
@@ -673,7 +794,6 @@
 			packageReferences = (
 				60A0A10130AA000100000001 /* XCRemoteSwiftPackageReference "Valet" */,
 				60A0A10230AA000100000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
-				60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */,
 				60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				E8CC3E13C4358E9783C31871 /* XCLocalSwiftPackageReference "Packages/SwiftMail" */,
@@ -691,6 +811,7 @@
 				B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */,
 				B21DC69D2FB887DA00AE2430 /* TigerDuckWatch Watch AppTests */,
 				B21DC6A72FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */,
+				C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -747,6 +868,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B244D74D2FB87B580040D6FA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3D0F10F2FC0A00000AE2430 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -834,6 +962,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C3D0F10E2FC0A00000AE2430 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -873,6 +1008,11 @@
 			isa = PBXTargetDependency;
 			target = B244D74E2FB87B580040D6FA /* TigerDuckWidgetsExtension */;
 			targetProxy = B244D75A2FB87B590040D6FA /* PBXContainerItemProxy */;
+		};
+		C3D0F1112FC0A00000AE2430 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
+			targetProxy = C3D0F1042FC0A00000AE2430 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1013,7 +1153,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuck/TigerDuck_Mac.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -1051,7 +1191,6 @@
 					SourceRepository.swift,
 					LicenseCatalog.swift,
 					HomeSection.swift,
-					MockData.swift,
 					TimetablePeriod.swift,
 					WidgetItem.swift,
 					CourseTimeSlot.swift,
@@ -1063,7 +1202,6 @@
 					AuthTokenManager.swift,
 					KeychainManager.swift,
 					SecureStore.swift,
-					SSOWebAuthSession.swift,
 					DataCache.swift,
 					HTMLParser.swift,
 					NameAbbrService.swift,
@@ -1071,11 +1209,8 @@
 					TLSPinningDelegate.swift,
 					ScreenCaptureProtected.swift,
 					AppLogger.swift,
-					ClassroomAbbrCacheMigration.swift,
-					CustomNameCacheMigration.swift,
-					HomeSectionTitleMigration.swift,
-					MoodleTokenMigration.swift,
 					SemesterAttributionCacheMigration.swift,
+					SyncedAccountSeedMigration.swift,
 					PushServerConfig.swift,
 					PushCoordinator.swift,
 					PushRegistrationService.swift,
@@ -1106,7 +1241,35 @@
 					LibraryQRCache.swift,
 					MoodleAPIModels.swift,
 					MoodleAssignmentService.swift,
+					MoodleAutologinService.swift,
+					MoodleForumService.swift,
+					MoodleCourseContentsService.swift,
+					MoodleFileTransfer.swift,
+					MoodleGradeService.swift,
+					MoodleHTMLText.swift,
+					MoodleCourseStore.swift,
+					MoodleRefreshSchedule.swift,
+					MoodleScreenChrome.swift,
+					MoodleDiscussionCard.swift,
+					MoodleCourseSection.swift,
+					MoodleAnnouncementsView.swift,
+					MoodleAnnouncementView.swift,
+					MoodleGradesView.swift,
+					MoodleFileRow.swift,
+					MoodleMembersView.swift,
+					MoodleMemberView.swift,
+					MoodleCourseMembersService.swift,
+					FlowLayout.swift,
+					MoodleFileDownloads.swift,
+					MoodleFileOpener.swift,
+					MoodleMaterialsView.swift,
+					MoodleFilesCacheSection.swift,
+					MoodleDiscussionPages.swift,
+					MoodleDiscussionsView.swift,
+					MoodleForumsView.swift,
+					MoodleDiscussionView.swift,
 					MoodleEnrolledCoursesService.swift,
+					MoodleCourseSummaryService.swift,
 					MoodleSiteInfoService.swift,
 					MoodleTokenService.swift,
 					MoodleWebserviceError.swift,
@@ -1128,7 +1291,7 @@
 					"View+SurfaceStyle.swift",
 					VisualStylePolicy.swift,
 					AppServiceBridge.swift,
-					ModelAdapters.swift,
+					"AppServiceBridge+Assignments.swift",
 					AppClock.swift,
 					AppClockState.swift,
 					ClockOverride.swift,
@@ -1140,6 +1303,7 @@
 					"Data+Hex.swift",
 					"Date+Formatting.swift",
 					"JSONDecoder+ISO8601.swift",
+					"OpenURLAction+Fallback.swift",
 					"SDAssignment+DisplayName.swift",
 					"String+HTMLEntities.swift",
 					NTUSTProtectedAccessState.swift,
@@ -1201,7 +1365,9 @@
 					CourseColorPickerSheet.swift,
 					CourseDetailSheet.swift,
 					ClassTableLayout.swift,
+					CourseBlockRoom.swift,
 					CourseRoomHint.swift,
+					ViewMemo.swift,
 					CreditFormat.swift,
 					"View+PlatformCompat.swift",
 					LoadingButtonLabel.swift,
@@ -1213,14 +1379,22 @@
 					ServerStatusTracker.swift,
 					SyncStatusDot.swift,
 					CourseTombstone.swift,
+					ClassTableShareCode.swift,
+					"ClassTableShareCode+TAT.swift",
+					ImportedClassTableStore.swift,
+					ClassTableShareModel.swift,
+					ClassTableShareSheet.swift,
+					ClassTableSwitcher.swift,
+					ClassTableImportModel.swift,
+					ClassTableImportConfirmView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSCameraUsageDescription = "掃描別人分享的課表 QR Code。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "將匯出的課表圖片儲存到「照片」。";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_SENTRY_DSN = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -1235,7 +1409,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1264,7 +1438,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuck/TigerDuck_Mac.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -1302,7 +1476,6 @@
 					SourceRepository.swift,
 					LicenseCatalog.swift,
 					HomeSection.swift,
-					MockData.swift,
 					TimetablePeriod.swift,
 					WidgetItem.swift,
 					CourseTimeSlot.swift,
@@ -1314,7 +1487,6 @@
 					AuthTokenManager.swift,
 					KeychainManager.swift,
 					SecureStore.swift,
-					SSOWebAuthSession.swift,
 					DataCache.swift,
 					HTMLParser.swift,
 					NameAbbrService.swift,
@@ -1322,11 +1494,8 @@
 					TLSPinningDelegate.swift,
 					ScreenCaptureProtected.swift,
 					AppLogger.swift,
-					ClassroomAbbrCacheMigration.swift,
-					CustomNameCacheMigration.swift,
-					HomeSectionTitleMigration.swift,
-					MoodleTokenMigration.swift,
 					SemesterAttributionCacheMigration.swift,
+					SyncedAccountSeedMigration.swift,
 					PushServerConfig.swift,
 					PushCoordinator.swift,
 					PushRegistrationService.swift,
@@ -1357,7 +1526,35 @@
 					LibraryQRCache.swift,
 					MoodleAPIModels.swift,
 					MoodleAssignmentService.swift,
+					MoodleAutologinService.swift,
+					MoodleForumService.swift,
+					MoodleCourseContentsService.swift,
+					MoodleFileTransfer.swift,
+					MoodleGradeService.swift,
+					MoodleHTMLText.swift,
+					MoodleCourseStore.swift,
+					MoodleRefreshSchedule.swift,
+					MoodleScreenChrome.swift,
+					MoodleDiscussionCard.swift,
+					MoodleCourseSection.swift,
+					MoodleAnnouncementsView.swift,
+					MoodleAnnouncementView.swift,
+					MoodleGradesView.swift,
+					MoodleFileRow.swift,
+					MoodleMembersView.swift,
+					MoodleMemberView.swift,
+					MoodleCourseMembersService.swift,
+					FlowLayout.swift,
+					MoodleFileDownloads.swift,
+					MoodleFileOpener.swift,
+					MoodleMaterialsView.swift,
+					MoodleFilesCacheSection.swift,
+					MoodleDiscussionPages.swift,
+					MoodleDiscussionsView.swift,
+					MoodleForumsView.swift,
+					MoodleDiscussionView.swift,
 					MoodleEnrolledCoursesService.swift,
+					MoodleCourseSummaryService.swift,
 					MoodleSiteInfoService.swift,
 					MoodleTokenService.swift,
 					MoodleWebserviceError.swift,
@@ -1379,7 +1576,7 @@
 					"View+SurfaceStyle.swift",
 					VisualStylePolicy.swift,
 					AppServiceBridge.swift,
-					ModelAdapters.swift,
+					"AppServiceBridge+Assignments.swift",
 					AppClock.swift,
 					AppClockState.swift,
 					ClockOverride.swift,
@@ -1391,6 +1588,7 @@
 					"Data+Hex.swift",
 					"Date+Formatting.swift",
 					"JSONDecoder+ISO8601.swift",
+					"OpenURLAction+Fallback.swift",
 					"SDAssignment+DisplayName.swift",
 					"String+HTMLEntities.swift",
 					NTUSTProtectedAccessState.swift,
@@ -1452,7 +1650,9 @@
 					CourseColorPickerSheet.swift,
 					CourseDetailSheet.swift,
 					ClassTableLayout.swift,
+					CourseBlockRoom.swift,
 					CourseRoomHint.swift,
+					ViewMemo.swift,
 					CreditFormat.swift,
 					"View+PlatformCompat.swift",
 					LoadingButtonLabel.swift,
@@ -1464,14 +1664,22 @@
 					ServerStatusTracker.swift,
 					SyncStatusDot.swift,
 					CourseTombstone.swift,
+					ClassTableShareCode.swift,
+					"ClassTableShareCode+TAT.swift",
+					ImportedClassTableStore.swift,
+					ClassTableShareModel.swift,
+					ClassTableShareSheet.swift,
+					ClassTableSwitcher.swift,
+					ClassTableImportModel.swift,
+					ClassTableImportConfirmView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSCameraUsageDescription = "掃描別人分享的課表 QR Code。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "將匯出的課表圖片儲存到「照片」。";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_SENTRY_DSN = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -1486,7 +1694,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1510,7 +1718,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
 					WatchSyncCoordinatorTests.swift,
@@ -1542,7 +1750,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
 					WatchSyncCoordinatorTests.swift,
@@ -1573,7 +1781,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -1599,7 +1807,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -1628,7 +1836,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TigerDuckLiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TigerDuckLiveActivity/Info.plist;
@@ -1640,7 +1848,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1665,7 +1873,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TigerDuckLiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TigerDuckLiveActivity/Info.plist;
@@ -1677,7 +1885,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1703,7 +1911,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "TigerDuckWatch Watch App/TigerDuckWatch Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = TigerDuck;
@@ -1715,7 +1923,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1740,7 +1948,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "TigerDuckWatch Watch App/TigerDuckWatch Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = TigerDuck;
@@ -1752,7 +1960,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1776,7 +1984,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
@@ -1801,7 +2009,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
@@ -1826,7 +2034,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
@@ -1850,7 +2058,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
@@ -1879,7 +2087,7 @@
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuckWidgets/TigerDuckWidgets_Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1899,7 +2107,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1925,7 +2133,7 @@
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuckWidgets/TigerDuckWidgets_Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1945,7 +2153,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1960,6 +2168,71 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				XROS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Release;
+		};
+		C3D0F1122FC0A00000AE2430 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TigerDuckWatchWidget/TigerDuckWatchWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 107;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TigerDuckWatchWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TigerDuckWatchWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "watchsimulator watchos";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		C3D0F1132FC0A00000AE2430 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TigerDuckWatchWidget/TigerDuckWatchWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 107;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TigerDuckWatchWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TigerDuckWatchWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "watchsimulator watchos";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 			};
 			name = Release;
 		};
@@ -2047,6 +2320,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		C3D0F1142FC0A00000AE2430 /* Build configuration list for PBXNativeTarget "TigerDuckWatchWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C3D0F1122FC0A00000AE2430 /* Debug */,
+				C3D0F1132FC0A00000AE2430 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -2071,14 +2353,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.13.7;
-			};
-		};
-		60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 9.26.0;
 			};
 		};
 		60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */ = {
@@ -2113,11 +2387,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 60A0A10230AA000100000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
-		};
-		60A0A20330AA000100000001 /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
 		};
 		60A0A20430AA000100000001 /* Defaults */ = {
 			isa = XCSwiftPackageProductDependency;

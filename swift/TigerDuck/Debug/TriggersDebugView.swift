@@ -1,17 +1,13 @@
 #if DEBUG && os(iOS)
 import SwiftUI
 
-/// Developer-only screen for re-triggering one-shot UI surfaces that are
-/// otherwise hard to retest after they've been dismissed once. Reached
-/// from `Settings → Developer → Triggers`; entry point and this file
-/// are both `#if DEBUG` so Release builds never see either.
+/// Developer-only screen for re-triggering one-shot UI surfaces that are hard to retest once
+/// dismissed, reached from `Settings → Developer → Triggers`. The entry point and this file are
+/// both `#if DEBUG`, so Release builds see neither.
 ///
-/// Each section maps to a specific surface and uses the smallest hook
-/// that simulates a real fire — clearing a persisted gate, arming a
-/// debug-only flag, or replaying the same closure a real sensor would.
-/// Avoid going around the production code paths: a trigger that takes
-/// a shortcut here can mask real-world bugs in the surface it's
-/// supposed to be testing.
+/// Each section uses the smallest hook that simulates a real fire: clearing a persisted gate,
+/// arming a debug-only flag, or replaying the closure a real sensor would call. Do not go around
+/// the production code paths; a shortcut here can mask real bugs in the surface under test.
 struct TriggersDebugView: View {
     @Environment(AppState.self) private var appState
     @State private var statusMessage: String?
@@ -75,7 +71,7 @@ struct TriggersDebugView: View {
                 Text("Flip to Library")
             } footer: {
                 if !canTriggerFlip {
-                    Text("Requires both Library and Flip-to-Library to be enabled. Toggle them on in Settings → Other settings first.")
+                    Text("Requires Flip-to-Library to be enabled. Turn it on in Settings → Other settings first.")
                 } else {
                     Text("Resets the first-trigger seen flag, waits 3 seconds, then replays the same prompt a real face-down gesture would surface.")
                 }
@@ -96,17 +92,13 @@ struct TriggersDebugView: View {
             }
             .whatsNewSheetPresentation()
         }
-        // Intentionally NOT cancelling the arming task on disappear: the
-        // 3-second delay exists so navigation away from this page is part
-        // of the test (which tab the prompt overlays is part of what's
-        // being verified). The arming lives on `TriggersDebugArming` so
-        // it survives this view being popped — re-entering the page
-        // shows the disabled-button + "scheduled" footer instead of
-        // letting a second tap spawn a duplicate prompt.
+        // The arming task is not cancelled on disappear: the 3-second delay lets the tester leave
+        // the page, since which tab the prompt overlays is under test. `TriggersDebugArming` holds
+        // it across a pop, so re-entry shows it scheduled and blocks a second prompt.
     }
 
     private var canTriggerFlip: Bool {
-        appState.libraryFeatureEnabled && appState.flipToLibraryEnabled
+        appState.flipToLibraryEnabled
     }
 
     private func triggerFirstLibraryFlip() {

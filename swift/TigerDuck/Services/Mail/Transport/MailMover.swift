@@ -22,33 +22,14 @@ nonisolated struct MailMoveResult: Equatable, Sendable {
     var stillPending: OwnedDeleted
 }
 
-/// Move and delete without UIDPLUS (design doc §8.3). The server's only EXPUNGE removes
-/// every `\Deleted` message in the folder — including ones another client flagged — so
-/// TigerDuck expunges only when every `\Deleted` message is one it flagged itself, checked
-/// fresh against the server (never against cached flags). Otherwise its own flags wait
-/// (hidden from the list) for a later, safe EXPUNGE.
-///
-/// Before touching anything, both operations confirm the folder's UIDVALIDITY still matches
-/// what `previouslyFlagged` was recorded under — if the folder was recreated server-side, every
-/// UID in it now means something different, so COPY/STORE never run; the caller must refresh
-/// and retry. A `uids` argument of `[]` also runs no server command at all, and returns
-/// `previouslyFlagged` unchanged.
-///
-/// That first check is not the guard, though — the five steps below are five separate commands
-/// with the connection released between them, and the app's own 60 s page poll shares the client.
-/// So every step that can change or destroy mail carries `previouslyFlagged.uidValidity` with it
-/// and has the client compare it against that command's own SELECT response. No step ever trusts
-/// a UIDVALIDITY read by some earlier command, this type's own opening check included.
-///
-/// Neither operation retries a command that may already have started on the server (COPY,
-/// STORE, EXPUNGE): a throw after that point is reported as-is, and `recoverAfterFailure`
-/// lets the caller find out, with a single fresh read, whether the flag actually took.
-///
-/// This still cannot close every race: another client can flag or expunge mail server-side in
-/// the gap between the deleted-UID check below and the EXPUNGE that immediately follows it.
-/// Real Mail2000 has no UIDPLUS, so there is no atomic "expunge exactly these UIDs" primitive
-/// to close that window with — COPY + STORE + a fresh server-side check right before EXPUNGE is
-/// the narrowest window achievable here.
+/// Move and delete without UIDPLUS. EXPUNGE removes every `\Deleted` message in the folder,
+/// another client's included, so TigerDuck expunges only when every one is its own, checked fresh
+/// on the server; otherwise its flags wait, hidden from the list. Each step that changes mail
+/// carries `previouslyFlagged.uidValidity` to check against its own SELECT, since the 60 s poll
+/// can run between steps. A recreated folder means `.folderChanged`, which no caller retries.
+/// Started commands are never retried (`recoverAfterFailure` asks the server once). Another
+/// client can still act between the deleted-UID check and EXPUNGE.
+/// See docs/decisions/0014-mail-delete-without-uidplus.md.
 nonisolated enum MailMover {
     static func move(
         uids: [UInt32], from folder: String, to target: String,
@@ -99,17 +80,14 @@ nonisolated enum MailMover {
         }
     }
 
-    /// Call from a `catch` around `move`/`deletePermanently`: a COPY + STORE may have partly
-    /// landed on the server before the throw, and a `\Deleted` UID this app flagged but does not
-    /// claim wedges `shouldExpunge` false in that folder for good — every later delete there
-    /// silently degrades to "hide", and Trash stops deleting anything. Never retries the failed
-    /// command itself: it asks the server, once, whether the `\Deleted` flag actually took, and
-    /// applies `shouldRecordAfterFailure`.
-    ///
-    /// Returns the owned-deleted record to persist, or `nil` when there is nothing to claim —
-    /// including when the probe is skipped (`shouldProbeAfterFailure`) or itself fails. The
-    /// probe carries `previouslyFlagged.uidValidity` so a folder recreated between the failed
-    /// command and this read can never have one of *its* messages attributed to TigerDuck.
+    /// Call from a `catch` around `move`/`deletePermanently`. A COPY + STORE may have partly
+    /// landed before the throw, and a `\Deleted` UID this app flagged but does not claim keeps
+    /// `shouldExpunge` false in that folder for good: later deletes there only hide, and Trash
+    /// deletes nothing. Never retries the failed command; asks the server once whether the flag
+    /// took and applies `shouldRecordAfterFailure`. Returns the record to persist, or `nil` when
+    /// there is nothing to claim, including a skipped (`shouldProbeAfterFailure`) or failed probe.
+    /// The probe carries `previouslyFlagged.uidValidity`, so a folder recreated in between never
+    /// has one of its messages attributed to TigerDuck.
     static func recoverAfterFailure(
         after error: any Error, uid: UInt32, previouslyFlagged: OwnedDeleted,
         client: any MailClient, wasAlreadyDeleted: Bool

@@ -1,0 +1,20 @@
+# Swift packages only: Renovate cannot read Xcode projects and updates the rest
+# (.github/renovate.json). Security updates stay off in the repository settings, as they always
+# target the default branch and changes reach main through dev.
+version: 2
+updates:
+  - package-ecosystem: swift
+    directory: /swift
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Taipei
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      swift-packages:
+        update-types: [minor, patch]

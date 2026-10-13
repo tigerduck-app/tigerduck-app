@@ -1,10 +1,3 @@
-//
-//  TigerDuckTests.swift
-//  TigerDuckTests
-//
-//  Created by xinshou on 2026/3/21.
-//
-
 import Testing
 
 struct TigerDuckTests {

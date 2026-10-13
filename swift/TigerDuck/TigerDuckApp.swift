@@ -6,20 +6,48 @@ import UserNotifications
 
 #if os(iOS)
 
+/// Unit tests run inside the app, and XCTest sets `XCTestConfigurationFilePath` there. They get
+/// an empty scene: `TigerDuckApp`'s launch work would sync a signed-in simulator with the school,
+/// write real Defaults and hold the main actor while the tests run.
 @main
+enum TigerDuckLauncher {
+    static func main() {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            UnitTestHostApp.main()
+        } else {
+            TigerDuckApp.main()
+        }
+    }
+}
+
+/// A window and nothing else, so hosted-view tests still find a scene in
+/// `UIApplication.shared.connectedScenes`.
+private struct UnitTestHostApp: App {
+    var body: some Scene {
+        WindowGroup {
+            Color.clear
+        }
+    }
+}
+
 struct TigerDuckApp: App {
-    @State private var appState = AppState()
+    @State private var appState: AppState
     @State private var sceneRefreshTask: Task<Void, Never>?
     @State private var rootLanguageId = UUID()
-    @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
+    @State private var widgetSnapshotWriter: WidgetSnapshotWriter
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var watchSyncCoordinator = WatchSyncCoordinator()
-    @State private var watchSyncActivated = false
+    @State private var watchSyncCoordinator: WatchSyncCoordinator
 
     init() {
-        AppLogger.start()
+        // Built here, not as property defaults, so the launch work below can hold them. A silent
+        // push or a Watch message can launch the app in the background, where no scene appears
+        // and `.onAppear` never runs.
+        let appState = AppState()
+        let watchSync = WatchSyncCoordinator()
+        _appState = State(initialValue: appState)
+        _watchSyncCoordinator = State(initialValue: watchSync)
         #if DEBUG
         // Scaffolding for the Library freeze: tells a blocked main thread
         // apart from swallowed touches, which a spinning ProgressView
@@ -32,57 +60,17 @@ struct TigerDuckApp: App {
         #endif
         PushCoordinator.assertEnvConsistency()
         SchoolMailBootstrap.install()
-    }
-
-    /// `static` so the store is opened exactly once per process. As an
-    /// instance property this was rebuilt on every `App` initialisation —
-    /// SwiftData expects a single `ModelContainer` per on-disk store, and
-    /// the open (disk + schema compatibility check) is synchronous work
-    /// sitting directly in front of the first frame.
-    static let sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            SDCourse.self,
-            SDAssignment.self,
-            SDAnnouncement.self,
-            SDCalendarEvent.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
-            // Schema incompatible with existing store (e.g. upgrade from early version).
-            // Delete the old store and retry.
-            let storeURL = modelConfiguration.url
-            let relatedFiles = [
-                storeURL,
-                storeURL.appendingPathExtension("wal"),
-                storeURL.appendingPathExtension("shm"),
-            ]
-            for file in relatedFiles {
-                try? FileManager.default.removeItem(at: file)
+        _widgetSnapshotWriter = State(initialValue: WidgetSnapshotWriter(appState: appState))
+        watchSync.setPayloadSource { WatchSyncCoordinator.Payload(appState: appState) }
+        // Sync triggers reach the backend, so they wait for onboarding as `AppState.init` does;
+        // `.onAppear` binds them again for a user who finishes onboarding in this session.
+        PushAppDelegate.launchWork = { delegate in
+            if appState.hasCompletedOnboarding {
+                appState.bindPushDelegate(delegate)
             }
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
-                // Disk full / sandbox path locked / file-coordination
-                // failure all hardfault here, which would brick the app
-                // on launch with no recovery path. Fall back to an
-                // in-memory container so the app still launches; the
-                // user sees an empty state for one session, the next
-                // launch retries an on-disk container.
-                do {
-                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                    return try ModelContainer(for: schema, configurations: [memoryConfig])
-                } catch {
-                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
-                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
-                }
-            }
+            watchSync.activate()
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -94,10 +82,7 @@ struct TigerDuckApp: App {
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .environment(appState)
                 .onAppear {
-                    if !watchSyncActivated {
-                        watchSyncActivated = true
-                        watchSyncCoordinator.activate()
-                    }
+                    watchSyncCoordinator.activate()
                     appState.bindPushDelegate(pushAppDelegate)
                     // Route custom-push taps into AppState. Capture the
                     // class instance weakly to avoid a retain cycle
@@ -115,19 +100,24 @@ struct TigerDuckApp: App {
                     }
                     appState.backgroundSync()
                     appState.startCloudSyncIfEnabled()
-                    if widgetSnapshotWriter == nil {
-                        widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
-                        widgetSnapshotWriter?.regenerate()
-                    }
-                    // First-launch path. `.onChange(of: scenePhase)` does
-                    // not fire for the initial `.active` value, so the
-                    // first background check needs an explicit kickoff
-                    // here; subsequent foreground returns go through the
-                    // scene-phase observer.
+                    Task { if await LibraryService.signInIfCredentialed() { appState.notifyLibraryStateChanged() } }
+                    // A turn later, behind the first frame: the snapshot reads every cache it
+                    // draws from and writes the App Group file.
+                    Task { widgetSnapshotWriter.regenerate() }
+                    // `.onChange(of: scenePhase)` does not fire for the initial `.active`
+                    // value, so the first background check starts here; later foreground
+                    // returns go through the scene-phase observer.
                     appState.updateNotifyCoordinator.checkInBackground()
                     UNUserNotificationCenter.current().setBadgeCount(0)
                 }
                 .onOpenURL { url in
+                    if let id = WidgetURLRouter.assignmentId(from: url) {
+                        let assignments = DataCache.shared.loadAssignments()
+                        if let assignment = assignments.first(where: { $0.assignmentId == id }) {
+                            Self.openInMoodle(assignment)
+                        }
+                        return
+                    }
                     guard let destination = WidgetURLRouter.route(url) else { return }
                     appState.openFromWidget(destination)
                 }
@@ -143,28 +133,21 @@ struct TigerDuckApp: App {
                     default: break
                     }
                     if newPhase == .active {
-                        // Reset the app-icon badge but leave delivered
-                        // notifications in Notification Center — user can
-                        // still scroll back to them, the red badge just
-                        // stops nagging once they've opened the app.
+                        // Clear the app-icon badge but keep delivered notifications
+                        // in Notification Center, so the user can still scroll back
+                        // to them once the app is open.
                         UNUserNotificationCenter.current().setBadgeCount(0)
-                        // Cancel any still-running refresh from a previous
-                        // .active transition so rapid scene toggles do not
-                        // interleave and duplicate the Live Activity /
-                        // push-sync / Moodle-credential work below.
-                        // The school calendar, unconditionally: it is the
-                        // one backend call not gated on sign-in or cloud
-                        // sync, because suppressing class reminders on a
-                        // public holiday should not depend on either. A
-                        // change re-runs the surfaces that read it, since
-                        // the Live Activity and widgets may now be for a
-                        // day classes do not meet.
+                        // Calendar refresh is not gated on sign-in or cloud sync: holiday reminder
+                        // suppression must depend on neither. A change redraws the Live Activity
+                        // and widgets.
                         Task {
                             if await AcademicCalendarStore.shared.refresh() {
                                 await appState.refreshLiveActivity()
-                                widgetSnapshotWriter?.regenerate()
+                                widgetSnapshotWriter.regenerate()
                             }
                         }
+                        // Cancel the previous activation's refresh so rapid scene toggles do not
+                        // repeat its push sync and Moodle credential work.
                         sceneRefreshTask?.cancel()
                         sceneRefreshTask = Task {
                             await appState.refreshLiveActivity()
@@ -172,13 +155,17 @@ struct TigerDuckApp: App {
                             appState.requestPushScheduleSync()
                             await appState.refreshMoodleCredentials()
                         }
+                        if appState.hasCompletedOnboarding {
+                            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
+                        }
+                        // The library token lasts a day, so a return after one signs in again here.
+                        Task { if await LibraryService.signInIfCredentialed() { appState.notifyLibraryStateChanged() } }
                         appState.startRevisionPolling()
-                        widgetSnapshotWriter?.regenerate()
-                        // Background "is there a newer build on the App
-                        // Store?" check. Internally throttled to once
-                        // per ``AppConstants/updateCheckThrottle`` so
-                        // rapid scene toggles don't generate iTunes
-                        // Lookup traffic.
+                        appState.pushCoordinator.registerAgainIfGaveUp()
+                        widgetSnapshotWriter.regenerate()
+                        // App Store update check, throttled inside to once per
+                        // ``AppConstants/updateCheckThrottle`` so rapid scene
+                        // toggles don't generate iTunes Lookup traffic.
                         appState.updateNotifyCoordinator.checkInBackground()
                     } else if newPhase == .background {
                         appState.stopRevisionPolling()
@@ -188,17 +175,9 @@ struct TigerDuckApp: App {
         .modelContainer(Self.sharedModelContainer)
     }
 
-    /// Translates a tapped notification into the right AppState mutation.
-    /// Kept as a static helper so the SwiftUI body stays uncluttered and
-    /// the routing logic can be unit-tested independently of the App
-    /// scene plumbing.
-    ///
-    /// - Note: `bulletin_id` is decoded through three paths (`Int`,
-    ///   `NSNumber.intValue`, and `String → Int`) because APNs / FCM /
-    ///   intermediate relays bridge JSON numbers inconsistently — some
-    ///   land as a tagged-int NSNumber that succeeds `as? Int`, others
-    ///   as a Double-tagged NSNumber where `as? Int` fails, and a few
-    ///   re-encode the value as a quoted string.
+    /// Translates a tapped notification into the right AppState mutation. A
+    /// static helper keeps the SwiftUI body uncluttered; the payload parsing it
+    /// calls lives in AppState+PushRouting.swift, where it is unit-tested.
     @MainActor
     private static func routeServerPushTap(
         response: UNNotificationResponse,
@@ -208,34 +187,33 @@ struct TigerDuckApp: App {
         let info = response.notification.request.content.userInfo
         let kind = info["kind"] as? String
         switch kind {
-        case "custom_push_bulletin":
-            if let id = bulletinId(from: info["bulletin_id"]) {
-                appState.pendingDeepLink = .bulletin(id)
+        case "custom_push_bulletin", "bulletin":
+            if let link = AppState.bulletinDeepLink(from: info) {
+                appState.pendingDeepLink = link
+            }
+        case "assignment_reminder":
+            if let assignment = AppState.remindedAssignment(
+                from: info,
+                in: DataCache.shared.loadAssignments()
+            ) {
+                openInMoodle(assignment)
             }
         case "custom_push_popup":
             guard let nid = info["notification_id"] as? String,
                   let title = info["title"] as? String,
                   let body = info["body"] as? String else { return }
-            // Only the *check* runs at routing time — the actual mark
-            // happens when the user dismisses the alert (see
-            // `ServerPushPopupHost`). That way a popup that's suppressed
-            // by a competing modal (mid-onboarding etc.) isn't permanently
-            // deduped before the user ever sees it.
+            // Only check here: `ServerPushPopupHost` marks the popup shown when the
+            // user dismisses it, so a popup hidden by a competing modal (such as
+            // onboarding) is not deduped before the user ever sees it.
             guard !appState.isServerPopupShown(nid) else { return }
             let payload = AppState.ServerPopupPayload(
                 id: nid,
                 title: title,
                 body: body
             )
-            // Force SwiftUI's `.alert(_:isPresented:presenting:)` to
-            // refresh when a second popup arrives while the first alert
-            // is still on screen: dismiss the current alert, then present
-            // the new payload on the next runloop tick so `isPresented`
-            // actually transitions false → true.
-            //
-            // Always cancel any previous swap first — if popup B's swap
-            // is mid-sleep when popup C arrives, the stale B task would
-            // otherwise wake up and overwrite C's payload with B's.
+            // A popup arriving over a shown alert clears it and presents a tick later, so
+            // `.alert(_:isPresented:presenting:)` sees `isPresented` go false → true. Cancel
+            // any pending swap first, or the stale task would overwrite the newer payload.
             appState.pendingServerPopupSwapTask?.cancel()
             appState.pendingServerPopupSwapTask = nil
             if appState.pendingServerPopup != nil {
@@ -258,14 +236,17 @@ struct TigerDuckApp: App {
         }
     }
 
-    /// Decode `bulletin_id` from a JSON-bridged userInfo value. See the
-    /// `routeServerPushTap` doc comment for why all three paths exist.
+    /// Opens the assignment in the Moodle app, as its Home row does, or its web page, signed in,
+    /// when iOS refuses the `moodlemobile://` link because the app is not installed.
     @MainActor
-    private static func bulletinId(from raw: Any?) -> Int? {
-        if let n = raw as? Int { return n }
-        if let n = raw as? NSNumber { return n.intValue }
-        if let s = raw as? String { return Int(s) }
-        return nil
+    private static func openInMoodle(_ assignment: SDAssignment) {
+        let link = assignment.moodleDeepLink
+        let web = assignment.moodleWebURL
+        Task {
+            if let link, await UIApplication.shared.open(link) { return }
+            guard let web else { return }
+            await UIApplication.shared.open(await MoodleAutologinService.shared.url(for: web))
+        }
     }
 }
 
@@ -280,56 +261,7 @@ struct TigerDuckApp: App {
     @NSApplicationDelegateAdaptor(MacPushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    /// `static` so the store is opened exactly once per process. As an
-    /// instance property this was rebuilt on every `App` initialisation —
-    /// SwiftData expects a single `ModelContainer` per on-disk store, and
-    /// the open (disk + schema compatibility check) is synchronous work
-    /// sitting directly in front of the first frame.
-    static let sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            SDCourse.self,
-            SDAssignment.self,
-            SDAnnouncement.self,
-            SDCalendarEvent.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
-            // Same on-disk-reset → in-memory fallback chain the iOS branch
-            // uses.
-            let storeURL = modelConfiguration.url
-            // SQLite sidecars use a "-wal" / "-shm" suffix on the full
-            // store filename (e.g. `default.store-wal`), not a
-            // dot-extension — `appendingPathExtension` would target
-            // `default.store.wal`, leaving the real sidecars behind and
-            // letting the retry hit the same stale data.
-            let relatedFiles = [
-                storeURL,
-                URL(fileURLWithPath: storeURL.path + "-wal"),
-                URL(fileURLWithPath: storeURL.path + "-shm"),
-            ]
-            for file in relatedFiles {
-                try? FileManager.default.removeItem(at: file)
-            }
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
-                do {
-                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                    return try ModelContainer(for: schema, configurations: [memoryConfig])
-                } catch {
-                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
-                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
-                }
-            }
-        }
-    }()
-
     init() {
-        AppLogger.start()
         PushCoordinator.assertEnvConsistency()
     }
 
@@ -361,17 +293,9 @@ struct TigerDuckApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
-                        // The school calendar, unconditionally: it is the
-                        // one backend call not gated on sign-in or cloud
-                        // sync, because suppressing class reminders on a
-                        // public holiday should not depend on either. A
-                        // change re-runs the surfaces that read it, since
-                        // the Live Activity and widgets may now be for a
-                        // day classes do not meet.
-                        // No Live Activity call here: the Mac has none —
-                        // `AppState+LiveActivity.swift` is not compiled for
-                        // macOS — so the widgets are the only surface a
-                        // calendar change can move.
+                        // Calendar refresh is not gated on sign-in or cloud sync: holiday reminder
+                        // suppression must depend on neither. Only widgets redraw on a change:
+                        // `AppState+LiveActivity.swift` is not compiled for macOS.
                         Task {
                             if await AcademicCalendarStore.shared.refresh() {
                                 widgetSnapshotWriter?.regenerate()
@@ -382,7 +306,11 @@ struct TigerDuckApp: App {
                             appState.requestPushScheduleSync()
                             await appState.refreshMoodleCredentials()
                         }
+                        if appState.hasCompletedOnboarding {
+                            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
+                        }
                         appState.startRevisionPolling()
+                        appState.pushCoordinator.registerAgainIfGaveUp()
                         widgetSnapshotWriter?.regenerate()
                         // Throttled to a day inside; a return to the app
                         // is when a new App Store version is worth telling.
@@ -410,19 +338,14 @@ struct TigerDuckApp: App {
         // fixed-size with no navigation stack, and licence texts are long.
         Window(String(localized: "settings_open_source_licenses"), id: MacLicensesView.windowID) {
             MacLicensesView()
-                // Same rebuild the main window does: String(localized:) is
-                // resolved once, so without this the window would sit in the
-                // old language until it was closed and reopened. Its title
-                // comes back with it, by way of the navigationTitle inside —
-                // the name in the Window menu is the scene's own and stays
-                // until relaunch.
+                // Rebuild on a language change, as the main window does: String(localized:)
+                // resolves once. The title follows through the navigationTitle inside; the
+                // Window menu name is the scene's own and stays until relaunch.
                 .id(rootLanguageId)
                 .environment(appState)
-                // Environments do not cross scene boundaries, so this window
-                // takes neither the tint MacSettingsScene applies nor the one
-                // on the main window: without it the links here would come up
-                // in the system accent while the rest of the app used the
-                // chosen one.
+                // Environments do not cross scene boundaries, so this window gets neither
+                // MacSettingsScene's tint nor the main window's; without this its links
+                // would use the system accent instead of the chosen one.
                 .tint(appState.accentColor)
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
@@ -435,3 +358,55 @@ struct TigerDuckApp: App {
 }
 
 #endif
+
+extension TigerDuckApp {
+    /// `static` so the store is opened once per process: SwiftData expects one `ModelContainer`
+    /// per on-disk store, and the open (disk and schema check) runs in front of the first frame.
+    static let sharedModelContainer: ModelContainer = {
+        let schema = Schema([
+            SDCourse.self,
+            SDAssignment.self,
+            SDAnnouncement.self,
+            SDCalendarEvent.self,
+        ])
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        do {
+            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
+            // Schema incompatible with existing store (e.g. upgrade from early version).
+            // Delete the old store and retry.
+            deleteStoreFiles(at: modelConfiguration.url)
+            do {
+                return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
+                // A full disk, a locked sandbox path or a file-coordination failure ends up
+                // here; crashing would brick every launch. An in-memory container shows an
+                // empty state for this session, and the next launch retries on disk.
+                do {
+                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                    return try ModelContainer(for: schema, configurations: [memoryConfig])
+                } catch {
+                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
+                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
+                }
+            }
+        }
+    }()
+
+    /// Deletes the store and its SQLite sidecars. SQLite names them by appending "-wal" and
+    /// "-shm" to the store's file name (`default.store-wal`); one left behind hands the retry
+    /// the same stale data.
+    static func deleteStoreFiles(at storeURL: URL) {
+        let files = [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path + "-wal"),
+            URL(fileURLWithPath: storeURL.path + "-shm"),
+        ]
+        for file in files {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+}

@@ -117,9 +117,9 @@ enum PushAPI {
         /// Same shape as `syncAssignmentReminders`, for Live Activity.
         var syncLiveActivity: Bool?
         var cloudSyncEnabled: Bool?
-        /// Per-device bulletin opt-out (spec §6 item 5) — distinct from
-        /// `serverPushEnabled` above, which covers operator-issued pushes
-        /// only and never gates bulletin delivery.
+        /// Per-device bulletin opt-out. Separate from `serverPushEnabled`,
+        /// which covers operator-issued pushes only and never gates bulletin
+        /// delivery.
         var bulletinPushEnabled: Bool?
 
         enum CodingKeys: String, CodingKey {
@@ -256,27 +256,21 @@ enum PushAPI {
         }
     }
 
-    struct AssignmentOverrideResponse: Decodable, Sendable {
-        let id: Int
-        let localStatus: String
-        let updatedAt: String
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case localStatus = "local_status"
-            case updatedAt = "updated_at"
-        }
-    }
-
     struct CourseOverrideRequest: Encodable, Sendable {
         let colorHex: String?
         let customName: String?
         let locale: String?
+        var ignoreAssignments: Bool? = nil
+        /// The course's numeric Moodle id, which the assignments the server fetches itself carry;
+        /// the path names the course by its idnumber.
+        var moodleCourseId: Int? = nil
 
         enum CodingKeys: String, CodingKey {
             case colorHex = "color_hex"
             case customName = "custom_name"
             case locale
+            case ignoreAssignments = "ignore_assignments"
+            case moodleCourseId = "moodle_course_id"
         }
     }
 
@@ -284,12 +278,15 @@ enum PushAPI {
         let id: Int
         let colorHex: String?
         let customNames: [String: String]
+        /// Absent from a backend without the setting, which drops it from the request unread.
+        let ignoreAssignments: Bool?
         let updatedAt: String
 
         enum CodingKeys: String, CodingKey {
             case id
             case colorHex = "color_hex"
             case customNames = "custom_names"
+            case ignoreAssignments = "ignore_assignments"
             case updatedAt = "updated_at"
         }
     }
@@ -370,5 +367,34 @@ enum PushAPI {
 
     struct AssignmentUploadRequest: Encodable, Sendable {
         let assignments: [AssignmentUploadEntry]
+    }
+
+    // MARK: - Change feed
+
+    /// One page of `GET /sync?since_revision=`, oldest change first, as the backend answers it:
+    /// https://github.com/tigerduck-app/tigerduck-backend/blob/7f3cb94b2817c2d262da676e9d7a9b7568c98437/server/routes/sync/snapshot.py
+    /// A change's id, operation and payload are not decoded: a poll decides on entity types alone.
+    nonisolated struct SyncChangesPage: Decodable, Equatable, Sendable {
+        let currentRevision: Int
+        let returnedUntilRevision: Int
+        let hasMore: Bool
+        let changes: [Change]
+
+        nonisolated struct Change: Decodable, Equatable, Sendable {
+            let revision: Int
+            let entityType: String
+
+            enum CodingKeys: String, CodingKey {
+                case revision
+                case entityType = "entity_type"
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case currentRevision = "current_revision"
+            case returnedUntilRevision = "returned_until_revision"
+            case hasMore = "has_more"
+            case changes
+        }
     }
 }

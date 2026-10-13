@@ -3,56 +3,22 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Controller addition (2026-09-16 dispatch): `MailPageSession` must never close the
-/// connection while a `use(_:)` command is in flight, a stale close timer must never act,
-/// and a network/certificate error must drop the connection so the next call reconnects —
-/// but only once every concurrent `use(_:)` is done with it (fix round 1).
+/// `MailPageSession` must never close the connection while a `use(_:)` command is in flight, a
+/// stale close timer must never act, and a network or certificate error must drop the
+/// connection so the next call reconnects, but only once every concurrent `use(_:)` is done.
 ///
 /// Nothing here waits on a clock. An in-flight `use(_:)` is parked inside the client on
-/// `FakeMailClient`'s command gate, and the idle-close timer is the injected `sleep:` below,
-/// which the test fires by hand — so "the delay has passed" and "the call is still in flight"
-/// are facts the test establishes rather than margins it hopes for. These two tests raced
-/// 300 ms of sleeps against a 350 ms body before, and flaked accordingly.
+/// `FakeMailClient`'s command gate, and the idle-close timer is a `ManualSleeper` the test
+/// fires by hand, so "the delay has passed" and "the call is still in flight" are facts the
+/// test establishes rather than timing margins, which flake.
 @MainActor
 struct MailPageSessionTests {
     private static let idleClose: Duration = .milliseconds(200)
 
-    /// Stands in for the idle-close `Task.sleep`. Each call reports that the timer is armed and
-    /// then suspends until the test fires it.
-    private actor CloseTimer {
-        private var sleepers: [CheckedContinuation<Void, Never>] = []
-        private var armings = 0
-        private var armWaiters: [CheckedContinuation<Void, Never>] = []
-
-        /// One armed idle-close wait.
-        func sleep() async {
-            armings += 1
-            for waiter in armWaiters { waiter.resume() }
-            armWaiters = []
-            await withCheckedContinuation { sleepers.append($0) }
-        }
-
-        /// Returns once the session has armed a close at least `count` times.
-        func waitUntilArmed(atLeast count: Int = 1) async {
-            while armings < count {
-                await withCheckedContinuation { armWaiters.append($0) }
-            }
-        }
-
-        var armedCount: Int { armings }
-
-        /// Lets every armed timer's wait finish, as if the idle delay had elapsed.
-        func fire() {
-            let waiting = sleepers
-            sleepers = []
-            for sleeper in waiting { sleeper.resume() }
-        }
-    }
-
     @Test func closeIsDeferredWhileAUseIsInFlightAndHappensAfterItEnds() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
-        let timer = CloseTimer()
-        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { _ in await timer.sleep() })
+        let timer = ManualSleeper()
+        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { await timer.sleep(for: $0) })
         _ = try await session.use { _ in }
 
         await fake.update { $0.hold("status") }
@@ -69,7 +35,8 @@ struct MailPageSessionTests {
         await fake.release("status")
         _ = try await useTask.value // the use is done; the deferred close is armed now
 
-        await timer.waitUntilArmed()
+        try await timer.waitUntilArmed()
+        #expect(await timer.requestedDurations == [Self.idleClose])
         await timer.fire() // the whole idle delay, with no clock
         await fake.waitForArrival("logout")
         #expect(await fake.calls.contains("logout"))
@@ -77,16 +44,16 @@ struct MailPageSessionTests {
 
     @Test func aStaleTimerDoesNothing() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
-        let timer = CloseTimer()
-        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { _ in await timer.sleep() })
+        let timer = ManualSleeper()
+        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { await timer.sleep(for: $0) })
         _ = try await session.use { _ in }
         session.releaseSoon() // arms a close at generation N
-        await timer.waitUntilArmed()
+        try await timer.waitUntilArmed()
         _ = try await session.use { _ in } // cancels it and bumps the generation; nothing re-arms it
 
-        // Fire the superseded timer anyway, exactly as a real `Task.sleep` that raced past its
-        // own `cancel()` by a tick would: whichever of the cancellation check or the generation
-        // guard catches it, no close may happen.
+        // The use's cancel ends the superseded timer's wait, as it ends a real `Task.sleep`; firing
+        // as well covers a timer the cancel never reached. Whichever of the cancellation check or
+        // the generation guard catches it, no close may happen.
         await timer.fire()
         await Task.yield()
         #expect(await fake.calls.contains("logout") == false)
@@ -125,9 +92,9 @@ struct MailPageSessionTests {
         #expect(openCount == 1) // kept, so the next call reused it
     }
 
-    /// Fix round 1: a network/certificate error from one `use(_:)` must not yank the
-    /// connection out from under a *different* `use(_:)` still running concurrently on it —
-    /// the drop has to wait until every in-flight call is done.
+    /// A network or certificate error from one `use(_:)` must not yank the connection out from
+    /// under a different `use(_:)` still running on it: the drop waits until every in-flight
+    /// call is done.
     @Test func anErrorPathDropWaitsForEveryOtherInFlightUseBeforeClosing() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         let session = MailPageSession(idleClose: .seconds(30), open: { fake })
@@ -153,10 +120,10 @@ struct MailPageSessionTests {
         #expect(await fake.calls.contains("logout"))
     }
 
-    /// §7.4: a rejected password is never sent again. `MailAccountManager.openSession()` is the
+    /// A rejected password is never sent again. `MailAccountManager.openSession()` is the
     /// documented choke point for the IMAP sign-in, but SMTP `AUTH LOGIN` happens inside a
-    /// `use(_:)` body and never goes near it — so the session reports an authentication rejection
-    /// from *any* layer, not just the one it opened the connection with.
+    /// `use(_:)` body and never goes near it, so the session reports an authentication rejection
+    /// from any layer, not just the one it opened the connection with.
     @Test func anAuthenticationRejectionFromInsideAUseIsReported() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         var failures = 0

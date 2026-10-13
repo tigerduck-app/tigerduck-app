@@ -1,30 +1,21 @@
 #if os(macOS)
 import SwiftUI
 
-/// macOS Calendar surface.
+/// macOS Calendar surface: a hand-rolled grid laid out like the iPhone `MonthCalendarView`, with
+/// cells sized for a Mac sidebar surface; `DatePicker(.graphical)` looks cramped and unfamiliar.
 ///
-/// Visual contract follows the iPhone `MonthCalendarView` — month
-/// nav chevrons, weekday header row, day cells with event-source
-/// dots — but cells are sized for a Mac sidebar surface rather than
-/// a phone screen. `DatePicker(.graphical)` was tried first and
-/// looked cramped/unfamiliar at this scale; this hand-rolled grid
-/// matches the iPhone look the user already knows.
-///
-/// Source-of-truth is `DataCache.loadCalendarEvents()` (populated by
-/// `appState.backgroundSync()`) merged with the academic calendar's
-/// own rows — see `allEvents`. EventKit overlay (system Calendar
-/// events) is intentionally out of scope on Mac — keeps us out of
-/// the Mac Calendar TCC entitlement.
-///
-/// Holidays and semester boundaries are listed but not actionable: the
-/// iPhone puts a "still remind me" toggle on a holiday row, and macOS
-/// delivers no class reminders for one to switch back on.
+/// Events come from `DataCache.loadCalendarEvents()`, filled by `appState.backgroundSync()`, plus
+/// the academic calendar's own rows (`allEvents`). System Calendar (EventKit) events stay out on
+/// Mac, which keeps the app out of the Calendar TCC entitlement. Holidays and semester boundaries
+/// are shown but not actionable: the iPhone's "still remind me" toggle on a holiday turns class
+/// reminders back on, and macOS delivers no class reminders.
 struct MacCalendarView: View {
     @Environment(AppState.self) private var appState
 
     @State private var selectedDate: Date = Date()
     @State private var displayedMonth: Date = Date()
     @State private var cacheRevision: Int = 0
+    @State private var eventsMemo = ViewMemo<Int, [DateComponents: [SDCalendarEvent]]>()
 
     private let weekdaySymbols: [String] = [
         String(localized: "weekday_sun_short"),
@@ -40,26 +31,24 @@ struct MacCalendarView: View {
 
     /// Cached network events plus the academic calendar's own rows.
     ///
-    /// The academic rows have to be merged in here rather than read off
-    /// disk: they are never cached (`CalendarViewModel` rebuilds them on
-    /// every load for the same reason), so reading `DataCache` alone left
-    /// the Mac with no semester boundaries and no holidays at all. Same
-    /// merge as the iPhone — drop anything stale under those two sources,
-    /// then rebuild from the in-memory calendar.
-    ///
-    /// `AcademicCalendarStore` posts `dataDidUpdate` after a successful
-    /// fetch, so `cacheRevision` re-reads this when the calendar lands.
+    /// The academic rows are never cached, so they are merged in here, as `CalendarViewModel`
+    /// does on every load; `DataCache` alone has no semester boundaries or holidays. As on iPhone,
+    /// drop anything stale under those two sources, then rebuild from the in-memory calendar.
+    /// `AcademicCalendarStore` posts `dataDidUpdate` after a successful fetch, so `cacheRevision`
+    /// re-reads this when the calendar lands.
     private var allEvents: [SDCalendarEvent] {
-        _ = cacheRevision
         let cached = DataCache.shared.loadCalendarEvents()
             .filter { $0.source != .holiday && $0.source != .semester }
         return cached + AcademicCalendarStore.shared.calendar.calendarEvents()
     }
 
+    /// Every day cell reads this, so the cache file is decoded once per `cacheRevision`.
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] {
-        let cal = AppConstants.taipeiCalendar
-        return Dictionary(grouping: allEvents) { event in
-            cal.dateComponents([.year, .month, .day], from: event.date)
+        eventsMemo.value(for: cacheRevision) {
+            let cal = AppConstants.taipeiCalendar
+            return Dictionary(grouping: allEvents) { event in
+                cal.dateComponents([.year, .month, .day], from: event.date)
+            }
         }
     }
 
@@ -326,6 +315,17 @@ private struct DayCell: View {
     let cellHeight: CGFloat
     let onTap: () -> Void
 
+    /// `a11y_calendar_day`'s date argument in the app's Taipei calendar, as on iOS, so the
+    /// spoken date matches the cell for a user west of Taiwan.
+    private var accessibleDateString: String {
+        date.formatted(Date.FormatStyle(
+            date: .complete,
+            time: .omitted,
+            calendar: AppConstants.taipeiCalendar,
+            timeZone: AppConstants.taipeiTimeZone
+        ))
+    }
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 4) {
@@ -333,11 +333,13 @@ private struct DayCell: View {
                     .font(.callout.weight(isToday || isSelected ? .semibold : .regular))
                     .foregroundStyle(textColor)
                     .frame(width: 28, height: 28)
+                    // Selection is the filled circle alone, as on iOS, and `strokeBorder` keeps
+                    // the today ring inside the 28 pt frame, so neither crowds the cell's edge.
                     .background {
                         if isSelected {
                             Circle().fill(.tint)
                         } else if isToday {
-                            Circle().stroke(.tint, lineWidth: 1.5)
+                            Circle().strokeBorder(.tint, lineWidth: 1.5)
                         }
                     }
                     .padding(.top, 4)
@@ -357,17 +359,17 @@ private struct DayCell: View {
             .frame(maxWidth: .infinity)
             .frame(height: cellHeight)
             .contentShape(Rectangle())
-            .background(
-                // Inset by 3pt so the cell highlight doesn't kiss the
-                // day-number circle or the neighbouring column — the bug
-                // in #135 was that the today/selected ring touched the
-                // outer rounded fill with zero breathing room.
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.tint.opacity(isSelected ? 0.08 : 0))
-                    .padding(3)
-            )
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            Text(String(
+                format: String(localized: "a11y_calendar_day"),
+                accessibleDateString,
+                events.count
+            ))
+        )
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     private var textColor: AnyShapeStyle {

@@ -6,10 +6,8 @@ import os
 ///
 /// Rules live in memory as drafts (`pending`) until the user hits save.
 /// That gives the editor a clean undo (just re-load) and avoids hitting
-/// the server on every keystroke. The v3 backend exposes individual CRUD
-/// endpoints, but this store retains the snapshot-replacement model for
-/// simplicity: load all → edit locally → PUT all. Migrating to per-rule
-/// CRUD is tracked separately.
+/// the server on every keystroke. Saving replaces the whole rule set:
+/// load all → edit locally → PUT all.
 @MainActor
 @Observable
 final class BulletinSubscriptionsStore {
@@ -32,9 +30,8 @@ final class BulletinSubscriptionsStore {
     var pending: [BulletinAPI.SubscriptionRule] = []
     private(set) var loadState: LoadState = .idle
     private(set) var saveState: SaveState = .idle
-    /// True when `pending` no longer matches what's on the server. Used by
-    /// the settings page to gate the 儲存 toolbar item — we only want to
-    /// nag the user when there's actual unsaved work.
+    /// True when `pending` differs from what is on the server. The settings page saves on leaving
+    /// only when this is set, so it acts only on actual unsaved work.
     private(set) var isDirty: Bool = false
 
     private var apiClient: BulletinAPIClient
@@ -69,12 +66,9 @@ final class BulletinSubscriptionsStore {
     /// editor opens before APNs registration finishes.
     func load() async {
         if case .loading = loadState { return }
-        // Never overwrite unsaved edits. Earlier iteration of the page
-        // had two paths that could fire `load()` concurrently (view
-        // `.task` + `onChange(of: pushEnabled)`) — the second firing
-        // happily wiped a freshly-added rule to an empty array because
-        // the server had nothing yet. Guarding on `isDirty` lets the
-        // user's in-flight edits survive any number of re-triggers.
+        // Never overwrite unsaved edits: a repeated `load()` would replace a freshly added rule
+        // with the server's list, which may still be empty. Guarding on `isDirty` lets edits
+        // survive any number of re-triggers.
         if isDirty {
             logger.info("subscriptions load skipped (dirty): pendingCount=\(self.pending.count, privacy: .public)")
             return
@@ -87,7 +81,7 @@ final class BulletinSubscriptionsStore {
             loadState = .loaded
             logger.info("subscriptions loaded count=\(response.items.count, privacy: .public)")
         } catch {
-            logger.error("subscription load failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("subscription load failed: \(error.localizedDescription, privacy: .private)")
             loadState = .failed(error.localizedDescription)
         }
     }
@@ -102,14 +96,9 @@ final class BulletinSubscriptionsStore {
     func save() async {
         saveState = .saving
         logger.info("subscription save starting ruleCount=\(self.pending.count, privacy: .public)")
-        // Snapshot the pre-save clientIds in their current order. The server
-        // PUT does delete + insert preserving order, so the response rules
-        // line up with the request rules positionally. We re-attach the
-        // original clientIds to the response so any closure that captured a
-        // rule's clientId before save (e.g. an open editor pushed via
-        // NavigationLink) still finds the row in `update()`'s
-        // `firstIndex(where:)` lookup. Without this, post-save edits
-        // silently no-op because the decoded clientIds are fresh UUIDs.
+        // The PUT deletes and reinserts in order, so response rules line up with the request by
+        // position. Decoded rules get fresh UUIDs, so the pre-save clientIds are restored: any
+        // closure that captured one before the save, like an open editor, must still find its row.
         let snapshotClientIds = pending.map(\.clientId)
         let maxAttempts = 4
         for attempt in 1...maxAttempts {
@@ -134,7 +123,7 @@ final class BulletinSubscriptionsStore {
                 try? await Task.sleep(for: .milliseconds(delayMs))
                 if Task.isCancelled { return }
             } catch {
-                logger.error("subscription save failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("subscription save failed: \(error.localizedDescription, privacy: .private)")
                 saveState = .failed(error.localizedDescription)
                 return
             }
@@ -145,12 +134,9 @@ final class BulletinSubscriptionsStore {
 
     // MARK: - Mutation helpers
 
-    /// Build a blank rule for the editor to work on, *without* touching
-    /// `pending`. The rule is a draft held by the caller — it only
-    /// lands in `pending` when the editor's 完成 path invokes `upsert`.
-    /// This shape lets "tap 新增規則 → swipe-back without 完成" discard
-    /// cleanly instead of persisting an empty placeholder the user didn't
-    /// mean to keep.
+    /// Builds a blank rule for the editor without touching `pending`. The caller holds it as a
+    /// draft until the editor's Done path calls `upsert`, so tapping Add rule and swiping back
+    /// without Done discards it instead of persisting an empty placeholder.
     func makeNewRule() -> BulletinAPI.SubscriptionRule {
         BulletinAPI.SubscriptionRule(
             name: nil,
@@ -163,7 +149,7 @@ final class BulletinSubscriptionsStore {
 
     /// Insert a newly-committed draft or update an existing rule in place.
     /// `isDirty` flips only when the value actually changes, so a no-op
-    /// 完成 tap on an existing rule doesn't force a save.
+    /// Done tap on an existing rule doesn't force a save.
     func upsert(_ rule: BulletinAPI.SubscriptionRule) {
         if let index = pending.firstIndex(where: { $0.clientId == rule.clientId }) {
             if pending[index] != rule {

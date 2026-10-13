@@ -80,17 +80,13 @@ final class FirstTriggerPromptCenter {
     }
 
     /// Called by the sheet's buttons. Marks the prompt seen and clears
-    /// `pending` (dismissing the sheet) BEFORE invoking the user's closure
-    /// so that any synchronous SwiftUI work the closure triggers — e.g.
-    /// mutating `AppState` which fans out to `onChange` observers — runs
-    /// against an already-cleared presentation state.
+    /// `pending`, dismissing the sheet, before running the closure, so any
+    /// synchronous SwiftUI work it triggers (an `AppState` change fanning out
+    /// to `onChange` observers) sees the presentation already cleared.
     ///
-    /// The seen flag is written here, not on `.onAppear`, so that a sheet
-    /// dismissed by anything other than a Keep/Turn-off tap (app backgrounded,
-    /// root view recreated, another presentation steals focus) does NOT count
-    /// as the user having made a choice. Re-showing on a later flip is the
-    /// correct behavior — silently treating "seen" as "agreed to keep it on"
-    /// would arm the gesture without consent.
+    /// Seen is written here, not on `.onAppear`: a sheet dismissed any other
+    /// way (app backgrounded, root view recreated) is not a choice, and counting
+    /// it as one would arm the gesture without consent; a later flip re-shows it.
     func finish(accept: Bool) {
         guard let p = pending else { return }
         markSeen(p.key)
@@ -168,12 +164,9 @@ private struct FirstTriggerPromptSheet: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 40)
         .onAppear {
-            // Heavy impact on sheet appearance so the prompt is felt as well
-            // as seen — every first-trigger prompt is an unexpected interrupt
-            // and the haptic anchors it to the gesture that caused it.
-            //
-            // The "seen" flag is recorded in `finish(accept:)` on a Keep or
-            // Turn-off tap, not here — see that method's comment.
+            // A heavy haptic anchors this unexpected interrupt to the gesture that
+            // caused it. Seen is recorded in `finish(accept:)` on a Keep or Turn-off
+            // tap, not here.
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
         }
     }
@@ -231,14 +224,9 @@ private struct FirstTriggerPromptHost: ViewModifier {
         return content.sheet(
             item: $center.pending,
             onDismiss: {
-                // Defensive cleanup: if the sheet went away by any path
-                // other than a Keep/Turn-off tap (`finish(_:)` marks seen
-                // before clearing `pending`), the seen flag is still
-                // false. Clear the stranded `pending` so the next flip
-                // can re-enter `requestIfFirstTime` and surface the
-                // prompt again — otherwise the user is stuck with
-                // `pending != nil`, default-true `flipToLibraryEnabled`,
-                // and no way to make a choice until process restart.
+                // Any close but a Keep or Turn-off tap leaves the prompt unseen. Clear
+                // a stranded `pending` so the next flip prompts again; otherwise the
+                // default-on `flipToLibraryEnabled` stays with no prompt until relaunch.
                 if let stranded = center.pending,
                    !center.hasSeen(stranded.key) {
                     center.pending = nil
@@ -246,14 +234,9 @@ private struct FirstTriggerPromptHost: ViewModifier {
             }
         ) { pending in
             FirstTriggerPromptSheet(promptKey: pending.key, content: pending.content)
-                // `.medium` clips the animation + 2-button stack on standard
-                // phones. Tall fraction gives the prompt room to breathe
-                // without forcing a full-screen sheet (which would feel
-                // disproportionate for an opt-in question).
-                //
-                // No drag indicator: the user MUST tap Keep or Turn off
-                // (interactiveDismissDisabled) so a visible grab handle
-                // would advertise a gesture that does nothing.
+                // `.medium` clips the animation and both buttons on standard phones, and
+                // full screen is too much for an opt-in question. No drag indicator: the
+                // user can close it only with Keep or Turn off, so a grab handle does nothing.
                 .presentationDetents([.fraction(0.7)])
                 .interactiveDismissDisabled()
         }

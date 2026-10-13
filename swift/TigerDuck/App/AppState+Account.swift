@@ -1,9 +1,6 @@
-// Account state and session transitions — split out of AppState.swift.
-//
-// NTUST (校務系統) login gating, library login, and the widget deep-link
-// drain. Grouped because logout is the thing that ties them together:
-// `logoutNTUST` has to unwind sync, push, and cached course state in one
-// place, and it reads more clearly next to the flags it clears.
+// Account state: NTUST school system login gating, library login and the widget deep-link
+// drain. One file because `logoutNTUST` ties them together: it unwinds sync, push and cached
+// course state in one place, next to the flags it clears.
 
 import SwiftUI
 import SwiftData
@@ -14,15 +11,13 @@ extension AppState {
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
-    /// Canonical gating decision for 校務系統-protected surfaces. Protected
-    /// screens render this state instead of re-deriving from
-    /// ``isNTUSTLoggedIn``. The difference matters: ``isNTUSTLoggedIn``
-    /// flips to `false` the moment session cookies TTL, even when the
-    /// keychain still holds credentials and the next fetch will silently
-    /// re-authenticate. Gating on ``hasStoredCredentials`` implements the
-    /// cached-first UX — cached content keeps rendering during a silent
-    /// re-auth, and the interactive login prompt is reserved for users
-    /// who truly have nothing stored.
+    /// Canonical gating decision for screens behind the NTUST school system.
+    /// Protected screens render this state instead of deriving it from
+    /// ``isNTUSTLoggedIn``, which turns `false` as soon as the session cookies
+    /// expire, even when the keychain still holds credentials and the next fetch
+    /// will re-authenticate silently. Gating on ``hasStoredCredentials`` keeps cached
+    /// content on screen during a silent re-auth and reserves the interactive login
+    /// prompt for users who have nothing stored.
     func ntustProtectedAccessState(isEmpty: Bool) -> NTUSTProtectedAccessState {
         if !authService.hasStoredCredentials { return .loginRequired }
         return isEmpty ? .empty : .content
@@ -77,19 +72,20 @@ extension AppState {
     }
 
     /// Full NTUST logout: cancel any in-flight background sync, invalidate
-    /// credentials, tear down the Live Activity, and purge user-scoped
-    /// caches so a subsequent login (possibly a different user) never
-    /// inherits previous state on the lock screen or in notifications.
+    /// credentials, end the Live Activity and purge user-scoped caches, so the
+    /// next login (possibly another user) never inherits this state on the lock
+    /// screen or in notifications.
     ///
-    /// `syncTask` is cancelled first so that `AppServiceBridge` and the
-    /// `backgroundSync` finalize block — both of which check
-    /// `Task.isCancelled` before writing — abort cleanly rather than racing
-    /// the cache purge below and resurrecting the previous user's data.
-    func logoutNTUST() {
+    /// `syncTask` is cancelled first: `AppServiceBridge` and the `backgroundSync`
+    /// finalize block check `Task.isCancelled` before writing, so they abort
+    /// instead of racing the cache purge and restoring the previous user's data.
+    @discardableResult
+    func logoutNTUST() -> Task<Void, Never> {
         stopRevisionPolling()
         _lastKnownRevision = 0
         syncTask?.cancel()
         syncTask = nil
+        AppServiceBridge.cancelAssignmentRound()
         #if os(iOS)
         pendingRefreshTask?.cancel()
         pendingRefreshTask = nil
@@ -97,22 +93,47 @@ extension AppState {
         boundaryRefreshTask = nil
         #endif
 
+        let departingStudentId = authService.storedStudentId
         authService.logout()
-        Task { await authTokenManager.logout() }
-        // The tracker is process-wide and outlives the account, so the
-        // departing user's last good sync would otherwise still be sitting
-        // there for the next account to inherit — green from the moment the
-        // header dot comes back, before anything has actually synced.
+        // A library account signed in with this school account goes with it.
+        if let departingStudentId, LibraryService.clearCredentials(ifSchoolAccount: departingStudentId) {
+            _libraryRevision += 1
+        }
+        // The session ends now. Only the device's unregister below still goes out as the departing
+        // account, with the token this hands back; without it the device keeps getting that
+        // account's reminders.
+        let endingSession = Task { await authTokenManager.endSession() }
+        // The tracker is process-wide and outlives the account. Without a reset the next
+        // account inherits the departing user's last good sync, and the header dot shows
+        // green before anything has synced.
         ServerStatusTracker.shared.reset()
+        Defaults[.schoolDataSyncedAt] = nil
+        // The next account opens the class table on the newest term, not on this one's pick.
+        Defaults[.classTableSelectedSemester] = nil
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.
         didSkipMacLogin = false
+        // The downloaded files go with the cache below; a download still running would only
+        // be thrown away once it ends.
+        MoodleFileDownloads.shared.cancelAll()
         DataCache.shared.clearUserScopedData()
-        // Holiday choices are account-scoped and live in UserDefaults rather
-        // than the cache, so `clearUserScopedData` does not reach them. The
-        // queue goes first: a link still waiting to run would otherwise send
-        // the departing user's toggle over the next account's session.
+        // The colours held in memory went with the file only when a class table reloaded, and
+        // the next account's first colour write would save the departing account's whole map.
+        TigerDuckTheme.reload()
+        ImportedClassTableStore.shared.removeAll()
+        BulletinsViewModel.forgetListSession()
+        // Unresolved conflicts come from the departing account's data; resolving one would write
+        // its server marks into the next account's caches, or upload its own to that account.
+        syncConflicts = []
+        pendingSyncServerArchived = []
+        pendingSyncServerCompleted = []
+        reenableConflict = nil
+        Self.forgetSyncProgress()
+        pushCoordinator.forgetUploads()
+        // Holiday choices are account-scoped but live in UserDefaults, out of reach of
+        // `clearUserScopedData`. Cancel the queue first, or a link still waiting to run
+        // sends the departing user's toggle over the next account's session.
         cancelHolidayUploads()
         AcademicCalendarStore.shared.forgetHolidayOverrides()
         // Same hazard, same fix, for the notification-settings push queue:
@@ -121,18 +142,35 @@ extension AppState {
         #if os(iOS)
         cancelNotificationSettingsPushes()
         #endif
-        // Signing out turns 同步課程資訊 off, the way every other writer does —
-        // through the preference — so the change runs its usual course in
-        // `cloudSyncEnabledDidChange(to:)`.
+        // Signing out turns "Sync course information" off through the preference, so the change
+        // runs its usual course, but its PATCH finds no session: the server would take it as the
+        // account turning sync off and delete its synced data when no other device syncs it.
         cloudSyncEnabled = false
-        Task { @MainActor in
+        // Before the network calls below, which offline run until they time out: the widgets
+        // show the departing account's timetable until this rewrites their snapshot.
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        // A sign-in as another account waits for this, so none of it lands on that account.
+        return Task { @MainActor in
             await cloudSyncCoordinator.settleForSignOut()
-            await pushCoordinator.disable()
+            let departing = AuthTokenManager.DepartingAccount(accessToken: await endingSession.value)
+            await AuthTokenManager.$departing.withValue(departing) { await pushCoordinator.disable() }
             #if os(iOS)
             await liveActivityCoordinator.endAll()
             #endif
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
+    }
+
+    /// Forgets how far the departing account's sync got on this device, which lives in `Defaults`,
+    /// out of reach of `clearUserScopedData`. A re-enable check left pending would keep the next
+    /// account's pulls off the categories it names and hold the account's marks and course settings
+    /// until a Settings visit ran it, on a device the sign-out emptied: Keep Local there clears the
+    /// account's marks on the server. Until a sync of the next account takes a category, nothing
+    /// marks that category for the check (`hasSynced`).
+    static func forgetSyncProgress() {
+        Defaults[.pendingConflictCategories] = []
+        Defaults[.assignmentMarksSyncedOnce] = false
+        Defaults[.lastSeenCoursesResetAt] = nil
+        Defaults[.categoriesSyncedOnce] = []
     }
 
     func notifyLibraryStateChanged() {

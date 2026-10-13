@@ -3,10 +3,10 @@ import Foundation
 
 /// How a mail connection gets to TLS.
 ///
-/// The real school path is `implicitTLS` on both ports and nothing else (design doc §1.1:
-/// IMAP 993, SMTP 465, never 25/143/587). The other two cases exist only so a DEBUG build can
-/// be pointed at a server that speaks them; see `MailServerConfig.resolve(override:)`, which
-/// refuses to apply either one to a pinned school host.
+/// The real school path is `implicitTLS` on both ports and nothing else: IMAP 993 and SMTP 465,
+/// never 25, 143 or 587. The other two cases exist only so a DEBUG build can be pointed at a
+/// server that speaks them; see `MailServerConfig.resolve(override:)`, which refuses to apply
+/// either one to a pinned school host.
 nonisolated enum MailTransportScheme: String, Codable, CaseIterable, Sendable {
     /// TLS from the first byte — what the school server uses on 993 and 465.
     case implicitTLS
@@ -27,16 +27,13 @@ nonisolated enum MailTransportScheme: String, Codable, CaseIterable, Sendable {
     }
 }
 
-/// The mail server School Mail actually talks to, resolved in **one** place.
+/// The mail server School Mail talks to, resolved in one place.
 ///
-/// Every read site — `LiveMailClient`'s IMAP and SMTP connections, the address the app writes
-/// in `From`, and the domain `MailWarnings` measures "external" and mistyped recipients
-/// against — goes through `effective`, so a single answer decides all of them and they can
-/// never disagree.
-///
-/// In a Release build `effective` *is* `school`, with no branch that could return anything
-/// else: the override's type, storage and screen are all inside `#if DEBUG` and do not exist
-/// to be read from (`DevMailServerOverride.swift`).
+/// Every read site goes through `effective`: `LiveMailClient`'s IMAP and SMTP connections, the
+/// address the app writes in `From`, and the domain `MailWarnings` measures external and
+/// mistyped recipients against. One answer decides all of them, so they never disagree. In a
+/// Release build `effective` is `school`, with no branch that could return anything else: the
+/// override's type, storage and screen are all inside `#if DEBUG` (`DevMailServerOverride.swift`).
 nonisolated struct MailServerConfig: Equatable, Sendable {
     /// The domain of the user's own address — what `MailConstants.address(forStudentID:)`
     /// appends and what `MailWarnings.schoolMailDomain` measures typos against.
@@ -57,7 +54,7 @@ nonisolated struct MailServerConfig: Equatable, Sendable {
     /// creates Mail2000's role folders on whatever server is in force.
     var isOverridden: Bool
 
-    /// Design doc §1.1 and Appendix A.6, unchanged: IMAP 993 and SMTP 465, both implicit TLS.
+    /// The real school configuration: IMAP 993 and SMTP 465, both implicit TLS.
     static let school = MailServerConfig(
         addressDomain: MailConstants.addressDomain,
         organizationDomain: "ntust.edu.tw",
@@ -91,22 +88,14 @@ nonisolated struct MailServerConfig: Equatable, Sendable {
         return domain == organization || domain.hasSuffix("." + organization)
     }
 
-    /// The transport `host` may actually use, given the one that was asked for.
-    ///
-    /// The override may not weaken the real school connection. `MailTLSVerifier` is already
-    /// safe by construction on the *certificate* side — it evaluates the system chain and the
-    /// hostname first, then looks the host up in `TLSPinningDelegate`'s table, so an overridden
-    /// host is simply unpinned while still fully system-validated, and naming the school host
-    /// brings its pins straight back. What that argument does not cover is a transport with no
-    /// certificate to check at all: `plaintext` never installs a TLS handler, so the verifier
-    /// is never consulted, and `startTLS` would put the greeting and the STARTTLS negotiation
-    /// itself in the clear. Either one, aimed at `mail.ntust.edu.tw`, is a downgrade of the
-    /// real school connection however the pin table would have answered.
-    ///
-    /// So a pinned host keeps implicit TLS no matter what the override asks for. "Pinned" is
-    /// read from the pin table itself rather than from a second copy of the suffix rule, so the
-    /// clamp follows the table when it changes; a past-expiry set still answers `.expired`
-    /// here, which is not `.notPinned`, and the host stays clamped.
+    /// The transport `host` may use, given the one that was asked for. The override may not
+    /// weaken the real school connection. `MailTLSVerifier` already covers certificates: it checks
+    /// the system chain and hostname before the pin table, so an overridden host is unpinned but
+    /// fully system-validated, and naming the school host brings its pins back. It cannot cover a
+    /// transport with no certificate to check: `plaintext` never consults it, and `startTLS` sends
+    /// the greeting and STARTTLS negotiation in the clear. So a pinned host keeps implicit TLS
+    /// whatever the override asks. "Pinned" comes from the pin table, so the clamp follows it; a
+    /// past-expiry set answers `.expired`, not `.notPinned`, so its host stays clamped.
     static func transportScheme(for host: String, requested: MailTransportScheme) -> MailTransportScheme {
         isPinnedHost(host) ? .implicitTLS : requested
     }

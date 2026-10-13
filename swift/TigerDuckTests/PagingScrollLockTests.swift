@@ -27,11 +27,10 @@ struct PagingScrollLockTests {
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(300))
+        // The pager may build its pages after this pass, so wait for the lock to attach.
+        try await waitUntil { Self.lockViews(in: host.view).first?.attachedPager != nil }
 
-        let locks = Self.descendants(of: host.view)
-            .compactMap { $0 as? PagingScrollLock.LockView }
-        let lock = try #require(locks.first, "the representable should be in the hierarchy")
+        let lock = try #require(Self.lockViews(in: host.view).first, "the representable should be in the hierarchy")
 
         // Without this the rest of the test passes vacuously: a lock that
         // never found the pager also never disables anything.
@@ -56,6 +55,10 @@ struct PagingScrollLockTests {
         #expect(
             PagingScrollLock.isForwardDrag(translationX: CGFloat(dx), isRTL: isRTL) == isForward
         )
+    }
+
+    private static func lockViews(in view: UIView) -> [PagingScrollLock.LockView] {
+        descendants(of: view).compactMap { $0 as? PagingScrollLock.LockView }
     }
 
     private static func descendants(of view: UIView) -> [UIView] {

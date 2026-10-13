@@ -2,15 +2,14 @@
 import Foundation
 import os
 
-/// Versioned JSON caches for folder lists and opened mail (design doc §8.1). The server
-/// is the source of truth: anything unreadable is deleted and refetched. Files are
-/// protected `completeUntilFirstUserAuthentication`, so a locked-phone background check
-/// can still write them, and the directory is excluded from backup.
+/// Versioned JSON caches for folder lists and opened mail. The server is the source of
+/// truth: anything unreadable is deleted and refetched. Files are protected
+/// `completeUntilFirstUserAuthentication`, so a locked-phone background check can still
+/// write them, and the directory is excluded from backup.
 ///
-/// `nonisolated`, not an `actor`: this type only serializes its own file I/O with an
-/// internal lock, it does not hop actors for its callers. Callers are responsible for
-/// keeping their own use of it off the main actor (background refresh, view model
-/// loads on a background task) — every method here does synchronous disk I/O.
+/// `nonisolated`, not an `actor`: an internal lock serializes its own file I/O, and it never
+/// hops actors for callers. Every method does synchronous disk I/O, so callers keep their use
+/// of it off the main actor (background refresh, view model loads on a background task).
 nonisolated final class MailCache: @unchecked Sendable {
     /// Still 1 with raw sources added, deliberately. A source lands under a filename no earlier
     /// build ever wrote (`…-source.json`), so no old file is reinterpreted and nothing a new
@@ -147,7 +146,8 @@ nonisolated final class MailCache: @unchecked Sendable {
 
     // MARK: Attachments
 
-    /// A fresh file for an opened attachment; removed by `clearAll()` (sign-out).
+    /// A fresh file for an opened attachment. No budget bounds these, so each call first deletes
+    /// those opened over a day earlier; `clearAll()` (sign-out) removes the rest.
     ///
     /// `filename` comes from the server (RFC 2047-decoded), so `.` or `..` would otherwise
     /// resolve `appendingPathComponent` up out of this call's fresh per-attachment UUID folder —
@@ -155,8 +155,10 @@ nonisolated final class MailCache: @unchecked Sendable {
     /// generic `attachment` instead; `/` is still replaced so nothing but the final path
     /// component can be attacker-influenced.
     func temporaryFileURL(filename: String) throws -> URL {
-        let folder = directory.appendingPathComponent("attachments", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let attachments = directory.appendingPathComponent("attachments", isDirectory: true)
+        let cutoff = Date().addingTimeInterval(-MailConstants.openedAttachmentLifetime)
+        lock.withLock { removeEntries(in: attachments, modifiedBefore: cutoff) }
+        let folder = attachments.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try createDirectory(folder)
         return folder.appendingPathComponent(Self.safeAttachmentName(filename))
     }
@@ -228,13 +230,10 @@ nonisolated final class MailCache: @unchecked Sendable {
     /// The bodies/sources write path: an entry over `maxEntryBytes` is skipped outright instead
     /// of being written and then swept up by `pruneBodies()`.
     ///
-    /// Writing first and pruning after is what makes one huge entry destructive. It lands as the
-    /// newest file, so the sweep walks the whole cache oldest-first evicting everything else to
-    /// get under the limit, and then — still over it — evicts the new entry too. A 28 MB
-    /// delivery-failure notice returning a base64 attachment (a real one the author received)
-    /// therefore emptied the entire cache and cached nothing, on every visit. Checking the
-    /// encoded size up front means an oversized entry never touches disk and never disturbs the
-    /// LRU order of what is already there.
+    /// Written first, a huge entry is the newest file, so the sweep evicts everything else
+    /// oldest-first, is still over the limit, and evicts the new entry too: a 28 MB bounce with
+    /// a base64 attachment would empty the cache and cache nothing, on every visit. Checking the
+    /// encoded size first keeps an oversized entry off disk and leaves the LRU order alone.
     private func writeBounded<T: Codable>(_ value: T, to url: URL) {
         guard let data = encoded(value) else { return }
         guard data.count <= maxEntryBytes else {
@@ -280,6 +279,14 @@ nonisolated final class MailCache: @unchecked Sendable {
         return urls.map { url in
             let values = try? url.resourceValues(forKeys: Set(keys))
             return (url, values?.fileSize ?? 0, values?.contentModificationDate ?? .distantPast)
+        }
+    }
+
+    private func removeEntries(in folder: URL, modifiedBefore cutoff: Date) {
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey]
+        let entries = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys))) ?? []
+        for entry in entries where ((try? entry.resourceValues(forKeys: keys))?.contentModificationDate ?? .distantPast) < cutoff {
+            try? FileManager.default.removeItem(at: entry)
         }
     }
 

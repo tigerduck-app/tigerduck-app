@@ -19,10 +19,9 @@ private struct MacUpdatePrompt: ViewModifier {
             isPresented: Binding(
                 get: { notice != nil },
                 set: { presented in
-                    // Runs after a button's own action, and alone when the
-                    // alert goes away without one. Clearing without the
-                    // Later stamp leaves the next throttled check free to
-                    // offer the version again, as on the iPhone.
+                    // Runs after a button's own action, or alone when the alert closes without
+                    // one. Clearing without the Later stamp lets the next throttled check offer
+                    // the version again, as on the iPhone.
                     guard !presented else { return }
                     coordinator.pendingUpdate = nil
                     coordinator.lastManualCheckResult = nil

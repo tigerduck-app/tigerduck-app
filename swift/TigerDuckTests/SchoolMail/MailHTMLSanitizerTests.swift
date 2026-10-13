@@ -1,6 +1,8 @@
 #if os(iOS)
 import Foundation
 import Testing
+import UIKit
+import WebKit
 @testable import TigerDuck
 
 struct MailHTMLSanitizerTests {
@@ -70,13 +72,102 @@ struct MailHTMLSanitizerTests {
         #expect(!html.contains("svg+xml"))
     }
 
-    /// Fix round 1 (2026-09-16, minor): the data-image check requires the MIME subtype to be
-    /// followed immediately by `;` or `,`, matching Android's `DATA_IMAGE` regex exactly — a
-    /// naive prefix check would let a lookalike like `data:image/pngx,...` through.
+    /// The data-image check requires the MIME subtype to be followed immediately by `;` or `,`,
+    /// matching Android's `DATA_IMAGE` regex. A plain prefix check would let a lookalike such as
+    /// `data:image/pngx,...` through.
     @Test func dataImageCheckRequiresExactMimeBoundary() {
         let html = MailHTMLSanitizer.sanitize("<img src=\"data:image/pngx,AAAA\">", allowRemoteImages: false).html
         #expect(!html.contains(" src="))
         #expect(!html.contains("data:image/pngx"))
+    }
+
+    /// #226: a fixed inline height outranked the page's `height:auto`, so an image narrowed to
+    /// the screen kept its full height and came out stretched.
+    @Test func aFixedImageBoxBecomesAWidthAndARatio() {
+        let outlook = MailHTMLSanitizer.sanitize(
+            "<img src=\"cid:poster@x\" width=\"546\" height=\"772\" style=\"width:5.6875in;height:8.0416in\">",
+            allowRemoteImages: false
+        ).html
+        #expect(outlook.contains("style=\"width: 5.6875in; aspect-ratio: 5.6875 / 8.0416\""))
+        let heldBack = MailHTMLSanitizer.sanitize(
+            "<img src=\"https://x.example/p.png\" style=\"width:600px;height:848px\">",
+            allowRemoteImages: false
+        ).html
+        #expect(heldBack.contains("style=\"width: 600px; aspect-ratio: 600 / 848\""))
+        #expect(MailHTMLSanitizer.keepingAspectRatio("display: block; width: 3000PX; height: 1000px !important")
+            == "display: block; width: 3000PX; aspect-ratio: 3000 / 1000")
+    }
+
+    @Test(arguments: [
+        "height: 40px",
+        "height: 40px; width: auto",
+        "width: 100%; height: 2px",
+        "width: 546px; height: 8in",
+        "width: 546px; width: 100%; height: 772px",
+        "height: auto !important; width: 600px; height: 300px",
+        "width: 600foo; height: 300foo",
+        "width: 0px; height: 24px",
+    ])
+    func otherImageSizesAreLeftAlone(style: String) {
+        #expect(MailHTMLSanitizer.keepingAspectRatio(style) == nil)
+    }
+
+    /// The rewrite as WebKit draws it on the mail page: narrowed to a phone, a loaded picture and
+    /// a held-back one keep their ratio, and on a wide page both keep the sender's 546x772 box.
+    /// CI picks it by name to run after the other tests: see `webkit_tests` in
+    /// `.github/workflows/tests.yaml`.
+    @MainActor
+    @Test(arguments: [375.0, 1280.0])
+    func aFixedImageBoxKeepsItsRatioOnThePage(pageWidth: Double) async throws {
+        let size = CGSize(width: 546, height: 772)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let png = UIGraphicsImageRenderer(size: size, format: format).pngData { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        let box = "style=\"width:5.6875in;height:8.0416in\""
+        let html = MailHTMLSanitizer.sanitize(
+            "<img src=\"data:image/png;base64,\(png.base64EncodedString())\" \(box)><img src=\"https://x.example/p.png\" \(box)>",
+            allowRemoteImages: false
+        ).html
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: pageWidth, height: 800))
+        let webView = WKWebView(frame: window.bounds)
+        window.addSubview(webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        webView.loadHTMLString(MailWebViewFactory.document(for: html, allowRemoteImages: false), baseURL: nil)
+
+        let boxes = await Self.imageBoxes(in: webView, count: 2)
+        #expect(boxes.count == 2)
+        for box in boxes {
+            #expect(abs(box.width / box.height - size.width / size.height) < 0.005, "\(box)")
+            if pageWidth < size.width {
+                #expect(box.width < pageWidth, "narrowed to the page: \(box)")
+            } else {
+                #expect(abs(box.width - size.width) < 0.5 && abs(box.height - size.height) < 0.5, "the sender's box: \(box)")
+            }
+        }
+    }
+
+    /// Each `<img>`'s laid-out box once the page, and every picture on it, has loaded.
+    @MainActor
+    private static func imageBoxes(in webView: WKWebView, count: Int) async -> [CGSize] {
+        let probe = """
+            document.readyState == "complete" && document.images.length == \(count)
+                ? JSON.stringify(Array.from(document.images, i => { const r = i.getBoundingClientRect(); return [r.width, r.height]; }))
+                : ""
+            """
+        for _ in 0..<200 {
+            if let json = try? await webView.evaluateJavaScript(probe) as? String, !json.isEmpty,
+               let pairs = try? JSONDecoder().decode([[Double]].self, from: Data(json.utf8)) {
+                return pairs.map { CGSize(width: $0[0], height: $0[1]) }
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        Issue.record("the page never finished loading")
+        return []
     }
 
     @Test func collectsLinksWithTheirText() {
@@ -85,9 +176,8 @@ struct MailHTMLSanitizerTests {
     }
 
     /// Ported from Android's `HtmlSanitizerTest` ("links are extracted with their visible
-    /// text"), fix round 1 (2026-09-16, minor): an evil href behind NTUST-looking visible
-    /// text, plus a `mailto:` link, so a sanitizer that dropped everything couldn't
-    /// accidentally pass the negative tests.
+    /// text"): an evil href behind NTUST-looking visible text, plus a `mailto:` link, so a
+    /// sanitizer that dropped everything could not pass the negative tests by accident.
     @Test func linksKeepEvilHrefsBehindTrustedLookingText() {
         let result = MailHTMLSanitizer.sanitize(
             "<a href=\"https://evil.example/login\">https://www.ntust.edu.tw</a> <a href=\"mailto:a@b.tw\">mail</a>",
@@ -99,13 +189,12 @@ struct MailHTMLSanitizerTests {
         ])
     }
 
-    /// Fix round 1 (2026-09-16, IMPORTANT): SwiftSoup's `Whitelist` validates a URL
-    /// attribute's *trimmed* value but by default writes out the *original* untrimmed bytes.
-    /// Left unfixed, `href=" https://evil.example/login"` (or an entity-decoded `&#x0a;`/
-    /// `&#x09;` control-character prefix) would survive into both `links[].href` and the
-    /// output HTML — `URL(string:)` on that returns nil, silently disabling the A.4
-    /// link-mismatch warning, while WebKit still navigates the untrimmed link. The fix
-    /// mirrors the `src` handling above: trim and write the value back before collecting it.
+    /// SwiftSoup's `Whitelist` validates a URL attribute's trimmed value but by default writes
+    /// out the original untrimmed bytes. Without trimming, `href=" https://evil.example/login"`
+    /// (or an entity-decoded `&#x0a;` or `&#x09;` prefix) would reach both `links[].href` and the
+    /// output HTML. `URL(string:)` returns nil for it, silently disabling the link-mismatch
+    /// warning, while WebKit still navigates the untrimmed link. Like the `src` handling above,
+    /// the sanitizer trims the value and writes it back before collecting it.
     @Test func trimsHrefWhitespaceBeforeChecking() {
         for prefix in [" ", "\t", "\n", "&#x0a;", "&#x09;"] {
             let html = "<a href=\"\(prefix)https://www.ntust.edu.tw\">x</a>"
@@ -115,10 +204,9 @@ struct MailHTMLSanitizerTests {
         }
     }
 
-    /// Fix round 1 (2026-09-16, minor): link text loses bidi controls too, the same as
-    /// sender names/subjects/attachment names (Task 3's `MailTextCleaner`), mirroring
-    /// Android's `TextCleaning.clean(it.text())` — so a bidi override can't disguise what a
-    /// link's visible text says.
+    /// Link text loses bidi controls too, like sender names, subjects and attachment names
+    /// (`MailTextCleaner`), mirroring Android's `TextCleaning.clean(it.text())`, so a bidi
+    /// override cannot disguise what a link's visible text says.
     @Test func linkTextLosesBidiControls() {
         let result = MailHTMLSanitizer.sanitize(
             "<a href=\"https://example.tw\">invoice\u{202E}fdp.exe</a>",
@@ -127,9 +215,9 @@ struct MailHTMLSanitizerTests {
         #expect(result.links == [MailLink(text: "invoicefdp.exe", href: "https://example.tw")])
     }
 
-    /// Ported from Android's `HtmlSanitizerTest` ("formatting and safe styles are kept"),
-    /// fix round 1 (2026-09-16, minor): a positive test so a sanitizer that dropped
-    /// everything couldn't accidentally pass the negative/corpus tests.
+    /// Ported from Android's `HtmlSanitizerTest` ("formatting and safe styles are kept"): a
+    /// positive test, so a sanitizer that dropped everything could not pass the negative and
+    /// corpus tests by accident.
     @Test func formattingAndSafeStylesAreKept() {
         let html = MailHTMLSanitizer.sanitize(
             "<p style=\"color: red; position: fixed\">Hi <b>there</b></p><table border=\"1\"><tr><td colspan=\"2\">x</td></tr></table>",
@@ -166,12 +254,8 @@ struct MailHTMLSanitizerTests {
 
 
     // MARK: rewriteLinks and its fail-closed strip
-    //
-    // `rewriteLinks` is what stands between the web view and a live sender-supplied URL: every
-    // `<a href>` becomes `https://link.invalid/<n>` and the real href is handed back out of
-    // band, so a tap is answered by index and WebKit never holds the attacker's URL. When the
-    // anchors can't be kept in lockstep with that list, nothing is guessed — every `href` is
-    // stripped. Until now only the happy path had any coverage at all.
+    // Every href becomes `https://link.invalid/<n>`, an index into a returned list, so WebKit never
+    // holds the sender's URL. If anchors and list fall out of lockstep, every href is stripped.
 
     @Test func rewriteLinksReplacesEveryHrefAndReportsTheOriginals() {
         let result = MailHTMLSanitizer.rewriteLinks(

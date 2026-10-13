@@ -1,8 +1,7 @@
 import Defaults
 import Foundation
 
-/// Persists network-fetched data to disk so it survives app restarts.
-/// Uses JSON files in the app's caches directory.
+/// Persists network-fetched data to disk as JSON files so it survives app restarts.
 ///
 /// Stays on `@MainActor` (the module-default isolation under
 /// `SWIFT_APPROACHABLE_CONCURRENCY = YES`) because the public surface
@@ -18,26 +17,30 @@ final class DataCache {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    private init() {
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("TigerDuckCache", isDirectory: true)
+    private convenience init() {
+        self.init(
+            cacheDir: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("TigerDuckCache", isDirectory: true),
+            persistentDir: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("TigerDuckData", isDirectory: true)
+        )
+    }
+
+    /// The app uses ``shared``; a test passes directories of its own, out of the app's caches.
+    init(cacheDir: URL, persistentDir: URL) {
         do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
         } catch {
             AppLogger.captureError(error, context: ["phase": "dataCache.createCacheDir"])
         }
-        cacheDir = dir
+        self.cacheDir = cacheDir
 
-        let persistent = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("TigerDuckData", isDirectory: true)
         do {
-            try FileManager.default.createDirectory(at: persistent, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: persistentDir, withIntermediateDirectories: true)
         } catch {
             AppLogger.captureError(error, context: ["phase": "dataCache.createPersistentDir"])
         }
-        persistentDir = persistent
-
-        absorbLegacyCourseCache()
+        self.persistentDir = persistentDir
     }
 
     // MARK: - Courses (semester + language-scoped)
@@ -90,14 +93,12 @@ final class DataCache {
 
     /// When this device last reset each term.
     ///
-    /// A `/sync/full` snapshot is fetched, then reconciled after the
-    /// assignment overrides and their PATCHes. One fetched before a reset
-    /// still carries the pre-reset roster; merged into the freshly cleared
-    /// cache it put the whole roster back, for the reset's own refetch to
-    /// upload — from the resetting device, whose upload releases its own
-    /// reset tombstones. The reconcile leaves a term alone when the
-    /// snapshot predates its reset, and drops the stamp once a snapshot
-    /// clearly newer has been reconciled.
+    /// A `/sync/full` snapshot is fetched, then reconciled after the assignment overrides and
+    /// their PATCHes. One fetched before a reset still carries the pre-reset roster: merged
+    /// into the cleared cache, it would put the roster back for the reset's own refetch to
+    /// upload from the resetting device, whose upload releases its own reset tombstones. The
+    /// reconcile leaves a term alone when the snapshot predates its reset, and drops the stamp
+    /// once a clearly newer snapshot has been reconciled.
     func loadSemesterResetAt() -> [String: Date] {
         (UserDefaults.standard.dictionary(forKey: Self.semesterResetAtKey) as? [String: Date]) ?? [:]
     }
@@ -108,15 +109,13 @@ final class DataCache {
         UserDefaults.standard.set(all, forKey: Self.semesterResetAtKey)
     }
 
-    /// Drops the stamps a snapshot fetched at `fetchedAt` has outlived:
-    /// those more than `semesterResetGrace` older than it.
+    /// Drops the stamps a snapshot fetched at `fetchedAt` has outlived: those more than
+    /// `semesterResetGrace` older than it.
     ///
-    /// A stamp has done its job once a snapshot clearly newer than the
-    /// reset has been reconciled — an overlapping sync's older snapshot is
-    /// at most seconds behind, never a minute. Dropping it then is what
-    /// keeps a wall clock that later steps backwards from muting the term
-    /// for good: the stamp would otherwise sit ahead of every fetch time
-    /// until the clock caught up with it.
+    /// A stamp has done its job once a snapshot clearly newer than the reset has been
+    /// reconciled; an overlapping sync's older snapshot is at most seconds behind, never a
+    /// minute. Dropping it then keeps a wall clock that later steps backwards from muting the
+    /// term for good, with the stamp ahead of every fetch time until the clock catches up.
     func clearSemesterResets(outlivedBy fetchedAt: Date) {
         let all = loadSemesterResetAt()
         let kept = all.filter { fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }
@@ -163,12 +162,9 @@ final class DataCache {
         let dtos: [CachedCourse] = load(from: "user_added_courses.json", in: persistentDir) ?? []
         let customNames = loadCourseCustomNames()
         return dtos.map { dto in
-            // User-added courses have no network refresh source, so we must
-            // never blank `courseName` even when it matches the alias — the
-            // cached value is the only fallback label after the user reverts
-            // the rename. The semester load path opts in via
-            // `clearPollutedCanonical: true` because a fresh API fetch will
-            // restore the real name.
+            // User-added courses have no network refresh, so never blank `courseName` here,
+            // even when it matches the alias: it is the only label left once the user reverts a
+            // rename. Semester loads pass `true`, as a fresh API fetch restores their names.
             applyCustomNameOverlay(
                 dto.toSDCourse(),
                 customNames: customNames,
@@ -177,18 +173,14 @@ final class DataCache {
         }
     }
 
-    /// Apply the persisted alias overlay to a freshly-decoded SDCourse.
+    /// Applies the persisted alias overlay to a freshly decoded `SDCourse`.
     ///
-    /// When `clearPollutedCanonical` is true and `customNames[courseNo]`
-    /// equals the cached `courseName`, treat that as the pre-PR overwrite
-    /// signature (where the rename flow wrote the alias straight into
-    /// `courseName`) and clear `courseName` so `displayName` resolves to
-    /// the alias via `customName` only — and "Revert to default" surfaces
-    /// an empty canonical until the next network refresh repopulates it.
-    /// Callers that have no network refresh source (e.g. user-added
-    /// courses) MUST pass `false` so we never destroy the only available
-    /// fallback label; for those entries revert may visibly preserve the
-    /// alias-as-canonical, which is the most truthful recovery available.
+    /// With `clearPollutedCanonical`, a cached `courseName` equal to the alias is cleared: it
+    /// marks a build whose rename flow wrote the alias there. `displayName` then resolves to
+    /// the alias through `customName` alone, and "Revert to default" shows an empty name until
+    /// the next network refresh. Callers with no network refresh source, such as user-added
+    /// courses, must pass `false` to keep their only fallback label; reverting one may then
+    /// keep the alias as its name, the most truthful recovery available.
     private func applyCustomNameOverlay(
         _ course: SDCourse,
         customNames: [String: [String: String]],
@@ -211,16 +203,48 @@ final class DataCache {
         save(dtos, to: "assignments.json")
     }
 
-    func loadAssignments() -> [SDAssignment] {
+    func loadAssignments(semester: String = CourseSelectionService.currentSemesterCode()) -> [SDAssignment] {
         let dtos: [CachedAssignment] = load(from: "assignments.json") ?? []
-        let archivedIds = loadArchivedAssignmentIds()
-        let locallyCompletedIds = loadLocallyCompletedAssignmentIds()
-        return dtos.map { dto in
-            let a = dto.toSDAssignment()
-            if archivedIds.contains(a.assignmentId) { a.isArchived = true }
-            if locallyCompletedIds.contains(a.assignmentId) { a.isLocallyCompleted = true }
-            return a
-        }
+        let marks = assignmentMarks(semester: semester)
+        return dtos.map { marks.apply(to: $0.toSDAssignment()) }
+    }
+
+    /// The marks ``loadAssignments(semester:)`` applies, for a fetch building its rows from
+    /// Moodle's answer. `semester` is the term the assignments are fetched for.
+    func assignmentMarks(semester: String) -> AssignmentMarks {
+        AssignmentMarks(
+            archivedIds: loadArchivedAssignmentIds(),
+            locallyCompletedIds: loadLocallyCompletedAssignmentIds(),
+            ignoredCourses: loadIgnoredAssignmentCourses(),
+            semester: semester
+        )
+    }
+
+    // MARK: - Courses whose assignments are all ignored (local, persistent)
+
+    /// `CourseTombstone.key(semester:courseNo:)` keys of the courses the user ignores every
+    /// assignment of. Applied on each load rather than written to the assignments' marks, so an
+    /// assignment Moodle adds later is ignored too.
+    func loadIgnoredAssignmentCourses() -> Set<String> {
+        let keys: [String] = load(from: "ignored_courses.json", in: persistentDir) ?? []
+        return Set(keys)
+    }
+
+    func replaceIgnoredAssignmentCourses(_ keys: Set<String>) {
+        save(keys.sorted(), to: "ignored_courses.json", in: persistentDir)
+    }
+
+    func setAssignmentsIgnored(_ ignored: Bool, semester: String, courseNo: String) {
+        var keys = loadIgnoredAssignmentCourses()
+        let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        if ignored { keys.insert(key) } else { keys.remove(key) }
+        replaceIgnoredAssignmentCourses(keys)
+    }
+
+    /// For a reset of `semester`, which starts its courses over.
+    func clearIgnoredAssignmentCourses(semester: String) {
+        let prefix = CourseTombstone.key(semester: semester, courseNo: "")
+        replaceIgnoredAssignmentCourses(loadIgnoredAssignmentCourses().filter { !$0.hasPrefix(prefix) })
     }
 
     // MARK: - Archived Assignment IDs (local, persistent, survives Moodle refresh)
@@ -267,6 +291,16 @@ final class DataCache {
 
     func replaceLocallyCompletedAssignmentIds(_ ids: Set<String>) {
         save(Array(ids), to: "locally_completed_assignments.json", in: persistentDir)
+    }
+
+    // MARK: - Closed assignments Moodle called unsubmitted
+
+    func loadClosedUnsubmittedAssignments() -> [String: Date] {
+        load(from: "closed_unsubmitted_assignments.json") ?? [:]
+    }
+
+    func replaceClosedUnsubmittedAssignments(_ closed: [String: Date]) {
+        save(closed, to: "closed_unsubmitted_assignments.json")
     }
 
     // MARK: - Bulletins
@@ -316,20 +350,16 @@ final class DataCache {
         return dtos.map { $0.toSDCalendarEvent() }
     }
 
-    // MARK: - Courses 選課 Stopped Listing
+    // MARK: - Courses Dropped From Course Selection
 
-    /// Course numbers 選課 has stopped naming, per semester.
+    /// Course numbers the course selection system has stopped naming, per semester.
     ///
-    /// Written when a successful, non-empty answer no longer names a course
-    /// this device holds — a 加退選 drop. Read by the sync reconcile, which
-    /// would otherwise merge the row the backend still carries straight back
-    /// onto the timetable: `/sync/courses/upload` only ever upserts, so a
-    /// dropped course survives there until an explicit DELETE tombstones it.
-    ///
-    /// Deliberately not the `deleted_courses.json` tombstone set. That one is
-    /// driven by the server — absent there means hide, present there means
-    /// un-hide — so a 選課-driven entry would be un-hidden by the next sync.
-    /// Only 選課 may add to or clear this one.
+    /// Written when a successful, non-empty answer stops naming a course this device holds: it
+    /// was dropped during add/drop. The sync reconcile reads it to avoid merging the backend's
+    /// row back onto the timetable: `/sync/courses/upload` only upserts, so the row stays until
+    /// an explicit DELETE tombstones it. Not the `deleted_courses.json` tombstones, which the
+    /// server drives (absent there hides, present un-hides), so the next sync would un-hide the
+    /// entry. Only course selection may add to or clear this set.
     func saveSelectionDroppedNos(_ dropped: [String: [String]]) {
         save(dropped, to: "selection_dropped.json", in: persistentDir)
     }
@@ -338,9 +368,9 @@ final class DataCache {
         load(from: "selection_dropped.json", in: persistentDir) ?? [:]
     }
 
-    /// Folds one successful 選課 answer for `semester` into that set.
+    /// Folds one successful course selection answer for `semester` into that set.
     ///
-    /// Must run *before* the fetch overwrites the course cache: the courses on
+    /// Must run before the fetch overwrites the course cache: the courses on
     /// disk right now are what the answer is diffed against, and once they are
     /// replaced the drop is invisible to everyone.
     func recordSelectionRoster(semester: String, roster: [String]) {
@@ -369,10 +399,9 @@ final class DataCache {
 
     func loadDeletedCourseNos() -> [String] {
         let stored: [String] = load(from: "deleted_courses.json", in: persistentDir) ?? []
-        // Entries written before tombstones carried a semester are bare
-        // course numbers. Pin them to the terms whose cached roster has the
-        // course (see `CourseTombstone.migratingLegacyEntries`); this is a
-        // no-op once nothing bare is left.
+        // Tombstones written before they carried a semester are bare course numbers. Pin each
+        // to the terms whose cached roster has the course; a no-op once none is left. See
+        // `CourseTombstone.migratingLegacyEntries`.
         guard stored.contains(where: { !$0.contains(":") }) else { return stored }
         let rosters = Dictionary(
             SemesterCatalog.availableSemesters().map { ($0, Set(loadCourses(semester: $0).map(\.courseNo))) },
@@ -398,11 +427,9 @@ final class DataCache {
         if let perLocale = try? decoder.decode([String: [String: String]].self, from: data) {
             return perLocale
         }
-        // Migrate the legacy flat `courseNo → name` shape (same filename, from
-        // before per-locale custom names) by nesting each value under the
-        // current course API locale, then persist so this fallback runs once.
-        // Read directly (rather than via `load`) so the legacy shape doesn't
-        // trip `load`'s decode-error reporting.
+        // Legacy flat `courseNo → name` shape under the same filename: nest each value under
+        // the current course API locale and persist, so this runs once. Decoded here rather
+        // than via `load` so the legacy shape does not trip `load`'s decode-error reporting.
         guard let legacy = try? decoder.decode([String: String].self, from: data),
               !legacy.isEmpty
         else {
@@ -516,6 +543,7 @@ final class DataCache {
     func clearUserScopedData() {
         let filenames: [(String, URL)] = [
             ("assignments.json", cacheDir),
+            ("closed_unsubmitted_assignments.json", cacheDir),
             ("calendar_events.json", cacheDir),
             ("user_added_courses.json", persistentDir),
             ("deleted_courses.json", persistentDir),
@@ -525,6 +553,7 @@ final class DataCache {
             ("course_color_map.json", persistentDir),
             ("archived_assignments.json", persistentDir),
             ("locally_completed_assignments.json", persistentDir),
+            ("ignored_courses.json", persistentDir),
             ("bulletin_summaries.json", cacheDir),
             ("moodle_course_id_map.json", persistentDir),
         ]
@@ -557,17 +586,17 @@ final class DataCache {
         // Bulletin detail bodies are user-scoped (read state, subscriptions).
         let bulletinDetails = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
         try? FileManager.default.removeItem(at: bulletinDetails)
+        try? FileManager.default.removeItem(at: moodleDir)
+        try? FileManager.default.removeItem(at: moodleFilesDir)
     }
 
-    /// Remove **every** file in both cache directories, user-scoped or not.
+    /// Removes every file in both cache directories, user-scoped or not.
     ///
-    /// `clearUserScopedData` deliberately keeps device-wide caches (name
-    /// abbreviations, the academic calendar, bulletin indexes) because a
-    /// logout is an account change, not a factory reset. The erase-everything
-    /// action is the opposite: whatever is left behind is exactly what makes
-    /// the "fresh install" it promises not actually fresh, so this takes the
-    /// directories wholesale rather than naming files — a named list silently
-    /// stops being complete the next time someone adds a cache.
+    /// `clearUserScopedData` keeps device-wide caches (name abbreviations, the academic
+    /// calendar, bulletin indexes) because a logout is an account change, not a factory reset.
+    /// The erase-everything action is the opposite: anything left behind makes the "fresh
+    /// install" it promises not fresh. So this takes the directories wholesale rather than
+    /// naming files; a named list stops being complete the next time a cache is added.
     func clearEverything() {
         for dir in [cacheDir, persistentDir] {
             let contents = (try? FileManager.default.contentsOfDirectory(
@@ -578,12 +607,11 @@ final class DataCache {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+        try? FileManager.default.removeItem(at: moodleFilesDir)
     }
 
-    /// Remove every `courses_<semester>.json` file. Used by the abbreviation
-    /// pipeline migration to drop pre-fix entries whose `classroomMapJSON`
-    /// may already be abbreviated and would no longer round-trip through the
-    /// raw classroom cache. The next fetch repopulates from the network.
+    /// Remove every `courses_*.json` file, for a migration whose cached courses cannot be
+    /// repaired in place. The next fetch repopulates them from the network.
     func clearCourseCaches() {
         let cacheContents = (try? FileManager.default.contentsOfDirectory(
             at: cacheDir,
@@ -598,19 +626,14 @@ final class DataCache {
 
     // MARK: - Moodle course id map (idnumber → numeric id)
 
-    /// Persisted map populated by ``AppServiceBridge`` whenever it fetches
-    /// the user's Moodle enrolled-courses list. Exists because Moodle Mobile's
-    /// deep-link router only honors `?id=N` redirects reliably — `?idnumber=…`
-    /// is accepted by the web but not by the in-app handler — so we cache the
-    /// numeric id off the enrolled-courses payload and look it up at deep-link
-    /// build time. Lives in ``persistentDir`` so the map survives cache
-    /// sweeps that wipe localized course data; cleared on logout via
-    /// ``clearUserScopedData()``.
-    ///
-    /// **Always overwrite the whole map** with the fresh enrolled-courses
-    /// snapshot — additive merging would leak stale entries for courses the
-    /// user has been un-enrolled from or whose numeric id got reissued, and
-    /// `SDCourse.moodleDeepLink` would then keep pointing at a dead course.
+    /// Persisted map from Moodle course idnumber to numeric id, saved by ``AppServiceBridge``
+    /// whenever it fetches the user's enrolled courses. Moodle Mobile's deep-link router honors
+    /// only `?id=N` redirects reliably (the web accepts `?idnumber=…`, the in-app handler does
+    /// not), so deep links look the numeric id up here. Lives in ``persistentDir`` to survive
+    /// cache sweeps of localized course data; cleared on logout by ``clearUserScopedData()``.
+    /// Always overwrite the whole map with the fresh snapshot: merging would keep entries for
+    /// courses the user left or whose id was reissued, and `SDCourse.moodleDeepLink` would
+    /// point at a dead course.
     func saveMoodleCourseIdMap(_ map: [String: Int]) {
         save(map, to: "moodle_course_id_map.json", in: persistentDir)
     }
@@ -626,16 +649,52 @@ final class DataCache {
         return loadMoodleCourseIdMap()[SDCourse.normalizedMoodleId(idnumber)]
     }
 
+    // MARK: - Moodle course data (per account)
+
+    /// Saves one Moodle answer for `account` with the time it was fetched, which tells a screen
+    /// when to fetch it again. `name` may hold `/` to sort a course's answers into a folder.
+    func saveMoodleData<Value: Codable>(_ value: Value, fetchedAt: Date, name: String, account: String) {
+        let url = moodleFileURL(name: name, account: account)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        save(MoodleCacheEntry(fetchedAt: fetchedAt, value: value), to: url.lastPathComponent, in: url.deletingLastPathComponent())
+    }
+
+    func loadMoodleData<Value: Codable>(_ type: Value.Type, name: String, account: String) -> (value: Value, fetchedAt: Date)? {
+        let url = moodleFileURL(name: name, account: account)
+        let entry: MoodleCacheEntry<Value>? = load(from: url.lastPathComponent, in: url.deletingLastPathComponent())
+        return entry.map { ($0.value, $0.fetchedAt) }
+    }
+
+    private struct MoodleCacheEntry<Value: Codable>: Codable {
+        let fetchedAt: Date
+        let value: Value
+    }
+
+    private var moodleDir: URL { cacheDir.appendingPathComponent("moodle", isDirectory: true) }
+
+    /// Downloaded Moodle files, `Caches/Moodle/` beside this cache: the settings measure and
+    /// clear them without the cached answers, which keep every screen filled.
+    var moodleFilesDir: URL {
+        cacheDir.deletingLastPathComponent().appendingPathComponent("Moodle", isDirectory: true)
+    }
+
+    /// The account is a student ID, kept to letters and digits so it is always one folder name.
+    private func moodleFileURL(name: String, account: String) -> URL {
+        let folder = String(account.unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
+        return moodleDir
+            .appendingPathComponent(folder.isEmpty ? "_" : folder, isDirectory: true)
+            .appendingPathComponent(name + ".json")
+    }
+
     // MARK: - Private helpers
 
     private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {
         let url = (directory ?? cacheDir).appendingPathComponent(filename)
         do {
             let data = try encoder.encode(value)
-            // .completeFileProtectionUnlessOpen keeps academic PII at rest
-            // unreadable from a backup or jailbroken device; the
-            // "UnlessOpen" variant lets background refreshes still rewrite
-            // the file while the device is locked.
+            // `.completeFileProtectionUnlessOpen` keeps academic PII at rest unreadable from a
+            // backup or a jailbroken device; "UnlessOpen" still lets background refreshes
+            // rewrite the file while the device is locked.
             try data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
         } catch {
             AppLogger.captureError(error, context: [
@@ -673,43 +732,35 @@ final class DataCache {
             return nil
         }
     }
+}
 
-    // Legacy migration:
-    //   * `courses.json`              — pre-semester-scoped
-    //   * `courses_<semester>.json`   — pre-language-scoped (NTUST API
-    //                                    returns localized names, so the
-    //                                    payload is implicitly tied to
-    //                                    whatever language the last fetch
-    //                                    used; we cannot recover that, so
-    //                                    we just delete and let the next
-    //                                    network refresh repopulate)
-    private func absorbLegacyCourseCache() {
-        let legacyURL = cacheDir.appendingPathComponent("courses.json")
-        if FileManager.default.fileExists(atPath: legacyURL.path) {
-            try? FileManager.default.removeItem(at: legacyURL)
-        }
+/// The user's own marks on the assignments Moodle lists: each assignment's done or ignored mark,
+/// and the courses whose assignments are all ignored. A row gets them when it is built, never
+/// from the assignment cache, which stores only what Moodle said.
+struct AssignmentMarks {
+    let archivedIds: Set<String>
+    let locallyCompletedIds: Set<String>
+    /// `CourseTombstone.key(semester:courseNo:)` keys; only `semester`'s apply.
+    let ignoredCourses: Set<String>
+    /// The term the assignments are fetched for.
+    let semester: String
 
-        let cacheContents = (try? FileManager.default.contentsOfDirectory(
-            at: cacheDir,
-            includingPropertiesForKeys: nil
-        )) ?? []
-        for url in cacheContents where url.pathExtension == "json" {
-            let name = url.deletingPathExtension().lastPathComponent
-            // Match the old `courses_<semester>` shape (exactly one
-            // underscore-delimited segment after the prefix). The new
-            // language-suffixed names have two segments and stay put.
-            guard name.hasPrefix("courses_") else { continue }
-            let suffix = String(name.dropFirst("courses_".count))
-            if !suffix.contains("_") {
-                try? FileManager.default.removeItem(at: url)
-            }
+    func apply(to assignment: SDAssignment) -> SDAssignment {
+        if archivedIds.contains(assignment.assignmentId) { assignment.isArchived = true }
+        if locallyCompletedIds.contains(assignment.assignmentId) { assignment.isLocallyCompleted = true }
+        if ignoredCourses.contains(CourseTombstone.key(semester: semester, courseNo: assignment.courseNo)) {
+            // Shown as ignored even when marked done; the mark returns with the course setting off.
+            assignment.isArchived = true
+            assignment.isLocallyCompleted = false
+            assignment.isIgnoredByCourse = true
         }
+        return assignment
     }
 }
 
 // MARK: - Codable DTOs
 
-private struct CachedCourse: Codable {
+struct CachedCourse: Codable {
     let courseNo: String
     let courseName: String
     let instructor: String
@@ -732,6 +783,7 @@ private struct CachedCourse: Codable {
     /// fills them in for a cache written before they existed.
     let dimension: String?
     let allYear: String?
+    let requireOption: String?
 
     init(from course: SDCourse) {
         courseNo = course.courseNo
@@ -748,6 +800,7 @@ private struct CachedCourse: Codable {
         skippedDatesJSON = course.skippedDatesJSON
         dimension = course.dimension.isEmpty ? nil : course.dimension
         allYear = course.allYear.isEmpty ? nil : course.allYear
+        requireOption = course.requireOption.isEmpty ? nil : course.requireOption
     }
 
     func toSDCourse() -> SDCourse {
@@ -785,7 +838,8 @@ private struct CachedCourse: Codable {
             semester: semester ?? CourseSelectionService.currentSemesterCode(),
             classroomMap: classroomMap,
             dimension: dimension ?? "",
-            allYear: allYear ?? ""
+            allYear: allYear ?? "",
+            requireOption: requireOption ?? ""
         )
         course.skippedDatesJSON = skippedDatesJSON ?? "[]"
         return course

@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct InlineView: View {
     let entry: NextClassEntry
@@ -8,11 +9,11 @@ struct InlineView: View {
             .containerBackground(.fill.tertiary, for: .widget)
     }
 
-    private var text: String {
+    var text: String {
         if let c = entry.current {
             return "\(c.name) · \(c.endHHmm)"
         } else if let n = entry.next {
-            return "\(n.name) · \(n.startHHmm)"
+            return "\(n.name) · \(entry.nextDay.inlineCaption(n.startHHmm))"
         } else {
             return String(localized: "watch_no_upcoming_classes")
         }

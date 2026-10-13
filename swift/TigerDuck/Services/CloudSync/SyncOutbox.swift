@@ -11,15 +11,22 @@ nonisolated enum SyncOp: Codable, Sendable {
     /// course_key, which that endpoint never consults.
     case courseOverride(semester: String, moodleId: String, customName: String?, colorHex: String?, locale: String?, stamp: Date)
     case assignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, stamp: Date)
+    /// Ignores every assignment of a course, or stops, by the same `moodleId` as
+    /// `courseOverride`. `moodleCourseId` is the numeric Moodle id; with `ignore` nil the op
+    /// sends that id alone, to a server that ignores the course without it.
+    case courseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, stamp: Date)
 
     private enum CodingKeys: String, CodingKey {
-        case courseOverride, assignmentOverride
+        case courseOverride, assignmentOverride, courseIgnore
     }
     private enum CourseOverrideKeys: String, CodingKey {
         case semester, moodleId, courseKey, customName, colorHex, locale, stamp
     }
     private enum AssignmentOverrideKeys: String, CodingKey {
         case moodleCourseId, moodleAssignmentId, localStatus, stamp
+    }
+    private enum CourseIgnoreKeys: String, CodingKey {
+        case semester, courseNo, moodleId, moodleCourseId, ignore, stamp
     }
 
     /// Manual decode only: `moodleId` was persisted as `courseKey` before the
@@ -45,6 +52,15 @@ nonisolated enum SyncOp: Codable, Sendable {
                 moodleAssignmentId: try c.decode(Int.self, forKey: .moodleAssignmentId),
                 localStatus: try c.decode(String.self, forKey: .localStatus),
                 stamp: try c.decode(Date.self, forKey: .stamp))
+        } else if container.contains(.courseIgnore) {
+            let c = try container.nestedContainer(keyedBy: CourseIgnoreKeys.self, forKey: .courseIgnore)
+            self = .courseIgnore(
+                semester: try c.decode(String.self, forKey: .semester),
+                courseNo: try c.decode(String.self, forKey: .courseNo),
+                moodleId: try c.decode(String.self, forKey: .moodleId),
+                moodleCourseId: try c.decodeIfPresent(Int.self, forKey: .moodleCourseId),
+                ignore: try c.decodeIfPresent(Bool.self, forKey: .ignore),
+                stamp: try c.decode(Date.self, forKey: .stamp))
         } else {
             throw DecodingError.dataCorrupted(DecodingError.Context(
                 codingPath: decoder.codingPath,
@@ -66,6 +82,8 @@ nonisolated enum SyncOp: Codable, Sendable {
             return "co|\(semester)|\(moodleId)|\(fields)|\(locale ?? "")"
         case .assignmentOverride(let moodleCourseId, let moodleAssignmentId, _, _):
             return "ao|\(moodleCourseId)|\(moodleAssignmentId)"
+        case .courseIgnore(let semester, _, let moodleId, _, _, _):
+            return "ci|\(semester)|\(moodleId)"
         }
     }
 }
@@ -77,6 +95,7 @@ nonisolated enum SyncOp: Codable, Sendable {
 nonisolated enum ResolvedSyncOp: Sendable {
     case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?)
     case assignmentOverride(assignmentId: Int, localStatus: String)
+    case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?)
 }
 
 // MARK: - OutboxEntry
@@ -91,18 +110,37 @@ nonisolated struct OutboxEntry: Codable, Sendable {
 
 /// Persisted outbound-operation queue. Survives app restarts.
 actor SyncOutbox {
-    private static let maxAttempts = 5
+    static let maxAttempts = 5
 
     private let directory: URL
+    private let read: @Sendable (URL) throws -> Data
     private var entries: [OutboxEntry] = []
+    /// Marks the server refused `maxAttempts` times. A pull still treats each as an edit on its
+    /// way up, so the local status stands, and `requeueParked()` gives it one more try per full
+    /// sync until it lands, as `AcademicCalendarStore.unacknowledgedHolidayIDs` does for holidays.
+    private var parked: [OutboxEntry] = []
     /// Bumped by `clearAll()`. A drain suspended at `await execute` when the
     /// queue is cleared must not merge its retained entries back afterwards.
     private var generation = 0
+    /// False while a queue file exists but could not be read, as at a launch behind the lock
+    /// screen (`completeFileProtectionUnlessOpen`). Until it is read nothing is written over the
+    /// files, and what was queued meanwhile joins what they hold.
+    private var isLoaded: Bool
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
-    init(directory: URL = SyncOutbox.defaultDirectory()) {
+    init(
+        directory: URL = SyncOutbox.defaultDirectory(),
+        read: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
+    ) {
         self.directory = directory
-        self.entries = Self.loadEntries(from: directory)
+        self.read = read
+        let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read)
+        let parked = Self.loadEntries(from: directory, fileName: Self.parkedFileName, read: read)
+        // Both or neither, so a retry takes each file whole.
+        let loaded = queued != nil && parked != nil
+        self.entries = loaded ? queued ?? [] : []
+        self.parked = loaded ? parked ?? [] : []
+        self.isLoaded = loaded
     }
 
     static func defaultDirectory() -> URL {
@@ -111,35 +149,94 @@ actor SyncOutbox {
     }
 
     func enqueue(_ op: SyncOp) {
+        loadIfNeeded()
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
+        parked.removeAll { $0.op.dedupKey == key }
         entries.append(OutboxEntry(id: UUID(), op: op, attempts: 0))
         persist()
     }
 
-    func pendingCount() -> Int { entries.count }
+    func pendingCount() -> Int {
+        loadIfNeeded()
+        return entries.count
+    }
 
-    func snapshot() -> [OutboxEntry] { entries }
+    func snapshot() -> [OutboxEntry] {
+        loadIfNeeded()
+        return entries
+    }
+
+    func parkedSnapshot() -> [OutboxEntry] {
+        loadIfNeeded()
+        return parked
+    }
 
     func clearAll() {
         entries = []
+        parked = []
+        // Sign-out empties the files whether or not they were read.
+        isLoaded = true
         generation += 1
         persist()
     }
 
+    /// Drops the queued and parked ops `isDropped` names, edits the user chose to throw away. A
+    /// drain under way keeps none of them; one already sent stays sent.
+    func discard(where isDropped: @Sendable (SyncOp) -> Bool) {
+        loadIfNeeded()
+        entries.removeAll { isDropped($0.op) }
+        parked.removeAll { isDropped($0.op) }
+        persist()
+    }
+
+    /// Queues every parked mark again with one attempt left. One whose old copy a drain still
+    /// holds stays parked: that drain drops the copy when it ends, so requeuing would lose both.
+    func requeueParked() {
+        loadIfNeeded()
+        guard !parked.isEmpty else { return }
+        let queuedKeys = Set(entries.map(\.op.dedupKey))
+        var stillParked: [OutboxEntry] = []
+        for var entry in parked {
+            guard !queuedKeys.contains(entry.op.dedupKey) else {
+                stillParked.append(entry)
+                continue
+            }
+            entry.attempts = Self.maxAttempts - 1
+            entries.append(entry)
+        }
+        parked = stillParked
+        persist()
+    }
+
+    /// Errors that say nothing about the edit: no network, a cancelled drain, a session to renew,
+    /// or a server that is down or busy. The entry waits for a later drain without an attempt.
+    static func keepsWithoutAttempt(_ error: Error) -> Bool {
+        switch error {
+        case is CancellationError, is URLError:
+            return true
+        case let auth as SyncOutboxAuthError:
+            return auth.statusCode == 401
+        case PushAPIError.httpStatus(let code, _):
+            return code == 408 || code == 429 || (500..<600).contains(code)
+        default:
+            return false
+        }
+    }
+
     // MARK: - Drain
 
-    /// Process entries in order via the provided executor.
-    /// Returns `true` if the queue is empty at the end.
+    /// Process entries in order via the provided executor, leaving the ones `isHeld` names
+    /// queued and untried. Returns `true` if the queue is empty at the end.
     @discardableResult
     func drain(
+        holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
         execute: @Sendable (ResolvedSyncOp) async throws -> Void
     ) async -> Bool {
-        // Iterate over a snapshot: the actor is reentrant at `await execute`,
-        // so `enqueue` can mutate `entries` mid-drain. Entries added during
-        // the drain are merged back at the end and handled on the next tick.
-        // A `clearAll()` during the drain bumps `generation`: stop executing
-        // and never merge back, or the drain would resurrect cleared entries.
+        // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
+        // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
+        // mid-drain bumps `generation`: stop and never merge back, or cleared entries resurrect.
+        loadIfNeeded()
         let snapshot = entries
         let snapshotIds = Set(snapshot.map(\.id))
         let startGeneration = generation
@@ -150,31 +247,38 @@ actor SyncOutbox {
             guard generation == startGeneration else { return }
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
-            // A mid-drain enqueue may share a dedupKey with a retained entry
-            // (e.g. a new color pick while the old PATCH was still failing).
-            // The newly-enqueued op is the last writer, so drop any retained
-            // entry it supersedes — otherwise both persist and the next drain
-            // PATCHes the stale value before the fresh one.
+            // A mid-drain enqueue can share a dedupKey with a retained entry. The new op is the
+            // last writer, so drop the retained entry it supersedes; keeping both would make the
+            // next drain PATCH the stale value before the fresh one. A discarded one goes too.
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
-            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) } + newlyEnqueued
+            let stillQueued = Set(entries.map(\.id))
+            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && stillQueued.contains($0.id) }
+                + newlyEnqueued
+            parked.removeAll { freshKeys.contains($0.op.dedupKey) }
             persist()
         }
 
         while index < snapshot.count {
             guard generation == startGeneration else { return entries.isEmpty }
             let entry = snapshot[index]
+            // Discarded or superseded since the snapshot: not sent.
+            guard entries.contains(where: { $0.id == entry.id }) else {
+                index += 1
+                continue
+            }
+            if isHeld(entry.op) {
+                kept.append(entry)
+                index += 1
+                continue
+            }
 
             do {
                 try await execute(resolve(entry.op))
-            } catch is CancellationError {
-                mergeAndStore(retainRemainder: index)
-                return false
-            } catch is URLError {
-                mergeAndStore(retainRemainder: index)
-                return false
             } catch {
-                let statusCode = (error as? SyncOutboxAuthError)?.statusCode
-                if statusCode == 401 {
+                // A `clearAll()` during the request removed the entry; keeping or parking
+                // it now would bring it back.
+                guard generation == startGeneration else { return entries.isEmpty }
+                if Self.keepsWithoutAttempt(error) {
                     mergeAndStore(retainRemainder: index)
                     return false
                 }
@@ -184,7 +288,7 @@ actor SyncOutbox {
                 if updated.attempts < Self.maxAttempts {
                     kept.append(updated)
                 } else {
-                    logger.warning("Outbox: dropping entry \(entry.id, privacy: .public) after \(Self.maxAttempts) attempts — key: \(entry.op.dedupKey, privacy: .public)")
+                    giveUp(on: updated, after: error)
                 }
             }
 
@@ -193,6 +297,25 @@ actor SyncOutbox {
 
         mergeAndStore(retainRemainder: snapshot.count)
         return entries.isEmpty
+    }
+
+    /// Reports an entry the server refused `maxAttempts` times. A mark or a course's ignore
+    /// setting is parked; a course override, or a numeric course id sent alone, is dropped: the
+    /// next full sync applies the server's colour or name over it, and sends the id again.
+    private func giveUp(on entry: OutboxEntry, after error: Error) {
+        let kind: String
+        let parks: Bool
+        switch entry.op {
+        case .courseOverride: (kind, parks) = ("courseOverride", false)
+        case .assignmentOverride: (kind, parks) = ("assignmentOverride", true)
+        case .courseIgnore(_, _, _, _, let ignore, _): (kind, parks) = ("courseIgnore", ignore != nil)
+        }
+        logger.warning("Outbox: gave up on \(kind, privacy: .public) after \(Self.maxAttempts) attempts")
+        AppLogger.captureError(error, context: ["phase": "cloudSync.outbox.giveUp", "op": kind])
+        // One discarded or superseded while its request was out is not parked either.
+        guard parks, entries.contains(where: { $0.id == entry.id }) else { return }
+        parked.removeAll { $0.op.dedupKey == entry.op.dedupKey }
+        parked.append(entry)
     }
 
     // MARK: - Resolution
@@ -210,19 +333,43 @@ actor SyncOutbox {
 
         case .assignmentOverride(_, let moodleAssignmentId, let localStatus, _):
             return .assignmentOverride(assignmentId: moodleAssignmentId, localStatus: localStatus)
+
+        case .courseIgnore(_, _, let moodleId, let moodleCourseId, let ignore, _):
+            return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore)
         }
     }
 
     // MARK: - Persistence
 
     private static let fileName = "outbox.json"
+    /// Apart from `fileName`, which a build without parking would read as queued edits.
+    private static let parkedFileName = "outbox-parked.json"
+
+    /// Reads the files the init could not. What was queued since stays, after what they hold, and
+    /// replaces an op of theirs with the same key.
+    private func loadIfNeeded() {
+        guard !isLoaded,
+              let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read),
+              let parkedOnDisk = Self.loadEntries(from: directory, fileName: Self.parkedFileName, read: read)
+        else { return }
+        let newer = Set((entries + parked).map(\.op.dedupKey))
+        entries = queued.filter { !newer.contains($0.op.dedupKey) } + entries
+        parked = parkedOnDisk.filter { !newer.contains($0.op.dedupKey) } + parked
+        isLoaded = true
+        persist()
+    }
 
     private func persist() {
-        let url = directory.appendingPathComponent(Self.fileName)
+        guard isLoaded else { return }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let data = try JSONEncoder().encode(entries)
-            try data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
+            for (list, name) in [(entries, Self.fileName), (parked, Self.parkedFileName)] {
+                let data = try JSONEncoder().encode(list)
+                try data.write(
+                    to: directory.appendingPathComponent(name),
+                    options: [.atomic, .completeFileProtectionUnlessOpen]
+                )
+            }
         } catch {
             logger.error("Outbox: persist failed: \(error)")
         }
@@ -237,17 +384,27 @@ actor SyncOutbox {
         }
     }
 
-    private static func loadEntries(from directory: URL) -> [OutboxEntry] {
+    /// Nil when the file exists but cannot be read now; none when it is missing or undecodable.
+    private static func loadEntries(
+        from directory: URL,
+        fileName: String,
+        read: (URL) throws -> Data
+    ) -> [OutboxEntry]? {
         let url = directory.appendingPathComponent(fileName)
-        guard let data = try? Data(contentsOf: url) else { return [] }
+        let data: Data
+        do {
+            data = try read(url)
+        } catch {
+            return FileManager.default.fileExists(atPath: url.path) ? nil : []
+        }
         let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
         guard let wrapped = try? JSONDecoder().decode([FailableEntry].self, from: data) else {
-            logger.warning("outbox.json decode failed — starting empty")
+            logger.warning("\(fileName, privacy: .public) decode failed — starting empty")
             return []
         }
         let entries = wrapped.compactMap(\.entry)
         if entries.count != wrapped.count {
-            logger.warning("outbox.json: dropped \(wrapped.count - entries.count, privacy: .public) undecodable entries")
+            logger.warning("\(fileName, privacy: .public): dropped \(wrapped.count - entries.count, privacy: .public) undecodable entries")
         }
         return entries
     }

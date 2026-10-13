@@ -4,14 +4,12 @@ import Testing
 /// `MoreView` hides the back chevron on everything it pushes through its
 /// `AppFeature` navigation destination (see `MoreFeatureDestination`).
 ///
-/// That treatment is correct only for feature pages. Settings must keep its
-/// chevron, and it does so purely because it can never reach that
-/// destination — it is pushed by its own `NavigationLink`, and
-/// `moreFeatures` filters on `isImplemented`, which `.settings` fails. That
-/// is an implicit, action-at-a-distance guarantee: flipping
-/// `AppFeature.settings.isImplemented` to `true` for some unrelated reason
-/// would silently strip Settings' back button. These tests make that
-/// failure loud.
+/// That is right only for feature pages. Settings keeps its chevron only
+/// because it never reaches that destination: it is pushed by its own
+/// `NavigationLink`, and `moreFeatures` filters on `isImplemented`, which
+/// `.settings` fails. Setting `AppFeature.settings.isImplemented` to `true`
+/// would silently strip Settings' back button; these tests make that loud.
+@MainActor
 struct MoreNavigationTests {
 
     @Test func settingsIsNotReachableThroughMoreFeatureDestination() {
@@ -28,16 +26,38 @@ struct MoreNavigationTests {
     }
 
     @Test func everyMoreRowHasARealDestination() {
-        // `moreDestination(for:)` falls through to `PlaceholderFeatureView`
-        // for anything it does not name. A placeholder is fine to reach by
-        // accident when it has a back button; reaching one that is also
-        // chevron-less is a dead end. Every row that can be tapped should
-        // map to a real page.
+        // `moreDestination(for:)` falls through to `PlaceholderFeatureView` for anything it
+        // does not name. A placeholder pushed without a chevron is a dead end, so every row
+        // that can be tapped must map to a real page.
         let destinationsWithRealPages: Set<AppFeature> = [
             .home, .classTable, .calendar, .announcements, .library, .gpa,
             .schoolMail,
         ]
         let unbacked = AppFeature.moreFeatures.filter { !destinationsWithRealPages.contains($0) }
         #expect(unbacked.isEmpty, "More rows with no real destination: \(unbacked)")
+    }
+
+    @Test func unpinnedClassTableOpensThroughMore() {
+        // The class table widgets open `tigerduck://classtable`. Selecting a tab the bar does
+        // not show breaks the `TabView`, so More takes the selection and pushes the page.
+        let route = AppFeature.tabRoute(to: .classTable, visibleTabs: [.home, .calendar])
+        #expect(route.tab == .more)
+        #expect(route.moreDeepLink == .classTable)
+    }
+
+    @Test func pinnedFeatureOpensItsOwnTab() {
+        let route = AppFeature.tabRoute(to: .classTable, visibleTabs: [.home, .classTable])
+        #expect(route.tab == .classTable)
+        #expect(route.moreDeepLink == nil)
+    }
+
+    @Test func removingEveryTabFallsBackToMore() {
+        #expect(AppFeature.selection(.home, keptOn: []) == .more)
+    }
+
+    @Test func removingTheSelectedTabSelectsTheFirstOneLeft() {
+        #expect(AppFeature.selection(.calendar, keptOn: [.classTable, .home]) == .classTable)
+        #expect(AppFeature.selection(.home, keptOn: [.classTable, .home]) == .home)
+        #expect(AppFeature.selection(.more, keptOn: [.classTable]) == .more)
     }
 }

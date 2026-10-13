@@ -6,9 +6,10 @@ struct MailFileItem: Identifiable {
     var id: URL { url }
 }
 
-/// Attachments are never downloaded or opened automatically (§9.5).
+/// Attachments are never downloaded or opened automatically.
 struct MailAttachmentList: View {
     let parts: [MailBodyPart]
+    let downloading: Set<String>
     let isRisky: (MailBodyPart) -> Bool
     let onOpen: (MailBodyPart) -> Void
     let onShare: (MailBodyPart) -> Void
@@ -37,10 +38,14 @@ struct MailAttachmentList: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    Button { onOpen(part) } label: { Image(systemName: "eye") }
-                        .accessibilityLabel(String(localized: "school_mail_open"))
-                    Button { onShare(part) } label: { Image(systemName: "square.and.arrow.up") }
-                        .accessibilityLabel(String(localized: "school_mail_attachment_share"))
+                    if downloading.contains(part.section) {
+                        ProgressView()
+                    } else {
+                        Button { onOpen(part) } label: { Image(systemName: "eye") }
+                            .accessibilityLabel(String(localized: "school_mail_open"))
+                        Button { onShare(part) } label: { Image(systemName: "square.and.arrow.up") }
+                            .accessibilityLabel(String(localized: "school_mail_attachment_share"))
+                    }
                 }
                 .buttonStyle(.borderless)
                 .cardPadding()

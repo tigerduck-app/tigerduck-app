@@ -3,35 +3,30 @@ import SwiftUI
 import Defaults
 
 /// Mutations the Mac grid can make to a schedule: add and remove a
-/// user-added course, rename one, and delete one.
+/// user-added course, rename one, ignore its assignments, and delete one.
 ///
-/// Every one of these writes an on-disk store keyed by `courseNo` alone, so
-/// they are gated on `isViewingCurrentSemester` at the call site — a rename
-/// made while looking at a past term would otherwise leak into the current
-/// schedule, the widgets, and the Live Activity for any course that reuses
-/// the code. iOS runs the same operations through `ClassTableViewModel`;
-/// the Mac view has no view-model, which is why they live on the view.
+/// Each writes an on-disk store keyed by `courseNo` alone, so call sites gate them on
+/// `isViewingCurrentSemester`: a rename made on a past term would otherwise leak into the current
+/// schedule, the widgets and the Live Activity for any course reusing the code. iOS runs these
+/// through `ClassTableViewModel`; the Mac view has no view-model, so they live on the view.
 extension MacClassTableView {
     // MARK: - User-added courses
 
     /// Append a user-added course to the on-disk store and refresh the grid.
-    /// Mirrors the parts of `ClassTableViewModel.addCourse(_:)` that are load-
-    /// bearing on macOS: tombstone clear, NameAbbr cache seeding so toggles
-    /// round-trip without a refetch, and a `dataDidUpdate` broadcast so the
-    /// Home page's widget cards also re-render. Returns `true` iff the
-    /// course was newly persisted so the AddCourseSheet only flips its
-    /// session checkmark on real adds — otherwise a duplicate-rejected tap
-    /// would route the next tap through `removeUserAddedCourse` and delete
-    /// the pre-existing user-added course for this semester.
+    /// Mirrors the parts of `ClassTableViewModel.addCourse(_:)` macOS relies on: the tombstone
+    /// clear, NameAbbr cache seeding so toggles round-trip without a refetch, and a
+    /// `dataDidUpdate` broadcast so the Home page's widget cards re-render too.
+    /// - Returns: `true` only when the course was newly persisted. AddCourseSheet flips its
+    ///   session checkmark on it; flipped after a rejected duplicate, the next tap would call
+    ///   `removeUserAddedCourse` and delete the course already added for this semester.
     @discardableResult
     func addUserCourse(_ course: SDCourse) -> Bool {
+        // `courses` is someone else's then, and every edit here uploads it as the user's term.
+        guard shownPerson == nil else { return false }
         let existing = DataCache.shared.loadUserAddedCourses()
-        // Dedupe within the selected semester only — the same `courseNo`
-        // legitimately recurs across terms (a recurring elective added
-        // manually in both 1131 and 1132), and `removeUserAddedCourse`
-        // already scopes its undo to `selectedSemester`. `courses`
-        // already reflects the current semester's roster so its
-        // duplicate check stays semester-scoped implicitly.
+        // Dedupe within the selected semester only: a `courseNo` can recur across terms, and
+        // `removeUserAddedCourse` scopes its undo to `selectedSemester`. `courses` holds only
+        // the current semester's roster, so its check is semester-scoped already.
         let isInSelectedSemester: (SDCourse) -> Bool = {
             $0.semester == selectedSemester || $0.semester.isEmpty
         }
@@ -39,12 +34,9 @@ extension MacClassTableView {
               !courses.contains(where: { $0.courseNo == course.courseNo })
         else { return false }
 
-        // Refuse if any slot the candidate would occupy already has 2
-        // courses. The shared `ClassTableLayout` can render N-way conflicts,
-        // but persisting 3+ in a slot is still a bug surface (Android caps
-        // at 2 and the iPhone path rejects too). Must run BEFORE tombstone
-        // clear, otherwise a rejected add leaves a tombstone cleared and the
-        // next reload would resurrect the course.
+        // Refuse a third course in any slot: `ClassTableLayout` can render N-way conflicts, but
+        // storing 3+ is a bug surface (Android caps at 2, iPhone rejects too). This runs before
+        // the tombstone clear, or a rejected add clears it and the next reload revives the course.
         if let err = firstTripleConflict(for: course) {
             tripleConflictError = err
             return false
@@ -102,6 +94,7 @@ extension MacClassTableView {
     /// also delete a manually-added `X` the user saved for a different
     /// semester (the sheet's onRemove callback only carries the courseNo).
     func removeUserAddedCourse(courseNo: String) {
+        guard shownPerson == nil else { return }
         let existing = DataCache.shared.loadUserAddedCourses()
         let updated = existing.filter { course in
             !(course.courseNo == courseNo && (course.semester == selectedSemester || course.semester.isEmpty))
@@ -128,7 +121,7 @@ extension MacClassTableView {
     /// the override by typing nothing. Mirrors the iPhone confirmRename rules
     /// 1:1 so renames stay consistent across platforms.
     func confirmRename() {
-        guard let course = courseToRename else { return }
+        guard shownPerson == nil, let course = courseToRename else { return }
         let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty || trimmed == course.courseName {
             revertRename(course)
@@ -150,6 +143,7 @@ extension MacClassTableView {
     /// course name. Also surfaced as the destructive button in the rename
     /// alert when an override is already set.
     func revertRename(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         let locale = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
         var names = DataCache.shared.loadCourseCustomNames()
         names[course.courseNo]?[locale] = nil
@@ -165,15 +159,30 @@ extension MacClassTableView {
         }
     }
 
+    func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
+        guard shownPerson == nil, isViewingCurrentSemester else { return }
+        DataCache.shared.setAssignmentsIgnored(ignore, semester: selectedSemester, courseNo: course.courseNo)
+        cacheRevision &+= 1
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        appState.syncCourseIgnore(
+            semester: selectedSemester, courseNo: course.courseNo, moodleIdNumber: course.moodleIdNumber, ignore: ignore
+        )
+    }
+
     /// Right-click "Delete" — mirrors `ClassTableViewModel.deleteCourse` on
     /// iPhone. Tombstones the courseNo so a future cache refresh from NTUST
     /// can't resurrect a course the user deliberately removed, AND drops any
     /// user-added entry for the courseNo in this semester so the row vanishes
     /// immediately whether the source was an enrolled course or a manual add.
     func deleteCourse(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         var deleted = Set(DataCache.shared.loadDeletedCourseNos())
         deleted.insert(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo))
         DataCache.shared.saveDeletedCourseNos(Array(deleted))
+        // The server drops the setting with the course's row.
+        if ignoredAssignmentCourses.contains(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo)) {
+            DataCache.shared.setAssignmentsIgnored(false, semester: selectedSemester, courseNo: course.courseNo)
+        }
 
         let existing = DataCache.shared.loadUserAddedCourses()
         let pruned = existing.filter { entry in

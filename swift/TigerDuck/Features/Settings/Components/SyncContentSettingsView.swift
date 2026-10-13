@@ -1,22 +1,14 @@
 import Defaults
 import SwiftUI
 
-/// "Synced content" secondary menu under TigerSync settings (spec §6), in
-/// three groups of plain switches: Assignments with Assignment due
-/// reminders, Live Activity on its own, and All courses, Course colours and
-/// Custom course names.
+/// "Synced content" submenu of TigerSync settings. Its switches, in three groups:
+/// Assignments and Assignment due reminders; Live Activity; All courses, Course
+/// colours and Custom course names. Course colours turns on and off with All courses
+/// (`AppState.courseColorsAfterCoursesChange`) and is greyed out without All courses.
 ///
-/// Course colours follows All courses both ways, turning on and off with it
-/// (`AppState.courseColorsAfterCoursesChange`), and is greyed out while All
-/// courses is off.
-///
-/// Reachable regardless of whether "Sync course information"
-/// (`cloudSyncEnabled`) is on, but not every row behaves the same way while
-/// it's off: the notification-related rows (Assignment due reminders and
-/// Live Activity) stay visible but greyed out, per spec step 3. Assignment
-/// status and the whole course group are hidden entirely, matching the Mac
-/// account tab, so a category the user cannot see or touch can never pick
-/// up a re-enable mark while sync is off.
+/// With `cloudSyncEnabled` off, the reminder and Live Activity rows stay visible but
+/// greyed out. Assignments and the course group are hidden, as on the Mac account tab,
+/// so a hidden category never picks up a re-enable mark while sync is off.
 struct SyncContentSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
@@ -46,15 +38,9 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncAssignmentReminders) { old, new in
                         appState.pushSyncPreferences()
-                        // On re-enable, the section this switch guards is
-                        // ungated again in `NotificationSettingsSync.push`,
-                        // but nothing else pushes its now-current local
-                        // value to the server until this fires — the
-                        // device-preferences PATCH above only carries the
-                        // switch itself, not the section's content. It goes
-                        // through the same queued, marker-setting path as
-                        // any edit, so it cannot overlap another push and a
-                        // failed attempt stays marked for the next retry.
+                        // Turning this on ungates its section in `NotificationSettingsSync.push`, and nothing
+                        // else uploads it until this push: the PATCH above sends just the switch. Queued and
+                        // marked like any edit, it cannot overlap another push, and a failure stays marked.
                         if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
                             appState.scheduleNotificationSettingsPush()
                         }

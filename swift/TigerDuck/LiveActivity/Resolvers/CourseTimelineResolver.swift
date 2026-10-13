@@ -53,7 +53,7 @@ struct CourseTimelineResolver {
 
     /// Like `state(at:in:)` but drops slots whose course is skipped for
     /// that slot's date. Live Activity rules should use this variant so
-    /// "翹課" classes do not trigger `inClass` or `classPreparing`.
+    /// skipped classes do not trigger `inClass` or `classPreparing`.
     func nonSkippedState(at time: Date, in timeline: [CourseTimeSlot]) -> CourseState {
         let filtered = timeline.filter { !$0.course.isSkipped(on: $0.date) }
         return state(at: time, in: filtered)

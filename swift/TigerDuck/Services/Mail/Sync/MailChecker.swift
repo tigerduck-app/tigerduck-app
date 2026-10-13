@@ -2,7 +2,9 @@
 import Foundation
 
 nonisolated enum MailCheckTrigger: String, Codable, Sendable {
-    case page, foreground, backgroundTask
+    /// Only in stored diagnostics records; no check runs with it.
+    case page
+    case foreground, backgroundTask
 
     /// What the Notifications → School Mail diagnostics row shows. `rawValue` stays the stored
     /// form — records already on disk carry it, and it is what a bug report is read against
@@ -105,16 +107,16 @@ nonisolated enum MailCheckOutcome: Equatable, Sendable {
     ]
 }
 
-/// The new-mail check of design doc §8.5, shared by every trigger. Single-flight: while a
-/// check runs, another returns `.skippedBusy` — which also keeps TigerDuck inside the
-/// server's connection limit.
+/// The new-mail check, shared by every trigger. Single-flight: while a check runs, another
+/// returns `.skippedBusy`, which also keeps TigerDuck inside the server's connection limit.
 actor MailChecker {
     static let shared = MailChecker(
         prefs: DefaultsMailPreferences(),
         notifier: MailNotifier(center: SystemMailNotificationCenter()),
         openSession: { try await MailAccountManager.shared.openSession() },
         onAuthFailure: { await MailAccountManager.shared.handleAuthFailure() },
-        cache: .shared
+        cache: .shared,
+        notificationsDenied: { await MailNotificationPermission.isDenied() }
     )
 
     nonisolated let notifier: MailNotifier
@@ -125,6 +127,9 @@ actor MailChecker {
     /// Where `prefetchBodies` puts the bodies of the mail a check notified about. `nil` turns the
     /// prefetch off — the default, so a test that is not about it never writes a cache anywhere.
     private let cache: MailCache?
+    /// Whether iOS denies the app notifications. Every check exists to notify, so while it does a
+    /// check would sign in for nothing. Tests default to allowed and never read the real setting.
+    private let notificationsDenied: @Sendable () async -> Bool
     private var isRunning = false
 
     init(
@@ -133,7 +138,8 @@ actor MailChecker {
         openSession: @escaping @Sendable () async throws -> any MailClient,
         onAuthFailure: @escaping @Sendable () async -> Void,
         now: @escaping @Sendable () -> Date = { Date() },
-        cache: MailCache? = nil
+        cache: MailCache? = nil,
+        notificationsDenied: @escaping @Sendable () async -> Bool = { false }
     ) {
         self.prefs = prefs
         self.notifier = notifier
@@ -141,29 +147,25 @@ actor MailChecker {
         self.onAuthFailure = onAuthFailure
         self.now = now
         self.cache = cache
+        self.notificationsDenied = notificationsDenied
     }
 
-    /// - Parameter existing: the mail page's held connection, reused instead of a new login.
-    ///   The page trigger never notifies: new mail shows up in the list instead.
-    ///
-    /// The account is captured here, before the first `await`, and re-read before every write
-    /// and before notifying (`stillSignedIn(as:)`). Everything a run produces — the shared
-    /// inbox UIDVALIDITY/UIDNEXT markers, the diagnostics ring, the auth-failed flag, the
-    /// notifications themselves — is keyed to nothing but "the signed-in account", so a run that
-    /// outlives its own account (a sign-out, or a different student signing in while it is
-    /// suspended on a socket) is holding previous-user data and must write none of it back
-    /// (`AGENTS.md`: "Do not write previous-user data back after logout"). Such a run drops its
-    /// results and answers `.skippedSignedOut`, which is also what it would have returned had the
-    /// sign-out landed a moment earlier.
-    func check(trigger: MailCheckTrigger, using existing: (any MailClient)? = nil) async -> MailCheckOutcome {
+    /// The account is captured before the first `await` and re-checked (`stillSignedIn(as:)`)
+    /// before every write and before notifying. The inbox UIDVALIDITY/UIDNEXT markers, the
+    /// diagnostics ring, the auth-failed flag and the notifications are keyed only to whoever is
+    /// signed in, so a run that outlives its account (a sign-out, or another student signing in
+    /// mid-run) writes nothing back (swift/TigerDuck/AGENTS.md) and returns `.skippedSignedOut`.
+    func check(trigger: MailCheckTrigger) async -> MailCheckOutcome {
         guard !isRunning else { return .skippedBusy }
         guard let account = prefs.studentID else { return .skippedSignedOut }
         guard !prefs.authFailed else { return .skippedAuthFailed }
-        guard trigger == .page || prefs.notificationsEnabled else { return .skippedDisabled }
+        guard prefs.notificationsEnabled else { return .skippedDisabled }
         isRunning = true
         defer { isRunning = false }
+        if await notificationsDenied() { return .skippedDisabled }
+        guard stillSignedIn(as: account) else { return .skippedSignedOut }
         prefs.lastCheckAt = now()
-        let outcome = await run(for: account, notify: trigger != .page, existing: existing)
+        let outcome = await run(for: account)
         // Re-checked here as well as inside the run: `run` ends with a `logout()` await of its
         // own, and the diagnostics ring is shared with whatever account is signed in now.
         guard let outcome, stillSignedIn(as: account) else { return .skippedSignedOut }
@@ -184,32 +186,38 @@ actor MailChecker {
         account == current
     }
 
+    /// The open mail list has shown the inbox up to `status`, so the checks that notify start
+    /// above it and a mail already on screen is not announced later.
+    func noteSeenByPage(_ status: MailboxStatusInfo) {
+        guard prefs.studentID != nil else { return }
+        if prefs.inboxUIDValidity != status.uidValidity || prefs.inboxNextUID == nil {
+            prefs.inboxUIDValidity = status.uidValidity
+            prefs.inboxNextUID = status.uidNext
+        } else if let marker = prefs.inboxNextUID, status.uidNext > marker {
+            prefs.inboxNextUID = status.uidNext
+        }
+    }
+
     /// `nil` when the run's account went away partway through — see `check`.
-    private func run(for account: String, notify: Bool, existing: (any MailClient)?) async -> MailCheckOutcome? {
+    private func run(for account: String) async -> MailCheckOutcome? {
         let client: any MailClient
-        if let existing {
-            client = existing
-        } else {
-            do {
-                client = try await openSession()
-            } catch MailClientError.authenticationFailed {
-                await reportAuthFailure(for: account)
-                return .authFailed
-            } catch {
-                return .failed(error as? MailClientError ?? .unreachable)
-            }
+        do {
+            client = try await openSession()
+        } catch MailClientError.authenticationFailed {
+            await reportAuthFailure(for: account)
+            return .authFailed
+        } catch {
+            return .failed(error as? MailClientError ?? .unreachable)
         }
 
         let outcome: MailCheckOutcome?
         do {
-            let result = try await checkInbox(for: account, client: client, notify: notify)
+            let result = try await checkInbox(for: account, client: client)
             outcome = result?.outcome
-            // Last, and deliberately after `checkInbox` has written the marker. Warming bodies is
-            // a convenience the check's real job does not depend on, and it is the slowest thing
-            // here — up to five fetches on a connection that may be on a train. Run before the
-            // advance, a process death anywhere in it would leave the marker where it was and
-            // notify every one of these mails again on the next check.
-            if notify, let result {
+            // Last, after `checkInbox` has written the marker: warming bodies is optional and the
+            // slowest step, up to five fetches on what may be a weak connection. Run before the
+            // advance, a process death during it would re-notify all these mails on the next check.
+            if let result {
                 await prefetchBodies(for: account, client: client, uidValidity: result.uidValidity, uids: result.notified)
             }
         } catch MailClientError.authenticationFailed {
@@ -218,7 +226,7 @@ actor MailChecker {
         } catch {
             outcome = .failed(error as? MailClientError ?? .unreachable)
         }
-        if existing == nil { await client.logout() }
+        await client.logout()
         return outcome
     }
 
@@ -239,7 +247,7 @@ actor MailChecker {
         var notified: [UInt32] = []
     }
 
-    private func checkInbox(for account: String, client: any MailClient, notify: Bool) async throws -> InboxCheck? {
+    private func checkInbox(for account: String, client: any MailClient) async throws -> InboxCheck? {
         let status = try await client.status(folder: MailConstants.inbox)
         // The baseline write just below is this account's answer about this account's inbox.
         guard stillSignedIn(as: account) else { return nil }
@@ -257,56 +265,39 @@ actor MailChecker {
         // Before the notify, not only before the marker write: a notification posted here names
         // the previous student's mail — sender and subject — on the new student's lock screen.
         guard stillSignedIn(as: account) else { return nil }
-        // Notify before persisting the marker (design doc §8.5: notify, then advance). If a
-        // BGAppRefreshTask expires or the process is killed while this await is in flight, the
-        // marker is untouched, so the next check re-fetches and re-notifies these same messages
-        // instead of losing them for good — safe because notification identifiers are stable
-        // per (UIDVALIDITY, UID), so a repeat delivery just replaces the same notification.
-        var unnotified: Set<UInt32> = []
-        if notify {
-            unnotified = await notifier.notify(fresh, uidValidity: status.uidValidity)
-            // A sign-out while these were being posted ran its own `removeAll`, possibly before
-            // the last of them arrived. A run that outlived its account takes back what it
-            // posted, so the previous student's sender and subject do not stay on the lock screen.
-            if !stillSignedIn(as: account) { await notifier.removeAll() }
-        }
+        // Notify, then advance the marker: if a BGAppRefreshTask expires or the process dies during
+        // this await, the next check re-notifies these mails instead of losing them. Identifiers
+        // are stable per (UIDVALIDITY, UID), so a repeat delivery replaces the same notification.
+        let unnotified = await notifier.notify(fresh, uidValidity: status.uidValidity)
+        // A sign-out while these were being posted ran its own `removeAll`, possibly before
+        // the last of them arrived. A run that outlived its account takes back what it
+        // posted, so the previous student's sender and subject do not stay on the lock screen.
+        if !stillSignedIn(as: account) { await notifier.removeAll() }
         // Advance past what was actually fetched, not STATUS's UIDNEXT, so a message that
         // arrived between the two commands is neither skipped nor notified twice...
         let ceiling = fetched.map(\.uid).max().map { $0 + 1 } ?? status.uidNext
-        // ...but never past a message the notification centre refused in a way it might not
-        // refuse again: the design's own safety argument is "notify, then advance, so a process
-        // death re-notifies", and a refused `add` is a failure to notify that is not a process
-        // death. Holding the marker at the lowest such UID makes the next check reconsider it.
-        // A refusal that will be repeated for the same reason — permission off, content the
-        // system will not take — is not in `unnotified` at all, because holding for one of those
-        // would re-report the same mail as new on every poll for ever (`MailNotifier.isTransient`).
-        // Still monotonic: every fetched UID is at or above the marker this check started from,
-        // so this can only hold or advance it.
-        //
-        // Monotonic *for this account*, which is why the guard is repeated after the notify
-        // await: the marker key is shared, and a sign-in that happened while the notifications
-        // were being posted has already written its own baseline there (`establishBaseline`).
-        // Advancing it from this run's fetch would move the new account's marker over mail it
-        // has never seen, which is mail it would then never be notified about.
+        // ...but hold at the lowest UID whose refusal may not recur (`MailNotifier.notify`) so the
+        // next check retries it. No fetched UID is below the old marker, so it never moves back.
+        // Re-check the account: the key is shared, and a sign-in mid-notify wrote its own baseline.
         guard stillSignedIn(as: account) else { return nil }
-        prefs.inboxNextUID = unnotified.min().map { min($0, ceiling) } ?? ceiling
+        let advanced = unnotified.min().map { min($0, ceiling) } ?? ceiling
+        // The open list may have moved it further during the notify (`noteSeenByPage`).
+        prefs.inboxNextUID = max(advanced, prefs.inboxNextUID ?? 0)
         return InboxCheck(
             outcome: fresh.isEmpty ? .noNewMail : .newMail(fresh.count),
             uidValidity: status.uidValidity,
-            notified: notify ? fresh.map(\.uid) : []
+            notified: fresh.map(\.uid)
         )
     }
 
     /// Pulls the newest notified mails' bodies down on the connection this check already holds,
     /// so tapping the notification opens a mail that is already on disk rather than a spinner.
     ///
-    /// Bounded to `MailConstants.bodyPrefetchLimit`, newest first — a burst of mail must not turn a check that
-    /// should take a second into a long one, least of all inside a `BGAppRefreshTask`. Silent: the
-    /// check's real job has already succeeded, and a body that will not come down only means that
-    /// opening that mail is as slow as it used to be. It stops, though, on cancellation (the
-    /// background task's expiration handler) and on an error that says the connection itself is
-    /// gone, rather than trying the rest one by one against it. `detail` fetches with
-    /// `BODY.PEEK`, so nothing here marks a mail read.
+    /// At most `MailConstants.bodyPrefetchLimit`, newest first, so a burst of mail cannot make a
+    /// quick check long, least of all in a `BGAppRefreshTask`. Silent: the check has already done
+    /// its job, and a body that does not come down is fetched when the mail is opened. Stops on
+    /// cancellation (the background task's expiration handler) and on an error that means the
+    /// connection is gone. `detail` fetches with `BODY.PEEK`, so nothing here marks a mail read.
     private func prefetchBodies(for account: String, client: any MailClient, uidValidity: UInt32, uids: [UInt32]) async {
         guard let cache else { return }
         for uid in uids.sorted(by: >).prefix(MailConstants.bodyPrefetchLimit) {
@@ -315,7 +306,8 @@ actor MailChecker {
             guard !Task.isCancelled, stillSignedIn(as: account) else { return }
             if cache.loadDetail(folder: MailConstants.inbox, uidValidity: uidValidity, uid: uid) != nil { continue }
             do {
-                let detail = try await client.detail(folder: MailConstants.inbox, uid: uid, expectedUIDValidity: uidValidity)
+                let detail = try await client.detail(folder: MailConstants.inbox, uid: uid, expectedUIDValidity: uidValidity,
+                                                     inlineImages: false)
                 guard !Task.isCancelled, stillSignedIn(as: account) else { return }
                 cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity)
             } catch let error as MailClientError where Self.endsPrefetch(error) {

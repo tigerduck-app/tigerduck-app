@@ -1,22 +1,14 @@
 import Foundation
 import os
 
-/// URLSession-based client for the backend's generic settings-document API
-/// (`server/routes/settings_docs.py`): `GET/PUT /v3/settings/{namespace}`.
+/// Client for `GET/PUT /v3/settings/{namespace}` (`server/routes/settings_docs.py`).
 ///
-/// Mirrors `PushAPIClient`'s request construction, auth header and error
-/// handling (`Services/Push/PushAPIClient.swift`) rather than introducing a
-/// second networking stack — the same ephemeral `URLSession`, the same
-/// `Bearer <token>` header via `authHeaderProvider`, and the same
-/// `PushAPIError` for transport/decoding failures.
-///
-/// The document payload travels as opaque `Data` in both directions: this
-/// client has no idea what shape any given namespace's document is (that's
-/// a `Codable` type owned by the caller, e.g. `NotificationSettingsDocument`
-/// for the `"notification"` namespace) — it only knows how to wrap it in
-/// the `{"schema_version", "document", "base_revision"}` envelope the
-/// backend expects, and unwrap the `{"document", "revision"}` (or, on a
-/// conflict, `{"server": {"document", "revision"}}`) it returns.
+/// Copies the requests, auth header and errors of `PushAPIClient`
+/// (`Services/Push/PushAPIClient.swift`) rather than adding a second networking
+/// stack: an ephemeral session, `Bearer` from `authHeaderProvider` and `PushAPIError`.
+/// The document stays opaque `Data` for the caller to decode; this client wraps it
+/// in `schema_version`, `document` and `base_revision`, and unwraps `document` and
+/// `revision` from the reply, or from its `server` object on a 409.
 actor SettingsDocumentClient {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
@@ -191,22 +183,9 @@ actor SettingsDocumentClient {
         guard let http = response as? HTTPURLResponse else {
             throw PushAPIError.invalidResponse
         }
-        // This is our own backend, so it reports in — same rule every other
-        // first-party client follows (`PushAPIClient:355`,
-        // `BulletinAPIClient:234`, `AcademicCalendarStore:131`,
-        // `AuthTokenManager:136`/`:194`). `APIVersionGate` is scoped by
-        // *whose* server answered, not by which endpoint
-        // (`APIVersionGate.swift:12-15`), and `/v3/settings/...` is ours.
-        //
-        // Reported here rather than from `httpStatusError` because this
-        // client has two non-2xx statuses that deliberately never reach that
-        // helper — 404 on read and 409 on write — and a future third would
-        // silently opt out of the gate the same way. Only 410 latches, so
-        // handing over every status costs nothing.
-        //
-        // `await`ed onto the main actor exactly like `AuthTokenManager` does
-        // from its own non-main context; the request above already completed
-        // off the main actor, which is what this being an `actor` buys.
+        // Our own backend, so every status goes to `APIVersionGate`, which is scoped by
+        // server, not endpoint. Reported here, not in `httpStatusError`, because the 404
+        // on read and 409 on write never reach that helper. Only 410 latches.
         await APIVersionGate.shared.note(statusCode: http.statusCode)
         return (data, http.statusCode)
     }
@@ -241,16 +220,13 @@ actor SettingsDocumentClient {
     }
 }
 
-/// Outcome of `SettingsDocumentClient.write`. A 409 is not surfaced as a
-/// thrown error — the caller needs the winning server document to merge
-/// against, not just notice that its write lost.
+/// Outcome of `SettingsDocumentClient.write`. A 409 is a result, not a thrown
+/// error, because the caller needs the winning server document to merge against.
 ///
-/// `nonisolated` for the same reason as `NotificationSettingsDocument`:
-/// this target defaults unannotated types to `@MainActor`
-/// (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`), but this is a plain
-/// result value returned from the `SettingsDocumentClient` actor with no
-/// actor affinity of its own — its `Equatable` conformance must stay
-/// usable from any isolation domain.
+/// `nonisolated` because the target defaults unannotated types to `@MainActor`
+/// (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`), and this value is returned from
+/// the `SettingsDocumentClient` actor, so its `Equatable` conformance must work
+/// from any isolation domain.
 nonisolated enum SettingsWriteResult: Equatable, Sendable {
     case written(revision: Int)
     case conflict(document: Data, revision: Int)

@@ -31,24 +31,14 @@ protocol BrightnessControllable: AnyObject {
 
 extension UIScreen: BrightnessControllable {}
 
-/// Owns the screen-brightness override the library QR page uses to stay
-/// readable at a scanner.
+/// Owns the screen-brightness override the library QR page uses at a scanner.
 ///
-/// Brightness is per display but not per view, and `LibraryView` is not a
-/// single instance: the Library tab builds one, and Home and More each push
-/// their own `LibraryView(embedded: true)` onto their navigation stacks. Two
-/// can be alive at once, and with the override state held per view the
-/// second one captured the *already boosted* `1.0` as its "pre-boost"
-/// value — after which no restore could put the panel back, short of the
-/// user finding Control Center.
-///
-/// Claims are therefore counted per panel. Counting means the boost survives
-/// one instance going away while another is still showing a code; keeping a
-/// claim *per panel* rather than one global claim means two windows on two
-/// displays — which the app allows, it ships with
-/// `UIApplicationSupportsMultipleScenes` — do not evict each other. A window
-/// that moves between displays hands the one it leaves its brightness back,
-/// which is the fold case.
+/// The Library tab, Home and More each build a `LibraryView`, and two can be
+/// alive at once; per-view state would let the second save the boosted `1.0` as
+/// its pre-boost value, so no restore could bring the panel back. Claims are
+/// counted per panel: the boost outlives one view while another shows a code,
+/// windows on two displays (multiple scenes) do not evict each other, and a
+/// window moving displays, as on a fold, hands the one it leaves its brightness back.
 @MainActor
 final class LibraryBrightnessCoordinator {
     static let shared = LibraryBrightnessCoordinator()

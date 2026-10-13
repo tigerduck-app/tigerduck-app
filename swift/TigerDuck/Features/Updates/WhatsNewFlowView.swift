@@ -2,16 +2,13 @@
 import SwiftUI
 
 /// The What's New sheet: feature pages from ``WhatsNewCatalog`` one at a
-/// time, then the Apple-style summary list from `whatsnew.json`. Shown
-/// automatically after an upgrade (``UpdateNotifySheetHost``) and on
-/// demand from Settings → What's New.
+/// time, then the Apple-style summary list from `whatsnew.json`. Shown after
+/// an upgrade (``UpdateNotifySheetHost``) and from Settings → What's New.
 ///
-/// Pages move with the buttons — Next or the page's own answer forward,
-/// the chevron back — not with a horizontal swipe, so a stray swipe
-/// can't carry the user past a question, and a page's own vertical
-/// scrolling never competes with paging. Swiping the sheet down closes
-/// the whole flow from any page; questions not reached keep the
-/// current setting.
+/// Pages move by button (Next or the page's answer forward, the chevron
+/// back), not horizontal swipe: a stray swipe can't skip a question, and a
+/// page's vertical scrolling never competes with paging. Swiping the sheet
+/// down closes the flow anywhere; unreached questions keep the current setting.
 struct WhatsNewFlowView: View {
     let presentation: WhatsNewPresentation
     /// Called by the last page's button. Swipe-to-dismiss goes through

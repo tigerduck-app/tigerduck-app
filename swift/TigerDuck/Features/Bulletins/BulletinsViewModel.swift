@@ -2,19 +2,14 @@ import Foundation
 import Observation
 import os
 
-/// @Observable store for the bulletin list page.
+/// Store for the bulletin list page: a cursor-paginated list, the filter
+/// selection, and the load state for the first fetch and infinite scroll.
+/// Rapid scroll events never fire duplicate requests.
 ///
-/// Holds a cursor-paginated list, the current filter selection, and the
-/// loading state for both the initial fetch and the infinite-scroll
-/// pagination. Refresh and pagination share an in-flight `Task` so rapid
-/// scroll events never fire duplicate requests.
-///
-/// Disk cache: `DataCache` persists the full known summary list between
-/// launches. On refresh we seed from cache first so the list renders
-/// immediately, then hit the server and merge by id. A background task
-/// then walks the cursor pages until the server returns `next_cursor =
-/// nil`, so the user can scroll the entire history without waiting for
-/// 30-item chunks mid-scroll.
+/// `DataCache` keeps the full known summary list between launches, so the list
+/// renders from disk at once and then merges server pages by id. A background
+/// task walks the cursor pages until `next_cursor` is nil, so the user can
+/// scroll the whole history without waiting for 30-item pages mid-scroll.
 @MainActor
 @Observable
 final class BulletinsViewModel {
@@ -30,15 +25,14 @@ final class BulletinsViewModel {
     private(set) var isPaginating: Bool = false
     private(set) var hasMore: Bool = true
 
-    private var suppressRefilter = false
     var selectedOrgs: Set<String> = [] {
-        didSet { if !suppressRefilter { refilter() } }
+        didSet { refilter() }
     }
     var selectedTags: Set<String> = [] {
-        didSet { if !suppressRefilter { refilter() } }
+        didSet { refilter() }
     }
     var searchText: String = "" {
-        didSet { if !suppressRefilter { refilter() } }
+        didSet { refilter() }
     }
     var showDeleted: Bool = false {
         didSet { Task { await refresh() } }
@@ -51,12 +45,14 @@ final class BulletinsViewModel {
     private var nextCursor: Int? = nil
     private var inflight: Task<Void, Never>?
     private var prefetchTask: Task<Void, Never>?
+    /// Set while the list is off screen, so a first page that lands after the screen left does
+    /// not start the walk behind it.
+    private var isPrefetchPaused = false
 
     init(apiClient: BulletinAPIClient? = nil) {
-        // Defaults to providers that re-resolve through PushServerConfig
-        // on every request, so a Debug endpoint override applies to bulletin
-        // fetches immediately and the shared secret tracks the endpoint —
-        // matching the push stack's behaviour.
+        // The default URL provider re-resolves PushServerConfig on every request, as
+        // the push stack does, so a Debug endpoint override applies to bulletin
+        // fetches at once.
         self.apiClient = apiClient ?? BulletinAPIClient()
         // Seed synchronously from disk so the very first render after
         // launch paints real cards instead of a spinner.
@@ -67,13 +63,74 @@ final class BulletinsViewModel {
         }
     }
 
+    /// What the last list ended with. More and Home build a new view model on every visit, so
+    /// the next one in this process shows it and resumes the cursor instead of walking every
+    /// page again. It asks for the first page only. A pull refreshes it all.
+    private struct ListSession {
+        let items: [BulletinAPI.BulletinSummary]
+        let nextCursor: Int?
+        let hasMore: Bool
+        let showDeleted: Bool
+    }
+
+    private static var listSession: ListSession?
+
+    static func forgetListSession() {
+        listSession = nil
+    }
+
     // MARK: - Public surface
 
     /// Initial load. No-op if already loaded so tab re-selection does not
     /// thrash the network — call `refresh()` to force.
     func loadIfNeeded() async {
-        if case .loaded = loadState { return }
+        isPrefetchPaused = false
+        if case .loaded = loadState {
+            resumePrefetchIfNeeded()
+            return
+        }
+        if let session = Self.listSession, session.showDeleted == showDeleted {
+            items = Self.merge(existing: items, incoming: session.items)
+            nextCursor = session.nextCursor
+            hasMore = session.hasMore
+            loadState = .loaded
+            refilter()
+            resumePrefetchIfNeeded()
+            await refreshFirstPage()
+            return
+        }
         await refresh()
+    }
+
+    /// A kept list can be days old in a suspended app. A first page with no row the list has
+    /// means more was posted than a page holds, so the walk goes on behind that page.
+    private func refreshFirstPage() async {
+        let includeDeleted = showDeleted
+        guard let page = try? await apiClient.listBulletins(
+            limit: 30, cursor: nil, includeDeleted: includeDeleted
+        ), includeDeleted == showDeleted else { return }
+        let knownIds = Set(items.map(\.id))
+        let reachesKeptRows = page.items.contains { knownIds.contains($0.id) }
+        items = Self.merge(existing: items, incoming: page.items)
+        if !reachesKeptRows {
+            nextCursor = page.nextCursor
+            hasMore = page.nextCursor != nil
+            startBackgroundPrefetch()
+        }
+        refilter()
+        persistSummaries()
+    }
+
+    /// The list left the screen; its next appearance resumes from the cursor.
+    func pausePrefetch() {
+        isPrefetchPaused = true
+        prefetchTask?.cancel()
+        prefetchTask = nil
+    }
+
+    private func resumePrefetchIfNeeded() {
+        guard prefetchTask == nil, hasMore, nextCursor != nil else { return }
+        startBackgroundPrefetch()
     }
 
     func refresh() async {
@@ -85,23 +142,19 @@ final class BulletinsViewModel {
         await inflight?.value
     }
 
-    /// Resolve a bulletin id (typically from a push-tap deep link) into a
-    /// `BulletinSummary` the view can hand to its `.navigationDestination`.
-    /// Prefers the in-memory list, then the on-disk summary cache, and as
-    /// a last resort fetches the detail endpoint and synthesises a summary
-    /// shaped row from it — that mirror lets `BulletinDetailView` re-fetch
-    /// the same detail and render normally without an extra contract.
+    /// Resolve a bulletin id, typically from a push-tap deep link, into a
+    /// `BulletinSummary` for the view's `.navigationDestination`. Tries the
+    /// in-memory list, then the disk cache, then builds a summary from the
+    /// detail endpoint, so `BulletinDetailView` re-fetches and renders it as usual.
     ///
-    /// Returns `nil` for a *terminal* miss (the bulletin is tombstoned and
-    /// will never be navigable). Throws for a *transient* miss (network /
-    /// decode failure) so the caller can preserve the deep link and retry
-    /// when conditions improve, instead of dropping the tap.
+    /// Returns `nil` when the bulletin is tombstoned and can never open. Throws
+    /// on a transient miss (network or decode failure) so the caller can keep
+    /// the deep link and retry instead of dropping the tap.
     func summary(forId id: Int) async throws -> BulletinAPI.BulletinSummary? {
         if let existing = items.first(where: { $0.id == id }) {
-            // `items` is seeded from the on-disk cache at init, so a row
-            // that has since been tombstoned on the server can already
-            // be in memory when the push tap arrives. Honour the flag
-            // here too, mirroring the cache and detail-fetch guards.
+            // `items` is seeded from the disk cache at init, so it can hold a row
+            // the server has since tombstoned. Honour the flag here too, as the
+            // cache and detail-fetch guards do.
             guard !existing.isDeleted else {
                 logger.info("summary(forId:) skipped in-memory deleted bulletin id=\(id, privacy: .public)")
                 return nil
@@ -123,14 +176,12 @@ final class BulletinsViewModel {
         do {
             detail = try await apiClient.getBulletin(id: id)
         } catch {
-            logger.error("summary(forId:) fetch failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            logger.error("summary(forId:) fetch failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
             throw error
         }
-        // Don't surface or merge a tombstoned bulletin — the /list
-        // endpoint filters these out, and merging here would inject
-        // a ghost row at the top of the feed AND persist it to disk
-        // cache where it would survive until the next page load
-        // overwrote it.
+        // Never surface or merge a tombstoned bulletin. /list filters them out, and
+        // merging one would put a ghost row at the top of the feed and persist it
+        // to the disk cache until a later page load overwrote it.
         guard !detail.isDeleted else {
             logger.info("summary(forId:) skipped deleted bulletin id=\(id, privacy: .public)")
             return nil
@@ -160,10 +211,9 @@ final class BulletinsViewModel {
     /// `isPaginating` and `hasMore`.
     func loadMoreIfNeeded(triggeredBy item: BulletinAPI.BulletinSummary) async {
         guard hasMore, !isPaginating else { return }
-        // Only paginate when approaching the tail of the loaded list. The
-        // filter chips can keep `filteredItems` much shorter than `items`,
-        // so we key the threshold off `items` to avoid a pagination storm
-        // when heavy filtering shows a short filtered list.
+        // Paginate only near the tail of `items`, not `filteredItems`: heavy
+        // filtering can leave a short filtered list, and keying the threshold
+        // off it would set off a pagination storm.
         guard let visibleIndex = items.firstIndex(where: { $0.id == item.id }) else { return }
         guard visibleIndex >= max(items.count - 5, 0) else { return }
         await paginate()
@@ -191,11 +241,9 @@ final class BulletinsViewModel {
             persistSummaries()
             startBackgroundPrefetch()
         } catch {
-            logger.error("refresh failed: \(error.localizedDescription, privacy: .public)")
-            // If we have cached items, keep them visible and surface as
-            // `loaded` rather than `failed` — the user can still browse
-            // history while offline. Surface the error only when there is
-            // literally nothing to show.
+            logger.error("refresh failed: \(error.localizedDescription, privacy: .private)")
+            // With cached items, stay `loaded` so the user can browse history
+            // offline. Fail only when there is nothing to show.
             if items.isEmpty {
                 loadState = .failed(error.localizedDescription)
             } else {
@@ -212,6 +260,8 @@ final class BulletinsViewModel {
     /// the chain.
     private func startBackgroundPrefetch() {
         prefetchTask?.cancel()
+        prefetchTask = nil
+        guard !isPrefetchPaused else { return }
         prefetchTask = Task { [weak self] in
             await self?.runBackgroundPrefetch()
         }
@@ -237,7 +287,7 @@ final class BulletinsViewModel {
                 try? await Task.sleep(for: .milliseconds(200))
             } catch {
                 consecutiveFailures += 1
-                logger.error("prefetch page failed: \(error.localizedDescription, privacy: .public) attempt=\(consecutiveFailures, privacy: .public)")
+                logger.error("prefetch page failed: \(error.localizedDescription, privacy: .private) attempt=\(consecutiveFailures, privacy: .public)")
                 if consecutiveFailures >= 3 {
                     // Give up for this session; the user can pull-to-refresh
                     // later to restart the prefetch chain. Note we leave
@@ -269,17 +319,18 @@ final class BulletinsViewModel {
             refilter()
             persistSummaries()
         } catch {
-            // Preserve `hasMore` and `nextCursor` so the next scroll
-            // trigger (or a pull-to-refresh) retries this page. The prior
-            // behaviour of setting `hasMore = false` here meant a single
-            // network blip could silently strand the user at page N,
-            // which is exactly what we saw stopping scrolling at March.
-            logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .public)")
+            // Keep `hasMore` and `nextCursor` so the next scroll trigger or a
+            // pull-to-refresh retries this page. Clearing `hasMore` here would let
+            // one network blip silently strand the user mid-history.
+            logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .private)")
         }
     }
 
     private func persistSummaries() {
         DataCache.shared.saveBulletinSummaries(items)
+        Self.listSession = ListSession(
+            items: items, nextCursor: nextCursor, hasMore: hasMore, showDeleted: showDeleted
+        )
     }
 
     /// Dedupe by id and sort newest-first. Server-side ordering is
@@ -346,16 +397,5 @@ final class BulletinsViewModel {
         } else {
             selectedTags.insert(id)
         }
-    }
-
-    func clearFilters() {
-        // Batch-mutate so refilter() runs once instead of three times over
-        // potentially thousands of items.
-        suppressRefilter = true
-        selectedOrgs.removeAll()
-        selectedTags.removeAll()
-        searchText = ""
-        suppressRefilter = false
-        refilter()
     }
 }

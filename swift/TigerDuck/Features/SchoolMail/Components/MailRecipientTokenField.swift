@@ -6,9 +6,9 @@ import SwiftUI
 nonisolated enum MailRecipientTokens {
     /// Splits what has been typed into the recipients it finishes and what is still being typed.
     ///
-    /// `,` and `;` always end a recipient. A space ends one only once what came before it holds
-    /// an `@` — so `王大明 <wang@mail.ntust.edu.tw>` can still be typed name first — and never
-    /// inside quotes or angle brackets, where it is part of the name or the address.
+    /// Nothing inside quotes or angle brackets ends a recipient: it is part of the name or the
+    /// address. Outside them `,` and `;` always do, and a space does once what came before it
+    /// holds an `@`, so `Da-Ming Wang <wang@mail.ntust.edu.tw>` can still be typed name first.
     static func consume(_ typed: String) -> (finished: [String], remainder: String) {
         var finished: [String] = []
         var current = ""
@@ -102,7 +102,7 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contentShape(Rectangle())
-        .onTapGesture { focus.wrappedValue = field }
+        .simultaneousTapGesture { focus.wrappedValue = field }
         .onAppear { load(text) }
         .onChange(of: text) { _, value in
             // Only a value this field did not write — a reply's recipients arriving, a reset.
@@ -129,29 +129,34 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
 
     private func bubble(_ token: String, at index: Int) -> some View {
         let valid = MailComposeViewModel.sendableAddress(token) != nil
-        return HStack(spacing: TigerDuckTheme.Spacing.xs) {
+        // Two buttons side by side, each holding its share of the bubble's padding, so a tap
+        // anywhere on the bubble edits it or removes it.
+        return HStack(spacing: 0) {
             // Wraps rather than truncating, so a long address is never shown cut short.
             Text(verbatim: token)
                 .fixedSize(horizontal: false, vertical: true)
                 .typesettingLanguage(MailRecipient.unhyphenatedLanguage)
+                .padding(.leading, TigerDuckTheme.Spacing.sm)
+                .padding(.trailing, TigerDuckTheme.Spacing.xs)
+                .padding(.vertical, TigerDuckTheme.Spacing.xs)
+                .scrollSafeTapAction { edit(at: index) }
             Button {
                 tokens.remove(at: index)
                 publish()
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption2.weight(.bold))
+                    .padding(.trailing, TigerDuckTheme.Spacing.sm)
+                    .padding(.vertical, TigerDuckTheme.Spacing.xs)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .accessibilityLabel(Text(verbatim: "\(token) ×"))
         }
         .font(TigerDuckTheme.Typography.caption)
         .foregroundStyle(valid ? Color.textPrimary : Color.red)
-        .padding(.horizontal, TigerDuckTheme.Spacing.sm)
-        .padding(.vertical, TigerDuckTheme.Spacing.xs)
         .background(valid ? AnyShapeStyle(.tint.opacity(0.25)) : AnyShapeStyle(Color.red.opacity(0.15)), in: Self.bubbleShape)
         .overlay { if !valid { Self.bubbleShape.strokeBorder(Color.red.opacity(0.6), lineWidth: 1) } }
-        .contentShape(Self.bubbleShape)
-        .onTapGesture { edit(at: index) }
     }
 
     private func load(_ value: String) {

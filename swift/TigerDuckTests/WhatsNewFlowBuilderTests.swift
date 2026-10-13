@@ -1,7 +1,6 @@
-// `WhatsNewFlowBuilder` — how the What's New sheet's pages are stacked
-// across skipped versions after an upgrade, and what Settings → What's New
-// replays. Pure: the catalog, the summary and the seen marker are passed in,
-// so nothing here touches `Defaults` or the bundled JSON.
+// `WhatsNewFlowBuilder`: how the What's New pages stack across skipped versions after
+// an upgrade, and what Settings → What's New replays. The catalog, summary and seen
+// marker are passed in, so nothing here touches `Defaults` or the bundled JSON.
 import Foundation
 import Testing
 @testable import TigerDuck

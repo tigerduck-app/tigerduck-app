@@ -9,21 +9,14 @@ struct EventRowView: View {
     #endif
 
     #if os(iOS)
-    /// Only a holiday can be opted back into. A term boundary is an
-    /// announcement, not a day off, so `holidayID` is nil for one and the
-    /// toggle never appears.
+    /// Only a holiday can be opted back into: a term boundary is an announcement,
+    /// not a day off, so its `holidayID` is nil and no toggle appears. iOS only,
+    /// as macOS delivers no class reminders; the Mac still lists the holiday.
     ///
-    /// iOS only: macOS delivers no class reminders, so a switch there would
-    /// promise something the platform cannot do. The Mac still lists the
-    /// holiday — it just has nothing to turn on.
-    ///
-    /// Read straight from `Defaults` rather than mirrored into `@State`.
-    /// This is the same key a cloud-sync merge writes through
-    /// `AcademicCalendarStore.applySyncedOverrides`, so a change made on
-    /// another device moves the switch while the row is on screen. Seeding
-    /// a local copy in `onAppear` left it showing the value from whenever
-    /// the row first appeared, which is the stalest possible answer for a
-    /// setting whose whole point is that it follows the account.
+    /// Read from `Defaults`, not mirrored into `@State`: a cloud-sync merge writes
+    /// this key through `AcademicCalendarStore.applySyncedOverrides`, so a change on
+    /// another device moves the switch while the row is on screen. A copy seeded in
+    /// `onAppear` would keep showing the value from when the row first appeared.
     @Default(.holidayNotifyOverrides) private var holidayOverrides
     #endif
 
@@ -51,11 +44,9 @@ struct EventRowView: View {
 
             #if os(iOS)
             if let holidayID {
-                // Labelled rather than bare: on its own the switch asked the
-                // user to guess what it governed. `labelsHidden` stays so the
-                // text sits where this row wants it instead of where a
-                // `Toggle` label would land, which is why the accessibility
-                // label is still spelled out below.
+                // Labelled, since a bare switch leaves the user guessing what it governs.
+                // A separate `Text` sits where this row wants it, not where a `Toggle`
+                // label goes; with `labelsHidden`, the accessibility label is set below.
                 Text(String(localized: "calendar_holiday_notify_title"))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
@@ -64,10 +55,8 @@ struct EventRowView: View {
                     "",
                     isOn: Binding(
                         get: { holidayOverrides.contains(holidayID) },
-                        // Writes through AppState rather than to Defaults
-                        // directly, so the local write, the Live Activity
-                        // refresh and the upload all still happen in one
-                        // place.
+                        // Through AppState, not Defaults directly, so the local
+                        // write, Live Activity refresh and upload stay in one place.
                         set: { appState.setHolidayNotify($0, holidayID: holidayID) }
                     )
                 )

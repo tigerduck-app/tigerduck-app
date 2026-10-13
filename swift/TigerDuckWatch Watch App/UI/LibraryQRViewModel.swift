@@ -229,10 +229,8 @@ final class LibraryQRViewModel {
             return nil
         }
 
-        // 1-module quiet zone on each side keeps the bottom edge readable
-        // against the watch's white card background; the QR spec actually
-        // calls for a 4-module quiet zone but the parent view already
-        // pads the white surround.
+        // A 1-module quiet zone per side keeps the bottom edge readable on the white card. The QR
+        // spec asks for 4 modules, but the parent view already pads the white surround.
         let quiet = 1
         let modulesPerSide = matrix.size + quiet * 2
         let pixelsPerModule = 6

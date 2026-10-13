@@ -1,20 +1,14 @@
 #if os(macOS)
 import SwiftUI
 
-/// The "More" sidebar destination.
+/// The "More" sidebar destination, mirroring the iPhone More tab.
 ///
-/// Mirrors the iPhone More tab: a grouped, navigable list of every
-/// feature the app surfaces (Pages, Academic, Life, Language, System),
-/// with a per-row pin/unpin badge so the user can pin straight from
-/// here without dipping into Settings. Implemented features open the
-/// real feature view inside a NavigationStack; unimplemented ones show
-/// the placeholder body so the user can see what's coming.
+/// Every feature the app surfaces, by category, with a pin/unpin badge per row so pinning
+/// needs no trip to Settings. Unimplemented features show the placeholder body.
 ///
-/// Library-related entries are filtered out via
-/// `AppFeature.isAvailableOnMac` — Library, Discussion Room, and
-/// Library Lecture never appear here. Settings is intentionally
-/// omitted: it lives at the sidebar bottom (`SettingsLink`) and the
-/// detailed pin / time-override controls are in the Settings window.
+/// `AppFeature.isAvailableOnMac` drops Library, Discussion Room and Library Lecture.
+/// Settings is left out: `SettingsLink` sits at the sidebar bottom, and the Settings
+/// window has the detailed pin and time-override controls.
 struct MacMoreView: View {
     @Environment(AppState.self) private var appState
 

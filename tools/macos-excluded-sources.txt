@@ -62,9 +62,10 @@ ClassTableViewModel.swift
 ClassTableViewModel+Grid.swift
 ClassTableViewModel+Editing.swift
 ClassTableViewModel+Loading.swift
-AssignmentBadge.swift
+ClassTableTabBarGestures.swift
 ConflictCoursePickerSheet.swift
 ClassTableExportView.swift
+ClassTableImportScannerView.swift  # camera scanner; the Mac reads an image file instead
 ConflictLShape.swift
 TimetableGridView.swift
 
@@ -78,7 +79,6 @@ TimeSliderSection.swift
 TimeSliderViewModel.swift
 TodayCourseCarousel.swift
 UpcomingAssignmentsView.swift
-WidgetGridEditMode.swift
 WidgetGridView.swift
 HomeView.swift
 HomeViewModel.swift
@@ -95,7 +95,6 @@ LibraryViewModel.swift
 # Features/More — iOS 'More' tab; macOS uses MacMoreView
 FeatureCardView.swift
 FeatureCategorySection.swift
-MoreEditModeView.swift
 MoreView.swift
 MoreViewModel.swift
 
@@ -116,6 +115,7 @@ ScoreView.swift
 # Features/Settings — iOS settings screens; macOS uses MacSettingsScene
 AboutOthersView.swift
 AssignmentReminderSettingsView.swift
+ClassReminderSettingsView.swift
 CloudSyncSettingsView.swift
 FontSizeSettingsView.swift
 LibrarySettingsView.swift
@@ -136,6 +136,8 @@ UpdatePromptView.swift
 WhatsNewFlowView.swift
 WhatsNewPageViews.swift
 WhatsNewSchoolMailPages.swift
+WhatsNewClassTablePages.swift
+WhatsNewCoursePages.swift
 WhatsNewSummaryView.swift
 WhatsNewTabBarMock.swift
 
@@ -147,7 +149,6 @@ LiveActivityPreferencesStore.swift
 
 # LiveActivity/Runtime — ActivityKit — iOS only
 LiveActivityCoordinator.swift
-SharedSnapshotStore.swift
 TigerDuckActivityAttributes.swift
 
 # LiveActivity/Scheduling — ActivityKit — iOS only
@@ -170,12 +171,10 @@ PasswordField.swift
 
 # SharedUI — iOS-only shared components
 EmptyStateView.swift
-FlowLayout.swift
 GlassTextButtonModifier.swift
 HostScreenReader.swift
 InAppBrowserView.swift
 JustifiedText.swift
-LoadingShimmer.swift
 LoginRequiredView.swift
 NTUSTReauthErrorBanner.swift
 PullToRevealSearch.swift
@@ -233,6 +232,11 @@ AppState+NotificationSettings.swift
 NotificationSettingsSeedMigration.swift
 PendingReminderPurgeMigration.swift
 
+# LiveActivitySnapshotPurgeMigration.swift: deletes the snapshot the removed, iOS-only
+# SharedSnapshotStore kept in the App Group defaults. Called from the `#if os(iOS)` block
+# in `runPendingMigrations()`; a Mac never wrote it.
+LiveActivitySnapshotPurgeMigration.swift
+
 # BulletinPushOptOutMigration.swift — the upgrade fix-up for the 2.1.0
 # bulletin-push opt-out (spec §6 item 5). Called from its own `#if os(iOS)`
 # guard in `runPendingMigrations()`. iOS-only because the feature it repairs
@@ -247,6 +251,11 @@ BulletinPushOptOutMigration.swift
 # is: the Mac sidebar keeps its own list (`macConfiguredTabs`), and School
 # Mail isn't on the Mac at all.
 DefaultTabsPinMigration.swift
+
+# LibraryTabAddMigration.swift — pins Library on a stored iPhone bottom bar with
+# room once the library switch is gone. iOS-only like the bar, and called from
+# the same `#if os(iOS)` block.
+LibraryTabAddMigration.swift
 
 # Services/Sync — the `notification` settings-document model and its client.
 # Both sections `NotificationSettingsDocument` carries (`assignments`,

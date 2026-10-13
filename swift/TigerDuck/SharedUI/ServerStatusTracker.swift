@@ -38,30 +38,28 @@ final class ServerStatusTracker {
     static let shared = ServerStatusTracker()
 
     var statuses: [ServerKind: ServerStatus] = [:]
+    private(set) var notes: [ServerKind: String] = [:]
 
-    func set(_ status: ServerStatus, for server: ServerKind) {
+    /// `note` is shown under the status rows; a report without one clears the last.
+    func set(_ status: ServerStatus, for server: ServerKind, note: String? = nil) {
         statuses[server] = status
+        notes[server] = note
     }
 
     /// Report whether a *public* backend call got through.
     ///
-    /// The academic calendar refresh is an unauthenticated GET that runs on
-    /// every app open no matter how TigerSync is configured, which makes it
-    /// the one caller that can keep the backend's row honest when there is no
-    /// sync to report: it reads reachable-but-minimal, or failed, rather than
-    /// sitting grey and unexplained forever. (The bulletin feed is public too
-    /// and could report here; the calendar is the one that always runs.)
-    ///
-    /// Ignored while sync is on. There the sync is the more demanding call and
-    /// its result is the authoritative one — letting a public GET that
-    /// happened to land later paint over a sync failure would hide exactly the
-    /// breakage the dot exists to surface.
+    /// The academic calendar refresh reports here: an unauthenticated GET that,
+    /// unlike the also-public bulletin feed, runs on every app open whatever the
+    /// TigerSync setting. With sync off the backend row then reads minimal or
+    /// failed instead of grey. Ignored while sync is on: the sync is the more
+    /// demanding call and its result is authoritative, so a later public GET
+    /// must not paint over a sync failure the dot exists to surface.
     func noteBackendReachable(_ reachable: Bool) {
         guard !Defaults[.cloudSyncEnabled] else { return }
         set(reachable ? .ok : .failed, for: .backend)
     }
 
-    /// Report the outcome of a *full sync*.
+    /// Report the outcome of a full sync, or of a change feed read that made one unnecessary.
     ///
     /// The mirror of ``noteBackendReachable(_:)``, and ignored for the mirror
     /// reason: a sync started while TigerSync was on can finish after it has
@@ -88,8 +86,13 @@ final class ServerStatusTracker {
         statuses[server] ?? .unknown
     }
 
+    func note(for server: ServerKind) -> String? {
+        notes[server]
+    }
+
     func reset() {
         statuses.removeAll()
+        notes.removeAll()
     }
 }
 

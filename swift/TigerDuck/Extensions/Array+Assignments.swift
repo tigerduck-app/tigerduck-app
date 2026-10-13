@@ -10,7 +10,7 @@ extension Array where Element == SDAssignment {
     }
 
     /// Returns incomplete assignments sorted by due date ascending.
-    /// Excludes locally archived and locally-completed items (hidden in 未完成 tab).
+    /// Excludes locally archived and locally completed items, which the Incomplete tab hides.
     func upcomingSorted() -> [SDAssignment] {
         filter { !$0.isCompleted && !$0.isArchived && !$0.isLocallyCompleted }
             .sorted { $0.dueDate < $1.dueDate }
@@ -25,20 +25,14 @@ extension Array where Element == SDAssignment {
         contains { $0.isArchived }
     }
 
-    /// Time-agnostic candidate set for the 全部 tab. Excludes locally-archived
-    /// rows (they belong to the 已忽略 filter) *except* when Moodle has since
-    /// marked the row submitted: the archive flag persists separately from
-    /// Moodle completion, and a row the school now considers handed in has
-    /// stopped being work the user chose to hide.
+    /// Time-agnostic candidate set for the All tab. Excludes locally archived rows, which belong
+    /// to the Ignored filter, unless Moodle has since marked the row submitted: the archive flag
+    /// persists apart from Moodle completion, and a row the school considers handed in has stopped
+    /// being work the user chose to hide. ``ignoredSorted()`` keys off the archive flag alone, so
+    /// the row stays reachable either way; this only decides whether All also shows it.
     ///
-    /// The exception used to be justified by 已忽略 requiring `!isCompleted`,
-    /// so that the row would not vanish from every filter. That stopped being
-    /// true in `12a8687` — ``ignoredSorted()`` keys off the archive flag alone
-    /// now, so the row is reachable either way and this only decides whether
-    /// 全部 also shows it.
-    /// Intentionally unsorted — the past/future partition depends on the
-    /// live clock and must be applied at render time via
-    /// `partitionedByDueDate(now:)`, not cached against a frozen `Date()`.
+    /// Unsorted: the past/future split depends on the live clock and must be applied at render
+    /// time via `partitionedByDueDate(now:)`, not cached against a frozen `Date()`.
     func allCandidates() -> [SDAssignment] {
         filter { !$0.isArchived || $0.isCompleted }
     }

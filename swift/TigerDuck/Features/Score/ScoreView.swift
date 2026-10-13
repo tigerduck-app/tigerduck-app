@@ -4,6 +4,7 @@ struct ScoreView: View {
     var embedded = false
 
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = ScoreViewModel()
     @State private var selectedCourse: CourseGrade?
 
@@ -11,9 +12,11 @@ struct ScoreView: View {
         if embedded {
             content
                 .onAppear { viewModel.load(authService: appState.authService) }
+                .onChange(of: appState.authService.loginGeneration) { viewModel.load(authService: appState.authService) }
         } else {
             NavigationStack { content }
                 .onAppear { viewModel.load(authService: appState.authService) }
+                .onChange(of: appState.authService.loginGeneration) { viewModel.load(authService: appState.authService) }
         }
     }
 
@@ -110,7 +113,7 @@ struct ScoreView: View {
                     gpaPoint: viewModel.gpaPoint(for: group.term),
                     isCollapsed: viewModel.isCollapsed(term: group.term),
                     onToggle: {
-                        withAnimation(.smoothSpring) {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) {
                             viewModel.toggleCollapse(term: group.term)
                         }
                     },

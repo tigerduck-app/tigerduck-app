@@ -23,16 +23,16 @@ struct CourseTimeSlot: Identifiable, Equatable {
     let end: Date
     /// The calendar date this slot belongs to (for display purposes).
     let date: Date
+    var periods: [String] = []
 
-    /// Build slots for a single day. Emits one slot per contiguous run of
-    /// periods (consecutive in `AppConstants.Periods.chronologicalOrder`)
-    /// rather than one first-to-last span — otherwise a course scheduled
-    /// at P1 and P3 with P2 free would collapse into a single
-    /// 08:10-12:10 slot, and `CourseTimelineResolver` would report
-    /// `.inClass` during the P2 gap. The block-merge rule matches
-    /// `OngoingCourseInfo.ongoingCourses(weekday:minuteOfDay:)`, so the
-    /// time-slider, Live Activity, and Mac dashboard cards all draw
-    /// blocks consistently with the "Current class" carousel.
+    /// Build slots for a single day: one per contiguous run of periods
+    /// (consecutive in `AppConstants.Periods.chronologicalOrder`), not one
+    /// first-to-last span, which would merge a course at P1 and P3 with P2
+    /// free into one slot and make `CourseTimelineResolver` report `.inClass`
+    /// in the P2 gap. The merge rule matches
+    /// `OngoingCourseInfo.ongoingCourses(weekday:minuteOfDay:)`, so the time
+    /// slider, Live Activity and Mac dashboard cards draw the same blocks as
+    /// the "Current class" carousel.
     static func buildSlots(from courses: [SDCourse], weekday: Int, on date: Date = AppClock.now()) -> [CourseTimeSlot] {
         let calendar = AppConstants.taipeiCalendar
         var slots: [CourseTimeSlot] = []
@@ -63,7 +63,8 @@ struct CourseTimeSlot: Identifiable, Equatable {
                         course: course,
                         start: startDate,
                         end: endDate,
-                        date: date
+                        date: date,
+                        periods: Array(periods[blockStart...blockEnd])
                     ))
                 }
                 blockStart = blockEnd + 1
@@ -71,6 +72,18 @@ struct CourseTimeSlot: Identifiable, Equatable {
         }
 
         return slots.sorted { $0.start < $1.start }
+    }
+
+    /// `buildSlots` for the day of `date`, less the courses skipped that day, and empty on a
+    /// day `isClassDay` rejects: outside the term, or a holiday the user has not opted back into.
+    static func meetingSlots(
+        from courses: [SDCourse],
+        on date: Date,
+        isClassDay: (Date) -> Bool
+    ) -> [CourseTimeSlot] {
+        guard isClassDay(date) else { return [] }
+        return buildSlots(from: courses, weekday: date.scheduleWeekday, on: date)
+            .filter { !$0.course.isSkipped(on: $0.date) }
     }
 
     private static func periodOrder(_ periodId: String) -> Int {

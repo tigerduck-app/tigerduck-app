@@ -73,15 +73,12 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     private let cacheWipePendingKey: Defaults.Key<Bool>
 
     /// Guards the `ownedDeletedRecords` read-modify-write in `setOwnedDeleted`: two concurrent
-    /// calls for different folders (e.g. a background check expunging one folder while the user
-    /// deletes mail in another) must not read the same snapshot and each write back a list
-    /// missing the other's entry. Mirrors `MailCache`'s lock. The scalar properties below don't
-    /// need it — each is a single `Defaults[key]` get/set, not a compound operation.
-    ///
-    /// `static` — not per-instance — because `MailChecker.shared` and `MailAccountManager.shared`
-    /// each construct their own `DefaultsMailPreferences()` over the same underlying
-    /// `UserDefaults` keys. A per-instance lock would let their concurrent `setOwnedDeleted`
-    /// calls race the same way a single instance's calls used to before this lock existed.
+    /// calls for different folders (a background check expunging one while the user deletes
+    /// mail in another) must not read one snapshot and each write back a list missing the
+    /// other's entry. Mirrors `MailCache`'s lock. The scalar properties need no lock: each is a
+    /// single `Defaults[key]` get or set. `static`, not per instance: `MailChecker.shared` and
+    /// `MailAccountManager.shared` each build their own `DefaultsMailPreferences()` over the
+    /// same `UserDefaults` keys, so a per-instance lock would let the two race.
     private static let lock = NSLock()
 
     init(defaults: UserDefaults = .standard) {

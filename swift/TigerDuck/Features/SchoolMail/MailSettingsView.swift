@@ -1,12 +1,12 @@
 #if os(iOS)
 import SwiftUI
 
-/// The School Mail settings screen (design doc §6.5): the display name, the guide, and what
-/// the mailbox is costing in disk.
+/// The School Mail settings screen: the display name, the guide, and what the mailbox is costing
+/// in disk.
 ///
-/// The new-mail switch and Notification diagnostics used to live here too. They moved to
-/// `MailNotificationSettingsView`, reached from Settings → Notifications with the app's other
-/// notification screens — moved, not copied, so only one screen owns the switch.
+/// The new-mail switch and Notification diagnostics live in `MailNotificationSettingsView`,
+/// reached from Settings → Notifications with the app's other notification screens. They are
+/// not repeated here, so only one screen owns the switch.
 struct MailSettingsView: View {
     @State private var displayNameDraft = ""
     /// Bytes under the whole mail cache root. Nil while the first walk is still running, so the

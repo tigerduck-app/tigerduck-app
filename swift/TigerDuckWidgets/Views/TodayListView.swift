@@ -41,13 +41,12 @@ struct TodayListView: View {
     private var loggedInBody: some View {
         let weekday = WidgetTimelineDerivation.weekdayFor(now)
         let isWeekend = weekday == 6 || weekday == 7
-        let order = snapshot.periodOrder
-        let todayCourses = sortedCoursesForToday(weekday: weekday, order: order)
-        let ongoingNos = ongoingCourseNos(snapshot: snapshot, now: now)
+        let rows = WidgetTimelineDerivation.todayRows(snapshot: snapshot, at: now)
+        let ongoing = ongoingBlocks(snapshot: snapshot, now: now)
 
         VStack(alignment: .leading, spacing: 6) {
             header(weekday: weekday)
-            if todayCourses.isEmpty {
+            if rows.isEmpty {
                 Spacer()
                 Text(String(localized: isWeekend
                             ? "widget_no_classes_weekend"
@@ -56,35 +55,13 @@ struct TodayListView: View {
                     .foregroundStyle(palette.onSurfaceVariant)
                 Spacer()
             } else {
-                ForEach(Array(todayCourses.prefix(maxRows)), id: \.courseNo) { course in
-                    row(course: course, weekday: weekday, isOngoing: ongoingNos.contains(course.courseNo))
+                ForEach(Array(rows.prefix(maxRows))) { todayRow in
+                    let key = BlockKey(courseNo: todayRow.course.courseNo, startTime: todayRow.startTime)
+                    row(todayRow, isOngoing: ongoing.contains(key))
                 }
                 Spacer(minLength: 0)
             }
         }
-    }
-
-    private func sortedCoursesForToday(weekday: Int, order: [String]) -> [SnapshotCourse] {
-        let todayKey = WidgetTimelineDerivation.dateKey(for: now)
-        return snapshot.courses
-            .filter { $0.schedule[weekday] != nil && !$0.skippedDates.contains(todayKey) }
-            .sorted { lhs, rhs in
-                let lp = lhs.schedule[weekday] ?? []
-                let rp = rhs.schedule[weekday] ?? []
-                let li = firstChronologicalIndex(in: lp, order: order)
-                let ri = firstChronologicalIndex(in: rp, order: order)
-                return li < ri
-            }
-    }
-
-    private func firstChronologicalIndex(in periods: [String], order: [String]) -> Int {
-        var minIndex = Int.max
-        for periodId in periods {
-            if let idx = order.firstIndex(of: periodId), idx < minIndex {
-                minIndex = idx
-            }
-        }
-        return minIndex
     }
 
     private func header(weekday: Int) -> some View {
@@ -97,22 +74,12 @@ struct TodayListView: View {
             .foregroundStyle(palette.onSurface)
     }
 
-    private func row(course: SnapshotCourse, weekday: Int, isOngoing: Bool) -> some View {
-        let order = snapshot.periodOrder
-        let periods = WidgetTimelineDerivation.sortPeriods(course.schedule[weekday] ?? [], by: order)
-        let first = periods.first ?? ""
-        let last = periods.last ?? ""
-        let startTime = snapshot.periodTimes[first]?.start ?? ""
-        let endTime = snapshot.periodTimes[last]?.end ?? ""
-        let range = first == last ? first : "\(first)–\(last)"
+    private func row(_ todayRow: WidgetTimelineDerivation.TodayRow, isOngoing: Bool) -> some View {
+        let course = todayRow.course
 
-        // The ongoing row is painted from the course color rather than from a
-        // palette token, so the rendering-mode branch has to happen here too.
-        // Outside `.fullColor` it drops to the same 0.25 wash the week grid
-        // uses for a course block — enough to still read as "this one is
-        // running" without putting an opaque slab on the material — and the
-        // label colors come back off the palette, because white was only ever
-        // chosen for contrast against a saturated fill that is no longer there.
+        // The ongoing row uses the course color, not a token, so it branches on rendering mode
+        // here. Outside `.fullColor` it takes the week grid's 0.25 wash (still reads as running,
+        // no opaque slab) and palette label colors, since white only suited the saturated fill.
         let rowFill: Color
         let primary: Color
         let secondary: Color
@@ -131,10 +98,10 @@ struct TodayListView: View {
 
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(range)
+                Text(todayRow.periodRange)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(primary)
-                Text("\(startTime)–\(endTime)")
+                Text("\(todayRow.startTime)–\(todayRow.endTime)")
                     .font(.caption2)
                     .foregroundStyle(secondary)
             }
@@ -145,8 +112,8 @@ struct TodayListView: View {
                     .foregroundStyle(primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                if !course.classroom.isEmpty {
-                    Text(course.classroom)
+                if !todayRow.classroom.isEmpty {
+                    Text(todayRow.classroom)
                         .font(.caption2)
                         .foregroundStyle(secondary)
                         .lineLimit(1)
@@ -171,10 +138,17 @@ struct TodayListView: View {
         }
     }
 
-    private func ongoingCourseNos(snapshot: WidgetSnapshot, now: Date) -> Set<String> {
+    /// A block by course and start time, so only the block in progress of a course that
+    /// meets twice today is drawn as ongoing.
+    private struct BlockKey: Hashable {
+        let courseNo: String
+        let startTime: String
+    }
+
+    private func ongoingBlocks(snapshot: WidgetSnapshot, now: Date) -> Set<BlockKey> {
         let derived = WidgetTimelineDerivation.derive(snapshot: snapshot, at: now)
         if case .ongoing(let infos) = derived {
-            return Set(infos.map { $0.course.courseNo })
+            return Set(infos.map { BlockKey(courseNo: $0.course.courseNo, startTime: $0.startTime) })
         }
         return []
     }

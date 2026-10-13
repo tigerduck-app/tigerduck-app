@@ -23,12 +23,10 @@ struct BulletinDetailView: View {
     @State private var isLoading: Bool = false
     @State private var showInAppBrowser: Bool = false
 
-    /// Hoisted to a static so the bulletin-detail nav push doesn't hit
-    /// Defaults + Keychain on every appearance just to reconstruct the
-    /// same client. Both the base URL and the shared secret are resolved
-    /// per-request through the default providers, so a Debug endpoint
-    /// override picks up immediately without an app relaunch and the
-    /// auth header tracks whichever backend the override points at.
+    /// Hoisted to a static so the bulletin-detail nav push doesn't build a
+    /// new client and URLSession on every appearance. The base URL is
+    /// resolved per request through the default provider, so a Debug
+    /// endpoint override picks up immediately without an app relaunch.
     private static let apiClient: BulletinAPIClient = BulletinAPIClient()
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Detail")
 
@@ -71,9 +69,9 @@ struct BulletinDetailView: View {
 
     // MARK: - Subviews
 
-    /// Meta row: understated "處室 · 日期" text so the department feels like
-    /// attribution rather than a tag. Category labels live at the article
-    /// foot as hashtags.
+    /// Meta row: understated "department · date" text, so the department reads
+    /// as attribution rather than a tag. Category labels sit at the article foot
+    /// as hashtags.
     @ViewBuilder
     private var metaRow: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -193,33 +191,8 @@ struct BulletinDetailView: View {
             .foregroundStyle(Color.orange)
     }
 
-    /// MarkdownUI theme tuned to match the rest of the app — we want the
-    /// renderer's headers / lists / links to feel native to TigerDuck
-    /// rather than MarkdownUI's GitHub-flavored defaults.
     private var bulletinMarkdownTheme: Theme {
-        Theme()
-            .text {
-                ForegroundColor(Color.textPrimary)
-            }
-            .link {
-                ForegroundColor(appState.accentColor)
-                UnderlineStyle(.single)
-            }
-            .strong {
-                FontWeight(.bold)
-            }
-            .emphasis {
-                FontStyle(.italic)
-            }
-            .paragraph { configuration in
-                configuration.label
-                    .relativeLineSpacing(.em(0.25))
-                    .markdownMargin(top: .em(0.6))
-            }
-            .listItem { configuration in
-                configuration.label
-                    .markdownMargin(top: .em(0.3))
-            }
+        .bulletin(accent: appState.accentColor)
     }
 
     // MARK: - Loading
@@ -241,7 +214,7 @@ struct BulletinDetailView: View {
             detail = fresh
             DataCache.shared.saveBulletinDetail(fresh)
         } catch {
-            logger.error("detail load failed id=\(bulletin.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            logger.error("detail load failed id=\(bulletin.id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
             // Don't surface the error when we have cached content —
             // offline-first behaviour means the user keeps reading.
             if !hadCached {

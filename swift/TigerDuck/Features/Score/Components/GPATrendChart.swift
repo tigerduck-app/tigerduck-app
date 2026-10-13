@@ -1,20 +1,14 @@
 import SwiftUI
 import Charts
 
-/// The GPA line chart and the readout under it, shared by the iPhone's
-/// `RankingsTrendCard` and the Mac's score page. Each wraps it in its own
-/// card and scope picker; this is only the plot and the numbers.
+/// The GPA line chart and the readout under it, shared by the iPhone's `RankingsTrendCard` and
+/// the Mac's score page. Each wraps it in its own card and scope picker.
 ///
-/// Terms whose ranking the school has not posted yet still get a point —
-/// the GPA computed from the grades in so far — drawn hollow at the end of
-/// a dashed stretch so it reads as an estimate. Ranks for those terms are
-/// simply absent.
+/// A term whose ranking the school has not posted still gets a point, the GPA from the grades in
+/// so far, drawn hollow at the end of a dashed stretch to read as an estimate, without ranks.
 ///
-/// Selection is sticky — tapping or dragging (or, on the Mac, hovering)
-/// picks the nearest term and the highlight survives after the pointer
-/// leaves, so users can freely compare the chart with other cards on the
-/// page. The summary row below the plot renders the GPA / class rank /
-/// dept rank of whichever point is pinned.
+/// Selection is sticky, so the chart can be compared with other cards: a tap, drag or Mac hover
+/// picks the nearest term, kept after the pointer leaves; the row below shows its GPA and ranks.
 struct GPATrendChart: View {
     let points: [GPATrendPoint]
     let scope: ScoreViewModel.RankingScope
@@ -132,12 +126,9 @@ struct GPATrendChart: View {
                     .fill(Color.clear)
                     .contentShape(Rectangle())
                     .gesture(
-                        // minimumDistance: 0 promotes a single tap into the
-                        // same handler used for drags, so the card reacts to
-                        // either input style without a separate
-                        // SpatialTapGesture. The absence of an onEnded
-                        // handler is intentional: the last-known selection
-                        // stays pinned after the finger lifts.
+                        // minimumDistance: 0 hands taps to the drag handler too, so no separate
+                        // SpatialTapGesture is needed. There is no onEnded: the selection stays
+                        // pinned after the finger lifts.
                         DragGesture(minimumDistance: 0)
                             .onChanged { drag in
                                 selectTerm(

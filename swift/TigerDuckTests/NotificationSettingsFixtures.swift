@@ -1,8 +1,6 @@
-// Fixtures shared by the suites that drive `NotificationSettingsSync.reconcile`
-// against a real `LiveActivityPreferencesStore` and `SettingsAPIStub`:
-// `NotificationSettingsReconcileTests`, `NotificationSettingsSeedMigrationTests`,
-// `NotificationSettingsApplyTests` and the read tests in
-// `NotificationSettingsPushQueueTests`.
+// Fixtures for the suites that drive `NotificationSettingsSync.reconcile` against a real
+// `LiveActivityPreferencesStore` and `SettingsAPIStub`: reconcile, seed migration, apply,
+// and the read tests of the push queue suite.
 import Defaults
 import Foundation
 import Testing
@@ -14,12 +12,11 @@ enum NotificationSettingsFixtures {
     /// Runs `body` with a fresh store, restoring every `Defaults` key the
     /// store touches afterwards.
     ///
-    /// Under `withExclusiveRealDefaults`, because those keys are
-    /// process-wide and `.serialized` orders one suite's tests but not one
-    /// suite against another, which interleave at every `await`. Without
-    /// it one test could take another's temporary values for the baseline
-    /// it restores, or post store changes into another's window. Every
-    /// test that reads or writes these keys comes through here.
+    /// Under `withExclusiveRealDefaults`: those keys are process-wide, and
+    /// `.serialized` does not order one suite against another, which interleave
+    /// at every `await`. Without it a test could restore another's temporary
+    /// values or post store changes into its window. Every test that reads or
+    /// writes these keys comes through here.
     static func withStore(
         _ body: (LiveActivityPreferencesStore) async throws -> Void
     ) async rethrows {
@@ -32,6 +29,9 @@ enum NotificationSettingsFixtures {
             let savedShowAssignment = Defaults[.showAssignmentScenario]
             let savedShowClassPreparing = Defaults[.showClassPreparingScenario]
             let savedShowInClass = Defaults[.showInClassScenario]
+            let savedClassReminder = Defaults[.isClassReminderEnabled]
+            let savedClassReminderLead = Defaults[.classReminderLeadMinutes]
+            let savedPicked = Defaults[.hasPickedClassReminderLead]
             defer {
                 Defaults[.assignmentReminderOffsetsData] = savedOffsets
                 Defaults[.isAssignmentReminderEnabled] = savedEnabled
@@ -41,7 +41,12 @@ enum NotificationSettingsFixtures {
                 Defaults[.showAssignmentScenario] = savedShowAssignment
                 Defaults[.showClassPreparingScenario] = savedShowClassPreparing
                 Defaults[.showInClassScenario] = savedShowInClass
+                Defaults[.isClassReminderEnabled] = savedClassReminder
+                Defaults[.classReminderLeadMinutes] = savedClassReminderLead
+                Defaults[.hasPickedClassReminderLead] = savedPicked
             }
+            // Only a pull clears the pick, so a test could not clear one left behind.
+            Defaults[.hasPickedClassReminderLead] = false
             try await body(LiveActivityPreferencesStore())
         }
     }

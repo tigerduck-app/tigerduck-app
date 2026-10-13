@@ -1,16 +1,13 @@
 import Foundation
 
-/// View-side rendering state for a 校務系統-protected surface. Represents
-/// *only* the cases a view currently needs to render — broader auth state
-/// (reauthenticating, reauth failures) is surfaced separately through
-/// ``AppState`` banners so the enum stays small and every case has a
-/// corresponding branch in every consumer.
+/// View-side rendering state for a surface behind the NTUST portal login. It
+/// holds only the cases a view renders; reauthentication and its failures
+/// surface through ``AppState`` banners, so the enum stays small and every
+/// consumer has a branch for every case.
 ///
-/// Consumers do NOT construct this value directly. The single source of
-/// truth is ``AppState/ntustProtectedAccessState(isEmpty:)`` — it folds
-/// "credentials stored?" and "data empty?" together following the
-/// cached-first rule: if credentials exist, cached data is always
-/// rendered even while cookies are being refreshed.
+/// Consumers never construct it. ``AppState/ntustProtectedAccessState(isEmpty:)``
+/// derives it from stored credentials and empty data, cached first: with stored
+/// credentials, cached data renders even while cookies are refreshed.
 enum NTUSTProtectedAccessState: Equatable, Sendable {
     case loginRequired
     case content

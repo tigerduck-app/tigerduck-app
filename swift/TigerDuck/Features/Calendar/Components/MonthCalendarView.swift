@@ -35,6 +35,8 @@ struct MonthCalendarView: View {
                 Text(monthTitle)
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
                 Spacer()
                 Button(action: viewModel.nextMonth) {
                     Image(systemName: "chevron.right")
@@ -50,6 +52,8 @@ struct MonthCalendarView: View {
                     Text(symbol)
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.3)
                 }
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -104,7 +108,11 @@ private struct DayCellView: View {
                 Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(isSelected ? AnyShapeStyle(.white) : isToday ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textPrimary))
-                    .frame(width: 32, height: 32)
+                    // The row keeps its height, so at accessibility sizes the number shrinks
+                    // to fit instead of truncating to "2…", which names no day.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+                    .frame(minWidth: 32, minHeight: 32)
                     .background {
                         if isSelected {
                             Circle().fill(.tint)

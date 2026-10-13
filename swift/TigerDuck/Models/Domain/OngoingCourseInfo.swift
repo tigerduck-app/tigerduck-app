@@ -29,20 +29,14 @@ struct OngoingCourseInfo: Identifiable {
 }
 
 extension Array where Element == SDCourse {
-    /// Returns the contiguous-period block of each course that is
-    /// currently running at the given `weekday` / `minuteOfDay`. Matches
-    /// the Android shared `computeOngoingCourses` so iOS and Android
-    /// surface the same "Current class" set.
-    ///
-    /// Periods are merged into one block whenever they sit next to each
-    /// other in `AppConstants.Periods.chronologicalOrder`, even if the
-    /// official period times leave a gap between them (e.g. P1 ends
-    /// 09:00, P2 starts 09:10). Treating the inter-period break as part
-    /// of the same class lets the "Current class" card stay up through
-    /// the break and — more importantly — lets its progress bar measure
-    /// against the whole class span instead of resetting at every
-    /// individual period. Only the first running block per course is
-    /// returned.
+    /// Returns the contiguous-period block of each course running at the
+    /// given `weekday` / `minuteOfDay`, matching Android's shared
+    /// `computeOngoingCourses` so both show the same "Current class" set.
+    /// Periods adjacent in `AppConstants.Periods.chronologicalOrder` merge
+    /// even when the official times leave a break (P1 ends 09:00, P2 starts
+    /// 09:10), so the card stays up through the break and its progress bar
+    /// measures the whole class instead of resetting each period. Only the
+    /// first running block per course is returned.
     func ongoingCourses(weekday: Int, minuteOfDay: Int) -> [OngoingCourseInfo] {
         var results: [OngoingCourseInfo] = []
         for course in self {

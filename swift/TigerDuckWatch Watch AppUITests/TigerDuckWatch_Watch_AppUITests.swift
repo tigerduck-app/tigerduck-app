@@ -1,10 +1,3 @@
-//
-//  TigerDuckWatch_Watch_AppUITests.swift
-//  TigerDuckWatch Watch AppUITests
-//
-//  Created by Sam Wang on 2026/5/16.
-//
-
 import XCTest
 
 final class TigerDuckWatch_Watch_AppUITests: XCTestCase {

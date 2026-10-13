@@ -29,9 +29,10 @@ struct MailNotificationSettingsView: View {
     }
 
     /// Turning notifications on schedules a background refresh. After a rejected password
-    /// `MailBackgroundRefresh.shouldRescheduleAfterHandling` refuses to reschedule, and §7.4
-    /// forbids retrying the password at all — so offering the switch there is offering
-    /// something the app will not do. Signed out, there is nothing to check either.
+    /// `MailBackgroundRefresh.shouldRescheduleAfterHandling` refuses to reschedule, and the
+    /// password is never retried (repeated failures lock the school account and its Wi-Fi), so
+    /// the switch would offer something the app will not do. Signed out, there is nothing to
+    /// check either.
     static func notificationsToggleIsEnabled(isLoggedIn: Bool, authFailed: Bool) -> Bool {
         isLoggedIn && !authFailed
     }
@@ -84,11 +85,9 @@ struct MailNotificationSettingsView: View {
                     Text(String(localized: "school_mail_settings_no_checks"))
                         .foregroundStyle(.secondary)
                 } else {
-                    // The record stores `MailCheckOutcome.diagnosticText` and the trigger's raw
-                    // value, both English and both still exactly what is written to disk. This
-                    // screen is reached from Settings → Notifications and gated only on
-                    // `SchoolMailAvailability.isEnabled`, so it is not a Debug screen and does
-                    // not get to show raw enum text in a zh-TW-primary app.
+                    // Records keep the English `MailCheckOutcome.diagnosticText` and raw trigger
+                    // value on disk. Gated only on `SchoolMailAvailability.isEnabled`, this is
+                    // not a Debug screen and must not show raw enum text in a zh-TW-primary app.
                     ForEach(Array(records.enumerated()), id: \.offset) { _, record in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(MailCheckOutcome.displayText(forStored: record.result))

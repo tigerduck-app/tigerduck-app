@@ -1,0 +1,160 @@
+import Foundation
+import Testing
+@testable import TigerDuck
+
+@MainActor
+@Suite(.serialized)
+struct SharedAssignmentRoundTests {
+    @MainActor
+    private final class Rounds {
+        var started: [String] = []
+        var finished: [String] = []
+        private var waiting: [CheckedContinuation<Void, Never>] = []
+        private var isOpen = false
+
+        func open() {
+            isOpen = true
+            waiting.forEach { $0.resume() }
+            waiting = []
+        }
+
+        func run(_ name: String) async -> [SDAssignment] {
+            started.append(name)
+            if !isOpen { await withCheckedContinuation { waiting.append($0) } }
+            finished.append(name)
+            return []
+        }
+    }
+
+    private func start(
+        _ name: String, _ rounds: Rounds, generation: Int = 1, rechecks: Bool
+    ) -> Task<Void, Never> {
+        Task {
+            _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks, isCurrent: { true }) {
+                await rounds.run(name)
+            }
+        }
+    }
+
+    @Test("a round that starts while another runs for the account joins it")
+    func roundsJoin() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let rounds = Rounds()
+        let launch = start("launch", rounds, rechecks: false)
+        try await waitUntil { rounds.started == ["launch"] }
+        let foreground = start("foreground", rounds, rechecks: false)
+        let pullAfterPull = start("pull", rounds, rechecks: false)
+        try await Task.sleep(for: .milliseconds(20))
+        rounds.open()
+        _ = await (launch.value, foreground.value, pullAfterPull.value)
+        #expect(rounds.started == ["launch"])
+    }
+
+    @Test("a pull waits out a round that skips submissions, then rechecks in its own")
+    func pullRunsItsOwnRecheck() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let rounds = Rounds()
+        let launch = start("launch", rounds, rechecks: false)
+        try await waitUntil { rounds.started == ["launch"] }
+        let pull = start("pull", rounds, rechecks: true)
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(rounds.started == ["launch"])
+        rounds.open()
+        _ = await (launch.value, pull.value)
+        #expect(rounds.started == ["launch", "pull"])
+        #expect(rounds.finished == ["launch", "pull"])
+    }
+
+    @Test("a round that skips submissions joins a pull")
+    func launchJoinsPull() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let rounds = Rounds()
+        let pull = start("pull", rounds, rechecks: true)
+        try await waitUntil { rounds.started == ["pull"] }
+        let foreground = start("foreground", rounds, rechecks: false)
+        try await Task.sleep(for: .milliseconds(20))
+        rounds.open()
+        _ = await (pull.value, foreground.value)
+        #expect(rounds.started == ["pull"])
+    }
+
+    @MainActor
+    private final class SignIn {
+        var isCurrent = true
+    }
+
+    /// A Home pull asks Moodle about every submission, long enough to sign out meanwhile.
+    @Test("a round its account signed out of hands back the cache, not that account's list")
+    func aRoundOutlivedBySignOutHandsBackTheCache() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let signIn = SignIn()
+        let departing = "departing-" + UUID().uuidString
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let shown = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+            signIn.isCurrent = false
+            return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
+        }
+
+        #expect(!shown.contains { $0.assignmentId == departing })
+    }
+
+    @Test("a caller that joined a round its account signed out of gets the cache too")
+    func aJoinerOfARoundOutlivedBySignOutGetsTheCache() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let rounds = Rounds()
+        let signIn = SignIn()
+        let departing = "departing-" + UUID().uuidString
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        let pull = Task {
+            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+                _ = await rounds.run("pull")
+                return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
+            }
+        }
+        try await waitUntil { rounds.started == ["pull"] }
+        let joined = Task {
+            await AppServiceBridge.sharedRound(generation: 1, rechecks: false, isCurrent: { signIn.isCurrent }) { [] }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        signIn.isCurrent = false
+        rounds.open()
+
+        #expect(await !joined.value.contains { $0.assignmentId == departing })
+        await pull.value
+    }
+
+    /// A pull waits out a round that skips submissions, then runs its own; not once its account
+    /// has signed out, when the next account's round may already be running.
+    @Test("a pull whose account signed out while it waited starts no round")
+    func aWaiterOutlivedBySignOutStartsNoRound() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let rounds = Rounds()
+        let signIn = SignIn()
+        let launch = start("launch", rounds, rechecks: false)
+        try await waitUntil { rounds.started == ["launch"] }
+        let pull = Task {
+            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+                await rounds.run("pull")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        signIn.isCurrent = false
+        rounds.open()
+        _ = await (launch.value, pull.value)
+
+        #expect(rounds.started == ["launch"])
+    }
+
+    @Test("the next account never joins the departing account's round")
+    func roundsAreKeptPerSignIn() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let rounds = Rounds()
+        let departing = start("departing", rounds, generation: 1, rechecks: false)
+        try await waitUntil { rounds.started == ["departing"] }
+        let next = start("next", rounds, generation: 2, rechecks: false)
+        try await waitUntil { rounds.started == ["departing", "next"] }
+        rounds.open()
+        _ = await (departing.value, next.value)
+    }
+}

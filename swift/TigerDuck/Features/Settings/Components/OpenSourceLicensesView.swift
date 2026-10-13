@@ -37,12 +37,9 @@ struct OpenSourceLicensesView: View {
                     }
                 }
             } else {
-                // The list did not load — `LicenseCatalog.load` has already
-                // told Sentry why. What is left to do here is not leave an
-                // empty page behind: the attribution MIT and BSD ask for,
-                // and the offer of source the AGPL makes, are owed whether
-                // or not a JSON file parsed, and the repository carries
-                // both.
+                // `LicenseCatalog.load` already logged the failure. Don't leave an empty
+                // page: MIT and BSD attribution and the AGPL source offer are owed whether
+                // or not the JSON parsed, and the repository has both.
                 Section {
                     Text(String(localized: "settings_licenses_unavailable"))
                         .font(.callout)
@@ -127,10 +124,9 @@ private struct PackageLicenseView: View {
     }
 }
 
-/// A licence or notice file. Markdown ones (sentry-cocoa's
-/// `THIRD_PARTY_NOTICES.md`) are rendered, since their headings and code
-/// fences are how they separate one notice from the next; plain text is
-/// reflowed to the screen.
+/// A licence or notice file. Markdown ones are rendered, since their headings
+/// and code fences are how they separate one notice from the next; plain text
+/// is reflowed to the screen.
 private struct LicenseTextView: View {
     let file: String
     let text: String

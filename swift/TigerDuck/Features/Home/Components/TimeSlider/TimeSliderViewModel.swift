@@ -6,7 +6,12 @@ final class TimeSliderViewModel {
     private var prefersReducedMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
     // MARK: - Data
-    var timeSlots: [CourseTimeSlot] = []
+    var timeSlots: [CourseTimeSlot] = [] {
+        didSet { slotLanes = Self.lanes(for: timeSlots) }
+    }
+
+    /// The lane of each slot that overlaps another, by slot id; see `lanes(for:)`.
+    private(set) var slotLanes: [String: TimeSliderLane] = [:]
 
     // MARK: - State
     var selectedTime: Date = AppClock.now()
@@ -18,10 +23,9 @@ final class TimeSliderViewModel {
     /// Tracks which haptic interval the user was last in, to fire once per crossing.
     private var lastHapticSlot: Int = 0
     private let hapticGenerator = UISelectionFeedbackGenerator()
-    /// Whether classes do not meet on a day — `TimeSliderSection` passes the
-    /// school calendar with the user's "still have class" choices, and a
-    /// slot on such a day is left off the timeline. Never, by default, so a
-    /// test does not read the device's cached calendar.
+    /// Whether classes do not meet on a day; a slot on such a day is left off
+    /// the timeline. Never, by default, so a test does not read the device's
+    /// cached calendar.
     private let isQuietDay: (Date) -> Bool
     // `nonisolated(unsafe)` so `deinit` can remove them; `@ObservationIgnored`
     // keeps the macro from swapping the storage out from under the modifier.
@@ -40,10 +44,9 @@ final class TimeSliderViewModel {
     init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
         self.isQuietDay = isQuietDay
         hapticGenerator.prepare()
-        // Which days are quiet can change while the courses do not: a
-        // "still have class" toggle, or a holiday published — the calendar
-        // store posts `dataDidUpdate` when its dates change. Rebuild then,
-        // rather than wait for the slider to reappear.
+        // Quiet days can change while the courses do not: a "still have class"
+        // toggle, or a holiday published (the calendar store then posts
+        // `dataDidUpdate`). Rebuild then, rather than wait for the slider to reappear.
         quietDayObservers = [AppConstants.holidayNotifyDidChange, AppConstants.dataDidUpdate]
             .map { name in
                 NotificationCenter.default.addObserver(
@@ -52,6 +55,13 @@ final class TimeSliderViewModel {
                     MainActor.assumeIsolated { self?.reloadQuietDays() }
                 }
             }
+    }
+
+    /// Home's slider. Its window spans weeks, so near either end of the term it reaches days
+    /// outside it; a day is quiet unless `calendarStore` makes it a class day, the check the
+    /// class table's carousel makes.
+    convenience init(calendarStore: AcademicCalendarStore) {
+        self.init(isQuietDay: { !calendarStore.isClassDay($0) })
     }
 
     deinit {
@@ -166,6 +176,35 @@ final class TimeSliderViewModel {
         return result
     }
 
+    /// Clashing courses stack in lanes on the track instead of one drawing over the other.
+    /// Slots that overlap, directly or through a third, form a group, as `busyIntervals`
+    /// merges them, and take their lanes from `OverlapLanes`; a slot alone is left out.
+    static func lanes(for slots: [CourseTimeSlot]) -> [String: TimeSliderLane] {
+        var lanes: [String: TimeSliderLane] = [:]
+        var group: [CourseTimeSlot] = []
+        var groupEnd = Date.distantPast
+        func assignGroup() {
+            guard group.count > 1 else { return }
+            let assigned = OverlapLanes.assign(group.map { (start: $0.start, end: $0.end) })
+            for (slot, lane) in zip(group, assigned.lanes) {
+                lanes[slot.id] = TimeSliderLane(lane: lane, count: assigned.count)
+            }
+        }
+        let byStart = slots.enumerated().sorted { ($0.element.start, $0.offset) < ($1.element.start, $1.offset) }
+        for slot in byStart.map(\.element) {
+            if slot.start < groupEnd {
+                group.append(slot)
+                groupEnd = max(groupEnd, slot.end)
+            } else {
+                assignGroup()
+                group = [slot]
+                groupEnd = slot.end
+            }
+        }
+        assignGroup()
+        return lanes
+    }
+
     /// Compress a gap of `minutes` into a visual width.
     private func compressedGapWidth(
         minutes: Double, refMin: Double, ppm: CGFloat, minGap: CGFloat, maxGap: CGFloat
@@ -199,10 +238,9 @@ final class TimeSliderViewModel {
     // MARK: - Course State Resolution
 
     func courseState(at time: Date) -> CourseState {
-        // Every slot containing `time`, not just the first to match: 衝堂
-        // puts two courses on one period and both belong on screen, each
-        // tappable for its own room and assignments. `timeSlots` is sorted
-        // by start, so the cards come out in timeline order.
+        // Every slot containing `time`, not only the first: overlapping classes put
+        // two courses in one period, each tappable for its own room and assignments.
+        // `timeSlots` is sorted by start, so the cards come out in timeline order.
         let active = timeSlots.filter { time >= $0.start && time <= $0.end }
         if !active.isEmpty {
             return .inClass(active)
@@ -340,4 +378,10 @@ final class TimeSliderViewModel {
     }
 
 
+}
+
+/// Where a clashing slot sits on the track: lane `lane` of `count`, top to bottom.
+struct TimeSliderLane: Equatable {
+    let lane: Int
+    let count: Int
 }

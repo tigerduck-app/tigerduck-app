@@ -1,9 +1,9 @@
 import Foundation
 
-/// NTUST 等第積分 — 學生學業成績作業要點 附表一, the column for students
-/// admitted from 105 學年度 on (A+ = 4.3). Transcripts have carried letter
-/// grades since 100 學年度; the percentage bands below are the same
-/// table's 百分制分數區間 for the odd numeric entry.
+/// NTUST letter-grade points from Appendix Table 1 of the school's student academic grade
+/// guidelines: the column for students admitted from academic year 105 on (A+ = 4.3).
+/// Transcripts have carried letter grades since academic year 100; the percentage bands
+/// below are the same table's percentage ranges, for the odd numeric entry.
 ///
 /// ponytail: students admitted 100–104 had A+ = 4.0. They have long
 /// graduated; if one ever shows up, key the table off the student id year.
@@ -16,7 +16,7 @@ nonisolated enum NTUSTGradePoints {
     ]
 
     /// Grade points for a transcript grade cell, or nil when the cell is
-    /// not a grade (pass/fail, 成績未到, empty).
+    /// not a grade (pass/fail, a grade not yet posted, empty).
     static func points(forGrade raw: String) -> Double? {
         // Full-width letters and signs ("Ｂ＋") come through some exports;
         // fold them to ASCII before matching.
@@ -42,8 +42,8 @@ nonisolated enum NTUSTGradePoints {
     /// Credit-weighted average over the courses that already have a
     /// grade; nil while nothing is gradable yet. Pass/fail, exempted,
     /// withdrawn and pending rows carry no grade points and drop out.
-    /// ponytail: every graded course counts, including 不計入 credits —
-    /// the school's inclusion rule is unpublished; adjust here if the
+    /// ponytail: every graded course counts, including `.notCounted` credits.
+    /// The school's inclusion rule is unpublished; adjust here if the
     /// official figure disagrees.
     static func gpa(of courses: [CourseGrade]) -> Double? {
         var weighted = 0.0

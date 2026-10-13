@@ -6,15 +6,13 @@ import AppKit
 #endif
 
 /// Modal detail for a single course row. Visual structure:
-///   1. Color bar + course title (with optional Moodle jump button)
-///   2. Two emphasis cards side-by-side: 教室 (classroom) | 時間 (time)
-///   3. Flat InfoRow list: instructor / code / dimension / duration /
-///      credits / enrollment
-///   4. Outstanding assignments (unchanged)
+///   1. Color bar and course title, with an optional Moodle jump button
+///   2. Two emphasis cards side by side: classroom | time
+///   3. Flat InfoRow list: instructor, code, dimension, duration, course type, credits, enrollment
+///   4. Outstanding assignments, then the course's Moodle section, whose rows push here
 ///
-/// The emphasis cards exist because classroom & time are the two fields users
-/// glance at most often when tapping a course — they earn their own surface
-/// instead of being buried in the same flat list as the metadata rows.
+/// Classroom and time get their own cards because they are the fields users
+/// glance at most when tapping a course, so they stay out of the metadata list.
 struct CourseDetailSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
@@ -24,6 +22,17 @@ struct CourseDetailSheet: View {
     let assignments: [SDAssignment]
     var timeRange: String? = nil
     var weekday: Int? = nil
+    /// The Mac overlay passes its own, so Escape can go back a screen before it closes.
+    var moodlePath: Binding<[MoodleCourseRoute]>? = nil
+    /// Off for a course on someone else's class table: the Moodle course is the user's.
+    var showsMoodle = true
+
+    @State private var ownMoodlePath: [MoodleCourseRoute] = []
+    @State private var moodle: MoodleCourseStore?
+    @State private var moodleAttempt = 0
+    #if os(iOS)
+    @State private var detent: PresentationDetent = .medium
+    #endif
 
     /// Drives the copy row's glyph; flipped back after a beat so the sheet
     /// does not sit in a "copied" state for as long as it stays open.
@@ -32,25 +41,131 @@ struct CourseDetailSheet: View {
     @State private var copyFeedback = 0
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: routes) {
             ScrollView {
-                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
-                    headerSection
-                    emphasisCards
-                    secondaryInfo
-                    assignmentsSection
+                // No spacing above the Moodle section: one with no rows adds nothing, and its rows
+                // bring their own gap.
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+                        headerSection
+                        emphasisCards
+                        secondaryInfo
+                        assignmentsSection
+                    }
+                    if let moodle {
+                        MoodleCourseSection(store: moodle, policy: appState.visualStylePolicy)
+                    }
                 }
                 .padding(.top, TigerDuckTheme.Spacing.xl)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
+                .moodleSectionRefresh(moodle)
             }
             .background(Color.backgroundPrimary)
+            // The course summary's links open as a pushed Moodle screen's do.
+            .moodleLinkOpening()
             #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
+            .courseDetailRootBar()
             #endif
+            .navigationDestination(for: MoodleCourseRoute.self) { route in
+                if let moodle {
+                    moodleDestination(route, store: moodle)
+                        .moodleLinkOpening()
+                }
+            }
         }
+        .task(id: MoodleStoreKey(
+            courseNo: course.courseNo, attempt: moodleAttempt, generation: appState.authService.loginGeneration
+        )) {
+            moodle = makeMoodleStore()
+        }
+        // On iPad another window can sign out or in, and the pushed screens hold the store of the
+        // account that opened them.
+        .onChange(of: appState.authService.loginGeneration) {
+            routes.wrappedValue = []
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+            // A sheet opened before the first sync finds no Moodle course id; a sync may bring it.
+            if moodle == nil { moodleAttempt += 1 }
+        }
+        #if os(iOS)
+        .presentationDetents([.medium, .large], selection: $detent)
+        // A pushed screen is a list or an article, which the medium height would cut in half.
+        .onChange(of: routes.wrappedValue) { _, path in
+            if !path.isEmpty { detent = .large }
+        }
+        #endif
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 360)
         #endif
+    }
+
+    struct MoodleStoreKey: Equatable {
+        let courseNo: String
+        let attempt: Int
+        /// A new sign-in builds a store for its own account, and a sign-out builds none.
+        let generation: Int
+    }
+
+    private var routes: Binding<[MoodleCourseRoute]> {
+        moodlePath ?? $ownMoodlePath
+    }
+
+    @ViewBuilder
+    private func moodleDestination(_ route: MoodleCourseRoute, store: MoodleCourseStore) -> some View {
+        switch route {
+        case .announcements:
+            MoodleAnnouncementsView(store: store) { routes.wrappedValue.append($0) }
+        case .announcement(let discussion):
+            MoodleAnnouncementView(store: store, discussion: discussion) { routes.wrappedValue.append($0) }
+        case .materials:
+            MoodleMaterialsView(store: store)
+        case .grades:
+            MoodleGradesView(store: store)
+        case .members:
+            MoodleMembersView(store: store) { routes.wrappedValue.append($0) }
+        case .member(let member):
+            MoodleMemberView(store: store, member: member)
+        case .forums:
+            MoodleForumsView(store: store) { routes.wrappedValue.append($0) }
+        case .forum(let forum):
+            MoodleForumView(store: store, forum: forum) { routes.wrappedValue.append($0) }
+        case .discussion(let discussion, let forum):
+            MoodleDiscussionView(store: store, discussion: discussion, forum: forum)
+        }
+    }
+
+    /// Nil for a course with no Moodle course, such as one added by hand, or when signed out.
+    private func makeMoodleStore() -> MoodleCourseStore? {
+        guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
+              let courseId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber),
+              let account = appState.authService.storedStudentId else { return nil }
+        let authService = appState.authService
+        let generation = authService.loginGeneration
+        let term = SDCourse.semesterPrefix(ofMoodleId: idnumber)
+        let idMap = DataCache.shared.loadMoodleCourseIdMap()
+        let termCourseIds = idMap
+            .filter { term != nil && SDCourse.semesterPrefix(ofMoodleId: $0.key) == term }
+            .map(\.value)
+        return MoodleCourseStore(
+            courseId: courseId,
+            termCourseIds: termCourseIds,
+            courseCodes: Self.moodleCourseCodes(
+                idnumber: idnumber, courseNo: course.courseNo, courseId: courseId, idMap: idMap
+            ),
+            context: MoodleCacheContext(
+                account: account,
+                cache: .shared,
+                isCurrent: { [weak authService] in authService?.loginGeneration == generation }
+            )
+        )
+    }
+
+    /// The codes a course's Moodle summary is checked against: every idnumber the Moodle course
+    /// `courseId` goes by in `idMap`, since a co-listed course answers to each department's, the
+    /// course number in each, and `idnumber` and `courseNo` from the class table.
+    static func moodleCourseCodes(idnumber: String, courseNo: String, courseId: Int, idMap: [String: Int]) -> [String] {
+        let idnumbers = [idnumber] + idMap.filter { $0.value == courseId }.map(\.key)
+        return idnumbers + idnumbers.map(SDCourse.courseNoFromMoodleId) + [courseNo]
     }
 
     // MARK: - Header
@@ -63,7 +178,7 @@ struct CourseDetailSheet: View {
                     .foregroundStyle(Color.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if course.moodleOpenURL != nil {
+                if showsMoodle, course.moodleOpenURL != nil {
                     Button(action: openMoodleCourse) {
                         Image(systemName: "arrow.up.right.square.fill")
                             .font(.title2)
@@ -155,6 +270,12 @@ struct CourseDetailSheet: View {
                     value: duration
                 )
             }
+            if let requireOption = Self.requireOptionText(course.requireOption) {
+                InfoRow(
+                    label: String(localized: "course_detail_require_option_label"),
+                    value: requireOption
+                )
+            }
             InfoRow(
                 label: String(localized: "course_detail_credits_label"),
                 value: course.credits.creditsText
@@ -180,6 +301,16 @@ struct CourseDetailSheet: View {
         }
     }
 
+    /// QueryCourse's `RequireOption`, "R" required or "E" elective. Anything else, such as the
+    /// empty string of a row merged from another device, says nothing, so the row is left out.
+    static func requireOptionText(_ requireOption: String) -> String? {
+        switch requireOption.uppercased() {
+        case "R": return String(localized: "course_detail_require_option_required")
+        case "E": return String(localized: "course_detail_require_option_elective")
+        default: return nil
+        }
+    }
+
     // MARK: - Assignments (preserved exactly as before)
 
     @ViewBuilder
@@ -196,7 +327,8 @@ struct CourseDetailSheet: View {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
                     if let url = assignment.moodleOpenURL {
-                        openURL(url)
+                        let web = assignment.moodleWebURL
+                        Task { await openURL(url, fallback: web) }
                     }
                 } label: {
                     HStack {
@@ -227,16 +359,18 @@ struct CourseDetailSheet: View {
     // MARK: - Actions
 
     /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile
-    /// picks the user up inside the app. On macOS no Moodle Mac app exists
-    /// and the deep link would surface as an "unhandled URL" error, so the
-    /// platform-aware `moodleOpenURL` returns the HTTPS URL instead.
+    /// picks the user up inside the app, and open the web page when it is not
+    /// installed. On macOS no Moodle Mac app exists and the deep link would
+    /// surface as an "unhandled URL" error, so the platform-aware
+    /// `moodleOpenURL` returns the HTTPS URL instead.
     private func openMoodleCourse() {
         guard let url = course.moodleOpenURL else { return }
-        openURL(url)
+        let web = course.moodleWebURL
+        Task { await openURL(url, fallback: web) }
     }
 
-    /// The course code is what students paste into 加退選, the portal search
-    /// and group chats, so the row that shows it also hands it over.
+    /// The course code is what students paste into course add/drop, the portal
+    /// search and group chats, so the row that shows it also hands it over.
     private func copyCourseCode() {
         #if canImport(UIKit)
         UIPasteboard.general.string = course.courseNo
@@ -284,11 +418,9 @@ private struct EmphasisCard: View {
             Text(value)
                 .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
                 .foregroundStyle(Color.textPrimary)
-                // A classroom or a time range is one unit and reads wrong split
-                // across lines ("18:25 -" / "22:00"), so it shrinks to fit
-                // instead of wrapping. The floor is half size; the caller
-                // widens the card at accessibility sizes so that stays enough
-                // for a multi-room classroom rather than ellipsising it.
+                // A classroom or time range reads wrong split across lines, so it shrinks
+                // instead of wrapping, never below half size. The caller widens the card at
+                // accessibility sizes so a multi-room classroom still fits, not ellipsised.
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .allowsTightening(true)
@@ -355,3 +487,22 @@ private struct InfoRow: View {
         .contentShape(Rectangle())
     }
 }
+
+#if os(iOS)
+extension View {
+    /// The course detail's own bar. On iOS 26 it is an empty, clear bar with the page drawn under
+    /// it as if it were hidden: a bar that a push turns on sits at the sheet's top edge until the
+    /// push ends, then drops below the grabber, so every pushed Moodle screen jumped.
+    @ViewBuilder
+    func courseDetailRootBar() -> some View {
+        if #available(iOS 26, *) {
+            scrollEdgeEffectHidden(true, for: .top)
+                .ignoresSafeArea(.container, edges: .top)
+                .toolbar(.visible, for: .navigationBar)
+                .toolbarBackground(.hidden, for: .navigationBar)
+        } else {
+            toolbar(.hidden, for: .navigationBar)
+        }
+    }
+}
+#endif

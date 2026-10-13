@@ -66,10 +66,9 @@ final class NameAbbrService: @unchecked Sendable {
         let parts = SDCourse.splitRoom(raw)
         let abbreviated = lock.withLock {
             parts.map { part -> String in
-                // Resolve `part` back to the Mandarin key in any form:
-                // direct hit (raw / shortened that matches key) first, then
-                // the reverse index (catches pinyin / translated / shortened
-                // that differs from the key).
+                // Resolve `part` in any form back to its Mandarin key: a direct hit first (raw,
+                // or a short form equal to the key), then the reverse index for pinyin,
+                // translated or short forms that differ.
                 let key = classroomAbbr[part] != nil ? part : (classroomReverseIndex[part] ?? part)
                 guard let entry = classroomAbbr[key] else { return part }
                 let short = entry.shortenedName.trimmingCharacters(in: .whitespaces)
@@ -135,10 +134,9 @@ final class NameAbbrService: @unchecked Sendable {
         classroomAbbrEnabled: Bool,
         mandarinDisplay: String
     ) -> (classroom: String, map: [String: String]) {
-        // Mirrors the fetch-time predicate in `AppServiceBridge.fetchCourses`
-        // so a fetched cache and a relabeled cache produce identical strings
-        // for the same toggle state. Diverging predicates were a latent
-        // correctness hazard once UI guards no longer hid the mismatch.
+        // Mirrors the fetch-time predicate in `AppServiceBridge.fetchCourses` so a fetched
+        // cache and a relabeled cache give identical strings for the same toggle state. No UI
+        // guard hides a mismatch, so keep the two in step.
         let shouldAbbreviate = classroomAbbrEnabled || mandarinDisplay != "original"
 
         let rawFlat = lock.withLock { rawClassrooms[course.courseNo] } ?? course.classroom

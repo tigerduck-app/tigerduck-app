@@ -57,15 +57,13 @@ enum WhatsNewFlowBuilder {
     }
 
     /// The flow behind Settings → What's New: the newest release, at most
-    /// the installed one, that has either pages `isApplicable` keeps or a
-    /// summary — a page that wouldn't show after an upgrade doesn't show
-    /// on a replay either, and a release left with no pages that apply
-    /// counts as having none. Pages registered ahead of their release's
-    /// bump stay out until a build reports that version.
-    ///
-    /// `latestSummary` is the newest authored summary up to the same
-    /// ceiling; `summaryFor` looks one up for a specific version, used
-    /// when the catalog's newest release is ahead of the JSON's.
+    /// the installed one, that has a summary or pages `isApplicable` keeps.
+    /// A page that would not show after an upgrade does not show on a replay
+    /// either, and a release whose pages all drop out counts as having none.
+    /// Pages registered ahead of their release's bump stay out until a build
+    /// reports that version. `latestSummary` is the newest authored summary up
+    /// to the same ceiling; `summaryFor` looks one up by version, used when the
+    /// catalog's newest release is ahead of the JSON's.
     static func replay(
         language: WhatsNewLanguage,
         upTo current: AppVersion,

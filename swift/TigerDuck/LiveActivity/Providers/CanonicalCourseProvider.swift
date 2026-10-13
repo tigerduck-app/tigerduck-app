@@ -1,13 +1,12 @@
 import Foundation
 
-/// Produces the "canonical" list of courses to reason about: school-portal
-/// courses merged with user-added entries, deletions removed, and custom
-/// names overlaid. Skip state (`SDCourse.skippedDates`) is per-date and
-/// left to consumers to evaluate against the date in question.
+/// Produces the canonical course list: school-portal courses merged with
+/// user-added ones, deletions removed, custom names overlaid. Skip state
+/// (`SDCourse.skippedDates`) is per-date, so consumers check it against the
+/// date in question.
 ///
-/// Keeping this logic in one place lets `LiveActivityScenarioResolver` and
-/// the reminder scheduler operate on the same source of truth that the
-/// class table UI already shows, without pulling in `ClassTableViewModel`'s
+/// One place lets `LiveActivityScenarioResolver` and the reminder scheduler
+/// work from what the class table shows, without `ClassTableViewModel`'s
 /// selection state.
 struct CanonicalCourseProvider {
     private let cache: DataCache
@@ -30,10 +29,9 @@ struct CanonicalCourseProvider {
 
     /// Merge function, exposed for unit testing.
     ///
-    /// NOTE: `SDCourse` is a SwiftData `@Model` (reference type). The
-    /// custom-name overlay sets `customName` (a `@Transient` SwiftData
-    /// property) so the canonical `courseName` is never mutated and no
-    /// override leaks into persistence. Render `displayName` downstream.
+    /// `SDCourse` is a SwiftData `@Model`, a reference type. The custom-name
+    /// overlay sets the `@Transient` `customName`, so `courseName` is never
+    /// mutated and no override reaches persistence. Render `displayName` downstream.
     ///
     /// `deletedCourseNos` is the raw tombstone set (see `CourseTombstone`);
     /// `semester` scopes which entries apply.

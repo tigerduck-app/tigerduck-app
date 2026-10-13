@@ -2,8 +2,8 @@
 import SwiftUI
 
 /// The signed-out mail page, styled like Library's `loginPrompt`. The mail login is separate
-/// from the NTUST one (§7.1); what it nonetheless prefills, and the carve-outs on that, are
-/// `MailCredentialPrefill`'s to decide.
+/// from the NTUST one, since a Mail2000 password is set in webmail and need not match SSO; what
+/// it still prefills, and the limits on that, are `MailCredentialPrefill`'s to decide.
 struct MailLoginCard: View {
     private enum Field: Hashable { case studentID, password }
 
@@ -20,12 +20,10 @@ struct MailLoginCard: View {
     /// says what it expects instead of leaving it to be guessed.
     ///
     /// On the school server a bare `B10000000` is right, because the app knows the domain and
-    /// supplies it. Under an override the app *also* knows the domain — it is typed on the
-    /// Developer → Email screen — but used to ask for a whole address with a placeholder that
-    /// still said "student ID", so a bare local part looked equally plausible and was silently
-    /// rejected by the server as a wrong password. Seeding the suffix makes the expected shape
-    /// visible; it is ordinary editable text, so a server that wants a bare username still works
-    /// by deleting it.
+    /// supplies it. Under an override the domain comes from the Developer → Email screen, and
+    /// without the suffix a bare local part looks just as plausible but is rejected by the server
+    /// as a wrong password. The suffix is ordinary editable text, so a server that wants a bare
+    /// username still works once it is deleted.
     private var prefilledDomainSuffix: String {
         #if DEBUG
         let config = MailServerConfig.effective
@@ -69,12 +67,9 @@ struct MailLoginCard: View {
                 TextField(usernamePlaceholder, text: $studentID)
                     .textContentType(usernameIsAnAddress ? .emailAddress : .username)
                     .autocorrectionDisabled()
-                    // `.characters` is right for a Mail2000 student ID (`B10000000`) and wrong for
-                    // anything else: it upper-cases *every* character as it is typed, so
-                    // `user@example.com` becomes `USER@EXAMPLE.COM` before it ever reaches
-                    // `MailAccountManager.normalizedUsername` — which then preserves that case,
-                    // because an address's local part is case-sensitive (RFC 5321 §2.3.11). The
-                    // login goes out upper-cased and the server rejects it.
+                    // `.characters` suits a student ID (`B10000000`) but upper-cases an address as
+                    // it is typed, and `MailAccountManager.normalizedUsername` keeps an address's
+                    // case (RFC 5321 §2.3.11), so the login would go out upper-cased and fail.
                     .textInputAutocapitalization(usernameIsAnAddress ? .never : .characters)
                     .keyboardType(usernameIsAnAddress ? .emailAddress : .default)
                     .focused($field, equals: .studentID)
@@ -121,15 +116,9 @@ struct MailLoginCard: View {
         // view re-appears.
         .onAppear { seedFields() }
         #if DEBUG
-        // Re-seeds when the developer override changes — which is what takes the school's
-        // password back out of a form that now points at somebody else's server.
-        //
-        // `.onAppear` is not enough on its own: this card keeps its `@State` while the user
-        // goes to Settings → Developer → Email and applies an override, and
-        // `SchoolMailView`'s own `generation` hook resets `MailListViewModel`, not this.
-        // Reading `generation` here is also what registers this card as an observer of it, so
-        // the seed re-runs the moment the override changes rather than waiting for an
-        // unrelated redraw. Absent from Release builds, where there is no override to change.
+        // Re-seeds when the override changes, taking the school's password out of a form now aimed
+        // at another server. `.onAppear` misses this: the card keeps its `@State` while an override
+        // is applied in Settings, and `SchoolMailView`'s `generation` hook resets only the list.
         .onChange(of: DevMailServerSettings.shared.generation) { _, _ in seedFields() }
         #endif
     }

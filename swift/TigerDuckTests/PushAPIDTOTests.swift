@@ -1,21 +1,6 @@
-// `PushAPI.DevicePreferencesRequest` / `DevicePreferencesResponse`
-// (PushAPIDTO.swift) — the two device-preference fields
-// `syncAssignmentReminders` / `syncLiveActivity`, wired to the wire keys
-// `sync_assignment_reminders` / `sync_live_activity`; the per-device
-// bulletin opt-out `bulletinPushEnabled` / `bulletin_push_enabled` on both
-// `DevicePreferencesRequest`/`Response` and `DeviceRegisterRequest`; and
-// `DeviceRegisterRequest`'s `server_push_enabled`.
-//
-// Swift's synthesized `Decodable` only decodes keys an explicit
-// `CodingKeys` enum names, and a plain `Encodable` only *emits* keys
-// `CodingKeys` names — omitting a case produces no error and no warning,
-// the field simply never appears on the wire. A test that round-trips
-// through this struct's own `Codable` conformance (encode, then decode
-// back into the same type) would pass whether or not a case is declared,
-// since the same key name is missing on both sides. These tests therefore
-// assert against the raw encoded JSON object / raw JSON input, which is
-// the only way to observe whether a wire key is actually there — the same
-// technique `NotificationSettingsDocumentTests.roundTrips()` uses.
+// Wire keys of the device DTOs in `PushAPIDTO.swift`. A property left out of `CodingKeys` is
+// silently never encoded or decoded, and a round trip through the same type cannot see that,
+// so these tests assert against raw JSON instead.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -36,21 +21,14 @@ struct PushAPIDTOTests {
             try JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
 
-        // Asserting against the raw JSON object, not a re-decoded
-        // `DevicePreferencesRequest` — a missing `CodingKeys` case drops
-        // the field from `object` with no error, which a round trip
-        // through the struct itself could never observe (both sides would
-        // agree on the same wrong, or missing, key).
         #expect(object["sync_assignment_reminders"] as? Bool == true)
         #expect(object["sync_live_activity"] as? Bool == false)
     }
 
     @Test("omitted syncAssignmentReminders/syncLiveActivity do not appear on the wire at all")
     func requestOmitsNilNewFieldsEntirely() throws {
-        // A PATCH that only changes, say, `serverPushEnabled` must not send
-        // `sync_assignment_reminders`/`sync_live_activity` at all — see
-        // `requestOmitsNilBulletinPushEnabledEntirely` below for why a
-        // `null` is wrong here even though the backend ignores it.
+        // A PATCH that only changes `serverPushEnabled` must not send these keys, not even as
+        // `null`; `requestOmitsNilBulletinPushEnabledEntirely` below says why.
         let request = PushAPI.DevicePreferencesRequest(serverPushEnabled: true)
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -75,13 +53,9 @@ struct PushAPIDTOTests {
 
     @Test("omitted bulletinPushEnabled does not appear on the wire at all")
     func requestOmitsNilBulletinPushEnabledEntirely() throws {
-        // A PATCH that only changes, say, `serverPushEnabled` must not send
-        // `bulletin_push_enabled` at all. The backend reads an absent field
-        // and an explicit `null` the same way — `if payload.bulletin_push_
-        // enabled is not None` (`server/routes/user_devices.py`), so `None`
-        // means "unchanged", not "reset" — but the PATCH contract is that
-        // the body names what the caller changed, and a `null` that only
-        // happens to be harmless against today's handler is not that.
+        // `server/routes/user_devices.py` treats `null` as unchanged, like an absent key, but a
+        // PATCH body names only what the caller changed, and a `null` that today's handler
+        // happens to ignore is not that.
         let request = PushAPI.DevicePreferencesRequest(serverPushEnabled: true)
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -119,10 +93,9 @@ struct PushAPIDTOTests {
 
     @Test("a response from a backend without the two fields still decodes")
     func responseWithoutNewFieldsStillDecodes() throws {
-        // A backend without the columns — rolled back, or self-hosted —
-        // answers the preferences PATCH without them. The client never
-        // reads them, so their absence must not turn a change the server
-        // applied into a reported failure.
+        // A backend without these columns (rolled back, or self-hosted) leaves them out of its
+        // PATCH answer. The client never reads them, so their absence must not turn a change the
+        // server applied into a reported failure.
         let json = Data("""
         {
           "device_id": "abc-123",
@@ -164,10 +137,8 @@ struct PushAPIDTOTests {
 
     @Test("a response without bulletin_push_enabled still decodes, leaving the field nil")
     func responseWithoutBulletinPushEnabledStillDecodes() throws {
-        // Tolerates a backend without the column (rolled back, or
-        // self-hosted) the same way `syncAssignmentReminders` /
-        // `syncLiveActivity` already do — an absent key must not turn a
-        // change the server applied into a reported decode failure.
+        // Like the two sync fields above: a backend without the column (rolled back, or
+        // self-hosted) omits it, which must not turn an applied change into a decode failure.
         let json = Data("""
         {
           "device_id": "abc-123",

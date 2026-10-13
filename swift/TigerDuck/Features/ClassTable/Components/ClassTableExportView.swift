@@ -6,13 +6,14 @@ import UIKit
 /// term above, then the same grid the page draws.
 ///
 /// The grid is the live `TimetableGridView`, not a copy, so the image keeps
-/// whatever the page shows — colours, custom and abbreviated names, the
-/// start / 節 / end period column, the room hint when it is switched on.
+/// whatever the page shows: colours, custom and abbreviated names, the
+/// start / period / end column, the room hint when it is switched on.
 /// Only the assignment badge stays out; see
 /// ``TimetableGridView/showsAssignmentBadges``.
 struct ClassTableExportView: View {
     let viewModel: ClassTableViewModel
-    let studentId: String?
+    /// The user's student ID, or the nickname of someone else's class table.
+    let owner: String?
     /// The page's Differentiate Without Color, handed to the grid directly:
     /// the renderer's environment cannot carry it.
     let differentiateWithoutColor: Bool
@@ -28,8 +29,8 @@ struct ClassTableExportView: View {
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: TigerDuckTheme.Spacing.sm)
-                if let studentId, !studentId.isEmpty {
-                    Text(studentId)
+                if let owner, !owner.isEmpty {
+                    Text(owner)
                         .font(TigerDuckTheme.Typography.body)
                         .foregroundStyle(Color.textSecondary)
                 }
@@ -67,10 +68,10 @@ enum ClassTableExporter {
         legibilityWeight: LegibilityWeight?,
         differentiateWithoutColor: Bool
     ) async -> URL? {
-        let studentId = appState.authService.storedStudentId
+        let owner = viewModel.shownPerson?.nickname ?? appState.authService.storedStudentId
         let content = ClassTableExportView(
             viewModel: viewModel,
-            studentId: studentId,
+            owner: owner,
             differentiateWithoutColor: differentiateWithoutColor
         )
             .environment(appState)
@@ -94,7 +95,8 @@ enum ClassTableExporter {
         let name = fileName(
             title: String(localized: "feature_class_table"),
             semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
-            studentId: studentId
+            // A nickname has no length limit, and a file name past 255 bytes cannot be written.
+            studentId: owner.map { String($0.prefix(40)) }
         )
         // Drawing needs the main actor; encoding a 3x PNG and writing it does
         // not, and is the slower half.
@@ -146,12 +148,11 @@ enum ClassTableExporter {
         }
     }
 
-    /// "課表_114-2_B11315000.png": the name the file keeps wherever it is
-    /// saved or sent, so it says what it is and whose. Underscores, never
-    /// spaces — between the parts and inside them ("Class_table") — so the
-    /// name survives a URL or a command line without quoting or %20. The
-    /// student id is left out, not left as a trailing underscore, when
-    /// there is none.
+    /// "Class_table_114-2_B11315000.png": the name the file keeps wherever it
+    /// is saved or sent, so it says what it is and whose. Underscores, never
+    /// spaces, between the parts and inside them, so the name survives a URL
+    /// or a command line without quoting or %20. The student id is left out,
+    /// not left as a trailing underscore, when there is none.
     nonisolated static func fileName(title: String, semesterLabel: String, studentId: String?) -> String {
         let parts = [title, semesterLabel, studentId ?? ""]
             .map {

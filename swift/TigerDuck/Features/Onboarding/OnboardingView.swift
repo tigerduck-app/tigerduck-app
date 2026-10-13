@@ -53,14 +53,9 @@ struct OnboardingView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
         .background(Color.backgroundPrimary)
-        // Keyboard avoidance hits the TabView root, not the inner page
-        // VStacks — without this the login page's overall frame shrinks
-        // to fit above the keyboard, squeezing the credential ScrollView
-        // and dragging the Sign in / Skip-for-now actions up with it.
-        // Ignoring it at the TabView level keeps every page laid out
-        // against the device geometry; tap-to-dismiss on each page (and
-        // the inner ScrollView's interactive scroll-to-dismiss) still
-        // give the user a way to clear the keyboard.
+        // Keyboard avoidance acts on the TabView root, not the page VStacks. Without this the login
+        // page shrinks to fit above the keyboard, squeezing its ScrollView and lifting its buttons;
+        // tap-to-dismiss and the ScrollView's scroll-to-dismiss still clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         .onChange(of: currentPage) { _, page in
@@ -99,13 +94,9 @@ struct OnboardingView: View {
                         .lineLimit(12)
                         .minimumScaleFactor(0.6)
 
-                    // `Link` (not a bare `Button`) keeps the semantic
-                    // `.isLink` VoiceOver trait and the system URL affordances
-                    // (long-press peek / Copy Link / Share). The bordered,
-                    // large control size gives the reliable hit target the
-                    // plain text links lacked, and now that the page's
-                    // keyboard-dismiss tap is a `.simultaneousGesture` it no
-                    // longer swallows these links' first tap on iOS 18.
+                    // `Link` over `Button` keeps the `.isLink` VoiceOver trait and long-press peek,
+                    // Copy Link and Share. Bordered and large for a reliable hit target. The page's
+                    // dismiss tap is a `.simultaneousGesture`, so iOS 18 passes the first tap on.
                     VStack(spacing: TigerDuckTheme.Spacing.lg) {
                         Link(destination: AppURLs.website) {
                             Label(String(localized: "onboarding_welcome_website_label"), systemImage: "globe")
@@ -179,11 +170,9 @@ struct OnboardingView: View {
                 }
             }
         )
-        // The Next button is gated on the two boxes, but a swipe went
-        // straight past it. Refuse forward swipes off this page until both
-        // are ticked — backward stays free, since going back to Welcome is
-        // not what the tick gates. `currentPage` is part of the condition
-        // because the pager pre-builds the neighbouring page.
+        // A swipe would bypass the Next button's gate, so forward swipes off this page are refused
+        // until both boxes are ticked. Backward stays free: the tick does not gate going back to
+        // Welcome. `currentPage` is checked because the pager pre-builds the neighbouring page.
         .background(
             PagingScrollLock(isLocked: currentPage == Page.privacy.rawValue && !hasAgreedToTerms)
                 .allowsHitTesting(false)
@@ -412,26 +401,16 @@ struct OnboardingView: View {
             },
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    // Ordered least-committal first: look at the server,
-                    // then repoint the app at a different one, then give
-                    // up and skip. A sign-in that fails here has no other
-                    // way to tell the user whether the backend is why.
-                    //
-                    // A Button rather than the Link the rest of onboarding
-                    // uses for external URLs, so it is the same control as
-                    // the two below it and picks up textSecondary without
-                    // fighting the link tint. It does not honour the browser
-                    // preference because the user has not been offered that
-                    // choice yet at this point in the flow.
+                    // Least committal first: check the server, repoint the app, then skip. After a
+                    // failed sign-in nothing else shows whether the backend is why. A Button like
+                    // the two below, not a Link; it skips the browser preference, not offered yet.
                     Button(String(localized: "settings_check_server_status")) {
                         openURL(AppURLs.serverStatus)
                     }
                     .foregroundStyle(Color.textSecondary)
 
-                    // Above "Skip" on purpose: someone running their own
-                    // backend has to point the app at it *before* signing
-                    // in, because the sign-in round-trip is one of the
-                    // calls that goes to it.
+                    // Above "Skip": a self-hosted backend must be set before signing in, since the
+                    // sign-in round trip is one of the calls that goes to it.
                     Button(String(localized: "onboarding_custom_endpoint_button")) {
                         showEndpointSheet = true
                     }
@@ -519,12 +498,9 @@ struct OnboardingView: View {
                     }
                     .foregroundStyle(Color.textSecondary)
 
-                    // While the user hasn't answered the system prompt yet,
-                    // the affirmative action lives in `notificationStatusRow`
-                    // (Allow). Don't surface a second prominent Next here —
-                    // it would let the user finish onboarding without ever
-                    // triggering `requestAuthorization`, stranding the app
-                    // in `.notDetermined` with no registration path.
+                    // Until the system prompt is answered, the forward action is Allow in
+                    // `notificationStatusRow`. A Next here would let onboarding end without
+                    // `requestAuthorization`, stuck in `.notDetermined` with no registration path.
                     if notificationStatus != .notDetermined {
                         Button(String(localized: "action_next")) {
                             withAnimation(reduceMotion ? nil : .default) { currentPage = Page.ready.rawValue }
@@ -574,11 +550,9 @@ struct OnboardingView: View {
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshNotificationStatus()
-        // Onboarding is the user's first opt-in to notifications; bring the
-        // push stack up now so PushCoordinator registers for remote
-        // notifications and the server sync runs. Without this the device
-        // would not register until the next launch, and nothing
-        // server-backed would arrive in the meantime.
+        // The first notification opt-in happens here, so start the push stack now: PushCoordinator
+        // registers for remote notifications and the server sync runs. Otherwise the device waits
+        // for the next launch to register, and nothing server-backed arrives until then.
         guard granted else { return }
         appState.enablePushServer()
     }
@@ -608,15 +582,12 @@ struct OnboardingView: View {
 }
 
 #if canImport(UIKit)
-/// Refuses *forward* drags on the page-style `TabView`'s own scroll view,
-/// leaving backward ones alone. `scrollDisabled` does not reach the
-/// page-style pager, hence the UIKit walk to find it.
+/// Refuses forward drags on the page-style `TabView`'s own scroll view and leaves backward ones
+/// alone. `scrollDisabled` does not reach the page-style pager, hence the UIKit walk to find it.
 ///
-/// The obvious implementation — `isScrollEnabled = false` while locked —
-/// was the first one here, and it froze the page in both directions: a
-/// user who had not ticked the boxes could not swipe back to Welcome
-/// either. Only forward motion is what the tick gates, so the pager stays
-/// scrollable and the offending drag is cancelled instead.
+/// `isScrollEnabled = false` while locked would freeze both directions, so a user who had not
+/// ticked the boxes could not swipe back to Welcome either. The tick gates only forward motion,
+/// so the pager stays scrollable and the forward drag is cancelled instead.
 struct PagingScrollLock: UIViewRepresentable {
     let isLocked: Bool
 

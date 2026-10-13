@@ -2,6 +2,7 @@ import XCTest
 import Defaults
 @testable import TigerDuck
 
+@MainActor
 final class NameAbbrServiceTests: XCTestCase {
     // The name-abbr JSON files ship in the app bundle via the Xcode
     // build's bundle step.
@@ -28,21 +29,18 @@ final class NameAbbrServiceTests: XCTestCase {
     }
 
     func test_abbreviateClassroom_mandarinRoom_originalDisplay() {
-        // "115研討室" → shortened_name = "115研討室"
         let svc = NameAbbrService.shared
         let result = svc.abbreviateClassroom("115研討室", display: "original")
         XCTAssertEqual(result, "115研討室")
     }
 
     func test_abbreviateClassroom_mandarinRoom_pinyinDisplay() {
-        // "115研討室" → pinyin = "115 Yan Tao Shi"
         let svc = NameAbbrService.shared
         let result = svc.abbreviateClassroom("115研討室", display: "pinyin")
         XCTAssertEqual(result, "115 Yan Tao Shi")
     }
 
     func test_abbreviateClassroom_mandarinRoom_translatedDisplay() {
-        // "115研討室" → translated = "115 Seminar Room"
         let svc = NameAbbrService.shared
         let result = svc.abbreviateClassroom("115研討室", display: "translated")
         XCTAssertEqual(result, "115 Seminar Room")
@@ -57,6 +55,8 @@ final class NameAbbrServiceTests: XCTestCase {
     func test_relabelInPlace_propagatesPinyinToClassroomMap() {
         let svc = NameAbbrService.shared
         svc.clearRawNameCache()
+        let savedLanguage = Defaults[.appLanguage]
+        defer { Defaults[.appLanguage] = savedLanguage }
         Defaults[.appLanguage] = "en"
 
         let course = SDCourse(
@@ -89,6 +89,8 @@ final class NameAbbrServiceTests: XCTestCase {
     func test_relabelInPlace_fallsBackToCourseClassroomMapWhenRawMissing() {
         let svc = NameAbbrService.shared
         svc.clearRawNameCache()
+        let savedLanguage = Defaults[.appLanguage]
+        defer { Defaults[.appLanguage] = savedLanguage }
         Defaults[.appLanguage] = "en"
 
         let course = SDCourse(

@@ -1,0 +1,18 @@
+schema: spec-driven
+
+context: |
+  AGENTS.md (root and nested) is the rule source for every agent tool; read it before planning.
+  Write every artifact in English.
+  Specs may cite code paths. Code comments must never cite a change name, an openspec/ path or a
+  spec section, because archiving moves the files.
+  Use a change only for work that spans sessions, changes the architecture, or needs both
+  maintainers to agree. Smaller work goes through plan mode or /feature-dev.
+
+rules:
+  proposal:
+    - State what is out of scope.
+  design:
+    - Record each decision with the options that lost and why.
+  tasks:
+    - Group tasks by pull request, in merge order.
+    - Give every task the check that proves it done (a command, a test, or a CI run).

@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct CornerView: View {
     let entry: NextClassEntry
@@ -15,9 +16,9 @@ struct CornerView: View {
     private var label: String {
         (entry.current ?? entry.next)?.name ?? "—"
     }
-    private var timeText: String {
+    var timeText: String {
         if let c = entry.current { return c.endHHmm }
-        if let n = entry.next { return n.startHHmm }
+        if let n = entry.next { return entry.nextDay.inlineCaption(n.startHHmm) }
         return ""
     }
 }

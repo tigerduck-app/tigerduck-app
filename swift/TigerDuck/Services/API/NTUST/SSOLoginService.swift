@@ -1,14 +1,20 @@
+import Defaults
 import Foundation
 
 enum SSOLoginError: LocalizedError {
     case loginFormNotFound
-    case loginFailed
+    /// The service sent the sign-in to ssoam's NetIQ form, which only a browser can submit.
+    case interactiveLoginRequired
+    case loginFailed(reason: String?)
     case networkError(Error)
     case invalidResponse
 
     var errorDescription: String? {
         switch self {
-        case .loginFormNotFound: return String(localized: "error_sso_sign_in_form_not_found")
+        case .loginFormNotFound, .interactiveLoginRequired:
+            return String(localized: "error_sso_sign_in_form_not_found")
+        case .loginFailed(let reason?) where !reason.isEmpty:
+            return String(format: String(localized: "error_sso_sign_in_failed_with_reason"), reason)
         case .loginFailed: return String(localized: "error_sso_sign_in_failed")
         case .networkError(let e): return String(format: String(localized: "error_network_format"), e.localizedDescription)
         case .invalidResponse: return String(localized: "error_invalid_server_response")
@@ -51,44 +57,103 @@ enum SSOLoginService {
         "ssoam2.ntust.edu.tw",
     ]
 
+    /// The school rejected the stored password in a sign-in the user did not start. Each
+    /// rejection counts toward the account's lockout, so those sign-ins stop posting it until
+    /// the user signs in again.
+    nonisolated static var storedPasswordRejected: Bool {
+        get { Defaults[.ntustStoredPasswordRejected] }
+        set { Defaults[.ntustStoredPasswordRejected] = newValue }
+    }
+
+    private static var isLoginRunning = false
+    private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
+
+    /// Runs `body` once every login started before it has finished. A login that meets the
+    /// SSO page clears the ssoam2 cookies, so two at once break each other; the one that
+    /// waited then finds the session signed in and needs no credentials.
+    static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
+        if isLoginRunning {
+            await withCheckedContinuation { waitingLogins.append($0) }
+        } else {
+            isLoginRunning = true
+        }
+        defer {
+            if waitingLogins.isEmpty {
+                isLoginRunning = false
+            } else {
+                waitingLogins.removeFirst().resume()
+            }
+        }
+        return try await body()
+    }
+
     /// Ensure the user is logged in to the given service via NTUST SSO.
     /// Mirrors the Python `NtustSsoBridge.ensure_service_login` flow.
+    ///
+    /// `generation` is ``NTUSTSessionManager/generation`` when the credentials were read. Once
+    /// a sign-out moves it, the login throws `CancellationError` before its next request.
+    /// `interactive` marks a sign-in the user started; any other posts no password once the
+    /// school has rejected it (``storedPasswordRejected``).
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
         studentId: String,
-        password: String
+        password: String,
+        generation: Int,
+        interactive: Bool = false
+    ) async throws -> Bool {
+        try await oneAtATime {
+            try checkSignedIn(generation)
+            let signedIn = try await performServiceLogin(
+                session: session, serviceURL: serviceURL, studentId: studentId, password: password,
+                generation: generation, interactive: interactive
+            )
+            if interactive, signedIn { storedPasswordRejected = false }
+            return signedIn
+        }
+    }
+
+    private static func checkSignedIn(_ generation: Int) throws {
+        if NTUSTSessionManager.shared.generation != generation { throw CancellationError() }
+    }
+
+    private static func performServiceLogin(
+        session: URLSession,
+        serviceURL: URL,
+        studentId: String,
+        password: String,
+        generation: Int,
+        interactive: Bool
     ) async throws -> Bool {
         do {
-            // Step 1: Visit service URL (follows redirects automatically)
-            let (data, response) = try await session.data(from: serviceURL)
-            guard let httpResp = response as? HTTPURLResponse,
-                  let html = decodeHTML(data, response: httpResp) else {
-                throw SSOLoginError.invalidResponse
-            }
-            let finalURL = httpResp.url ?? serviceURL
-
-            // Step 2: Resolve any OIDC bridge forms
-            var currentHTML = html
-            var currentURL = finalURL
-            (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-                session: session, html: currentHTML, baseURL: currentURL
-            )
+            // Steps 1 and 2: Visit service URL (follows redirects automatically) and resolve any
+            // OIDC bridge forms
+            var (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
 
             // Step 3: Check if we're on the SSO login page
             if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-                NTUSTSessionManager.shared.markLoginSuccess()
-                return true
+                if try await isSignedIn(html: currentHTML, url: currentURL, session: session) { return true }
+                // A service whose own session lapsed sends the visit to the campus portal, not to
+                // the sign-in form; without its cookies the next visit goes through SSO.
+                NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
+                (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
+                if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+                    guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
+                        throw SSOLoginError.loginFormNotFound
+                    }
+                    return true
+                }
             }
 
-            // Step 4: Clear SSO cookies only (preserve Moodle/service cookies to avoid device-change warnings).
-            // Cookies live in the NTUST-private jar — never touch
-            // `HTTPCookieStorage.shared` here, which would now be a no-op
-            // for NTUST and a foot-gun for unrelated callers.
-            let ntustJar = NTUSTSessionManager.shared.cookieStorage
-            ntustJar.cookies?
+            if !interactive, storedPasswordRejected { throw SSOLoginError.loginFailed(reason: nil) }
+
+            // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
+            // device-change warnings. They are in the session's jar, the NTUST-private one:
+            // clearing `HTTPCookieStorage.shared` would miss them and only hurt unrelated callers.
+            let jar = session.configuration.httpCookieStorage
+            jar?.cookies?
                 .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }
-                .forEach { ntustJar.deleteCookie($0) }
+                .forEach { jar?.deleteCookie($0) }
 
             // Re-visit service URL
             let (data2, response2) = try await session.data(from: serviceURL)
@@ -101,9 +166,11 @@ enum SSOLoginService {
 
             if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-                    session: session, html: currentHTML, baseURL: currentURL
+                    session: session, html: currentHTML, baseURL: currentURL, generation: generation
                 )
-                NTUSTSessionManager.shared.markLoginSuccess()
+                guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
+                    throw SSOLoginError.loginFormNotFound
+                }
                 return true
             }
 
@@ -123,16 +190,16 @@ enum SSOLoginService {
             guard let actionHost = actionURL.host,
                   ssoActionHostAllowlist.contains(actionHost) else {
                 AppLogger.captureError(
-                    SSOLoginError.loginFailed,
+                    SSOLoginError.loginFailed(reason: nil),
                     context: [
                         "service": "ssoEnsureServiceLogin",
                         "rejectedActionHost": actionURL.host ?? "<nil>",
                     ]
                 )
-                throw SSOLoginError.loginFailed
+                throw SSOLoginError.loginFailed(reason: nil)
             }
             let (loginData, loginResponse) = try await postForm(
-                session: session, url: actionURL, fields: payload
+                session: session, url: actionURL, fields: payload, generation: generation
             )
             guard let loginResp = loginResponse as? HTTPURLResponse,
                   let loginHTML = decodeHTML(loginData, response: loginResp) else {
@@ -143,22 +210,49 @@ enum SSOLoginService {
 
             // Step 6: Resolve OIDC bridge forms after login
             (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-                session: session, html: currentHTML, baseURL: currentURL
+                session: session, html: currentHTML, baseURL: currentURL, generation: generation
             )
 
             // Step 7: Check if still on SSO page → login failed
             if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-                throw SSOLoginError.loginFailed
+                if !interactive, NTUSTSessionManager.shared.generation == generation {
+                    storedPasswordRejected = true
+                }
+                throw SSOLoginError.loginFailed(reason: HTMLParser.loginErrorMessage(in: currentHTML))
             }
 
-            NTUSTSessionManager.shared.markLoginSuccess()
+            guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
+                throw SSOLoginError.invalidResponse
+            }
             return true
-        } catch SSOLoginError.loginFailed {
-            throw SSOLoginError.loginFailed
+        } catch SSOLoginError.loginFailed(let reason) {
+            throw SSOLoginError.loginFailed(reason: reason)
         } catch {
             AppLogger.captureError(error, context: ["service": "ssoEnsureServiceLogin"])
             throw error
         }
+    }
+
+    private static func visit(_ url: URL, session: URLSession, generation: Int) async throws -> (String, URL) {
+        let (data, response) = try await session.data(from: url)
+        guard let httpResp = response as? HTTPURLResponse,
+              let html = decodeHTML(data, response: httpResp) else {
+            throw SSOLoginError.invalidResponse
+        }
+        return try await resolveOIDCBridgeForms(
+            session: session, html: html, baseURL: httpResp.url ?? url, generation: generation
+        )
+    }
+
+    /// Whether a page that is not the ssoam2 form came with a live SSO session. A maintenance
+    /// page, an error page or the campus portal lands here as well as the service itself.
+    private static func isSignedIn(html: String, url: URL, session: URLSession) async throws -> Bool {
+        if HTMLParser.isNetIQLoginPage(html: html, url: url) {
+            throw SSOLoginError.interactiveLoginRequired
+        }
+        guard await NTUSTSessionManager.shared.probeCookiesValid(using: session) else { return false }
+        NTUSTSessionManager.shared.markLoginSuccess()
+        return true
     }
 
     /// Follow OIDC bridge form chain (max 3 steps), mirroring Python's _resolve_oidc_bridge_forms
@@ -166,6 +260,7 @@ enum SSOLoginService {
         session: URLSession,
         html: String,
         baseURL: URL,
+        generation: Int,
         maxSteps: Int = 3
     ) async throws -> (String, URL) {
         var currentHTML = html
@@ -182,7 +277,7 @@ enum SSOLoginService {
 
             let actionURL = resolveURL(form.action, base: currentURL)
             let (data, response) = try await postForm(
-                session: session, url: actionURL, fields: form.inputs
+                session: session, url: actionURL, fields: form.inputs, generation: generation
             )
             guard let newHTML = String(data: data, encoding: .utf8),
                   let resp = response as? HTTPURLResponse else {
@@ -195,17 +290,18 @@ enum SSOLoginService {
         return (currentHTML, currentURL)
     }
 
-    /// POST form-encoded data
+    /// POST form-encoded data. Each POST signs in, with the credentials or an OIDC form, so it
+    /// stops once a sign-out moves the generation.
     private static func postForm(
         session: URLSession,
         url: URL,
-        fields: [(name: String, value: String)]
+        fields: [(name: String, value: String)],
+        generation: Int
     ) async throws -> (Data, URLResponse) {
-        // 15 s per-request matches NTUSTSessionManager's session-level
-        // `timeoutIntervalForRequest`. Without it the request inherits
-        // `URLRequest`'s 60 s default and `URLSessionConfiguration`'s
-        // 7-day `timeoutIntervalForResource`, so a stalled SSO server
-        // could hang the login Task indefinitely.
+        try checkSignedIn(generation)
+        // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
+        // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
+        // timeout, so a stalled SSO server could hang the login Task indefinitely.
         var request = URLRequest(url: url, timeoutInterval: 15)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -229,10 +325,8 @@ enum SSOLoginService {
     }()
 
     private static func urlEncode(_ string: String) -> String {
-        // Encoder fallback returns "" rather than the raw string. The raw
-        // string here is a username/password — silently shipping cleartext
-        // bytes on the wire is far worse than a failed login attempt, so
-        // an empty form value is the safer default.
+        // On encoder failure return "" rather than the raw string: the value is a username or
+        // password, and silently sending its cleartext bytes is far worse than a failed login.
         guard let percentEncoded = string
             .addingPercentEncoding(withAllowedCharacters: formAllowed) else {
             assertionFailure("urlEncode failed for value of length \(string.count)")

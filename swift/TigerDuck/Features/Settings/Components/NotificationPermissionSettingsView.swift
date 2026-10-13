@@ -2,19 +2,14 @@ import ActivityKit
 import SwiftUI
 import UserNotifications
 
-/// 通知權限設定 (spec §6, owner's ruling 2026-09-12, item 4): the system-level
-/// authorization for Notifications and for Live Activities, each row
-/// tappable to jump into system Settings so the user can flip it there.
-/// iPhone/iPad only — reached from a NavigationLink in SettingsView that
-/// macOS's settings scene has no equivalent of. Excluded from the macOS
-/// build via `tools/macos-excluded-sources.txt` rather than an
-/// `#if os(macOS)` guard in here, matching `BulletinNotificationSettingsView`.
-///
-/// Reads the same two authorization sources `LiveActivityCoordinator` and
-/// `PushCoordinator` already read elsewhere
-/// (`UNUserNotificationCenter.current().notificationSettings()` and
-/// `ActivityAuthorizationInfo().areActivitiesEnabled`) rather than a second
-/// way of asking.
+/// Notification permission settings: the system authorization for
+/// Notifications and for Live Activities, each row opening system Settings to
+/// change it. iPhone and iPad only: the SettingsView link that reaches it has
+/// no macOS equivalent, so `tools/macos-excluded-sources.txt` drops it from
+/// that build instead of an `#if`, like `BulletinNotificationSettingsView`.
+/// Reads the same sources as `LiveActivityCoordinator` and `PushCoordinator`:
+/// `UNUserNotificationCenter.current().notificationSettings()` and
+/// `ActivityAuthorizationInfo().areActivitiesEnabled`.
 struct NotificationPermissionSettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined

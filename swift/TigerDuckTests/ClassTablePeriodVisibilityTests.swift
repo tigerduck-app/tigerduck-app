@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import Observation
 import Testing
 @testable import TigerDuck
 
@@ -43,5 +44,26 @@ struct ClassTablePeriodVisibilityTests {
         Defaults[.alwaysShowAllPeriods] = true
 
         try await waitUntil { viewModel.cellRoleCache.isEmpty }
+    }
+
+    /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
+    private final class Flag: @unchecked Sendable {
+        var raised = false
+    }
+
+    @Test func fillingTheCellRoleCache_doesNotRedrawTheGrid() {
+        // The grid fills the cache while its body runs, so a write there must not invalidate
+        // the cells that just read it, or every rebuild costs a second grid pass.
+        let viewModel = ClassTableViewModel()
+        let redrawn = Flag()
+        withObservationTracking {
+            _ = viewModel.cellRole(weekday: 1, periodIndex: 0)
+        } onChange: {
+            redrawn.raised = true
+        }
+
+        _ = viewModel.cellRole(weekday: 2, periodIndex: 0)
+
+        #expect(!redrawn.raised)
     }
 }

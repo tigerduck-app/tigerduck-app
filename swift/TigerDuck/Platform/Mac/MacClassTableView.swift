@@ -1,39 +1,37 @@
 #if os(macOS)
 import SwiftUI
 import Defaults
+import UniformTypeIdentifiers
 
-/// macOS Class Table — weekday × period grid that matches the iPhone
-/// visual contract.
+/// macOS Class Table: a weekday × period grid matching the iPhone's look, with the same
+/// glassy cells (`.ultraThinMaterial`, `course.color.opacity(0.4)`, a thin tinted stroke)
+/// and consecutive periods of one course drawn as a single block.
 ///
-/// Cells share the same glassy treatment as iOS (`.ultraThinMaterial`
-/// + `course.color.opacity(0.4)` + thin tinted stroke), and — like
-/// iPhone — *consecutive periods of the same course are rendered as a
-/// single block* spanning all of those rows rather than as repeated
-/// cells. The grid is implemented as one VStack per weekday so each
-/// weekday can independently span its cells without needing
-/// SwiftUI Grid row-spanning (which doesn't exist).
-///
-/// The grid drawing and the schedule mutations live next door in
-/// MacClassTableView+Grid.swift and MacClassTableView+Editing.swift. Swift's
-/// `private` is file-scoped, so the state below reads `internal` rather than
-/// `private` purely to be reachable from those two files — nothing outside
-/// this trio should touch it, and in particular nothing should feed these
-/// through the memberwise init, which would defeat `@State`.
+/// Drawing and schedule edits live in MacClassTableView+Grid.swift and
+/// MacClassTableView+Editing.swift. The state below is `internal` only so those files can
+/// reach it, since `private` is file-scoped. Nothing outside the three files should touch it,
+/// and nothing should set it through the memberwise init, which would defeat `@State`.
 struct MacClassTableView: View {
     @Environment(AppState.self) var appState
 
     /// Read through `@Default` rather than `Defaults[...]` so toggling the
     /// setting redraws the grid — a raw read registers no SwiftUI dependency.
     @Default(.alwaysShowAllPeriods) private var showsAllPeriods
+    @Default(.outlineRequiredCourses) var outlineRequiredCourses
 
     @State var selectedSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
     )
-    /// Set only while `warmCachesIfNeeded` moves the selection to the newest
-    /// term, so that assignment doesn't get recorded as a user pick.
+    /// Set while the screen moves the selection itself, to the newest term or to the term of the
+    /// class table shown, so that assignment doesn't get recorded as a user pick.
     @State private var isFollowingNewestSemester = false
     @State var selectedSlot: SelectedSlot?
+    /// The Moodle screens pushed in the course detail overlay, which Escape leaves first.
+    @State private var detailMoodlePath: [MoodleCourseRoute] = []
     @State private var showAddCourse: Bool = false
+    @State private var shareModel: ClassTableShareModel?
+    @State private var showImportPicker = false
+    @State private var importModel: ClassTableImportModel?
     /// Non-nil while the macOS color picker sheet is presented. Set from the
     /// per-cell context menu; the iOS path stores this on its view-model, but
     /// the Mac classtable is a plain View so it lives in @State here.
@@ -45,6 +43,14 @@ struct MacClassTableView: View {
     @State var courseToRename: SDCourse?
     @State var renameText: String = ""
     @State var showRenameAlert: Bool = false
+
+    @State private var isRenamingPerson = false
+    @State private var nicknameDraft = ""
+    @State private var isDeletingPerson = false
+    @State private var showsSaveFailed = false
+    /// The person the open rename or delete alert names, who may no longer show by the time the
+    /// user answers it.
+    @State private var personInAlert: ImportedPerson?
 
     /// Carries the weekday alongside the tapped course so the detail sheet
     /// can render the concrete slot's classroom + time range. Without the
@@ -59,6 +65,26 @@ struct MacClassTableView: View {
     /// `courses` computed read includes this to trigger re-render
     /// (Observation can't see plain `DataCache` mutations).
     @State var cacheRevision: Int = 0
+    /// The term's merged courses per `cacheRevision`. A memo, not state a `.task` rebuilds, so
+    /// the edits, which bump the revision and read `courses` at once, see the new list.
+    @State private var coursesMemo = ViewMemo<CoursesKey, [SDCourse]>()
+
+    private struct CoursesKey: Equatable {
+        let semester: String
+        let revision: Int
+    }
+    @State private var ignoredCoursesMemo = ViewMemo<Int, Set<String>>()
+
+    /// `CourseTombstone` keys of the courses whose assignments are all ignored, read once per
+    /// `cacheRevision` like `courses`, since every cell asks.
+    var ignoredAssignmentCourses: Set<String> {
+        guard shownPerson == nil else { return [] }
+        return ignoredCoursesMemo.value(for: cacheRevision) { DataCache.shared.loadIgnoredAssignmentCourses() }
+    }
+
+    /// Whose class table this is, nil for the user's own. Another person's is read-only, and
+    /// nothing of the user's, such as assignments or Moodle, is shown on it.
+    var shownPerson: ImportedPerson? { ImportedClassTableStore.shared.shownPerson }
     @State private var hasWarmedCaches = false
     @State private var isLoadingSemester = false
     @State var tripleConflictError: TripleConflictError?
@@ -95,27 +121,30 @@ struct MacClassTableView: View {
     /// appear without rebuilding the view. `selectedSemester` is folded in so
     /// a persisted selection that aged out of the window still renders its label.
     private var availableSemesters: [String] {
+        if let shownPerson { return shownPerson.semesters }
         let options = SemesterCatalog.availableSemesters()
         return options.contains(selectedSemester) ? options : options + [selectedSemester]
     }
 
+    /// Every cell reads this, and the merge decodes four cache files, so it is built once per
+    /// term and `cacheRevision`.
     var courses: [SDCourse] {
-        _ = cacheRevision
-        // Route through the canonical merge so the deletedCourseNos
-        // tombstone filter and customNames overlay apply here too. The Mac
-        // picker can target a past semester, so we can't call
-        // `CanonicalCourseProvider.currentCourses()` (which is pinned to
-        // the live `CourseSelectionService` semester) — feed the static
-        // `merge` directly with per-semester inputs instead.
-        let cached = DataCache.shared.loadCourses(semester: selectedSemester)
-        let userAdded = DataCache.shared.loadUserAddedCourses(semester: selectedSemester)
-        return CanonicalCourseProvider.merge(
-            primary: cached,
-            userAdded: userAdded,
-            semester: selectedSemester,
-            deletedCourseNos: Set(DataCache.shared.loadDeletedCourseNos()),
-            customNames: DataCache.shared.loadCourseCustomNamesFlat()
-        )
+        let semester = selectedSemester
+        // Someone else's courses stay as shared: the user's tombstones and custom names are keyed
+        // by course number alone and would hide or rename theirs.
+        if let shownPerson { return shownPerson.courses(in: semester) }
+        return coursesMemo.value(for: CoursesKey(semester: semester, revision: cacheRevision)) {
+            // Use the canonical merge so the deletedCourseNos tombstones and customNames overlay
+            // apply. Not `currentCourses()`: it is pinned to the live `CourseSelectionService`
+            // semester, and the Mac picker can show a past one, so feed `merge` per-semester inputs.
+            CanonicalCourseProvider.merge(
+                primary: DataCache.shared.loadCourses(semester: semester),
+                userAdded: DataCache.shared.loadUserAddedCourses(semester: semester),
+                semester: semester,
+                deletedCourseNos: Set(DataCache.shared.loadDeletedCourseNos()),
+                customNames: DataCache.shared.loadCourseCustomNamesFlat()
+            )
+        }
     }
 
     var visiblePeriods: [String] {
@@ -153,28 +182,98 @@ struct MacClassTableView: View {
                 }
                 .pickerStyle(.menu)
             }
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    showAddCourse = true
-                } label: {
-                    // A bare `Label(...)` in a macOS toolbar renders the
-                    // plus glyph and the title with mismatched baselines
-                    // (image floats high). Spelling out the HStack and
-                    // letting both views use their default alignment
-                    // produces the same row geometry as the semester picker
-                    // sitting beside this button. `.fixedSize` stops AppKit
-                    // from compressing the label down to icon-only (and
-                    // floating the glyph against the right edge) when the
-                    // semester picker grows wide.
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                        Text(String(localized: "add_course_title"))
-                    }
-                    .fixedSize()
+            if shownPerson != nil {
+                ToolbarItem(placement: .automatic) {
+                    otherPersonActions
                 }
-                .help(String(localized: "add_course_title"))
+            } else {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showAddCourse = true
+                    } label: {
+                        // A bare `Label` in a macOS toolbar draws the glyph on a higher baseline than
+                        // the title. The HStack matches the semester picker's row geometry, and
+                        // `.fixedSize` stops AppKit squeezing it to an icon when the picker widens.
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                            Text(String(localized: "add_course_title"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "add_course_title"))
+                }
+            }
+            if ImportedClassTableStore.shared.shownPerson == nil {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        openShareSheet()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "qrcode")
+                            Text(String(localized: "class_table_share"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "class_table_share"))
+                    .disabled(!ClassTableShareModel.canShare(
+                        studentId: appState.authService.storedStudentId,
+                        shownTerm: .init(semester: selectedSemester, courses: courses),
+                        semesters: availableSemesters
+                    ))
+                }
+            }
+            ToolbarItem(placement: .automatic) {
+                if let importModel, importModel.isLookingUp, importModel.pending == nil {
+                    // An update has no screen of its own, so it spins, and can be stopped, here.
+                    Button {
+                        importModel.cancel()
+                    } label: {
+                        HStack(spacing: 4) {
+                            ProgressView().controlSize(.small)
+                            Text(String(localized: "action_cancel"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "action_cancel"))
+                } else {
+                    Button {
+                        showImportPicker = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "qrcode.viewfinder")
+                            Text(String(localized: "class_table_import"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "class_table_import"))
+                    .disabled(importModel?.isLookingUp == true || importModel?.isReadingImage == true)
+                }
             }
         }
+        // The switcher's Import entry asks for the import this screen presents.
+        .environment(\.requestClassTableImport, requestImport)
+        .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.image]) { result in
+            let model = ClassTableImportModel.live(authService: appState.authService)
+            importModel = model
+            switch result {
+            case .success(let url):
+                Task { await model.readImage(fileAt: url) }
+            case .failure(let error):
+                // A file that cannot be opened gives the same answer as one with no code in it.
+                AppLogger.captureError(error, context: ["phase": "classTableImport.pickFile"])
+                Task { await model.readImage(nil) }
+            }
+        }
+        .classTableImportPrompts(importModel, onConfirmScreen: false)
+        .sheet(item: Binding(get: { importModel?.pending }, set: { if $0 == nil { importModel?.cancel() } })) { pending in
+            if let importModel {
+                ClassTableImportConfirmView(model: importModel, code: pending.code)
+            }
+        }
+        .onChange(of: importModel?.isFinished) { _, isFinished in
+            if isFinished == true { importModel = nil }
+        }
+        .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
                 semester: selectedSemester,
@@ -182,11 +281,9 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
-            // Conflict alert lives on the sheet's content: on iPhone
-            // hosting an alert on the parent forces SwiftUI to dismiss the
-            // sheet to present it. macOS doesn't have the same dismissal,
-            // but keeping both platforms anchored to the sheet keeps the
-            // alert visually attached to the search results either way.
+            // The conflict alert sits on the sheet's content: on iPhone, an alert on the parent
+            // makes SwiftUI dismiss the sheet to present it. macOS does not, but anchoring to the
+            // sheet keeps the alert attached to the search results on both platforms.
             .alert(
                 String(localized: "class_table_conflict_add_failed_title"),
                 isPresented: Binding(
@@ -202,7 +299,7 @@ struct MacClassTableView: View {
                 Text(String(
                     format: String(localized: "class_table_conflict_add_failed_message"),
                     err.newCourseName,
-                    "\(err.weekday)",
+                    AppConstants.Periods.shortWeekdayLabel(err.weekday),
                     err.periodId,
                     err.existingA.displayName,
                     err.existingB.displayName
@@ -210,15 +307,16 @@ struct MacClassTableView: View {
             }
         }
         .sheet(item: $courseToRecolor) { course in
+            let authService = appState.authService
+            let generation = authService.loginGeneration
             CourseColorPickerSheet(
                 course: course,
+                isCurrent: { authService.loginGeneration == generation },
                 onSelect: { hex in
-                    TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
+                    let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
                     cacheRevision &+= 1
                     NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-                    if let moodleId = course.moodleIdNumber {
-                        appState.syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
-                    }
+                    appState.syncColorPick(hex, for: course, changed: changed)
                 }
             )
             .frame(minWidth: 360, minHeight: 480)
@@ -241,6 +339,30 @@ struct MacClassTableView: View {
                 Text(String(format: String(localized: "class_table_rename_default_label"), course.courseName))
             }
         }
+        .alert(String(localized: "class_table_rename_title"), isPresented: $isRenamingPerson) {
+            TextField(String(localized: "class_table_nickname"), text: $nicknameDraft)
+            Button(String(localized: "action_save")) {
+                if let personInAlert, ImportedClassTableStore.shared.rename(personInAlert.id, to: nicknameDraft) == .failed {
+                    showsSaveFailed = true
+                }
+            }
+            .disabled(nicknameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        }
+        .alert(
+            String(format: String(localized: "class_table_delete_user_confirm"), personInAlert?.nickname ?? ""),
+            isPresented: $isDeletingPerson
+        ) {
+            Button(String(localized: "class_table_delete"), role: .destructive) {
+                if let personInAlert, ImportedClassTableStore.shared.delete(personInAlert.id) == .failed {
+                    showsSaveFailed = true
+                }
+            }
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        }
+        .alert(String(localized: "bulletin_save_failed_title"), isPresented: $showsSaveFailed) {
+            Button(String(localized: "action_confirm"), role: .cancel) {}
+        }
         .task {
             await warmCachesIfNeeded()
             await ensureCurrentSemesterFetched()
@@ -248,10 +370,27 @@ struct MacClassTableView: View {
         .onChange(of: selectedSemester) { _, newValue in
             if isFollowingNewestSemester {
                 isFollowingNewestSemester = false
-            } else {
+            } else if shownPerson == nil {
                 Defaults[.classTableSelectedSemester] = newValue
             }
             Task { await ensureCurrentSemesterFetched() }
+        }
+        // Someone else's class table keeps the term on screen when they shared it and otherwise
+        // opens on their latest term; the user's own opens on its own term, as at launch.
+        .onChange(of: ImportedClassTableStore.shared.shownTable, initial: true) { _, _ in
+            if shownPerson != nil {
+                // An import finishing in the background can switch while one of the user's own
+                // edits is open, and it must not save into someone else's.
+                showAddCourse = false
+                showRenameAlert = false
+                courseToRename = nil
+                courseToRecolor = nil
+            }
+            let semester = shownPerson?.semester(keeping: selectedSemester)
+                ?? SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
+            guard semester != selectedSemester else { return }
+            isFollowingNewestSemester = true
+            selectedSemester = semester
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             cacheRevision &+= 1
@@ -265,6 +404,8 @@ struct MacClassTableView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: selectedSlot?.id)
+        .onChange(of: selectedSlot?.id) { detailMoodlePath = [] }
+        .preference(key: MacRefreshShortcutClaimKey.self, value: detailMoodlePath.last?.refreshesOnItsOwn ?? false)
     }
 
     @ViewBuilder
@@ -278,25 +419,33 @@ struct MacClassTableView: View {
 
             CourseDetailSheet(
                 course: slot.course,
-                assignments: DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo),
+                assignments: shownPerson == nil
+                    ? DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo)
+                    : [],
                 timeRange: slot.course.timeRange(for: slot.weekday),
-                weekday: slot.weekday
+                weekday: slot.weekday,
+                moodlePath: $detailMoodlePath,
+                showsMoodle: shownPerson == nil
             )
-            // Max-bound rather than fixed: a small window (e.g. MacBook Air
-            // with the inspector open) shrinks the overlay to fit, while
-            // larger windows give the inner ScrollView more room before it
-            // has to scroll. `CourseDetailSheet` enforces its own minWidth
-            // 460 / minHeight 360 so the lower bound is preserved.
+            // Max bounds, not a fixed size: a small window shrinks the overlay to fit, and a
+            // large one gives the inner ScrollView more room before it scrolls.
+            // `CourseDetailSheet` sets its own minWidth 460 and minHeight 360 for the lower bound.
             .frame(maxWidth: 560, maxHeight: 620)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
             // Swallow taps on the content so they don't reach the backdrop.
             .onTapGesture { }
 
-            // Restore ESC dismissal — custom overlays don't inherit a sheet's
-            // automatic cancel handling. Hidden button keeps the shortcut
-            // active without affecting the visible layout.
-            Button("") { selectedSlot = nil }
+            // Restore ESC dismissal: custom overlays don't inherit a sheet's automatic
+            // cancel handling. Hidden button keeps the shortcut active without affecting
+            // the visible layout. A Moodle screen pushed in the overlay goes back first.
+            Button("") {
+                if detailMoodlePath.isEmpty {
+                    selectedSlot = nil
+                } else {
+                    detailMoodlePath.removeLast()
+                }
+            }
                 .keyboardShortcut(.escape, modifiers: [])
                 .opacity(0)
                 .frame(width: 0, height: 0)
@@ -326,7 +475,8 @@ struct MacClassTableView: View {
     /// The catalogue can land after the view is built on a cold launch, so
     /// re-apply the "never picked → newest term" rule once it does.
     private func followNewestSemesterIfUnpicked() {
-        guard Defaults[.classTableSelectedSemester] == nil,
+        guard shownPerson == nil,
+              Defaults[.classTableSelectedSemester] == nil,
               let newest = SemesterCatalog.availableSemesters().first,
               newest != selectedSemester else { return }
         isFollowingNewestSemester = true
@@ -340,7 +490,7 @@ struct MacClassTableView: View {
     /// fetched").
     private func ensureCurrentSemesterFetched() async {
         let target = selectedSemester
-        guard DataCache.shared.loadCourses(semester: target).isEmpty else { return }
+        guard shownPerson == nil, DataCache.shared.loadCourses(semester: target).isEmpty else { return }
         await MainActor.run { isLoadingSemester = true }
         _ = await AppServiceBridge.fetchCourses(
             authService: appState.authService,
@@ -371,6 +521,71 @@ struct MacClassTableView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            switcher
+        }
+    }
+
+    /// Whose class table this is, a menu of the class tables to switch to once any has been
+    /// imported. The Mac has no tab bar to long-press, so this is its only switcher.
+    @ViewBuilder
+    private var switcher: some View {
+        let store = ImportedClassTableStore.shared
+        if store.hasImportedClassTables {
+            let userName = ClassTableSwitcherEntry.userName(studentId: appState.authService.storedStudentId)
+            let name = shownPerson?.nickname ?? userName
+            Menu {
+                ClassTableSwitcherMenuItems(store: store, userName: userName)
+            } label: {
+                Text(name)
+            }
+            .menuOrder(.fixed)
+            .fixedSize()
+            .accessibilityLabel(Text("a11y_class_table_switch"))
+            .accessibilityValue(Text(name))
+        }
+    }
+
+    /// The Mac exports no screenshot, so it offers the rest of what someone else's class table does.
+    private var otherPersonActions: some View {
+        let sections = ClassTableOtherPersonAction.sections
+            .map { $0.filter { $0 != .exportScreenshot } }
+            .filter { !$0.isEmpty }
+        return Menu {
+            ForEach(sections, id: \.self) { section in
+                Section {
+                    ForEach(section, id: \.self) { action in
+                        Button(role: action.role) {
+                            perform(action)
+                        } label: {
+                            Label(action.title, systemImage: action.systemImage)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label(String(localized: "class_table_more_actions"), systemImage: "ellipsis.circle")
+        }
+        .help(String(localized: "class_table_more_actions"))
+    }
+
+    private func requestImport() {
+        guard importModel?.isLookingUp != true, importModel?.isReadingImage != true else { return }
+        showImportPicker = true
+    }
+
+    private func perform(_ action: ClassTableOtherPersonAction) {
+        switch action {
+        case .exportScreenshot:
+            break
+        case .importClassTable:
+            requestImport()
+        case .rename:
+            personInAlert = shownPerson
+            nicknameDraft = shownPerson?.nickname ?? ""
+            isRenamingPerson = true
+        case .deleteUser:
+            personInAlert = shownPerson
+            isDeletingPerson = true
         }
     }
 
@@ -405,6 +620,19 @@ struct MacClassTableView: View {
 
 
     // MARK: - Helpers
+
+    private func openShareSheet() {
+        guard let studentId = appState.authService.storedStudentId else { return }
+        let terms = ClassTableShareModel.terms(
+            in: availableSemesters, shownTerm: .init(semester: selectedSemester, courses: courses)
+        )
+        guard !terms.isEmpty else { return }
+        shareModel = ClassTableShareModel(
+            studentId: studentId,
+            terms: terms,
+            semesterLabel: displayLabel(for:)
+        )
+    }
 
     private var totalCredits: Double {
         courses.reduce(0) { $0 + $1.credits }

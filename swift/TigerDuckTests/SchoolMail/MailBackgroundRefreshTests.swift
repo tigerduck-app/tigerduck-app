@@ -30,15 +30,28 @@ struct MailBackgroundRefreshTests {
     /// a signed-out or locked-out account must stop waking the app (controller ruling, task 12).
     @Test func reschedulesOnlyWhileBackgroundChecksAreStillWanted() {
         #expect(MailBackgroundRefresh.shouldRescheduleAfterHandling(
-            featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false))
+            featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: false))
         #expect(!MailBackgroundRefresh.shouldRescheduleAfterHandling(
-            featureEnabled: true, signedIn: false, notificationsEnabled: true, authFailed: false))
+            featureEnabled: true, signedIn: false, notificationsEnabled: true, authFailed: false, notificationsDenied: false))
         #expect(!MailBackgroundRefresh.shouldRescheduleAfterHandling(
-            featureEnabled: true, signedIn: true, notificationsEnabled: false, authFailed: false))
+            featureEnabled: true, signedIn: true, notificationsEnabled: false, authFailed: false, notificationsDenied: false))
         #expect(!MailBackgroundRefresh.shouldRescheduleAfterHandling(
-            featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: true))
+            featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: true, notificationsDenied: false))
         #expect(!MailBackgroundRefresh.shouldRescheduleAfterHandling(
-            featureEnabled: false, signedIn: true, notificationsEnabled: true, authFailed: false))
+            featureEnabled: false, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: false))
+        // Denied in iOS, a wake could only sign in to check for mail it cannot announce.
+        #expect(!MailBackgroundRefresh.shouldRescheduleAfterHandling(
+            featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: true))
+    }
+
+    /// Leaving the foreground cannot wait for a permission read, so it decides from the last
+    /// one, which every read records. Every reader here records the simulator's real answer.
+    @Test func leavingTheForegroundDecidesFromTheLastPermissionRead() async {
+        let denied = await MailNotificationPermission.isDenied()
+        #expect(MailNotificationPermission.lastKnownDenied == denied)
+        #expect(MailBackgroundRefresh.shouldRescheduleAfterHandling(
+            featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false,
+            notificationsDenied: MailNotificationPermission.lastKnownDenied) == !denied)
     }
 
     /// Installs onto its own `MailAccountManager` and `MailNotifier` — never

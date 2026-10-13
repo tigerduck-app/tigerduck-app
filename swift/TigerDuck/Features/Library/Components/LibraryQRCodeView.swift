@@ -8,13 +8,10 @@ struct LibraryQRCodeView: View {
 
     /// Animated trim fraction driving the countdown ring (0 → 1).
     ///
-    /// Kept separate from `countdown` so we can pick the animation per
-    /// transition: a tick (countdown decreasing) gets a 1-second linear
-    /// sweep, while an initial fill or QR refresh (countdown jumping
-    /// back up to 30) snaps instantly. Without this split, the
-    /// `.animation` modifier would animate the 0 → 30 jump too and the
-    /// user sees the ring "load full" over a second before the actual
-    /// countdown starts.
+    /// Kept apart from `countdown` to pick the animation per transition: a tick
+    /// gets a 1-second linear sweep, while the initial fill or a QR refresh
+    /// (countdown back up to 30) snaps. A single `.animation` would animate that
+    /// jump too, and the ring would visibly fill over a second before counting.
     @State private var ringFraction: CGFloat = 0
 
     /// Caps the rendered QR width on the iPad-centered layout — without
@@ -43,17 +40,9 @@ struct LibraryQRCodeView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, TigerDuckTheme.Spacing.md)
 
-            // QR Code — has comfortable inset on both sides so the
-            // matrix doesn't run right to the card edge.
-            //
-            // `.screenCaptureProtected()` is applied inside
-            // `qrCodeContent`, on the matrix branch alone — see there for
-            // why. It stays under the `.aspectRatio(1, .fit)` below either
-            // way, which is what lets SwiftUI propose a finite square
-            // straight to the wrap: applied at the card level instead, the
-            // title + countdown rows reported their own heights and the
-            // wrapper's compressed-fit probe gave the QR row 0 height,
-            // squishing the matrix.
+            // Padding keeps the matrix off the card edge. This `.aspectRatio(1, .fit)`
+            // hands `qrCodeContent`'s `.screenCaptureProtected()` a finite square; at card
+            // level, the wrapper's compressed-fit probe would give the QR row zero height.
             qrCodeContent
                 .frame(maxWidth: Self.qrCodeMaxWidth)
                 .aspectRatio(1, contentMode: .fit)
@@ -63,10 +52,9 @@ struct LibraryQRCodeView: View {
             // Countdown
             HStack(spacing: TigerDuckTheme.Spacing.sm) {
                 ZStack {
-                    // Both rings share the SAME `StrokeStyle` (matching
-                    // lineWidth + lineCap) so they trace pixel-identical
-                    // paths. Mismatched caps (`.butt` vs `.round`) were
-                    // why the grey peeked through the blue at the seam.
+                    // Both rings use the same `StrokeStyle` so they trace identical
+                    // paths; mismatched caps (`.butt` vs `.round`) let the grey peek
+                    // through the blue at the seam.
                     Circle()
                         .stroke(
                             Color.textSecondary.opacity(0.3),
@@ -102,30 +90,20 @@ struct LibraryQRCodeView: View {
             .padding(.bottom, TigerDuckTheme.Spacing.md)
         }
         .glassCard(cornerRadius: TigerDuckTheme.CornerRadius.xl)
-        // Outer breathing room so the card sits inside the screen edges
-        // rather than running flush to them. The sensitive part (the QR
-        // matrix) is wrapped with `.screenCaptureProtected()` at its own
-        // call site above — wrapping the entire card here instead
-        // interfered with the aspect-ratio sizing and rendered the QR
-        // at half size.
+        // Keep the card off the screen edges. `.screenCaptureProtected()` wraps only
+        // the QR matrix, in `qrCodeContent`: wrapping the whole card here would break
+        // the aspect-ratio sizing and render the QR at half size.
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
     /// The three states of the QR slot. Only the middle one is wrapped in
     /// `.screenCaptureProtected()`.
     ///
-    /// The wrapper is not free: it hosts its subtree in a
-    /// `UIHostingController` parented onto a secure `UITextField`'s private
-    /// canvas, re-measures that tree through `sizeThatFits` on every layout
-    /// pass, and walks the field's view hierarchy each `layoutSubviews` to
-    /// keep the hosted view on top. Its own documentation says to keep it to
-    /// small leaves. A spinner is the worst thing to put inside it — an
-    /// indeterminate `ProgressView` animates forever, so the measure-and-
-    /// reparent work runs forever with it, on the main thread, for as long
-    /// as the code is being fetched.
-    ///
-    /// And there is nothing to protect: the placeholder and the spinner
-    /// carry no scannable credential. Only the matrix does.
+    /// The wrapper is costly, and its documentation keeps it to small leaves: it
+    /// hosts its subtree on a secure `UITextField`'s canvas, re-measures it every
+    /// layout pass and walks the field's views on each `layoutSubviews`. A spinner
+    /// animates forever, so that work would run on the main thread for the whole
+    /// fetch, and neither it nor the placeholder carries a scannable credential.
     @ViewBuilder
     private var qrCodeContent: some View {
         if isLoading {
@@ -145,11 +123,9 @@ struct LibraryQRCodeView: View {
     @ViewBuilder
     private func qrMatrix(_ image: UIImage) -> some View {
         #if os(iOS)
-        // EDR-backed Metal renderer — drives pixels >1.0 on HDR-capable
-        // displays so the QR "pops" out of the surrounding glass card
-        // without changing system brightness. Falls back to the SDR
-        // `Image` below if Metal can't initialise (no MTLDevice / shader
-        // build failure), since the Metal view then draws transparent.
+        // The EDR Metal view drives pixels above 1.0, so the QR pops out of the glass
+        // card without touching system brightness. If Metal cannot start (no device or
+        // a shader build failure) it draws transparent and the SDR `Image` shows.
         ZStack {
             Image(uiImage: image)
                 .interpolation(.none)

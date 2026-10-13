@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Presents a login-required prompt on surfaces that require a 校務系統
+/// Presents a login-required prompt on surfaces that need an NTUST portal
 /// session. Supports two layouts:
 ///
 /// - ``Layout/page``: full-page placeholder used when an entire screen is

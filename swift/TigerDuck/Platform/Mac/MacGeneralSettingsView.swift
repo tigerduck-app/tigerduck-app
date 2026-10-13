@@ -1,12 +1,14 @@
 #if os(macOS)
 import SwiftUI
 import AppKit
+import Defaults
 
 /// General tab — language, what the schedule shows, name-abbreviation
 /// toggles, and how links open. One of the six tabs assembled by
 /// `MacSettingsScene`.
 struct MacGeneralSettingsView: View {
     @Environment(AppState.self) private var appState
+    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
     /// Every language the app ships, in the order of their own names.
     private static let languageTags: [String] = LanguageManager.supportedLocaleTags()
@@ -27,12 +29,9 @@ struct MacGeneralSettingsView: View {
                 }
                 .pickerStyle(.menu)
 
-                // Directly under the in-app picker because the two answer
-                // the same question, and the picker alone cannot: its
-                // "follow system" option defers to the per-app Language &
-                // Region pane in System Settings, which is the only place
-                // macOS actually applies the system locale. Mirrors the
-                // iPhone's language redirect.
+                // Under the in-app picker, which cannot do this alone: its "follow system" option
+                // defers to the per-app Language & Region pane in System Settings, the only place
+                // macOS applies the system locale. Mirrors the iPhone's language redirect.
                 Button {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") {
                         NSWorkspace.shared.open(url)
@@ -50,16 +49,15 @@ struct MacGeneralSettingsView: View {
                 .buttonStyle(.plain)
             }
 
-            // The same toggles in the same order as the iPhone's Display
-            // section. The Mac had one of them filed under Appearance >
-            // Schedule, alone, and the other nowhere at all — even though
-            // `MacClassTableView` has always read it.
+            // The iPhone's Display toggles in the same order, except today's courses, which the
+            // Mac class table does not show.
             Section(String(localized: "settings_section_display")) {
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
                 Toggle(
                     String(localized: "settings_show_classroom_on_class_table"),
                     isOn: $state.showClassroomInClassTable
                 )
+                Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $state.alwaysShowAllPeriods)
             }
 
@@ -75,12 +73,9 @@ struct MacGeneralSettingsView: View {
             }
 
             Section(String(localized: "desktop_settings_section_links")) {
-                // No first-party Moodle Mac app exists, but the iPad
-                // Moodle app installed via Mac App Store registers
-                // `moodlemobile://`, so users who chose to install it can
-                // opt into the deep link. Default stays `.browser` —
-                // sending the user to `moodlemobile://` with no app
-                // installed yields "no app handles this URL".
+                // No first-party Moodle app exists for Mac, but the iPad app from the Mac App
+                // Store registers `moodlemobile://`, so its users can opt in. The default stays
+                // `.browser`: without the app, that URL fails with "no app handles this URL".
                 Picker(String(localized: "desktop_settings_moodle_open_in"), selection: $state.macMoodleOpenTarget) {
                     Text(String(localized: "desktop_settings_moodle_open_in_browser")).tag(MoodleOpenTarget.browser)
                     Text(String(localized: "desktop_settings_moodle_open_in_app")).tag(MoodleOpenTarget.app)

@@ -1,15 +1,14 @@
 import Defaults
 import SwiftUI
 
-/// The one status mark in a page header — a bare dot, with no backing.
+/// The one status mark in a page header: a bare dot, with no backing.
 ///
-/// Colour is the worst known state
-/// of the sources the page depends on (red > green); grey means nothing
-/// has reported yet or the source is switched off, and never wins. While
-/// a fetch is running the dot becomes a spinning ring. Tapping it lists
-/// every source with its own state. After a second with no change, no
-/// tap and no open popover the dot fades so it stops competing with the
-/// page title.
+/// Colour is the worst known state of the sources the page depends on
+/// (red > green); grey means nothing has reported yet or the source is
+/// switched off, and never wins. While a fetch runs the dot becomes a
+/// spinning ring. Tapping it lists every source with its own state. After
+/// a second with no change, no tap and no open popover the dot fades so it
+/// stops competing with the page title.
 struct SyncStatusDot: View {
     struct Source: Identifiable {
         let id: String
@@ -41,6 +40,7 @@ struct SyncStatusDot: View {
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     /// Optional so the dot still renders in a preview with no `AppState`
     /// injected, where "signed out" is the conservative read.
     @Environment(AppState.self) private var appState: AppState?
@@ -50,6 +50,7 @@ struct SyncStatusDot: View {
     /// whatever word it already had until something unrelated forced a
     /// redraw, which is the opposite of what `isMinimal` is for.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
+    @Default(.schoolDataSyncedAt) private var schoolDataSyncedAt
     @State private var showDetails = false
     @State private var spinning = false
     @State private var dimmed = false
@@ -81,22 +82,14 @@ struct SyncStatusDot: View {
 
     private var isSignedIn: Bool { appState?.authService.hasStoredCredentials ?? false }
 
-    /// Sync switched off: the row reads "Minimal" instead of "OK", and
-    /// nothing else about it changes.
+    /// Sync switched off: the row reads "Minimal" instead of "OK", and nothing
+    /// else about it changes. Signed out it is never called: `body` draws nothing.
     ///
-    /// It is deliberately not treated as *off*. The academic calendar —
-    /// semester dates and holidays — and the bulletin feed are public GETs
-    /// that carry no account and are fetched regardless of this setting, so
-    /// the backend is doing work for this device either way and always has a
-    /// real answer: reachable, or not. The row used to be pinned grey / "Off",
-    /// which said the opposite — that there was nothing to know — and hid a
-    /// backend that was genuinely down from anyone who had turned sync off.
-    ///
-    /// The stale-green worry that pinning it grey used to answer is handled
-    /// at the source now: `AppState` clears the reading on every flip,
-    /// whichever writer made it, and only `noteBackendReachable` writes it
-    /// back while off.
-    /// The signed-out case never reaches here; `body` draws nothing at all.
+    /// It is not treated as off: the academic calendar and the bulletin feed are
+    /// public GETs fetched regardless of this setting, so the backend always has a
+    /// real answer, and a grey "Off" row would hide a backend that is down. A stale
+    /// green cannot linger: `AppState` clears the reading on every flip, and only
+    /// `noteBackendReachable` writes it back while sync is off.
     private func isMinimal(_ server: ServerKind) -> Bool {
         server == .backend && !cloudSyncEnabled
     }
@@ -122,11 +115,9 @@ struct SyncStatusDot: View {
     private var summary: ServerStatus {
         switch mode {
         case .servers:
-            // No allSatisfy(isMinimal) shortcut any more. A page whose only
-            // source is the backend still has a state worth colouring while
-            // sync is off — that is the whole point of the minimal reading —
-            // and short-circuiting to grey would throw away the one thing
-            // this change exists to show.
+            // No grey short-circuit for `allSatisfy(isMinimal)`: a page whose only
+            // source is the backend still has a state worth colouring while sync is
+            // off, and showing it is the point of the minimal reading.
             Self.summary(loadingState: session.loadingState, statuses: sources.map(\.status))
         case .single(let source, _):
             source.status
@@ -145,8 +136,9 @@ struct SyncStatusDot: View {
     }
 
     private var errorMessage: String? {
-        if case .servers = mode, case .error(let message) = session.loadingState { return message }
-        return nil
+        guard case .servers(let servers) = mode else { return nil }
+        if case .error(let message) = session.loadingState { return message }
+        return servers.lazy.compactMap { tracker.note(for: $0) }.first
     }
 
     /// Signed out there is nothing syncing and nothing to report, so the
@@ -174,10 +166,7 @@ struct SyncStatusDot: View {
                 if isLoading {
                     ring.transition(.scale.combined(with: .opacity))
                 } else {
-                    Circle()
-                        .fill(Self.color(summary))
-                        .frame(width: 10, height: 10)
-                        .transition(.scale.combined(with: .opacity))
+                    mark.transition(.scale.combined(with: .opacity))
                 }
             }
             // The 28pt frame is the tap target, not a backing: the mark
@@ -215,6 +204,21 @@ struct SyncStatusDot: View {
         }
     }
 
+    /// Red and green alone do not tell the states apart for everyone, so with
+    /// Differentiate Without Color on, OK and failed also differ in shape.
+    @ViewBuilder
+    private var mark: some View {
+        if differentiateWithoutColor, let glyph = Self.glyph(summary) {
+            Image(systemName: glyph)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Self.color(summary))
+        } else {
+            Circle()
+                .fill(Self.color(summary))
+                .frame(width: 10, height: 10)
+        }
+    }
+
     @ViewBuilder
     private var ring: some View {
         if reduceMotion {
@@ -239,6 +243,12 @@ struct SyncStatusDot: View {
             }
             ForEach(sources) { source in
                 row(color: Self.color(source.status), icon: source.icon, name: source.name, text: source.text)
+            }
+            if case .servers(let servers) = mode, servers.contains(.moodle) {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    row(color: .clear, icon: "clock", name: String(localized: "sync_status_last_synced"),
+                        text: Self.schoolDataAgeText(schoolDataSyncedAt, now: context.date))
+                }
             }
             if let errorMessage {
                 Text(errorMessage)
@@ -266,11 +276,37 @@ struct SyncStatusDot: View {
         }
     }
 
+    /// Short forms, so the age fits the row's trailing column.
+    static func schoolDataAgeText(_ syncedAt: Date?, now: Date) -> String {
+        guard let syncedAt else { return String(localized: "sync_status_never_synced") }
+        let seconds = max(0, now.timeIntervalSince(syncedAt))
+        switch seconds {
+        case ..<60:
+            return String(localized: "sync_status_just_now")
+        case ..<3600:
+            return String(format: String(localized: "sync_status_minutes_ago_short"), Int(seconds / 60))
+        case ..<86_400:
+            return String(format: String(localized: "sync_status_hours_ago_short"), Int(seconds / 3600))
+        default:
+            return String(format: String(localized: "sync_status_days_ago_short"), Int(seconds / 86_400))
+        }
+    }
+
     private static func color(_ status: ServerStatus) -> Color {
         switch status {
         case .unknown: .gray
         case .ok: .green
         case .failed: .red
+        }
+    }
+
+    /// The shape that tells OK from failed without their colours. Grey, nothing
+    /// reported yet, keeps the plain dot.
+    static func glyph(_ status: ServerStatus) -> String? {
+        switch status {
+        case .unknown: nil
+        case .ok: "checkmark.circle.fill"
+        case .failed: "exclamationmark.circle.fill"
         }
     }
 

@@ -5,20 +5,17 @@ import SwiftUI
 ///
 /// Sections, top to bottom:
 ///   1. Greeting (+ fake-clock indicator in DEBUG)
-///   2. Today's Classes — header above the Today + Next Class widget cards
-///   3. Upcoming Assignments — right-click → archive / complete / undo
+///   2. Today's Classes: header above the Today and Next Class widget cards
+///   3. Upcoming Assignments: right-click to archive, complete or undo
 ///
-/// All sections derive from `DataCache` so the toolbar Refresh button
-/// (`appState.backgroundSync()`) re-renders them.
+/// All sections read `DataCache`, so Refresh (`appState.backgroundSync()`) re-renders them.
 struct MacHomeView: View {
     @Environment(AppState.self) private var appState
     @State private var cacheRevision: Int = 0
 
     var body: some View {
-        // Read AppClockState.version so a debug clock override flips
-        // the greeting / widget state mid-view rather than only after
-        // the next unrelated invalidation. Mirrors the iOS HomeView
-        // contract.
+        // Read AppClockState.version so a debug clock override updates the greeting and
+        // widgets at once, not on the next unrelated invalidation. Mirrors the iOS HomeView.
         let _ = AppClockState.shared.version
         let _ = cacheRevision
         ScrollView {
@@ -86,11 +83,9 @@ struct MacHomeView: View {
     // MARK: - Data
 
     private func currentCourses() -> [SDCourse] {
-        // Delegate to the canonical provider so the deletedCourseNos
-        // tombstone filter and customNames overlay are applied. Inlining
-        // the raw load+merge here previously meant a course the user
-        // had hidden from the class table would reappear in the Home
-        // widget cards and assignment course matcher after refresh.
+        // The canonical provider applies the deletedCourseNos tombstones and customNames
+        // overlay. A raw load and merge would bring a course hidden from the class table back
+        // into the Home widget cards and the assignment course matcher after a refresh.
         CanonicalCourseProvider().currentCourses()
     }
 }

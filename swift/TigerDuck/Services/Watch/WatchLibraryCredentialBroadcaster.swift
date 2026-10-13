@@ -7,8 +7,8 @@ import os
 /// uses `WCSession.transferUserInfo` for FIFO, guaranteed delivery.
 ///
 /// MainActor-isolated: the only callers (`LibraryService.saveCredentials`
-/// /`clearCredentials` and `WatchSyncBridge.pushNow`) are all on the main
-/// actor, and synchronous MainActor → MainActor calls avoid the deferred-
+/// /`clearCredentials`/`ensureToken` and `WatchSyncCoordinator.answerSyncRequest`) are all on
+/// the main actor, and synchronous MainActor → MainActor calls avoid the deferred-
 /// `Task` race we hit in the original Combine-style broadcast path.
 @MainActor
 final class WatchLibraryCredentialBroadcaster {
@@ -58,17 +58,14 @@ final class WatchLibraryCredentialBroadcaster {
         send(payload)
     }
 
-    /// Re-emit the current credentials if the phone still has them.
-    /// Idempotent on the watch (rejected-as-replay if the watch already
-    /// holds this epoch). Recovers three cases:
-    /// 1. Watch never received the original set (was off when phone logged in).
-    /// 2. Watch ran TTL purge — which clears `credEpoch` on the watch, so
-    ///    this same-epoch payload now satisfies `payload.credEpoch >
-    ///    storedEpoch` (since storedEpoch is back to 0) and applies cleanly.
-    /// 3. Existing user upgraded with credentials already in the iPhone
-    ///    keychain from before this code shipped — `credEpoch` defaults to
-    ///    0, but the watch won't accept epoch 0, so we bootstrap to the
-    ///    next epoch the first time this path runs with stored credentials.
+    /// Re-emits the stored credentials when the watch asks for a sync. Idempotent on the watch,
+    /// which rejects a replay of an epoch it already holds. Recovers three cases:
+    /// 1. The watch never got the original set: it was off when the phone logged in.
+    /// 2. The watch ran its TTL purge, which resets its stored epoch to 0, so this same-epoch
+    ///    payload passes `payload.credEpoch > storedEpoch` and applies.
+    /// 3. An upgrade with credentials already in the iPhone keychain: `credEpoch` defaults to
+    ///    0, which the watch rejects, so the first run with stored credentials bootstraps to
+    ///    the next epoch.
     func republishIfCredentialed() {
         guard let username = LibraryService.storedUsername,
               let password = LibraryService.storedPasswordIfAvailable() else {
@@ -96,8 +93,8 @@ final class WatchLibraryCredentialBroadcaster {
     /// Used by `republishIfCredentialed`: reuse the current epoch when one
     /// has been broadcast, but bootstrap to epoch 1 if defaults still hold
     /// the install-time 0 (existing user upgraded with credentials already
-    /// in keychain). Returns the same epoch on subsequent calls so a chatty
-    /// `pushNow` doesn't burn through fresh epochs on every accent/lang flip.
+    /// in keychain). Returns the same epoch on subsequent calls so repeated
+    /// sync requests don't burn through fresh epochs.
     private func republishEpoch() -> Int {
         let current = defaults.integer(forKey: DefaultsKey.epoch)
         if current > 0 { return current }
@@ -118,14 +115,9 @@ final class WatchLibraryCredentialBroadcaster {
             WatchWireFormat.LibraryCredentialKey.kind: WatchWireFormat.UserInfoKind.libraryCredential,
             WatchWireFormat.LibraryCredentialKey.payload: json,
         ]
-        // Always queue transferUserInfo for durable, FIFO redelivery.
-        // sendMessage reports transport success, not apply success — a
-        // wipe can fail on the watch (e.g., keychain locked) even though
-        // the message round-trips cleanly. transferUserInfo survives that
-        // and re-applies whenever the watch can run the apply again.
-        // When also reachable, additionally fire sendMessage for
-        // low-latency foreground delivery; the watch's epoch guard
-        // rejects the duplicate as replay.
+        // Always queue transferUserInfo (durable, FIFO), so an apply that fails on the watch,
+        // like a wipe on a locked keychain, runs again; sendMessage confirms transport only. If
+        // reachable, also sendMessage for speed; the epoch guard drops the duplicate.
         _ = session.transferUserInfo(userInfo)
         if session.isReachable {
             session.sendMessage(userInfo, replyHandler: nil) { [weak self] error in

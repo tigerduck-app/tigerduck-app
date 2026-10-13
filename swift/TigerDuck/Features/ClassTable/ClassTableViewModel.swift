@@ -30,25 +30,53 @@ final class ClassTableViewModel {
     ) {
         didSet {
             guard currentSemester != oldValue else { return }
-            if !isFollowingNewestSemester {
+            // A term picked on someone else's class table is not the user's pick.
+            if !isFollowingNewestSemester, shownPerson == nil {
                 Defaults[.classTableSelectedSemester] = currentSemester
             }
             reloadFromCache()
         }
     }
 
-    /// Set only while `followNewestSemesterIfUnpicked()` moves the selection,
-    /// so that assignment doesn't get recorded as a user pick.
+    /// Set while the table moves the selection itself, to the newest term or to the term another
+    /// class table opens on, so that assignment doesn't get recorded as a user pick.
     private var isFollowingNewestSemester = false
 
     /// Re-read once `SemesterCatalog.refresh()` lands, so a term the school
     /// publishes ahead of the month heuristic (115-1 opened weeks before the
     /// heuristic rolled off 114-2) becomes selectable in the same session.
-    private(set) var availableSemesters: [String] = ClassTableViewModel.semesterOptions(
+    private(set) var ownSemesters: [String] = ClassTableViewModel.semesterOptions(
         including: SemesterCatalog.selectedSemester(
             storedPick: Defaults[.classTableSelectedSemester]
         )
     )
+
+    /// The picker's terms: the user's, or only the ones another person shared.
+    var availableSemesters: [String] {
+        shownPerson?.semesters ?? ownSemesters
+    }
+
+    /// Whose class table this is, nil for the user's own. Another person's is read-only, and
+    /// nothing of the user's, such as assignments or Moodle, is shown on it.
+    ///
+    /// It moves to the store's choice only in `showShownTable()`, with the courses, so the page
+    /// redraws a switch once. The store's copy carries a rename; a deleted person stays until then.
+    var shownPerson: ImportedPerson? {
+        guard let displayedPerson else { return nil }
+        return importedTables.people.first { $0.id == displayedPerson.id } ?? displayedPerson
+    }
+
+    private var displayedPerson: ImportedPerson?
+
+    @ObservationIgnored let importedTables: ImportedClassTableStore
+
+    /// Looks one term of an imported class table up again: a course it cannot find keeps its row
+    /// in `current`, and nil means no lookup went through.
+    typealias ImportedTermLookup = @MainActor (
+        _ semester: String, _ courseNos: [String], _ current: [SDCourse]
+    ) async -> [SDCourse]?
+
+    @ObservationIgnored private let lookUpImportedTerm: ImportedTermLookup
 
     /// Keeps the persisted selection selectable even after it ages out of the
     /// catalogue window — a `Picker` whose tag matches no option renders blank.
@@ -57,15 +85,19 @@ final class ClassTableViewModel {
         return options.contains(selected) ? options : options + [selected]
     }
 
-    /// The catalogue can land after `init` on a cold launch, so re-apply the
-    /// "never picked → newest term" rule once it does.
-    private func followNewestSemesterIfUnpicked() {
-        guard Defaults[.classTableSelectedSemester] == nil,
+    /// The catalogue can land after `init` on a cold launch, and refreshes while
+    /// the app runs, so re-apply the "never picked → newest term" rule each time.
+    /// Returns whether it moved the table, which reloaded it.
+    @discardableResult
+    private func followNewestSemesterIfUnpicked() -> Bool {
+        guard shownPerson == nil,
+              Defaults[.classTableSelectedSemester] == nil,
               let newest = SemesterCatalog.availableSemesters().first,
-              newest != currentSemester else { return }
+              newest != currentSemester else { return false }
         isFollowingNewestSemester = true
         currentSemester = newest
         isFollowingNewestSemester = false
+        return true
     }
 
     /// Format semester code for display: "1142" → "114-2"
@@ -83,7 +115,10 @@ final class ClassTableViewModel {
         await MainActor.run { [weak self] in
             guard let self else { return }
             self.followNewestSemesterIfUnpicked()
-            self.availableSemesters = Self.semesterOptions(including: self.currentSemester)
+            // The term on screen is someone else's then; the user's list gets theirs on the way back.
+            if self.shownPerson == nil {
+                self.ownSemesters = Self.semesterOptions(including: self.currentSemester)
+            }
             self.reloadCurrentSemesterCourses()
         }
     }
@@ -93,6 +128,7 @@ final class ClassTableViewModel {
     /// cached snapshot we just rendered gets reconciled with the latest
     /// server state without blocking UI.
     func refreshSelectedSemester(authService: AuthService) async {
+        guard shownPerson == nil else { return }
         let target = currentSemester
         let fresh = await AppServiceBridge.fetchCourses(
             authService: authService,
@@ -104,7 +140,8 @@ final class ClassTableViewModel {
             let merged = self.buildCourseList(fresh, userAdded)
             // Silent overwrite: only swap in-memory list when content actually
             // changed, so SwiftUI doesn't churn on identical data.
-            if merged.map(\.courseNo).sorted() != self.courses.map(\.courseNo).sorted() {
+            if self.shownPerson == nil,
+               merged.map(\.courseNo).sorted() != self.courses.map(\.courseNo).sorted() {
                 self.courses = merged
             }
             if target == CourseSelectionService.currentSemesterCode() {
@@ -128,6 +165,8 @@ final class ClassTableViewModel {
 
     var deletedCourseNos: Set<String> = []
     var courseCustomNames: [String: [String: String]] = [:]
+    /// `CourseTombstone` keys of the courses whose assignments are all ignored.
+    var ignoredAssignmentCourses: Set<String> = []
 
     /// The course API language tag ("zh" or "en") derived from the
     /// current app language setting. Used as the locale key when
@@ -136,10 +175,10 @@ final class ClassTableViewModel {
         LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
     }
 
-    /// weekday → period ID → [SDCourse]. A list (not single) so the grid can
-    /// surface 衝堂 (conflict) instead of the previous behaviour where the
-    /// second course in a slot was silently overwritten. Order matches the
-    /// `courses` array so conflict role-assignment (A vs B) is stable.
+    /// weekday → period ID → [SDCourse]. A list so the grid can show a
+    /// schedule conflict; one course per slot would silently overwrite the
+    /// second. Order matches the `courses` array so conflict role assignment
+    /// (A vs B) is stable.
     private var courseLookup: [Int: [String: [SDCourse]]] = [:]
 
     /// Cell-tap state when the user taps a conflict cell. The grid view
@@ -153,16 +192,18 @@ final class ClassTableViewModel {
 
     var hasLoaded = false
     var isUpdatingFromNetwork = false
-    // `nonisolated(unsafe)` so `deinit` (which runs nonisolated even on a
-    // `@MainActor` class) can read these to remove the observers at end-
-    // of-life. `@ObservationIgnored` is required for the isolation
-    // modifier to take effect — without it the `@Observable` macro
-    // replaces the storage with a computed accessor and strips the
-    // modifier. Same pattern as `CalendarViewModel.dataObserver`.
+    // `nonisolated(unsafe)` lets `deinit`, nonisolated even on a `@MainActor`
+    // class, read these to remove the observers. Without `@ObservationIgnored`
+    // the `@Observable` macro makes the storage computed and strips the modifier.
     @ObservationIgnored
     private nonisolated(unsafe) var dataObserver: Any?
     @ObservationIgnored
     private nonisolated(unsafe) var languageObserver: Any?
+    @ObservationIgnored
+    private nonisolated(unsafe) var holidayObserver: Any?
+    /// Bumped on a "still have class" toggle, which `isClassDay` reads where Observation
+    /// cannot see it.
+    private var classDayRevision = 0
 
     /// Mirrors `Defaults[.alwaysShowAllPeriods]`. `activePeriods` has to read
     /// this rather than the key directly: a raw `Defaults` read registers no
@@ -188,34 +229,38 @@ final class ClassTableViewModel {
     /// cached calendar.
     private let isClassDay: (Date) -> Bool
 
-    init(isClassDay: @escaping (Date) -> Bool = { _ in true }) {
+    init(
+        isClassDay: @escaping (Date) -> Bool = { _ in true },
+        importedTables: ImportedClassTableStore = .shared,
+        lookUpImportedTerm: @escaping ImportedTermLookup = {
+            await AppServiceBridge.refreshImportedCourses(semester: $0, courseNos: $1, current: $2)
+        }
+    ) {
         self.isClassDay = isClassDay
+        self.importedTables = importedTables
+        self.lookUpImportedTerm = lookUpImportedTerm
+        displayedPerson = importedTables.shownPerson
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
+        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
 
         dataObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.dataDidUpdate,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            // Notification is delivered on the main queue, but the closure
-            // is `@Sendable` and crosses into a `@MainActor` class — hop
-            // explicitly so accessing `isUpdatingFromNetwork` / calling
-            // `reloadFromCache` is sound under strict concurrency.
+            // Delivered on the main queue, but the closure is `@Sendable`; hop to
+            // the main actor explicitly so touching `isUpdatingFromNetwork` and
+            // calling `reloadFromCache` is sound under strict concurrency.
             Task { @MainActor [weak self] in
                 guard let self, !self.isUpdatingFromNetwork else { return }
                 self.reloadFromCache()
             }
         }
 
-        // Invalidating alongside the mirror is not optional: `cellRoleCache`
-        // is keyed by index into `activePeriods`, so a row set that just grew
-        // makes every cached entry point at the wrong period.
-        //
-        // `initial: true` because this task subscribes a hop after the
-        // property initializer copied the key: a write in between would never
-        // arrive, and the grid would keep the old row set for good. The
-        // replayed value usually matches the copy and is skipped.
+        // Invalidate with the mirror: `cellRoleCache` is keyed by index into
+        // `activePeriods`, so a new row set points every entry at the wrong period.
+        // `initial: true` so a write made before this task subscribes is not lost.
         periodVisibilityTask = Task { [weak self] in
             for await value in Defaults.updates(.alwaysShowAllPeriods, initial: true) {
                 guard let self else { return }
@@ -223,6 +268,14 @@ final class ClassTableViewModel {
                 self.showsAllPeriods = value
                 self.invalidateCellRoleCache()
             }
+        }
+
+        holidayObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.holidayNotifyDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.classDayRevision &+= 1 }
         }
 
         languageObserver = NotificationCenter.default.addObserver(
@@ -245,6 +298,9 @@ final class ClassTableViewModel {
         if let observer = languageObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = holidayObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     func mergeWithUserAdded(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
@@ -264,14 +320,24 @@ final class ClassTableViewModel {
     }
 
     func reloadFromCache() {
-        // Re-read the per-user customization sets from disk on every reload
-        // so that a logout (which deletes the backing files and posts
-        // dataDidUpdate) actually clears the in-memory state. Loading from
-        // disk just once at init left the previous account's deletions and
-        // renames applied to the next user's class table for the rest of
-        // the app session.
+        // Someone else's courses stay as shared: the user's tombstones and custom names are keyed
+        // by course number alone and would hide or rename theirs.
+        if let shownPerson {
+            // The user's own term list, which the colours below are kept for, can have changed:
+            // a sign-out empties it while this table is still on screen.
+            reloadCurrentSemesterCourses()
+            courses = shownPerson.courses(in: currentSemester)
+            return
+        }
+        // A term published while the app runs reaches the picker here.
+        guard !followNewestSemesterIfUnpicked() else { return }
+        ownSemesters = Self.semesterOptions(including: currentSemester)
+        // Re-read the per-user customizations on every reload: logout deletes
+        // their files and posts dataDidUpdate, and a copy read once at init
+        // would apply the last account's deletions and renames to the next user.
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
+        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
         TigerDuckTheme.reload()
         reloadCurrentSemesterCourses()
         courses = buildCourseList(
@@ -279,6 +345,93 @@ final class ClassTableViewModel {
             DataCache.shared.loadUserAddedCourses(semester: currentSemester)
         )
         assignments = DataCache.shared.loadAssignments()
+    }
+
+    /// Whose class table shows and which version of it, for `showShownTable()` to follow.
+    var shownTable: ImportedClassTableStore.ShownTable { importedTables.shownTable }
+
+    /// Moves the table to whoever `importedTables` shows now. Someone else's keeps the term on
+    /// screen when they shared it and otherwise opens on their latest term; the user's own opens
+    /// on its own term, as at launch.
+    func showShownTable() {
+        displayedPerson = importedTables.shownPerson
+        if shownPerson != nil {
+            // Another window can switch class tables while one of the user's own edits is open
+            // here, and it must not save into someone else's.
+            showAddCourse = false
+            showResetConfirm = false
+            showRenameAlert = false
+            courseToRename = nil
+            courseToRecolor = nil
+        }
+        let semester = shownPerson?.semester(keeping: currentSemester)
+            ?? SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
+        guard semester != currentSemester else {
+            reloadFromCache()
+            return
+        }
+        isFollowingNewestSemester = true
+        currentSemester = semester
+        isFollowingNewestSemester = false
+    }
+
+    var isRenamingPerson = false
+    var nicknameDraft = ""
+    var isDeletingPerson = false
+    /// The person the open rename or delete alert names. Another window can switch class tables
+    /// while one is up, so the alert acts on this person, not on whoever shows then.
+    private(set) var personInAlert: ImportedPerson?
+    var showsLookupFailed = false
+    var showsSaveFailed = false
+    private(set) var isRefreshingShownPerson = false
+
+    /// The store keeps no blank nickname, so Save waits for one.
+    var canSaveNickname: Bool {
+        !nicknameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func startRenamingPerson() {
+        guard let shownPerson else { return }
+        personInAlert = shownPerson
+        nicknameDraft = shownPerson.nickname
+        isRenamingPerson = true
+    }
+
+    func saveNickname() {
+        guard let personInAlert else { return }
+        if importedTables.rename(personInAlert.id, to: nicknameDraft) == .failed { showsSaveFailed = true }
+    }
+
+    func startDeletingPerson() {
+        guard let shownPerson else { return }
+        personInAlert = shownPerson
+        isDeletingPerson = true
+    }
+
+    /// Deleting the shown person shows the user's own class table again, through the class table
+    /// page following the store as for any other switch.
+    func deletePersonInAlert() {
+        guard let personInAlert else { return }
+        if importedTables.delete(personInAlert.id) == .failed { showsSaveFailed = true }
+    }
+
+    /// Pull to refresh on someone else's class table: looks the term on screen up again, and says
+    /// so when no lookup went through.
+    func refreshShownPerson() async {
+        guard !isRefreshingShownPerson, let person = shownPerson,
+              let term = person.terms.first(where: { $0.semester == currentSemester }) else { return }
+        isRefreshingShownPerson = true
+        defer { isRefreshingShownPerson = false }
+        guard let refreshed = await lookUpImportedTerm(term.semester, term.courseNos, term.courses) else {
+            showsLookupFailed = true
+            return
+        }
+        let change = importedTables.updateCourses(
+            person.id, semester: term.semester, courseNos: term.courseNos, courses: refreshed,
+            importedAt: person.importedAt
+        )
+        if change == .failed { showsSaveFailed = true }
+        if shownPerson?.id == person.id { reloadFromCache() }
     }
 
     func rebuildLookup() {
@@ -311,7 +464,9 @@ final class ClassTableViewModel {
     /// Memoised `cellRole(weekday:periodIndex:)` results. Invalidated whenever
     /// `courseLookup` is rebuilt (course list change). The grid view calls
     /// `cellRole` once per (weekday, periodIdx) per render, and the lookup
-    /// inside is O(span) — caching keeps re-renders cheap.
+    /// inside is O(span), so caching keeps re-renders cheap. Not observed: the
+    /// grid fills it while its body runs, and a tracked write would redraw it.
+    @ObservationIgnored
     var cellRoleCache: [CellRoleKey: CellRole] = [:]
 
     struct CellRoleKey: Hashable {
@@ -323,8 +478,11 @@ final class ClassTableViewModel {
         currentSemesterCourses = courseProvider.currentCourses()
     }
 
+    /// Someone else's courses keep the colour their course number hashes to: an assigned one is
+    /// saved with the user's and would take one of the palette's colours from the user's courses.
     func refreshCourseColors() {
-        let courseNos = Set(courses.map(\.courseNo)).union(currentSemesterCourses.map(\.courseNo))
+        let shown = shownPerson == nil ? courses.map(\.courseNo) : []
+        let courseNos = Set(shown).union(currentSemesterCourses.map(\.courseNo))
         TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos))
     }
 
@@ -339,18 +497,16 @@ final class ClassTableViewModel {
     }
 
     var todayCourses: [SDCourse] {
-        // `coursesForToday()` reads `AppClock.now()`, which Observation
-        // can't track because `AppClock` is an enum. Pulling
-        // `AppClockState.shared.version` into the read keeps SwiftUI
-        // dependency tracking aware of debug-time-override flips.
+        // The carousel is the user's own day, which would read as the other person's.
+        guard shownPerson == nil else { return [] }
+        // Observation can't track `AppClock.now()` (`AppClock` is an enum) inside
+        // `coursesForToday()`, so reading `AppClockState.shared.version` here keeps
+        // SwiftUI aware of debug time-override flips.
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
-        // ponytail: outside the term there is no "today" worth showing —
-        // the carousel would either be empty or surface a stale day. Nor on
-        // a holiday the user has not opted back into, the rule the Live
-        // Activity and the widgets follow. Empty here also hides the
-        // section, which keys off `todayCourses.isEmpty`, and the 5 s tick
-        // above picks up a toggle flipped on the calendar tab.
+        _ = classDayRevision
+        // Empty outside the term, where the carousel would show a stale day, and on a
+        // holiday the user has not opted back into, as the Live Activity and widgets do.
         guard isClassDay(AppClock.now()) else { return [] }
         return currentSemesterCourses.coursesForToday()
     }
@@ -371,10 +527,10 @@ final class ClassTableViewModel {
         )
     }
 
-    /// 5-second ticker that re-publishes minute-of-day-derived state.
-    /// Matches Android's `_currentDayTime` poll so the "Current class"
-    /// card slides into view within a few seconds of the wall-clock
-    /// minute boundary, not up to a minute later.
+    /// Re-publishes minute-of-day-derived state when the minute changes,
+    /// checked every 5 seconds like Android's `_currentDayTime` poll, so the
+    /// "Current class" card slides into view within a few seconds of the
+    /// wall-clock minute boundary, not up to a minute later.
     @ObservationIgnored
     private let minuteTicker = MinuteTicker()
 
@@ -416,15 +572,29 @@ final class ClassTableViewModel {
         courseLookup[weekday]?[period] ?? []
     }
 
+    /// The user's assignments, so none on someone else's class table, even for a course both take.
     func hasAssignment(for courseNo: String) -> Bool {
-        assignments.hasUnfinished(for: courseNo)
+        shownPerson == nil && assignments.hasUnfinished(for: courseNo)
     }
 
     func assignmentsFor(courseNo: String) -> [SDAssignment] {
-        assignments.unfinished(for: courseNo)
+        shownPerson == nil ? assignments.unfinished(for: courseNo) : []
     }
 
+    func ignoresAssignments(of courseNo: String) -> Bool {
+        shownPerson == nil
+            && ignoredAssignmentCourses.contains(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
+    }
+
+    /// Assignments are fetched for `CourseSelectionService.currentSemesterCode()` alone, so only
+    /// that term's courses can have theirs ignored.
+    var offersIgnoreAssignments: Bool {
+        shownPerson == nil && currentSemester == CourseSelectionService.currentSemesterCode()
+    }
+
+    var onSyncCourseIgnore: ((_ course: SDCourse, _ semester: String, _ ignore: Bool) -> Void)?
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
+    var onSyncColorPick: ((_ hex: UInt32, _ course: SDCourse, _ changed: [String: UInt32]) -> Void)?
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
     var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
     var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?

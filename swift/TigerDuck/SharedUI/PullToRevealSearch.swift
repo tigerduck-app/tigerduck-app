@@ -1,15 +1,14 @@
 import SwiftUI
 
 extension View {
-    /// Pull-to-reveal for a search field that sits in a list's own content, under a title row —
-    /// what `.searchable`'s navigation-bar drawer does for a page with a large navigation title
-    /// (`BulletinsView`). A page whose title is a content row, to line up with Home and Class
-    /// table, cannot use that drawer: with no large title to fold it under, the bar keeps the
-    /// field on screen at rest.
+    /// Pull-to-reveal for a search field in a list's own content, under a title row. A page
+    /// with a large navigation title (`BulletinsView`) gets this from `.searchable`'s drawer;
+    /// a page whose title is a content row, to line up with Home and Class table, cannot: with
+    /// no large title to fold under, the bar keeps the field on screen at rest.
     ///
-    /// A pull past the top sets `isRevealed`; the next scroll down clears it again unless the
-    /// search `isActive` — text in it, or the keyboard up. The page shows the field while
-    /// `isRevealed` is set.
+    /// A pull past the top sets `isRevealed`; the next scroll down clears it unless the search
+    /// `isActive` (text in it, or the keyboard up). The page shows the field while `isRevealed`
+    /// is set.
     func pullToRevealSearch(isRevealed: Binding<Bool>, isActive: Bool) -> some View {
         modifier(PullToRevealSearch(isRevealed: isRevealed, isActive: isActive))
     }

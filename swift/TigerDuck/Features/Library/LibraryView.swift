@@ -12,7 +12,6 @@ struct LibraryView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @State private var viewModel = LibraryViewModel()
-    @State private var showNotImplementedAlert = false
     @FocusState private var loginField: LoginField?
 
     private enum LoginField { case username, password }
@@ -69,11 +68,9 @@ struct LibraryView: View {
             releaseExpressTransit()
             restoreBrightness()
         }
-        // Folding the device hands the window to the other display. The
-        // QR has to arrive there already boosted, and the display we are
-        // leaving has to get its brightness back — otherwise a fold either
-        // leaves a dim code at the scanner or strands the inner panel at
-        // 100% until the user quits.
+        // A fold moves the window to the other display. The QR must arrive there
+        // boosted and the display left behind must get its brightness back, or a
+        // fold leaves a dim code at the scanner or the inner panel at 100% until quit.
         #if os(iOS)
         .onHostScreenChange { screen in
             hostScreen = WeakScreen(screen)
@@ -127,11 +124,9 @@ struct LibraryView: View {
     // MARK: - Express Transit suppression
 
     #if os(iOS)
-    // TODO: 此 API 需要 `com.apple.developer.passkit.pass-presentation-suppression`
-    // 特殊權限,目前尚未向 Apple 申請核准。entitlement key 已先加在
-    // `TigerDuck.entitlements`,但核准前 production build 簽署時會被剝除,
-    // 呼叫只會拿到 `.notSupported`,Express Transit 仍可被側鍵雙擊喚起。
-    // 待 Apple 核准後移除本 TODO。
+    // TODO: Request `com.apple.developer.passkit.pass-presentation-suppression` from
+    // Apple. Until granted, production signing strips it from `TigerDuck.entitlements`,
+    // so the call gets `.notSupported` and the side button still opens Express Transit.
     private func suppressExpressTransit() {
         guard passSuppressionToken == nil else { return }
         let token = PKPassLibrary.requestAutomaticPassPresentationSuppression { _ in }
@@ -154,25 +149,11 @@ struct LibraryView: View {
     /// `true` when this display can drive EDR at all, so the Metal renderer's
     /// local highlight carries the QR and global brightness is left alone.
     ///
-    /// The question has to be answerable *before* any EDR content exists,
-    /// which is precisely what rules out `currentEDRHeadroom`. Apple
-    /// documents that one as changing "depending on its configuration and
-    /// whether it's displaying extended dynamic range content" — so at
-    /// `onAppear`, before `EDRMetalQRView`'s `CAMetalLayer` has drawn a
-    /// single frame, it always reads `1.0`. The guard then lets the global
-    /// boost through on every device, and nothing re-evaluates it, which is
-    /// how an EDR iPhone still ended up pinned at full system brightness.
-    ///
-    /// `potentialEDRHeadroom` is the property Apple documents as queryable
-    /// "even when the screen isn't displaying extended dynamic range
-    /// content", and it collapses to `1.0` on SDR panels — exactly the case
-    /// that still needs the Wallet-style fallback.
-    ///
-    /// Tradeoff: a thermally throttled EDR display reports potential > 1
-    /// while delivering less, so the QR renders at ordinary SDR white rather
-    /// than boosted. The SDR `Image` stacked under the Metal layer in
-    /// `LibraryQRCodeView` keeps it scannable, and overriding system
-    /// brightness is the behaviour this view exists to avoid.
+    /// Reads `potentialEDRHeadroom`, which Apple documents as queryable before any
+    /// EDR content is shown, and which is `1.0` on SDR panels. `currentEDRHeadroom`
+    /// reads `1.0` until the Metal layer draws, so it would boost every device. A
+    /// thermally throttled EDR panel shows the QR at SDR white, which still scans.
+    /// See docs/decisions/0009-library-qr-brightness.md.
     private var edrIsAvailable: Bool {
         guard let screen = hostScreen.screen else { return false }
         return HDRQRCodeImage.isSupported && screen.potentialEDRHeadroom > 1.0
@@ -185,10 +166,9 @@ struct LibraryView: View {
     /// preserve the local-highlight behaviour this view is built around.
     private func boostBrightnessForQR() {
         guard let screen = hostScreen.screen, !edrIsAvailable else {
-            // Not boosting here means this view has no business holding the
-            // override at all. Letting go matters most on a move: carried to
-            // an EDR-capable display, a plain `return` left the SDR panel we
-            // just left pinned at 1.0 with nothing on it, until teardown.
+            // Not boosting means this view must not hold the override at all. After a
+            // move to an EDR display, a bare `return` would leave the SDR panel behind
+            // pinned at 1.0 with nothing on it until teardown.
             restoreBrightness()
             return
         }
@@ -205,17 +185,14 @@ struct LibraryView: View {
     private func restoreBrightness() {}
     #endif
 
-    /// A wide canvas rotates freely, so anchor the QR to vertical center
-    /// to keep its on-screen position stable across orientation changes.
-    /// A compact one is portrait in practice and stays on the regular
-    /// top-aligned scroll layout.
+    /// A wide canvas rotates freely, so anchor the QR to vertical center to keep
+    /// its on-screen position stable across orientation changes. A compact one is
+    /// portrait in practice and keeps the regular top-aligned scroll layout.
     ///
-    /// Keyed on the size class rather than the idiom because the premise
-    /// the idiom check encoded — "iPhone is portrait-locked by Info.plist"
-    /// — is false on a foldable: the inner display ignores the app's
-    /// supported orientations, and it reports the `.phone` idiom while
-    /// being regular in both dimensions. macOS has no size class here but
-    /// does not expose LibraryView today, so it falls through.
+    /// Keyed on size class, not idiom: a foldable's inner display ignores the
+    /// app's supported orientations and reports the `.phone` idiom while regular
+    /// in both dimensions, so "iPhone is portrait-locked" does not hold. macOS has
+    /// no size class here but does not show LibraryView, so it falls through.
     private var shouldCenterQRForRotation: Bool {
         #if os(iOS)
         horizontalSizeClass == .regular && viewModel.isLoggedIn
@@ -299,7 +276,7 @@ struct LibraryView: View {
             qrImage: viewModel.qrCodeImage,
             countdown: viewModel.countdown,
             isLoading: viewModel.isLoadingQR,
-            username: LibraryService.storedUsername
+            username: viewModel.signedInUsername
         )
     }
 
@@ -331,10 +308,9 @@ struct LibraryView: View {
                     .padding(TigerDuckTheme.Spacing.md)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
 
-                // `PasswordField` carries the eye-toggle reveal and the
-                // matching `.screenCaptureProtected` wrapper that hides the
-                // plaintext from screen recording / screenshots while
-                // revealed — the bare `SecureField` had neither.
+                // `PasswordField`, not a bare `SecureField`: it adds the reveal toggle
+                // and a `.screenCaptureProtected` wrapper that hides the revealed
+                // plaintext from screenshots and screen recording.
                 PasswordField(
                     placeholder: String(localized: "library_sign_in_password"),
                     text: $viewModel.libPassword,
@@ -394,48 +370,5 @@ struct LibraryView: View {
                 : String(localized: "library_sign_in_action"))
                 .font(TigerDuckTheme.Typography.headline)
         }
-    }
-
-    // MARK: - Library Features
-
-    private var libraryFeaturesSection: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            featureCard(
-                icon: "door.left.hand.open",
-                title: String(localized: "library_feature_discussion_room"),
-                subtitle: String(localized: "library_coming_soon_badge")
-            )
-            featureCard(
-                icon: "mic.fill",
-                title: String(localized: "library_feature_lecture"),
-                subtitle: String(localized: "library_coming_soon_badge")
-            )
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .notImplementedAlert(isPresented: $showNotImplementedAlert)
-    }
-
-    private func featureCard(icon: String, title: String, subtitle: String) -> some View {
-        Button {
-            showNotImplementedAlert = true
-        } label: {
-            VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-
-                Text(title)
-                    .font(TigerDuckTheme.Typography.headline)
-                    .foregroundStyle(Color.textPrimary)
-
-                Text(subtitle)
-                    .font(TigerDuckTheme.Typography.caption2)
-                    .foregroundStyle(Color.textSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, TigerDuckTheme.Spacing.lg)
-            .glassCard()
-        }
-        .buttonStyle(.plain)
     }
 }

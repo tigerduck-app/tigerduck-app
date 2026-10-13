@@ -60,13 +60,7 @@ final class ScheduleStore: NSObject, ObservableObject {
     /// persistence isn't needed: on next launch the watch starts at real
     /// time and the first incoming snapshot re-applies the override.
     private func applyClockOverride(from snapshot: WatchSnapshot) {
-        guard let json = snapshot.clockOverrideJSON,
-              let data = json.data(using: .utf8),
-              let override = try? JSONDecoder().decode(ClockOverride.self, from: data) else {
-            AppClock.setOverride(nil)
-            return
-        }
-        AppClock.setOverride(override)
+        AppClock.setOverride(ClockOverride.decode(snapshotJSON: snapshot.clockOverrideJSON))
     }
 
     private func loadFromDisk() -> WatchSnapshot? {
@@ -126,6 +120,15 @@ extension ScheduleStore: WCSessionDelegate {
                              error: Error?) {
         if let error {
             WatchAppLogger.wc.error("activation error: \(error.localizedDescription)")
+        }
+    }
+
+    /// The phone sends library credentials only when the Watch asks, and a Watch without them
+    /// tells the user to open the iPhone app; opening it makes the phone reachable, so ask then.
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        guard session.isReachable else { return }
+        Task { @MainActor in
+            if !WatchLibraryCredentialsStore.shared.hasCredentials { self.requestSync() }
         }
     }
 

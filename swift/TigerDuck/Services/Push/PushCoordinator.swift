@@ -25,20 +25,14 @@ struct PushDiagnostic: Sendable {
     let uuid: String
 }
 
-/// Owns the push-server lifecycle for the app.
+/// Owns the push-server lifecycle: registering for remote notifications,
+/// handing APNs and push-to-start (`PushTokenRelay`) tokens to
+/// `PushRegistrationService`, and debouncing sync bursts into one POST.
 ///
 /// AppState holds a single instance. `enable()` brings the stack up
-/// idempotently at every launch past onboarding; `disable()` takes it down
-/// at sign-out, which is now the only way down. There is no stored flag
-/// gating either — what a user can turn off is a delivery channel
-/// (bulletins, operator pushes), never the registration itself.
-///
-/// Responsibilities:
-/// * Register for remote notifications on enable
-/// * Wire the APNs device token into `PushRegistrationService`
-/// * Start/stop the `PushTokenRelay` for Push-to-Start tokens
-/// * Debounce `sync()` calls so bursts of data-change notifications
-///   turn into one POST
+/// idempotently at every launch past onboarding; `disable()` at sign-out is
+/// the only way down. No stored flag gates either: a user can turn off a
+/// delivery channel (bulletins, operator pushes), never the registration.
 @MainActor
 final class PushCoordinator {
     private let identity: PushIdentity
@@ -64,10 +58,8 @@ final class PushCoordinator {
         authTokenManager: AuthTokenManager? = nil
     ) {
         self.identity = identity
-        // Build an `authHeaderProvider` closure from the supplied
-        // `AuthTokenManager`. When `authTokenManager` is nil (e.g. unit
-        // tests) the closure returns nil and no `Authorization` header is
-        // added — matching the pre-v3 no-auth path.
+        // The auth header comes from `authTokenManager`. Without one (unit
+        // tests, for example) the client sends no `Authorization` header.
         let resolvedClient: PushAPIClient
         if let apiClient {
             resolvedClient = apiClient
@@ -76,10 +68,9 @@ final class PushCoordinator {
                 authHeaderProvider: { await atm.authorizationHeader() }
             )
         } else {
-            // No `baseURL:` argument — `PushAPIClient` defaults to providers
-            // that re-resolve the URL through `PushServerConfig` on every
-            // request, so a Debug build's runtime endpoint override (Settings
-            // → Developer → API endpoint) takes effect without an app relaunch.
+            // Pass no URL: the default provider re-resolves `PushServerConfig`
+            // on every request, so a runtime endpoint override takes effect
+            // without an app relaunch.
             resolvedClient = PushAPIClient()
         }
         self.apiClient = resolvedClient
@@ -117,24 +108,16 @@ final class PushCoordinator {
 
     /// Enable the full push stack. Safe to call repeatedly.
     ///
-    /// - Parameter requestPermission: When `true`, the call also fires
-    ///   the iOS system permission prompt — appropriate for the explicit
-    ///   "turn on" Settings toggle, which needs visible feedback that the
-    ///   toggle "did something". Pass `false` for the silent auto-enable
-    ///   path that runs at every launch: it only calls
-    ///   `registerForRemoteNotifications`, which is a no-op until the
-    ///   user has granted permission elsewhere (typically onboarding).
-    ///   Auto-enable must NOT prompt — that would land the system alert
-    ///   on top of OnboardingView.
+    /// - Parameter requestPermission: `true` also shows the iOS permission
+    ///   prompt, as visible feedback for an explicit "turn on" tap. Pass
+    ///   `false` for the silent auto-enable at every launch: it only calls
+    ///   `registerForRemoteNotifications`, a no-op until the user grants
+    ///   permission elsewhere (usually onboarding). Auto-enable must not
+    ///   prompt, or the system alert would land on top of OnboardingView.
     func enable(requestPermission: Bool = false) {
-        // One-time stack bring-up: relay + `isStarted` flip happen on the
-        // first call only. The permission/register block below intentionally
-        // runs every time — auto-enable at launch (`requestPermission:
-        // false`) lands first and sets `isStarted = true`, so a later
-        // onboarding/Settings call with `requestPermission: true` must NOT
-        // return early; otherwise the system alert never appears and APNs
-        // is never asked to deliver a token, and the device never gets a
-        // server registration row even with notifications granted.
+        // Only the relay start is one-time. Launch auto-enable sets `isStarted`
+        // first, so a later `requestPermission: true` call must still prompt
+        // and register, or the device gets no APNs token or server registration.
         let firstStart = !isStarted
         if firstStart {
             isStarted = true
@@ -150,12 +133,9 @@ final class PushCoordinator {
                     .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
                 logger.info("notification authorization granted=\(granted, privacy: .public)")
             }
-            // registerForRemoteNotifications is safe to call regardless of
-            // permission state — it returns an APNs token if authorized
-            // and stays quiet otherwise. Calling it on every enable lets
-            // a later permission grant (via onboarding or iOS Settings)
-            // flow into the existing token-forwarding pipeline without
-            // another explicit hook.
+            // `registerForRemoteNotifications` is safe in any permission state
+            // and yields a token only when authorized. Calling it on every enable
+            // lets a later grant reach token forwarding with no extra hook.
             #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
             #elseif os(macOS)
@@ -167,16 +147,37 @@ final class PushCoordinator {
         }
     }
 
-    /// Forward credential refresh to the API client. Called from AppState
-    /// on every foreground so the server-side sync job has a fresh Moodle token.
-    func updateCredentials(
-        moodleToken: String,
-        moodlePrivateToken: String?
-    ) async throws -> PushAPI.UpdateCredentialsResponse {
-        try await apiClient.updateCredentials(
-            moodleToken: moodleToken,
-            moodlePrivateToken: moodlePrivateToken
+    /// How often an unchanged Moodle token goes to the server again. The server checks each
+    /// update against Moodle, and a resend is what revives a sync job it disabled.
+    static let unchangedCredentialsInterval: TimeInterval = 3600
+
+    private var acceptedMoodleCredentials: (fingerprint: Int, at: Date)?
+
+    static func credentialsUpdateIsDue(
+        accepted: (fingerprint: Int, at: Date)?,
+        fingerprint: Int,
+        now: Date
+    ) -> Bool {
+        guard let accepted, accepted.fingerprint == fingerprint else { return true }
+        let age = now.timeIntervalSince(accepted.at)
+        return age >= unchangedCredentialsInterval || age < 0
+    }
+
+    /// Called on every return to the app. Sends a changed token at once and an unchanged one
+    /// hourly; a token the server did not accept goes again on the next return.
+    func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?) async throws {
+        var hasher = Hasher()
+        hasher.combine(moodleToken)
+        hasher.combine(moodlePrivateToken)
+        let fingerprint = hasher.finalize()
+        let now = Date()
+        guard Self.credentialsUpdateIsDue(
+            accepted: acceptedMoodleCredentials, fingerprint: fingerprint, now: now
+        ) else { return }
+        let response = try await apiClient.updateCredentials(
+            moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken
         )
+        acceptedMoodleCredentials = response.updated ? (fingerprint, now) : nil
     }
 
     func fetchRevision() async throws -> Int {
@@ -187,10 +188,14 @@ final class PushCoordinator {
         try await apiClient.fetchFullSync()
     }
 
+    func fetchChanges(sinceRevision: Int) async throws -> PushAPI.SyncChangesPage {
+        try await apiClient.fetchChanges(sinceRevision: sinceRevision)
+    }
+
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String
-    ) async throws -> PushAPI.AssignmentOverrideResponse {
+    ) async throws {
         try await apiClient.patchAssignmentOverride(
             moodleAssignmentId: moodleAssignmentId,
             localStatus: localStatus
@@ -198,21 +203,136 @@ final class PushCoordinator {
     }
 
     func patchCourseOverride(
-        moodleCourseId: String,
+        moodleId: String,
         colorHex: String? = nil,
         customName: String? = nil,
-        locale: String? = nil
+        locale: String? = nil,
+        ignoreAssignments: Bool? = nil,
+        moodleCourseId: Int? = nil
     ) async throws -> PushAPI.CourseOverrideResponse {
         try await apiClient.patchCourseOverride(
-            moodleCourseId: moodleCourseId,
+            moodleId: moodleId,
             colorHex: colorHex,
             customName: customName,
-            locale: locale
+            locale: locale,
+            ignoreAssignments: ignoreAssignments,
+            moodleCourseId: moodleCourseId
         )
     }
 
     func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
         try await apiClient.uploadCourses(request)
+    }
+
+    /// How often an unchanged course or assignment list goes to the server again. The backend
+    /// upserts every row of an upload, but an unchanged one moves no revision, so skipping it
+    /// loses only the server's bookkeeping: `last_seen_at`, a log row, its sync push-back.
+    nonisolated static let unchangedUploadInterval: TimeInterval = 6 * 3600
+
+    /// The lists the server accepted. In memory, so a relaunch sends again; sign-out, a term
+    /// reset and a sync switch coming back on forget them.
+    private var uploads = UploadLedger()
+    /// The last upload of each list. The next one waits for it, so its check sees what that one
+    /// left: an edit undone while its upload was out still goes up after it.
+    private var lastUploads: [String: Task<Void, Never>] = [:]
+
+    nonisolated static func uploadIsDue(accepted: (fingerprint: Int, at: Date)?, fingerprint: Int, now: Date) -> Bool {
+        guard let accepted, accepted.fingerprint == fingerprint else { return true }
+        let age = now.timeIntervalSince(accepted.at)
+        return age >= unchangedUploadInterval || age < 0
+    }
+
+    /// Uploads a term's course list unless the server accepted the same one within
+    /// `unchangedUploadInterval`. `forceKeys` and `resend` always send. Returns whether it sent.
+    func uploadCoursesIfChanged(
+        _ request: PushAPI.CourseUploadRequest,
+        semester: String,
+        resend: Bool = false,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) async throws -> Bool {
+        let client = apiClient
+        return try await uploadIfChanged(
+            UploadLedger.courses(semester),
+            fingerprint: Self.fingerprint(of: request),
+            always: resend || !request.forceKeys.isEmpty,
+            isCurrent: isCurrent
+        ) {
+            try await client.uploadCourses(request)
+        }
+    }
+
+    /// Uploads the assignment list unless the server accepted the same one within
+    /// `unchangedUploadInterval`. Returns whether it sent.
+    func uploadAssignmentsIfChanged(
+        _ request: PushAPI.AssignmentUploadRequest,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) async throws -> Bool {
+        let client = apiClient
+        return try await uploadIfChanged(
+            UploadLedger.assignments, fingerprint: Self.fingerprint(of: request), always: false,
+            isCurrent: isCurrent
+        ) {
+            try await client.uploadAssignments(request)
+        }
+    }
+
+    /// Runs `send` for list `key` once the list's previous upload has ended, unless `always` is
+    /// false and the ledger holds `fingerprint` as accepted within `unchangedUploadInterval`.
+    /// `isCurrent` is checked after that wait, which can span a sign-out: the request would
+    /// carry the departing account's list on the next account's token.
+    func uploadIfChanged(
+        _ key: String,
+        fingerprint: Int,
+        always: Bool,
+        isCurrent: @escaping @MainActor () -> Bool,
+        send: @escaping @MainActor () async throws -> Void
+    ) async throws -> Bool {
+        let previous = lastUploads[key]
+        let upload = Task { @MainActor [weak self] () async throws -> Bool in
+            await previous?.value
+            guard let self, isCurrent() else { return false }
+            let now = Date()
+            guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else { return false }
+            let started = self.uploads.generation(of: key)
+            try await send()
+            self.uploads.record(key, fingerprint: fingerprint, at: now, startedIn: started)
+            return true
+        }
+        let ended = Task<Void, Never> { _ = try? await upload.value }
+        lastUploads[key] = ended
+        defer { if lastUploads[key] == ended { lastUploads[key] = nil } }
+        return try await upload.value
+    }
+
+    /// Forgets the accepted course lists of `semester`, or of every term and the assignment list
+    /// when nil, so the next upload goes whatever it holds.
+    func forgetUploads(semester: String? = nil) {
+        uploads.forget(semester.map(UploadLedger.courses))
+    }
+
+    /// The same list in any order gives the same fingerprint. Force keys are left out: a request
+    /// with any always goes.
+    static func fingerprint(of request: PushAPI.CourseUploadRequest) -> Int {
+        encodedFingerprint(PushAPI.CourseUploadRequest(
+            courses: request.courses.sorted { $0.courseNo < $1.courseNo },
+            courseOverrides: request.courseOverrides.sorted { $0.courseKey < $1.courseKey }
+        ))
+    }
+
+    static func fingerprint(of request: PushAPI.AssignmentUploadRequest) -> Int {
+        encodedFingerprint(PushAPI.AssignmentUploadRequest(
+            assignments: request.assignments.sorted { $0.moodleAssignmentId < $1.moodleAssignmentId }
+        ))
+    }
+
+    private static func encodedFingerprint(_ value: some Encodable) -> Int {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var hasher = Hasher()
+        // A list that does not encode cannot be told apart from the last one, so it always goes.
+        guard let data = try? encoder.encode(value) else { return Int.random(in: .min ... .max) }
+        hasher.combine(data)
+        return hasher.finalize()
     }
 
     func deleteAllCourses(semester: String? = nil) async throws {
@@ -229,7 +349,11 @@ final class PushCoordinator {
     /// counter — instead of waiting on exponential backoff (or never retrying
     /// if it already exhausted its attempts while unauthenticated).
     func refreshRegistrationAfterAuth() {
-        Task { await registration.retryAfterAuthChange() }
+        Task { await registration.registerAgain() }
+    }
+
+    func registerAgainIfGaveUp() {
+        Task { await registration.registerAgainIfGaveUp() }
     }
 
     /// Returns the latest diagnostic snapshot for the settings view.
@@ -255,17 +379,16 @@ final class PushCoordinator {
     func disable() async {
         guard isStarted else { return }
         isStarted = false
+        acceptedMoodleCredentials = nil
         logger.info("disabling push stack")
 
         #if os(iOS)
         relay.stop()
         #endif
         pendingSyncTask?.cancel()
-        // Wait for any already-running debounced sync to finish before we
-        // unregister, so a stale POST can't recreate state we just deleted.
-        // `pendingSyncTask` only covers the debounce + builder; the actual
-        // HTTP POST is owned by `ScheduleSyncService.inflight`, so we await
-        // that separately — otherwise the POST can land *after* unregister.
+        // Let a running sync finish before unregistering so a stale POST cannot
+        // recreate deleted state. `pendingSyncTask` covers only the debounce
+        // and builder; the POST runs in `ScheduleSyncService.inflight`.
         await pendingSyncTask?.value
         await scheduleSync.awaitInflight()
         await registration.unregister()
@@ -295,13 +418,9 @@ final class PushCoordinator {
             #if os(iOS)
             guard UIApplication.shared.applicationState != .background else { return }
             #endif
-            // `/schedule/sync` is an authenticated endpoint, and this was the
-            // one sync path with no auth check at all — every scene
-            // activation and data change fired it while signed out, and each
-            // one could only come back 401 missing_bearer_token. Ask for a
-            // usable token rather than `isLoggedIn`, which only means "a
-            // refresh token exists" and is true for a stale one that no
-            // longer refreshes.
+            // `/schedule/sync` needs auth and would only 401 without a usable
+            // token. Not `isLoggedIn`: that only means a refresh token exists,
+            // and it stays true for a stale one that fails to refresh.
             guard await self?.apiClient.hasAuthSession() == true else { return }
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
@@ -312,36 +431,25 @@ final class PushCoordinator {
 
     /// Crashes Debug builds at launch when the resolved server URL does not
     /// match the APNs environment baked into the binary (or each other).
-    /// Compiles down to a no-op in Release builds — `assert` is stripped
-    /// under `-O`, so end users never see this.
+    /// Empty in Release builds: `assert` is stripped under `-O`, but working out
+    /// its conditions would still read the Keychain twice before the first frame.
     ///
     /// Guards against the regression where someone flips `PushAPNsEnv` or
     /// `AppConstants.productionPushServerURL` without flipping the other,
     /// or seeds a stale UserDefaults override pointing the wrong way.
     nonisolated static func assertEnvConsistency() {
+        #if DEBUG
         let resolved = PushServerConfig.resolveServerURL()
         let host = resolved.host?.lowercased() ?? ""
-        // The host check only applies to the *built-in* default, and is
-        // skipped entirely once the user has set their own endpoint.
-        //
-        // It exists to catch someone flipping `PushAPNsEnv` or
-        // `AppConstants.productionPushServerURL` without the other. A
-        // self-hosted backend is a legitimate value we cannot enumerate,
-        // and asserting on it would hard-crash a Debug build at launch
-        // over a Keychain entry the user then has no UI left to clear.
-        // Pointing a Debug build at prod is still a real apns_env
-        // mismatch, but it surfaces as push failing at registration —
-        // not before the first frame renders.
+        // A user-set endpoint skips the host check: self-hosted backends are
+        // valid, and a launch crash would leave no UI to clear the Keychain
+        // entry. A Debug build aimed at prod then fails at push registration.
         let hostOK = DebugEndpointStore.currentOverride() != nil
             || host == "localhost"
             || host == "127.0.0.1"
             || PushServerConfig.isPrivateIPv4(host)
             || host == AppConstants.productionPushServerURL.host?.lowercased()
-        #if DEBUG
         let expectedEnv = "development"
-        #else
-        let expectedEnv = "production"
-        #endif
         assert(
             hostOK,
             "Push env mismatch: \(expectedEnv) build resolved to \(resolved)"
@@ -350,5 +458,43 @@ final class PushCoordinator {
             PushAPNsEnv.resolvedForBuild == expectedEnv,
             "Push env mismatch: build is \(expectedEnv) but PushAPNsEnv = \(PushAPNsEnv.resolvedForBuild)"
         )
+        #endif
+    }
+}
+
+/// The fingerprint of each list the server last accepted, by `courses(_:)` or `assignments`.
+nonisolated struct UploadLedger {
+    static let assignments = "assignments"
+    static func courses(_ semester: String) -> String { "courses:\(semester)" }
+
+    private var accepted: [String: (fingerprint: Int, at: Date)] = [:]
+    private var forgetsOfKey: [String: Int] = [:]
+    private var forgetsOfAll = 0
+
+    /// Moved by a forget of `key` or of every list. An upload in flight across one records
+    /// nothing: it may have reached the server before what the forget answers, a term reset, so
+    /// its list is not on the server now.
+    func generation(of key: String) -> (all: Int, key: Int) {
+        (forgetsOfAll, forgetsOfKey[key, default: 0])
+    }
+
+    func isDue(_ key: String, fingerprint: Int, now: Date) -> Bool {
+        PushCoordinator.uploadIsDue(accepted: accepted[key], fingerprint: fingerprint, now: now)
+    }
+
+    mutating func record(_ key: String, fingerprint: Int, at date: Date, startedIn started: (all: Int, key: Int)) {
+        guard started == generation(of: key) else { return }
+        accepted[key] = (fingerprint, date)
+    }
+
+    /// `key` nil forgets every list.
+    mutating func forget(_ key: String?) {
+        if let key {
+            forgetsOfKey[key, default: 0] &+= 1
+            accepted[key] = nil
+        } else {
+            forgetsOfAll &+= 1
+            accepted = [:]
+        }
     }
 }

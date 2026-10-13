@@ -33,4 +33,16 @@ struct ClockOverrideTests {
         #expect(a == b)
         #expect(a != c)
     }
+
+    @Test func decodesTheStringTheWatchSnapshotCarries() throws {
+        let original = ClockOverride(
+            instant: Date(timeIntervalSince1970: 1_700_000_000),
+            frozen: false,
+            savedAtReal: Date(timeIntervalSince1970: 1_700_000_500)
+        )
+        let json = String(decoding: try JSONEncoder().encode(original), as: UTF8.self)
+        #expect(ClockOverride.decode(snapshotJSON: json) == original)
+        #expect(ClockOverride.decode(snapshotJSON: nil) == nil)
+        #expect(ClockOverride.decode(snapshotJSON: "not an override") == nil)
+    }
 }

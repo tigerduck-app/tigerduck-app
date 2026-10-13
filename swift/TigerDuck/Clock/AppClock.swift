@@ -1,23 +1,14 @@
 import Foundation
 import os
 
-/// Everything the app's clock does, with its state and its persistence store
+/// Everything the app's clock does, with its state and persistence store
 /// handed in rather than reached for.
 ///
-/// `AppClock` is a `static` facade over exactly one of these, and one is all
-/// the app ever builds. The split exists for the test suite. The override
-/// used to live on the facade, which made it process-global; Swift Testing
-/// runs cases in parallel, so a test that froze the clock was visible to
-/// every unrelated test running beside it. `ScheduleSyncServiceTests`
-/// computed a notification fire time in 2082 because a sibling test had
-/// pinned the clock to 1970 a moment earlier, and which tests failed changed
-/// from run to run. Tests now build their own core and share nothing, so the
-/// suite stays parallel and stays honest.
-///
-/// `@unchecked Sendable`: `State` is only ever touched under `lock`, and
-/// `UserDefaults` is thread-safe, so any caller — UI, scheduler, Sendable
-/// closures, background tasks — can use one of these from any isolation
-/// without a hop to `MainActor`.
+/// `AppClock` is a static facade over the app's one instance. The split is for
+/// tests: Swift Testing runs cases in parallel, so a process-global override
+/// leaks a frozen clock into unrelated tests. Each test builds its own core.
+/// `@unchecked Sendable`: `State` is only touched under `lock` and `UserDefaults`
+/// is thread-safe, so any isolation can use it without a hop to `MainActor`.
 nonisolated final class ClockCore: @unchecked Sendable {
 
     struct ObserverToken: Equatable, Sendable {
@@ -60,18 +51,13 @@ nonisolated final class ClockCore: @unchecked Sendable {
         Int64(now().timeIntervalSince1970 * 1000)
     }
 
-    /// Translates a target instant in the app's clock (possibly fake) into
-    /// the real wall-clock instant at which it should occur. Used as the
-    /// trigger time for `UNCalendarNotificationTrigger` /
-    /// `UNTimeIntervalNotificationTrigger` so reminders fire at the right
-    /// real moment under fake time.
+    /// Translates an instant on the app's clock, possibly fake, into the real
+    /// instant it should occur at: the trigger time for
+    /// `UNCalendarNotificationTrigger` and `UNTimeIntervalNotificationTrigger`,
+    /// so reminders fire at the right real moment. Identity with no override.
     ///
-    /// Identity when no override is active.
-    ///
-    /// Not idempotent in frozen mode: real-now keeps moving while fake-now
-    /// stays put, so two calls for the same target return different values.
-    /// Capture the result once at scheduling time; do not re-call it for
-    /// the same target.
+    /// Not idempotent when frozen: real now moves while fake now stays, so two
+    /// calls for one target differ. Capture the result once at scheduling time.
     func realTime(forApp appWall: Date) -> Date {
         guard let o = currentOverride() else { return appWall }
         if o.frozen {
@@ -137,16 +123,14 @@ nonisolated final class ClockCore: @unchecked Sendable {
     }
 }
 
-/// Single source of "now" for the app. All UI / class-status / scheduler code
-/// MUST read time through this enum so the debug override applies uniformly.
+/// The app's single source of "now". UI, class-status and scheduler code must
+/// read time here so the debug override applies everywhere. Auth and network
+/// code (session expiry, cookie and cache TTLs, login timestamps) reads the real
+/// clock instead, since those expire in real time.
 ///
-/// Auth/network code (session expiry, cookie TTL, login timestamps, cache TTLs)
-/// intentionally does NOT use AppClock — see spec for rationale.
-///
-/// This is a forwarding shell; the behaviour lives on `ClockCore` above, and
-/// this binds the app's one instance to the App Group defaults. Nothing here
-/// is worth a test of its own — test `ClockCore` directly and you get to keep
-/// parallel execution.
+/// A forwarding shell: the behaviour lives on `ClockCore`, and this binds the
+/// app's one instance to the App Group defaults. Test `ClockCore` directly, which
+/// keeps tests parallel.
 nonisolated enum AppClock {
 
     typealias ObserverToken = ClockCore.ObserverToken

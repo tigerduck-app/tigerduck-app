@@ -1,17 +1,6 @@
-// `DefaultTabsPinMigration` — which installs keep the pre-2.3.0 default bar
-// (Home, Class table, Calendar) when the default became Home, Class table,
-// Mail. iPhone/iPad-only like the migration; the test target also builds
-// for macOS.
-//
-// The `runIfNeeded` tests write the real `UserDefaults.standard` keys the
-// migration reads and writes, the same way `BulletinPushOptOutMigrationTests`
-// does: inside `withExclusiveRealDefaults`, clearing the four keys first and
-// putting back exactly what the test host held — present or absent — after.
-// `doneKey` mirrors the migration's private flag literal. An optional key
-// that still reads back after the clear is held by a lower defaults domain — seen on a
-// simulator with a stray device-wide plist for the bundle id — where the
-// migration can't see "nothing stored", so the test stops there with that
-// reason rather than failing on what follows.
+// Which installs `DefaultTabsPinMigration` keeps on the pre-2.3.0 bar (Home, Class table,
+// Calendar) rather than Home, Class table, Mail. iPhone/iPad-only like the migration; the test
+// target also builds for macOS. `doneKey` mirrors the migration's private flag literal.
 #if os(iOS)
 import Defaults
 import Foundation

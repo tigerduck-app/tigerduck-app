@@ -1,18 +1,14 @@
 import SwiftUI
 import WidgetKit
 
-/// Color tokens for the widget extension. Light/dark variants are picked from
-/// `colorScheme` at render time; `highlight` is overlayed from the snapshot's
-/// accent color so widgets follow the user's theme choice.
+/// Color tokens for the widget extension. Light and dark variants follow `colorScheme` at
+/// render time; `highlight` comes from the snapshot's accent color to follow the user's theme.
 ///
-/// The surface tokens are also rendering-mode aware. Outside `.fullColor` the
-/// system is compositing the widget over its own material — a tinted home
-/// screen, clear glass — and expects the widget to contribute *content*, not
-/// surfaces. `containerBackground` is the one background it knows how to strip
-/// on its own; a `.fill()` or `.background()` inside the view is ordinary
-/// drawing it cannot see, so an opaque token there survives as a solid block
-/// floating on the glass. Resolving them to clear here fixes every call site at
-/// once, and keeps the branch out of the views.
+/// Outside `.fullColor` the system composites the widget over its own material (a tinted home
+/// screen, clear glass) and expects content, not surfaces. It strips only `containerBackground`;
+/// a `.fill()` or `.background()` in a view is drawing it cannot see, so an opaque token there
+/// stays a solid block on the glass. The surface tokens resolve to clear in those modes, which
+/// fixes every call site at once and keeps the branch out of the views.
 struct WidgetPalette {
     let background: Color
     let surface: Color
@@ -37,11 +33,9 @@ struct WidgetPalette {
             surface: isFullColor ? base.surface : .clear,
             onSurface: base.onSurface,
             onSurfaceVariant: base.onSurfaceVariant,
-            // Not clear: a timetable with no cell structure is a field of
-            // floating labels, and the grid is most of what makes it readable
-            // at a glance. A low-alpha wash keeps the ruling visible while
-            // still letting the material through, and the system tints it
-            // along with everything else.
+            // Not clear: without cells a timetable is a field of floating labels, and the grid
+            // is most of what makes it readable at a glance. A low-alpha wash keeps the ruling
+            // visible, lets the material through, and is tinted by the system like the rest.
             emptyCell: isFullColor ? base.emptyCell : Color.white.opacity(0.10),
             highlight: Color(widgetHex: snapshot.accentColorHex),
             isFullColor: isFullColor
