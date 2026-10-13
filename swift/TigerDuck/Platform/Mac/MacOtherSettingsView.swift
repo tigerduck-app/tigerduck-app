@@ -89,6 +89,8 @@ struct MacOtherSettingsView: View {
             } footer: {
                 Text(String(localized: "settings_api_endpoint_https_note"))
             }
+
+            MoodleFilesCacheSection()
         }
         .formStyle(.grouped)
         .padding(20)

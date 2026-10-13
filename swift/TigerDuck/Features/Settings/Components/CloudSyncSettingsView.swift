@@ -24,6 +24,7 @@ struct CloudSyncSettingsView: View {
     /// Backs the inline TigerSync-status section below. Owned here because the
     /// section lives in this screen, not in a pushed destination.
     @State private var statusSnapshot: PushDiagnostic?
+    @State private var asksToSignInAgain = false
     @State private var statusRefreshTimer: Timer?
 
     var body: some View {
@@ -87,7 +88,9 @@ struct CloudSyncSettingsView: View {
                         okText: String(localized: "push_server_status_done"),
                         badText: String(localized: "push_server_pending_incomplete")
                     )
-                    if let err = s.registration.lastError {
+                    if asksToSignInAgain {
+                        signInAgainRow
+                    } else if let err = s.registration.lastError {
                         LabeledContent(String(localized: "push_server_latest_error")) {
                             Text(err)
                                 .font(.caption)
@@ -171,8 +174,25 @@ struct CloudSyncSettingsView: View {
         }
     }
 
+    private var signInAgainRow: some View {
+        HStack {
+            Text(String(localized: "common_auto_sign_in_failed"))
+            Spacer()
+            Button(String(localized: "action_sign_in_again")) {
+                appState.presentNTUSTLogin()
+            }
+            .font(.callout.weight(.semibold))
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+    }
+
     private func refreshStatusSnapshot() async {
-        statusSnapshot = await appState.pushCoordinator.currentSnapshot()
+        let snapshot = await appState.pushCoordinator.currentSnapshot()
+        asksToSignInAgain = await appState.authService.asksToSignInAgain(
+            syncEnabled: syncEnabled, after: snapshot.registration
+        )
+        statusSnapshot = snapshot
     }
 
     /// Keeps the inline status section current while this screen is the one
@@ -196,22 +216,19 @@ struct CloudSyncSettingsView: View {
 /// screen where a sync category can be switched back on: this screen's own
 /// "Sync course information" toggle, and `SyncContentSettingsView`'s
 /// per-category toggles. Not used by the Mac equivalent, which keeps its
-/// own copy in `MacAccountSettingsView`.
+/// own copy in `MacTigerSyncSettingsView`.
 struct ReenableConflictAlert: ViewModifier {
     @Environment(AppState.self) private var appState
 
     func body(content: Content) -> some View {
         content.alert(
             String(localized: "sync_conflict_title"),
-            isPresented: Binding(
-                get: { appState.reenableConflict != nil },
-                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
-            )
+            isPresented: AppState.reenableAlertIsPresented(Bindable(appState).reenableConflict)
         ) {
             Button(String(localized: "sync_conflict_use_server")) {
                 appState.resolveReenableConflict(keepLocal: false)
             }
-            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
+            Button(String(localized: "sync_conflict_use_local")) {
                 appState.resolveReenableConflict(keepLocal: true)
             }
         } message: {

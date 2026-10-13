@@ -22,6 +22,10 @@ struct MacLoginView: View {
     /// with no visible state change.
     let showsSkipButton: Bool
 
+    /// Runs after a sign-in that went through, so a sheet shown over a signed-in account can
+    /// close; signing in again leaves `hasStoredCredentials` as it was.
+    private let onSignedIn: () -> Void
+
     @State private var studentId = ""
     @State private var password = ""
     @State private var isPasswordVisible = false
@@ -29,8 +33,9 @@ struct MacLoginView: View {
 
     private enum Field { case studentId, password }
 
-    init(showsSkipButton: Bool = true) {
+    init(showsSkipButton: Bool = true, onSignedIn: @escaping () -> Void = {}) {
         self.showsSkipButton = showsSkipButton
+        self.onSignedIn = onSignedIn
     }
 
     var body: some View {
@@ -50,6 +55,7 @@ struct MacLoginView: View {
 
             VStack(spacing: 14) {
                 TextField(String(localized: "sign_in_student_id"), text: $studentId)
+                    .textContentType(.username)
                     .textFieldStyle(.roundedBorder)
                     .focused($focused, equals: .studentId)
                     .onSubmit { focused = .password }
@@ -64,6 +70,7 @@ struct MacLoginView: View {
                             SecureField(String(localized: "sign_in_password"), text: $password)
                         }
                     }
+                    .textContentType(.password)
                     .textFieldStyle(.roundedBorder)
                     .focused($focused, equals: .password)
                     .onSubmit { Task { await attemptLogin() } }
@@ -157,7 +164,11 @@ struct MacLoginView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { focused = .studentId }
+        .onAppear {
+            // As the iOS sheet does: signing in as another account first wipes the stored one's data.
+            if studentId.isEmpty, let stored = appState.authService.storedStudentId { studentId = stored }
+            focused = studentId.isEmpty ? .studentId : .password
+        }
         // Whole-view capture protection. NSWindow.sharingType = .none
         // is reference-counted so the per-row reveal wrap nested inside
         // composes safely (release-order independent).
@@ -178,6 +189,7 @@ struct MacLoginView: View {
         )
         if ok {
             appState.completeOnboarding()
+            onSignedIn()
         }
     }
 }

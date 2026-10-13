@@ -7,14 +7,14 @@ import SwiftUI
 struct MoodleAnnouncementView: View {
     let store: MoodleCourseStore
     let discussion: MoodleDiscussion
+    let open: (MoodleCourseRoute) -> Void
 
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @Environment(\.openMoodleLink) private var openMoodleLink
     /// Coming back from a screen pushed over this one is not another opening.
     @State private var didOpen = false
-    #if os(iOS)
-    @State private var inAppPage: InAppPage?
-    #endif
+    @State private var files = MoodleFileOpener()
 
     var body: some View {
         ScrollView {
@@ -29,7 +29,8 @@ struct MoodleAnnouncementView: View {
                 Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: discussion.message)))
                     .markdownTheme(.bulletin(accent: appState.accentColor))
                     .environment(\.openURL, OpenURLAction { url in
-                        openLink(url)
+                        files.forgetPendingOpen()
+                        openMoodleLink(url)
                         return .handled
                     })
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -44,7 +45,7 @@ struct MoodleAnnouncementView: View {
         }
         .background(Color.backgroundPrimary)
         .overlay(alignment: .bottomTrailing) {
-            MoodleOpenCapsule(page: .discussion(discussion.id))
+            MoodleOpenCapsule(page: .discussion(discussion.id)) { files.forgetPendingOpen() }
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
@@ -54,22 +55,27 @@ struct MoodleAnnouncementView: View {
             didOpen = true
             store.open(discussion)
         }
-        #if os(iOS)
-        .sheet(item: $inAppPage) { page in
-            InAppBrowserView(url: page.url)
-                .ignoresSafeArea()
-        }
-        #endif
+        .moodleFilePresentation(files)
     }
 
+    /// The author opens their member page where the course's members have them.
     private var authorRow: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
             if let name = discussion.authorName.map(MoodlePersonName.displayName), !name.isEmpty {
-                MoodleAvatar(name: name, size: 24)
-                Text(name)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tint)
-                    .lineLimit(1)
+                let member = store.member(discussion.authorId)
+                MoodleAvatar(name: name, size: 24, picture: member?.pictureURL.flatMap { store.pictures[$0] })
+                    .task(id: member?.pictureURL) {
+                        if let member { await store.loadPicture(of: member) }
+                    }
+                if let member {
+                    Button {
+                        files.forgetPendingOpen()
+                        open(.member(member))
+                    } label: { authorName(name) }
+                        .buttonStyle(.plain)
+                } else {
+                    authorName(name)
+                }
             }
             Spacer(minLength: 0)
             Text(discussion.created.moodleDateTimeString)
@@ -80,44 +86,41 @@ struct MoodleAnnouncementView: View {
         }
     }
 
+    private func authorName(_ name: String) -> some View {
+        Text(name)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.tint)
+            .lineLimit(1)
+    }
+
     private var attachments: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
             Text(String(localized: "school_mail_attachments"))
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
                 .accessibilityAddTraits(.isHeader)
+            let owner = MoodleFileOwner.post(discussion.postId)
+            let refs = discussion.attachments.map { MoodleFileRef(file: $0, owner: owner) }
             VStack(spacing: 0) {
-                ForEach(Array(discussion.attachments.enumerated()), id: \.offset) { index, file in
+                ForEach(Array(refs.enumerated()), id: \.offset) { index, ref in
                     if index > 0 {
                         Divider().padding(.leading, MoodleFileRow.textInset)
                     }
-                    MoodleFileRow(file: file)
+                    MoodleFileRow(
+                        title: ref.file.name,
+                        file: ref.file,
+                        state: store.downloadState(of: ref.file, in: owner),
+                        tap: { files.tap(ref, among: refs, store: store) },
+                        share: { files.share(ref, store: store) },
+                        openInMoodle: {
+                            files.forgetPendingOpen()
+                            Task { await openURL(MoodlePage.discussion(discussion.id)) }
+                        }
+                    )
                 }
             }
             .presetCard(policy: appState.visualStylePolicy)
         }
         .padding(.top, TigerDuckTheme.Spacing.sm)
     }
-
-    /// A Moodle link opens signed in; any other opens where the reader's setting says.
-    private func openLink(_ url: URL) {
-        if MoodleAutologinService.isMoodlePage(url) {
-            Task { await openURL(MoodlePage.browserURL(url), fallback: nil) }
-            return
-        }
-        #if os(iOS)
-        if appState.browserPreference == .inApp, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-            inAppPage = InAppPage(url: url)
-            return
-        }
-        #endif
-        openURL(url)
-    }
 }
-
-#if os(iOS)
-private struct InAppPage: Identifiable {
-    let url: URL
-    var id: URL { url }
-}
-#endif

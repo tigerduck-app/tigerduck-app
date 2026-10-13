@@ -158,6 +158,7 @@ struct TigerDuckApp: App {
                             Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
                         }
                         appState.startRevisionPolling()
+                        appState.pushCoordinator.registerAgainIfGaveUp()
                         widgetSnapshotWriter.regenerate()
                         // App Store update check, throttled inside to once per
                         // ``AppConstants/updateCheckThrottle`` so rapid scene
@@ -306,6 +307,7 @@ struct TigerDuckApp: App {
                             Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
                         }
                         appState.startRevisionPolling()
+                        appState.pushCoordinator.registerAgainIfGaveUp()
                         widgetSnapshotWriter?.regenerate()
                         // Throttled to a day inside; a return to the app
                         // is when a new App Store version is worth telling.

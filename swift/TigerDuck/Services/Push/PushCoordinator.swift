@@ -352,6 +352,10 @@ final class PushCoordinator {
         Task { await registration.registerAgain() }
     }
 
+    func registerAgainIfGaveUp() {
+        Task { await registration.registerAgainIfGaveUp() }
+    }
+
     /// Returns the latest diagnostic snapshot for the settings view.
     func currentSnapshot() async -> PushDiagnostic {
         let reg = await registration.snapshot()
