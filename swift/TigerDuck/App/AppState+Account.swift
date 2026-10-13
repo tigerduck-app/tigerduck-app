@@ -99,7 +99,10 @@ extension AppState {
         if let departingStudentId, LibraryService.clearCredentials(ifSchoolAccount: departingStudentId) {
             _libraryRevision += 1
         }
-        let backendSignOut = Task { await authTokenManager.logout() }
+        // The session ends now. Only the device's unregister below still goes out as the departing
+        // account, with the token this hands back; without it the device keeps getting that
+        // account's reminders.
+        let endingSession = Task { await authTokenManager.endSession() }
         // The tracker is process-wide and outlives the account. Without a reset the next
         // account inherits the departing user's last good sync, and the header dot shows
         // green before anything has synced.
@@ -139,8 +142,9 @@ extension AppState {
         #if os(iOS)
         cancelNotificationSettingsPushes()
         #endif
-        // Signing out turns "Sync course information" off through the preference, like every
-        // other writer, so the change runs its usual course in `cloudSyncEnabledDidChange(to:)`.
+        // Signing out turns "Sync course information" off through the preference, so the change
+        // runs its usual course, but its PATCH finds no session: the server would take it as the
+        // account turning sync off and delete its synced data when no other device syncs it.
         cloudSyncEnabled = false
         // Before the network calls below, which offline run until they time out: the widgets
         // show the departing account's timetable until this rewrites their snapshot.
@@ -148,11 +152,11 @@ extension AppState {
         // A sign-in as another account waits for this, so none of it lands on that account.
         return Task { @MainActor in
             await cloudSyncCoordinator.settleForSignOut()
-            await pushCoordinator.disable()
+            let departing = AuthTokenManager.DepartingAccount(accessToken: await endingSession.value)
+            await AuthTokenManager.$departing.withValue(departing) { await pushCoordinator.disable() }
             #if os(iOS)
             await liveActivityCoordinator.endAll()
             #endif
-            await backendSignOut.value
         }
     }
 

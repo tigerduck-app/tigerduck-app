@@ -51,6 +51,19 @@ actor AuthTokenManager {
     /// Well under the backend's 60 s reuse grace, so the retry after a timeout still falls in it.
     static let refreshTimeout: TimeInterval = 20
 
+    /// Set around the sign-out's device unregister, which goes out as the departing account after
+    /// ``endSession()``. Everything else finds no session meanwhile.
+    @TaskLocal static var departing: DepartingAccount?
+
+    /// Wraps the token so a sign-out left without one sends nothing instead of signing in again.
+    struct DepartingAccount: Sendable {
+        let accessToken: String?
+    }
+
+    /// How long the token ``endSession()`` hands out has to last: the unregister waits for a
+    /// schedule upload still out, and each can take up to a 30 s timeout offline.
+    static let signOutCallsWindow: TimeInterval = 120
+
     /// Where the tokens persist. Tests pass a stand-in so they leave the Keychain alone.
     nonisolated struct TokenStore: Sendable {
         let load: @Sendable (_ key: String) -> String?
@@ -90,6 +103,7 @@ actor AuthTokenManager {
     /// Returns a valid access token, refreshing if needed, or signing in first when there is no
     /// session. Nil if that fails. Concurrent callers coalesce onto a single refresh request.
     func validAccessToken() async -> String? {
+        if let departing = Self.departing { return departing.accessToken }
         if refreshToken == nil, let onNoSession { await onNoSession() }
         guard refreshToken != nil else { return nil }
         if let token = accessToken, Date.now < expiresAt.addingTimeInterval(-30) {
@@ -194,6 +208,21 @@ actor AuthTokenManager {
     func logout() {
         signInGeneration &+= 1
         clearTokens()
+    }
+
+    /// A sign-out's first step. The session ends at once, here and in the keychain: a sign-in that
+    /// follows starts its own, a launch after the app is ended mid-sign-out has none, and a login
+    /// or refresh still out stores nothing. Returns an access token for the device's unregister,
+    /// which goes out as the departing account under ``departing``. One that would not outlast it
+    /// is refreshed first, and the pair that brings is not kept.
+    func endSession() async -> String? {
+        let access = accessToken, refresh = refreshToken, expiry = expiresAt
+        logout()
+        guard let refresh else { return nil }
+        if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
+        struct RefreshResponse: Decodable { let access_token: String }
+        guard let (data, http) = await postRefresh(refresh), http.statusCode == 200 else { return nil }
+        return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
     }
 
     private func clearTokens() {
