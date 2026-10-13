@@ -17,7 +17,6 @@ struct CourseDetailSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let course: SDCourse
     let assignments: [SDAssignment]
@@ -53,7 +52,6 @@ struct CourseDetailSheet: View {
                 }
                 .padding(.top, TigerDuckTheme.Spacing.xl)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: moodle?.sectionRows)
                 .moodleSectionRefresh(moodle)
             }
             .background(Color.backgroundPrimary)
@@ -67,10 +65,7 @@ struct CourseDetailSheet: View {
             }
         }
         .task(id: MoodleStoreKey(courseNo: course.courseNo, attempt: moodleAttempt)) {
-            // Cached rows are there when the sheet opens; only rows a fetch brings fade in.
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { moodle = makeMoodleStore() }
+            moodle = makeMoodleStore()
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             // A sheet opened before the first sync finds no Moodle course id; a sync may bring it.
