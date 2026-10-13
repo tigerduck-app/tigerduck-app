@@ -158,6 +158,19 @@ struct MoodleCourseMembersTests {
         #expect(cached(folder) == nil)
     }
 
+    @Test("a post's author is found among the cached members by their Moodle user")
+    func authorAmongMembers() async {
+        let folder = Folder()
+        let store = Self.store(folder, site: Site())
+        #expect(store.member(43) == nil)
+
+        await store.refreshMembers()
+
+        #expect(store.member(43) == Self.classmate)
+        #expect(store.member(999) == nil)
+        #expect(store.member(nil) == nil)
+    }
+
     @Test("signing out deletes the members")
     func signOutClearsThem() async {
         let folder = Folder()

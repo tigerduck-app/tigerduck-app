@@ -402,6 +402,12 @@ final class MoodleCourseStore {
 
     var membersFetchedAt: Date? { members.fetchedAt }
 
+    /// The member a post's author is, while the cached members have them.
+    func member(_ id: Int?) -> MoodleMember? {
+        guard let id else { return nil }
+        return members.value?.members.first { $0.id == id }
+    }
+
     /// The whole list in one call, which the section counts and the screen groups and searches.
     /// A site that does not allow the call, or a course that keeps its participants from the
     /// account, answers as if the course had no members, which hides their row for good rather
