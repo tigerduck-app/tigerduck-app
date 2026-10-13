@@ -520,6 +520,107 @@ struct BackendSignInTests {
         #expect(headers == ["Bearer A9", "Bearer A9"])
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
     }
+
+    // MARK: - Asking the user to sign in again
+    // https://github.com/tigerduck-app/tigerduck-app/issues/385
+
+    /// The condition of asking to sign in again that a test turns the other way, or none.
+    enum SignInAgainCondition: String, CaseIterable, CustomTestStringConvertible {
+        case none, syncOff, credentialsUnreadable, backendSignedIn, signingIn, registrationSent
+
+        var testDescription: String { rawValue }
+    }
+
+    @Test("the TigerSync status asks to sign in again only while every condition holds",
+          arguments: SignInAgainCondition.allCases)
+    func signInAgainNeedsEveryCondition(turned: SignInAgainCondition) {
+        let asks = AuthService.asksToSignInAgain(
+            syncEnabled: turned != .syncOff,
+            credentialsReadable: turned != .credentialsUnreadable,
+            hasBackendSession: turned == .backendSignedIn,
+            signingIn: turned == .signingIn,
+            registrationFoundNoSession: turned != .registrationSent
+        )
+
+        #expect(asks == (turned == .none))
+    }
+
+    @Test("a registration left unsent asks to sign in again once the credentials are readable, until a sign-in goes through")
+    func signInAgainGoesAwayAfterASignIn() async throws {
+        try await withNoSyncPreferencesPending {
+            let backend = BackendFixture(signedIn: false)
+            let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+            auth.authTokenManager = backend.manager
+            await backend.manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
+            SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+            let push = RegistrationFixture(manager: backend.manager)
+            for _ in 0..<4 { push.answerAnnounce() }
+            let keychain = MemoryKeychain.locked()
+
+            try await SecureStore.$sharedForTesting.withValue(keychain) {
+                // Behind a locked screen the sign-in finds no credentials, and nothing is sent.
+                await push.register()
+                let unsent = await push.service.snapshot()
+                try #require(unsent.lastAttemptFoundNoSession)
+                #expect(await !auth.asksToSignInAgain(syncEnabled: true, after: unsent))
+
+                keychain.unlock()
+                #expect(await auth.asksToSignInAgain(syncEnabled: true, after: unsent))
+
+                await auth.ensureBackendSignedIn()
+                #expect(await !auth.asksToSignInAgain(syncEnabled: true, after: unsent))
+
+                push.answerAnnounce()
+                push.answerRegister()
+                await push.service.registerAgain()
+                await push.service.awaitPendingRegistration()
+            }
+
+            let registered = await push.service.snapshot()
+            #expect(registered.lastError == nil)
+            #expect(!registered.lastAttemptFoundNoSession)
+            #expect(await !auth.asksToSignInAgain(syncEnabled: true, after: registered))
+        }
+    }
+
+    @Test("while an automatic sign-in is under way the status does not ask to sign in again")
+    func signInAgainWaitsForTheRunningSignIn() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture(signedIn: false)
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = backend.manager
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data(), gate: gate), for: backend.loginURL)
+
+        try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            async let signIn: Void = auth.ensureBackendSignedIn()
+            try await waitUntil { SettingsAPIStub.requests(for: backend.loginURL).count == 1 }
+            #expect(auth.isSigningInToBackend)
+            #expect(await !auth.asksToSignInAgain(syncEnabled: true, after: Self.unsentRegistration))
+
+            gate.open()
+            await signIn
+            #expect(!auth.isSigningInToBackend)
+            #expect(await auth.asksToSignInAgain(syncEnabled: true, after: Self.unsentRegistration))
+        }
+    }
+
+    @Test("with no backend client the status does not ask to sign in again")
+    func signInAgainNeedsABackend() async {
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+
+        let asks = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            await auth.asksToSignInAgain(syncEnabled: true, after: Self.unsentRegistration)
+        }
+
+        #expect(!asks)
+    }
+
+    /// A registration that went unsent for want of a session.
+    private static let unsentRegistration = PushRegistrationSnapshot(
+        ptsTokenLength: 0, deviceTokenLength: 6, lastError: "register: x",
+        lastAttemptFoundNoSession: true, lastRegisteredAt: nil
+    )
 }
 
 /// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next

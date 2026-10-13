@@ -193,6 +193,36 @@ final class AuthService {
         return age >= backendSignInPause || age < 0
     }
 
+    /// True while an automatic backend sign-in that had credentials to send is under way.
+    private(set) var isSigningInToBackend = false
+
+    /// Whether the TigerSync status asks the user to sign in again, in place of the error left by a
+    /// registration that went unsent because an automatic sign-in failed. Not while another is
+    /// under way, which may yet succeed. The school sign-in it opens signs in to the backend too.
+    nonisolated static func asksToSignInAgain(
+        syncEnabled: Bool,
+        credentialsReadable: Bool,
+        hasBackendSession: Bool,
+        signingIn: Bool,
+        registrationFoundNoSession: Bool
+    ) -> Bool {
+        syncEnabled && credentialsReadable && !hasBackendSession && !signingIn && registrationFoundNoSession
+    }
+
+    /// ``asksToSignInAgain(syncEnabled:credentialsReadable:hasBackendSession:signingIn:registrationFoundNoSession:)``
+    /// for this device now, after the registration `registration` describes.
+    func asksToSignInAgain(syncEnabled: Bool, after registration: PushRegistrationSnapshot) async -> Bool {
+        guard let authTokenManager else { return false }
+        let hasBackendSession = await authTokenManager.isLoggedIn
+        return Self.asksToSignInAgain(
+            syncEnabled: syncEnabled,
+            credentialsReadable: storedStudentId != nil && storedPassword != nil,
+            hasBackendSession: hasBackendSession,
+            signingIn: isSigningInToBackend,
+            registrationFoundNoSession: registration.lastAttemptFoundNoSession
+        )
+    }
+
     var storedStudentId: String? {
         _ = _revision
         return KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
@@ -457,6 +487,8 @@ final class AuthService {
               Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
               let studentId = storedStudentId, storedPassword != nil else { return }
         let generation = loginGeneration
+        isSigningInToBackend = true
+        defer { isSigningInToBackend = false }
         if await !performV3Login(studentId: studentId, harvesting: true) {
             noteFailedBackendSignIn(since: generation)
         }
