@@ -57,17 +57,19 @@ final class WatchPayloadCodecTests: XCTestCase {
     }
 
     func test_visualPreset_roundTrips() throws {
-        let snapshot = WatchSnapshot(
-            courses: [sampleCourse()],
-            accentHex: "#FF8800",
-            syncedAtMs: 1,
-            loggedIn: true,
-            languageTag: nil,
-            visualPreset: .iosInspired
-        )
-        let dict = try WatchPayloadCodec.encode(snapshot)
-        let decoded = try WatchPayloadCodec.decode(dict)
-        XCTAssertEqual(decoded.visualPreset, .iosInspired)
+        for preset in VisualPreset.allCases {
+            let snapshot = WatchSnapshot(
+                courses: [sampleCourse()],
+                accentHex: "#FF8800",
+                syncedAtMs: 1,
+                loggedIn: true,
+                languageTag: nil,
+                visualPreset: preset
+            )
+            let dict = try WatchPayloadCodec.encode(snapshot)
+            let decoded = try WatchPayloadCodec.decode(dict)
+            XCTAssertEqual(decoded.visualPreset, preset)
+        }
     }
 
     func test_decode_missingVisualPreset_defaultsToTigerDuck() throws {

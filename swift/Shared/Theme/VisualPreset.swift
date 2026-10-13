@@ -17,6 +17,10 @@ public nonisolated enum VisualPreset: String, CaseIterable, Identifiable, Sendab
     /// small accents, restrained time slider, row/metadata-first cards.
     case iosInspired = "iosInspired"
 
+    /// TigerDuck's look with the class table as a classic grid: one pastel
+    /// tile per period, period numbers without times, alternating row bands.
+    case tat = "tat"
+
     public var id: String { rawValue }
 
     /// Brand name shown in Settings. Not localized: these are platform/
@@ -25,6 +29,7 @@ public nonisolated enum VisualPreset: String, CaseIterable, Identifiable, Sendab
         switch self {
         case .default: return "TigerDuck"
         case .iosInspired: return "Apple"
+        case .tat: return "TAT"
         }
     }
 

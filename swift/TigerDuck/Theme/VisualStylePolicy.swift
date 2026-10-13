@@ -25,7 +25,7 @@ struct VisualStylePolicy: Sendable {
 
     var courseColorUsage: CourseColorUsage {
         switch preset {
-        case .default: return .primarySurface
+        case .default, .tat: return .primarySurface
         case .iosInspired: return .smallAccent
         }
     }
@@ -43,7 +43,7 @@ struct VisualStylePolicy: Sendable {
 
     var cardSurface: CardSurface {
         switch preset {
-        case .default: return .glass
+        case .default, .tat: return .glass
         case .iosInspired: return .grouped
         }
     }
@@ -60,7 +60,7 @@ struct VisualStylePolicy: Sendable {
 
     var chipStyle: ChipStyle {
         switch preset {
-        case .default: return .glass
+        case .default, .tat: return .glass
         case .iosInspired: return .filledCapsule
         }
     }
@@ -77,7 +77,7 @@ struct VisualStylePolicy: Sendable {
 
     var assignmentRowStyle: AssignmentRowStyle {
         switch preset {
-        case .default: return .card
+        case .default, .tat: return .card
         case .iosInspired: return .groupedList
         }
     }
@@ -87,7 +87,7 @@ struct VisualStylePolicy: Sendable {
     /// Opacity for the active course color block on the time slider.
     var timeSliderActiveSegmentOpacity: Double {
         switch preset {
-        case .default: return 0.5
+        case .default, .tat: return 0.5
         case .iosInspired: return 0.22
         }
     }
@@ -95,7 +95,7 @@ struct VisualStylePolicy: Sendable {
     /// Opacity for inactive course color blocks on the time slider.
     var timeSliderInactiveSegmentOpacity: Double {
         switch preset {
-        case .default: return 0.3
+        case .default, .tat: return 0.3
         case .iosInspired: return 0.10
         }
     }
@@ -104,7 +104,7 @@ struct VisualStylePolicy: Sendable {
     /// or stay a neutral white indicator.
     var timeSliderUsesCourseColoredThumb: Bool {
         switch preset {
-        case .default: return true
+        case .default, .tat: return true
         case .iosInspired: return false
         }
     }
@@ -113,14 +113,14 @@ struct VisualStylePolicy: Sendable {
 
     var primaryTextColor: Color {
         switch preset {
-        case .default: return Color.textPrimary
+        case .default, .tat: return Color.textPrimary
         case .iosInspired: return .primary
         }
     }
 
     var secondaryTextColor: Color {
         switch preset {
-        case .default: return Color.textSecondary
+        case .default, .tat: return Color.textSecondary
         case .iosInspired: return .secondary
         }
     }

@@ -20,7 +20,7 @@ struct WatchVisualStylePolicy {
     /// accent stripe (`false`).
     var usesTintedCardSurface: Bool {
         switch preset {
-        case .default: return true
+        case .default, .tat: return true
         case .iosInspired: return false
         }
     }
@@ -31,7 +31,7 @@ struct WatchVisualStylePolicy {
     /// course identity.
     func cardBackground(for courseColor: Color) -> Color {
         switch preset {
-        case .default:
+        case .default, .tat:
             return courseColor.opacity(0.28)
         case .iosInspired:
             return Color.white.opacity(0.08)
