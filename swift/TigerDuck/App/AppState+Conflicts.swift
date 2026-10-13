@@ -85,8 +85,9 @@ extension AppState {
     }
 
     /// Whether this device holds the signed-in account's data: each full sync records it
-    /// (`recordFullSync`), and sign-out clears it (`forgetSyncProgress`).
-    /// `assignmentMarksSyncedOnce` cannot tell, as it stays false while the Assignments switch is off.
+    /// (`recordFullSync`), as does the update for an account signed in then, and sign-out clears
+    /// it (`forgetSyncProgress`). `assignmentMarksSyncedOnce` cannot tell, as it stays false while
+    /// the Assignments switch is off.
     static var hasSyncedAccount: Bool {
         Defaults[.accountSyncedOnce]
     }

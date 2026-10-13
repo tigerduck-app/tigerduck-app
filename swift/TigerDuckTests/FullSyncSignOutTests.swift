@@ -107,7 +107,7 @@ struct ReenableMarkTests {
             AppState.recordFullSync(coursesReset: .distantPast)
 
             #expect(AppState.hasSyncedAccount)
-            #expect(Defaults[.lastSeenCoursesResetAt] == .distantPast)
+            #expect(Defaults[.lastSeenCoursesResetAt] == Date.distantPast)
 
             AppState.forgetSyncProgress()
 
