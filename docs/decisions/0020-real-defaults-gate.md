@@ -14,6 +14,9 @@ under test reads and writes directly, not through a seam:
   `syncPreferencesPushPending`, and `LiveActivityPreferencesStore`, with its notification settings.
 - `DefaultTabsPinMigration`, and `UpdateNotifyCoordinator.checkManually()`, which stamps
   `lastUpdateCheckAt` and, for an unreadable store version, `lastReportedUnparseableStoreVersion`.
+- `AppState.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories` and
+  `assignmentMarksSyncedOnce`, and `CloudSyncCoordinator`'s default holds on marks and course
+  settings, which read the pending categories and the Assignments and Courses switches.
 
 Swift Testing runs suites concurrently, and `.serialized` orders one suite's own tests and nothing
 else. The push registration tests set these keys and then await the service; a registration alone
@@ -42,4 +45,5 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
 - The gate orders only the tests that take it, so a new test that reads or writes these keys goes
   through `withExclusiveRealDefaults` and puts back what it changed. Current users:
   `BulletinPushOptOutMigrationTests`, `PushRegistrationServiceTests`,
-  `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests` and `UpdateCheckTests`.
+  `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `UpdateCheckTests`,
+  `CloudSyncCoordinatorTests` and `ReenableCheckSignOutTests`.
