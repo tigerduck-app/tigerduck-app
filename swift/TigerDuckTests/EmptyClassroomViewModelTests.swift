@@ -215,8 +215,8 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.content == .loading)
     }
 
-    @Test("coming back while the day loads keeps that load")
-    func comingBackKeepsTheLoad() async throws {
+    @Test("a second appear while the day loads keeps that load")
+    func repeatedAppearKeepsTheLoad() async throws {
         let harness = Harness(at: Self.time(14, 10, 5))
         let gate = SettingsAPIStub.ReplyGate()
         Self.serveHeldWednesday(harness, gate: gate)

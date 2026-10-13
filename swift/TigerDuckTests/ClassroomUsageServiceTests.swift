@@ -13,6 +13,7 @@ struct ClassroomUsageServiceTests {
     private final class Account {
         var generation = 1
         var signIns = 0
+        var signInAttempts = 0
     }
 
     @MainActor
@@ -31,6 +32,7 @@ struct ClassroomUsageServiceTests {
                 sessionGeneration: { account.generation },
                 // As the SSO sign-in does, refuses a sign-in for a session a sign-out has ended.
                 signIn: { _, _, generation in
+                    account.signInAttempts += 1
                     guard generation == account.generation else { throw CancellationError() }
                     account.signIns += 1
                     return true
@@ -239,7 +241,7 @@ struct ClassroomUsageServiceTests {
 
         await #expect(throws: (any Error).self) { try await first.value }
         await #expect(throws: CancellationError.self) { try await second.value }
-        #expect(harness.account.signIns == 0)
+        #expect(harness.account.signInAttempts == 0)
         #expect(harness.requests.count == 1)
     }
 

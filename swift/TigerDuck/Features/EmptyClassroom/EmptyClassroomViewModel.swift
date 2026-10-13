@@ -234,7 +234,8 @@ final class EmptyClassroomViewModel {
 
     private func load(force: Bool) {
         let day = selectedDay
-        // Coming back to the screen while its day loads keeps that load.
+        // A repeated appear() while this day loads keeps that load. Leaving the screen
+        // already stopped it, so coming back after a disappear() always starts a new read.
         if !force, running?.day == day { return }
         stopLoading()
         if EmptyClassroomSchedule.isWeekend(day) {
