@@ -407,8 +407,10 @@ enum AppServiceBridge {
             do {
                 let results = try await lookup(courseNo)
                 guard !results.isEmpty else { return .success(nil) }
+                // Someone else's labels stay out of the raw-name cache the user's own courses use.
                 return .success(enrichedCourseData(
-                    from: results, semester: semester, fallbackMoodleIdNumber: nil, display: display
+                    from: results, semester: semester, fallbackMoodleIdNumber: nil, display: display,
+                    recordsRawLabels: false
                 ))
             } catch {
                 return .failure(error)

@@ -49,4 +49,15 @@ struct ClassTableImportLookupTests {
             }
         }
     }
+
+    @Test("importing another person's courses leaves the user's raw label cache alone")
+    func importedLabelsStayOutOfOwnCache() async throws {
+        let code = "QQ" + UUID().uuidString.prefix(7)
+        #expect(NameAbbrService.shared.rawName(for: code) == nil)
+        _ = try await AppServiceBridge.importedCourses(semester: "1151", courseNos: [code], display: Self.display) {
+            [Self.result($0, "Imported label")]
+        }
+
+        #expect(NameAbbrService.shared.rawName(for: code) == nil)
+    }
 }
