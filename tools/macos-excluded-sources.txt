@@ -62,6 +62,7 @@ ClassTableViewModel.swift
 ClassTableViewModel+Grid.swift
 ClassTableViewModel+Editing.swift
 ClassTableViewModel+Loading.swift
+ClassTableTabBarGestures.swift
 ConflictCoursePickerSheet.swift
 ClassTableExportView.swift
 ClassTableImportScannerView.swift  # camera scanner; the Mac reads an image file instead

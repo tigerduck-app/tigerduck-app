@@ -18,6 +18,18 @@ struct ImportedPerson: Identifiable {
     let importedAt: Date
     let sharedAt: Date?
     let terms: [Term]
+
+    /// Newest first, as the term picker lists them.
+    var semesters: [String] { terms.map(\.semester).sorted(by: >) }
+
+    /// The term to open this class table on: `current` when the person has it, else their latest.
+    func semester(keeping current: String) -> String {
+        semesters.contains(current) ? current : semesters.first ?? current
+    }
+
+    func courses(in semester: String) -> [SDCourse] {
+        terms.first { $0.semester == semester }?.courses ?? []
+    }
 }
 
 /// The class tables imported from share codes, kept on this device only: never in TigerSync, the
@@ -40,6 +52,21 @@ final class ImportedClassTableStore {
     private(set) var shownPersonID: UUID?
 
     var shownPerson: ImportedPerson? { people.first { $0.id == shownPersonID } }
+
+    /// Changes when another class table is shown, or the shown one is imported or looked up again,
+    /// for every class table page to follow.
+    var shownTable: ShownTable {
+        ShownTable(personID: shownPersonID, importedAt: shownPerson?.importedAt, lookups: lookups)
+    }
+
+    struct ShownTable: Equatable {
+        let personID: UUID?
+        let importedAt: Date?
+        let lookups: Int
+    }
+
+    /// Counts `updateCourses` writes, which leave the person's id and import time as they were.
+    private var lookups = 0
 
     var hasImportedClassTables: Bool { !people.isEmpty }
 
@@ -107,37 +134,82 @@ final class ImportedClassTableStore {
         return person
     }
 
+    /// What a change to a person did. One deleted or imported again since the change began is
+    /// skipped, which is not a failure; a failed save keeps the person as it was.
+    enum Change: Equatable { case saved, skipped, failed }
+
     @discardableResult
-    func rename(_ id: UUID, to nickname: String) -> Bool {
+    func rename(_ id: UUID, to nickname: String) -> Change {
         let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, let index = people.firstIndex(where: { $0.id == id }) else { return false }
+        guard !name.isEmpty, let index = people.firstIndex(where: { $0.id == id }) else { return .skipped }
         let old = people[index]
         var updated = people
         updated[index] = ImportedPerson(
             id: old.id, studentId: old.studentId, nickname: name,
             importedAt: old.importedAt, sharedAt: old.sharedAt, terms: old.terms
         )
-        guard save(people: updated, owner: owner) else { return false }
+        guard save(people: updated, owner: owner) else { return .failed }
         people = updated
-        return true
+        return .saved
+    }
+
+    /// Swaps in a new lookup of `courseNos`, one term's course codes, for that term of `id`, as
+    /// imported at `importedAt`. A person imported again while the lookup ran, with the same codes or
+    /// others, keeps the new import's courses.
+    @discardableResult
+    func updateCourses(
+        _ id: UUID, semester: String, courseNos: [String], courses: [SDCourse], importedAt: Date
+    ) -> Change {
+        guard let index = people.firstIndex(where: { $0.id == id }), people[index].importedAt == importedAt,
+              people[index].terms.contains(where: { $0.semester == semester && $0.courseNos == courseNos })
+        else { return .skipped }
+        let old = people[index]
+        let terms = old.terms.map { term in
+            term.semester == semester
+                ? ImportedPerson.Term(semester: semester, courseNos: courseNos, courses: courses)
+                : term
+        }
+        var updated = people
+        updated[index] = ImportedPerson(
+            id: old.id, studentId: old.studentId, nickname: old.nickname,
+            importedAt: old.importedAt, sharedAt: old.sharedAt, terms: terms
+        )
+        guard save(people: updated, owner: owner) else { return .failed }
+        people = updated
+        lookups += 1
+        return .saved
+    }
+
+    /// Shows the class table after the shown one: the user's own, then each person in import
+    /// order, then the user's own again.
+    func showNext() {
+        let order: [UUID?] = [nil] + people.map { $0.id }
+        let index = order.firstIndex(of: shownPersonID) ?? 0
+        shownPersonID = order[(index + 1) % order.count]
     }
 
     @discardableResult
-    func delete(_ id: UUID) -> Bool {
-        guard people.contains(where: { $0.id == id }) else { return false }
+    func delete(_ id: UUID) -> Change {
+        guard people.contains(where: { $0.id == id }) else { return .skipped }
         let updated = people.filter { $0.id != id }
         let newOwner = updated.isEmpty ? nil : owner
-        guard save(people: updated, owner: newOwner) else { return false }
+        guard save(people: updated, owner: newOwner) else { return .failed }
         people = updated
         owner = newOwner
         if shownPersonID == id { shownPersonID = nil }
-        return true
+        return .saved
     }
 
     /// Shows `id`'s class table, or the user's own for nil; an id not in the store is ignored.
     func show(_ id: UUID?) {
         guard id == nil || people.contains(where: { $0.id == id }) else { return }
         shownPersonID = id
+    }
+
+    /// The account rows' sign-out deletes the imported class tables, so with any here it calls
+    /// `confirm` to ask first; otherwise it signs out at once.
+    func requestSignOut(confirm: () -> Void, signOut: () -> Void) {
+        if hasImportedClassTables { confirm() } else { signOut() }
     }
 
     /// For a sign-out by the user: an expired session and TigerSync turned off must not call it.

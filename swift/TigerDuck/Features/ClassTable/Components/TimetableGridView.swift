@@ -222,7 +222,7 @@ struct TimetableGridView: View {
                                 )
                             ))
                         )
-                        .contextMenu {
+                        .courseEditMenu(isEditable: viewModel.shownPerson == nil) {
                             Button {
                                 viewModel.startRename(course)
                             } label: {
@@ -444,7 +444,7 @@ private struct ConflictClusterView: View {
                             }
                             .joined(separator: ", ")))
             )
-            .contextMenu {
+            .courseEditMenu(isEditable: viewModel.shownPerson == nil) {
                 conflictContextMenu()
             }
         }
@@ -523,7 +523,7 @@ private struct ConflictClusterView: View {
                         firstPeriod?.displayLabel ?? periodId,
                         spokenCourse(course, hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments)))
         )
-        .contextMenu {
+        .courseEditMenu(isEditable: viewModel.shownPerson == nil) {
             Button {
                 viewModel.startRename(course)
             } label: {

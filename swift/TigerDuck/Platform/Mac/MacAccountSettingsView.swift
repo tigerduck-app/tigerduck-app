@@ -8,6 +8,7 @@ import SwiftUI
 struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var showSignIn = false
+    @State private var confirmsSignOut = false
 
     var body: some View {
         Form {
@@ -19,7 +20,10 @@ struct MacAccountSettingsView: View {
                         Text(String(localized: "desktop_settings_signed_in_ntust"))
                     }
                     Button(role: .destructive) {
-                        appState.logoutNTUST()
+                        ImportedClassTableStore.shared.requestSignOut(
+                            confirm: { confirmsSignOut = true },
+                            signOut: { appState.logoutNTUST() }
+                        )
                     } label: {
                         Label(String(localized: "action_sign_out"), systemImage: "rectangle.portrait.and.arrow.right")
                     }
@@ -36,6 +40,14 @@ struct MacAccountSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(20)
+        .alert(String(localized: "action_sign_out"), isPresented: $confirmsSignOut) {
+            Button(String(localized: "action_sign_out"), role: .destructive) {
+                appState.logoutNTUST()
+            }
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "settings_sign_out_imported_tables"))
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $showSignIn) {
             MacLoginView(showsSkipButton: false)

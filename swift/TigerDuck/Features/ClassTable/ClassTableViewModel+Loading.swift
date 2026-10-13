@@ -34,6 +34,8 @@ extension ClassTableViewModel {
         if !merged.isEmpty {
             courses = merged
         }
+        // Another tab or page may have switched to someone else's class table already.
+        if shownPerson != nil { showShownTable() }
         // backgroundSync() on app launch handles the network refresh
     }
 
@@ -100,6 +102,7 @@ extension ClassTableViewModel {
     private func fetchData(authService: AuthService, semester: String? = nil) async {
         let manager = NTUSTSessionManager.shared
         let targetSemester = semester ?? currentSemester
+        let generation = await MainActor.run { authService.loginGeneration }
         // Pre-flight here too so `refresh(authService:)`, used outside
         // triggerRefresh, is gated as well. NetworkMonitor memoises the probe,
         // so the second check on the triggerRefresh path is effectively free.
@@ -131,16 +134,34 @@ extension ClassTableViewModel {
         let userAdded = await userAddedTask
 
         await MainActor.run {
-            isUpdatingFromNetwork = true
-            courses = buildCourseList(fetchedCourses, userAdded)
-            if targetSemester == CourseSelectionService.currentSemesterCode() {
-                currentSemesterCourses = courses
-                refreshCourseColors()
-            }
-            assignments = fetchedAssignments
-            manager.loadingState = .loaded
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            isUpdatingFromNetwork = false
+            showFetched(
+                buildCourseList(fetchedCourses, userAdded), assignments: fetchedAssignments, of: targetSemester,
+                startedUnder: generation, loginGeneration: authService.loginGeneration
+            )
         }
+    }
+
+    /// A sign-out during the fetch leaves the screen to the next account. Someone else's class
+    /// table, or another term picked during the fetch, may be on screen, and the share code reads
+    /// `courses` as the term on screen.
+    func showFetched(
+        _ fetched: [SDCourse], assignments fetchedAssignments: [SDAssignment], of targetSemester: String,
+        startedUnder generation: Int, loginGeneration: Int
+    ) {
+        let manager = NTUSTSessionManager.shared
+        guard loginGeneration == generation else {
+            manager.loadingState = .loaded
+            return
+        }
+        isUpdatingFromNetwork = true
+        if shownPerson == nil, currentSemester == targetSemester { courses = fetched }
+        if targetSemester == CourseSelectionService.currentSemesterCode() {
+            currentSemesterCourses = fetched
+            refreshCourseColors()
+        }
+        assignments = fetchedAssignments
+        manager.loadingState = .loaded
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        isUpdatingFromNetwork = false
     }
 }

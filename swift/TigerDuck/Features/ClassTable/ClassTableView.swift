@@ -5,6 +5,7 @@ struct ClassTableView: View {
     var embedded = false
 
     @Environment(AppState.self) private var appState
+    @Environment(\.requestClassTableImport) private var requestImport
     @State private var viewModel = ClassTableViewModel(
         isClassDay: { AcademicCalendarStore.shared.isClassDay($0) }
     )
@@ -12,7 +13,6 @@ struct ClassTableView: View {
     @State private var showExportFailed = false
     @State private var isExporting = false
     @State private var shareModel: ClassTableShareModel?
-    @State private var importModel: ClassTableImportModel?
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -98,7 +98,11 @@ struct ClassTableView: View {
                             EmptyStateView(
                                 icon: "book.closed",
                                 title: String(localized: "home_time_slider_no_courses"),
-                                message: String(localized: "class_table_empty_message")
+                                // A shared term always has course codes, so someone else's is empty
+                                // only when none could be looked up, and it has no Add course.
+                                message: viewModel.shownPerson == nil
+                                    ? String(localized: "class_table_empty_message")
+                                    : String(localized: "class_table_import_lookup_failed")
                             )
                             .padding(.vertical, TigerDuckTheme.Spacing.xxl)
                         }
@@ -110,6 +114,10 @@ struct ClassTableView: View {
             }
             .scrollIndicators(.hidden)
             .refreshable {
+                guard viewModel.shownPerson == nil else {
+                    await viewModel.refreshShownPerson()
+                    return
+                }
                 viewModel.triggerRefresh(authService: appState.authService)
                 if Defaults[.cloudSyncEnabled] {
                     Task { await appState.syncOverridesFromBackend() }
@@ -117,12 +125,15 @@ struct ClassTableView: View {
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            // Another tab, page or the tab bar's menu may switch to someone else's class table.
+            .onChange(of: viewModel.shownTable) { _, _ in viewModel.showShownTable() }
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
                     course: course,
                     assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
                     timeRange: viewModel.selectedCourseTimeRange,
-                    weekday: viewModel.selectedWeekday
+                    weekday: viewModel.selectedWeekday,
+                    showsMoodle: viewModel.shownPerson == nil
                 )
             }
             .sheet(isPresented: $viewModel.showAddCourse) {
@@ -233,8 +244,33 @@ struct ClassTableView: View {
             .alert(String(localized: "class_table_export_failed"), isPresented: $showExportFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
+            .alert(String(localized: "class_table_rename_title"), isPresented: $viewModel.isRenamingPerson) {
+                TextField(String(localized: "class_table_nickname"), text: $viewModel.nicknameDraft)
+                Button(String(localized: "action_save")) {
+                    viewModel.saveNickname()
+                }
+                .disabled(!viewModel.canSaveNickname)
+                Button(String(localized: "action_cancel"), role: .cancel) {}
+            }
+            .alert(
+                String(
+                    format: String(localized: "class_table_delete_user_confirm"),
+                    viewModel.personInAlert?.nickname ?? ""
+                ),
+                isPresented: $viewModel.isDeletingPerson
+            ) {
+                Button(String(localized: "class_table_delete"), role: .destructive) {
+                    viewModel.deletePersonInAlert()
+                }
+                Button(String(localized: "action_cancel"), role: .cancel) {}
+            }
+            .alert(String(localized: "class_table_import_lookup_failed"), isPresented: $viewModel.showsLookupFailed) {
+                Button(String(localized: "action_confirm"), role: .cancel) {}
+            }
+            .alert(String(localized: "bulletin_save_failed_title"), isPresented: $viewModel.showsSaveFailed) {
+                Button(String(localized: "action_confirm"), role: .cancel) {}
+            }
             .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
-            .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the
@@ -243,7 +279,9 @@ struct ClassTableView: View {
     /// with stored credentials and an expired cookie sees cached data (or
     /// an empty-state placeholder), never the interactive login prompt.
     private var pageAccessState: NTUSTProtectedAccessState {
-        appState.ntustProtectedAccessState(isEmpty: viewModel.courses.isEmpty)
+        // Someone else's class table is kept on the device, so no sign-in stands in front of it.
+        if viewModel.shownPerson != nil { return viewModel.courses.isEmpty ? .empty : .content }
+        return appState.ntustProtectedAccessState(isEmpty: viewModel.courses.isEmpty)
     }
 
     private var titleBar: some View {
@@ -286,48 +324,10 @@ struct ClassTableView: View {
     @ViewBuilder
     private var headerActions: some View {
         let menu = Menu {
-            Section {
-                Button {
-                    viewModel.showAddCourse = true
-                } label: {
-                    Label(String(localized: "add_course_title"), systemImage: "plus")
-                }
-                Button {
-                    viewModel.showResetConfirm = true
-                } label: {
-                    Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
-                }
-            }
-            Section {
-                if ImportedClassTableStore.shared.shownPerson == nil {
-                    Button {
-                        openShareSheet()
-                    } label: {
-                        Label(String(localized: "class_table_share"), systemImage: "qrcode")
-                    }
-                    // Held off with the export, whose share sheet would wait behind this one.
-                    .disabled(isExporting || !ClassTableShareModel.canShare(
-                        studentId: appState.authService.storedStudentId,
-                        shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
-                        semesters: viewModel.availableSemesters
-                    ))
-                }
-                Button {
-                    exportScreenshot()
-                } label: {
-                    Label(String(localized: "class_table_export_screenshot"), systemImage: "square.and.arrow.up")
-                }
-                // Only the content state draws a grid; anything else would
-                // export a header over nothing. Held off while an export is
-                // still being written, so two cannot race for the same file.
-                .disabled(pageAccessState != .content || isExporting)
-            }
-            Section {
-                Button {
-                    importModel = .live(authService: appState.authService)
-                } label: {
-                    Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
-                }
+            if viewModel.shownPerson != nil {
+                otherPersonActions
+            } else {
+                ownActions
             }
         } label: {
             headerIcon("ellipsis")
@@ -341,6 +341,82 @@ struct ClassTableView: View {
             // `.bordered`, Today's pre-26 style, fills with.
             menu.background(Circle().fill(Color(uiColor: .secondarySystemFill)))
         }
+    }
+
+    @ViewBuilder
+    private var ownActions: some View {
+        Section {
+            Button {
+                viewModel.showAddCourse = true
+            } label: {
+                Label(String(localized: "add_course_title"), systemImage: "plus")
+            }
+            Button {
+                viewModel.showResetConfirm = true
+            } label: {
+                Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
+        Section {
+            Button {
+                openShareSheet()
+            } label: {
+                Label(String(localized: "class_table_share"), systemImage: "qrcode")
+            }
+            // Held off with the export, whose share sheet would wait behind this one.
+            .disabled(isExporting || !ClassTableShareModel.canShare(
+                studentId: appState.authService.storedStudentId,
+                shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
+                semesters: viewModel.availableSemesters
+            ))
+            exportButton
+        }
+        Section {
+            Button {
+                requestImport()
+            } label: {
+                Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
+            }
+        }
+    }
+
+    private var otherPersonActions: some View {
+        ForEach(ClassTableOtherPersonAction.sections, id: \.self) { section in
+            Section {
+                ForEach(section, id: \.self) { action in
+                    if action == .exportScreenshot {
+                        exportButton
+                    } else {
+                        Button(role: action.role) {
+                            perform(action)
+                        } label: {
+                            Label(action.title, systemImage: action.systemImage)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func perform(_ action: ClassTableOtherPersonAction) {
+        switch action {
+        case .exportScreenshot: exportScreenshot()
+        case .importClassTable: requestImport()
+        case .rename: viewModel.startRenamingPerson()
+        case .deleteUser: viewModel.startDeletingPerson()
+        }
+    }
+
+    private var exportButton: some View {
+        Button {
+            exportScreenshot()
+        } label: {
+            Label(String(localized: "class_table_export_screenshot"), systemImage: "square.and.arrow.up")
+        }
+        // Only the content state draws a grid; anything else would
+        // export a header over nothing. Held off while an export is
+        // still being written, so two cannot race for the same file.
+        .disabled(pageAccessState != .content || isExporting)
     }
 
     /// `contentShape` is explicit because the glyph is smaller than its cell:
@@ -445,19 +521,46 @@ struct ClassTableView: View {
 
             Spacer()
 
-            Text(creditsLabel)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textSecondary)
+            ownerLabel
         }
         .padding(.horizontal)
     }
 
-    /// "B11315000 · 20 credits": the student id leads so a shared screen
-    /// shows whose timetable this is; both halves keep the secondary tint.
+    /// Plain text until someone's class table has been imported, then the switcher's menu. The
+    /// tab bar's gestures reach no class table under More, on VoiceOver or on the Mac, so this does.
+    @ViewBuilder
+    private var ownerLabel: some View {
+        if viewModel.importedTables.hasImportedClassTables {
+            Menu {
+                ClassTableSwitcherMenuItems(
+                    store: viewModel.importedTables,
+                    userName: ClassTableSwitcherEntry.userName(studentId: appState.authService.storedStudentId)
+                )
+            } label: {
+                HStack(spacing: TigerDuckTheme.Spacing.xs) {
+                    Text(creditsLabel)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .imageScale(.small)
+                }
+                .font(TigerDuckTheme.Typography.body)
+            }
+            .menuOrder(.fixed)
+            .accessibilityLabel(Text("a11y_class_table_switch"))
+            .accessibilityValue(Text(creditsLabel))
+        } else {
+            Text(creditsLabel)
+                .font(TigerDuckTheme.Typography.body)
+                .foregroundStyle(Color.textSecondary)
+        }
+    }
+
+    /// "B11315000 · 20 credits", or the nickname on someone else's: whose class table it is
+    /// leads, so a shared screen shows it.
     private var creditsLabel: String {
         let credits = String(format: String(localized: "class_table_total_credits_value"), viewModel.totalCredits.creditsText)
-        guard let studentId = appState.authService.storedStudentId, !studentId.isEmpty else { return credits }
-        return "\(studentId) · \(credits)"
+        let owner = viewModel.shownPerson?.nickname ?? appState.authService.storedStudentId
+        guard let owner, !owner.isEmpty else { return credits }
+        return "\(owner) · \(credits)"
     }
 }
 
