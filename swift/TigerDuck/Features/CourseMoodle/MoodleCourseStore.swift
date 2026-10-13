@@ -416,24 +416,36 @@ final class MoodleCourseStore {
 
     // MARK: Pictures
 
-    /// Members' own pictures this course detail has shown, by picture URL.
+    /// Decoded once per course detail, so a row that comes back shows its picture at once.
     private(set) var pictures: [URL: CGImage] = [:]
-    @ObservationIgnored private var pictureLoads: Set<URL> = []
+    @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
 
     /// A member's own picture, from the device, else from Moodle once and then kept with the
     /// account's other Moodle files. One who keeps Moodle's default picture, or whose download
     /// fails or lands after a sign-out, keeps their initial.
     func loadPicture(of member: MoodleMember) async {
-        guard let url = member.pictureURL, pictures[url] == nil, pictureLoads.insert(url).inserted else { return }
-        defer { pictureLoads.remove(url) }
+        guard let url = member.pictureURL, pictures[url] == nil else { return }
         let file = pictureFile(of: member.id, url: url)
         if let image = (try? Data(contentsOf: file)).flatMap(Self.image(from:)) {
             pictures[url] = image
             return
         }
-        guard let data = try? await api.picture(url), let image = Self.image(from: data), context.isCurrent() else { return }
+        guard let data = await downloadInTurn(url), let image = Self.image(from: data), context.isCurrent() else { return }
         savePicture(data, to: file)
         pictures[url] = image
+    }
+
+    /// One download at a time, in the order rows ask, so the pictures on screen come first. A
+    /// row that goes away before its turn downloads nothing.
+    private func downloadInTurn(_ url: URL) async -> Data? {
+        let previous = lastPictureDownload
+        let turn = Task { [api] () -> Data? in
+            _ = await previous?.value
+            guard !Task.isCancelled else { return nil }
+            return try? await api.picture(url)
+        }
+        lastPictureDownload = turn
+        return await withTaskCancellationHandler { await turn.value } onCancel: { turn.cancel() }
     }
 
     /// One file per member and picture revision, which a new upload changes.

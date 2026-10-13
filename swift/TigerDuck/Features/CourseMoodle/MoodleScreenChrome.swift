@@ -145,7 +145,6 @@ private struct MoodleArticleChrome: ViewModifier {
     }
 }
 
-/// The bar's "Open in Moodle".
 private struct MoodleOpenButton: View {
     let page: MoodlePage
 

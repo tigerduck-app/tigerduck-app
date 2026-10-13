@@ -12,8 +12,6 @@ extension MoodlePage {
     }
 }
 
-/// A section of the members screen: one kind of role, its people in the order the screen lists
-/// them.
 nonisolated struct MoodleMemberSection: Identifiable, Equatable {
     /// In the order the sections come. A role the app does not know goes after the assistants,
     /// under Moodle's name for it, ordered by Moodle's own sort order.
@@ -61,8 +59,7 @@ nonisolated struct MoodleMemberSection: Identifiable, Equatable {
 
     var id: Placement { placement }
 
-    /// `members` in their sections, keeping those whose name, student ID or department holds
-    /// `query`; every member while `query` is blank.
+    /// The search runs here, never on Moodle, over what a row shows.
     static func sections(of members: [MoodleMember], matching query: String = "") -> [MoodleMemberSection] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let shown = needle.isEmpty ? members : members.filter { $0.matches(needle) }
@@ -114,7 +111,6 @@ struct MoodleMembersView: View {
         /// Nothing fetched yet: the first fetch's spinner, or its error and a retry.
         case firstLoad(failure: (any Error)?)
         case sections([MoodleMemberSection])
-        /// A search no one matches.
         case noMatches(query: String)
 
         init(list: MoodleMemberList?, isRefreshing: Bool, failure: (any Error)?, query: String) {
@@ -228,7 +224,6 @@ struct MoodleMembersView: View {
     }
 }
 
-/// One section of the members screen: its title and head count, then one card of its people.
 private struct MoodleMemberSectionView: View {
     let store: MoodleCourseStore
     let section: MoodleMemberSection

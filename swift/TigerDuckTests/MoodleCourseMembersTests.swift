@@ -275,7 +275,8 @@ struct MoodleCourseMembersTests {
         MoodleMember(
             id: member.id, fullName: member.fullName, idNumber: member.idNumber, department: member.department,
             email: member.email, groups: member.groups, roles: member.roles,
-            pictureURL: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/88/user/icon/moove/f1?rev=\(rev)"),
+            // Each user has a context of their own, which the path names.
+            pictureURL: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/\(member.id + 1000)/user/icon/moove/f1?rev=\(rev)"),
             description: member.description, interests: member.interests, fields: member.fields
         )
     }
@@ -346,6 +347,37 @@ struct MoodleCourseMembersTests {
         await load.value
         #expect(late.pictures[url] == nil)
         #expect(pictures(folder).isEmpty)
+    }
+
+    @Test("pictures download one at a time in the order rows ask, and one whose row went away is skipped")
+    func picturesInTurn() async throws {
+        let folder = Folder()
+        let site = Site()
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: site) { await answer.sleep(for: .zero) }
+        let first = Self.withPicture(Self.me, rev: 1)
+        let gone = Self.withPicture(Self.classmate, rev: 1)
+        let last = Self.withPicture(Self.member(44, "B11399003 @ Duck Duck", idNumber: "B11399003"), rev: 1)
+
+        let loadFirst = Task { await store.loadPicture(of: first) }
+        try await answer.waitUntilArmed()
+        let loadGone = Task { await store.loadPicture(of: gone) }
+        let loadLast = Task { await store.loadPicture(of: last) }
+        for _ in 0..<5 { await Task.yield() }
+        #expect(site.pictureCalls == [first.pictureURL])
+
+        loadGone.cancel()
+        await answer.fire()
+        try await answer.waitUntilArmed(atLeast: 2)
+        await answer.fire()
+        await loadFirst.value
+        await loadGone.value
+        await loadLast.value
+
+        #expect(site.pictureCalls == [first.pictureURL, last.pictureURL])
+        #expect(store.pictures[try #require(first.pictureURL)] != nil)
+        #expect(store.pictures[try #require(gone.pictureURL)] == nil)
+        #expect(store.pictures[try #require(last.pictureURL)] != nil)
     }
 
     @Test("signing out deletes the pictures with every other Moodle file")
