@@ -75,7 +75,7 @@ final class ScheduleSyncService {
                     "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
                 )
             } catch {
-                logger.error("sync failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("sync failed: \(error.localizedDescription, privacy: .private)")
             }
         }
     }

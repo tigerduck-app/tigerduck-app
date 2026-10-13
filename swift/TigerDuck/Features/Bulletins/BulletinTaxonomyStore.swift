@@ -48,7 +48,7 @@ final class BulletinTaxonomyStore {
             let payload = try await apiClient.getTaxonomy()
             state = .loaded(payload)
         } catch {
-            logger.error("taxonomy load failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("taxonomy load failed: \(error.localizedDescription, privacy: .private)")
             state = .failed(error.localizedDescription)
         }
     }
