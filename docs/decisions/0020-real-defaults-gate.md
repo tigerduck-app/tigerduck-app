@@ -15,11 +15,12 @@ under test reads and writes directly, not through a seam:
 - `DefaultTabsPinMigration`, and `UpdateNotifyCoordinator.checkManually()`, which stamps
   `lastUpdateCheckAt` and, for an unreadable store version, `lastReportedUnparseableStoreVersion`.
 - `AppState.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories`,
-  `assignmentMarksSyncedOnce`, `lastSeenCoursesResetAt` and `accountSyncedOnce`;
-  `AppState.recordFullSync`, which writes the last two; `SyncedAccountSeedMigration`, which writes
-  `accountSyncedOnce`; `AppState.markForReenableCheck`, which reads it and writes the pending
-  categories; and `CloudSyncCoordinator`'s default holds on marks and course settings, which read
-  the pending categories and the Assignments and Courses switches.
+  `assignmentMarksSyncedOnce`, `lastSeenCoursesResetAt` and `categoriesSyncedOnce`;
+  `AppState.recordFullSync`, which reads the four category switches and writes the last two;
+  `SyncedAccountSeedMigration`, which reads the switches and writes `categoriesSyncedOnce`, or runs
+  `forgetSyncProgress()`; `AppState.markForReenableCheck`, which reads `categoriesSyncedOnce` and
+  writes the pending categories; and `CloudSyncCoordinator`'s default holds on marks and course
+  settings, which read the pending categories and the Assignments and Courses switches.
 - `SSOLoginService.storedPasswordRejected`, the latch that stops a school sign-in or a Moodle
   token harvest from posting a rejected password, and `ssoLoginTimestamp`.
 

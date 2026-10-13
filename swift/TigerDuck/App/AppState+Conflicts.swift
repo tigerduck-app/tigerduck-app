@@ -70,12 +70,13 @@ extension AppState {
     }
 
     /// Marks `category` for the re-enable check, which compares this device's copy of the account's
-    /// data with the server's. Before this device has synced the account, as after a sign-in, it has
-    /// no copy to compare, and Use Local would send its emptied caches over the server's: the
-    /// category is left to the first sync, which takes the server's data. Signed out, the check has
-    /// no session, and the mark would wait for whoever signs in next.
+    /// data with the server's. Before this device has taken the category's data, as after a sign-in
+    /// or with its switch off in every sync since, it has no copy to compare, and Use Local would
+    /// send this device's own over the server's: the category is left to the first sync that takes
+    /// it, which takes the server's data. Signed out, the check has no session, and the mark would
+    /// wait for whoever signs in next.
     static func markForReenableCheck(_ category: String, signedIn: Bool) {
-        let synced = hasSyncedAccount
+        let synced = hasSynced(category)
         guard signedIn, synced else {
             AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), signedIn=\(signedIn, privacy: .public) synced=\(synced, privacy: .public)")
             return
@@ -84,12 +85,22 @@ extension AppState {
         AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
     }
 
-    /// Whether this device holds the signed-in account's data: each full sync records it
-    /// (`recordFullSync`), as does the update for an account signed in then, and sign-out clears
-    /// it (`forgetSyncProgress`). `assignmentMarksSyncedOnce` cannot tell, as it stays false while
-    /// the Assignments switch is off.
-    static var hasSyncedAccount: Bool {
-        Defaults[.accountSyncedOnce]
+    /// Whether this device holds the signed-in account's data of `category`: each full sync records
+    /// the categories it took (`recordFullSync`), as does the update for an account signed in then,
+    /// and sign-out clears them (`forgetSyncProgress`). `assignmentMarksSyncedOnce` stays apart: the
+    /// update leaves it false, so that the first sync still uploads marks the server lacks.
+    static func hasSynced(_ category: String) -> Bool {
+        Defaults[.categoriesSyncedOnce].contains(category)
+    }
+
+    /// The re-enable check's categories whose sync switch is on.
+    static func switchedOnCategories() -> Set<String> {
+        var categories: Set<String> = []
+        if Defaults[.syncCourses] { categories.insert("courses") }
+        if Defaults[.syncCourseColors] { categories.insert("course_colors") }
+        if Defaults[.syncCourseNames] { categories.insert("course_names") }
+        if Defaults[.syncAssignments] { categories.insert("assignments") }
+        return categories
     }
 
     func checkPendingConflicts(retriesLeft: Int = 2) {

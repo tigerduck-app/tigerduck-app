@@ -218,10 +218,11 @@ nonisolated extension Defaults.Keys {
     /// Turning sync off keeps it, though that drops queued marks: turning it back on marks the
     /// category for the re-enable check, and a pull leaves marks alone until the user picks a side.
     static let assignmentMarksSyncedOnce = Key<Bool>("assignmentMarksSyncedOnce", default: false)
-    /// This device holds the signed-in account's data: a full sync has applied it here, or the
-    /// account was signed in when the device updated from a version that kept no such record.
-    /// Cleared at sign-out. See `AppState.hasSyncedAccount`.
-    static let accountSyncedOnce = Key<Bool>("accountSyncedOnce", default: false)
+    /// The re-enable check's categories whose server data this device holds for the signed-in
+    /// account: each one a full sync took, which it does only with the category's switch on, or
+    /// that was switched on when the device updated from a version that kept no such record.
+    /// Cleared at sign-out. See `AppState.hasSynced(_:)`.
+    static let categoriesSyncedOnce = Key<Set<String>>("categoriesSyncedOnce", default: [])
 
     // MARK: Academic calendar
     /// Decoded `AcademicCalendar` from the last successful fetch. Cached so

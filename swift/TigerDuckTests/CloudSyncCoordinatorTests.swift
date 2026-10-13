@@ -190,7 +190,7 @@ struct CloudSyncCoordinatorTests {
             let saved = (
                 Defaults[.syncAssignments], Defaults[.syncCourses],
                 Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce],
-                Defaults[.lastSeenCoursesResetAt], Defaults[.accountSyncedOnce]
+                Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce]
             )
             defer {
                 Defaults[.syncAssignments] = saved.0
@@ -198,7 +198,7 @@ struct CloudSyncCoordinatorTests {
                 Defaults[.pendingConflictCategories] = saved.2
                 Defaults[.assignmentMarksSyncedOnce] = saved.3
                 Defaults[.lastSeenCoursesResetAt] = saved.4
-                Defaults[.accountSyncedOnce] = saved.5
+                Defaults[.categoriesSyncedOnce] = saved.5
             }
             Defaults[.syncAssignments] = true
             Defaults[.syncCourses] = true

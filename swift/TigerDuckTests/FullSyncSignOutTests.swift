@@ -53,13 +53,13 @@ struct ReenableCheckSignOutTests {
         await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce],
-                Defaults[.lastSeenCoursesResetAt], Defaults[.accountSyncedOnce]
+                Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce]
             )
             defer {
                 Defaults[.pendingConflictCategories] = saved.0
                 Defaults[.assignmentMarksSyncedOnce] = saved.1
                 Defaults[.lastSeenCoursesResetAt] = saved.2
-                Defaults[.accountSyncedOnce] = saved.3
+                Defaults[.categoriesSyncedOnce] = saved.3
             }
             // The check compares assignments, and courses is switched back on before the sign-out.
             Defaults[.pendingConflictCategories] = ["assignments", "courses"]
@@ -75,43 +75,76 @@ struct ReenableCheckSignOutTests {
 }
 
 /// `AppState.markForReenableCheck`: which categories switched back on wait for the re-enable check.
-/// A device that has not synced the account holds none of its data, so the check has nothing to
-/// compare there, and Use Local would send the empty caches over the server's.
+/// A device that has not taken a category's data holds no copy of it, so the check has nothing to
+/// compare there, and Use Local would send this device's own over the server's.
 @MainActor
 struct ReenableMarkTests {
     private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
+    private static let switches: [(category: String, key: Defaults.Key<Bool>)] = [
+        ("courses", .syncCourses), ("course_colors", .syncCourseColors),
+        ("course_names", .syncCourseNames), ("assignments", .syncAssignments),
+    ]
 
-    /// The sync progress keys are the app's real `Defaults`, which other suites read and write
-    /// too, so these tests take the gate (docs/decisions/0020-real-defaults-gate.md).
+    private static var synced: Set<String> { categories.filter { AppState.hasSynced($0) } }
+
+    /// The sync progress keys and the sync switches are the app's real `Defaults`, which other
+    /// suites read and write too, so these tests take the gate
+    /// (docs/decisions/0020-real-defaults-gate.md). Each starts with every switch on and nothing taken.
     private static func withSyncProgress(_ body: () -> Void) async {
         await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce],
-                Defaults[.lastSeenCoursesResetAt], Defaults[.accountSyncedOnce]
+                Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce]
             )
+            let savedSwitches = switches.map { ($0.key, Defaults[$0.key]) }
             defer {
                 Defaults[.pendingConflictCategories] = saved.0
                 Defaults[.assignmentMarksSyncedOnce] = saved.1
                 Defaults[.lastSeenCoursesResetAt] = saved.2
-                Defaults[.accountSyncedOnce] = saved.3
+                Defaults[.categoriesSyncedOnce] = saved.3
+                for (key, value) in savedSwitches { Defaults[key] = value }
             }
             Defaults[.pendingConflictCategories] = []
-            Defaults[.accountSyncedOnce] = false
+            Defaults[.categoriesSyncedOnce] = []
+            for entry in switches { Defaults[entry.key] = true }
             body()
         }
     }
 
-    @Test("A full sync records that this device holds the account's data, and a sign-out forgets it")
-    func aFullSyncRecordsTheAccountAndASignOutForgetsIt() async {
+    @Test("A full sync records the categories it took, and a sign-out forgets them")
+    func aFullSyncRecordsItsCategoriesAndASignOutForgetsThem() async {
         await Self.withSyncProgress {
-            AppState.recordFullSync(coursesReset: .distantPast)
+            AppState.recordFullSync(coursesReset: .distantPast, tookMarks: true)
 
-            #expect(AppState.hasSyncedAccount)
+            #expect(Self.synced == Self.categories)
             #expect(Defaults[.lastSeenCoursesResetAt] == Date.distantPast)
 
             AppState.forgetSyncProgress()
 
-            #expect(!AppState.hasSyncedAccount)
+            #expect(Self.synced.isEmpty)
+        }
+    }
+
+    @Test("A full sync with a category's switch off takes none of its data, so switching it back on checks nothing for it",
+          arguments: ["courses", "course_colors", "course_names", "assignments"])
+    func aSyncWithASwitchOffLeavesItsCategoryUnchecked(category: String) async {
+        await Self.withSyncProgress {
+            for entry in Self.switches where entry.category == category { Defaults[entry.key] = false }
+            // As the sync passes it, which takes the marks only with their switch on.
+            AppState.recordFullSync(coursesReset: .distantPast, tookMarks: Defaults[.syncAssignments])
+
+            for name in Self.categories { AppState.markForReenableCheck(name, signedIn: true) }
+
+            #expect(Defaults[.pendingConflictCategories] == Self.categories.subtracting([category]))
+        }
+    }
+
+    @Test("A full sync that read the Assignments switch off before its fetch takes no marks, though the switch is on by its end")
+    func aSyncThatLeftTheMarksLeavesThemUnchecked() async {
+        await Self.withSyncProgress {
+            AppState.recordFullSync(coursesReset: .distantPast, tookMarks: false)
+
+            #expect(Self.synced == Self.categories.subtracting(["assignments"]))
         }
     }
 
@@ -120,7 +153,7 @@ struct ReenableMarkTests {
         await Self.withSyncProgress {
             // As a full sync of the departing account leaves them, its server holding no reset.
             Defaults[.assignmentMarksSyncedOnce] = true
-            AppState.recordFullSync(coursesReset: .distantPast)
+            AppState.recordFullSync(coursesReset: .distantPast, tookMarks: true)
 
             AppState.forgetSyncProgress()
             for category in Self.categories { AppState.markForReenableCheck(category, signedIn: true) }
@@ -135,13 +168,13 @@ struct ReenableMarkTests {
         }
     }
 
-    @Test("Turning TigerSync back on after a sync checks every category, whether or not that sync took marks",
+    @Test("Turning TigerSync back on after a sync with every switch on checks every category, whatever assignmentMarksSyncedOnce says",
           arguments: [true, false])
     func turningSyncBackOnAfterASyncChecksEveryCategory(marksSynced: Bool) async {
         await Self.withSyncProgress {
-            // Every full sync records itself; only one with the Assignments switch on sets the flag.
+            // The update records the categories of an account signed in then and leaves this flag false.
             Defaults[.assignmentMarksSyncedOnce] = marksSynced
-            AppState.recordFullSync(coursesReset: .distantPast)
+            AppState.recordFullSync(coursesReset: .distantPast, tookMarks: true)
 
             for category in Self.categories { AppState.markForReenableCheck(category, signedIn: true) }
 
@@ -154,7 +187,7 @@ struct ReenableMarkTests {
         await Self.withSyncProgress {
             // Recorded as after a sync, so the sign-in alone decides.
             Defaults[.assignmentMarksSyncedOnce] = true
-            AppState.recordFullSync(coursesReset: .distantPast)
+            AppState.recordFullSync(coursesReset: .distantPast, tookMarks: true)
 
             for category in Self.categories { AppState.markForReenableCheck(category, signedIn: false) }
 
