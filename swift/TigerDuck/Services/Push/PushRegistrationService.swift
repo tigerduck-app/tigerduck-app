@@ -528,6 +528,14 @@ actor PushRegistrationService {
         #endif
     }
 
+    /// ``registerAgain()`` on a return to the app, once the last registration gave up. A session
+    /// that comes back through a token refresh alone runs none of its other triggers, which left
+    /// the device unregistered until a relaunch (https://github.com/tigerduck-app/tigerduck-app/issues/386).
+    func registerAgainIfGaveUp() async {
+        guard deviceRegisterAttempts >= maxDeviceRegisterAttempts, lastError != nil else { return }
+        await registerAgain()
+    }
+
     /// Registers as soon as the device holds either token. The APNs token must
     /// not wait for the push-to-start one, which exists only while Live
     /// Activities are on: assignment reminders go to the APNs token, and
