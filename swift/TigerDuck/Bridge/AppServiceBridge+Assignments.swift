@@ -40,7 +40,7 @@ extension AppServiceBridge {
     static func sharedRound(
         generation: Int,
         rechecks: Bool,
-        isCurrent: @escaping @MainActor () -> Bool,
+        isCurrent: @MainActor () -> Bool,
         run: @escaping @MainActor () async -> [SDAssignment]
     ) async -> [SDAssignment] {
         // A round that finished stays in `runningRound` until its starter resumes; the
@@ -51,6 +51,8 @@ extension AppServiceBridge {
             if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
             waitedFor = round
         }
+        // One that waited past its account's sign-out would run beside the next account's round.
+        guard isCurrent() else { return DataCache.shared.loadAssignments() }
         let round = AssignmentRound(generation: generation, rechecks: rechecks)
         round.task = Task { round.assignments = await run() }
         runningRound = round
