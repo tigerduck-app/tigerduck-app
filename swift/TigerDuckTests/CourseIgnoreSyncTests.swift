@@ -174,7 +174,8 @@ struct CourseIgnoreCoordinatorTests {
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
             baseURLProvider: { [baseURL = backend.baseURL] in baseURL },
-            session: URLSession(configuration: config)
+            session: URLSession(configuration: config),
+            authHeaderProvider: { "Bearer test" }
         )
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         let directory = FileManager.default.temporaryDirectory

@@ -25,13 +25,15 @@ struct CloudSyncCoordinatorTests {
     /// `syncsAssignmentMarks` nil.
     private static func makeCoordinator(
         _ backend: Backend,
-        syncsAssignmentMarks: (@Sendable () -> Bool)? = { true }
+        syncsAssignmentMarks: (@Sendable () -> Bool)? = { true },
+        authHeader: @escaping @Sendable () async -> String? = { "Bearer test" }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
             baseURLProvider: { [baseURL = backend.baseURL] in baseURL },
-            session: URLSession(configuration: config)
+            session: URLSession(configuration: config),
+            authHeaderProvider: authHeader
         )
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         let directory = FileManager.default.temporaryDirectory
@@ -82,6 +84,18 @@ struct CloudSyncCoordinatorTests {
 
         for _ in 0...SyncOutbox.maxAttempts { await coordinator.syncTick() }
 
+        #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
+    }
+
+    @Test("A mark with no session to send it on stays queued without spending an attempt")
+    func markWithoutSessionWaits() async {
+        let backend = Backend()
+        let coordinator = Self.makeCoordinator(backend, authHeader: { nil })
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+
+        for _ in 0...SyncOutbox.maxAttempts { await coordinator.syncTick() }
+
+        #expect(backend.requests("sync/assignments/42/override").isEmpty)
         #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
     }
 
