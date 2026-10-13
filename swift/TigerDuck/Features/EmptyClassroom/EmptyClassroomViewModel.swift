@@ -44,6 +44,9 @@ final class EmptyClassroomViewModel {
     @ObservationIgnored private var courses: [SDCourse] = []
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var loadTask: Task<Void, Never>?
+    /// The day the load in flight reads, and which load it is.
+    @ObservationIgnored private var running: (day: Date, id: Int)?
+    @ObservationIgnored private var loads = 0
     private let minuteTicker: MinuteTicker
 
     init(
@@ -167,10 +170,17 @@ final class EmptyClassroomViewModel {
         load(force: false)
     }
 
+    /// The screen went away: a read it started would otherwise go on, and queue behind it the
+    /// reads of the next visits.
+    func disappear() {
+        stopLoading()
+    }
+
     /// The signed-in account changed: what the screen holds belonged to the one before.
     func accountChanged() {
-        loadTask?.cancel()
+        stopLoading()
         content = .loading
+        pickedBuilding = Defaults[.emptyClassroomBuilding]
         reloadCourses()
         load(force: false)
     }
@@ -216,9 +226,17 @@ final class EmptyClassroomViewModel {
         classes = ClassStop.stops(from: slots, rawRoom: rawRoom)
     }
 
-    private func load(force: Bool) {
+    private func stopLoading() {
         loadTask?.cancel()
+        loadTask = nil
+        running = nil
+    }
+
+    private func load(force: Bool) {
         let day = selectedDay
+        // Coming back to the screen while its day loads keeps that load.
+        if !force, running?.day == day { return }
+        stopLoading()
         if EmptyClassroomSchedule.isWeekend(day) {
             content = .noData
             return
@@ -234,6 +252,9 @@ final class EmptyClassroomViewModel {
             content = .loading
         }
         let isToday = AppConstants.taipeiCalendar.isDate(day, inSameDayAs: now)
+        loads &+= 1
+        let id = loads
+        running = (day, id)
         loadTask = Task { [weak self, service] in
             let outcome: Result<CampusUsage, any Error>
             do {
@@ -243,7 +264,9 @@ final class EmptyClassroomViewModel {
             } catch {
                 outcome = .failure(error)
             }
-            guard let self, !Task.isCancelled, selectedDay == day, reader.isCurrent() else { return }
+            guard let self else { return }
+            if running?.id == id { running = nil }
+            guard !Task.isCancelled, selectedDay == day, reader.isCurrent() else { return }
             switch outcome {
             case .success(let usage):
                 content = usage.rooms.isEmpty ? .noData : .rooms(usage)

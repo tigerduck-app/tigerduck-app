@@ -59,6 +59,7 @@ struct EmptyClassroomView: View {
             viewModel.connect(appState.authService)
             viewModel.appear()
         }
+        .onDisappear { viewModel.disappear() }
         // A sign-out moves the generation; a sign-in on this screen only stores credentials.
         .onChange(of: appState.authService.loginGeneration) { accountChanged() }
         .onChange(of: appState.authService.hasStoredCredentials) { accountChanged() }

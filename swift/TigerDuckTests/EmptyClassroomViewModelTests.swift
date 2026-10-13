@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -169,6 +170,87 @@ struct EmptyClassroomViewModelTests {
 
         #expect(harness.model.classes.map(\.room) == ["TR-214"])
         #expect(harness.model.classes.map(\.lastPeriod) == [1])
+    }
+
+    @Test("a picked building is kept for the next visit, and an account change forgets it")
+    func pickedBuilding() {
+        let saved = Defaults[.emptyClassroomBuilding]
+        defer { Defaults[.emptyClassroomBuilding] = saved }
+        Defaults[.emptyClassroomBuilding] = nil
+        let harness = Harness(at: Self.time(14, 10, 5))
+
+        harness.model.pick(building: "IB")
+        #expect(harness.model.pickedBuilding == "IB")
+        #expect(Harness(at: Self.time(14, 10, 5)).model.pickedBuilding == "IB")
+
+        // A sign-out clears the stored pick, as AppState.logoutNTUST() does, then the screen hears.
+        Defaults[.emptyClassroomBuilding] = nil
+        harness.model.accountChanged()
+        #expect(harness.model.pickedBuilding == nil)
+    }
+
+    /// Wednesday's sign-in and campus pages, and its one page of rooms held until `gate` opens.
+    private static func serveHeldWednesday(_ harness: Harness, gate: SettingsAPIStub.ReplyGate) {
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus"))
+        harness.serve(Pages.page(rows: [Pages.row("IB-508", "..............")]), gate: gate)
+    }
+
+    @Test("leaving the screen stops its read, so nothing it started lands later")
+    func leavingStopsTheRead() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        let gate = SettingsAPIStub.ReplyGate()
+        Self.serveHeldWednesday(harness, gate: gate)
+        harness.model.appear()
+        try await waitUntil { harness.requestCount == 3 }
+
+        harness.model.disappear()
+        gate.open()
+        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]))
+        let usage = try await harness.service.usage(
+            on: Self.day(14), isToday: true, force: false, credentials: Harness.credentials
+        )
+
+        #expect(usage.rooms.map(\.room) == ["TR-209"])
+        #expect(harness.model.content == .loading)
+    }
+
+    @Test("coming back while the day loads keeps that load")
+    func comingBackKeepsTheLoad() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        let gate = SettingsAPIStub.ReplyGate()
+        Self.serveHeldWednesday(harness, gate: gate)
+        harness.model.appear()
+        try await waitUntil { harness.requestCount == 3 }
+
+        harness.model.appear()
+        gate.open()
+
+        try await waitUntil { harness.model.usage != nil }
+        #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
+        #expect(harness.requestCount == 3)
+    }
+
+    @Test("a day chosen while another loads shows its own rooms, and the first day's end changes nothing")
+    func switchingDaysMidRead() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        let wednesday = SettingsAPIStub.ReplyGate()
+        let thursday = SettingsAPIStub.ReplyGate()
+        Self.serveHeldWednesday(harness, gate: wednesday)
+        harness.model.appear()
+        try await waitUntil { harness.requestCount == 3 }
+
+        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]), gate: thursday)
+        harness.model.select(day: Self.day(15))
+        // Thursday's read starts only once Wednesday's has ended, so its handling has run.
+        try await waitUntil { harness.requestCount == 4 }
+        #expect(harness.model.content == .loading)
+
+        thursday.open()
+        wednesday.open()
+        try await waitUntil { harness.model.usage != nil }
+        #expect(harness.model.usage?.rooms.map(\.room) == ["TR-209"])
+        #expect(harness.model.selectedDay == Self.day(15))
     }
 
     @Test("today and tomorrow are named before the date")

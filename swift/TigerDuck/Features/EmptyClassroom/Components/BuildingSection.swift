@@ -15,6 +15,7 @@ struct BuildingSection: View {
     let onNextPeriod: (() -> Void)?
     let onRoom: (RoomUsage) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .headline) private var roomWidth: CGFloat = 80
     @ScaledMetric(relativeTo: .largeTitle) private var glyphSize: CGFloat = 34
     @ScaledMetric(relativeTo: .body) private var nextButtonSize: CGFloat = 36
@@ -42,14 +43,24 @@ struct BuildingSection: View {
         }
     }
 
+    /// Scrolled to the building shown, which can sort past the screen's edge.
     private var chips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                ForEach(directory.buildings) { building in
-                    chip(building, isSelected: building.code == shown)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: TigerDuckTheme.Spacing.sm) {
+                    ForEach(directory.buildings) { building in
+                        chip(building, isSelected: building.code == shown)
+                            .id(building.code)
+                    }
+                }
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            }
+            .onAppear { proxy.scrollTo(shown, anchor: .center) }
+            .onChange(of: shown) { _, code in
+                withAnimation(reduceMotion ? nil : .smoothSpring) {
+                    proxy.scrollTo(code, anchor: .center)
                 }
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
     }
 
@@ -68,7 +79,7 @@ struct BuildingSection: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name(building.code))
-        .accessibilityValue("\(building.free.count)")
+        .accessibilityValue(String(format: String(localized: "a11y_empty_classroom_free_count"), building.free.count))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 

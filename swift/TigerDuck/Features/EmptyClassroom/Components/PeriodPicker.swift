@@ -112,8 +112,15 @@ struct PeriodChipRow: View {
         .presetChip(policy: policy, isSelected: isSelected)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(format: String(localized: "a11y_empty_classroom_period"), id))
-        .accessibilityValue(EmptyClassroomViewModel.timeRange(of: index))
+        .accessibilityValue(accessibilityValue(index))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// The times, and for the period the dot marks, that it is now.
+    private func accessibilityValue(_ index: Int) -> String {
+        let times = EmptyClassroomViewModel.timeRange(of: index)
+        guard index == current else { return times }
+        return "\(times), \(String(localized: "home_time_slider_now"))"
     }
 
     private func dotStyle(_ index: Int, isSelected: Bool) -> AnyShapeStyle {
