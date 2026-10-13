@@ -154,6 +154,7 @@ private final class SecureCaptureHostView: UIView {
         // UIKit lays the field out, so `layoutSubviews` parents the hosted view onto it.
         addSubview(textField)
         textField.frame = bounds
+        textField.onTextInput = { [weak self] text in self?.fillHostedTextField(with: text) }
         hostingController.view.backgroundColor = .clear
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
     }
@@ -386,6 +387,21 @@ private final class SecureCaptureHostView: UIView {
         }
         return nil
     }
+
+    /// Replaces the text of the first text field in the hosted content, as AutoFill replaces a
+    /// field's text, so that field's own change handling runs. Content without one drops it.
+    private func fillHostedTextField(with text: String) {
+        var queue: [UIView] = hostingController.view.subviews
+        while !queue.isEmpty {
+            let next = queue.removeFirst()
+            if let field = next as? UITextField, !(field is SecureCanvasHostingTextField),
+               let all = field.textRange(from: field.beginningOfDocument, to: field.endOfDocument) {
+                field.replace(all, withText: text)
+                return
+            }
+            queue.append(contentsOf: next.subviews)
+        }
+    }
 }
 
 /// `UITextField` used only for the capture-excluded canvas that `isSecureTextEntry` creates. The
@@ -393,12 +409,25 @@ private final class SecureCaptureHostView: UIView {
 /// keyboard and steal first responder from the password field being edited.
 /// `canBecomeFirstResponder` blocks the keyboard, and `hitTest` returns `nil` for hits on the
 /// field itself, so those taps reach the SwiftUI views underneath, such as a Form row's gesture.
+/// It must never hold text either: AutoFill takes it for the form's password field, as its search
+/// for the form's fields does not look inside a text field, and writes the password into it.
+/// `insertText` and `replace` hand that text to `onTextInput` instead, so the hosted field gets it.
 private final class SecureCanvasHostingTextField: UITextField {
+    var onTextInput: ((String) -> Void)?
+
     override var canBecomeFirstResponder: Bool { false }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hit = super.hitTest(point, with: event)
         return hit === self ? nil : hit
+    }
+
+    override func insertText(_ text: String) {
+        onTextInput?(text)
+    }
+
+    override func replace(_ range: UITextRange, withText text: String) {
+        onTextInput?(text)
     }
 }
 
