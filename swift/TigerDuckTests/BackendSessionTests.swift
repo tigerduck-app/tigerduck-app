@@ -96,7 +96,7 @@ struct BackendTokenRefreshTests {
         let manager = backend.manager
         await manager.setRefreshFailedHandler {
             (try? await manager.login(
-                studentId: "B11000000", password: "", moodleToken: "moodle-token",
+                studentId: "B11000000", moodleToken: "moodle-token",
                 moodlePrivateToken: nil, platform: "ios"
             )) != nil
         }
@@ -114,7 +114,7 @@ struct BackendTokenRefreshTests {
         let manager = backend.manager
         await manager.setRefreshFailedHandler {
             (try? await manager.login(
-                studentId: "B11000000", password: "", moodleToken: "moodle-token",
+                studentId: "B11000000", moodleToken: "moodle-token",
                 moodlePrivateToken: nil, platform: "ios"
             )) != nil
         }
@@ -150,7 +150,7 @@ struct BackendTokenRefreshTests {
         )
         let login = Task {
             try await manager.login(
-                studentId: "B11000000", password: "", moodleToken: "moodle-token",
+                studentId: "B11000000", moodleToken: "moodle-token",
                 moodlePrivateToken: nil, platform: "ios"
             )
         }
@@ -228,7 +228,7 @@ struct BackendTokenRefreshTests {
         let manager = backend.manager
         await manager.setRefreshFailedHandler {
             (try? await manager.login(
-                studentId: "B11000000", password: "", moodleToken: "moodle-token",
+                studentId: "B11000000", moodleToken: "moodle-token",
                 moodlePrivateToken: nil, platform: "ios"
             )) != nil
         }
@@ -348,6 +348,35 @@ struct BackendSignInTests {
             #expect(harvests.value == 1)
             #expect(sent == ["harvested"])
             #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        }
+    }
+
+    @Test("a backend sign-in sends the Moodle token and no password", arguments: SignInPath.allCases)
+    func backendSignInSendsNoPassword(path: SignInPath) async throws {
+        try await withPasswordLatchCleared {
+            let backend = BackendFixture(signedIn: path == .relogin)
+            let auth = AuthService(
+                keychainHasCredentials: { false }, notificationCenter: NotificationCenter(),
+                moodleTokens: .standIn(harvests: CallCount())
+            )
+            auth.authTokenManager = backend.manager
+            await backend.manager.setRefreshFailedHandler { await auth.reloginToBackend() }
+            if path == .relogin {
+                SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+            }
+            SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+                switch path {
+                case .relogin: _ = await backend.manager.validAccessToken()
+                case .signIn: await auth.ensureBackendSignedIn()
+                }
+            }
+
+            let bodies = try backend.sentLoginBodies()
+            #expect(bodies.count == 1)
+            #expect(bodies.allSatisfy { $0["password"] == nil })
+            #expect(bodies.allSatisfy { $0["moodle_token"] is String })
         }
     }
 
@@ -637,13 +666,17 @@ private struct BackendFixture {
         }
     }
 
-    /// The Moodle token each login request carried, in order.
-    func sentMoodleTokens() throws -> [String?] {
+    /// Each login request's body, in order.
+    func sentLoginBodies() throws -> [[String: Any]] {
         try SettingsAPIStub.requests(for: loginURL).map { request in
             let body = try #require(SettingsAPIStub.bodyData(from: request))
-            let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-            return json["moodle_token"] as? String
+            return try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         }
+    }
+
+    /// The Moodle token each login request carried, in order.
+    func sentMoodleTokens() throws -> [String?] {
+        try sentLoginBodies().map { $0["moodle_token"] as? String }
     }
 
     static func refreshReply(
