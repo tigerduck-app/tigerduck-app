@@ -40,11 +40,14 @@ struct SSOServiceLoginTests {
     }
 
     /// Runs `body` with the latch set to `rejected`, then puts the latch and the login stamp back.
+    /// Both are real `Defaults` keys, which `BackendSessionTests` reads too.
     private func withLatch<T>(_ rejected: Bool, _ body: () async -> T) async -> T {
-        let saved = (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp])
-        SSOLoginService.storedPasswordRejected = rejected
-        defer { (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp]) = saved }
-        return await body()
+        await withExclusiveRealDefaults {
+            let saved = (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp])
+            SSOLoginService.storedPasswordRejected = rejected
+            defer { (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp]) = saved }
+            return await body()
+        }
     }
 
     private func signIn(

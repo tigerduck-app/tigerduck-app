@@ -17,6 +17,8 @@ under test reads and writes directly, not through a seam:
 - `AppState.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories` and
   `assignmentMarksSyncedOnce`, and `CloudSyncCoordinator`'s default holds on marks and course
   settings, which read the pending categories and the Assignments and Courses switches.
+- `SSOLoginService.storedPasswordRejected`, the latch that stops a school sign-in or a Moodle
+  token harvest from posting a rejected password, and `ssoLoginTimestamp`.
 
 Swift Testing runs suites concurrently, and `.serialized` orders one suite's own tests and nothing
 else. The push registration tests set these keys and then await the service; a registration alone
@@ -46,4 +48,5 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   through `withExclusiveRealDefaults` and puts back what it changed. Current users:
   `BulletinPushOptOutMigrationTests`, `PushRegistrationServiceTests`,
   `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `UpdateCheckTests`,
-  `CloudSyncCoordinatorTests` and `ReenableCheckSignOutTests`.
+  `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`, `SSOServiceLoginTests` and
+  `BackendSessionTests`.

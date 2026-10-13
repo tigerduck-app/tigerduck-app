@@ -110,6 +110,7 @@ extension AppState {
         // be thrown away once it ends.
         MoodleFileDownloads.shared.cancelAll()
         DataCache.shared.clearUserScopedData()
+        ImportedClassTableStore.shared.removeAll()
         BulletinsViewModel.forgetListSession()
         // Unresolved conflicts come from the departing account's data; resolving one would write
         // its server marks into the next account's caches, or upload its own to that account.

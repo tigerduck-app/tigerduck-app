@@ -109,6 +109,7 @@ struct ChangeFeedClientTests {
             return PushAPIClient(
                 baseURLProvider: { [baseURL] in baseURL },
                 session: URLSession(configuration: config),
+                authHeaderProvider: { "Bearer test" },
                 versionGate: gate
             )
         }

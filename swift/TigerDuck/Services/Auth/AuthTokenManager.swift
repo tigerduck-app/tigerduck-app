@@ -32,9 +32,16 @@ actor AuthTokenManager {
     /// Starts what keeps the app running until a refresh is done, and returns what ends it.
     private let beginBackgroundTask: @Sendable () async -> @Sendable () async -> Void
     private var onRefreshFailed: (() async -> Bool)?
+    /// Signs in when ``validAccessToken()`` finds no session, so a protected request tries for
+    /// one instead of going out without a token.
+    private var onNoSession: (() async -> Void)?
 
     func setRefreshFailedHandler(_ handler: @escaping () async -> Bool) {
         onRefreshFailed = handler
+    }
+
+    func setNoSessionHandler(_ handler: @escaping () async -> Void) {
+        onNoSession = handler
     }
 
     static let accessTokenKey = "v3_access_token"
@@ -80,9 +87,10 @@ actor AuthTokenManager {
 
     var isLoggedIn: Bool { refreshToken != nil }
 
-    /// Returns a valid access token, refreshing if needed. Nil if not logged in.
-    /// Concurrent callers coalesce onto a single refresh request.
+    /// Returns a valid access token, refreshing if needed, or signing in first when there is no
+    /// session. Nil if that fails. Concurrent callers coalesce onto a single refresh request.
     func validAccessToken() async -> String? {
+        if refreshToken == nil, let onNoSession { await onNoSession() }
         guard refreshToken != nil else { return nil }
         if let token = accessToken, Date.now < expiresAt.addingTimeInterval(-30) {
             return token
