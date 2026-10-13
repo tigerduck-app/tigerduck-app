@@ -131,10 +131,14 @@ extension View {
         ))
     }
 
-    /// The bar of a pushed Moodle article: the back button over the content, and "Open in
-    /// Moodle" for `page`.
-    func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
-        modifier(MoodleArticleChrome(page: page))
+    /// The bar of a pushed Moodle article: the back button over the content, "Open in Moodle" for
+    /// `page`, and the status dot for an article that fetches its own data.
+    func moodleArticleChrome(
+        page: MoodlePage? = nil,
+        status: ServerStatus? = nil,
+        isLoading: Bool = false
+    ) -> some View {
+        modifier(MoodleArticleChrome(page: page, status: status, isLoading: isLoading))
     }
 
     /// ⌘R on the Mac for a pushed screen that fetches its own data; the class table hands the
@@ -198,6 +202,8 @@ private struct MoodleListChrome: ViewModifier {
 
 private struct MoodleArticleChrome: ViewModifier {
     let page: MoodlePage?
+    let status: ServerStatus?
+    let isLoading: Bool
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -206,6 +212,14 @@ private struct MoodleArticleChrome: ViewModifier {
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                if let status {
+                    if #available(iOS 26, *) {
+                        ToolbarItem(placement: .topBarTrailing) { MoodleStatusDot(status: status, isLoading: isLoading) }
+                            .sharedBackgroundVisibility(.hidden)
+                    } else {
+                        ToolbarItem(placement: .topBarTrailing) { MoodleStatusDot(status: status, isLoading: isLoading) }
+                    }
+                }
                 if let page {
                     ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page) }
                 }
@@ -215,6 +229,7 @@ private struct MoodleArticleChrome: ViewModifier {
             .navigationBarBackButtonHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) {
                 MacMoodleTitleBar(title: nil) {
+                    if let status { MoodleStatusDot(status: status, isLoading: isLoading) }
                     if let page { MoodleOpenButton(page: page) }
                 }
             }
