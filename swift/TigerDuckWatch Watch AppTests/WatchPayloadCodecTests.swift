@@ -80,6 +80,15 @@ final class WatchPayloadCodecTests: XCTestCase {
         XCTAssertEqual(decoded.visualPreset, .default)
     }
 
+    /// A newer phone can send a preset this Watch build does not know.
+    func test_decode_unknownVisualPreset_defaultsToTigerDuck() throws {
+        var dict = try WatchPayloadCodec.encode(sampleSnapshot())
+        dict[WatchWireFormat.Key.visualPreset] = "someFuturePreset"
+        let decoded = try WatchPayloadCodec.decode(dict)
+        XCTAssertEqual(decoded.visualPreset, .default)
+        XCTAssertEqual(decoded.courses, sampleSnapshot().courses)
+    }
+
     func test_jsonDecode_legacyDiskCacheWithoutVisualPreset_succeeds() throws {
         // `ScheduleStore.loadFromDisk()` decodes with `JSONDecoder`, not `WatchPayloadCodec`,
         // and synthesised `Codable` ignores the init's defaults. A cache from before `visualPreset`
