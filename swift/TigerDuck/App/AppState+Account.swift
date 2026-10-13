@@ -114,7 +114,7 @@ extension AppState {
         pendingSyncServerArchived = []
         pendingSyncServerCompleted = []
         reenableConflict = nil
-        Defaults[.assignmentMarksSyncedOnce] = false
+        Self.forgetSyncProgress()
         pushCoordinator.forgetUploads()
         // Holiday choices are account-scoped but live in UserDefaults, out of reach of
         // `clearUserScopedData`. Cancel the queue first, or a link still waiting to run
@@ -140,6 +140,16 @@ extension AppState {
             await liveActivityCoordinator.endAll()
             #endif
         }
+    }
+
+    /// Forgets how far the departing account's sync got on this device, which lives in `Defaults`,
+    /// out of reach of `clearUserScopedData`. A re-enable check left pending would keep the next
+    /// account's pulls off the categories it names and hold the account's marks and course settings
+    /// until a Settings visit ran it, on a device the sign-out emptied: Keep Local there clears the
+    /// account's marks on the server.
+    static func forgetSyncProgress() {
+        Defaults[.pendingConflictCategories] = []
+        Defaults[.assignmentMarksSyncedOnce] = false
     }
 
     func notifyLibraryStateChanged() {

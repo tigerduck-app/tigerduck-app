@@ -44,6 +44,10 @@ point; `PasswordField`, `LibraryQRCodeView`, `MacLoginView` and the Watch `Libra
   Form rows do not flash tall and a QR code under `.aspectRatio(1, .fit)` keeps its size.
 - If UIKit drops "Canvas" from its private class name, release builds silently lose iOS
   protection; the DEBUG assertion is the only signal.
+- AutoFill takes the secure decoy field for the password field next to an account field and
+  never sees the hosted one, because UIKit does not look for a form's fields inside a text field.
+  The decoy hands what AutoFill writes into it to the first text field in the hosted content
+  (https://github.com/tigerduck-app/tigerduck-app/issues/379).
 - The Mac protection is best effort: Apple documents `NSWindow.SharingType.none` as a legacy
   value that keeps content out of only some sharing situations and says not to use it to hide
   content from capture
