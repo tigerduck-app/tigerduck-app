@@ -80,6 +80,17 @@ final class AuthService {
         ) { [weak self] _ in
             Task { @MainActor in await self?.signInAfterUnlock() }
         })
+        let returnToApp = UIApplication.didBecomeActiveNotification
+        #elseif os(macOS)
+        let returnToApp = NSApplication.didBecomeActiveNotification
+        #endif
+        #if os(iOS) || os(macOS)
+        // A sign-in that failed for another reason gets another try on each return to the app.
+        credentialObservers.append(center.addObserver(
+            forName: returnToApp, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.ensureBackendSignedIn() }
+        })
         #endif
     }
 
@@ -154,6 +165,21 @@ final class AuthService {
     var authTokenManager: AuthTokenManager?
     var onV3SignedIn: (() -> Void)?
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
+    /// When an automatic backend sign-in that had credentials to send last failed. The backend
+    /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
+    /// tigerduck-app/tigerduck-backend `server/config.py`), and a campus network puts many
+    /// students behind one IP, so the next automatic one waits ``backendSignInPause``.
+    @ObservationIgnored private var backendSignInFailedAt: Date?
+
+    nonisolated static let backendSignInPause: TimeInterval = 5 * 60
+
+    /// Whether an automatic backend sign-in may go. Measured from the failure, so a clock set
+    /// back does not stretch the pause.
+    nonisolated static func backendSignInIsDue(lastFailure: Date?, now: Date) -> Bool {
+        guard let lastFailure else { return true }
+        let age = now.timeIntervalSince(lastFailure)
+        return age >= backendSignInPause || age < 0
+    }
 
     var storedStudentId: String? {
         _ = _revision
@@ -248,6 +274,7 @@ final class AuthService {
             )
             // Signed out while the request was out: the session is the departing account's.
             guard loginGeneration == generation else { return false }
+            backendSignInFailedAt = nil
             onV3SignedIn?()
             return true
         } catch {
@@ -260,10 +287,13 @@ final class AuthService {
     /// Signs in to the backend again after it turned the session down, from a refresh or a
     /// request answered 401. It sends the Moodle token and no password.
     func reloginToBackend() async -> Bool {
-        guard let authTokenManager, let studentId = storedStudentId else { return false }
+        guard let authTokenManager,
+              Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
+              let studentId = storedStudentId else { return false }
         let generation = loginGeneration
         guard let moodleToken = await moodleTokenForBackend(), loginGeneration == generation else {
             AppLogger.sync.info("auto-relogin skipped: no Moodle token")
+            noteFailedBackendSignIn(since: generation)
             return false
         }
         let moodlePrivateToken = KeychainManager.loadString(
@@ -279,11 +309,20 @@ final class AuthService {
                 platform: platform
             )
             AppLogger.sync.info("auto-relogin: v3 JWT refreshed")
+            backendSignInFailedAt = nil
             return true
         } catch {
             AppLogger.sync.error("auto-relogin failed: \(error, privacy: .public)")
+            noteFailedBackendSignIn(since: generation)
             return false
         }
+    }
+
+    /// Starts the pause after an automatic sign-in failed, unless the account signed out
+    /// meanwhile: then the failure was the departing account's.
+    private func noteFailedBackendSignIn(since generation: Int) {
+        guard loginGeneration == generation else { return }
+        backendSignInFailedAt = Date()
     }
 
     /// The stored Moodle token, or one harvested with the stored credentials when none is
@@ -370,7 +409,8 @@ final class AuthService {
 
     /// Signs in to the TigerDuck backend when its session is gone. It sends the stored
     /// credentials and Moodle token, and reaches the school's servers only to harvest a token
-    /// when none is stored. A call while one runs waits for it instead of signing in again.
+    /// when none is stored. A call while one runs waits for it instead of signing in again, and
+    /// for ``backendSignInPause`` after one that failed, calls do nothing.
     func ensureBackendSignedIn() async {
         if let backendSignIn { return await backendSignIn.value }
         let task = Task { await signInToBackendIfSignedOut() }
@@ -386,13 +426,20 @@ final class AuthService {
             await running.value
             if backendSignIn == running { backendSignIn = nil }
         }
+        // A sign-in that failed around the lock may have lost the keychain or the network to it,
+        // so the unlock does not wait out its pause.
+        backendSignInFailedAt = nil
         await ensureBackendSignedIn()
     }
 
     private func signInToBackendIfSignedOut() async {
         guard let atm = authTokenManager, !(await atm.isLoggedIn),
+              Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
               let studentId = storedStudentId, let password = storedPassword else { return }
-        await performV3Login(studentId: studentId, password: password, harvesting: true)
+        let generation = loginGeneration
+        if await !performV3Login(studentId: studentId, password: password, harvesting: true) {
+            noteFailedBackendSignIn(since: generation)
+        }
     }
 
     /// Best-effort: the library account signs in with the same NTUST credentials.
@@ -422,6 +469,7 @@ final class AuthService {
         loginGeneration &+= 1
         backendSignIn?.cancel()
         backendSignIn = nil
+        backendSignInFailedAt = nil
         markCredentialsChanged()
     }
 

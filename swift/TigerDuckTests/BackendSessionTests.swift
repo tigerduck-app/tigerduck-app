@@ -370,6 +370,56 @@ struct BackendSignInTests {
         #expect(harvests.value == 0)
         #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
     }
+
+    @Test("a return to the app after a relogin that failed signs in again")
+    func returnToTheAppSignsInAgain() async throws {
+        let backend = BackendFixture()
+        let center = NotificationCenter()
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: center)
+        auth.authTokenManager = backend.manager
+        await backend.manager.setRefreshFailedHandler { await auth.reloginToBackend() }
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let keychain = MemoryKeychain.locked()
+
+        try await SecureStore.$sharedForTesting.withValue(keychain) {
+            #expect(await backend.manager.validAccessToken() == nil)
+            try #require(await !backend.manager.isLoggedIn)
+
+            keychain.unlock()
+            center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+            try await waitUntil { backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9" }
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        withExtendedLifetime(auth) {}
+    }
+
+    @Test("an automatic sign-in waits five minutes after one that failed")
+    func failedSignInPauses() {
+        let failed = Date()
+        #expect(AuthService.backendSignInIsDue(lastFailure: nil, now: failed))
+        #expect(!AuthService.backendSignInIsDue(lastFailure: failed, now: failed.addingTimeInterval(299)))
+        #expect(AuthService.backendSignInIsDue(lastFailure: failed, now: failed.addingTimeInterval(300)))
+        #expect(AuthService.backendSignInIsDue(lastFailure: failed, now: failed.addingTimeInterval(-1)))
+    }
+
+    @Test("after a sign-in that failed, the next one sends nothing")
+    func failedSignInHoldsOffTheNext() async throws {
+        let backend = BackendFixture(signedIn: false)
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = backend.manager
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data()), for: backend.loginURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            await auth.ensureBackendSignedIn()
+            await auth.ensureBackendSignedIn()
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        #expect(await !backend.manager.isLoggedIn)
+    }
 }
 
 /// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next
