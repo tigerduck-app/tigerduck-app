@@ -64,7 +64,7 @@ struct CourseDetailSheet: View {
             // The course summary's links open as a pushed Moodle screen's do.
             .moodleLinkOpening()
             #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
+            .courseDetailRootBar()
             #endif
             .navigationDestination(for: MoodleCourseRoute.self) { route in
                 if let moodle {
@@ -478,3 +478,22 @@ private struct InfoRow: View {
         .contentShape(Rectangle())
     }
 }
+
+#if os(iOS)
+extension View {
+    /// The course detail's own bar. On iOS 26 it is an empty, clear bar with the page drawn under
+    /// it as if it were hidden: a bar that a push turns on sits at the sheet's top edge until the
+    /// push ends, then drops below the grabber, so every pushed Moodle screen jumped.
+    @ViewBuilder
+    func courseDetailRootBar() -> some View {
+        if #available(iOS 26, *) {
+            scrollEdgeEffectHidden(true, for: .top)
+                .ignoresSafeArea(.container, edges: .top)
+                .toolbar(.visible, for: .navigationBar)
+                .toolbarBackground(.hidden, for: .navigationBar)
+        } else {
+            toolbar(.hidden, for: .navigationBar)
+        }
+    }
+}
+#endif
