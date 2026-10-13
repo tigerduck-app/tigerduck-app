@@ -74,13 +74,14 @@ struct ReenableCheckSignOutTests {
 }
 
 /// `AppState.markForReenableCheck`: which categories switched back on wait for the re-enable check.
-/// After a sign-out the device holds none of the next account's data, and Use Local on that check
-/// sent the emptied caches over the server's, clearing the account's marks.
+/// A device that has not synced the account holds none of its data, so the check has nothing to
+/// compare there, and Use Local would send the empty caches over the server's.
 @MainActor
 struct ReenableMarkTests {
     private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
 
-    /// Runs `body` on the real sync progress keys, with nothing pending, and puts them back.
+    /// The sync progress keys are the app's real `Defaults`, which other suites read and write
+    /// too, so these tests take the gate (docs/decisions/0020-real-defaults-gate.md).
     private static func withSyncProgress(_ body: () -> Void) async {
         await withExclusiveRealDefaults {
             let saved = (

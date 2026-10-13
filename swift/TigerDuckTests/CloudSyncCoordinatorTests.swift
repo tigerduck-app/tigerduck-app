@@ -269,7 +269,7 @@ struct CloudSyncCoordinatorTests {
         #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00"}"#
 }
 
-/// Stands in for `AppState.reenableConflict`, which the alert's binding reads and clears.
+/// The test host builds no `AppState`, so this holds the conflict the alert's binding shows.
 @MainActor
 private final class ShownReenableConflict {
     var conflict: AppState.ReenableConflict?
