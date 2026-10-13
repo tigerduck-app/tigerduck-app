@@ -411,6 +411,34 @@ struct MoodleMaterialsTests {
         #expect(store.downloadState(of: old, in: .module(9101)) == .notDownloaded)
     }
 
+    @Test("a stopped download's late progress does not show on the download that replaced it")
+    func lateProgressOfAStoppedDownload() async throws {
+        let folder = Folder()
+        let gate = ManualSleeper()
+        let reports = OSAllocatedUnfairLock<[@Sendable (Double) -> Void]>(initialState: [])
+        let store = Self.store(folder, site: Site(), beforeDownload: { _, progress in
+            reports.withLock { $0.append(progress) }
+            await gate.sleep(for: .zero)
+        })
+        let newer = Self.file("syllabus.pdf", modified: 60)
+
+        let stale = Task { await store.download(Self.syllabusRef.file, in: .module(9101)) }
+        try await gate.waitUntilArmed()
+        let fresh = Task { await store.download(newer, in: .module(9101)) }
+        try await gate.waitUntilArmed(atLeast: 2)
+        reports.withLock { $0[1] }(0.2)
+        try await waitUntil { store.downloadState(of: newer, in: .module(9101)) == .downloading(progress: 0.2) }
+
+        reports.withLock { $0[0] }(0.9)
+        // The report hops to the main actor, so a hop queued after it runs once it has.
+        await Task { @MainActor in }.value
+        #expect(store.downloadState(of: newer, in: .module(9101)) == .downloading(progress: 0.2))
+
+        await gate.fire()
+        #expect(await stale.value == nil)
+        #expect(await fresh.value != nil)
+    }
+
     @Test("files of one name in different folders, posts or accounts are kept apart")
     func locations() {
         let folder = Folder()

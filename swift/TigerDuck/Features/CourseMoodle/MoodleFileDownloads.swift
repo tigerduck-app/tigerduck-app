@@ -39,9 +39,11 @@ final class MoodleFileDownloads {
     private var revision = 0
     @ObservationIgnored private var running: [URL: Running] = [:]
 
-    /// A download with the version it is for, which a request for another version stops.
+    /// A download with the version it is for, which a request for another version stops. The
+    /// attempt tells its progress apart from a stopped download's still on its way.
     private struct Running {
         let version: Date?
+        let attempt: UUID
         let task: Task<URL?, Never>
     }
 
@@ -84,8 +86,9 @@ final class MoodleFileDownloads {
         }
         failures[location] = nil
         progress[location] = 0
-        let task = Task { await self.transfer(file, to: location, fetch: fetch, isCurrent: isCurrent) }
-        running[location] = Running(version: file.modified, task: task)
+        let attempt = UUID()
+        let task = Task { await self.transfer(file, to: location, attempt: attempt, fetch: fetch, isCurrent: isCurrent) }
+        running[location] = Running(version: file.modified, attempt: attempt, task: task)
         let copy = await task.value
         if running[location]?.task == task {
             running[location] = nil
@@ -159,10 +162,16 @@ final class MoodleFileDownloads {
         return total
     }
 
-    private func transfer(_ file: MoodleFile, to location: URL, fetch: Fetch, isCurrent: () -> Bool) async -> URL? {
+    private func transfer(
+        _ file: MoodleFile,
+        to location: URL,
+        attempt: UUID,
+        fetch: Fetch,
+        isCurrent: () -> Bool
+    ) async -> URL? {
         do {
             let temporary = try await fetch(file) { share in
-                Task { @MainActor in self.report(share, for: location) }
+                Task { @MainActor in self.report(share, for: location, attempt: attempt) }
             }
             defer { try? FileManager.default.removeItem(at: temporary) }
             guard !Task.isCancelled, isCurrent() else { return nil }
@@ -179,8 +188,8 @@ final class MoodleFileDownloads {
     }
 
     /// Whole percents, so a large file redraws its row a hundred times at most.
-    private func report(_ share: Double, for location: URL) {
-        guard running[location] != nil else { return }
+    private func report(_ share: Double, for location: URL, attempt: UUID) {
+        guard running[location]?.attempt == attempt else { return }
         let percent = (min(max(share, 0), 1) * 100).rounded(.down) / 100
         if progress[location] != percent { progress[location] = percent }
     }
