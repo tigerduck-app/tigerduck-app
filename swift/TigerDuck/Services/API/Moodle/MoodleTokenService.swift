@@ -25,6 +25,7 @@ actor MoodleTokenService {
     private let storedCredentials: @Sendable () -> (studentId: String, password: String)?
     private let tokens: TokenStore
     private let harvest: @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
+    private let now: @Sendable () -> Date
 
     struct TokenStore: Sendable {
         let load: @Sendable () -> String?
@@ -70,6 +71,11 @@ actor MoodleTokenService {
     /// Moved by ``signOut()``: a harvest that started before a sign-out stores nothing, or
     /// the departing account's token would be back in the keychain for the next one.
     private var signInGeneration = 0
+    /// The last renewal's failure, other than a refused password, which latches instead. Each
+    /// Moodle screen that appears without a token asks for one, so for ``harvestPause`` they get
+    /// this error back and the password is not sent again.
+    private var lastHarvestFailure: (at: Date, error: any Error)?
+    nonisolated static let harvestPause: TimeInterval = 5 * 60
 
     // MARK: - Compiled regexes (compile once, reuse across login attempts)
 
@@ -104,11 +110,13 @@ actor MoodleTokenService {
     init(
         storedCredentials: @escaping @Sendable () -> (studentId: String, password: String)?,
         tokens: TokenStore,
-        harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
+        harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.storedCredentials = storedCredentials
         self.tokens = tokens
         self.harvest = harvest
+        self.now = now
     }
 
     // MARK: - Public API
@@ -134,6 +142,7 @@ actor MoodleTokenService {
             let triple = try await harvest(normalizedId, password)
             guard signInGeneration == generation else { throw CancellationError() }
             tokens.save(triple)
+            lastHarvestFailure = nil
             return triple.wstoken
         }
         inFlightTokenTask = (key, task)
@@ -159,6 +168,11 @@ actor MoodleTokenService {
         guard !SSOLoginService.storedPasswordRejected else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
         }
+        // Measured from the failure, so a clock set back does not stretch the pause.
+        if let failure = lastHarvestFailure,
+           case let age = now().timeIntervalSince(failure.at), age >= 0, age < Self.harvestPause {
+            throw failure.error
+        }
         let generation = signInGeneration
         let task = Task<String, Error> {
             guard let creds = storedCredentials() else {
@@ -170,16 +184,20 @@ actor MoodleTokenService {
             let triple: TokenTriple
             do {
                 triple = try await harvest(normalizedId, creds.password)
-            } catch let error as MoodleWebserviceError {
-                // A sign-in with a new password can finish while this harvest runs on the old one.
-                if case .ssoLoginRejected = error, signInGeneration == generation,
-                   storedCredentials()?.password == creds.password {
-                    SSOLoginService.storedPasswordRejected = true
+            } catch {
+                if case MoodleWebserviceError.ssoLoginRejected = error {
+                    // A sign-in with a new password can finish while this harvest runs on the old one.
+                    if signInGeneration == generation, storedCredentials()?.password == creds.password {
+                        SSOLoginService.storedPasswordRejected = true
+                    }
+                } else if signInGeneration == generation {
+                    lastHarvestFailure = (now(), error)
                 }
                 throw error
             }
             guard signInGeneration == generation else { throw CancellationError() }
             tokens.save(triple)
+            lastHarvestFailure = nil
             return triple.wstoken
         }
         inFlightRefreshTask = task
@@ -192,6 +210,7 @@ actor MoodleTokenService {
     /// Called on logout. A harvest in flight is cancelled and stores nothing.
     func signOut() async {
         signInGeneration += 1
+        lastHarvestFailure = nil
         inFlightTokenTask?.task.cancel()
         inFlightTokenTask = nil
         inFlightRefreshTask?.cancel()
