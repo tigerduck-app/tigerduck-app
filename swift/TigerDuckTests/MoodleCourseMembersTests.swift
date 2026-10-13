@@ -76,7 +76,7 @@ struct MoodleCourseMembersTests {
                 functions: { self.lock.withLock { self._functions } },
                 forums: { _ in [] },
                 discussions: { _, _ in [] },
-                markViewed: { _ in },
+                markViewed: { _, _ in },
                 members: { courseId in
                     self.lock.withLock { self._calls.append(courseId) }
                     try await before()

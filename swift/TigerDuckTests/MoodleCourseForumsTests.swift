@@ -109,7 +109,7 @@ struct MoodleCourseForumsTests {
                     try self.record("posts \(discussionId)", kind: "posts")
                     return self.lock.withLock { self._posts[discussionId] ?? [] }
                 },
-                markViewed: { discussionId in try self.record("viewed \(discussionId)", kind: "viewed") }
+                markViewed: { discussionId, _ in try self.record("viewed \(discussionId)", kind: "viewed") }
             )
         }
     }
@@ -132,6 +132,7 @@ struct MoodleCourseForumsTests {
         site: Site,
         account: String = "B11399001",
         signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
+        api: MoodleCourseAPI? = nil,
         now: @escaping () -> Date = { Date() }
     ) -> MoodleCourseStore {
         MoodleCourseStore(
@@ -140,7 +141,7 @@ struct MoodleCourseForumsTests {
             context: MoodleCacheContext(
                 account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
             ),
-            api: site.api
+            api: api ?? site.api
         )
     }
 
@@ -484,6 +485,84 @@ struct MoodleCourseForumsTests {
     }
 
     // MARK: - Opening
+
+    enum Invalidation: CaseIterable {
+        case signOut, cancel
+    }
+
+    @Test("an opening invalidated while fetching posts gives no cached unread snapshot", arguments: Invalidation.allCases)
+    func invalidatedPosts(invalidation: Invalidation) async throws {
+        let folder = Folder()
+        let site = Site()
+        let discussion = Self.discussion(801, replies: 1)
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801, unread: true)])
+        await Self.store(folder, site: site, now: { fetched }).refreshThread(of: discussion)
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let clock = OSAllocatedUnfairLock(initialState: fetched)
+        let gate = ManualSleeper()
+        var api = site.api
+        api.posts = { _ in
+            await gate.sleep(for: .seconds(1))
+            return [Self.post(1801), Self.post(1802, parent: 1801, unread: true)]
+        }
+        let store = Self.store(folder, site: site, signedIn: signedIn, api: api, now: { clock.withLock { $0 } })
+        #expect(store.thread(of: discussion).status == .ok)
+        clock.withLock { $0 += MoodleRefreshInterval.forums }
+        let opening = Task { await store.openThread(of: discussion, in: Self.qanda) }
+        try await gate.waitUntilArmed()
+        switch invalidation {
+        case .signOut: signedIn.withLock { $0 = false }
+        case .cancel: opening.cancel()
+        }
+        await gate.fire()
+
+        #expect(await opening.value == nil)
+    }
+
+    @Test("a view event invalidated while checking functions is not sent", arguments: Invalidation.allCases)
+    func invalidatedViewFunctions(invalidation: Invalidation) async throws {
+        let folder = Folder()
+        let site = Site()
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let gate = ManualSleeper()
+        var api = site.api
+        api.functions = {
+            await gate.sleep(for: .seconds(1))
+            return Self.allFunctions
+        }
+        let store = Self.store(folder, site: site, signedIn: signedIn, api: api)
+        let event = store.open(Self.discussion(801), in: nil)
+        try await gate.waitUntilArmed()
+        switch invalidation {
+        case .signOut: signedIn.withLock { $0 = false }
+        case .cancel: event.cancel()
+        }
+        await gate.fire()
+        await event.value
+
+        #expect(!site.calls.contains { $0.hasPrefix("viewed") })
+    }
+
+    @Test("an old store does not check functions or send a discussion view event")
+    func invalidatedViewBeforeStarting() async {
+        let folder = Folder()
+        let site = Site()
+        let functions = OSAllocatedUnfairLock(initialState: 0)
+        var api = site.api
+        api.functions = {
+            functions.withLock { $0 += 1 }
+            return Self.allFunctions
+        }
+        let store = Self.store(
+            folder, site: site, signedIn: OSAllocatedUnfairLock(initialState: false), api: api
+        )
+
+        await store.open(Self.discussion(801), in: nil).value
+
+        #expect(functions.withLock { $0 } == 0)
+        #expect(!site.calls.contains { $0.hasPrefix("viewed") })
+    }
 
     @Test("opening a discussion fetches its posts first, then reads it here and tells Moodle once")
     func openThread() async throws {

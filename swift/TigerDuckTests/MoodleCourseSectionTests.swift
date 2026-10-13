@@ -40,7 +40,7 @@ struct MoodleCourseSectionTests {
                 },
                 forums: { _ in forums },
                 discussions: { _, _ in [] },
-                markViewed: { _ in },
+                markViewed: { _, _ in },
                 summary: { _ in summary }
             )
         )

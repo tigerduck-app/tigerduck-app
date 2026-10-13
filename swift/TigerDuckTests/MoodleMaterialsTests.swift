@@ -69,7 +69,7 @@ struct MoodleMaterialsTests {
                 functions: { self.lock.withLock { self._functions } },
                 forums: { _ in [] },
                 discussions: { _, _ in [] },
-                markViewed: { _ in },
+                markViewed: { _, _ in },
                 materials: { courseId in
                     await beforeMaterials()
                     return try self.lock.withLock {

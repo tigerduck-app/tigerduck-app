@@ -91,7 +91,7 @@ struct MoodleCourseStoreTests {
                     try await beforePage(page, earlier)
                     return self.lock.withLock { page < self._pages.count ? self._pages[page] : [] }
                 },
-                markViewed: { id in self.lock.withLock { self._viewed.append(id) } },
+                markViewed: { id, _ in self.lock.withLock { self._viewed.append(id) } },
                 gradeItems: { courseId in
                     self.lock.withLock { self._gradeCalls.append(courseId) }
                     try await beforeGrades()

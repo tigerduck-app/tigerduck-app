@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -234,6 +235,79 @@ struct MoodleForumServiceTests {
 
         try await MoodleForumService.markViewed(discussionId: 801, token: token, session: Self.session(), siteURL: Self.site)
 
+        #expect(try Self.body(of: MoodleForumService.viewDiscussionFunction, token: token) == "discussionid=801")
+    }
+
+    enum TokenWait: CaseIterable {
+        case stored, renewed
+    }
+
+    @Test("a view event waits for a token under its original account", arguments: TokenWait.allCases)
+    func invalidatedViewToken(wait: TokenWait) async throws {
+        let old = UUID().uuidString
+        let replacement = UUID().uuidString
+        let current = OSAllocatedUnfairLock(initialState: true)
+        let gate = ManualSleeper()
+        Self.answer(#"{"errorcode":"invalidtoken","exception":"moodle_exception","message":"Expired"}"#,
+                    function: MoodleForumService.viewDiscussionFunction, token: old)
+        Self.answer(#"{"status":true,"warnings":[]}"#,
+                    function: MoodleForumService.viewDiscussionFunction, token: replacement)
+        let tokens = MoodleWebserviceClient.TokenSource(
+            stored: {
+                if wait == .stored { await gate.sleep(for: .seconds(1)) }
+                return wait == .stored ? replacement : old
+            },
+            renew: { _ in
+                await gate.sleep(for: .seconds(1))
+                return replacement
+            }
+        )
+        let event = Task {
+            try await MoodleCourseAPI.markDiscussionViewed(
+                801, isCurrent: { current.withLock { $0 } }, tokens: tokens, session: Self.session(), siteURL: Self.site
+            )
+        }
+        try await gate.waitUntilArmed()
+        current.withLock { $0 = false }
+        await gate.fire()
+
+        await #expect(throws: CancellationError.self) { try await event.value }
+        #expect(SettingsAPIStub.requests(for: Self.endpoint(MoodleForumService.viewDiscussionFunction, token: replacement)).isEmpty)
+        #expect(SettingsAPIStub.requests(for: Self.endpoint(MoodleForumService.viewDiscussionFunction, token: old)).count
+            == (wait == .stored ? 0 : 1))
+    }
+
+    @Test("the view event checks account validity again before an access-error retry")
+    func invalidatedViewRetry() async throws {
+        let token = UUID().uuidString
+        let endpoint = Self.endpoint(MoodleForumService.viewDiscussionFunction, token: token)
+        Self.answer(#"{"errorcode":"accessexception","exception":"moodle_exception","message":"Access denied"}"#,
+                    function: MoodleForumService.viewDiscussionFunction, token: token)
+        Self.answer(#"{"status":true,"warnings":[]}"#,
+                    function: MoodleForumService.viewDiscussionFunction, token: token)
+        let tokens = MoodleWebserviceClient.TokenSource(stored: { token }, renew: { _ in token })
+
+        await #expect(throws: CancellationError.self) {
+            try await MoodleCourseAPI.markDiscussionViewed(
+                801, isCurrent: { SettingsAPIStub.requests(for: endpoint).isEmpty },
+                tokens: tokens, session: Self.session(), siteURL: Self.site
+            )
+        }
+        #expect(SettingsAPIStub.requests(for: endpoint).count == 1)
+    }
+
+    @Test("a current view event sends one request through the same token helper")
+    func currentViewToken() async throws {
+        let token = UUID().uuidString
+        Self.answer(#"{"status":true,"warnings":[]}"#,
+                    function: MoodleForumService.viewDiscussionFunction, token: token)
+        let tokens = MoodleWebserviceClient.TokenSource(stored: { token }, renew: { _ in token })
+
+        try await MoodleCourseAPI.markDiscussionViewed(
+            801, isCurrent: { true }, tokens: tokens, session: Self.session(), siteURL: Self.site
+        )
+
+        #expect(SettingsAPIStub.requests(for: Self.endpoint(MoodleForumService.viewDiscussionFunction, token: token)).count == 1)
         #expect(try Self.body(of: MoodleForumService.viewDiscussionFunction, token: token) == "discussionid=801")
     }
 

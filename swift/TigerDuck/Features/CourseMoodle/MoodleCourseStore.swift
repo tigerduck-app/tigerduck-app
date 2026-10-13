@@ -9,7 +9,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var forums: @Sendable (_ courseIds: [Int]) async throws -> [MoodleForum]
     var discussions: @Sendable (_ forumId: Int, _ page: Int) async throws -> [MoodleDiscussion]
     var posts: @Sendable (_ discussionId: Int) async throws -> [MoodlePost] = { _ in [] }
-    var markViewed: @Sendable (_ discussionId: Int) async throws -> Void
+    var markViewed: @Sendable (_ discussionId: Int, _ isCurrent: @escaping @MainActor @Sendable () -> Bool) async throws -> Void
     /// Defaults keep a stand-in for another screen's tests to the calls it is about.
     var materials: @Sendable (_ courseId: Int) async throws -> MoodleCourseMaterials = { _ in
         MoodleCourseMaterials(sections: [])
@@ -44,10 +44,8 @@ nonisolated struct MoodleCourseAPI: Sendable {
                 try await MoodleForumService.posts(discussionId: discussionId, token: $0)
             }
         },
-        markViewed: { discussionId in
-            try await MoodleWebserviceClient.withToken {
-                try await MoodleForumService.markViewed(discussionId: discussionId, token: $0)
-            }
+        markViewed: { discussionId, isCurrent in
+            try await markDiscussionViewed(discussionId, isCurrent: isCurrent)
         },
         materials: { courseId in
             try await MoodleWebserviceClient.withToken {
@@ -95,6 +93,22 @@ nonisolated struct MoodleCourseAPI: Sendable {
             }
         }
     )
+
+    static func markDiscussionViewed(
+        _ discussionId: Int,
+        isCurrent: @escaping @MainActor @Sendable () -> Bool,
+        tokens: MoodleWebserviceClient.TokenSource = .keychain,
+        session: URLSession = MoodleWebserviceClient.session,
+        siteURL: URL = AppConstants.moodleBaseURL
+    ) async throws {
+        try await MoodleWebserviceClient.withToken(tokens) { token in
+            // Token acquisition and renewal can suspend across an account change.
+            guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
+            try await MoodleForumService.markViewed(
+                discussionId: discussionId, token: token, session: session, siteURL: siteURL
+            )
+        }
+    }
 }
 
 /// Where a course's Moodle data is cached, and whether the sign-in it is fetched under still holds.
@@ -523,16 +537,21 @@ final class MoodleCourseStore {
     /// List loads must not mark discussions read; a view event is best-effort and is not retried.
     @discardableResult
     func open(_ discussion: MoodleDiscussion, in forum: MoodleForum?) -> Task<Void, Never> {
+        guard context.isCurrent(), !Task.isCancelled else { return Task {} }
         if let forum { discussions(of: forum).markRead(discussion.id) }
         if let thread = threads[discussion.id], thread.value?.posts.contains(where: \.isUnread) == true {
             thread.update { value in
                 for index in value.posts.indices { value.posts[index].isUnread = false }
             }
         }
-        return Task { [api] in
+        return Task { [api, context] in
+            guard context.isCurrent(), !Task.isCancelled else { return }
             guard (try? await api.functions())?.contains(MoodleForumService.viewDiscussionFunction) == true else { return }
+            guard context.isCurrent(), !Task.isCancelled else { return }
             do {
-                try await api.markViewed(discussion.id)
+                try await api.markViewed(discussion.id) { @MainActor in context.isCurrent() }
+            } catch is CancellationError {
+                return
             } catch {
                 AppLogger.breadcrumb("moodle discussion view not logged: \(error)", category: "moodle")
             }
@@ -547,10 +566,12 @@ final class MoodleCourseStore {
     /// Capture fresh unread flags before marking the thread read. A failed refresh must leave
     /// no snapshot, since later retry results need their own unread flags.
     func openThread(of discussion: MoodleDiscussion, in forum: MoodleForum) async -> Set<Int>? {
+        guard context.isCurrent(), !Task.isCancelled else { return nil }
         let feed = thread(of: discussion)
         if MoodleRefreshTimer.wait(fetchedAt: feed.fetchedAt, lastTry: nil, ttl: feed.ttl, now: context.now()) == 0 {
             await refreshThread(of: discussion)
         }
+        guard context.isCurrent(), !Task.isCancelled else { return nil }
         let unread = feed.status == .ok ? feed.value.map { Set($0.posts.filter(\.isUnread).map(\.id)) } : nil
         open(discussion, in: forum)
         return unread
