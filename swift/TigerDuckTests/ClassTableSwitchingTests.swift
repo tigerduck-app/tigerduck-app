@@ -374,6 +374,33 @@ struct ClassTableSwitchingTests {
         }
     }
 
+    /// Sign-out empties the colour map while someone else's class table can still be on screen, and
+    /// the reload it posts runs before the page shows the user's own table again.
+    @Test("a reload on someone else's class table gives the user's last term list no colours")
+    func reloadOnTheirTableAfterASignOut() throws {
+        try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
+            let folder = Folder()
+            let store = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { "B11300000" })
+            let person = try #require(store.add(
+                ClassTableShareCode(format: .tigerDuck, studentId: "B11300003", sharedAt: nil, terms: [
+                    Term(semester: "1151", courseNos: ["QQ0000001"]),
+                ]),
+                nickname: "Chen",
+                courses: ["1151": [Self.course("QQ0000001", "Their course", semester: "1151")]]
+            ))
+            let viewModel = ClassTableViewModel(importedTables: store)
+            store.show(person.id)
+            viewModel.showShownTable()
+            // The departing account's term list, read before the sign-out emptied the caches.
+            let departing = "QQ" + UUID().uuidString.prefix(7)
+            viewModel.currentSemesterCourses = [Self.course(departing, "Departing course", semester: "1151")]
+
+            viewModel.reloadFromCache()
+
+            #expect(TigerDuckTheme.courseColorMap[departing] == nil)
+        }
+    }
+
     // MARK: - Rename
 
     @Test("Save waits for a nickname, and a saved one replaces the person's")
