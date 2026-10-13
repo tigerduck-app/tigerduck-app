@@ -43,8 +43,7 @@ struct MoodleDiscussionView: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
         .refreshable { await refresh() }
-        // Cached posts stay on screen through a failed refresh, so the dot is what shows it failed.
-        .moodleArticleChrome(status: thread.status, isLoading: thread.isRefreshing)
+        .moodleArticleChrome()
         .moodleRefreshShortcut { await refresh() }
         .moodleAutoRefresh(every: thread.ttl, fetchedAt: { thread.fetchedAt }) {
             await refresh()

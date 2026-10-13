@@ -23,8 +23,6 @@ struct MoodleForumsView: View {
         .refreshable { await store.refreshForums() }
         .moodleListChrome(
             title: String(localized: "course_detail_forums_label"),
-            status: store.forums.status,
-            isLoading: store.forums.isRefreshing,
             page: .forums(courseId: store.courseId),
             refresh: { await store.refreshForums() }
         )

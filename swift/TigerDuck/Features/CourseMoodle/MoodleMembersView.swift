@@ -161,8 +161,6 @@ struct MoodleMembersView: View {
         .refreshable { await store.refreshMembers() }
         .moodleListChrome(
             title: String(localized: "course_detail_members_label"),
-            status: store.members.status,
-            isLoading: store.members.isRefreshing,
             page: .participants(courseId: store.courseId),
             refresh: { await store.refreshMembers() }
         )

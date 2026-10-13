@@ -73,8 +73,6 @@ struct MoodleDiscussionsView: View {
         .refreshable { await pages.refresh() }
         .moodleListChrome(
             title: title,
-            status: pages.feed.status,
-            isLoading: pages.feed.isRefreshing,
             page: page,
             refresh: { await pages.refresh() }
         )

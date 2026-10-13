@@ -115,30 +115,22 @@ struct MoodleStatusDot: View {
 }
 
 extension View {
-    /// The bar of a pushed Moodle list: the title, the status dot and "Open in Moodle". On the
-    /// Mac the course detail is an overlay in the window, so the bar is drawn in it, not left to
-    /// the window's toolbar, and ⌘R runs `refresh`.
+    /// The bar of a pushed Moodle list: the title and "Open in Moodle". The course detail's Moodle
+    /// section keeps the status dot. On the Mac the course detail is an overlay in the window, so
+    /// the bar is drawn in it, not left to the window's toolbar, and ⌘R runs `refresh`.
     func moodleListChrome(
         title: String,
-        status: ServerStatus,
-        isLoading: Bool,
         page: MoodlePage?,
         willOpenPage: @escaping () -> Void = {},
         refresh: @escaping () async -> Void
     ) -> some View {
-        modifier(MoodleListChrome(
-            title: title, status: status, isLoading: isLoading, page: page, willOpenPage: willOpenPage, refresh: refresh
-        ))
+        modifier(MoodleListChrome(title: title, page: page, willOpenPage: willOpenPage, refresh: refresh))
     }
 
-    /// The bar of a pushed Moodle article: the back button over the content, "Open in Moodle" for
-    /// `page`, and the status dot for an article that fetches its own data.
-    func moodleArticleChrome(
-        page: MoodlePage? = nil,
-        status: ServerStatus? = nil,
-        isLoading: Bool = false
-    ) -> some View {
-        modifier(MoodleArticleChrome(page: page, status: status, isLoading: isLoading))
+    /// The bar of a pushed Moodle article: the back button over the content and "Open in Moodle"
+    /// for `page`.
+    func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
+        modifier(MoodleArticleChrome(page: page))
     }
 
     /// ⌘R on the Mac for a pushed screen that fetches its own data; the class table hands the
@@ -159,8 +151,6 @@ extension View {
 
 private struct MoodleListChrome: ViewModifier {
     let title: String
-    let status: ServerStatus
-    let isLoading: Bool
     let page: MoodlePage?
     let willOpenPage: () -> Void
     let refresh: () async -> Void
@@ -172,12 +162,6 @@ private struct MoodleListChrome: ViewModifier {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .toolbar {
-                if #available(iOS 26, *) {
-                    ToolbarItem(placement: .topBarTrailing) { dot }
-                        .sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .topBarTrailing) { dot }
-                }
                 if let page {
                     ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
@@ -187,23 +171,16 @@ private struct MoodleListChrome: ViewModifier {
             .navigationBarBackButtonHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) {
                 MacMoodleTitleBar(title: title) {
-                    dot
                     if let page { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
             }
             .moodleRefreshShortcut(refresh)
         #endif
     }
-
-    private var dot: some View {
-        MoodleStatusDot(status: status, isLoading: isLoading)
-    }
 }
 
 private struct MoodleArticleChrome: ViewModifier {
     let page: MoodlePage?
-    let status: ServerStatus?
-    let isLoading: Bool
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -212,14 +189,6 @@ private struct MoodleArticleChrome: ViewModifier {
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                if let status {
-                    if #available(iOS 26, *) {
-                        ToolbarItem(placement: .topBarTrailing) { MoodleStatusDot(status: status, isLoading: isLoading) }
-                            .sharedBackgroundVisibility(.hidden)
-                    } else {
-                        ToolbarItem(placement: .topBarTrailing) { MoodleStatusDot(status: status, isLoading: isLoading) }
-                    }
-                }
                 if let page {
                     ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page) }
                 }
@@ -229,7 +198,6 @@ private struct MoodleArticleChrome: ViewModifier {
             .navigationBarBackButtonHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) {
                 MacMoodleTitleBar(title: nil) {
-                    if let status { MoodleStatusDot(status: status, isLoading: isLoading) }
                     if let page { MoodleOpenButton(page: page) }
                 }
             }

@@ -33,8 +33,6 @@ struct MoodleMaterialsView: View {
         .refreshable { await store.refreshMaterials() }
         .moodleListChrome(
             title: String(localized: "course_detail_files_label"),
-            status: store.materials.status,
-            isLoading: store.materials.isRefreshing,
             page: .course(store.courseId),
             willOpenPage: { files.forgetPendingOpen() },
             refresh: { await store.refreshMaterials() }

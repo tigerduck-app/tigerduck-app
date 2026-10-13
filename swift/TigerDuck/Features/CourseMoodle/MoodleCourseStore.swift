@@ -121,7 +121,7 @@ struct MoodleCacheContext {
 }
 
 /// One kind of a course's Moodle data as its screen shows it: the cached copy at once, then each
-/// fetch in place, with the fetch's progress and outcome for the screen's status dot.
+/// fetch in place, with the fetch's progress and outcome.
 @Observable
 @MainActor
 final class MoodleFeed<Value: Codable & Sendable> {

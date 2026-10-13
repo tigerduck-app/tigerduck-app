@@ -25,8 +25,6 @@ struct MoodleAnnouncementsView: View {
             .refreshable { await store.refreshForums() }
             .moodleListChrome(
                 title: String(localized: "feature_announcements"),
-                status: store.forums.status,
-                isLoading: store.forums.isRefreshing,
                 page: nil,
                 refresh: { await store.refreshForums() }
             )

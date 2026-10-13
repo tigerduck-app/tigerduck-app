@@ -50,8 +50,6 @@ struct MoodleGradesView: View {
         .refreshable { await store.refreshGrades() }
         .moodleListChrome(
             title: String(localized: "course_detail_moodle_grades_label"),
-            status: store.grades.status,
-            isLoading: store.grades.isRefreshing,
             page: .gradeReport(courseId: store.courseId),
             refresh: { await store.refreshGrades() }
         )
