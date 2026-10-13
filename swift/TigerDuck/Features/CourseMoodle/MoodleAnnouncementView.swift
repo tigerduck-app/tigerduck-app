@@ -68,7 +68,10 @@ struct MoodleAnnouncementView: View {
                         if let member { await store.loadPicture(of: member) }
                     }
                 if let member {
-                    Button { open(.member(member)) } label: { authorName(name) }
+                    Button {
+                        files.forgetPendingOpen()
+                        open(.member(member))
+                    } label: { authorName(name) }
                         .buttonStyle(.plain)
                 } else {
                     authorName(name)

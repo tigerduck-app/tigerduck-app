@@ -71,10 +71,8 @@ nonisolated struct MoodleCourseAPI: Sendable {
         },
         picture: { url in
             try await MoodleWebserviceClient.withToken { token in
-                guard let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token) else {
-                    throw MoodleWebserviceError.malformedResponse(detail: "no file key")
-                }
-                return try await MoodleCourseMembersService.picture(url, accessKey: key)
+                let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
+                return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
             }
         }
     )

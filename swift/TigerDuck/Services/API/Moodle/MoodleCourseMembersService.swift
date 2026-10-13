@@ -74,29 +74,17 @@ nonisolated enum MoodleCourseMembersService {
             && path.contains("/user/icon/")
     }
 
-    /// A member's own picture under `tokenpluginfile.php`, as the Moodle app fetches it: the
-    /// account's private access key opens files only, where the token opens the web service.
-    static func pictureDownloadURL(for url: URL, accessKey: String, siteURL: URL = AppConstants.moodleBaseURL) -> URL? {
-        guard isOwnPicture(url, siteURL: siteURL),
-              let key = accessKey.addingPercentEncoding(withAllowedCharacters: .alphanumerics), !key.isEmpty,
-              var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let script = ["/webservice/pluginfile.php/", "/pluginfile.php/"]
-                .first(where: components.percentEncodedPath.hasPrefix) else { return nil }
-        components.percentEncodedPath = "/tokenpluginfile.php/\(key)/" + components.percentEncodedPath.dropFirst(script.count)
-        let items = components.queryItems?.filter { $0.name != "token" }
-        components.queryItems = items?.isEmpty == true ? nil : items
-        return components.url
-    }
-
-    /// A member's own picture. An answer that is not an image, such as a sign-in page standing in
-    /// for a file the key does not open, throws.
+    /// A member's own picture, under the file URL every Moodle file downloads from. An answer that
+    /// is not an image, such as a sign-in page standing in for a file the key does not open, throws.
     static func picture(
         _ url: URL,
-        accessKey: String,
+        accessKey: String?,
+        token: String,
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> Data {
-        guard let download = pictureDownloadURL(for: url, accessKey: accessKey, siteURL: siteURL) else {
+        guard isOwnPicture(url, siteURL: siteURL),
+              let download = MoodleFileTransfer.downloadURL(for: url, accessKey: accessKey, token: token, siteURL: siteURL) else {
             throw MoodleWebserviceError.malformedResponse(detail: "not a member's picture")
         }
         let data: Data

@@ -118,37 +118,22 @@ struct MoodleCourseMembersServiceTests {
         }
     }
 
-    @Test("a picture downloads under tokenpluginfile with the private access key, never the token")
-    func pictureURL() throws {
-        func download(_ url: String, key: String = "k3y") throws -> String? {
-            MoodleCourseMembersService.pictureDownloadURL(
-                for: try #require(URL(string: url)), accessKey: key, siteURL: Self.site
-            )?.absoluteString
-        }
-
-        #expect(try download("https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1?rev=5")
-            == "https://moodle-stub.invalid/tokenpluginfile.php/k3y/88/user/icon/moove/f1?rev=5")
-        #expect(try download("https://moodle-stub.invalid/webservice/pluginfile.php/88/user/icon/moove/f1?rev=5&token=t0k")
-            == "https://moodle-stub.invalid/tokenpluginfile.php/k3y/88/user/icon/moove/f1?rev=5")
-        #expect(try download("https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1", key: "a/b")
-            == "https://moodle-stub.invalid/tokenpluginfile.php/a%2Fb/88/user/icon/moove/f1")
-        #expect(try download("https://moodle-stub.invalid/theme/image.php/moove/core/1/u/f1") == nil)
-        #expect(try download("https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1", key: "") == nil)
-    }
-
-    @Test("a picture's answer counts only as an image; a page standing in for it throws")
+    @Test("a picture downloads under tokenpluginfile; its answer counts only as an image, and a page standing in throws")
     func pictureAnswer() async throws {
         let picture = try #require(URL(string: "https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1?rev=5"))
         let key = UUID().uuidString
-        let download = try #require(MoodleCourseMembersService.pictureDownloadURL(for: picture, accessKey: key, siteURL: Self.site))
+        let download = try #require(MoodleFileTransfer.downloadURL(for: picture, accessKey: key, token: "t0k", siteURL: Self.site))
+        #expect(download.path.hasPrefix("/tokenpluginfile.php/\(key)/"))
         let png = Data([0x89, 0x50, 0x4E, 0x47])
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: png, headerFields: ["Content-Type": "image/png"]), for: download)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("<html></html>".utf8), headerFields: ["Content-Type": "text/html"]), for: download)
 
-        let data = try await MoodleCourseMembersService.picture(picture, accessKey: key, session: Self.session(), siteURL: Self.site)
+        let data = try await MoodleCourseMembersService.picture(
+            picture, accessKey: key, token: "t0k", session: Self.session(), siteURL: Self.site
+        )
         #expect(data == png)
         await #expect(throws: MoodleWebserviceError.self) {
-            try await MoodleCourseMembersService.picture(picture, accessKey: key, session: Self.session(), siteURL: Self.site)
+            try await MoodleCourseMembersService.picture(picture, accessKey: key, token: "t0k", session: Self.session(), siteURL: Self.site)
         }
     }
 
