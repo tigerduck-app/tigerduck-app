@@ -105,7 +105,7 @@ struct ReenableMarkTests {
             Defaults[.lastSeenCoursesResetAt] = .distantPast
 
             AppState.forgetSyncProgress()
-            for category in Self.categories { AppState.markForReenableCheck(category) }
+            for category in Self.categories { AppState.markForReenableCheck(category, signedIn: true) }
 
             #expect(Defaults[.pendingConflictCategories].isEmpty)
             #expect(AppState.reasonToLeaveMarks(
@@ -125,9 +125,22 @@ struct ReenableMarkTests {
             Defaults[.assignmentMarksSyncedOnce] = marksSynced
             Defaults[.lastSeenCoursesResetAt] = .distantPast
 
-            for category in Self.categories { AppState.markForReenableCheck(category) }
+            for category in Self.categories { AppState.markForReenableCheck(category, signedIn: true) }
 
             #expect(Defaults[.pendingConflictCategories] == Self.categories)
+        }
+    }
+
+    @Test("Switching a category back on while signed out marks nothing for whoever signs in next")
+    func signedOutMarksNothing() async {
+        await Self.withSyncProgress {
+            // Stamped as after a sync, so the sign-in alone decides.
+            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.lastSeenCoursesResetAt] = .distantPast
+
+            for category in Self.categories { AppState.markForReenableCheck(category, signedIn: false) }
+
+            #expect(Defaults[.pendingConflictCategories].isEmpty)
         }
     }
 }

@@ -66,16 +66,17 @@ extension AppState {
     func markCategoryReenabled(_ category: String) {
         // The server may have dropped the lists while the category was off on every device.
         pushCoordinator.forgetUploads()
-        Self.markForReenableCheck(category)
+        Self.markForReenableCheck(category, signedIn: authService.hasStoredCredentials)
     }
 
     /// Marks `category` for the re-enable check, which compares this device's copy of the account's
     /// data with the server's. Before this device has synced the account, as after a sign-in, it has
     /// no copy to compare, and Use Local would send its emptied caches over the server's: the
-    /// category is left to the first sync, which takes the server's data.
-    static func markForReenableCheck(_ category: String) {
-        guard hasSyncedAccount else {
-            AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), account not synced on this device yet")
+    /// category is left to the first sync, which takes the server's data. Signed out, the check has
+    /// no session, and the mark would wait for whoever signs in next.
+    static func markForReenableCheck(_ category: String, signedIn: Bool) {
+        guard signedIn, hasSyncedAccount else {
+            AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), signedIn=\(signedIn, privacy: .public) synced=\(hasSyncedAccount, privacy: .public)")
             return
         }
         Defaults[.pendingConflictCategories].insert(category)
