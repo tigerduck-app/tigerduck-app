@@ -263,13 +263,17 @@ final class MoodleCourseStore {
     }
 
     /// One call for every course of the term. A site that does not allow the forum calls answers
-    /// as if no course had a forum, which hides the announcements and the forums.
+    /// as if no course had a forum, which hides the announcements and the forums; one that does
+    /// not allow the posts call keeps only the announcements, as a discussion would show no reply.
     func refreshForums() async {
         await forums.refresh { [api, termCourseIds] in
-            guard try await api.functions().isSuperset(of: Self.forumFunctions) else {
+            let functions = try await api.functions()
+            guard functions.isSuperset(of: Self.forumFunctions) else {
                 return MoodleTermForums(courseIds: termCourseIds, forums: [])
             }
-            return MoodleTermForums(courseIds: termCourseIds, forums: try await api.forums(termCourseIds))
+            let all = try await api.forums(termCourseIds)
+            let shown = functions.contains(MoodleForumService.discussionPostsFunction) ? all : all.filter(\.isNews)
+            return MoodleTermForums(courseIds: termCourseIds, forums: shown)
         }
     }
 
@@ -349,13 +353,14 @@ final class MoodleCourseStore {
     }
 
     /// A discussion's posts opened on screen. They are fetched first when the copy is due, so the
-    /// ones unread at this opening are known before ``open(_:in:)`` reads them; their ids come back.
-    func openThread(of discussion: MoodleDiscussion, in forum: MoodleForum) async -> Set<Int> {
+    /// ones unread at this opening are known before ``open(_:in:)`` reads them. Their ids come
+    /// back, or nil while no posts could be had, so posts a retry brings keep their own mark.
+    func openThread(of discussion: MoodleDiscussion, in forum: MoodleForum) async -> Set<Int>? {
         let feed = thread(of: discussion)
         if MoodleRefreshTimer.wait(fetchedAt: feed.fetchedAt, lastTry: nil, ttl: feed.ttl, now: context.now()) == 0 {
             await refreshThread(of: discussion)
         }
-        let unread = Set(feed.value?.posts.filter(\.isUnread).map(\.id) ?? [])
+        let unread = feed.value.map { Set($0.posts.filter(\.isUnread).map(\.id)) }
         open(discussion, in: forum)
         return unread
     }

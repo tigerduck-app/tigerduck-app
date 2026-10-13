@@ -18,7 +18,7 @@ struct MoodleDiscussionView: View {
     var body: some View {
         let thread = store.thread(of: discussion)
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(MoodleDiscussionThread.entries(of: discussion, in: thread.value)) { entry in
                     MoodlePostCard(
                         entry: entry,

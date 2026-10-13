@@ -193,6 +193,19 @@ struct MoodleCourseForumsTests {
         }
     }
 
+    @Test("a site that does not allow the posts call keeps the announcements row and hides the forums")
+    func rowNeedsThePostsCall() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(functions: Self.allFunctions.subtracting([MoodleForumService.discussionPostsFunction]))
+        let store = Self.store(folder, site: site)
+
+        await store.refreshForums()
+
+        #expect(store.sectionRows.map(\.kind) == [.announcements])
+        #expect(store.generalForums.isEmpty)
+    }
+
     @Test("a site that does not allow the discussions call hides the forums without asking for them")
     func rowGatedByFunctions() async {
         let folder = Folder()
@@ -491,6 +504,23 @@ struct MoodleCourseForumsTests {
 
         #expect(unreadAtOpening == [1802])
         #expect(site.calls.filter { $0.hasPrefix("posts") }.count == 2)
+    }
+
+    @Test("posts that fail to load at opening give no unread set, so the ones a retry brings keep their mark")
+    func openThreadWithoutPosts() async throws {
+        let folder = Folder()
+        let site = Site()
+        site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801, unread: true)])
+        site.fail("posts")
+        let store = Self.store(folder, site: site)
+
+        let unreadAtOpening = await store.openThread(of: Self.discussion(801, replies: 1), in: Self.qanda)
+
+        #expect(unreadAtOpening == nil)
+        try await waitUntil { site.calls.contains("viewed 801") }
+        site.fail("posts", false)
+        await store.refreshThread(of: Self.discussion(801))
+        #expect(store.thread(of: Self.discussion(801)).value?.posts.filter(\.isUnread).map(\.id) == [1802])
     }
 
     @Test("a site that does not allow the view call is not told, and the discussion still reads as read here")

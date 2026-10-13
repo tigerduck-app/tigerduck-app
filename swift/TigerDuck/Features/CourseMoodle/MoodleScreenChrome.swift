@@ -10,7 +10,6 @@ struct MoodlePage: Hashable {
 
     static func forum(cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/view.php?id=\(cmid)") }
     static func discussion(_ id: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/discuss.php?d=\(id)") }
-    /// The list of a course's forums.
     static func forums(courseId: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/index.php?id=\(courseId)") }
 
     var webURL: URL? { URL(string: path, relativeTo: AppConstants.moodleBaseURL)?.absoluteURL }
