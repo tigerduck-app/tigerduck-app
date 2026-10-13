@@ -40,7 +40,10 @@ final class AuthService {
     /// So this re-checks when protected data becomes available and when the app activates.
     /// Otherwise ``_revision`` moves only on login and logout, and after an unlock the Class
     /// Table stays on the login prompt until an unrelated redraw such as pull-to-refresh.
-    init(keychainHasCredentials: @escaping () -> Bool = AuthService.readKeychainHasCredentials) {
+    init(
+        keychainHasCredentials: @escaping () -> Bool = AuthService.readKeychainHasCredentials,
+        notificationCenter center: NotificationCenter = .default
+    ) {
         self.keychainHasCredentials = keychainHasCredentials
         let present = keychainHasCredentials()
         lastKnownHasCredentials = present
@@ -59,12 +62,20 @@ final class AuthService {
         let names: [Notification.Name] = []
         #endif
 
-        let center = NotificationCenter.default
         credentialObservers = names.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.revalidateStoredCredentials() }
             }
         }
+        #if os(iOS)
+        // A relogin behind a locked screen fails for want of the Moodle token, and the unlock
+        // makes it readable again.
+        credentialObservers.append(center.addObserver(
+            forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.ensureBackendSignedIn() }
+        })
+        #endif
     }
 
     /// Re-read the keychain and invalidate only if its answer changed, so a
@@ -137,6 +148,7 @@ final class AuthService {
 
     var authTokenManager: AuthTokenManager?
     var onV3SignedIn: (() -> Void)?
+    @ObservationIgnored private var backendSignIn: Task<Void, Never>?
 
     var storedStudentId: String? {
         _ = _revision
@@ -210,6 +222,7 @@ final class AuthService {
 
     private func performV3Login(studentId: String, password: String) async {
         guard let authTokenManager else { return }
+        let generation = loginGeneration
         guard let moodleToken = await MoodleTokenService.shared.currentToken(),
               !moodleToken.isEmpty else {
             return
@@ -226,8 +239,11 @@ final class AuthService {
                 moodlePrivateToken: moodlePrivateToken,
                 platform: platform
             )
+            // Signed out while the request was out: the session is the departing account's.
+            guard loginGeneration == generation else { return }
             onV3SignedIn?()
         } catch {
+            guard loginGeneration == generation else { return }
             AppLogger.captureError(error, context: ["flow": "v3Login"])
         }
     }
@@ -301,8 +317,17 @@ final class AuthService {
     }
 
     /// Signs in to the TigerDuck backend when its session is gone. It sends the stored
-    /// credentials and Moodle token and makes no request to the school's servers.
+    /// credentials and Moodle token and makes no request to the school's servers. A call
+    /// while one runs waits for it instead of signing in a second time.
     func ensureBackendSignedIn() async {
+        if let backendSignIn { return await backendSignIn.value }
+        let task = Task { await signInToBackendIfSignedOut() }
+        backendSignIn = task
+        await task.value
+        if backendSignIn == task { backendSignIn = nil }
+    }
+
+    private func signInToBackendIfSignedOut() async {
         guard let atm = authTokenManager, !(await atm.isLoggedIn),
               let studentId = storedStudentId, let password = storedPassword else { return }
         await performV3Login(studentId: studentId, password: password)
@@ -333,6 +358,8 @@ final class AuthService {
         reauthErrorMessage = nil
         isReauthenticating = false
         loginGeneration &+= 1
+        backendSignIn?.cancel()
+        backendSignIn = nil
         markCredentialsChanged()
     }
 
