@@ -11,6 +11,7 @@ struct ClassTableView: View {
     @State private var exportedFile: ExportedFile?
     @State private var showExportFailed = false
     @State private var isExporting = false
+    @State private var shareModel: ClassTableShareModel?
     @State private var importModel: ClassTableImportModel?
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
@@ -232,6 +233,7 @@ struct ClassTableView: View {
             .alert(String(localized: "class_table_export_failed"), isPresented: $showExportFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
+            .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
             .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
     }
 
@@ -297,6 +299,19 @@ struct ClassTableView: View {
                 }
             }
             Section {
+                if ImportedClassTableStore.shared.shownPerson == nil {
+                    Button {
+                        openShareSheet()
+                    } label: {
+                        Label(String(localized: "class_table_share"), systemImage: "qrcode")
+                    }
+                    // Held off with the export, whose share sheet would wait behind this one.
+                    .disabled(isExporting || !ClassTableShareModel.canShare(
+                        studentId: appState.authService.storedStudentId,
+                        shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
+                        semesters: viewModel.availableSemesters
+                    ))
+                }
                 Button {
                     exportScreenshot()
                 } label: {
@@ -364,6 +379,20 @@ struct ClassTableView: View {
                 showExportFailed = true
             }
         }
+    }
+
+    private func openShareSheet() {
+        guard let studentId = appState.authService.storedStudentId else { return }
+        let terms = ClassTableShareModel.terms(
+            in: viewModel.availableSemesters,
+            shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses)
+        )
+        guard !terms.isEmpty else { return }
+        shareModel = ClassTableShareModel(
+            studentId: studentId,
+            terms: terms,
+            semesterLabel: viewModel.displayLabel(for:)
+        )
     }
 
     private var authenticatedContent: some View {

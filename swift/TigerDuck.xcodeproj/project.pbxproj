@@ -1381,6 +1381,8 @@
 					ClassTableShareCode.swift,
 					"ClassTableShareCode+TAT.swift",
 					ImportedClassTableStore.swift,
+					ClassTableShareModel.swift,
+					ClassTableShareSheet.swift,
 					ClassTableImportModel.swift,
 					ClassTableImportConfirmView.swift,
 				);
@@ -1662,6 +1664,8 @@
 					ClassTableShareCode.swift,
 					"ClassTableShareCode+TAT.swift",
 					ImportedClassTableStore.swift,
+					ClassTableShareModel.swift,
+					ClassTableShareSheet.swift,
 					ClassTableImportModel.swift,
 					ClassTableImportConfirmView.swift,
 				);
