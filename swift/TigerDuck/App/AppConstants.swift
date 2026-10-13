@@ -139,6 +139,7 @@ nonisolated enum AppConstants {
         /// "always show every period" — keeping it carries the setting over.
         static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"
         static let showClassroomInClassTable = "showClassroomInClassTable"
+        static let pinTodayCoursesOnClassTable = "pinTodayCoursesOnClassTable"
         static let outlineRequiredCourses = "outlineRequiredCourses"
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"

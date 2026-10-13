@@ -48,13 +48,19 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.alwaysShowAllPeriods,
         default: false
     )
-    /// Print each course's room in the corner of its class-table cell.
-    /// Off by default: the grid's job is which course, not where, and the
-    /// cell is narrow enough that a second line is a deliberate trade.
-    /// Device-local — display preferences are not part of the settings
-    /// document the backend syncs.
+    /// Print each course's room in the corner of its class-table cell. On by
+    /// default: where a class meets is what students look up next to which
+    /// course it is. Device-local: display preferences are not part of the
+    /// settings document the backend syncs.
     static let showClassroomInClassTable = Key<Bool>(
         AppConstants.UserDefaultsKeys.showClassroomInClassTable,
+        default: true
+    )
+    /// Show today's courses above the class table's grid. Off by default: Home
+    /// already lists them, and without them the grid starts at the top of the
+    /// page. Device-local.
+    static let pinTodayCoursesOnClassTable = Key<Bool>(
+        AppConstants.UserDefaultsKeys.pinTodayCoursesOnClassTable,
         default: false
     )
     /// Outline each required course's class-table cell. Device-local.

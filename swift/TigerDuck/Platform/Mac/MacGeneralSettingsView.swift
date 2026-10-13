@@ -49,7 +49,8 @@ struct MacGeneralSettingsView: View {
                 .buttonStyle(.plain)
             }
 
-            // The same toggles in the same order as the iPhone's Display section.
+            // The iPhone's Display toggles in the same order, except today's courses, which the
+            // Mac class table does not show.
             Section(String(localized: "settings_section_display")) {
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
                 Toggle(

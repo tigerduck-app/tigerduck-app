@@ -15,6 +15,7 @@ struct SettingsView: View {
     /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
+    @Default(.pinTodayCoursesOnClassTable) private var pinTodayCoursesOnClassTable
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -117,6 +118,10 @@ struct SettingsView: View {
                     }
                 }
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $appState.showAbsoluteAssignmentTime)
+                Toggle(
+                    String(localized: "settings_pin_today_courses_on_class_table"),
+                    isOn: $pinTodayCoursesOnClassTable
+                )
                 Toggle(
                     String(localized: "settings_show_classroom_on_class_table"),
                     isOn: $appState.showClassroomInClassTable

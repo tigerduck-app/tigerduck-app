@@ -16,6 +16,7 @@ struct ClassTableView: View {
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var scroll = ScrollState()
     @State private var tableSwitches = 0
+    @Default(.pinTodayCoursesOnClassTable) private var pinsTodayCourses
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -94,7 +95,7 @@ struct ClassTableView: View {
                         // switch to a semester that does have courses even
                         // when the current semester's roster is empty.
                         VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                            if !viewModel.todayCourses.isEmpty {
+                            if pinsTodayCourses, !viewModel.todayCourses.isEmpty {
                                 todayCoursesSection
                             }
                             semesterPickerBar
@@ -483,7 +484,7 @@ struct ClassTableView: View {
 
     private var authenticatedContent: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
-            if !viewModel.todayCourses.isEmpty {
+            if pinsTodayCourses, !viewModel.todayCourses.isEmpty {
                 todayCoursesSection
             }
             semesterPickerBar
