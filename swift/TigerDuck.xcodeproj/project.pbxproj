@@ -1245,6 +1245,7 @@
 					MoodleForumService.swift,
 					MoodleCourseContentsService.swift,
 					MoodleFileTransfer.swift,
+					MoodleGradeService.swift,
 					MoodleHTMLText.swift,
 					MoodleCourseStore.swift,
 					MoodleRefreshSchedule.swift,
@@ -1253,12 +1254,18 @@
 					MoodleCourseSection.swift,
 					MoodleAnnouncementsView.swift,
 					MoodleAnnouncementView.swift,
+					MoodleGradesView.swift,
 					MoodleFileRow.swift,
+					MoodleMembersView.swift,
+					MoodleMemberView.swift,
+					MoodleCourseMembersService.swift,
+					FlowLayout.swift,
 					MoodleFileDownloads.swift,
 					MoodleFileOpener.swift,
 					MoodleMaterialsView.swift,
 					MoodleFilesCacheSection.swift,
 					MoodleEnrolledCoursesService.swift,
+					MoodleCourseSummaryService.swift,
 					MoodleSiteInfoService.swift,
 					MoodleTokenService.swift,
 					MoodleWebserviceError.swift,
@@ -1371,10 +1378,15 @@
 					ClassTableShareCode.swift,
 					"ClassTableShareCode+TAT.swift",
 					ImportedClassTableStore.swift,
+					ClassTableShareModel.swift,
+					ClassTableShareSheet.swift,
+					ClassTableImportModel.swift,
+					ClassTableImportConfirmView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSCameraUsageDescription = "掃描別人分享的課表 QR Code。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "將匯出的課表圖片儲存到「照片」。";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphonesimulator*]" = YES;
@@ -1513,6 +1525,7 @@
 					MoodleForumService.swift,
 					MoodleCourseContentsService.swift,
 					MoodleFileTransfer.swift,
+					MoodleGradeService.swift,
 					MoodleHTMLText.swift,
 					MoodleCourseStore.swift,
 					MoodleRefreshSchedule.swift,
@@ -1521,12 +1534,18 @@
 					MoodleCourseSection.swift,
 					MoodleAnnouncementsView.swift,
 					MoodleAnnouncementView.swift,
+					MoodleGradesView.swift,
 					MoodleFileRow.swift,
+					MoodleMembersView.swift,
+					MoodleMemberView.swift,
+					MoodleCourseMembersService.swift,
+					FlowLayout.swift,
 					MoodleFileDownloads.swift,
 					MoodleFileOpener.swift,
 					MoodleMaterialsView.swift,
 					MoodleFilesCacheSection.swift,
 					MoodleEnrolledCoursesService.swift,
+					MoodleCourseSummaryService.swift,
 					MoodleSiteInfoService.swift,
 					MoodleTokenService.swift,
 					MoodleWebserviceError.swift,
@@ -1639,10 +1658,15 @@
 					ClassTableShareCode.swift,
 					"ClassTableShareCode+TAT.swift",
 					ImportedClassTableStore.swift,
+					ClassTableShareModel.swift,
+					ClassTableShareSheet.swift,
+					ClassTableImportModel.swift,
+					ClassTableImportConfirmView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSCameraUsageDescription = "掃描別人分享的課表 QR Code。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "將匯出的課表圖片儲存到「照片」。";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphonesimulator*]" = YES;

@@ -120,17 +120,16 @@ actor AuthTokenManager {
         let deviceId: String
     }
 
-    /// Call after NTUST SSO succeeds. Posts credentials to /v3/auth/login.
+    /// Call after NTUST SSO succeeds. Posts the student ID and the Moodle token to /v3/auth/login,
+    /// which needs no password, so the school password never reaches the backend.
     func login(
         studentId: String,
-        password: String,
         moodleToken: String?,
         moodlePrivateToken: String?,
         platform: String
     ) async throws -> LoginResult {
         struct LoginRequest: Encodable {
             let student_id: String
-            let password: String
             let moodle_token: String?
             let moodle_private_token: String?
             let device_info: DeviceInfo
@@ -156,7 +155,6 @@ actor AuthTokenManager {
 
         let body = LoginRequest(
             student_id: studentId,
-            password: password,
             moodle_token: moodleToken,
             moodle_private_token: moodlePrivateToken,
             device_info: DeviceInfo(

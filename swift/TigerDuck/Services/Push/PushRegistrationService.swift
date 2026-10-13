@@ -16,6 +16,9 @@ struct PushRegistrationSnapshot: Sendable {
     let ptsTokenLength: Int
     let deviceTokenLength: Int
     let lastError: String?
+    /// Whether the last registration was not sent for want of a session
+    /// (`PushAPIError.notSignedIn`).
+    let lastAttemptFoundNoSession: Bool
     let lastRegisteredAt: Date?
 }
 
@@ -106,6 +109,7 @@ actor PushRegistrationService {
     private var ptsTokenHex: String?
     private var lastAttempt: Task<Void, Never>?
     private var lastError: String?
+    private var lastAttemptFoundNoSession = false
     private var lastRegisteredAt: Date?
     /// Most recently scheduled opt-out PATCH. New `updateServerPushOptOut`
     /// calls chain onto this task so PATCHes run in tap order, and the
@@ -136,6 +140,9 @@ actor PushRegistrationService {
     private var deviceRegisterRetryTask: Task<Void, Never>?
     private var deviceRegisterAttempts: Int = 0
     private let maxDeviceRegisterAttempts = 4
+    #if os(macOS)
+    private var passiveRegistrationRunning = false
+    #endif
     /// `performRegister` runs that have started and not ended. A count, as a cancelled run can
     /// still be finishing when the next one starts.
     private var registrationsInFlight = 0
@@ -214,6 +221,8 @@ actor PushRegistrationService {
 
     #if os(macOS)
     func registerPassiveDevice() async {
+        passiveRegistrationRunning = true
+        defer { passiveRegistrationRunning = false }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let request = PushAPI.DeviceRegisterRequest(
             client_device_id: identity.uuid,
@@ -451,6 +460,7 @@ actor PushRegistrationService {
             ptsTokenLength: ptsTokenHex?.count ?? 0,
             deviceTokenLength: deviceTokenHex?.count ?? 0,
             lastError: lastError,
+            lastAttemptFoundNoSession: lastAttemptFoundNoSession,
             lastRegisteredAt: lastRegisteredAt
         )
     }
@@ -525,6 +535,26 @@ actor PushRegistrationService {
         await registerIfReady()
         #elseif os(macOS)
         await registerPassiveDevice()
+        #endif
+    }
+
+    /// ``registerAgain()`` on a return to the app, once the last registration gave up. A session
+    /// that comes back through a token refresh alone runs none of its other triggers, so the return
+    /// to the app is what gives such a registration another round
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/386).
+    func registerAgainIfGaveUp() async {
+        guard lastError != nil, registrationGaveUp else { return }
+        await registerAgain()
+    }
+
+    /// The Mac's passive registration tries once and schedules no retry, so one failure gives up,
+    /// unless a registration is still on its way: a second one could land after it and leave the
+    /// older answer in the status.
+    private var registrationGaveUp: Bool {
+        #if os(iOS)
+        deviceRegisterAttempts >= maxDeviceRegisterAttempts
+        #else
+        !passiveRegistrationRunning
         #endif
     }
 
@@ -676,11 +706,13 @@ actor PushRegistrationService {
     private func noteSuccessfulRegistration() {
         lastRegisteredAt = Date()
         lastError = nil
+        lastAttemptFoundNoSession = false
         registerAgainIfRunningFails = false
     }
 
     private func noteRegistrationError(_ error: Error) {
         lastError = "register: \(error.localizedDescription)"
+        lastAttemptFoundNoSession = if case PushAPIError.notSignedIn = error { true } else { false }
     }
 
     #if os(iOS)

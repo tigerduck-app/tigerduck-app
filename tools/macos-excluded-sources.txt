@@ -64,6 +64,7 @@ ClassTableViewModel+Editing.swift
 ClassTableViewModel+Loading.swift
 ConflictCoursePickerSheet.swift
 ClassTableExportView.swift
+ClassTableImportScannerView.swift  # camera scanner; the Mac reads an image file instead
 ConflictLShape.swift
 TimetableGridView.swift
 
@@ -167,7 +168,6 @@ PasswordField.swift
 
 # SharedUI — iOS-only shared components
 EmptyStateView.swift
-FlowLayout.swift
 GlassTextButtonModifier.swift
 HostScreenReader.swift
 InAppBrowserView.swift

@@ -11,6 +11,8 @@ struct ClassTableView: View {
     @State private var exportedFile: ExportedFile?
     @State private var showExportFailed = false
     @State private var isExporting = false
+    @State private var shareModel: ClassTableShareModel?
+    @State private var importModel: ClassTableImportModel?
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -231,6 +233,8 @@ struct ClassTableView: View {
             .alert(String(localized: "class_table_export_failed"), isPresented: $showExportFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
+            .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
+            .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the
@@ -295,6 +299,19 @@ struct ClassTableView: View {
                 }
             }
             Section {
+                if ImportedClassTableStore.shared.shownPerson == nil {
+                    Button {
+                        openShareSheet()
+                    } label: {
+                        Label(String(localized: "class_table_share"), systemImage: "qrcode")
+                    }
+                    // Held off with the export, whose share sheet would wait behind this one.
+                    .disabled(isExporting || !ClassTableShareModel.canShare(
+                        studentId: appState.authService.storedStudentId,
+                        shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
+                        semesters: viewModel.availableSemesters
+                    ))
+                }
                 Button {
                     exportScreenshot()
                 } label: {
@@ -304,6 +321,13 @@ struct ClassTableView: View {
                 // export a header over nothing. Held off while an export is
                 // still being written, so two cannot race for the same file.
                 .disabled(pageAccessState != .content || isExporting)
+            }
+            Section {
+                Button {
+                    importModel = .live(authService: appState.authService)
+                } label: {
+                    Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
+                }
             }
         } label: {
             headerIcon("ellipsis")
@@ -355,6 +379,20 @@ struct ClassTableView: View {
                 showExportFailed = true
             }
         }
+    }
+
+    private func openShareSheet() {
+        guard let studentId = appState.authService.storedStudentId else { return }
+        let terms = ClassTableShareModel.terms(
+            in: viewModel.availableSemesters,
+            shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses)
+        )
+        guard !terms.isEmpty else { return }
+        shareModel = ClassTableShareModel(
+            studentId: studentId,
+            terms: terms,
+            semesterLabel: viewModel.displayLabel(for:)
+        )
     }
 
     private var authenticatedContent: some View {

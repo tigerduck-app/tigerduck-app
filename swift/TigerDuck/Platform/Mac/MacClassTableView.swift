@@ -1,6 +1,7 @@
 #if os(macOS)
 import SwiftUI
 import Defaults
+import UniformTypeIdentifiers
 
 /// macOS Class Table: a weekday × period grid matching the iPhone's look, with the same
 /// glassy cells (`.ultraThinMaterial`, `course.color.opacity(0.4)`, a thin tinted stroke)
@@ -28,6 +29,9 @@ struct MacClassTableView: View {
     /// The Moodle screens pushed in the course detail overlay, which Escape leaves first.
     @State private var detailMoodlePath: [MoodleCourseRoute] = []
     @State private var showAddCourse: Bool = false
+    @State private var shareModel: ClassTableShareModel?
+    @State private var showImportPicker = false
+    @State private var importModel: ClassTableImportModel?
     /// Non-nil while the macOS color picker sheet is presented. Set from the
     /// per-cell context menu; the iOS path stores this on its view-model, but
     /// the Mac classtable is a plain View so it lives in @State here.
@@ -176,7 +180,75 @@ struct MacClassTableView: View {
                 }
                 .help(String(localized: "add_course_title"))
             }
+            if ImportedClassTableStore.shared.shownPerson == nil {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        openShareSheet()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "qrcode")
+                            Text(String(localized: "class_table_share"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "class_table_share"))
+                    .disabled(!ClassTableShareModel.canShare(
+                        studentId: appState.authService.storedStudentId,
+                        shownTerm: .init(semester: selectedSemester, courses: courses),
+                        semesters: availableSemesters
+                    ))
+                }
+            }
+            ToolbarItem(placement: .automatic) {
+                if let importModel, importModel.isLookingUp, importModel.pending == nil {
+                    // An update has no screen of its own, so it spins, and can be stopped, here.
+                    Button {
+                        importModel.cancel()
+                    } label: {
+                        HStack(spacing: 4) {
+                            ProgressView().controlSize(.small)
+                            Text(String(localized: "action_cancel"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "action_cancel"))
+                } else {
+                    Button {
+                        showImportPicker = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "qrcode.viewfinder")
+                            Text(String(localized: "class_table_import"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "class_table_import"))
+                    .disabled(importModel?.isLookingUp == true || importModel?.isReadingImage == true)
+                }
+            }
         }
+        .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.image]) { result in
+            let model = ClassTableImportModel.live(authService: appState.authService)
+            importModel = model
+            switch result {
+            case .success(let url):
+                Task { await model.readImage(fileAt: url) }
+            case .failure(let error):
+                // A file that cannot be opened gives the same answer as one with no code in it.
+                AppLogger.captureError(error, context: ["phase": "classTableImport.pickFile"])
+                Task { await model.readImage(nil) }
+            }
+        }
+        .classTableImportPrompts(importModel, onConfirmScreen: false)
+        .sheet(item: Binding(get: { importModel?.pending }, set: { if $0 == nil { importModel?.cancel() } })) { pending in
+            if let importModel {
+                ClassTableImportConfirmView(model: importModel, code: pending.code)
+            }
+        }
+        .onChange(of: importModel?.isFinished) { _, isFinished in
+            if isFinished == true { importModel = nil }
+        }
+        .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
                 semester: selectedSemester,
@@ -413,6 +485,19 @@ struct MacClassTableView: View {
 
 
     // MARK: - Helpers
+
+    private func openShareSheet() {
+        guard let studentId = appState.authService.storedStudentId else { return }
+        let terms = ClassTableShareModel.terms(
+            in: availableSemesters, shownTerm: .init(semester: selectedSemester, courses: courses)
+        )
+        guard !terms.isEmpty else { return }
+        shareModel = ClassTableShareModel(
+            studentId: studentId,
+            terms: terms,
+            semesterLabel: displayLabel(for:)
+        )
+    }
 
     private var totalCredits: Double {
         courses.reduce(0) { $0 + $1.credits }

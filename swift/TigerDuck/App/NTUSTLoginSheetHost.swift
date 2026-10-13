@@ -17,6 +17,9 @@ struct NTUSTLoginSheetHost: ViewModifier {
                 subtitle: String(localized: "onboarding_sign_in_subtitle"),
                 usernamePlaceholder: String(localized: "sign_in_student_id"),
                 passwordPlaceholder: String(localized: "sign_in_password"),
+                // The stored account's ID: signing in as another one first signs it out and wipes
+                // its data here (https://github.com/tigerduck-app/tigerduck-app/issues/398).
+                initialUsername: appState.authService.storedStudentId ?? "",
                 isLoggingIn: appState.authService.isLoggingIn,
                 loginError: appState.authService.loginError,
                 onLogin: { studentId, password in
