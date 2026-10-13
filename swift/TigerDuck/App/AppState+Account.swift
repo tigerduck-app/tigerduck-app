@@ -79,7 +79,8 @@ extension AppState {
     /// `syncTask` is cancelled first: `AppServiceBridge` and the `backgroundSync`
     /// finalize block check `Task.isCancelled` before writing, so they abort
     /// instead of racing the cache purge and restoring the previous user's data.
-    func logoutNTUST() {
+    @discardableResult
+    func logoutNTUST() -> Task<Void, Never> {
         stopRevisionPolling()
         _lastKnownRevision = 0
         syncTask?.cancel()
@@ -93,19 +94,21 @@ extension AppState {
         #endif
 
         authService.logout()
-        Task { await authTokenManager.logout() }
+        let backendSignOut = Task { await authTokenManager.logout() }
         // The tracker is process-wide and outlives the account. Without a reset the next
         // account inherits the departing user's last good sync, and the header dot shows
         // green before anything has synced.
         ServerStatusTracker.shared.reset()
         Defaults[.schoolDataSyncedAt] = nil
-        Defaults[.lastSeenCoursesResetAt] = nil
         // The next account opens the class table on the newest term, not on this one's pick.
         Defaults[.classTableSelectedSemester] = nil
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.
         didSkipMacLogin = false
+        // The downloaded files go with the cache below; a download still running would only
+        // be thrown away once it ends.
+        MoodleFileDownloads.shared.cancelAll()
         DataCache.shared.clearUserScopedData()
         ImportedClassTableStore.shared.removeAll()
         BulletinsViewModel.forgetListSession()
@@ -134,12 +137,14 @@ extension AppState {
         // Before the network calls below, which offline run until they time out: the widgets
         // show the departing account's timetable until this rewrites their snapshot.
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        Task { @MainActor in
+        // A sign-in as another account waits for this, so none of it lands on that account.
+        return Task { @MainActor in
             await cloudSyncCoordinator.settleForSignOut()
             await pushCoordinator.disable()
             #if os(iOS)
             await liveActivityCoordinator.endAll()
             #endif
+            await backendSignOut.value
         }
     }
 
@@ -147,10 +152,12 @@ extension AppState {
     /// out of reach of `clearUserScopedData`. A re-enable check left pending would keep the next
     /// account's pulls off the categories it names and hold the account's marks and course settings
     /// until a Settings visit ran it, on a device the sign-out emptied: Keep Local there clears the
-    /// account's marks on the server.
+    /// account's marks on the server. Until the next account's first sync, nothing is marked for that
+    /// check (`hasSyncedAccount`).
     static func forgetSyncProgress() {
         Defaults[.pendingConflictCategories] = []
         Defaults[.assignmentMarksSyncedOnce] = false
+        Defaults[.lastSeenCoursesResetAt] = nil
     }
 
     func notifyLibraryStateChanged() {
