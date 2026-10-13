@@ -1363,6 +1363,9 @@
 					ServerStatusTracker.swift,
 					SyncStatusDot.swift,
 					CourseTombstone.swift,
+					ClassTableShareCode.swift,
+					"ClassTableShareCode+TAT.swift",
+					ImportedClassTableStore.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1623,6 +1626,9 @@
 					ServerStatusTracker.swift,
 					SyncStatusDot.swift,
 					CourseTombstone.swift,
+					ClassTableShareCode.swift,
+					"ClassTableShareCode+TAT.swift",
+					ImportedClassTableStore.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
