@@ -262,5 +262,27 @@
         { "symbol": "arrow.down.app", "title": "Update check fixed", "body": "You'll be reminded when a new version is out." }
       ]
     }
+  },
+  "2.4.0": {
+    "zh-TW": {
+      "title": "2.4.0 更新內容",
+      "items": [
+        { "symbol": "qrcode", "title": "分享與切換課表", "body": "用 QR Code 分享、匯入朋友的課表。長按或雙擊課表可以切換。" },
+        { "symbol": "books.vertical", "title": "課程的 Moodle 內容", "body": "課程詳情可看公告、教材、討論區、成員與成績。" },
+        { "symbol": "bell.badge", "title": "上課提醒設定", "body": "可關閉上課提醒，或調整提前通知的時間。" },
+        { "symbol": "archivebox", "title": "忽略整門課的作業", "body": "忽略某門課的所有作業與繳交通知。" },
+        { "symbol": "applewatch", "title": "Apple Watch 錶面", "body": "錶面直接顯示下一堂課。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.4.0",
+      "items": [
+        { "symbol": "qrcode", "title": "Share and switch class tables", "body": "Share and import friends' class tables by QR code. Touch and hold or double-tap the Class table tab to switch." },
+        { "symbol": "books.vertical", "title": "Moodle in course details", "body": "See a course's announcements, materials, forums, members and grades." },
+        { "symbol": "bell.badge", "title": "Class reminder settings", "body": "Turn class reminders off or choose how early they come." },
+        { "symbol": "archivebox", "title": "Ignore a course's assignments", "body": "Ignore all of a course's assignments and their due reminders." },
+        { "symbol": "applewatch", "title": "Apple Watch complication", "body": "See your next class right on the watch face." }
+      ]
+    }
   }
 }

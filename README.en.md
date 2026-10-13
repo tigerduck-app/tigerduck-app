@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.3.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.3.0)
+[![Version](https://img.shields.io/badge/Version-v2.4.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.4.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -57,7 +57,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 - **Now & Next** home screen: the current and next class, with progress for the one in session
 - **Today** list and per-course detail
 - Raise your wrist for the **library entry QR code** — fullscreen, with idle-fade page dots
-- **Complication** puts the next class on the watch face (circular / rectangular / inline / corner), coming in the next release
+- **Complication** puts the next class on the watch face (circular / rectangular / inline / corner)
 - Schedule and credentials sync over WatchConnectivity — no separate sign-in on the Watch
 
 ### 🧩 **Widgets**
@@ -115,6 +115,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| `v2.4.0` | 2026-10-13 | Share, import and switch class tables by QR code, Moodle announcements, materials, forums, members and grades in course details, class reminder settings, ignore a course's assignments, next-class Apple Watch complication |
 | `v2.3.0` | 2026-10-04 | Redesigned What's New, class table export as an image, notifications stacked by type, light mode for HTML mail, update prompt fix |
 | `v2.2.0` | 2026-09-30 | School Mail on iOS: read and send NTUST Mail2000 mail, with new-mail notifications |
 | `v2.1.4` | 2026-09-25 | No class Live Activities or class lists on holidays |
@@ -202,7 +203,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 ### ⌚ Apple Watch / 🧩 Widgets / 💻 macOS
 - [x] **Apple Watch app** — Library QR, WatchConnectivity credential sync `v1.7.0`
 - [x] **Watch Now & Next / Today / course detail** `v1.7.0`
-- [ ] **Watch complication** — Next class straight on the watch face, coming in the next release
+- [x] **Watch complication** — Next class straight on the watch face `v2.4.0`
 - [x] **iOS / macOS widgets** — Next class, today's and this week's timetable, Lock Screen accessories, library QR shortcut `v1.7.0`
 - [x] **macOS app** — Native sidebar layout `v1.7.0`, push and account sync `v2.0.0`
 

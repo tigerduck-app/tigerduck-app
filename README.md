@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.3.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.3.0)
+[![Version](https://img.shields.io/badge/Version-v2.4.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.4.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -57,7 +57,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 - **Now & Next** 主畫面：當下 / 下一節課，以及進行中課程的進度
 - **Today** 列表與課程詳情頁
 - 抬腕即見**入館 QR-Code**，全螢幕顯示、閒置自動淡出頁碼
-- **Complication** 把下一節課放到錶面（圓形 / 矩形 / 單行 / 邊角四種），下一版推出
+- **Complication** 把下一節課放到錶面（圓形 / 矩形 / 單行 / 邊角四種）
 - 透過 WatchConnectivity 自動同步課表與登入憑證，無需在 Watch 上重新登入
 
 ### 🧩 **小工具**
@@ -116,6 +116,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| `v2.4.0` | 2026-10-13 | 課表可用 QR Code 分享、匯入並切換、課程詳情顯示 Moodle 公告／教材／討論區／成員／成績、上課提醒設定、可忽略整門課的作業、Apple Watch 錶面顯示下一堂課 |
 | `v2.3.0` | 2026-10-04 | 改版「新功能」介紹、課表可匯出成圖片、通知依類型分開堆疊、HTML 信件可用淺色模式檢視、修正新版本未提醒 |
 | `v2.2.0` | 2026-09-30 | iOS 新增校園信箱，可收發 Mail2000 信件並通知新信 |
 | `v2.1.4` | 2026-09-25 | 放假日不再出現課程動態島，也不列出當天的課 |
@@ -203,7 +204,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 ### ⌚ Apple Watch / 🧩 小工具 / 💻 macOS
 - [x] **Apple Watch App** – 圖書證 QR、WatchConnectivity 憑證同步 `v1.7.0`
 - [x] **Watch Now & Next / Today / 課程詳情** `v1.7.0`
-- [ ] **Watch Complication** – 下一節課直接顯示在錶面，下一版推出
+- [x] **Watch Complication** – 下一節課直接顯示在錶面 `v2.4.0`
 - [x] **iOS / macOS 小工具** – 下一節課、今日 / 本週課表、鎖定畫面 Accessory、圖書證 QR 捷徑 `v1.7.0`
 - [x] **macOS App** – 原生側邊欄版面 `v1.7.0`、推播與帳號同步 `v2.0.0`
 
