@@ -35,6 +35,8 @@ nonisolated struct MoodleDiscussion: Codable, Sendable, Hashable, Identifiable {
     /// Nil where the forum hides authors.
     let authorName: String?
     let attachments: [MoodleFile]
+    /// The author's Moodle user, which finds them among the course's members.
+    var authorId: Int? = nil
 }
 
 /// A file as Moodle's `external_files` lists it.
@@ -44,6 +46,8 @@ nonisolated struct MoodleFile: Codable, Sendable, Hashable {
     let url: String
     let mimeType: String?
     let modified: Date?
+    /// The folder it is in, such as `/week1/`, which tells apart two files of one name.
+    var path: String? = nil
 }
 
 /// The forum calls of Moodle's mobile web service. Every call takes the token, so the caller runs
@@ -147,8 +151,9 @@ private nonisolated struct RawDiscussion: Decodable, Sendable {
     let pinned: Bool
     let numunread: Int?
     let numreplies: Int?
+    let userid: Int?
     let userfullname: String?
-    let attachments: [RawFile]?
+    let attachments: [MoodleRawFile]?
 
     var model: MoodleDiscussion {
         MoodleDiscussion(
@@ -163,13 +168,16 @@ private nonisolated struct RawDiscussion: Decodable, Sendable {
             unreadCount: numunread ?? 0,
             replyCount: numreplies ?? 0,
             authorName: userfullname,
-            attachments: (attachments ?? []).compactMap(\.model)
+            attachments: (attachments ?? []).compactMap(\.model),
+            authorId: userid
         )
     }
 }
 
-private nonisolated struct RawFile: Decodable, Sendable {
+/// A file in a Moodle answer, as a post's attachments and a course module's contents list it.
+nonisolated struct MoodleRawFile: Decodable, Sendable {
     let filename: String?
+    let filepath: String?
     let filesize: Int?
     let fileurl: String?
     let mimetype: String?
@@ -182,7 +190,8 @@ private nonisolated struct RawFile: Decodable, Sendable {
             size: filesize ?? 0,
             url: fileurl,
             mimeType: mimetype,
-            modified: timemodified.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+            modified: timemodified.map { Date(timeIntervalSince1970: TimeInterval($0)) },
+            path: filepath
         )
     }
 }

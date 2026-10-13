@@ -33,6 +33,9 @@ final class AuthService {
 
     private let moodleTokens: MoodleTokenService
 
+    /// The interactive SSO sign-in. Tests pass a stand-in, so no request reaches the school.
+    private let schoolSignIn: (_ studentId: String, _ password: String) async throws -> Bool
+
     private var credentialObservers: [any NSObjectProtocol] = []
 
     /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``), so keychain reads
@@ -46,10 +49,13 @@ final class AuthService {
     init(
         keychainHasCredentials: @escaping () -> Bool = AuthService.readKeychainHasCredentials,
         notificationCenter center: NotificationCenter = .default,
-        moodleTokens: MoodleTokenService = .shared
+        moodleTokens: MoodleTokenService = .shared,
+        schoolSignIn: @escaping (_ studentId: String, _ password: String) async throws -> Bool
+            = AuthService.signInToSchool
     ) {
         self.keychainHasCredentials = keychainHasCredentials
         self.moodleTokens = moodleTokens
+        self.schoolSignIn = schoolSignIn
         let present = keychainHasCredentials()
         lastKnownHasCredentials = present
         // Only ever raised here. A false read at this point may just mean the
@@ -164,6 +170,11 @@ final class AuthService {
 
     var authTokenManager: AuthTokenManager?
     var onV3SignedIn: (() -> Void)?
+    /// The full sign-out, `AppState.logoutNTUST()`. ``login(studentId:password:)`` waits for it
+    /// when another student ID signs in over the stored one, so that student inherits none of the
+    /// stored account's data. It also empties the school session, which the SSO sign-in would
+    /// otherwise accept as signed in without checking the new password.
+    var signOutStoredAccount: (() async -> Void)?
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
     /// When an automatic backend sign-in that had credentials to send last failed. The backend
     /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
@@ -180,6 +191,36 @@ final class AuthService {
         guard let lastFailure else { return true }
         let age = now.timeIntervalSince(lastFailure)
         return age >= backendSignInPause || age < 0
+    }
+
+    /// True while an automatic backend sign-in that had credentials to send is under way.
+    private(set) var isSigningInToBackend = false
+
+    /// Whether the TigerSync status asks the user to sign in again, in place of the error left by a
+    /// registration that went unsent because an automatic sign-in failed. Not while another is
+    /// under way, which may yet succeed. The school sign-in it opens signs in to the backend too.
+    nonisolated static func asksToSignInAgain(
+        syncEnabled: Bool,
+        credentialsReadable: Bool,
+        hasBackendSession: Bool,
+        signingIn: Bool,
+        registrationFoundNoSession: Bool
+    ) -> Bool {
+        syncEnabled && credentialsReadable && !hasBackendSession && !signingIn && registrationFoundNoSession
+    }
+
+    /// ``asksToSignInAgain(syncEnabled:credentialsReadable:hasBackendSession:signingIn:registrationFoundNoSession:)``
+    /// for this device now, after the registration `registration` describes.
+    func asksToSignInAgain(syncEnabled: Bool, after registration: PushRegistrationSnapshot) async -> Bool {
+        guard let authTokenManager else { return false }
+        let hasBackendSession = await authTokenManager.isLoggedIn
+        return Self.asksToSignInAgain(
+            syncEnabled: syncEnabled,
+            credentialsReadable: storedStudentId != nil && storedPassword != nil,
+            hasBackendSession: hasBackendSession,
+            signingIn: isSigningInToBackend,
+            registrationFoundNoSession: registration.lastAttemptFoundNoSession
+        )
     }
 
     var storedStudentId: String? {
@@ -199,22 +240,30 @@ final class AuthService {
 
     private static let ssoServiceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
 
+    /// Reads the session generation when it starts, which is after the sign-out that
+    /// ``login(studentId:password:)`` runs first for another student ID.
+    static func signInToSchool(studentId: String, password: String) async throws -> Bool {
+        try await SSOLoginService.ensureServiceLogin(
+            session: NTUSTSessionManager.shared.session,
+            serviceURL: ssoServiceURL,
+            studentId: studentId,
+            password: password,
+            generation: NTUSTSessionManager.shared.generation,
+            interactive: true
+        )
+    }
+
     func login(studentId: String, password: String) async -> Bool {
         isLoggingIn = true
         loginError = nil
 
         do {
-            let session = NTUSTSessionManager.shared.session
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
+            if let stored = storedStudentId, stored != normalizedId {
+                await signOutStoredAccount?()
+            }
 
-            let success = try await SSOLoginService.ensureServiceLogin(
-                session: session,
-                serviceURL: Self.ssoServiceURL,
-                studentId: normalizedId,
-                password: password,
-                generation: NTUSTSessionManager.shared.generation,
-                interactive: true
-            )
+            let success = try await schoolSignIn(normalizedId, password)
 
             if success {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
@@ -222,8 +271,7 @@ final class AuthService {
                 // Drop this account's cached enrolled courses so the first fetch after login
                 // scrapes fresh data, not stale courses from before a semester crossover.
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
-                // The sign-in sheet also opens over a stored account, so another account can sign
-                // in without a sign-out; it must not inherit the class tables the last one imported.
+                // Class tables imported while no one was signed in become this account's.
                 ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId)
                 reauthErrorMessage = nil
                 markCredentialsChanged()
@@ -441,6 +489,8 @@ final class AuthService {
               Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
               let studentId = storedStudentId, let password = storedPassword else { return }
         let generation = loginGeneration
+        isSigningInToBackend = true
+        defer { isSigningInToBackend = false }
         if await !performV3Login(studentId: studentId, password: password, harvesting: true) {
             noteFailedBackendSignIn(since: generation)
         }

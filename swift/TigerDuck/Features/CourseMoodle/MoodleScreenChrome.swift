@@ -10,6 +10,9 @@ struct MoodlePage: Hashable {
 
     static func forum(cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/view.php?id=\(cmid)") }
     static func discussion(_ id: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/discuss.php?d=\(id)") }
+    static func course(_ id: Int) -> MoodlePage { MoodlePage(path: "/course/view.php?id=\(id)") }
+    /// A module's page, such as `/mod/resource/view.php?id=5` for the module `resource`.
+    static func module(_ module: String, cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/\(module)/view.php?id=\(cmid)") }
 
     var webURL: URL? { URL(string: path, relativeTo: AppConstants.moodleBaseURL)?.absoluteURL }
 
@@ -34,49 +37,27 @@ extension OpenURLAction {
     }
 }
 
-/// The status dot of a course's Moodle screens: one source, Moodle.
-struct MoodleStatusDot: View {
-    let status: ServerStatus
-    let isLoading: Bool
+/// Opens a link from Moodle content where the reader expects it: a Moodle page in the browser
+/// signed in, any other web page in the app's browser when the setting asks for it, else as the
+/// system opens it. Signing in goes no further than the Moodle site.
+struct MoodleLinkAction {
+    fileprivate let open: (URL) -> Void
 
-    var body: some View {
-        SyncStatusDot(
-            status: status,
-            label: String(localized: "calendar_source_moodle"),
-            icon: "graduationcap.fill",
-            text: SyncStatusDot.statusText(status),
-            isLoading: isLoading
-        )
-    }
+    func callAsFunction(_ url: URL) { open(url) }
+}
+
+extension EnvironmentValues {
+    @Entry var openMoodleLink = MoodleLinkAction { _ in }
 }
 
 extension View {
-    /// The bar of a pushed Moodle list: the title, the status dot and "Open in Moodle". On the
-    /// Mac the course detail is an overlay in the window, so the bar is drawn in it, not left to
-    /// the window's toolbar, and ⌘R runs `refresh`.
-    func moodleListChrome(
-        title: String,
-        status: ServerStatus,
-        isLoading: Bool,
-        page: MoodlePage?,
-        refresh: @escaping () async -> Void
-    ) -> some View {
-        modifier(MoodleListChrome(title: title, status: status, isLoading: isLoading, page: page, refresh: refresh))
-    }
-
-    /// The bar of a pushed Moodle article: the back button alone, over the content.
-    func moodleArticleChrome() -> some View {
-        modifier(MoodleArticleChrome())
-    }
-
-    /// Opens the links in Moodle text drawn inside: a Moodle page signed in, any other where the
-    /// reader's browser setting says.
-    func moodleTextLinks() -> some View {
-        modifier(MoodleTextLinks())
+    /// Set where a screen is pushed, so the screen itself can read ``EnvironmentValues/openMoodleLink``.
+    func moodleLinkOpening() -> some View {
+        modifier(MoodleLinkOpening())
     }
 }
 
-private struct MoodleTextLinks: ViewModifier {
+private struct MoodleLinkOpening: ViewModifier {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     #if os(iOS)
@@ -85,10 +66,7 @@ private struct MoodleTextLinks: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .environment(\.openURL, OpenURLAction { url in
-                open(url)
-                return .handled
-            })
+            .environment(\.openMoodleLink, MoodleLinkAction(open: open))
             #if os(iOS)
             .sheet(item: $inAppPage) { page in
                 InAppBrowserView(url: page.url)
@@ -119,14 +97,53 @@ private struct InAppPage: Identifiable {
 }
 #endif
 
+/// The status dot of a course's Moodle screens: one source, Moodle.
+struct MoodleStatusDot: View {
+    let status: ServerStatus
+    let isLoading: Bool
+
+    var body: some View {
+        SyncStatusDot(
+            status: status,
+            label: String(localized: "calendar_source_moodle"),
+            icon: "graduationcap.fill",
+            text: SyncStatusDot.statusText(status),
+            isLoading: isLoading
+        )
+    }
+}
+
+extension View {
+    /// The bar of a pushed Moodle list: the title, the status dot and "Open in Moodle". On the
+    /// Mac the course detail is an overlay in the window, so the bar is drawn in it, not left to
+    /// the window's toolbar, and ⌘R runs `refresh`.
+    func moodleListChrome(
+        title: String,
+        status: ServerStatus,
+        isLoading: Bool,
+        page: MoodlePage?,
+        willOpenPage: @escaping () -> Void = {},
+        refresh: @escaping () async -> Void
+    ) -> some View {
+        modifier(MoodleListChrome(
+            title: title, status: status, isLoading: isLoading, page: page, willOpenPage: willOpenPage, refresh: refresh
+        ))
+    }
+
+    /// The bar of a pushed Moodle article: the back button over the content, and "Open in
+    /// Moodle" for `page`.
+    func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
+        modifier(MoodleArticleChrome(page: page))
+    }
+}
+
 private struct MoodleListChrome: ViewModifier {
     let title: String
     let status: ServerStatus
     let isLoading: Bool
     let page: MoodlePage?
+    let willOpenPage: () -> Void
     let refresh: () async -> Void
-
-    @Environment(\.openURL) private var openURL
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -142,7 +159,7 @@ private struct MoodleListChrome: ViewModifier {
                     ToolbarItem(placement: .topBarTrailing) { dot }
                 }
                 if let page {
-                    ToolbarItem(placement: .topBarTrailing) { openButton(page) }
+                    ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
             }
         #else
@@ -151,7 +168,7 @@ private struct MoodleListChrome: ViewModifier {
             .safeAreaInset(edge: .top, spacing: 0) {
                 MacMoodleTitleBar(title: title) {
                     dot
-                    if let page { openButton(page) }
+                    if let page { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
             }
             .background {
@@ -167,31 +184,48 @@ private struct MoodleListChrome: ViewModifier {
     private var dot: some View {
         MoodleStatusDot(status: status, isLoading: isLoading)
     }
-
-    private func openButton(_ page: MoodlePage) -> some View {
-        Button {
-            Task { await openURL(page) }
-        } label: {
-            Image(systemName: "arrow.up.right.square")
-        }
-        .accessibilityLabel(String(localized: "action_open_in_moodle"))
-    }
 }
 
 private struct MoodleArticleChrome: ViewModifier {
+    let page: MoodlePage?
+
     func body(content: Content) -> some View {
         #if os(iOS)
         content
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                if let page {
+                    ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page) }
+                }
+            }
         #else
         content
             .navigationBarBackButtonHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) {
-                MacMoodleTitleBar(title: nil) { EmptyView() }
+                MacMoodleTitleBar(title: nil) {
+                    if let page { MoodleOpenButton(page: page) }
+                }
             }
         #endif
+    }
+}
+
+private struct MoodleOpenButton: View {
+    let page: MoodlePage
+    var willOpen: () -> Void = {}
+
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            willOpen()
+            Task { await openURL(page) }
+        } label: {
+            Image(systemName: "arrow.up.right.square")
+        }
+        .accessibilityLabel(String(localized: "action_open_in_moodle"))
     }
 }
 
@@ -280,11 +314,13 @@ struct MoodleFirstLoadView: View {
 /// bulletin's source button.
 struct MoodleOpenCapsule: View {
     let page: MoodlePage
+    var willOpen: () -> Void = {}
 
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         Button {
+            willOpen()
             Task { await openURL(page) }
         } label: {
             Label(String(localized: "action_open_in_moodle"), systemImage: "arrow.up.right.square")
@@ -308,23 +344,40 @@ nonisolated enum MoodlePersonName {
         let name = trimmed[trimmed.index(after: at)...].trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? trimmed : name
     }
+
+    /// The part before the `@`, for a user whose `idnumber` Moodle leaves out.
+    static func studentId(_ fullName: String) -> String? {
+        guard let at = fullName.firstIndex(of: "@") else { return nil }
+        let id = fullName[..<at].trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.isEmpty ? nil : id
+    }
 }
 
-/// Moodle's own pictures of other users need a file token, so a user shows as the first
-/// character of their name in a circle.
+/// A user's own picture where the screen has one, else the first character of their name in a
+/// circle.
 struct MoodleAvatar: View {
     let name: String
     let size: CGFloat
+    var picture: CGImage?
 
     var body: some View {
-        Circle()
-            .fill(Color.textSecondary.opacity(0.25))
-            .frame(width: size, height: size)
-            .overlay {
-                Text(name.first.map { String($0) } ?? "")
-                    .font(.system(size: size * 0.5, weight: .semibold))
-                    .foregroundStyle(Color.textPrimary)
+        Group {
+            if let picture {
+                Image(decorative: picture, scale: 1)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Circle()
+                    .fill(Color.textSecondary.opacity(0.25))
+                    .overlay {
+                        Text(name.first.map { String($0) } ?? "")
+                            .font(.system(size: size * 0.5, weight: .semibold))
+                            .foregroundStyle(Color.textPrimary)
+                    }
             }
-            .accessibilityHidden(true)
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 }

@@ -48,7 +48,6 @@ struct MoodleGradesView: View {
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
         .refreshable { await store.refreshGrades() }
-        .moodleTextLinks()
         .moodleListChrome(
             title: String(localized: "course_detail_moodle_grades_label"),
             status: store.grades.status,
@@ -144,6 +143,7 @@ struct MoodleGradeRow: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openMoodleLink) private var openMoodleLink
     @ScaledMetric(relativeTo: .body) private var nameMinWidth: CGFloat = 120
 
     /// The line between rows and the feedback start under the name, not under the icon.
@@ -264,6 +264,10 @@ struct MoodleGradeRow: View {
         Markdown(item.feedback)
             .markdownTheme(.bulletin(accent: accent))
             .markdownTextStyle { FontSize(.em(0.88)) }
+            .environment(\.openURL, OpenURLAction { url in
+                openMoodleLink(url)
+                return .handled
+            })
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, Self.textInset)
             .padding(.trailing, TigerDuckTheme.Spacing.lg)
@@ -300,16 +304,12 @@ extension MoodleGradeItem {
     /// added by hand.
     var activityPage: MoodlePage? {
         guard let module, let cmid, module.wholeMatch(of: /[a-z0-9_]+/) != nil else { return nil }
-        return .activity(module: module, cmid: cmid)
+        return .module(module, cmid: cmid)
     }
 }
 
 extension MoodlePage {
     static func gradeReport(courseId: Int) -> MoodlePage {
         MoodlePage(path: "/grade/report/user/index.php?id=\(courseId)")
-    }
-
-    static func activity(module: String, cmid: Int) -> MoodlePage {
-        MoodlePage(path: "/mod/\(module)/view.php?id=\(cmid)")
     }
 }
