@@ -34,6 +34,7 @@ struct ClassTableShareSheet: View {
             .padding(.vertical, 10)
         }
         .frame(minWidth: 360, idealWidth: 420, minHeight: 520, idealHeight: 560)
+        .onExitCommand { dismiss() }
         #else
         NavigationStack {
             form
