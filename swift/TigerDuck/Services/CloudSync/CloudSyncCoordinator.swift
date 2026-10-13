@@ -48,8 +48,8 @@ final class CloudSyncCoordinator {
 
     @ObservationIgnored private let pushCoordinator: PushCoordinator
     @ObservationIgnored let outbox: SyncOutbox
-    /// The Assignments sync switch, read before each mark goes out. A mark queued before it went
-    /// off waits for it to come back.
+    /// `sendsAssignmentMarks`, read before each mark goes out. A mark queued while it is false
+    /// waits.
     @ObservationIgnored private let syncsAssignmentMarks: @Sendable () -> Bool
     /// `sendsCourseIgnores`, read before each course's ignore setting goes out. A setting queued
     /// while it is false waits.
@@ -72,7 +72,12 @@ final class CloudSyncCoordinator {
         pushCoordinator: PushCoordinator,
         outbox: SyncOutbox = SyncOutbox(),
         isEnabled: Bool = Defaults[.cloudSyncEnabled],
-        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { Defaults[.syncAssignments] },
+        syncsAssignmentMarks: @escaping @Sendable () -> Bool = {
+            CloudSyncCoordinator.sendsAssignmentMarks(
+                assignments: Defaults[.syncAssignments],
+                pendingChecks: Defaults[.pendingConflictCategories]
+            )
+        },
         syncsCourseIgnores: @escaping @Sendable () -> Bool = {
             CloudSyncCoordinator.sendsCourseIgnores(
                 assignments: Defaults[.syncAssignments],
@@ -89,6 +94,12 @@ final class CloudSyncCoordinator {
         if isEnabled {
             state = .active
         }
+    }
+
+    /// Whether a mark may go out: with the Assignments switch on, and not while its re-enable check
+    /// is pending, which may take the server's marks over the ones queued here.
+    nonisolated static func sendsAssignmentMarks(assignments: Bool, pendingChecks: Set<String>) -> Bool {
+        assignments && !pendingChecks.contains("assignments")
     }
 
     /// Whether a course's ignore setting may go out: with the Assignments and Courses switches on,
@@ -271,6 +282,15 @@ final class CloudSyncCoordinator {
             }
         }
         return ids
+    }
+
+    /// For the re-enabled Assignments switch's Use Server, which takes the server's marks over the
+    /// ones still on their way up.
+    func discardAssignmentOverrides() async {
+        await outbox.discard { op in
+            if case .assignmentOverride = op { return true }
+            return false
+        }
     }
 
     /// Awaitable for the same reason as `enqueueAssignmentOverride`.
