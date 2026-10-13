@@ -139,8 +139,8 @@ actor PushRegistrationService {
     /// `performRegister` runs that have started and not ended. A count, as a cancelled run can
     /// still be finishing when the next one starts.
     private var registrationsInFlight = 0
-    /// Set by a `registerAgain()` that found a registration running: if that one fails, the
-    /// next goes at once instead of after the backoff.
+    /// Set by a `registerAgain()` that found a registration running. That one may have gone out
+    /// without the session just restored, so its failure is no reason to wait out the backoff.
     private var registerAgainIfRunningFails = false
 
     /// The registration debounce's wait and the device-register backoff's, injectable so a test
