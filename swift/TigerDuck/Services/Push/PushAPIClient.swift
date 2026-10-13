@@ -375,8 +375,6 @@ final class PushAPIClient: Sendable {
         return request
     }
 
-    /// Attaches the session's `Authorization: Bearer <token>` header, or throws `notSignedIn`
-    /// with no session, so the request is not sent.
     private func applyAuth(to request: inout URLRequest) async throws {
         guard let header = await authHeaderProvider(), !header.isEmpty else {
             throw PushAPIError.notSignedIn

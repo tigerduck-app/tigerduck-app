@@ -167,8 +167,9 @@ final class AuthService {
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
     /// When an automatic backend sign-in that had credentials to send last failed. The backend
     /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
-    /// tigerduck-app/tigerduck-backend `server/config.py`), and a campus network puts many
-    /// students behind one IP, so the next automatic one waits ``backendSignInPause``.
+    /// https://github.com/tigerduck-app/tigerduck-backend/blob/main/server/config.py), and a
+    /// campus network puts many students behind one IP, so the next automatic one waits
+    /// ``backendSignInPause``.
     @ObservationIgnored private var backendSignInFailedAt: Date?
 
     nonisolated static let backendSignInPause: TimeInterval = 5 * 60
