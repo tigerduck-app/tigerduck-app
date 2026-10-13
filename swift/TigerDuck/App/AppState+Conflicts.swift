@@ -318,6 +318,11 @@ extension AppState {
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
         let coordinator = pushCoordinator
+        // Keep Local stops at a sign-out: its course requests would go out on the next account's
+        // session, the check it asks again for would be left to that account, and the rest would
+        // read emptied caches.
+        let generation = authService.loginGeneration
+        let isCurrent = { [weak self] in self?.authService.loginGeneration == generation }
         Task {
             if !keepLocal, conflict.categories.contains("assignments") {
                 // Before the subtract below: until then the pending check holds these in the
@@ -348,13 +353,15 @@ extension AppState {
                     }
                     do {
                         try await Self.keepLocalCourses(
-                            terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: coordinator
+                            terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: coordinator,
+                            isCurrent: isCurrent
                         )
                     } catch {
                         AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .public)")
-                        await MainActor.run { markCategoryReenabled("courses") }
+                        await MainActor.run { if isCurrent() { markCategoryReenabled("courses") } }
                     }
                 }
+                guard isCurrent() else { return }
                 if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
                     // The colour and name maps are keyed by courseNo, but the override endpoint
                     // resolves moodle_id: map through the cached course list and skip courses
@@ -437,10 +444,12 @@ extension AppState {
     /// which bind this device too, so the roster its next refresh uploads cannot bring a hidden course
     /// back. Not a full reset: that erases every term's tombstones and sets `courses_reset_at`, which
     /// tells every device, this one included, to drop its hidden and manual courses.
+    /// Once `isCurrent` turns false, as at a sign-out, it sends nothing more and throws `CancellationError`.
     static func keepLocalCourses(
         _ terms: [(semester: String, courses: [SDCourse])],
         hiding deletedNos: Set<String>,
-        on backend: some CourseSyncBackend
+        on backend: some CourseSyncBackend,
+        isCurrent: () -> Bool = { true }
     ) async throws {
         for (semester, courses) in terms {
             let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
@@ -448,10 +457,13 @@ extension AppState {
                 .map { SDCourse(courseNo: $0, courseName: $0) }
             guard !courses.isEmpty || !stubs.isEmpty else { continue }
             if !courses.isEmpty {
+                guard isCurrent() else { throw CancellationError() }
                 try await backend.deleteAllCourses(semester: semester)
             }
+            guard isCurrent() else { throw CancellationError() }
             try await backend.uploadCourses(courseUploadRequest(courses + stubs, semester: semester, forceKeys: []))
             for courseNo in hiddenNos.sorted() {
+                guard isCurrent() else { throw CancellationError() }
                 try await backend.deleteCourse(courseKey: "client:\(semester):\(courseNo)")
             }
         }
