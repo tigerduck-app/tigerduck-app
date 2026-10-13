@@ -136,6 +136,8 @@ UpdatePromptView.swift
 WhatsNewFlowView.swift
 WhatsNewPageViews.swift
 WhatsNewSchoolMailPages.swift
+WhatsNewClassTablePages.swift
+WhatsNewCoursePages.swift
 WhatsNewSummaryView.swift
 WhatsNewTabBarMock.swift
 

@@ -92,7 +92,9 @@ struct WhatsNewVisualView: View {
                 .frame(height: 120)
                 .accessibilityHidden(true)
         case .view(let demo):
+            // The demos are drawn to fit this height; VoiceOver reads their labels at any size.
             demo()
+                .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .frame(maxWidth: .infinity)
                 .frame(height: 240)
         }

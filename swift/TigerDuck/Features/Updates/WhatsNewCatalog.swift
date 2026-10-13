@@ -15,6 +15,10 @@ enum WhatsNewCatalog {
             // Mail shipped in 2.2.0, but few noticed it then; every
             // upgrade lands on 2.3.0, so it's introduced here.
             "2.3.0": [.schoolMail, .mailInBottomBar],
+            "2.4.0": [
+                .classTableSharing, .moodleInCourseDetail, .classReminderSettings,
+                .ignoreCourseAssignments, .watchComplication,
+            ],
         ]
         #else
         return [:]
