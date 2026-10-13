@@ -64,12 +64,12 @@ enum MailWebViewFactory {
         return index
     }
 
-    static func makeConfiguration(inlineImages: [String: MailInlineImage]) -> WKWebViewConfiguration {
+    static func makeConfiguration(cidHandler: MailCIDSchemeHandler) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.dataDetectorTypes = []
-        configuration.setURLSchemeHandler(MailCIDSchemeHandler(images: inlineImages), forURLScheme: MailHTMLSanitizer.cidScheme)
+        configuration.setURLSchemeHandler(cidHandler, forURLScheme: MailHTMLSanitizer.cidScheme)
         return configuration
     }
 
@@ -131,7 +131,7 @@ enum MailWebViewFactory {
 
 /// Serves `tdcid:` URLs (the sanitizer's rewrite of `cid:`) from the fetched parts.
 final class MailCIDSchemeHandler: NSObject, WKURLSchemeHandler {
-    private let images: [String: MailInlineImage]
+    var images: [String: MailInlineImage]
 
     init(images: [String: MailInlineImage]) {
         self.images = images
