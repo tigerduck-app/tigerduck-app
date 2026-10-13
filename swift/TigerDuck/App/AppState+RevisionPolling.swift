@@ -130,8 +130,11 @@ extension AppState {
         current: Int,
         cloudSyncEnabled: Bool
     ) -> Bool {
+        // A feed read writes no cache it cannot open; a full sync it starts checks the lock itself.
         since == watermark
-            && fullSyncMayWrite(startedIn: generation, current: current, cloudSyncEnabled: cloudSyncEnabled)
+            && fullSyncMayWrite(
+                startedIn: generation, current: current, cloudSyncEnabled: cloudSyncEnabled, protectedDataAvailable: true
+            )
     }
 
     /// Background sync all data on app launch.

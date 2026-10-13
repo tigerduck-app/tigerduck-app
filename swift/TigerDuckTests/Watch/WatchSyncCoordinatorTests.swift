@@ -225,4 +225,40 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(republished.count, 1)
         withExtendedLifetime(coord) {}
     }
+
+    /// The payload reads caches that cannot be opened behind the lock screen, and an empty one
+    /// would clear the Watch's classes, so a push asked for while locked follows the unlock.
+    @MainActor
+    func test_pushWhileLocked_readsNothingUntilTheUnlock() async throws {
+        let center = NotificationCenter()
+        let unlocked = Flag()
+        let session = StubSession()
+        let timer = ManualSleeper()
+        let reads = Counter()
+        let coord = WatchSyncCoordinator(
+            session: session,
+            sleep: { await timer.sleep(for: $0) },
+            republishCredentials: {},
+            isProtectedDataAvailable: { unlocked.value },
+            notificationCenter: center
+        )
+        coord.setPayloadSource {
+            reads.count += 1
+            return .init(courses: [], customNames: [:], accentHex: "#123456",
+                         loggedIn: true, languageTag: nil, visualPreset: .default)
+        }
+
+        coord.answerSyncRequest()
+        coord.pushCurrentState()
+        XCTAssertEqual(reads.count, 0)
+
+        unlocked.value = true
+        center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+        try await timer.waitUntilArmed()
+        await timer.fire()
+        await coord.debounceTask?.value
+        XCTAssertEqual(reads.count, 1)
+        XCTAssertEqual(session.pushedContexts.count, 1)
+        withExtendedLifetime(coord) {}
+    }
 }

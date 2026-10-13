@@ -1,5 +1,8 @@
 import Foundation
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Owns the widget snapshot write pipeline. On the app notifications that change
 /// widget content (see `attachObservers()`), it rebuilds the snapshot with
@@ -16,6 +19,7 @@ final class WidgetSnapshotWriter {
     private let accentColorHex: @MainActor () -> Int
     private let courseProvider: CanonicalCourseProvider
     private let cache: DataCache
+    private let isProtectedDataAvailable: @MainActor () -> Bool
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "WidgetWriter")
 
     private var observers: [NSObjectProtocol] = []
@@ -49,8 +53,14 @@ final class WidgetSnapshotWriter {
         cache: DataCache? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
-        courseProvider: CanonicalCourseProvider? = nil
+        courseProvider: CanonicalCourseProvider? = nil,
+        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil
     ) {
+        #if os(iOS)
+        self.isProtectedDataAvailable = isProtectedDataAvailable ?? { UIApplication.shared.isProtectedDataAvailable }
+        #else
+        self.isProtectedDataAvailable = isProtectedDataAvailable ?? { true }
+        #endif
         self.isLoggedIn = isLoggedIn
         self.accentColorHex = accentColorHex
         self.cache = cache ?? .shared
@@ -112,6 +122,9 @@ final class WidgetSnapshotWriter {
     /// An unchanged snapshot is neither written nor reloaded: this runs on every return to the
     /// app and every data change, and each reload spends the widgets' budget.
     func regenerate(forceReload: Bool = false) {
+        // Behind the lock screen the caches cannot be opened and read as empty; the widgets keep
+        // the last snapshot, and the next return to the app writes a new one.
+        guard isProtectedDataAvailable() else { return }
         let courses = courseProvider.currentCourses()
         let customNames = cache.loadCourseCustomNamesFlat()
         let colorMap = cache.loadCourseColorMap()

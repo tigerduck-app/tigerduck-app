@@ -10,17 +10,23 @@ import Testing
 struct FullSyncSignOutTests {
     @Test("A sync the sign-in and the sync switch both outlived may write")
     func syncThatOutlivedNothingMayWrite() {
-        #expect(AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: true))
+        #expect(AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: true, protectedDataAvailable: true))
     }
 
     @Test("A sign-out while the sync was in flight stops its writes, even after the next sign-in")
     func signOutDuringTheSyncStopsItsWrites() {
-        #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 5, cloudSyncEnabled: true))
+        #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 5, cloudSyncEnabled: true, protectedDataAvailable: true))
     }
 
     @Test("Turning Sync course information off while the sync was in flight stops its writes")
     func syncSwitchedOffDuringTheSyncStopsItsWrites() {
-        #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: false))
+        #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: false, protectedDataAvailable: true))
+    }
+
+    /// The phone locked while the request was out, and the reply woke the app behind the lock screen.
+    @Test("A sync that resumes behind the lock screen writes nothing over the caches it cannot read")
+    func syncResumedBehindTheLockScreenStopsItsWrites() {
+        #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: true, protectedDataAvailable: false))
     }
 }
 
