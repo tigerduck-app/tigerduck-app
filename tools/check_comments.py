@@ -38,11 +38,11 @@ OPENSPEC_PATH = re.compile(r'(?i)\bopenspec/')
 HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', re.M)
 STRING_OPEN = re.compile(r'(#*)("""|"|/)')
 WORD = re.compile(r'\S+')
-# An error's description can hold a response body (swift/TigerDuck/Services/AGENTS.md). Its type
-# name and its code cannot, so `type(of:)` and `.code` stay public.
-PUBLIC_VALUE = re.compile(r'\\\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*?),\s*privacy:\s*\.public\s*\)')
+# An error's description can hold a response body (swift/TigerDuck/Services/AGENTS.md). A type
+# name and an error's code cannot, so `type(of:)`, `Type.self` and `.code` may stay public.
+PUBLIC_PRIVACY = re.compile(r',\s*privacy:\s*\.public\s*$')
+TYPE_ONLY = re.compile(r'\btype\(of:(?:[^()]|\([^()]*\))*\)|\b[A-Z]\w*(?:\.[A-Z]\w*)*\.self\b')
 ERROR_VALUE = re.compile(r'\b(?:error|\w+Error)\b(?!\.code\b)|\blocalizedDescription\b')
-TYPE_NAME = re.compile(r'\btype\(of:')
 
 MESSAGES = {
     'han': 'comment contains Han characters; write comments in English',
@@ -71,19 +71,20 @@ class Finding:
     message: str
 
 
-def lex(src: str) -> list[tuple[str, int, int]]:
+def lex(src: str, holes: list[tuple[int, int]] | None = None) -> list[tuple[str, int, int]]:
     """Split Swift source into (kind, start, end) spans of code, string, comment or doc.
 
     Handles nested block comments, raw and multi-line strings, interpolation
     holding strings and parentheses, and `#/.../#` regex literals. A bare
     `/.../` regex literal lexes as code, so one holding `//` or a quote would
-    be misread.
+    be misread. `holes`, when given, collects the (start, end) of the text
+    inside each interpolation's parentheses.
     """
     spans = []
     n = len(src)
     i = 0
     code_start = 0
-    interpolations = []  # [hashes, multiline, open parentheses] per open `\(`
+    interpolations = []  # [hashes, multiline, open parentheses, start] per open `\(`
 
     def flush(upto: int) -> None:
         if upto > code_start:
@@ -112,7 +113,7 @@ def lex(src: str) -> list[tuple[str, int, int]]:
         spans.append(('string', j, end))
         i = code_start = end
         if interpolates:
-            interpolations.append([hashes, multiline, 0])
+            interpolations.append([hashes, multiline, 0, end])
 
     while i < n:
         c = src[i]
@@ -154,7 +155,9 @@ def lex(src: str) -> list[tuple[str, int, int]]:
             elif c == ')':
                 if interpolations[-1][2] == 0:
                     flush(i)
-                    hashes, multiline, _ = interpolations.pop()
+                    hashes, multiline, _, start = interpolations.pop()
+                    if holes is not None:
+                        holes.append((start, i))
                     spans.append(('string', i, i + 1))
                     string_from(i + 1, hashes, multiline, '"')
                     continue
@@ -234,14 +237,19 @@ def check_source(path: str, src: str, changed: set[int] | None = None) -> list[F
 
 def public_errors(path: str, src: str) -> list[Finding]:
     """Return a finding for each interpolation that logs an error or its text as `.public`."""
+    holes = []
     code = list(src)
-    for kind, s, e in lex(src):
-        if kind in ('comment', 'doc'):
+    for kind, s, e in lex(src, holes):
+        if kind != 'code':
             code[s:e] = re.sub(r'[^\n]', ' ', src[s:e])
     text = ''.join(code)
-    return [Finding(path, text.count('\n', 0, m.start()) + 1, 'log-privacy', MESSAGES['log-privacy'])
-            for m in PUBLIC_VALUE.finditer(text)
-            if ERROR_VALUE.search(m.group(1)) and not TYPE_NAME.search(m.group(1))]
+    findings = []
+    for start, end in holes:
+        public = PUBLIC_PRIVACY.search(text, start, end)
+        if public and ERROR_VALUE.search(TYPE_ONLY.sub('', text[start:public.start()])):
+            line = src.count('\n', 0, start) + 1
+            findings.append(Finding(path, line, 'log-privacy', MESSAGES['log-privacy']))
+    return findings
 
 
 def tokens(src: str) -> list[tuple[str, int]]:

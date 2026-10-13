@@ -126,7 +126,8 @@ class RuleTests(unittest.TestCase):
 class LogPrivacyTests(unittest.TestCase):
     def test_public_error_values(self) -> None:
         for value in ('error', 'error.localizedDescription', 'String(describing: error)',
-                      'apiError.message', 'trustError'):
+                      'apiError.message', 'trustError',
+                      'String(describing: type(of: error)) + ": " + error.localizedDescription'):
             with self.subTest(value=value):
                 src = f'log.error("failed: \\({value}, privacy: .public)")\n'
                 self.assertEqual(rules(src), [(1, 'log-privacy')])
@@ -134,15 +135,24 @@ class LogPrivacyTests(unittest.TestCase):
     def test_private_errors_labels_type_names_and_codes_pass(self) -> None:
         for value in ('error, privacy: .private', 'error', 'label, privacy: .public',
                       'errorCount, privacy: .public', 'urlError.code.rawValue, privacy: .public',
-                      'String(describing: type(of: error)), privacy: .public'):
+                      'String(describing: type(of: error)), privacy: .public',
+                      'String(describing: PushAPIError.self), privacy: .public',
+                      'ok ? "error" : "fine", privacy: .public'):
             with self.subTest(value=value):
                 self.assertEqual(rules(f'log.error("a \\({value}) b")\n'), [])
+
+    def test_raw_strings_quoted_parentheses_and_nesting(self) -> None:
+        for src in ('log.error(#"failed: \\#(error, privacy: .public)"#)\n',
+                    'log.error("\\(x ? ")" : "(", privacy: .public) \\(f(g(h(error))), privacy: .public)")\n',
+                    'log.error("\\(ok ? "a" : "\\(error)", privacy: .public)")\n'):
+            with self.subTest(src=src):
+                self.assertEqual(rules(src), [(1, 'log-privacy')])
 
     def test_comments_are_not_log_calls(self) -> None:
         self.assertEqual(rules('// not "\\(error, privacy: .public)" here\n'), [])
 
     def test_line_of_a_multiline_call(self) -> None:
-        src = 'log.error(\n    "a \\(x.isEmpty ? "(" : "", privacy: .public) \\(error, privacy: .public)"\n)\n'
+        src = 'log.error(\n    "a \\(count, privacy: .public) \\(error, privacy: .public)"\n)\n'
         self.assertEqual(rules(src), [(2, 'log-privacy')])
 
 
