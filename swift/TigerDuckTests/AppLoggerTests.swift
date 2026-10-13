@@ -28,6 +28,10 @@ struct AppLoggerTests {
         ("UserName=B11000000&Password=hunter2", "UserName=B11000000&Password=***"),
         ("Authorization: Bearer eyJhbGciOi.payload.sig", "Authorization: Bearer ***"),
         ("/tokenpluginfile.php/wstoken/abc123", "/tokenpluginfile.php/wstoken/***"),
+        (
+            "https://moodle2.ntust.edu.tw/tokenpluginfile.php/0123456789abcdef0123456789abcdef/31/mod_resource/content/2/a.pdf",
+            "https://moodle2.ntust.edu.tw/tokenpluginfile.php/***/31/mod_resource/content/2/a.pdf"
+        ),
     ])
     func masksCredentials(input: String, expected: String) {
         #expect(AppLogger.scrubSensitive(input) == expected)
