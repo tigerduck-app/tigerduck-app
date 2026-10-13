@@ -23,6 +23,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         MoodleMemberList(ownId: nil, members: [])
     }
     var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
+    var summary: @Sendable (_ courseId: Int) async throws -> MoodleCourseSummary = { _ in .empty }
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -73,6 +74,11 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await MoodleWebserviceClient.withToken { token in
                 let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
                 return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
+            }
+        },
+        summary: { courseId in
+            try await MoodleWebserviceClient.withToken {
+                try await MoodleCourseSummaryService.summary(courseId: courseId, token: $0)
             }
         }
     )
@@ -253,11 +259,13 @@ final class MoodleCourseStore {
     let announcements: MoodleFeed<MoodleDiscussionList>
     let materials: MoodleFeed<MoodleCourseMaterials>
     let members: MoodleFeed<MoodleMemberList>
+    let summary: MoodleFeed<MoodleCourseSummary>
     private(set) var isLoadingMoreAnnouncements = false
     private(set) var announcementsPageFailure: (any Error)?
 
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
+    @ObservationIgnored private let courseCodes: [String]
     @ObservationIgnored private let api: MoodleCourseAPI
     @ObservationIgnored private let context: MoodleCacheContext
     @ObservationIgnored private let downloads: MoodleFileDownloads
@@ -267,12 +275,14 @@ final class MoodleCourseStore {
     init(
         courseId: Int,
         termCourseIds: [Int],
+        courseCodes: [String] = [],
         context: MoodleCacheContext,
         api: MoodleCourseAPI = .live,
         downloads: MoodleFileDownloads? = nil
     ) {
         self.courseId = courseId
         self.termCourseIds = Array(Set(termCourseIds).union([courseId])).sorted()
+        self.courseCodes = courseCodes
         self.api = api
         self.context = context
         self.downloads = downloads ?? .shared
@@ -284,6 +294,7 @@ final class MoodleCourseStore {
             cacheName: "courses/\(courseId)/materials", ttl: MoodleRefreshInterval.materials, context: context
         )
         members = MoodleFeed(cacheName: "courses/\(courseId)/members", ttl: MoodleRefreshInterval.members, context: context)
+        summary = MoodleFeed(cacheName: "courses/\(courseId)/summary", ttl: MoodleRefreshInterval.summary, context: context)
     }
 
     // MARK: Section
@@ -302,12 +313,14 @@ final class MoodleCourseStore {
         return rows
     }
 
-    var isSectionRefreshing: Bool { forums.isRefreshing || materials.isRefreshing || members.isRefreshing }
+    var isSectionRefreshing: Bool {
+        forums.isRefreshing || materials.isRefreshing || members.isRefreshing || summary.isRefreshing
+    }
 
     /// Failed when one of the section's feeds failed, else OK once one reads OK: a feed still
     /// unknown has its first fetch on the way, as the section fetches every feed it shows.
     var sectionStatus: ServerStatus {
-        let statuses = [forums.status, materials.status, members.status]
+        let statuses = [forums.status, materials.status, members.status, summary.status]
         if statuses.contains(.failed) { return .failed }
         return statuses.contains(.ok) ? .ok : .unknown
     }
@@ -593,5 +606,22 @@ final class MoodleCourseStore {
     private nonisolated static func image(from data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+
+    // MARK: Summary
+
+    /// What the foot of the section shows, nil while the course has no summary worth showing.
+    var shownSummary: MoodleCourseSummary? {
+        guard let value = summary.value, value.isWorthShowing(besides: courseCodes) else { return nil }
+        return value
+    }
+
+    /// One call for this course. A site that does not allow it answers as if the course had no
+    /// summary, which shows nothing.
+    func refreshSummary() async {
+        await summary.refresh { [api, courseId] in
+            guard try await api.functions().contains(MoodleCourseSummaryService.coursesFunction) else { return .empty }
+            return try await api.summary(courseId)
+        }
     }
 }
