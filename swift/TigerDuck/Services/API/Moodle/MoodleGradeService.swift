@@ -22,7 +22,6 @@ nonisolated struct MoodleGradeItem: Codable, Sendable, Hashable, Identifiable {
 
     var isCourseTotal: Bool { type == "course" }
     var isCategoryTotal: Bool { type == "category" }
-    /// Graded, and not hidden from the student.
     var isShown: Bool { grade != nil && !isHidden }
 }
 

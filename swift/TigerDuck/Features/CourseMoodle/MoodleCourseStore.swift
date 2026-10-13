@@ -156,7 +156,6 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
 nonisolated struct MoodleCourseGrades: Codable, Sendable, Equatable {
     var items: [MoodleGradeItem]
 
-    /// The course total, while it has a grade the student may see.
     var total: MoodleGradeItem? {
         items.first { $0.isCourseTotal && $0.isShown }
     }
