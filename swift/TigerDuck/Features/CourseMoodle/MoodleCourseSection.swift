@@ -155,7 +155,6 @@ struct MoodleCourseSummaryView: View {
     }
 }
 
-/// The whole summary, links included, in the school bulletins' theme.
 private struct MoodleCourseSummaryBody: View {
     let html: String
 

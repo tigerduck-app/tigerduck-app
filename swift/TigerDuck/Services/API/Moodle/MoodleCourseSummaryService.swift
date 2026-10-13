@@ -7,7 +7,6 @@ nonisolated struct MoodleCourseSummary: Codable, Sendable, Equatable {
     let html: String
     /// The summary as one line of text, kept with it so the sheet does not parse HTML as it draws.
     let text: String
-    /// The course's full, display and short names, and its idnumber where Moodle gives it.
     let names: [String]
 
     /// A course without a summary, or on a site that does not allow the call.

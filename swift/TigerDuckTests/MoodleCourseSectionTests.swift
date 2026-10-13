@@ -17,7 +17,6 @@ struct MoodleCourseSectionTests {
         MoodleCourseSummary(html: "<p>\(text)</p>", text: text, names: ["Computer Networks"])
     }
 
-    /// A store that fetched `summary` and `forums` from stand-ins into a cache of its own.
     private static func store(summary: MoodleCourseSummary, forums: [MoodleForum] = []) async -> MoodleCourseStore {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleCourseSectionTests-\(UUID().uuidString)", isDirectory: true)
@@ -50,7 +49,6 @@ struct MoodleCourseSectionTests {
         return store
     }
 
-    /// The height `view` takes at `width` in a window.
     private func height(_ view: some View, width: CGFloat = 390) -> CGFloat {
         let host = UIHostingController(rootView: view.frame(width: width))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 900))

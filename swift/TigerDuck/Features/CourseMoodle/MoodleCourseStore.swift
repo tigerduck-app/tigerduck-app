@@ -265,7 +265,6 @@ final class MoodleCourseStore {
 
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
-    /// The codes the course goes by, such as its idnumbers and course number.
     @ObservationIgnored private let courseCodes: [String]
     @ObservationIgnored private let api: MoodleCourseAPI
     @ObservationIgnored private let context: MoodleCacheContext
