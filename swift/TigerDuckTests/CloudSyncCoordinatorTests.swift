@@ -174,13 +174,15 @@ struct CloudSyncCoordinatorTests {
         await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.syncAssignments], Defaults[.syncCourses],
-                Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce]
+                Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce],
+                Defaults[.lastSeenCoursesResetAt]
             )
             defer {
                 Defaults[.syncAssignments] = saved.0
                 Defaults[.syncCourses] = saved.1
                 Defaults[.pendingConflictCategories] = saved.2
                 Defaults[.assignmentMarksSyncedOnce] = saved.3
+                Defaults[.lastSeenCoursesResetAt] = saved.4
             }
             Defaults[.syncAssignments] = true
             Defaults[.syncCourses] = true

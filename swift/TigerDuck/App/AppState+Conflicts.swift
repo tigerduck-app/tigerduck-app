@@ -66,8 +66,27 @@ extension AppState {
     func markCategoryReenabled(_ category: String) {
         // The server may have dropped the lists while the category was off on every device.
         pushCoordinator.forgetUploads()
+        Self.markForReenableCheck(category)
+    }
+
+    /// Marks `category` for the re-enable check, which compares this device's copy of the account's
+    /// data with the server's. Before this device has synced the account, as after a sign-in, it has
+    /// no copy to compare, and Use Local would send its emptied caches over the server's: the
+    /// category is left to the first sync, which takes the server's data.
+    static func markForReenableCheck(_ category: String) {
+        guard hasSyncedAccount else {
+            AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), account not synced on this device yet")
+            return
+        }
         Defaults[.pendingConflictCategories].insert(category)
         AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
+    }
+
+    /// Whether a full sync has applied the signed-in account's data on this device: each one stamps
+    /// `lastSeenCoursesResetAt`, and sign-out clears it (`forgetSyncProgress`).
+    /// `assignmentMarksSyncedOnce` cannot tell, as it stays false while the Assignments switch is off.
+    static var hasSyncedAccount: Bool {
+        Defaults[.lastSeenCoursesResetAt] != nil
     }
 
     func checkPendingConflicts(retriesLeft: Int = 2) {

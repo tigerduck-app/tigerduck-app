@@ -1,4 +1,5 @@
 import Defaults
+import Foundation
 import Testing
 @testable import TigerDuck
 
@@ -50,10 +51,14 @@ struct ReenableCheckSignOutTests {
     @Test("A check the sign-out outlived checks nothing of the departing account's, so it raises no alert")
     func signOutLeavesNothingOfTheDepartingAccountToCheck() async {
         await withExclusiveRealDefaults {
-            let saved = (Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce])
+            let saved = (
+                Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce],
+                Defaults[.lastSeenCoursesResetAt]
+            )
             defer {
                 Defaults[.pendingConflictCategories] = saved.0
                 Defaults[.assignmentMarksSyncedOnce] = saved.1
+                Defaults[.lastSeenCoursesResetAt] = saved.2
             }
             // The check compares assignments, and courses is switched back on before the sign-out.
             Defaults[.pendingConflictCategories] = ["assignments", "courses"]
@@ -64,6 +69,65 @@ struct ReenableCheckSignOutTests {
                 pending: Defaults[.pendingConflictCategories], checked: ["assignments"], signedOutSince: true
             )
             #expect(left.isEmpty)
+        }
+    }
+}
+
+/// `AppState.markForReenableCheck`: which categories switched back on wait for the re-enable check.
+/// After a sign-out the device holds none of the next account's data, and Use Local on that check
+/// sent the emptied caches over the server's, clearing the account's marks.
+@MainActor
+struct ReenableMarkTests {
+    private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
+
+    /// Runs `body` on the real sync progress keys, with nothing pending, and puts them back.
+    private static func withSyncProgress(_ body: () -> Void) async {
+        await withExclusiveRealDefaults {
+            let saved = (
+                Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce],
+                Defaults[.lastSeenCoursesResetAt]
+            )
+            defer {
+                Defaults[.pendingConflictCategories] = saved.0
+                Defaults[.assignmentMarksSyncedOnce] = saved.1
+                Defaults[.lastSeenCoursesResetAt] = saved.2
+            }
+            Defaults[.pendingConflictCategories] = []
+            body()
+        }
+    }
+
+    @Test("After a sign-out and a sign-in, turning TigerSync on raises no check, and the first pull takes the server's marks")
+    func turningSyncOnAfterASignInChecksNothing() async {
+        await Self.withSyncProgress {
+            // As a full sync of the departing account leaves them, its server holding no reset.
+            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.lastSeenCoursesResetAt] = .distantPast
+
+            AppState.forgetSyncProgress()
+            for category in Self.categories { AppState.markForReenableCheck(category) }
+
+            #expect(Defaults[.pendingConflictCategories].isEmpty)
+            #expect(AppState.reasonToLeaveMarks(
+                syncsMarks: true,
+                conflictCheckPending: Defaults[.pendingConflictCategories].contains("assignments"),
+                uploadedLocalMarks: false,
+                editedDuringFetch: false
+            ) == nil)
+        }
+    }
+
+    @Test("Turning TigerSync back on after a sync checks every category, whether or not that sync took marks",
+          arguments: [true, false])
+    func turningSyncBackOnAfterASyncChecksEveryCategory(marksSynced: Bool) async {
+        await Self.withSyncProgress {
+            // Every full sync stamps the reset; only one with the Assignments switch on sets the flag.
+            Defaults[.assignmentMarksSyncedOnce] = marksSynced
+            Defaults[.lastSeenCoursesResetAt] = .distantPast
+
+            for category in Self.categories { AppState.markForReenableCheck(category) }
+
+            #expect(Defaults[.pendingConflictCategories] == Self.categories)
         }
     }
 }
