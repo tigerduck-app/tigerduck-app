@@ -11,31 +11,24 @@ struct MoodleMaterialsView: View {
     @State private var files = MoodleFileOpener()
 
     var body: some View {
-        List {
+        // Not a List: a long press there lifts the whole row, here a week's card, rather than
+        // the file under the finger.
+        ScrollView {
             if let materials = store.materials.value {
-                ForEach(Array(materials.sections.enumerated()), id: \.element.id) { index, section in
-                    sectionView(section, isFirst: index == 0)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(
-                            top: TigerDuckTheme.Spacing.xs,
-                            leading: TigerDuckTheme.Spacing.lg,
-                            bottom: TigerDuckTheme.Spacing.xs,
-                            trailing: TigerDuckTheme.Spacing.lg
-                        ))
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(materials.sections.enumerated()), id: \.element.id) { index, section in
+                        sectionView(section, isFirst: index == 0)
+                            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                            .padding(.vertical, TigerDuckTheme.Spacing.xs)
+                    }
                 }
             } else {
                 MoodleFirstLoadView(
                     failure: store.materials.isRefreshing ? nil : store.materials.failure,
                     retry: { await store.refreshMaterials() }
                 )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets())
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
         .refreshable { await store.refreshMaterials() }
         .moodleListChrome(
