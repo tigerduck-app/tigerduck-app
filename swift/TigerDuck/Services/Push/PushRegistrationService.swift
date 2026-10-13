@@ -136,6 +136,9 @@ actor PushRegistrationService {
     private var deviceRegisterRetryTask: Task<Void, Never>?
     private var deviceRegisterAttempts: Int = 0
     private let maxDeviceRegisterAttempts = 4
+    #if os(macOS)
+    private var passiveRegistrationRunning = false
+    #endif
     /// `performRegister` runs that have started and not ended. A count, as a cancelled run can
     /// still be finishing when the next one starts.
     private var registrationsInFlight = 0
@@ -214,6 +217,8 @@ actor PushRegistrationService {
 
     #if os(macOS)
     func registerPassiveDevice() async {
+        passiveRegistrationRunning = true
+        defer { passiveRegistrationRunning = false }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let request = PushAPI.DeviceRegisterRequest(
             client_device_id: identity.uuid,
@@ -525,6 +530,26 @@ actor PushRegistrationService {
         await registerIfReady()
         #elseif os(macOS)
         await registerPassiveDevice()
+        #endif
+    }
+
+    /// ``registerAgain()`` on a return to the app, once the last registration gave up. A session
+    /// that comes back through a token refresh alone runs none of its other triggers, so the return
+    /// to the app is what gives such a registration another round
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/386).
+    func registerAgainIfGaveUp() async {
+        guard lastError != nil, registrationGaveUp else { return }
+        await registerAgain()
+    }
+
+    /// The Mac's passive registration tries once and schedules no retry, so one failure gives up,
+    /// unless a registration is still on its way: a second one could land after it and leave the
+    /// older answer in the status.
+    private var registrationGaveUp: Bool {
+        #if os(iOS)
+        deviceRegisterAttempts >= maxDeviceRegisterAttempts
+        #else
+        !passiveRegistrationRunning
         #endif
     }
 
