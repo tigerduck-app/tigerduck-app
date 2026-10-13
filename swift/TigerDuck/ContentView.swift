@@ -81,6 +81,15 @@ struct MainTabView: View {
                 MoreView()
             }
         }
+        .background(
+            ClassTableTabBarGestures(
+                tabTitle: visibleTabs.contains(.classTable) ? AppFeature.classTable.tabBarDisplayName : nil,
+                isShowingClassTable: selectedTab == .classTable,
+                store: .shared,
+                userName: ClassTableSwitcherEntry.userName(studentId: appState.authService.storedStudentId),
+                showClassTable: { selectedTab = .classTable }
+            )
+        )
         .alert(
             String(localized: "app_non_taipei_timezone_hint"),
             isPresented: $showTimezoneAlert
