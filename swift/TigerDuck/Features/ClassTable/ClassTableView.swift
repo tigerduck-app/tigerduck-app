@@ -236,6 +236,12 @@ struct ClassTableView: View {
                 ClassTableShareSheet(model: model)
                     .presentationDetents([ClassTableShareSheet.openingDetent, .large])
             }
+            // An iPad's other window can sign out, or sign another account in, under the open sheet.
+            // A nil ID alone may be the keychain locked with the phone, so it keeps the sheet.
+            .onChange(of: appState.authService.loginGeneration) { shareModel = nil }
+            .onChange(of: appState.authService.storedStudentId) { _, studentId in
+                if let studentId, studentId.uppercased() != shareModel?.studentId { shareModel = nil }
+            }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the
@@ -306,7 +312,8 @@ struct ClassTableView: View {
                     } label: {
                         Label(String(localized: "class_table_share"), systemImage: "qrcode")
                     }
-                    .disabled(!ClassTableShareModel.canShare(
+                    // Held off with the export, whose share sheet would wait behind this one.
+                    .disabled(isExporting || !ClassTableShareModel.canShare(
                         studentId: appState.authService.storedStudentId,
                         shownCourses: viewModel.courses,
                         semesters: viewModel.availableSemesters
