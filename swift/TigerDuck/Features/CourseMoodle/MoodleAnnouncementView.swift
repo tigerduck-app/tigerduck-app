@@ -9,12 +9,8 @@ struct MoodleAnnouncementView: View {
     let discussion: MoodleDiscussion
 
     @Environment(AppState.self) private var appState
-    @Environment(\.openURL) private var openURL
     /// Coming back from a screen pushed over this one is not another opening.
     @State private var didOpen = false
-    #if os(iOS)
-    @State private var inAppPage: InAppPage?
-    #endif
 
     var body: some View {
         ScrollView {
@@ -28,10 +24,7 @@ struct MoodleAnnouncementView: View {
                 Divider().background(Color.textSecondary)
                 Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: discussion.message)))
                     .markdownTheme(.bulletin(accent: appState.accentColor))
-                    .environment(\.openURL, OpenURLAction { url in
-                        openLink(url)
-                        return .handled
-                    })
+                    .moodleTextLinks()
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !discussion.attachments.isEmpty {
                     attachments
@@ -54,12 +47,6 @@ struct MoodleAnnouncementView: View {
             didOpen = true
             store.open(discussion)
         }
-        #if os(iOS)
-        .sheet(item: $inAppPage) { page in
-            InAppBrowserView(url: page.url)
-                .ignoresSafeArea()
-        }
-        #endif
     }
 
     private var authorRow: some View {
@@ -98,26 +85,4 @@ struct MoodleAnnouncementView: View {
         }
         .padding(.top, TigerDuckTheme.Spacing.sm)
     }
-
-    /// A Moodle link opens signed in; any other opens where the reader's setting says.
-    private func openLink(_ url: URL) {
-        if MoodleAutologinService.isMoodlePage(url) {
-            Task { await openURL(MoodlePage.browserURL(url), fallback: nil) }
-            return
-        }
-        #if os(iOS)
-        if appState.browserPreference == .inApp, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-            inAppPage = InAppPage(url: url)
-            return
-        }
-        #endif
-        openURL(url)
-    }
 }
-
-#if os(iOS)
-private struct InAppPage: Identifiable {
-    let url: URL
-    var id: URL { url }
-}
-#endif

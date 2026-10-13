@@ -68,7 +68,56 @@ extension View {
     func moodleArticleChrome() -> some View {
         modifier(MoodleArticleChrome())
     }
+
+    /// Opens the links in Moodle text drawn inside: a Moodle page signed in, any other where the
+    /// reader's browser setting says.
+    func moodleTextLinks() -> some View {
+        modifier(MoodleTextLinks())
+    }
 }
+
+private struct MoodleTextLinks: ViewModifier {
+    @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
+    #if os(iOS)
+    @State private var inAppPage: InAppPage?
+    #endif
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.openURL, OpenURLAction { url in
+                open(url)
+                return .handled
+            })
+            #if os(iOS)
+            .sheet(item: $inAppPage) { page in
+                InAppBrowserView(url: page.url)
+                    .ignoresSafeArea()
+            }
+            #endif
+    }
+
+    private func open(_ url: URL) {
+        if MoodleAutologinService.isMoodlePage(url) {
+            Task { await openURL(MoodlePage.browserURL(url), fallback: nil) }
+            return
+        }
+        #if os(iOS)
+        if appState.browserPreference == .inApp, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            inAppPage = InAppPage(url: url)
+            return
+        }
+        #endif
+        openURL(url)
+    }
+}
+
+#if os(iOS)
+private struct InAppPage: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+#endif
 
 private struct MoodleListChrome: ViewModifier {
     let title: String
