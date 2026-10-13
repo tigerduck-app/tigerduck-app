@@ -1,6 +1,7 @@
 // `AuthTokenManager` and `AuthService` through `SettingsAPIStub`. The backend rotates the refresh
 // token on every refresh, redeems the old one once more within 60 s, and takes any later reuse for
 // theft (https://github.com/tigerduck-app/tigerduck-app/issues/375).
+import Defaults
 import Foundation
 import Testing
 import UIKit
@@ -420,6 +421,76 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
         #expect(await !backend.manager.isLoggedIn)
     }
+
+    @Test("a registration with no session signs in first and goes out with the new session")
+    func registrationWithNoSessionSignsInFirst() async throws {
+        try await withNoSyncPreferencesPending {
+            let backend = BackendFixture(signedIn: false)
+            let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+            auth.authTokenManager = backend.manager
+            await backend.manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
+            SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+            let push = RegistrationFixture(manager: backend.manager)
+            push.answerAnnounce()
+            push.answerRegister()
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+                await push.register()
+            }
+
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+            let registrations = SettingsAPIStub.requests(for: push.registerURL)
+            try #require(registrations.count == 1)
+            #expect(registrations[0].value(forHTTPHeaderField: "Authorization") == "Bearer A9")
+            let announces = SettingsAPIStub.requests(for: push.announceURL)
+            #expect(announces.map { $0.value(forHTTPHeaderField: "Authorization") } == [nil])
+            #expect(await push.service.snapshot().lastError == nil)
+        }
+    }
+
+    @Test("a registration that cannot sign in sends nothing without a token and records why")
+    func registrationThatCannotSignInSendsNothing() async throws {
+        try await withNoSyncPreferencesPending {
+            let backend = BackendFixture(signedIn: false)
+            let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+            auth.authTokenManager = backend.manager
+            await backend.manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
+            SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data()), for: backend.loginURL)
+            let push = RegistrationFixture(manager: backend.manager)
+            for _ in 0..<4 { push.answerAnnounce() }
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+                await push.register()
+            }
+
+            // The first attempt and its three retries each ask for a session. The failed sign-in
+            // holds off the later ones, and the announce, which needs none, goes every time.
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+            #expect(SettingsAPIStub.requests(for: push.registerURL).isEmpty)
+            #expect(SettingsAPIStub.requests(for: push.announceURL).count == 4)
+            let reason = PushAPIError.notSignedIn.localizedDescription
+            #expect(await push.service.snapshot().lastError == "register: \(reason)")
+        }
+    }
+
+    @Test("requests that find no session at once share one sign-in")
+    func requestsWithNoSessionShareOneSignIn() async throws {
+        let backend = BackendFixture(signedIn: false)
+        let manager = backend.manager
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = manager
+        await manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        let headers = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            async let first = manager.authorizationHeader()
+            async let second = manager.authorizationHeader()
+            return await [first, second]
+        }
+
+        #expect(headers == ["Bearer A9", "Bearer A9"])
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+    }
 }
 
 /// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next
@@ -493,6 +564,50 @@ private struct BackendFixture {
 
     static var reuseDetected: SettingsAPIStub.StubResponse {
         .init(statusCode: 401, body: Data(#"{"detail":"refresh_reuse_detected"}"#.utf8))
+    }
+}
+
+/// A registration service whose requests carry `manager`'s session, as `PushCoordinator` wires
+/// it, with its debounce and backoff ending at once.
+private struct RegistrationFixture {
+    let service: PushRegistrationService
+    let announceURL: URL
+    let registerURL: URL
+
+    init(manager: AuthTokenManager) {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        announceURL = baseURL.appendingPathComponent("devices/anonymous")
+        registerURL = baseURL.appendingPathComponent("devices/register")
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        service = PushRegistrationService(
+            identity: PushIdentity(uuid: "test-device"),
+            apiClient: PushAPIClient(
+                baseURLProvider: { baseURL },
+                session: URLSession(configuration: config),
+                authHeaderProvider: { await manager.authorizationHeader() }
+            ),
+            deviceClass: "iphone",
+            debounceSleep: { _ in },
+            retrySleep: { _ in }
+        )
+    }
+
+    func answerAnnounce() {
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: announceURL)
+    }
+
+    func answerRegister() {
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(#"{"device_id":"server-device","push_token_id":1}"#.utf8)),
+            for: registerURL
+        )
+    }
+
+    /// Registers the standard token and waits for the attempt and the retries it schedules.
+    func register() async {
+        await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+        await service.awaitPendingRegistration()
     }
 }
 
@@ -571,6 +686,17 @@ private extension MoodleTokenService {
                 return TokenTriple(signature: "", wstoken: "harvested", privatetoken: nil)
             }
         )
+    }
+}
+
+/// Runs `body` with `syncPreferencesPushPending`, which a registration that goes through reads,
+/// cleared, then puts it back. It is a real `Defaults` key, so this takes the shared gate.
+private func withNoSyncPreferencesPending<T>(_ body: () async throws -> T) async rethrows -> T {
+    try await withExclusiveRealDefaults {
+        let saved = Defaults[.syncPreferencesPushPending]
+        Defaults[.syncPreferencesPushPending] = false
+        defer { Defaults[.syncPreferencesPushPending] = saved }
+        return try await body()
     }
 }
 

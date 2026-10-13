@@ -30,8 +30,10 @@ extension AppState {
     /// One poll: fetch the lightweight revision endpoint, compare with
     /// ``_lastKnownRevision``, and apply what moved when the server is ahead.
     func pollRevision() async -> RevisionPollOutcome {
-        guard Defaults[.cloudSyncEnabled], await authTokenManager.isLoggedIn else { return .unchanged }
+        guard Defaults[.cloudSyncEnabled] else { return .unchanged }
         guard NetworkMonitor.shared.isConnected else { return .offline }
+        await authService.ensureBackendSignedIn()
+        guard await authTokenManager.isLoggedIn else { return .unchanged }
         do {
             let serverRevision = try await pushCoordinator.fetchRevision()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self._lastKnownRevision)")

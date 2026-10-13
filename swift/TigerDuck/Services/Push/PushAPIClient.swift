@@ -10,10 +10,9 @@ import os
 final class PushAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    /// Returns a `Bearer <token>` string for the v3 JWT auth flow, or `nil`
-    /// when the user is not logged in (unauthenticated requests are still
-    /// attempted so the server can respond with 401 rather than silently
-    /// dropping calls before auth is wired up end-to-end).
+    /// Returns a `Bearer <token>` string for the v3 JWT auth flow, or `nil` with no usable
+    /// session; `AuthTokenManager` first signs in when there is none. A request that needs a
+    /// session is then not sent (`PushAPIError.notSignedIn`): it could only be refused.
     private let authHeaderProvider: @Sendable () async -> String?
     /// Where failure statuses go. A test that answers 410 passes its own gate, since the shared
     /// one latches for the whole process.
@@ -26,8 +25,8 @@ final class PushAPIClient: Sendable {
     ///
     /// `authHeaderProvider` is async so callers can pass the
     /// `AuthTokenManager.authorizationHeader()` actor method directly. The
-    /// default returns `nil` and sends no auth header, for tests and builds
-    /// that have no `AuthTokenManager`.
+    /// default returns `nil`, so only the requests that need no session go
+    /// out, for builds that have no `AuthTokenManager`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
@@ -49,12 +48,11 @@ final class PushAPIClient: Sendable {
     /// Register the device itself, with no account attached.
     ///
     /// Unauthenticated by design — there is no session to authenticate with
-    /// when this matters. It still goes through the usual `post`, so a Bearer
-    /// header is attached when one happens to exist; the server ignores it
-    /// and keys purely on `device_id`, which is what lets the same call be
-    /// made on every launch regardless of sign-in state.
+    /// when this matters. It goes without a Bearer header, so it never waits
+    /// for a sign-in; the server keys purely on `device_id`, which is what
+    /// lets the same call be made on every launch regardless of sign-in state.
     func registerAnonymousDevice(_ request: PushAPI.AnonymousDeviceRequest) async throws {
-        _ = try await postExpectingNoBody(path: "/devices/anonymous", body: request)
+        _ = try await postExpectingNoBody(path: "/devices/anonymous", body: request, authenticated: false)
     }
 
     func unregisterDevice(deviceId: String) async throws {
@@ -76,7 +74,8 @@ final class PushAPIClient: Sendable {
         _ = try await execute(request)
     }
 
-    /// Whether there is a session to authenticate a request with.
+    /// Whether there is a session to authenticate a request with, after the sign-in
+    /// `authHeaderProvider` tries when there is none.
     ///
     /// Callers that have both an authenticated and an unauthenticated way
     /// to do the same thing need to pick one up front rather than firing
@@ -238,7 +237,7 @@ final class PushAPIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        await applyAuth(to: &request)
+        try await applyAuth(to: &request)
         let data = try await execute(request)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let revision = json["revision"] as? Int else {
@@ -256,7 +255,7 @@ final class PushAPIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        await applyAuth(to: &request)
+        try await applyAuth(to: &request)
         let data = try await execute(request)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw PushAPIError.decodingFailed(NSError(domain: "PushAPI", code: -1))
@@ -273,7 +272,7 @@ final class PushAPIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        await applyAuth(to: &request)
+        try await applyAuth(to: &request)
         let data = try await execute(request, expectedFailure: Self.revisionExpired)
         do {
             return try Self.decoder.decode(PushAPI.SyncChangesPage.self, from: data)
@@ -318,9 +317,10 @@ final class PushAPIClient: Sendable {
 
     private func postExpectingNoBody<Request: Encodable>(
         path: String,
-        body: Request
+        body: Request,
+        authenticated: Bool = true
     ) async throws -> Data {
-        let request = try await makePostRequest(path: path, body: body)
+        let request = try await makePostRequest(path: path, body: body, authenticated: authenticated)
         return try await execute(request)
     }
 
@@ -352,17 +352,21 @@ final class PushAPIClient: Sendable {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        await applyAuth(to: &request)
+        try await applyAuth(to: &request)
         _ = try await execute(request)
     }
 
-    private func makePostRequest<Request: Encodable>(path: String, body: Request) async throws -> URLRequest {
+    private func makePostRequest<Request: Encodable>(
+        path: String,
+        body: Request,
+        authenticated: Bool = true
+    ) async throws -> URLRequest {
         let baseURL = baseURLProvider()
         let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        await applyAuth(to: &request)
+        if authenticated { try await applyAuth(to: &request) }
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -371,11 +375,12 @@ final class PushAPIClient: Sendable {
         return request
     }
 
-    /// Attach the `Authorization: Bearer <token>` header when the
-    /// `authHeaderProvider` returns a non-nil value. No-op when the user
-    /// is not logged in or the provider is not wired (e.g. unit tests).
-    private func applyAuth(to request: inout URLRequest) async {
-        guard let header = await authHeaderProvider(), !header.isEmpty else { return }
+    /// Attaches the session's `Authorization: Bearer <token>` header, or throws `notSignedIn`
+    /// with no session, so the request is not sent.
+    private func applyAuth(to request: inout URLRequest) async throws {
+        guard let header = await authHeaderProvider(), !header.isEmpty else {
+            throw PushAPIError.notSignedIn
+        }
         request.setValue(header, forHTTPHeaderField: "Authorization")
     }
 
@@ -445,6 +450,8 @@ enum PushAPIError: Error, LocalizedError {
     case httpStatus(Int, body: String)
     /// The change feed no longer holds the changes asked for; only a full sync catches up.
     case syncRevisionExpired
+    /// A request that needs a session got no access token, so it was not sent.
+    case notSignedIn
 
     var errorDescription: String? {
         switch self {
@@ -453,6 +460,7 @@ enum PushAPIError: Error, LocalizedError {
         case .invalidResponse: return "Push server returned a non-HTTP response."
         case .httpStatus(let code, let body): return "Push server returned HTTP \(code): \(body)"
         case .syncRevisionExpired: return "Push server has compacted the changes asked for."
+        case .notSignedIn: return String(localized: "common_auto_sign_in_failed")
         }
     }
 }
