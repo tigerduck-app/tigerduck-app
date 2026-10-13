@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -170,5 +171,42 @@ struct MoodleCourseContentsServiceTests {
         #expect(bareInfo.privateAccessKey == nil)
         let emptyInfo = try await MoodleSiteInfoService.fetchSiteInfo(token: empty, session: Self.session(), siteURL: Self.site)
         #expect(emptyInfo.privateAccessKey == nil)
+    }
+
+    @Test("a file's view goes out only under the account that opened it, after the token wait")
+    func viewWaitsForTheTokenUnderItsAccount() async throws {
+        let token = UUID().uuidString
+        let endpoint = Self.endpoint("mod_resource_view_resource", token: token)
+        Self.answer(#"{"status":true,"warnings":[]}"#, function: "mod_resource_view_resource", token: token)
+        let material = MoodleMaterial(
+            id: 9101, instance: 301, module: "resource", name: "Syllabus",
+            content: .link(URL(string: "https://moodle-stub.invalid/mod/resource/view.php?id=9101")!)
+        )
+        let current = OSAllocatedUnfairLock(initialState: true)
+        let gate = ManualSleeper()
+        let renewing = MoodleWebserviceClient.TokenSource(
+            stored: { nil },
+            renew: { _ in
+                await gate.sleep(for: .seconds(1))
+                return token
+            }
+        )
+        let event = Task {
+            try await MoodleCourseAPI.logMaterialView(
+                material, isCurrent: { current.withLock { $0 } }, tokens: renewing, session: Self.session(), siteURL: Self.site
+            )
+        }
+        try await gate.waitUntilArmed()
+        current.withLock { $0 = false }
+        await gate.fire()
+
+        await #expect(throws: CancellationError.self) { try await event.value }
+        #expect(SettingsAPIStub.requests(for: endpoint).isEmpty)
+
+        try await MoodleCourseAPI.logMaterialView(
+            material, isCurrent: { true }, tokens: .init(stored: { token }, renew: { _ in token }),
+            session: Self.session(), siteURL: Self.site
+        )
+        #expect(SettingsAPIStub.requests(for: endpoint).count == 1)
     }
 }

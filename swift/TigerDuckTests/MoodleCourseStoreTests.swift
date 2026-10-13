@@ -830,6 +830,13 @@ struct MoodleCourseStoreTests {
         }
     }
 
+    /// On iPad another window can sign out or in under an open course detail.
+    @Test("the course detail builds its Moodle store again for each sign-in")
+    func detailStorePerSignIn() {
+        let key = CourseDetailSheet.MoodleStoreKey(courseNo: "CS3105301", attempt: 0, generation: 1)
+        #expect(key != CourseDetailSheet.MoodleStoreKey(courseNo: "CS3105301", attempt: 0, generation: 2))
+    }
+
     @Test("signing out deletes the cached summary, and one that lands after a sign-out is not kept")
     func summarySignOut() async throws {
         let folder = Folder()
