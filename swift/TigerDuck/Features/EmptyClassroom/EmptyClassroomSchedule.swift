@@ -29,17 +29,6 @@ nonisolated enum EmptyClassroomSchedule {
         return periodMinutes.filter { $0.end <= minute }.count
     }
 
-    /// Where the now line sits: the period it falls in and how far through it, or the start of
-    /// the next period during a break. Nil before the first period starts and after the last.
-    static func nowPosition(at time: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> (period: Int, fraction: Double)? {
-        let minute = minuteOfDay(time, calendar: calendar)
-        guard let period = upcomingPeriod(at: time, calendar: calendar),
-              period > 0 || minute >= periodMinutes[0].start else { return nil }
-        let span = periodMinutes[period]
-        let fraction = Double(minute - span.start) / Double(span.end - span.start)
-        return (period, min(max(fraction, 0), 1))
-    }
-
     /// The day and period the finder opens on: the current period, or the next one during a
     /// break; after the last period, and on a day without classes, the first period of the next
     /// teaching day within `horizon` days.

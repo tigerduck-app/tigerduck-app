@@ -14,9 +14,15 @@ struct EmptyClassroomViewModelTests {
     }
 
     @MainActor
+    private final class ClassTable {
+        var courses: [SDCourse] = []
+    }
+
+    @MainActor
     private struct Harness {
         let url = URL(string: "https://cour01.stub.invalid/\(UUID().uuidString)/classroom_usecondition.aspx")!
         let signIn = SignIn()
+        let classTable = ClassTable()
         let service: ClassroomUsageService
         let model: EmptyClassroomViewModel
 
@@ -29,12 +35,13 @@ struct EmptyClassroomViewModelTests {
                 sessionGeneration: { 1 },
                 signIn: { _, _, _ in true }
             )
+            let classTable = classTable
             model = EmptyClassroomViewModel(
                 service: service,
                 clock: { now },
                 holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
                 isClassDay: { _ in true },
-                courses: { [] },
+                courses: { classTable.courses },
                 rawRoom: { $0 }
             )
             let signIn = signIn
@@ -142,6 +149,22 @@ struct EmptyClassroomViewModelTests {
         await harness.model.refresh()
 
         #expect(harness.model.content == .loading)
+    }
+
+    @Test("the user's classes follow the class table while the screen is open")
+    func classesFollowTheClassTable() {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.model.appear()
+        #expect(harness.model.classes.isEmpty)
+
+        harness.classTable.courses = [SDCourse(
+            courseNo: "CS1001301", courseName: "計算機網路", schedule: [3: ["1", "2"]],
+            classroomMap: ["3-1": "TR-214", "3-2": "TR-214"]
+        )]
+        harness.model.reloadCourses()
+
+        #expect(harness.model.classes.map(\.room) == ["TR-214"])
+        #expect(harness.model.classes.map(\.lastPeriod) == [1])
     }
 
     @Test("today and tomorrow are named before the date")

@@ -64,20 +64,14 @@ struct EmptyClassroomScheduleTests {
         #expect(EmptyClassroomSchedule.nextTeachingDay(after: saturday, horizon: 13, isTeachingDay: { _ in false }) == nil)
     }
 
-    @Test("the periods that have ended, and where the now line sits")
-    func now() throws {
+    @Test("the periods that have ended, and the one in progress or next")
+    func now() {
         #expect(EmptyClassroomSchedule.endedPeriods(at: Self.time(10, 14, 7)) == 0)
         #expect(EmptyClassroomSchedule.endedPeriods(at: Self.time(10, 14, 10, 5)) == 2)
         #expect(EmptyClassroomSchedule.endedPeriods(at: Self.time(10, 14, 22, 30)) == 14)
-
-        let middle = try #require(EmptyClassroomSchedule.nowPosition(at: Self.time(10, 14, 10, 45)))
-        #expect(middle.period == 2)
-        #expect(middle.fraction == 0.5)
-        let inBreak = try #require(EmptyClassroomSchedule.nowPosition(at: Self.time(10, 14, 10, 5)))
-        #expect(inBreak.period == 2)
-        #expect(inBreak.fraction == 0)
-        #expect(EmptyClassroomSchedule.nowPosition(at: Self.time(10, 14, 7)) == nil)
-        #expect(EmptyClassroomSchedule.nowPosition(at: Self.time(10, 14, 22, 30)) == nil)
+        #expect(EmptyClassroomSchedule.upcomingPeriod(at: Self.time(10, 14, 7)) == 0)
+        #expect(EmptyClassroomSchedule.upcomingPeriod(at: Self.time(10, 14, 10, 45)) == 2)
+        #expect(EmptyClassroomSchedule.upcomingPeriod(at: Self.time(10, 14, 22, 30)) == nil)
     }
 
     @Test("a weekday without a holiday is a teaching day")

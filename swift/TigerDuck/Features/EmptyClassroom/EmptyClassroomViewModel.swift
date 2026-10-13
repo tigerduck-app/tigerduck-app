@@ -159,8 +159,7 @@ final class EmptyClassroomViewModel {
             selectedPeriod = opening.period
             hasOpened = true
         }
-        courses = loadCourses()
-        refreshClasses()
+        reloadCourses()
         load(force: false)
     }
 
@@ -168,9 +167,15 @@ final class EmptyClassroomViewModel {
     func accountChanged() {
         loadTask?.cancel()
         content = .loading
+        reloadCourses()
+        load(force: false)
+    }
+
+    /// The user's classes come from the class table, which a sync can change while the screen
+    /// is open.
+    func reloadCourses() {
         courses = loadCourses()
         refreshClasses()
-        load(force: false)
     }
 
     func select(day: Date) {

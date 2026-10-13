@@ -71,11 +71,18 @@ TimetableGridView.swift
 
 # Features/EmptyClassroom — the iOS finder screen and the ranking it shows; macOS hides
 # the feature (MacFeatureFiltering.swift) and keeps only its cour01 client
+AvailabilityBar.swift
 BuildingDirectory.swift
+BuildingSection.swift
+ClassroomStateViews.swift
 EmptyClassroomSchedule.swift
+EmptyClassroomView.swift
 EmptyClassroomViewModel.swift
+PeriodPicker.swift
+RoomDaySheet.swift
 RoomPlace.swift
 RoomSuggestion.swift
+SuggestionCard.swift
 
 # Features/Home — iOS home surfaces; macOS has its own dashboard under Platform/Mac
 AddSectionSheet.swift

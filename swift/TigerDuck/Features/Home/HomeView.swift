@@ -250,6 +250,7 @@ struct HomeView: View {
         case .calendar: CalendarTabView(embedded: true)
         case .library: LibraryView(embedded: true)
         case .gpa: ScoreView(embedded: true)
+        case .emptyClassroom: EmptyClassroomView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)
         }
     }
