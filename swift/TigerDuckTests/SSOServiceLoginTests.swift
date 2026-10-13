@@ -348,12 +348,10 @@ struct SSOServiceLoginTests {
     func otherRenewalFailuresPause() async {
         let log = HarvestLog()
         let clock = OSAllocatedUnfairLock(initialState: Date(timeIntervalSince1970: 1_000_000))
-        let service = tokenService(
-            log: log, failure: .transientNetwork(underlying: "offline"), now: { clock.withLock { $0 } }
-        )
+        let service = tokenService(log: log, failure: .httpStatus(code: 503), now: { clock.withLock { $0 } })
         let rejected = await withLatch(false) {
             for _ in 0..<2 {
-                await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: "offline")) {
+                await #expect(throws: MoodleWebserviceError.httpStatus(code: 503)) {
                     try await service.refreshTokenIfNeeded()
                 }
             }
@@ -363,6 +361,16 @@ struct SSOServiceLoginTests {
             return SSOLoginService.storedPasswordRejected
         }
         #expect(!rejected)
+        #expect(await log.calls == 2)
+    }
+
+    @Test("a renewal that failed on the network starts no pause")
+    func networkFailureStartsNoPause() async {
+        let log = HarvestLog()
+        let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"))
+        _ = await withLatch(false) {
+            for _ in 0..<2 { _ = try? await service.refreshTokenIfNeeded() }
+        }
         #expect(await log.calls == 2)
     }
 

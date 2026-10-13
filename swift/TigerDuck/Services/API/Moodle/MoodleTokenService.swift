@@ -71,9 +71,9 @@ actor MoodleTokenService {
     /// Moved by ``signOut()``: a harvest that started before a sign-out stores nothing, or
     /// the departing account's token would be back in the keychain for the next one.
     private var signInGeneration = 0
-    /// The last renewal's failure, other than a refused password, which latches instead. Each
-    /// Moodle screen that appears without a token asks for one, so for ``harvestPause`` they get
-    /// this error back and the password is not sent again.
+    /// The last renewal's failure, other than a refused password, which latches instead, or the
+    /// network. Each Moodle screen that appears without a token asks for one, so for
+    /// ``harvestPause`` they get this error back and the password is not sent again.
     private var lastHarvestFailure: (at: Date, error: any Error)?
     nonisolated static let harvestPause: TimeInterval = 5 * 60
 
@@ -190,7 +190,7 @@ actor MoodleTokenService {
                     if signInGeneration == generation, storedCredentials()?.password == creds.password {
                         SSOLoginService.storedPasswordRejected = true
                     }
-                } else if signInGeneration == generation {
+                } else if signInGeneration == generation, !Self.isNetworkFailure(error) {
                     lastHarvestFailure = (now(), error)
                 }
                 throw error
@@ -205,6 +205,13 @@ actor MoodleTokenService {
             if inFlightRefreshTask == task { inFlightRefreshTask = nil }
         }
         return try await task.value
+    }
+
+    /// Offline the harvest mostly stops before the password goes out, and a pause would outlast
+    /// the network coming back.
+    private static func isNetworkFailure(_ error: any Error) -> Bool {
+        if case MoodleWebserviceError.transientNetwork = error { return true }
+        return false
     }
 
     /// Called on logout. A harvest in flight is cancelled and stores nothing.
