@@ -14,6 +14,8 @@ under test reads and writes directly, not through a seam:
   `syncPreferencesPushPending`, and `LiveActivityPreferencesStore`, with its notification settings.
 - `DefaultTabsPinMigration`, and `UpdateNotifyCoordinator.checkManually()`, which stamps
   `lastUpdateCheckAt` and, for an unreadable store version, `lastReportedUnparseableStoreVersion`.
+- `SSOLoginService.storedPasswordRejected`, the latch that stops a school sign-in or a Moodle
+  token harvest from posting a rejected password, and `ssoLoginTimestamp`.
 
 Swift Testing runs suites concurrently, and `.serialized` orders one suite's own tests and nothing
 else. The push registration tests set these keys and then await the service; a registration alone
@@ -42,4 +44,5 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
 - The gate orders only the tests that take it, so a new test that reads or writes these keys goes
   through `withExclusiveRealDefaults` and puts back what it changed. Current users:
   `BulletinPushOptOutMigrationTests`, `PushRegistrationServiceTests`,
-  `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests` and `UpdateCheckTests`.
+  `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `UpdateCheckTests`,
+  `SSOServiceLoginTests` and `BackendSessionTests`.

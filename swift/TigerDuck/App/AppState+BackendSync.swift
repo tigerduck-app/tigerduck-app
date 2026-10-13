@@ -621,32 +621,9 @@ extension AppState {
     }
 
     func attemptBackendRelogin() async -> Bool {
-        let atm = authTokenManager
-        guard let studentId = authService.storedStudentId else { return false }
-        let moodleToken = await MoodleTokenService.shared.currentToken()
-        let moodlePrivateToken = KeychainManager.loadString(
-            key: AppConstants.KeychainKeys.moodlePrivateToken
-        )
-        guard let moodleToken, !moodleToken.isEmpty else {
-            AppLogger.sync.info("auto-relogin skipped: no Moodle token")
-            return false
-        }
-        let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
-        do {
-            _ = try await atm.login(
-                studentId: studentId,
-                password: "",
-                moodleToken: moodleToken,
-                moodlePrivateToken: moodlePrivateToken,
-                platform: platform
-            )
-            AppLogger.sync.info("auto-relogin: v3 JWT refreshed")
-            pushCoordinator.refreshRegistrationAfterAuth()
-            return true
-        } catch {
-            AppLogger.sync.error("auto-relogin failed: \(error, privacy: .public)")
-            return false
-        }
+        guard await authService.reloginToBackend() else { return false }
+        pushCoordinator.refreshRegistrationAfterAuth()
+        return true
     }
 
     /// Fire-and-forget override sync to the backend. Local state is already

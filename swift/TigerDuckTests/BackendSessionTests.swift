@@ -5,6 +5,7 @@ import Foundation
 import Testing
 import UIKit
 import Valet
+import os
 @testable import TigerDuck
 
 @Suite("Backend token refresh")
@@ -281,6 +282,70 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
     }
+
+    // MARK: - Signing in again after the backend revoked the session
+    // https://github.com/tigerduck-app/tigerduck-app/issues/385
+
+    /// How a test reaches a backend sign-in.
+    enum SignInPath: String, CaseIterable, CustomTestStringConvertible {
+        /// The relogin after a refresh the backend answers 401.
+        case relogin
+        /// `ensureBackendSignedIn()` with no session.
+        case signIn
+
+        var testDescription: String { rawValue }
+    }
+
+    @Test("with no Moodle token stored, a sign-in harvests one and signs in with it", arguments: SignInPath.allCases)
+    func signInHarvestsAMissingMoodleToken(path: SignInPath) async throws {
+        try await withPasswordLatchCleared {
+            let backend = BackendFixture(signedIn: path == .relogin)
+            let harvests = CallCount()
+            let auth = AuthService(
+                keychainHasCredentials: { false }, notificationCenter: NotificationCenter(),
+                moodleTokens: .standIn(harvests: harvests)
+            )
+            auth.authTokenManager = backend.manager
+            await backend.manager.setRefreshFailedHandler { await auth.reloginToBackend() }
+            if path == .relogin {
+                SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+            }
+            SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn(withMoodleToken: false)) {
+                switch path {
+                case .relogin: _ = await backend.manager.validAccessToken()
+                case .signIn: await auth.ensureBackendSignedIn()
+                }
+            }
+
+            let sent = try backend.sentMoodleTokens()
+            #expect(harvests.value == 1)
+            #expect(sent == ["harvested"])
+            #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        }
+    }
+
+    @Test("behind a locked screen a relogin harvests nothing and sends nothing")
+    func lockedReloginSendsNothing() async throws {
+        let backend = BackendFixture()
+        let harvests = CallCount()
+        let auth = AuthService(
+            keychainHasCredentials: { false }, notificationCenter: NotificationCenter(),
+            moodleTokens: .standIn(harvests: harvests)
+        )
+        auth.authTokenManager = backend.manager
+        await backend.manager.setRefreshFailedHandler { await auth.reloginToBackend() }
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+
+        let token = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
+            await backend.manager.validAccessToken()
+        }
+
+        #expect(token == nil)
+        #expect(harvests.value == 0)
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+    }
 }
 
 /// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next
@@ -323,6 +388,15 @@ private struct BackendFixture {
             let body = try #require(SettingsAPIStub.bodyData(from: request))
             let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
             return try #require(json["refresh_token"])
+        }
+    }
+
+    /// The Moodle token each login request carried, in order.
+    func sentMoodleTokens() throws -> [String?] {
+        try SettingsAPIStub.requests(for: loginURL).map { request in
+            let body = try #require(SettingsAPIStub.bodyData(from: request))
+            let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            return json["moodle_token"] as? String
         }
     }
 
@@ -402,22 +476,68 @@ private nonisolated final class CallCount: @unchecked Sendable {
     var value: Int { lock.withLock { count } }
 }
 
+private extension MoodleTokenService {
+    /// Has no token stored. Its harvest hands out "harvested", or fails with `failure`, and
+    /// reaches no school server.
+    static func standIn(
+        harvests: CallCount,
+        failure: MoodleWebserviceError? = nil
+    ) -> MoodleTokenService {
+        let stored = OSAllocatedUnfairLock<String?>(initialState: nil)
+        return MoodleTokenService(
+            storedCredentials: { (studentId: "B11000000", password: "password") },
+            tokens: TokenStore(
+                load: { stored.withLock { $0 } },
+                save: { triple in stored.withLock { $0 = triple.wstoken } },
+                drop: { stored.withLock { $0 = nil } }
+            ),
+            harvest: { _, _ in
+                harvests.increment()
+                if let failure { throw failure }
+                return TokenTriple(signature: "", wstoken: "harvested", privatetoken: nil)
+            }
+        )
+    }
+}
+
+/// Runs `body` with the stored-password latch, which stops a harvest before it starts, cleared,
+/// then puts it back. The latch is a real `Defaults` key, so this takes the shared gate.
+private func withPasswordLatchCleared<T>(_ body: () async throws -> T) async rethrows -> T {
+    try await withExclusiveRealDefaults {
+        let saved = SSOLoginService.storedPasswordRejected
+        SSOLoginService.storedPasswordRejected = false
+        defer { SSOLoginService.storedPasswordRejected = saved }
+        return try await body()
+    }
+}
+
 /// `SecureStore`'s `.whenUnlockedThisDeviceOnly` valet in memory, holding the NTUST account and
 /// Moodle token a backend sign-in sends.
 private nonisolated final class MemoryKeychain: KeychainStore, @unchecked Sendable {
     private let lock = NSLock()
-    private var items: [String: Data]
+    private var items: [String: Data] = [:]
 
-    static func signedIn() -> MemoryKeychain {
-        MemoryKeychain(items: [
-            AppConstants.KeychainKeys.studentId: Data("B11000000".utf8),
-            AppConstants.KeychainKeys.password: Data("password".utf8),
-            AppConstants.KeychainKeys.moodleToken: Data("moodle-token".utf8),
-        ])
+    static func signedIn(withMoodleToken: Bool = true) -> MemoryKeychain {
+        let keychain = MemoryKeychain()
+        keychain.unlock(withMoodleToken: withMoodleToken)
+        return keychain
     }
 
-    private init(items: [String: Data]) {
-        self.items = items
+    /// Reads nothing, as behind a locked screen, until `unlock`.
+    static func locked() -> MemoryKeychain {
+        MemoryKeychain()
+    }
+
+    private init() {}
+
+    func unlock(withMoodleToken: Bool = true) {
+        lock.withLock {
+            items[AppConstants.KeychainKeys.studentId] = Data("B11000000".utf8)
+            items[AppConstants.KeychainKeys.password] = Data("password".utf8)
+            if withMoodleToken {
+                items[AppConstants.KeychainKeys.moodleToken] = Data("moodle-token".utf8)
+            }
+        }
     }
 
     func object(forKey key: String) throws -> Data {
