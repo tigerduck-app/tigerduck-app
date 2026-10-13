@@ -1364,6 +1364,7 @@
 					ClassTableShareCode.swift,
 					"ClassTableShareCode+TAT.swift",
 					ImportedClassTableStore.swift,
+					ClassTableSwitcher.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1625,6 +1626,7 @@
 					ClassTableShareCode.swift,
 					"ClassTableShareCode+TAT.swift",
 					ImportedClassTableStore.swift,
+					ClassTableSwitcher.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
