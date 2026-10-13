@@ -24,6 +24,8 @@ struct CourseDetailSheet: View {
     var weekday: Int? = nil
     /// The Mac overlay passes its own, so Escape can go back a screen before it closes.
     var moodlePath: Binding<[MoodleCourseRoute]>? = nil
+    /// Off for a course on someone else's class table: the Moodle course is the user's.
+    var showsMoodle = true
 
     @State private var ownMoodlePath: [MoodleCourseRoute] = []
     @State private var moodle: MoodleCourseStore?
@@ -119,7 +121,7 @@ struct CourseDetailSheet: View {
 
     /// Nil for a course with no Moodle course, such as one added by hand, or when signed out.
     private func makeMoodleStore() -> MoodleCourseStore? {
-        guard let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
+        guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
               let courseId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber),
               let account = appState.authService.storedStudentId else { return nil }
         let authService = appState.authService
@@ -161,7 +163,7 @@ struct CourseDetailSheet: View {
                     .foregroundStyle(Color.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if course.moodleOpenURL != nil {
+                if showsMoodle, course.moodleOpenURL != nil {
                     Button(action: openMoodleCourse) {
                         Image(systemName: "arrow.up.right.square.fill")
                             .font(.title2)

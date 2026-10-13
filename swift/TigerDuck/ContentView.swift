@@ -14,11 +14,28 @@ struct ContentView: View {
         .ntustLoginSheetHost()
         #if os(iOS)
         .serverPushPopupHost()
+        .modifier(ClassTableImportHost())
         #endif
     }
 }
 
 #if os(iOS)
+/// The window's one presenter of the class table import, which every menu that offers it asks
+/// for through `requestClassTableImport`: the ⋯ menus and the tab bar's switcher.
+private struct ClassTableImportHost: ViewModifier {
+    @Environment(AppState.self) private var appState
+    @State private var importModel: ClassTableImportModel?
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.requestClassTableImport) {
+                guard importModel == nil else { return }
+                importModel = .live(authService: appState.authService)
+            }
+            .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
+    }
+}
+
 /// Hosts the modal alert that surfaces an operator-issued
 /// `custom_push_popup` tap. Pulled into its own modifier so the binding
 /// dance (Optional<ServerPopupPayload> → Bool) stays local and the
@@ -81,6 +98,15 @@ struct MainTabView: View {
                 MoreView()
             }
         }
+        .background(
+            ClassTableTabBarGestures(
+                tabTitle: visibleTabs.contains(.classTable) ? AppFeature.classTable.tabBarDisplayName : nil,
+                isShowingClassTable: selectedTab == .classTable,
+                store: .shared,
+                userName: ClassTableSwitcherEntry.userName(studentId: appState.authService.storedStudentId),
+                showClassTable: { selectedTab = .classTable }
+            )
+        )
         .alert(
             String(localized: "app_non_taipei_timezone_hint"),
             isPresented: $showTimezoneAlert
@@ -190,6 +216,8 @@ struct MainTabView: View {
                 appState.pendingLibraryEnablePrompt = true
             }
         case .classTable:
+            // The widget draws the user's own class table.
+            ImportedClassTableStore.shared.show(nil)
             open(.classTable)
         }
         appState.clearPendingWidgetDestination()

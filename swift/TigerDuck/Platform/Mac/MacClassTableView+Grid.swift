@@ -252,7 +252,7 @@ extension MacClassTableView {
         }
         .ignoredAssignmentsBadge(show: ignored, iconSize: Self.ignoredMarkSize, padding: 8)
         .contentShape(Rectangle())
-        .contextMenu {
+        .courseEditMenu(isEditable: shownPerson == nil) {
             // Rename writes to a courseNo-keyed store shared across semesters;
             // only expose it from the current semester to avoid leaking aliases
             // into other terms. See `isViewingCurrentSemester`.

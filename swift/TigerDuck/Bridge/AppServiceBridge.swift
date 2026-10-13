@@ -407,8 +407,10 @@ enum AppServiceBridge {
             do {
                 let results = try await lookup(courseNo)
                 guard !results.isEmpty else { return .success(nil) }
+                // Someone else's labels stay out of the raw-name cache the user's own courses use.
                 return .success(enrichedCourseData(
-                    from: results, semester: semester, fallbackMoodleIdNumber: nil, display: display
+                    from: results, semester: semester, fallbackMoodleIdNumber: nil, display: display,
+                    recordsRawLabels: false
                 ))
             } catch {
                 return .failure(error)
@@ -425,7 +427,8 @@ enum AppServiceBridge {
         from results: [CourseSearchResult],
         semester: String,
         fallbackMoodleIdNumber: String?,
-        display: CourseDisplayPreferences
+        display: CourseDisplayPreferences,
+        recordsRawLabels: Bool = true
     ) -> CourseData {
         let course = buildSDCourse(
             from: results,
@@ -449,10 +452,12 @@ enum AppServiceBridge {
         )
         // Cache the raw API name so abbreviation toggles can re-derive
         // without a network round-trip.
-        NameAbbrService.shared.storeRawName(courseNo: data.courseNo, name: data.courseName)
-        NameAbbrService.shared.storeRawClassroom(
-            courseNo: data.courseNo, classroom: data.classroom, map: data.classroomMap
-        )
+        if recordsRawLabels {
+            NameAbbrService.shared.storeRawName(courseNo: data.courseNo, name: data.courseName)
+            NameAbbrService.shared.storeRawClassroom(
+                courseNo: data.courseNo, classroom: data.classroom, map: data.classroomMap
+            )
+        }
         if display.language == "en" && display.courseAbbrEnabled {
             data.courseName = NameAbbrService.shared.abbreviateName(data.courseName)
         }
@@ -505,6 +510,54 @@ enum AppServiceBridge {
         }
         DataCache.shared.saveUserAddedCourses(updated)
         return updated.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+    }
+
+    /// Looks one term of an imported class table up again, for `ImportedClassTableStore` to keep.
+    /// A course the query does not answer keeps its row in `current`. Nil when no lookup went
+    /// through, offline included, so the caller can say the refresh failed.
+    static func refreshImportedCourses(semester: String, courseNos: [String], current: [SDCourse]) async -> [SDCourse]? {
+        guard await NetworkMonitor.shared.isReachable() else { return nil }
+        let display = CourseDisplayPreferences.current()
+        return await refreshImportedCourses(
+            semester: semester, courseNos: courseNos, current: current, display: display
+        ) { courseNo in
+            try await CourseLookupService.lookupCourse(
+                semester: semester, courseNo: courseNo, language: display.language, fresh: true
+            )
+        }
+    }
+
+    static func refreshImportedCourses(
+        semester: String,
+        courseNos: [String],
+        current: [SDCourse],
+        display: CourseDisplayPreferences,
+        lookup: @escaping @MainActor @Sendable (_ courseNo: String) async throws -> [CourseSearchResult]
+    ) async -> [SDCourse]? {
+        let cachedByNo = Dictionary(
+            current.map { ($0.courseNo, CourseData($0)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let answers = await concurrentMap(courseNos) { @MainActor courseNo -> (data: CourseData?, failed: Bool) in
+            do {
+                let results = try await lookup(courseNo)
+                guard !results.isEmpty else { return (cachedByNo[courseNo], false) }
+                // Someone else's term: its names and rooms stay out of the cache that relabels
+                // the user's courses, which is keyed by course number alone.
+                let data = enrichedCourseData(
+                    from: results, semester: semester, fallbackMoodleIdNumber: nil, display: display,
+                    recordsRawLabels: false
+                )
+                return (data, false)
+            } catch {
+                AppLogger.captureError(error, context: [
+                    "service": "courseLookup", "flow": "importedClassTable", "semester": semester,
+                ])
+                return (cachedByNo[courseNo], true)
+            }
+        }
+        guard answers.contains(where: { !$0.failed }) else { return nil }
+        return answers.compactMap { $0.data?.course(in: semester) }
     }
 
     /// Looks up every course of `semester` that still has no classroom —

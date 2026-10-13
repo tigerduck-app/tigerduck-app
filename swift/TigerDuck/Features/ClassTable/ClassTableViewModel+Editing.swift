@@ -12,6 +12,7 @@ extension ClassTableViewModel {
     /// the next tap into routing through `removeUserAddedCourse`.
     @discardableResult
     func addCourse(_ course: SDCourse) -> Bool {
+        guard shownPerson == nil else { return false }
         // A course both tombstoned and in `courses` (a refresh re-fetched it past
         // a stale tombstone) is un-hidden before returning, so later reloads stop
         // filtering it. Returns `false`: the row was already in the timetable.
@@ -84,6 +85,8 @@ extension ClassTableViewModel {
     /// merge surfaced all semesters' rows in every timetable; scoping the
     /// merge is what makes the wholesale write destructive.
     private func persistUserAddedCourses() {
+        // `courses` holds someone else's then, and would replace the user's own additions.
+        guard shownPerson == nil else { return }
         let mine = courses.filter { $0.moodleIdNumber == nil }
         // Stamp rows that predate per-semester tracking with the semester
         // they are being shown in, so they stop leaking into all of them.
@@ -112,6 +115,7 @@ extension ClassTableViewModel {
     }
 
     func deleteCourse(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         let courseNo = course.courseNo
         courses.removeAll { $0.courseNo == courseNo }
         deletedCourseNos.insert(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
@@ -133,6 +137,7 @@ extension ClassTableViewModel {
     /// the course-selection system and the grade report. Other terms are
     /// untouched.
     func resetCourses(authService: AuthService) {
+        guard shownPerson == nil else { return }
         let semester = currentSemester
         // One at a time per term: two refetches racing each other's
         // uploads is nothing anyone needs.
@@ -195,7 +200,8 @@ extension ClassTableViewModel {
     /// a real enrolled course is a no-op, so enrolled courses leave only through
     /// the regular drop and hide flow.
     func removeUserAddedCourse(courseNo: String) {
-        guard let course = courses.first(where: { $0.courseNo == courseNo }),
+        guard shownPerson == nil,
+              let course = courses.first(where: { $0.courseNo == courseNo }),
               course.moodleIdNumber == nil
         else { return }
         courses.removeAll { $0.courseNo == courseNo }
@@ -208,13 +214,14 @@ extension ClassTableViewModel {
     }
 
     func startRename(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         courseToRename = course
         renameText = course.displayName
         showRenameAlert = true
     }
 
     func confirmRename() {
-        guard let course = courseToRename else { return }
+        guard shownPerson == nil, let course = courseToRename else { return }
         // Trim whitespace *and* newlines so a pasted "\nDefault\n" still
         // collapses to empty and routes through the revert path instead of
         // saving an invisible/line-breaking alias.
@@ -238,6 +245,7 @@ extension ClassTableViewModel {
     }
 
     func revertRename(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         let locale = currentLocale
         courseCustomNames[course.courseNo]?[locale] = nil
         // Remove the outer entry entirely when no locale overrides remain
@@ -254,6 +262,7 @@ extension ClassTableViewModel {
     }
 
     func startRecolor(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         courseToRecolor = course
     }
 
@@ -276,6 +285,7 @@ extension ClassTableViewModel {
     /// throughout a drag, and dismissing here would close the sheet on the first.
     /// `CourseColorPickerSheet` calls `dismiss()` itself on a preset tap or Close.
     func setColor(hex: UInt32, for course: SDCourse) {
+        guard shownPerson == nil else { return }
         let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
         broadcastLocalChange()
         onSyncColorPick?(hex, course, changed)

@@ -21,6 +21,8 @@ extension MacClassTableView {
     ///   `removeUserAddedCourse` and delete the course already added for this semester.
     @discardableResult
     func addUserCourse(_ course: SDCourse) -> Bool {
+        // `courses` is someone else's then, and every edit here uploads it as the user's term.
+        guard shownPerson == nil else { return false }
         let existing = DataCache.shared.loadUserAddedCourses()
         // Dedupe within the selected semester only: a `courseNo` can recur across terms, and
         // `removeUserAddedCourse` scopes its undo to `selectedSemester`. `courses` holds only
@@ -92,6 +94,7 @@ extension MacClassTableView {
     /// also delete a manually-added `X` the user saved for a different
     /// semester (the sheet's onRemove callback only carries the courseNo).
     func removeUserAddedCourse(courseNo: String) {
+        guard shownPerson == nil else { return }
         let existing = DataCache.shared.loadUserAddedCourses()
         let updated = existing.filter { course in
             !(course.courseNo == courseNo && (course.semester == selectedSemester || course.semester.isEmpty))
@@ -118,7 +121,7 @@ extension MacClassTableView {
     /// the override by typing nothing. Mirrors the iPhone confirmRename rules
     /// 1:1 so renames stay consistent across platforms.
     func confirmRename() {
-        guard let course = courseToRename else { return }
+        guard shownPerson == nil, let course = courseToRename else { return }
         let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty || trimmed == course.courseName {
             revertRename(course)
@@ -140,6 +143,7 @@ extension MacClassTableView {
     /// course name. Also surfaced as the destructive button in the rename
     /// alert when an override is already set.
     func revertRename(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         let locale = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
         var names = DataCache.shared.loadCourseCustomNames()
         names[course.courseNo]?[locale] = nil
@@ -156,7 +160,7 @@ extension MacClassTableView {
     }
 
     func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
-        guard isViewingCurrentSemester else { return }
+        guard shownPerson == nil, isViewingCurrentSemester else { return }
         DataCache.shared.setAssignmentsIgnored(ignore, semester: selectedSemester, courseNo: course.courseNo)
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
@@ -171,6 +175,7 @@ extension MacClassTableView {
     /// user-added entry for the courseNo in this semester so the row vanishes
     /// immediately whether the source was an enrolled course or a manual add.
     func deleteCourse(_ course: SDCourse) {
+        guard shownPerson == nil else { return }
         var deleted = Set(DataCache.shared.loadDeletedCourseNos())
         deleted.insert(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo))
         DataCache.shared.saveDeletedCourseNos(Array(deleted))

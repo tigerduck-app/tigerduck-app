@@ -1380,6 +1380,7 @@
 					ImportedClassTableStore.swift,
 					ClassTableShareModel.swift,
 					ClassTableShareSheet.swift,
+					ClassTableSwitcher.swift,
 					ClassTableImportModel.swift,
 					ClassTableImportConfirmView.swift,
 				);
@@ -1660,6 +1661,7 @@
 					ImportedClassTableStore.swift,
 					ClassTableShareModel.swift,
 					ClassTableShareSheet.swift,
+					ClassTableSwitcher.swift,
 					ClassTableImportModel.swift,
 					ClassTableImportConfirmView.swift,
 				);
