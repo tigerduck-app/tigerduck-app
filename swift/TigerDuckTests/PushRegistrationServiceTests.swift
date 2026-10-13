@@ -17,7 +17,7 @@ struct PushRegistrationServiceTests {
         baseURL: URL,
         debounces: OSAllocatedUnfairLock<[Duration]> = .init(initialState: []),
         retries: OSAllocatedUnfairLock<[Duration]> = .init(initialState: []),
-        authHeader: @escaping @Sendable () async -> String? = { nil }
+        authHeader: @escaping @Sendable () async -> String? = { "Bearer test" }
     ) -> PushRegistrationService {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -80,12 +80,12 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    /// Stubs one attempt whose registration the backend refuses the way it refuses a request
-    /// that carries no access token.
+    /// Stubs one attempt whose registration the backend refuses, as it does once it has revoked
+    /// the session.
     private static func expectRefusedAttempt(_ baseURL: URL) {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: announceURL(baseURL))
         SettingsAPIStub.enqueue(
-            .init(statusCode: 401, body: Data(#"{"detail":"missing_bearer_token"}"#.utf8)),
+            .init(statusCode: 401, body: Data(#"{"detail":"session_revoked"}"#.utf8)),
             for: registerURL(baseURL)
         )
     }
@@ -401,7 +401,7 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    @Test("a registration that went out with no session is followed at once by one with the session restored meanwhile")
+    @Test("a registration that finds no session is followed at once by one with the session restored meanwhile")
     func registrationWithoutSessionIsFollowedAtOnce() async throws {
         try await Self.withSyncPreferences {
             Defaults[.syncPreferencesPushPending] = false
@@ -413,12 +413,13 @@ struct PushRegistrationServiceTests {
                 baseURL: baseURL, debounces: debounces, retries: retries,
                 authHeader: { await session.header() }
             )
-            Self.expectRefusedAttempt(baseURL)
+            // The first attempt's announce. Its registration finds no session and is not sent.
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: Self.announceURL(baseURL))
             Self.expectAttempt(baseURL, registrations: 1)
 
             await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
             await session.waitUntilHeld()
-            // A sign-in lands while that registration is on its way without a bearer.
+            // A sign-in lands while that registration waits for its session.
             session.signIn()
             await service.registerAgain()
             session.release()
@@ -426,10 +427,10 @@ struct PushRegistrationServiceTests {
 
             #expect(retries.withLock { $0 }.isEmpty)
             #expect(debounces.withLock { $0 } == [.milliseconds(250), .milliseconds(250)])
+            #expect(SettingsAPIStub.requests(for: Self.announceURL(baseURL)).count == 2)
             let registrations = SettingsAPIStub.requests(for: Self.registerURL(baseURL))
-            try #require(registrations.count == 2)
-            #expect(registrations[0].value(forHTTPHeaderField: "Authorization") == nil)
-            #expect(registrations[1].value(forHTTPHeaderField: "Authorization") == HeldRegistrationSession.bearer)
+            try #require(registrations.count == 1)
+            #expect(registrations[0].value(forHTTPHeaderField: "Authorization") == HeldRegistrationSession.bearer)
             let snapshot = await service.snapshot()
             #expect(snapshot.lastError == nil)
             #expect(snapshot.lastRegisteredAt != nil)
@@ -515,8 +516,8 @@ struct PushRegistrationServiceTests {
     }
 }
 
-/// The bearer for each request while signed in, nil before `signIn()`. Holds an attempt's
-/// registration POST, its second request after the announce, until `release()`, so a test can
+/// The bearer for each request while signed in, nil before `signIn()`. Holds the first
+/// registration POST, the first request that asks for a bearer, until `release()`, so a test can
 /// act while that registration is running; the held request keeps the answer it was asked for.
 private final class HeldRegistrationSession: Sendable {
     static let bearer = "Bearer restored"
@@ -536,7 +537,7 @@ private final class HeldRegistrationSession: Sendable {
 
     func header() async -> String? {
         let header = isSignedIn.withLock { $0 } ? Self.bearer : nil
-        if calls.withLock({ count in count += 1; return count }) == 2 {
+        if calls.withLock({ count in count += 1; return count }) == 1 {
             heldContinuation.yield()
             for await _ in released {}
         }

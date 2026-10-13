@@ -99,7 +99,6 @@ extension AppState {
         // green before anything has synced.
         ServerStatusTracker.shared.reset()
         Defaults[.schoolDataSyncedAt] = nil
-        Defaults[.lastSeenCoursesResetAt] = nil
         // The next account opens the class table on the newest term, not on this one's pick.
         Defaults[.classTableSelectedSemester] = nil
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
@@ -107,6 +106,7 @@ extension AppState {
         // `MacContentView` instead of returning to `MacLoginView`.
         didSkipMacLogin = false
         DataCache.shared.clearUserScopedData()
+        ImportedClassTableStore.shared.removeAll()
         BulletinsViewModel.forgetListSession()
         // Unresolved conflicts come from the departing account's data; resolving one would write
         // its server marks into the next account's caches, or upload its own to that account.
@@ -146,10 +146,12 @@ extension AppState {
     /// out of reach of `clearUserScopedData`. A re-enable check left pending would keep the next
     /// account's pulls off the categories it names and hold the account's marks and course settings
     /// until a Settings visit ran it, on a device the sign-out emptied: Keep Local there clears the
-    /// account's marks on the server.
+    /// account's marks on the server. Until the next account's first sync, nothing is marked for that
+    /// check (`hasSyncedAccount`).
     static func forgetSyncProgress() {
         Defaults[.pendingConflictCategories] = []
         Defaults[.assignmentMarksSyncedOnce] = false
+        Defaults[.lastSeenCoursesResetAt] = nil
     }
 
     func notifyLibraryStateChanged() {
