@@ -8,6 +8,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var forums: @Sendable (_ courseIds: [Int]) async throws -> [MoodleForum]
     var discussions: @Sendable (_ forumId: Int, _ page: Int) async throws -> [MoodleDiscussion]
     var markViewed: @Sendable (_ discussionId: Int) async throws -> Void
+    var summary: @Sendable (_ courseId: Int) async throws -> MoodleCourseSummary
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -24,6 +25,11 @@ nonisolated struct MoodleCourseAPI: Sendable {
         markViewed: { discussionId in
             try await MoodleWebserviceClient.withToken {
                 try await MoodleForumService.markViewed(discussionId: discussionId, token: $0)
+            }
+        },
+        summary: { courseId in
+            try await MoodleWebserviceClient.withToken {
+                try await MoodleCourseSummaryService.summary(courseId: courseId, token: $0)
             }
         }
     )
@@ -184,23 +190,34 @@ final class MoodleCourseStore {
     let courseId: Int
     let forums: MoodleFeed<MoodleTermForums>
     let announcements: MoodleFeed<MoodleDiscussionList>
+    let summary: MoodleFeed<MoodleCourseSummary>
     private(set) var isLoadingMoreAnnouncements = false
     private(set) var announcementsPageFailure: (any Error)?
 
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
+    /// The codes the course goes by, such as its idnumbers and course number.
+    @ObservationIgnored private let courseCodes: [String]
     @ObservationIgnored private let api: MoodleCourseAPI
     @ObservationIgnored private var listWork: Task<Void, Never>?
     @ObservationIgnored private var announcementsRefresh: Task<Void, Never>?
 
-    init(courseId: Int, termCourseIds: [Int], context: MoodleCacheContext, api: MoodleCourseAPI = .live) {
+    init(
+        courseId: Int,
+        termCourseIds: [Int],
+        courseCodes: [String] = [],
+        context: MoodleCacheContext,
+        api: MoodleCourseAPI = .live
+    ) {
         self.courseId = courseId
         self.termCourseIds = Array(Set(termCourseIds).union([courseId])).sorted()
+        self.courseCodes = courseCodes
         self.api = api
         forums = MoodleFeed(cacheName: "forums", ttl: MoodleRefreshInterval.forums, context: context)
         announcements = MoodleFeed(
             cacheName: "courses/\(courseId)/announcements", ttl: MoodleRefreshInterval.announcements, context: context
         )
+        summary = MoodleFeed(cacheName: "courses/\(courseId)/summary", ttl: MoodleRefreshInterval.summary, context: context)
     }
 
     // MARK: Section
@@ -210,8 +227,12 @@ final class MoodleCourseStore {
         return [MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0)]
     }
 
-    var isSectionRefreshing: Bool { forums.isRefreshing }
-    var sectionStatus: ServerStatus { forums.status }
+    var isSectionRefreshing: Bool { forums.isRefreshing || summary.isRefreshing }
+
+    /// The worst of the section's feeds, read as the status dot reads its sources.
+    var sectionStatus: ServerStatus {
+        SyncStatusDot.summary(loadingState: .idle, statuses: [forums.status, summary.status])
+    }
 
     // MARK: Forums
 
@@ -341,6 +362,23 @@ final class MoodleCourseStore {
         forums.update { term in
             guard let index = term.forums.firstIndex(where: { $0.courseId == courseId && $0.isNews }) else { return }
             term.forums[index].unreadPostCount = max(0, term.forums[index].unreadPostCount - unread)
+        }
+    }
+
+    // MARK: Summary
+
+    /// What the foot of the section shows, nil while the course has no summary worth showing.
+    var shownSummary: MoodleCourseSummary? {
+        guard let value = summary.value, value.isWorthShowing(besides: courseCodes) else { return nil }
+        return value
+    }
+
+    /// One call for this course. A site that does not allow it answers as if the course had no
+    /// summary, which shows nothing.
+    func refreshSummary() async {
+        await summary.refresh { [api, courseId] in
+            guard try await api.functions().contains(MoodleCourseSummaryService.coursesFunction) else { return .empty }
+            return try await api.summary(courseId)
         }
     }
 }
