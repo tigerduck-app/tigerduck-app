@@ -234,7 +234,7 @@ struct ClassTableView: View {
             }
             .sheet(item: $shareModel) { model in
                 ClassTableShareSheet(model: model)
-                    .presentationDetents([.medium, .large])
+                    .presentationDetents([ClassTableShareSheet.openingDetent, .large])
             }
     }
 

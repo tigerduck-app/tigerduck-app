@@ -291,19 +291,30 @@ import UIKit
 @MainActor
 @Suite(.serialized)
 struct ClassTableShareSheetTests {
-    private func host(_ model: ClassTableShareModel) throws -> UIWindow {
+    /// Where the sheet shows: its width, its size class, and the pixels a point of the device's
+    /// screenshot once a chat app has halved it.
+    enum Screen: CaseIterable {
+        case phone, iPad
+
+        var width: CGFloat { self == .phone ? 402 : 540 }
+        var sizeClass: UserInterfaceSizeClass { self == .phone ? .compact : .regular }
+        var halvedScale: CGFloat { self == .phone ? 1.5 : 1 }
+    }
+
+    private func host(_ model: ClassTableShareModel, on screen: Screen = .phone) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
-        window.rootViewController = UIHostingController(rootView: ClassTableShareSheet(model: model))
+        window.frame = CGRect(x: 0, y: 0, width: screen.width, height: 874)
+        window.rootViewController = UIHostingController(
+            rootView: ClassTableShareSheet(model: model).environment(\.horizontalSizeClass, screen.sizeClass)
+        )
         window.makeKeyAndVisible()
         return window
     }
 
-    /// A phone's screenshot, three pixels a point, after a chat app has halved it.
-    private func halvedScreenshot(_ window: UIWindow) -> CGImage? {
+    private func halvedScreenshot(_ window: UIWindow, on screen: Screen) -> CGImage? {
         let format = UIGraphicsImageRendererFormat()
-        format.scale = 1.5
+        format.scale = screen.halvedScale
         return UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }.cgImage
@@ -313,8 +324,9 @@ struct ClassTableShareSheetTests {
         view.subviews.flatMap { [$0 as? UISwitch].compactMap { $0 } + switches(in: $0) }
     }
 
-    @Test("the longest code scans from a screenshot a chat app has halved, at about four pixels a module")
-    func scansFromAHalvedScreenshot() async throws {
+    @Test("8 terms of 10 courses scan from a screenshot a chat app has halved, at about four pixels a module",
+          arguments: Screen.allCases)
+    func scansFromAHalvedScreenshot(on screen: Screen) async throws {
         let code = try ClassTableShareQRCodeTests.eightTermsCode()
         let decoded = try ClassTableShareCode.decode(code)
         let model = ClassTableShareModel(
@@ -328,12 +340,12 @@ struct ClassTableShareSheetTests {
             semesterLabel: { $0 }
         )
         model.selection = .allSemesters
-        let window = try host(model)
+        let window = try host(model, on: screen)
         defer { window.isHidden = true }
 
         var read: CIQRCodeFeature?
         try await waitUntil {
-            read = halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) }
+            read = halvedScreenshot(window, on: screen).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) }
             return read != nil
         }
         let feature = try #require(read)
