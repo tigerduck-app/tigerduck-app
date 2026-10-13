@@ -162,15 +162,8 @@ struct MoodleGradeRow: View {
                     summary
                 }
                 .buttonStyle(.plain)
-                // A disclosure group's stand-in gives VoiceOver the system's expanded and collapsed.
-                .accessibilityRepresentation {
-                    DisclosureGroup(isExpanded: $isExpanded) {
-                        EmptyView()
-                    } label: {
-                        Text(item.name)
-                    }
-                    .accessibilityValue(item.spokenGrade)
-                }
+                .accessibilityLabel(item.name)
+                .accessibilityValue(item.spokenGrade)
                 if isExpanded {
                     feedback
                 }
@@ -180,8 +173,10 @@ struct MoodleGradeRow: View {
 
     private var summary: some View {
         HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.md) {
+            // Past this size the wider symbols, such as the quiz's, run out of the icon's column.
             Image(systemName: item.symbol)
                 .font(TigerDuckTheme.Typography.body)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .foregroundStyle(.tint)
                 .frame(width: Self.iconWidth)
             if dynamicTypeSize.isAccessibilitySize {
