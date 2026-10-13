@@ -58,37 +58,58 @@ struct PasswordFieldAutoFillTests {
 
     @Test(arguments: Write.allCases)
     func autoFilledPasswordReachesTheBinding(write: Write) async throws {
-        let credentials = Credentials()
-        let form = try await host(credentials)
+        try await withCaptureProtectionOn {
+            let credentials = Credentials()
+            let form = try await host(credentials)
 
-        form.account.insertText("B11000000")
-        switch write {
-        case .insert:
-            form.decoy.insertText("secret")
-        case .replace:
-            let all = try #require(form.decoy.textRange(from: form.decoy.beginningOfDocument, to: form.decoy.endOfDocument))
-            form.decoy.replace(all, withText: "secret")
+            form.account.insertText("B11000000")
+            switch write {
+            case .insert:
+                form.decoy.insertText("secret")
+            case .replace:
+                let all = try #require(form.decoy.textRange(from: form.decoy.beginningOfDocument, to: form.decoy.endOfDocument))
+                form.decoy.replace(all, withText: "secret")
+            }
+
+            #expect(form.password.text == "secret", "the field the user sees shows the password")
+            #expect(form.decoy.text?.isEmpty ?? true, "nothing is left in the decoy to show behind the field")
+            #expect(credentials.password == "secret")
+            #expect(credentials.canSignIn)
+            form.window.isHidden = true
         }
-
-        #expect(form.password.text == "secret", "the field the user sees shows the password")
-        #expect(form.decoy.text?.isEmpty ?? true, "nothing is left in the decoy to show behind the field")
-        #expect(credentials.password == "secret")
-        #expect(credentials.canSignIn)
-        form.window.isHidden = true
     }
 
     @Test func typedPasswordStillReachesTheBinding() async throws {
-        let credentials = Credentials()
-        let form = try await host(credentials)
+        try await withCaptureProtectionOn {
+            let credentials = Credentials()
+            let form = try await host(credentials)
 
-        for character in "B11000000" { form.account.insertText(String(character)) }
-        _ = form.password.becomeFirstResponder()
-        for character in "secrets" { form.password.insertText(String(character)) }
-        form.password.deleteBackward()
+            for character in "B11000000" { form.account.insertText(String(character)) }
+            _ = form.password.becomeFirstResponder()
+            for character in "secrets" { form.password.insertText(String(character)) }
+            form.password.deleteBackward()
 
-        #expect(credentials.password == "secret")
-        #expect(credentials.canSignIn)
-        form.window.isHidden = true
+            #expect(credentials.password == "secret")
+            #expect(credentials.canSignIn)
+            form.window.isHidden = true
+        }
+    }
+
+    /// Runs `body` with the capture wrapper on, which Settings → Developer can store as off in the
+    /// simulator, and puts the stored value back afterwards.
+    private func withCaptureProtectionOn(_ body: () async throws -> Void) async rethrows {
+        let defaults = UserDefaults.standard
+        let key = ScreenCaptureProtectionDebugFlag.userDefaultsKey
+        let saved = defaults.object(forKey: key)
+        defer {
+            if let saved {
+                defaults.set(saved, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        defaults.set(false, forKey: key)
+        try await body()
     }
 
     private func host(_ credentials: Credentials) async throws -> Hosted {
@@ -105,10 +126,7 @@ struct PasswordFieldAutoFillTests {
             window: window,
             account: try #require(fields.first { $0.textContentType == .username }),
             password: try #require(fields.first { $0.textContentType == .password }),
-            decoy: try #require(
-                fields.first { !$0.canBecomeFirstResponder },
-                "the capture wrapper's field; Settings → Developer can turn the wrapper off"
-            )
+            decoy: try #require(fields.first { !$0.canBecomeFirstResponder }, "the capture wrapper's field")
         )
     }
 
