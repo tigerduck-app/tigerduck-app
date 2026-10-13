@@ -216,6 +216,8 @@ struct MainTabView: View {
                 appState.pendingLibraryEnablePrompt = true
             }
         case .classTable:
+            // The widget draws the user's own class table.
+            ImportedClassTableStore.shared.show(nil)
             open(.classTable)
         }
         appState.clearPendingWidgetDestination()
