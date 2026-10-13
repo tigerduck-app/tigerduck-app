@@ -66,8 +66,8 @@ final class ImportedClassTableStore {
     }
 
     /// Adds the person `code` is from, each term with its course details from `courses`, keyed
-    /// by semester. A student ID already here keeps its entry, place and nickname and takes the
-    /// code's terms in place of its own. Nil when a new person's nickname is blank.
+    /// by semester. A student ID already here keeps its entry, place and nickname, and takes the
+    /// code's terms, its share time and `importedAt`. Nil when a new person's nickname is blank.
     @discardableResult
     func add(
         _ code: ClassTableShareCode,
@@ -172,7 +172,7 @@ final class ImportedClassTableStore {
         do {
             let file = try JSONDecoder().decode(StoredFile.self, from: data)
             owner = file.owner
-            people = file.people.map(\.person)
+            people = file.people.map { $0.person }
         } catch {
             AppLogger.captureError(error, context: ["phase": "importedClassTables.decode"])
         }
@@ -184,7 +184,7 @@ final class ImportedClassTableStore {
             try FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
             )
-            let data = try JSONEncoder().encode(StoredFile(owner: owner, people: people.map(StoredPerson.init)))
+            let data = try JSONEncoder().encode(StoredFile(owner: owner, people: people.map { StoredPerson($0) }))
             // Readable from the first unlock after a restart, unlike `DataCache`'s files: the store
             // reads the file once, and a read refused while the phone is locked would leave it
             // empty for the rest of the run.

@@ -38,7 +38,7 @@ codes, and imported class tables stay on the device.
 - Only course codes go in: no class times, course names, rooms, custom names or colours.
 - The app's encoder shares one term, or every term of the user's that has courses. It upper-cases
   the student ID, terms and course codes, sorts each term's course codes, and leaves out codes
-  outside the shape and terms left without one.
+  outside the shape and terms left without a course.
 - The checksum stops damaged codes and casual edits only. The app is open source, so anyone can
   build a code with a matching checksum; a code proves nothing about who made it.
 
@@ -110,8 +110,8 @@ The app also reads TAT's share code, versions 1 and 2, and writes version 2 for 
 - A person has an id, the student ID when the code has one, a nickname, which is required, the
   import time, the share time when the code has one, and each term's course codes with the course
   details from NTUST's course query.
-- Importing a student ID that is already there replaces that person's terms and keeps the
-  nickname, the entry and its place in the list.
+- Importing a student ID that is already there replaces that person's terms and share time and
+  stamps the new import time, keeping the nickname, the entry and its place in the list.
 - The person whose class table is shown is kept in memory only, so every launch opens on the
   user's own class table.
 - The store empties when the user signs out (`AppState.logoutNTUST()`) and when a student ID other
