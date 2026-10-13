@@ -10,6 +10,9 @@ final class LibraryViewModel {
 
     var isLoggedIn = false
     var isLoggingIn = false
+    /// The signed-in library account the pass names, read once rather than from the keychain on
+    /// every second's redraw.
+    private(set) var signedInUsername: String?
 
     /// Invoked whenever this screen changes the stored library credential state: a sign-in,
     /// or a token found expired.
@@ -56,7 +59,9 @@ final class LibraryViewModel {
     func load() {
         guard !hasLoaded else { return }
         hasLoaded = true
-        isLoggedIn = LibraryService.isTokenValid
+        // Stored credentials count: the code's fetch signs in again with them.
+        isLoggedIn = LibraryService.isTokenValid || LibraryService.canSignInWithStoredCredentials
+        signedInUsername = LibraryService.storedUsername
 
         // Pre-fill username from stored library credentials or NTUST student ID
         if let stored = LibraryService.storedUsername {
@@ -64,24 +69,20 @@ final class LibraryViewModel {
         } else if let ntustId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId) {
             libUsername = ntustId
         }
-
-        if isLoggedIn {
-            startQRRefreshCycle()
-        }
     }
 
     func onAppear() {
-        // Re-check in case user logged in via Settings
-        if !isLoggedIn && LibraryService.isTokenValid {
+        // Re-check in case user logged in via Settings, or the stored credentials can sign in
+        // again after a failed attempt (a sign-in at the return to the app may be under way).
+        if !isLoggedIn && (LibraryService.isTokenValid || LibraryService.canSignInWithStoredCredentials) {
             isLoggedIn = true
             startQRRefreshCycle()
             return
         }
-        // If the token expired while backgrounded (the user back after more than 24 h), show the
-        // logged-out state up front rather than a stale-token QR for up to 30 s until the next
-        // refresh tick collapses the page.
+        // If the token expired while backgrounded (the user back after more than 24 h), drop the
+        // stale-token QR at once rather than showing it for up to 30 s. Stored credentials sign
+        // in again behind a fresh code; without them the page shows the sign-in form.
         if hasLoaded && isLoggedIn && !LibraryService.isTokenValid {
-            isLoggedIn = false
             qrCodeImage = nil
             qrPayload = nil
             // A request still in flight from the ended session is dropped
@@ -90,7 +91,12 @@ final class LibraryViewModel {
             LibraryQRCache.shared.clear()
             LibraryQRImageCache.shared.clear()
             stopTimers()
-            onLibraryStateChanged?()
+            if LibraryService.canSignInWithStoredCredentials {
+                startQRRefreshCycle()
+            } else {
+                isLoggedIn = false
+                onLibraryStateChanged?()
+            }
             return
         }
         if hasLoaded && isLoggedIn && refreshTimer == nil {
@@ -127,6 +133,7 @@ final class LibraryViewModel {
                 libPassword = ""
                 isLoggedIn = true
                 isLoggingIn = false
+                signedInUsername = LibraryService.storedUsername
                 startQRRefreshCycle()
                 onLibraryStateChanged?()
             } catch {
@@ -282,6 +289,7 @@ final class LibraryViewModel {
         isLoadingQR = false
         consecutiveErrors = 0
         isLoggedIn = LibraryService.isTokenValid
+        signedInUsername = LibraryService.storedUsername
     }
 
     func stopTimers() {

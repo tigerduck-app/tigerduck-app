@@ -23,6 +23,8 @@ under test reads and writes directly, not through a seam:
   settings, which read the pending categories and the Assignments and Courses switches.
 - `SSOLoginService.storedPasswordRejected`, the latch that stops a school sign-in or a Moodle
   token harvest from posting a rejected password, and `ssoLoginTimestamp`.
+- `LibraryService.storedPasswordRejected`, the same latch for the library sign-in with the
+  stored credentials.
 
 Swift Testing runs suites concurrently, and `.serialized` orders one suite's own tests and nothing
 else. The push registration tests set these keys and then await the service; a registration alone
@@ -53,5 +55,5 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   `BulletinPushOptOutMigrationTests`, `PushRegistrationServiceTests`,
   `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `LibraryTabAddMigrationTests`,
   `UpdateCheckTests`, `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`,
-  `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests` and
-  `BackendSessionTests`.
+  `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests`,
+  `LibrarySignInTests` and `BackendSessionTests`.

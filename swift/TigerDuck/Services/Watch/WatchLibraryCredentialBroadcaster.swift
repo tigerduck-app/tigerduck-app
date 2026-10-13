@@ -7,8 +7,8 @@ import os
 /// uses `WCSession.transferUserInfo` for FIFO, guaranteed delivery.
 ///
 /// MainActor-isolated: the only callers (`LibraryService.saveCredentials`
-/// /`clearCredentials` and `WatchSyncCoordinator.answerSyncRequest`) are all on the main
-/// actor, and synchronous MainActor → MainActor calls avoid the deferred-
+/// /`clearCredentials`/`ensureToken` and `WatchSyncCoordinator.answerSyncRequest`) are all on
+/// the main actor, and synchronous MainActor → MainActor calls avoid the deferred-
 /// `Task` race we hit in the original Combine-style broadcast path.
 @MainActor
 final class WatchLibraryCredentialBroadcaster {

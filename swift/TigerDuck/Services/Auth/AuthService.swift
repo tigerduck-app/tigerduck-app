@@ -428,7 +428,9 @@ final class AuthService {
 
     /// The silent counterpart of ``login(studentId:password:)`` for stored credentials: it
     /// renews the SSO session only. The Moodle token outlives SSO cookies and every Moodle call
-    /// renews it on `.invalidToken`, and the enrolled-course cache is still this account's.
+    /// renews it on `.invalidToken`, and the enrolled-course cache is still this account's. The
+    /// library token is renewed by `LibraryService.signInIfCredentialed()`, which stops after a
+    /// refusal and keeps a library sign-out.
     private func renewSchoolSession(studentId: String, password: String, generation: Int) async -> Bool {
         isLoggingIn = true
         loginError = nil
@@ -452,7 +454,6 @@ final class AuthService {
             return false
         }
         _revision &+= 1
-        await loginToLibraryIfNeeded(studentId: studentId, password: password)
         await ensureBackendSignedIn()
         return true
     }
@@ -494,11 +495,18 @@ final class AuthService {
         }
     }
 
-    /// Best-effort: the library account signs in with the same NTUST credentials.
+    /// Best-effort: the library account signs in with the same NTUST credentials. A school
+    /// sign-out while the request is out keeps nothing, as no library account of that ID is
+    /// stored yet for the sign-out to clear.
     private func loginToLibraryIfNeeded(studentId: String, password: String) async {
         guard !LibraryService.isTokenValid else { return }
+        let generation = loginGeneration
         do {
-            _ = try await LibraryService.login(username: studentId, password: password)
+            _ = try await LibraryService.login(
+                username: studentId,
+                password: password,
+                stillCurrent: { self.loginGeneration == generation }
+            )
         } catch {
             AppLogger.captureError(error, context: ["flow": "libraryAutoLogin"])
         }

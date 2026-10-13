@@ -276,7 +276,7 @@ struct LibraryView: View {
             qrImage: viewModel.qrCodeImage,
             countdown: viewModel.countdown,
             isLoading: viewModel.isLoadingQR,
-            username: LibraryService.storedUsername
+            username: viewModel.signedInUsername
         )
     }
 

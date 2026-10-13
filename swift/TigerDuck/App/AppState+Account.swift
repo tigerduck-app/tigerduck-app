@@ -93,7 +93,12 @@ extension AppState {
         boundaryRefreshTask = nil
         #endif
 
+        let departingStudentId = authService.storedStudentId
         authService.logout()
+        // A library account signed in with this school account goes with it.
+        if let departingStudentId, LibraryService.clearCredentials(ifSchoolAccount: departingStudentId) {
+            _libraryRevision += 1
+        }
         let backendSignOut = Task { await authTokenManager.logout() }
         // The tracker is process-wide and outlives the account. Without a reset the next
         // account inherits the departing user's last good sync, and the header dot shows

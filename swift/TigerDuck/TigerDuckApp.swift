@@ -100,6 +100,7 @@ struct TigerDuckApp: App {
                     }
                     appState.backgroundSync()
                     appState.startCloudSyncIfEnabled()
+                    Task { if await LibraryService.signInIfCredentialed() { appState.notifyLibraryStateChanged() } }
                     // A turn later, behind the first frame: the snapshot reads every cache it
                     // draws from and writes the App Group file.
                     Task { widgetSnapshotWriter.regenerate() }
@@ -157,6 +158,8 @@ struct TigerDuckApp: App {
                         if appState.hasCompletedOnboarding {
                             Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
                         }
+                        // The library token lasts a day, so a return after one signs in again here.
+                        Task { if await LibraryService.signInIfCredentialed() { appState.notifyLibraryStateChanged() } }
                         appState.startRevisionPolling()
                         appState.pushCoordinator.registerAgainIfGaveUp()
                         widgetSnapshotWriter.regenerate()
