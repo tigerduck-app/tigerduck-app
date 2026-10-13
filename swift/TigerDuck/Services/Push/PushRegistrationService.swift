@@ -136,10 +136,17 @@ actor PushRegistrationService {
     private var deviceRegisterRetryTask: Task<Void, Never>?
     private var deviceRegisterAttempts: Int = 0
     private let maxDeviceRegisterAttempts = 4
+    /// `performRegister` runs that have started and not ended. A count, as a cancelled run can
+    /// still be finishing when the next one starts.
+    private var registrationsInFlight = 0
+    /// Set by a `registerAgain()` that found a registration running. That one may have gone out
+    /// without the session just restored, so its failure is no reason to wait out the backoff.
+    private var registerAgainIfRunningFails = false
 
-    /// The registration debounce's wait, injectable so a test need not sleep through it. The
-    /// retry backoffs keep their own sleeps.
+    /// The registration debounce's wait and the device-register backoff's, injectable so a test
+    /// need not sleep through them. The Live Activity retry backoff keeps its own sleep.
     private let debounceSleep: @Sendable (Duration) async -> Void
+    private let retrySleep: @Sendable (Duration) async -> Void
 
     init(
         identity: PushIdentity,
@@ -151,7 +158,8 @@ actor PushRegistrationService {
         // an actor init evaluates default arguments in a nonisolated context.
         // Callers pass it from their own main-actor context.
         deviceClass: String,
-        debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.identity = identity
         self.apiClient = apiClient
@@ -160,6 +168,7 @@ actor PushRegistrationService {
         self.apnsEnv = apnsEnv
         self.deviceClass = deviceClass
         self.debounceSleep = debounceSleep
+        self.retrySleep = retrySleep
     }
 
     // MARK: - Locale
@@ -355,6 +364,11 @@ actor PushRegistrationService {
         } catch {
             logger.error("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH failed: \(error.localizedDescription, privacy: .public)")
         }
+        #if os(iOS)
+        // Turning TigerSync on is how a user restarts sync. `PushCoordinator.enable()` only asks
+        // iOS for the APNs token again, and an unchanged token registers nothing; the Mac's registers.
+        if enabled, lastError != nil { await registerAgain() }
+        #endif
     }
 
     /// PATCHes the six "Synced content" switches as they stand when the
@@ -441,12 +455,19 @@ actor PushRegistrationService {
         )
     }
 
-    /// Waits for the debounced registration attempt, if one is scheduled,
-    /// to finish. The debounce runs in an unstructured `Task`, so this is
-    /// the only way for a caller to observe the attempt's outcome
-    /// deterministically.
+    /// Waits for the debounced registration attempt and the backoff retries it
+    /// schedules, if any, to finish. They run in unstructured `Task`s, so this
+    /// is the only way for a caller to observe the outcome deterministically.
+    /// A test that lets an attempt fail injects `retrySleep`, or this waits out
+    /// the backoff.
     func awaitPendingRegistration() async {
-        await lastAttempt?.value
+        while true {
+            let attempt = lastAttempt
+            let retry = deviceRegisterRetryTask
+            await attempt?.value
+            await retry?.value
+            if lastAttempt == attempt, deviceRegisterRetryTask == retry { return }
+        }
     }
 
     // MARK: - Unregister
@@ -476,6 +497,7 @@ actor PushRegistrationService {
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = nil
         deviceRegisterAttempts = 0
+        registerAgainIfRunningFails = false
     }
 
     // MARK: - Internals
@@ -486,13 +508,17 @@ actor PushRegistrationService {
         deviceTokenHex != nil || ptsTokenHex != nil
     }
 
-    /// Re-attempt registration after the auth state changes — the user just
-    /// signed in and a v3 JWT is now available. Resets the give-up counter so
-    /// a registration that exhausted its retries while unauthenticated gets a
-    /// fresh chance, then fires immediately (subject to `registerIfReady`'s
-    /// token gate).
-    func retryAfterAuthChange() async {
+    /// Registers again with the give-up counter reset, so a registration that
+    /// exhausted its retries gets a fresh chance: after a sign-in or relogin,
+    /// once a v3 JWT is available, and when TigerSync turns on after a failed
+    /// registration. A `performRegister` already running is not doubled; if it
+    /// fails, it starts the next one at once instead of backing off.
+    func registerAgain() async {
         deviceRegisterAttempts = 0
+        guard registrationsInFlight == 0 else {
+            registerAgainIfRunningFails = true
+            return
+        }
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = nil
         #if os(iOS)
@@ -556,6 +582,8 @@ actor PushRegistrationService {
             ))
         }
         guard !tokens.isEmpty else { return }
+        registrationsInFlight += 1
+        defer { registrationsInFlight -= 1 }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
         // Announce every launch, signed in or not: signed out, operator push
@@ -617,7 +645,12 @@ actor PushRegistrationService {
         } catch {
             logger.error("register failed: \(error.localizedDescription, privacy: .public)")
             noteRegistrationError(error)
-            scheduleDeviceRegisterRetry(logger: logger)
+            if registerAgainIfRunningFails {
+                registerAgainIfRunningFails = false
+                await registerIfReady()
+            } else {
+                scheduleDeviceRegisterRetry(logger: logger)
+            }
         }
     }
 
@@ -631,9 +664,10 @@ actor PushRegistrationService {
             activityRegistrationBaseDelaySeconds * pow(3.0, Double(deviceRegisterAttempts - 1)),
             activityRegistrationMaxDelaySeconds
         )
+        let sleep = retrySleep
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            await sleep(.seconds(delay))
             if Task.isCancelled { return }
             await self?.performRegister(logger: logger)
         }
@@ -642,6 +676,7 @@ actor PushRegistrationService {
     private func noteSuccessfulRegistration() {
         lastRegisteredAt = Date()
         lastError = nil
+        registerAgainIfRunningFails = false
     }
 
     private func noteRegistrationError(_ error: Error) {
