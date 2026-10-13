@@ -369,6 +369,7 @@ final class ClassTableViewModel {
     /// while one is up, so the alert acts on this person, not on whoever shows then.
     private(set) var personInAlert: ImportedPerson?
     var showsLookupFailed = false
+    var showsSaveFailed = false
     private(set) var isRefreshingShownPerson = false
 
     /// The store keeps no blank nickname, so Save waits for one.
@@ -385,7 +386,7 @@ final class ClassTableViewModel {
 
     func saveNickname() {
         guard let personInAlert else { return }
-        importedTables.rename(personInAlert.id, to: nicknameDraft)
+        if importedTables.rename(personInAlert.id, to: nicknameDraft) == .failed { showsSaveFailed = true }
     }
 
     func startDeletingPerson() {
@@ -397,7 +398,10 @@ final class ClassTableViewModel {
     /// Deleting the shown person shows the user's own class table again.
     func deletePersonInAlert() {
         guard let personInAlert else { return }
-        importedTables.delete(personInAlert.id)
+        guard importedTables.delete(personInAlert.id) != .failed else {
+            showsSaveFailed = true
+            return
+        }
         showShownTable()
     }
 
@@ -412,7 +416,11 @@ final class ClassTableViewModel {
             showsLookupFailed = true
             return
         }
-        importedTables.updateCourses(person.id, semester: term.semester, courseNos: term.courseNos, courses: refreshed)
+        let change = importedTables.updateCourses(
+            person.id, semester: term.semester, courseNos: term.courseNos, courses: refreshed,
+            importedAt: person.importedAt
+        )
+        if change == .failed { showsSaveFailed = true }
         if shownPerson?.id == person.id { reloadFromCache() }
     }
 

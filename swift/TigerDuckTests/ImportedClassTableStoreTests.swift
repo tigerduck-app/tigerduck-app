@@ -146,9 +146,12 @@ struct ImportedClassTableStoreTests {
 
         store.updateCourses(
             ming.id, semester: "1151", courseNos: Self.fall.courseNos,
-            courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures", classroom: "TR-313")]
+            courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures", classroom: "TR-313")],
+            importedAt: ming.importedAt
         )
-        store.updateCourses(UUID(), semester: "1151", courseNos: Self.fall.courseNos, courses: [])
+        store.updateCourses(
+            UUID(), semester: "1151", courseNos: Self.fall.courseNos, courses: [], importedAt: ming.importedAt
+        )
 
         #expect(store.shownTable != before)
         for person in [try #require(store.people.first), try #require(Self.store(folder).people.first)] {
@@ -176,7 +179,7 @@ struct ImportedClassTableStoreTests {
 
         store.updateCourses(
             ming.id, semester: "1151", courseNos: Self.fall.courseNos,
-            courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures")]
+            courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures")], importedAt: ming.importedAt
         )
 
         let person = try #require(store.people.first)

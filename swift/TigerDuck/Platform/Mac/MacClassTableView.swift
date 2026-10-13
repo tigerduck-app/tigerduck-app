@@ -46,6 +46,7 @@ struct MacClassTableView: View {
     @State private var isRenamingPerson = false
     @State private var nicknameDraft = ""
     @State private var isDeletingPerson = false
+    @State private var showsSaveFailed = false
     /// The person the open rename or delete alert names, who may no longer show by the time the
     /// user answers it.
     @State private var personInAlert: ImportedPerson?
@@ -318,7 +319,9 @@ struct MacClassTableView: View {
         .alert(String(localized: "class_table_rename_title"), isPresented: $isRenamingPerson) {
             TextField(String(localized: "class_table_nickname"), text: $nicknameDraft)
             Button(String(localized: "action_save")) {
-                if let personInAlert { ImportedClassTableStore.shared.rename(personInAlert.id, to: nicknameDraft) }
+                if let personInAlert, ImportedClassTableStore.shared.rename(personInAlert.id, to: nicknameDraft) == .failed {
+                    showsSaveFailed = true
+                }
             }
             .disabled(nicknameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button(String(localized: "action_cancel"), role: .cancel) {}
@@ -328,9 +331,14 @@ struct MacClassTableView: View {
             isPresented: $isDeletingPerson
         ) {
             Button(String(localized: "class_table_delete"), role: .destructive) {
-                if let personInAlert { ImportedClassTableStore.shared.delete(personInAlert.id) }
+                if let personInAlert, ImportedClassTableStore.shared.delete(personInAlert.id) == .failed {
+                    showsSaveFailed = true
+                }
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
+        }
+        .alert(String(localized: "bulletin_save_failed_title"), isPresented: $showsSaveFailed) {
+            Button(String(localized: "action_confirm"), role: .cancel) {}
         }
         .task {
             await warmCachesIfNeeded()

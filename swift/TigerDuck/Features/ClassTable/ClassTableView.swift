@@ -266,6 +266,9 @@ struct ClassTableView: View {
             .alert(String(localized: "class_table_import_lookup_failed"), isPresented: $viewModel.showsLookupFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
+            .alert(String(localized: "bulletin_save_failed_title"), isPresented: $viewModel.showsSaveFailed) {
+                Button(String(localized: "action_confirm"), role: .cancel) {}
+            }
             .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
     }
 

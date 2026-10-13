@@ -286,7 +286,9 @@ struct ClassTableSwitchingTests {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
             let folder = Folder()
             let store = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { "B11300000" })
-            let theirs = "QQ9990001"
+            // New each run: the colour map is the test host's own, and a run that broke the rule
+            // would have saved a colour for a fixed number.
+            let theirs = "QQ" + UUID().uuidString.prefix(7)
             #expect(TigerDuckTheme.courseColorMap[theirs] == nil)
             let person = try #require(store.add(
                 ClassTableShareCode(format: .tigerDuck, studentId: "B11300003", sharedAt: nil, terms: [
@@ -383,6 +385,65 @@ struct ClassTableSwitchingTests {
     }
 
     // MARK: - Sign-out
+
+    @Test("failed rename, delete and refresh saves preserve the table and surface a save error", arguments: ["rename", "delete", "refresh"])
+    func failedPersonMutation(operation: String) async throws {
+        let folder = Folder()
+        let people = try Self.people(folder)
+        let viewModel = ClassTableViewModel(importedTables: people.store) { _, _, _ in
+            [Self.course("CS1010001", "Updated", semester: "1151")]
+        }
+        Self.show(people.ming.id, in: people, on: viewModel)
+        viewModel.currentSemester = "1151"
+        let before = try Data(contentsOf: folder.file)
+        let shown = people.store.shownTable
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.url.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.url.path) }
+
+        switch operation {
+        case "rename":
+            viewModel.startRenamingPerson()
+            viewModel.nicknameDraft = "New nickname"
+            viewModel.saveNickname()
+        case "delete":
+            viewModel.startDeletingPerson()
+            viewModel.deletePersonInAlert()
+        default:
+            await viewModel.refreshShownPerson()
+        }
+
+        #expect(viewModel.showsSaveFailed)
+        #expect(!viewModel.showsLookupFailed)
+        #expect(people.store.shownTable == shown)
+        #expect(viewModel.shownPerson?.nickname == "Ming")
+        #expect(viewModel.courses.map(\.courseName) == ["Data Structures"])
+        #expect(try Data(contentsOf: folder.file) == before)
+    }
+
+    @Test("a refresh that finishes after reimporting the same course codes cannot replace the new import")
+    func refreshAfterSameCodesReimport() async throws {
+        let folder = Folder()
+        let people = try Self.people(folder)
+        let viewModel = ClassTableViewModel(importedTables: people.store) { semester, _, _ in
+            _ = try? #require(people.store.add(
+                ClassTableShareCode(format: .tigerDuck, studentId: "B11300001", sharedAt: nil, terms: [
+                    Term(semester: semester, courseNos: ["CS1010001"]),
+                ]),
+                nickname: "Ming", courses: [semester: [Self.course("CS1010001", "New import", semester: semester)]],
+                importedAt: people.ming.importedAt.addingTimeInterval(1)
+            ))
+            return [Self.course("CS1010001", "Older lookup", semester: semester)]
+        }
+        Self.show(people.ming.id, in: people, on: viewModel)
+        viewModel.currentSemester = "1151"
+
+        await viewModel.refreshShownPerson()
+
+        #expect(people.store.shownPerson?.courses(in: "1151").map(\.courseName) == ["New import"])
+        #expect(viewModel.courses.map(\.courseName) == ["New import"])
+        #expect(!viewModel.showsSaveFailed)
+        #expect(!viewModel.showsLookupFailed)
+    }
 
     @Test("signing out asks first only while imported class tables would go with it")
     func signOutAsksOnlyWithImportedTables() throws {
