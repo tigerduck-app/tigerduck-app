@@ -73,8 +73,15 @@ struct CourseDetailSheet: View {
                 }
             }
         }
-        .task(id: MoodleStoreKey(courseNo: course.courseNo, attempt: moodleAttempt)) {
+        .task(id: MoodleStoreKey(
+            courseNo: course.courseNo, attempt: moodleAttempt, generation: appState.authService.loginGeneration
+        )) {
             moodle = makeMoodleStore()
+        }
+        // On iPad another window can sign out or in, and the pushed screens hold the store of the
+        // account that opened them.
+        .onChange(of: appState.authService.loginGeneration) {
+            routes.wrappedValue = []
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             // A sheet opened before the first sync finds no Moodle course id; a sync may bring it.
@@ -92,9 +99,11 @@ struct CourseDetailSheet: View {
         #endif
     }
 
-    private struct MoodleStoreKey: Equatable {
+    struct MoodleStoreKey: Equatable {
         let courseNo: String
         let attempt: Int
+        /// A new sign-in builds a store for its own account, and a sign-out builds none.
+        let generation: Int
     }
 
     private var routes: Binding<[MoodleCourseRoute]> {

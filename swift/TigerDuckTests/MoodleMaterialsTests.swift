@@ -78,7 +78,11 @@ struct MoodleMaterialsTests {
                         return self._materials
                     }
                 },
-                markMaterialViewed: { material in self.lock.withLock { self._viewed.append(material.id) } },
+                markMaterialViewed: { material, isCurrent in
+                    // As the live call does once it holds a token.
+                    guard await isCurrent() else { throw CancellationError() }
+                    self.lock.withLock { self._viewed.append(material.id) }
+                },
                 download: { file, progress in
                     self.lock.withLock { self._downloads.append(file.name) }
                     try await beforeDownload(file, progress)
@@ -270,6 +274,19 @@ struct MoodleMaterialsTests {
         await store.open(Self.lab).value
 
         #expect(site.viewed == [9101, 9201])
+    }
+
+    /// On iPad a materials screen in another window outlives a sign-out.
+    @Test("a file opened after its account signed out logs no view")
+    func noViewEventAfterSignOut() async {
+        let folder = Folder()
+        let site = Site()
+        let signedIn = OSAllocatedUnfairLock(initialState: false)
+        let store = Self.store(folder, site: site, signedIn: signedIn)
+
+        await store.open(Self.syllabus).value
+
+        #expect(site.viewed.isEmpty)
     }
 
     // MARK: - Downloads
