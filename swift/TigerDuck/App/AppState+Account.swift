@@ -107,6 +107,7 @@ extension AppState {
         // `MacContentView` instead of returning to `MacLoginView`.
         didSkipMacLogin = false
         DataCache.shared.clearUserScopedData()
+        ImportedClassTableStore.shared.removeAll()
         BulletinsViewModel.forgetListSession()
         // Unresolved conflicts come from the departing account's data; resolving one would write
         // its server marks into the next account's caches, or upload its own to that account.

@@ -190,6 +190,9 @@ final class AuthService {
                 // Drop this account's cached enrolled courses so the first fetch after login
                 // scrapes fresh data, not stale courses from before a semester crossover.
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
+                // The sign-in sheet also opens over a stored account, so another account can sign
+                // in without a sign-out; it must not inherit the class tables the last one imported.
+                ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId)
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 
