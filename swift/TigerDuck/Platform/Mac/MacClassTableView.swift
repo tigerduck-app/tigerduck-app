@@ -22,8 +22,8 @@ struct MacClassTableView: View {
     @State var selectedSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
     )
-    /// Set only while `warmCachesIfNeeded` moves the selection to the newest
-    /// term, so that assignment doesn't get recorded as a user pick.
+    /// Set while the screen moves the selection itself, to the newest term or to the term of the
+    /// class table shown, so that assignment doesn't get recorded as a user pick.
     @State private var isFollowingNewestSemester = false
     @State var selectedSlot: SelectedSlot?
     /// The Moodle screens pushed in the course detail overlay, which Escape leaves first.
@@ -378,6 +378,14 @@ struct MacClassTableView: View {
         // Someone else's class table keeps the term on screen when they shared it and otherwise
         // opens on their latest term; the user's own opens on its own term, as at launch.
         .onChange(of: ImportedClassTableStore.shared.shownTable, initial: true) { _, _ in
+            if shownPerson != nil {
+                // An import finishing in the background can switch while one of the user's own
+                // edits is open, and it must not save into someone else's.
+                showAddCourse = false
+                showRenameAlert = false
+                courseToRename = nil
+                courseToRecolor = nil
+            }
             let semester = shownPerson?.semester(keeping: selectedSemester)
                 ?? SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
             guard semester != selectedSemester else { return }
