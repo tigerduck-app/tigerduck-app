@@ -29,12 +29,18 @@ struct ClassTableShareSheet: View {
                 Spacer()
                 Button(String(localized: "action_done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
+                // A sheet takes Escape only through a cancel button, and Done keeps Return.
+                Button("") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
         .frame(minWidth: 360, idealWidth: 420, minHeight: 520, idealHeight: 560)
-        .onExitCommand { dismiss() }
         #else
         NavigationStack {
             form
