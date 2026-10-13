@@ -75,8 +75,9 @@ extension AppState {
     /// category is left to the first sync, which takes the server's data. Signed out, the check has
     /// no session, and the mark would wait for whoever signs in next.
     static func markForReenableCheck(_ category: String, signedIn: Bool) {
-        guard signedIn, hasSyncedAccount else {
-            AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), signedIn=\(signedIn, privacy: .public) synced=\(hasSyncedAccount, privacy: .public)")
+        let synced = hasSyncedAccount
+        guard signedIn, synced else {
+            AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), signedIn=\(signedIn, privacy: .public) synced=\(synced, privacy: .public)")
             return
         }
         Defaults[.pendingConflictCategories].insert(category)
