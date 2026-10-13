@@ -7,6 +7,7 @@ import SwiftUI
 struct MoodleAnnouncementView: View {
     let store: MoodleCourseStore
     let discussion: MoodleDiscussion
+    let open: (MoodleCourseRoute) -> Void
 
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
@@ -57,14 +58,24 @@ struct MoodleAnnouncementView: View {
         .moodleFilePresentation(files)
     }
 
+    /// The author opens their member page where the course's members have them.
     private var authorRow: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
             if let name = discussion.authorName.map(MoodlePersonName.displayName), !name.isEmpty {
-                MoodleAvatar(name: name, size: 24)
-                Text(name)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tint)
-                    .lineLimit(1)
+                let member = store.member(discussion.authorId)
+                MoodleAvatar(name: name, size: 24, picture: member?.pictureURL.flatMap { store.pictures[$0] })
+                    .task(id: member?.pictureURL) {
+                        if let member { await store.loadPicture(of: member) }
+                    }
+                if let member {
+                    Button {
+                        files.forgetPendingOpen()
+                        open(.member(member))
+                    } label: { authorName(name) }
+                        .buttonStyle(.plain)
+                } else {
+                    authorName(name)
+                }
             }
             Spacer(minLength: 0)
             Text(discussion.created.moodleDateTimeString)
@@ -73,6 +84,13 @@ struct MoodleAnnouncementView: View {
                 .foregroundStyle(Color.textSecondary)
                 .fixedSize()
         }
+    }
+
+    private func authorName(_ name: String) -> some View {
+        Text(name)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.tint)
+            .lineLimit(1)
     }
 
     private var attachments: some View {

@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Observation
 
 /// The Moodle calls behind a course's Moodle screens. Each runs under the stored token, renewed
@@ -18,6 +19,10 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var download: @Sendable (_ file: MoodleFile, _ progress: @escaping @Sendable (Double) -> Void) async throws -> URL = { _, _ in
         throw CancellationError()
     }
+    var members: @Sendable (_ courseId: Int) async throws -> MoodleMemberList = { _ in
+        MoodleMemberList(ownId: nil, members: [])
+    }
+    var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -54,6 +59,20 @@ nonisolated struct MoodleCourseAPI: Sendable {
                     throw MoodleWebserviceError.malformedResponse(detail: "file URL")
                 }
                 return try await MoodleFileTransfer.fetch(url, mimeType: file.mimeType, expectedSize: file.size, progress: progress)
+            }
+        },
+        members: { courseId in
+            try await MoodleWebserviceClient.withToken { token in
+                MoodleMemberList(
+                    ownId: try await MoodleSiteInfoService.shared.userId(token: token),
+                    members: try await MoodleCourseMembersService.members(courseId: courseId, token: token)
+                )
+            }
+        },
+        picture: { url in
+            try await MoodleWebserviceClient.withToken { token in
+                let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
+                return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
             }
         }
     )
@@ -175,17 +194,32 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
     }
 }
 
+/// The people of a course the account can see, which take in the account itself.
+nonisolated struct MoodleMemberList: Codable, Sendable, Equatable {
+    /// The account's own Moodle user, nil when Moodle was not asked.
+    let ownId: Int?
+    var members: [MoodleMember]
+
+    /// Whether anyone but the account is there to show, which a course split into groups the
+    /// account sees alone of may not have.
+    var showsOthers: Bool {
+        members.contains { $0.id != ownId }
+    }
+}
+
 /// A screen the course detail opens from its Moodle section.
 enum MoodleCourseRoute: Hashable {
     case announcements
     case announcement(MoodleDiscussion)
     case materials
+    case members
+    case member(MoodleMember)
 
     /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {
         switch self {
-        case .announcements, .materials: true
-        case .announcement: false
+        case .announcements, .materials, .members: true
+        case .announcement, .member: false
         }
     }
 }
@@ -195,6 +229,7 @@ struct MoodleSectionRow: Identifiable, Equatable {
     enum Kind: Hashable {
         case announcements
         case materials
+        case members
     }
 
     let kind: Kind
@@ -217,6 +252,7 @@ final class MoodleCourseStore {
     let forums: MoodleFeed<MoodleTermForums>
     let announcements: MoodleFeed<MoodleDiscussionList>
     let materials: MoodleFeed<MoodleCourseMaterials>
+    let members: MoodleFeed<MoodleMemberList>
     private(set) var isLoadingMoreAnnouncements = false
     private(set) var announcementsPageFailure: (any Error)?
 
@@ -247,6 +283,7 @@ final class MoodleCourseStore {
         materials = MoodleFeed(
             cacheName: "courses/\(courseId)/materials", ttl: MoodleRefreshInterval.materials, context: context
         )
+        members = MoodleFeed(cacheName: "courses/\(courseId)/members", ttl: MoodleRefreshInterval.members, context: context)
     }
 
     // MARK: Section
@@ -259,15 +296,18 @@ final class MoodleCourseStore {
         if let count = materials.value?.count, count > 0 {
             rows.append(MoodleSectionRow(kind: .materials, count: count, hasUnread: false))
         }
+        if let list = members.value, list.showsOthers {
+            rows.append(MoodleSectionRow(kind: .members, count: list.members.count, hasUnread: false))
+        }
         return rows
     }
 
-    var isSectionRefreshing: Bool { forums.isRefreshing || materials.isRefreshing }
+    var isSectionRefreshing: Bool { forums.isRefreshing || materials.isRefreshing || members.isRefreshing }
 
     /// Failed when one of the section's feeds failed, else OK once one reads OK: a feed still
     /// unknown has its first fetch on the way, as the section fetches every feed it shows.
     var sectionStatus: ServerStatus {
-        let statuses = [forums.status, materials.status]
+        let statuses = [forums.status, materials.status, members.status]
         if statuses.contains(.failed) { return .failed }
         return statuses.contains(.ok) ? .ok : .unknown
     }
@@ -454,5 +494,104 @@ final class MoodleCourseStore {
             guard let index = term.forums.firstIndex(where: { $0.courseId == courseId && $0.isNews }) else { return }
             term.forums[index].unreadPostCount = max(0, term.forums[index].unreadPostCount - unread)
         }
+    }
+
+    // MARK: Members
+
+    var membersFetchedAt: Date? { members.fetchedAt }
+
+    /// The member a post's author is, while the cached members have them.
+    func member(_ id: Int?) -> MoodleMember? {
+        guard let id else { return nil }
+        return members.value?.members.first { $0.id == id }
+    }
+
+    /// The whole list in one call, which the section counts and the screen groups and searches.
+    /// A site that does not allow the call, or a course that keeps its participants from the
+    /// account, answers as if the course had no members, which hides their row for good rather
+    /// than failing on every refresh.
+    func refreshMembers() async {
+        await members.refresh { [api, courseId] in
+            guard try await api.functions().contains(MoodleCourseMembersService.membersFunction) else {
+                return MoodleMemberList(ownId: nil, members: [])
+            }
+            do {
+                return try await api.members(courseId)
+            } catch MoodleWebserviceError.malformedResponse(let code) where code == MoodleCourseMembersService.hiddenCode {
+                return MoodleMemberList(ownId: nil, members: [])
+            }
+        }
+    }
+
+    // MARK: Pictures
+
+    /// Decoded once per course detail, so a row that comes back shows its picture at once.
+    private(set) var pictures: [URL: CGImage] = [:]
+    @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
+
+    /// A member's own picture, from the device, else from Moodle once and then kept with the
+    /// account's other Moodle files. One who keeps Moodle's default picture, or whose download
+    /// fails or lands after a sign-out, keeps their initial.
+    func loadPicture(of member: MoodleMember) async {
+        guard let url = member.pictureURL, pictures[url] == nil else { return }
+        let file = pictureFile(of: member.id, url: url)
+        if let image = (try? Data(contentsOf: file)).flatMap(Self.image(from:)) {
+            pictures[url] = image
+            return
+        }
+        guard let data = await downloadInTurn(url), let image = Self.image(from: data), context.isCurrent() else { return }
+        savePicture(data, to: file)
+        pictures[url] = image
+    }
+
+    /// One download at a time, in the order rows ask, so the pictures on screen come first. A
+    /// row that goes away before its turn downloads nothing.
+    private func downloadInTurn(_ url: URL) async -> Data? {
+        let previous = lastPictureDownload
+        let turn = Task { [api] () -> Data? in
+            _ = await previous?.value
+            guard !Task.isCancelled else { return nil }
+            do {
+                return try await api.picture(url)
+            } catch {
+                if !Task.isCancelled {
+                    AppLogger.breadcrumb("moodle member picture not downloaded: \(error)", category: "moodle")
+                }
+                return nil
+            }
+        }
+        lastPictureDownload = turn
+        return await withTaskCancellationHandler { await turn.value } onCancel: { turn.cancel() }
+    }
+
+    /// One file per member and picture revision, which a new upload changes.
+    private func pictureFile(of memberId: Int, url: URL) -> URL {
+        func folderName(_ text: String) -> String {
+            String(text.unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
+        }
+        let account = folderName(context.account)
+        let revision = folderName(URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "rev" }?.value ?? "")
+        return context.cache.moodleFilesDir
+            .appendingPathComponent(account.isEmpty ? "_" : account, isDirectory: true)
+            .appendingPathComponent("pictures", isDirectory: true)
+            .appendingPathComponent("\(memberId)-\(revision)")
+    }
+
+    /// Replaces the member's earlier pictures.
+    private func savePicture(_ data: Data, to file: URL) {
+        let folder = file.deletingLastPathComponent()
+        let memberPrefix = String(file.lastPathComponent.prefix { $0 != "-" }) + "-"
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let earlier = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        for old in earlier where old.lastPathComponent.hasPrefix(memberPrefix) {
+            try? FileManager.default.removeItem(at: old)
+        }
+        try? data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
+    }
+
+    private nonisolated static func image(from data: Data) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 }
