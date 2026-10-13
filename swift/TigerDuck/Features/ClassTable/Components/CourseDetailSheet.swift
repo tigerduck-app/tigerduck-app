@@ -119,18 +119,26 @@ struct CourseDetailSheet: View {
         let termCourseIds = idMap
             .filter { term != nil && SDCourse.semesterPrefix(ofMoodleId: $0.key) == term }
             .map(\.value)
-        // A co-listed course answers to every department's idnumber, and its summary may repeat any.
-        let idnumbers = [idnumber] + idMap.filter { $0.value == courseId }.map(\.key)
         return MoodleCourseStore(
             courseId: courseId,
             termCourseIds: termCourseIds,
-            courseCodes: idnumbers + idnumbers.map(SDCourse.courseNoFromMoodleId) + [course.courseNo],
+            courseCodes: Self.moodleCourseCodes(
+                idnumber: idnumber, courseNo: course.courseNo, courseId: courseId, idMap: idMap
+            ),
             context: MoodleCacheContext(
                 account: account,
                 cache: .shared,
                 isCurrent: { [weak authService] in authService?.loginGeneration == generation }
             )
         )
+    }
+
+    /// The codes a course's Moodle summary is checked against: every idnumber the Moodle course
+    /// `courseId` goes by in `idMap`, since a co-listed course answers to each department's, the
+    /// course number in each, and `idnumber` and `courseNo` from the class table.
+    static func moodleCourseCodes(idnumber: String, courseNo: String, courseId: Int, idMap: [String: Int]) -> [String] {
+        let idnumbers = [idnumber] + idMap.filter { $0.value == courseId }.map(\.key)
+        return idnumbers + idnumbers.map(SDCourse.courseNoFromMoodleId) + [courseNo]
     }
 
     // MARK: - Header

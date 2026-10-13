@@ -528,6 +528,24 @@ struct MoodleCourseStoreTests {
         #expect(emptied.shownSummary == nil)
     }
 
+    @Test("the course detail hides a summary that repeats any department's idnumber of a co-listed course, or its course number")
+    func summaryOfACoListedCourse() async {
+        let folder = Folder()
+        let idMap = ["1141CS3105301": Self.courseId, "1141EE3105301": Self.courseId, "1141CS1000301": 20103]
+        let codes = CourseDetailSheet.moodleCourseCodes(
+            idnumber: "1141EE3105301", courseNo: "EE3105301", courseId: Self.courseId, idMap: idMap
+        )
+        #expect(!codes.contains("1141CS1000301"))
+
+        for repeated in ["1141CS3105301", "CS3105301", "1141EE3105301", "EE3105301"] {
+            let site = Site()
+            site.set(summary: MoodleCourseSummary(html: "<p>\(repeated)</p>", text: repeated, names: []))
+            let store = Self.store(folder, site: site, courseCodes: codes)
+            await store.refreshSummary()
+            #expect(store.shownSummary == nil, "\(repeated)")
+        }
+    }
+
     @Test("signing out deletes the cached summary, and one that lands after a sign-out is not kept")
     func summarySignOut() async throws {
         let folder = Folder()
