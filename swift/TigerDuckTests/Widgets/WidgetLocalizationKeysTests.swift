@@ -38,6 +38,14 @@ struct WidgetLocalizationKeysTests {
         "weekday_fri_short",
         "weekday_sat_short",
         "weekday_sun_short",
+        // Weekday captions (used by the Next class views)
+        "weekday_mon_caption",
+        "weekday_tue_caption",
+        "weekday_wed_caption",
+        "weekday_thu_caption",
+        "weekday_fri_caption",
+        "weekday_sat_caption",
+        "weekday_sun_caption",
     ]
 
     @Test func everyKeyResolvesInMainBundle() {

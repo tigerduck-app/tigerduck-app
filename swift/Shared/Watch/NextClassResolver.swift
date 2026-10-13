@@ -22,7 +22,7 @@ public nonisolated enum NextClassResolver {
             switch self {
             case .today: return String(localized: "watch_next")
             case .tomorrow: return String(localized: "widget_tomorrow")
-            case .later(let weekday): return Self.shortName(of: weekday)
+            case .later(let weekday): return Self.caption(of: weekday)
             }
         }
 
@@ -33,19 +33,19 @@ public nonisolated enum NextClassResolver {
             case .tomorrow:
                 return String.localizedStringWithFormat(String(localized: "widget_tomorrow_time"), time)
             case .later(let weekday):
-                return "\(Self.shortName(of: weekday)) \(time)"
+                return "\(Self.caption(of: weekday)) \(time)"
             }
         }
 
-        private static func shortName(of weekday: Int) -> String {
+        private static func caption(of weekday: Int) -> String {
             switch weekday {
-            case 1: return String(localized: "weekday_mon_short")
-            case 2: return String(localized: "weekday_tue_short")
-            case 3: return String(localized: "weekday_wed_short")
-            case 4: return String(localized: "weekday_thu_short")
-            case 5: return String(localized: "weekday_fri_short")
-            case 6: return String(localized: "weekday_sat_short")
-            default: return String(localized: "weekday_sun_short")
+            case 1: return String(localized: "weekday_mon_caption")
+            case 2: return String(localized: "weekday_tue_caption")
+            case 3: return String(localized: "weekday_wed_caption")
+            case 4: return String(localized: "weekday_thu_caption")
+            case 5: return String(localized: "weekday_fri_caption")
+            case 6: return String(localized: "weekday_sat_caption")
+            default: return String(localized: "weekday_sun_caption")
             }
         }
     }
