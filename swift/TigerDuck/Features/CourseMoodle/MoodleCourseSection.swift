@@ -45,6 +45,7 @@ struct MoodleCourseSection: View {
     static func route(for kind: MoodleSectionRow.Kind) -> MoodleCourseRoute {
         switch kind {
         case .announcements: .announcements
+        case .grades: .grades
         }
     }
 }
@@ -58,6 +59,9 @@ extension View {
                 Color.clear
                     .moodleAutoRefresh(every: MoodleRefreshInterval.forums, fetchedAt: { store.forumsFetchedAt }) {
                         await store.refreshForums()
+                    }
+                    .moodleAutoRefresh(every: MoodleRefreshInterval.grades, fetchedAt: { store.grades.fetchedAt }) {
+                        await store.refreshGrades()
                     }
                     .id(ObjectIdentifier(store))
             }
@@ -112,12 +116,14 @@ struct MoodleSectionRowView: View {
     private var icon: String {
         switch row.kind {
         case .announcements: "megaphone"
+        case .grades: "chart.bar"
         }
     }
 
     private var title: String {
         switch row.kind {
         case .announcements: String(localized: "feature_announcements")
+        case .grades: String(localized: "course_detail_moodle_grades_label")
         }
     }
 

@@ -8,6 +8,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var forums: @Sendable (_ courseIds: [Int]) async throws -> [MoodleForum]
     var discussions: @Sendable (_ forumId: Int, _ page: Int) async throws -> [MoodleDiscussion]
     var markViewed: @Sendable (_ discussionId: Int) async throws -> Void
+    var gradeItems: @Sendable (_ courseId: Int) async throws -> [MoodleGradeItem]
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -24,6 +25,12 @@ nonisolated struct MoodleCourseAPI: Sendable {
         markViewed: { discussionId in
             try await MoodleWebserviceClient.withToken {
                 try await MoodleForumService.markViewed(discussionId: discussionId, token: $0)
+            }
+        },
+        gradeItems: { courseId in
+            try await MoodleWebserviceClient.withToken { token in
+                let userId = try await MoodleSiteInfoService.shared.userId(token: token)
+                return try await MoodleGradeService.gradeItems(courseId: courseId, userId: userId, token: token)
             }
         }
     )
@@ -138,15 +145,32 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
     }
 }
 
+/// A course's gradebook for the signed-in student, in Moodle's order.
+nonisolated struct MoodleCourseGrades: Codable, Sendable, Equatable {
+    var items: [MoodleGradeItem]
+
+    /// The course total, while it has a grade the student may see.
+    var total: MoodleGradeItem? {
+        items.first { $0.isCourseTotal && $0.isShown }
+    }
+
+    /// The items the grades screen lists and its row counts: graded and shown, with the course
+    /// total and the categories' subtotals left out.
+    var graded: [MoodleGradeItem] {
+        items.filter { !$0.isCourseTotal && !$0.isCategoryTotal && $0.isShown }
+    }
+}
+
 /// A screen the course detail opens from its Moodle section.
 enum MoodleCourseRoute: Hashable {
     case announcements
     case announcement(MoodleDiscussion)
+    case grades
 
     /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {
         switch self {
-        case .announcements: true
+        case .announcements, .grades: true
         case .announcement: false
         }
     }
@@ -156,6 +180,7 @@ enum MoodleCourseRoute: Hashable {
 struct MoodleSectionRow: Identifiable, Equatable {
     enum Kind: Hashable {
         case announcements
+        case grades
     }
 
     let kind: Kind
@@ -177,6 +202,7 @@ final class MoodleCourseStore {
     let courseId: Int
     let forums: MoodleFeed<MoodleTermForums>
     let announcements: MoodleFeed<MoodleDiscussionList>
+    let grades: MoodleFeed<MoodleCourseGrades>
     private(set) var isLoadingMoreAnnouncements = false
     private(set) var announcementsPageFailure: (any Error)?
 
@@ -192,17 +218,29 @@ final class MoodleCourseStore {
         self.api = api
         forums = MoodleFeed(cacheName: "forums", context: context)
         announcements = MoodleFeed(cacheName: "courses/\(courseId)/announcements", context: context)
+        grades = MoodleFeed(cacheName: "courses/\(courseId)/grades", context: context)
     }
 
     // MARK: Section
 
+    /// In the section's order; a kind with nothing to count has no row.
     var sectionRows: [MoodleSectionRow] {
-        guard let news = newsForum, news.discussionCount > 0 else { return [] }
-        return [MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0)]
+        var rows: [MoodleSectionRow] = []
+        if let news = newsForum, news.discussionCount > 0 {
+            rows.append(MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0))
+        }
+        if let graded = grades.value?.graded.count, graded > 0 {
+            rows.append(MoodleSectionRow(kind: .grades, count: graded, hasUnread: false))
+        }
+        return rows
     }
 
-    var isSectionRefreshing: Bool { forums.isRefreshing }
-    var sectionStatus: ServerStatus { forums.status }
+    var isSectionRefreshing: Bool { forums.isRefreshing || grades.isRefreshing }
+
+    /// The worst of the section's feeds, read as the status dot reads its sources.
+    var sectionStatus: ServerStatus {
+        SyncStatusDot.summary(loadingState: .idle, statuses: [forums.status, grades.status])
+    }
 
     // MARK: Forums
 
@@ -224,6 +262,19 @@ final class MoodleCourseStore {
                 return MoodleTermForums(courseIds: termCourseIds, forums: [])
             }
             return MoodleTermForums(courseIds: termCourseIds, forums: try await api.forums(termCourseIds))
+        }
+    }
+
+    // MARK: Grades
+
+    /// The course's grade items for the signed-in student. A site that does not allow the call
+    /// answers as if the course had none, which hides the row.
+    func refreshGrades() async {
+        await grades.refresh { [api, courseId] in
+            guard try await api.functions().contains(MoodleGradeService.gradeItemsFunction) else {
+                return MoodleCourseGrades(items: [])
+            }
+            return MoodleCourseGrades(items: try await api.gradeItems(courseId))
         }
     }
 
