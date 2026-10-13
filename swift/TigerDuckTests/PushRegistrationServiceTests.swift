@@ -384,7 +384,7 @@ struct PushRegistrationServiceTests {
         try await Self.withSyncPreferences {
             Defaults[.syncPreferencesPushPending] = false
             let baseURL = SettingsAPIStub.uniqueBaseURL()
-            let session = HeldRegistrationSession()
+            let session = HeldRegistrationSession(signedIn: true)
             let service = Self.makeService(baseURL: baseURL, authHeader: { await session.header() })
             Self.expectAttempt(baseURL, registrations: 1)
 
@@ -401,32 +401,35 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    @Test("a running registration the backend refuses is followed at once when the session came back meanwhile")
-    func refusedRunningRegistrationIsFollowedAtOnce() async throws {
+    @Test("a registration that went out with no session is followed at once by one with the session restored meanwhile")
+    func registrationWithoutSessionIsFollowedAtOnce() async throws {
         try await Self.withSyncPreferences {
             Defaults[.syncPreferencesPushPending] = false
             let baseURL = SettingsAPIStub.uniqueBaseURL()
-            let session = HeldRegistrationSession()
+            let session = HeldRegistrationSession(signedIn: false)
             let debounces = OSAllocatedUnfairLock<[Duration]>(initialState: [])
             let retries = OSAllocatedUnfairLock<[Duration]>(initialState: [])
             let service = Self.makeService(
                 baseURL: baseURL, debounces: debounces, retries: retries,
                 authHeader: { await session.header() }
             )
-            // The running attempt went out before the session came back; the next one has it.
             Self.expectRefusedAttempt(baseURL)
             Self.expectAttempt(baseURL, registrations: 1)
 
             await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
             await session.waitUntilHeld()
+            // A sign-in lands while that registration is on its way without a bearer.
+            session.signIn()
             await service.registerAgain()
             session.release()
             await service.awaitPendingRegistration()
 
             #expect(retries.withLock { $0 }.isEmpty)
             #expect(debounces.withLock { $0 } == [.milliseconds(250), .milliseconds(250)])
-            let registrations = try Self.sentRegistrations(baseURL)
-            #expect(registrations.count == 2)
+            let registrations = SettingsAPIStub.requests(for: Self.registerURL(baseURL))
+            try #require(registrations.count == 2)
+            #expect(registrations[0].value(forHTTPHeaderField: "Authorization") == nil)
+            #expect(registrations[1].value(forHTTPHeaderField: "Authorization") == HeldRegistrationSession.bearer)
             let snapshot = await service.snapshot()
             #expect(snapshot.lastError == nil)
             #expect(snapshot.lastRegisteredAt != nil)
@@ -512,27 +515,36 @@ struct PushRegistrationServiceTests {
     }
 }
 
-/// A session that hands every request a bearer but holds an attempt's registration POST, its
-/// second request after the announce, until `release()`, so a test can act while that
-/// registration is running.
+/// The bearer for each request while signed in, nil before `signIn()`. Holds an attempt's
+/// registration POST, its second request after the announce, until `release()`, so a test can
+/// act while that registration is running; the held request keeps the answer it was asked for.
 private final class HeldRegistrationSession: Sendable {
+    static let bearer = "Bearer restored"
+
     private let held: AsyncStream<Void>
     private let heldContinuation: AsyncStream<Void>.Continuation
     private let released: AsyncStream<Void>
     private let releasedContinuation: AsyncStream<Void>.Continuation
     private let calls = OSAllocatedUnfairLock(initialState: 0)
+    private let isSignedIn: OSAllocatedUnfairLock<Bool>
 
-    init() {
+    init(signedIn: Bool) {
         (held, heldContinuation) = AsyncStream.makeStream()
         (released, releasedContinuation) = AsyncStream.makeStream()
+        isSignedIn = OSAllocatedUnfairLock(initialState: signedIn)
     }
 
     func header() async -> String? {
+        let header = isSignedIn.withLock { $0 } ? Self.bearer : nil
         if calls.withLock({ count in count += 1; return count }) == 2 {
             heldContinuation.yield()
             for await _ in released {}
         }
-        return "Bearer test"
+        return header
+    }
+
+    func signIn() {
+        isSignedIn.withLock { $0 = true }
     }
 
     func waitUntilHeld() async {
