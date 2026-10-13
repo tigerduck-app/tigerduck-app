@@ -8,6 +8,7 @@ nonisolated enum MoodleRefreshInterval {
     static let announcements: TimeInterval = 5 * 60
     static let materials: TimeInterval = 5 * 60
     static let grades: TimeInterval = 5 * 60
+    static let summary: TimeInterval = 5 * 60
     static let members: TimeInterval = 30 * 60
 }
 
