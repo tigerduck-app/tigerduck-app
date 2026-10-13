@@ -50,6 +50,7 @@ struct MacLoginView: View {
 
             VStack(spacing: 14) {
                 TextField(String(localized: "sign_in_student_id"), text: $studentId)
+                    .textContentType(.username)
                     .textFieldStyle(.roundedBorder)
                     .focused($focused, equals: .studentId)
                     .onSubmit { focused = .password }
@@ -64,6 +65,7 @@ struct MacLoginView: View {
                             SecureField(String(localized: "sign_in_password"), text: $password)
                         }
                     }
+                    .textContentType(.password)
                     .textFieldStyle(.roundedBorder)
                     .focused($focused, equals: .password)
                     .onSubmit { Task { await attemptLogin() } }

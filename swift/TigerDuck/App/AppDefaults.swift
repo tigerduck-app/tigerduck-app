@@ -143,7 +143,8 @@ nonisolated extension Defaults.Keys {
     /// When Moodle last answered a whole assignment round for the signed-in account.
     static let schoolDataSyncedAt = Key<Date?>("schoolDataSyncedAt")
     /// The last `courses_reset_at` a full sync read, in server time, or `distantPast` once one has
-    /// read none, for the signed-in account; see `AppState.coursesReset(server:lastSeen:)`.
+    /// read none, for the signed-in account; see `AppState.coursesReset(server:lastSeen:)`. Nil
+    /// until the account's first full sync here, which `AppState.hasSyncedAccount` relies on.
     static let lastSeenCoursesResetAt = Key<Date?>("lastSeenCoursesResetAt")
     /// Optional on purpose: `nil` means "never picked a semester", which
     /// `SemesterCatalog.selectedSemester(storedPick:)` resolves to the newest
