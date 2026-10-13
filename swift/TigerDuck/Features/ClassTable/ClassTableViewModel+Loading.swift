@@ -134,24 +134,34 @@ extension ClassTableViewModel {
         let userAdded = await userAddedTask
 
         await MainActor.run {
-            // A sign-out during the fetch leaves the screen to the next account.
-            guard authService.loginGeneration == generation else {
-                manager.loadingState = .loaded
-                return
-            }
-            isUpdatingFromNetwork = true
-            let fetched = buildCourseList(fetchedCourses, userAdded)
-            // Someone else's class table, or another term picked during the fetch, may be on screen;
-            // the share code reads `courses` as the term on screen.
-            if shownPerson == nil, currentSemester == targetSemester { courses = fetched }
-            if targetSemester == CourseSelectionService.currentSemesterCode() {
-                currentSemesterCourses = fetched
-                refreshCourseColors()
-            }
-            assignments = fetchedAssignments
-            manager.loadingState = .loaded
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            isUpdatingFromNetwork = false
+            showFetched(
+                buildCourseList(fetchedCourses, userAdded), assignments: fetchedAssignments, of: targetSemester,
+                startedUnder: generation, loginGeneration: authService.loginGeneration
+            )
         }
+    }
+
+    /// A sign-out during the fetch leaves the screen to the next account. Someone else's class
+    /// table, or another term picked during the fetch, may be on screen, and the share code reads
+    /// `courses` as the term on screen.
+    func showFetched(
+        _ fetched: [SDCourse], assignments fetchedAssignments: [SDAssignment], of targetSemester: String,
+        startedUnder generation: Int, loginGeneration: Int
+    ) {
+        let manager = NTUSTSessionManager.shared
+        guard loginGeneration == generation else {
+            manager.loadingState = .loaded
+            return
+        }
+        isUpdatingFromNetwork = true
+        if shownPerson == nil, currentSemester == targetSemester { courses = fetched }
+        if targetSemester == CourseSelectionService.currentSemesterCode() {
+            currentSemesterCourses = fetched
+            refreshCourseColors()
+        }
+        assignments = fetchedAssignments
+        manager.loadingState = .loaded
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        isUpdatingFromNetwork = false
     }
 }

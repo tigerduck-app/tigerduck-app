@@ -281,6 +281,49 @@ struct ClassTableSwitchingTests {
         }
     }
 
+    @Test("the user's deleted courses and custom names stay off someone else's same course numbers")
+    func usersEditsStayOffTheirCourses() throws {
+        try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
+            let people = try Self.people(Folder())
+            let viewModel = ClassTableViewModel(importedTables: people.store)
+            viewModel.deletedCourseNos = [CourseTombstone.key(semester: "1151", courseNo: "CS1010001")]
+            viewModel.courseCustomNames = ["CS1010001": [viewModel.currentLocale: "Own name"]]
+
+            Self.show(people.ming.id, in: people, on: viewModel)
+
+            #expect(viewModel.courses.map(\.courseNo) == ["CS1010001"])
+            #expect(viewModel.courses.first?.customName == nil)
+        }
+    }
+
+    enum LateChange: CaseIterable {
+        case none, signOut, switchToSomeoneElse, otherTerm
+    }
+
+    /// A past term, so the write-back saves no colours in the test host's colour map.
+    @Test("a pull of the user's own term writes back only to the same sign-in and the same term on screen", arguments: LateChange.allCases)
+    func lateOwnRefresh(change: LateChange) throws {
+        try Self.withCatalogue(["1151", "1142", "1141"], storedPick: "1142") {
+            let people = try Self.people(Folder())
+            let viewModel = ClassTableViewModel(importedTables: people.store)
+            Self.show(nil, in: people, on: viewModel)
+            #expect(viewModel.currentSemester == "1142")
+            let fetched = [Self.course("GE1010009", "Fetched course", semester: "1142")]
+            var generation = 0
+            switch change {
+            case .none: break
+            case .signOut: generation = 1
+            case .switchToSomeoneElse: Self.show(people.hua.id, in: people, on: viewModel)
+            case .otherTerm: viewModel.currentSemester = "1141"
+            }
+            let onScreen = viewModel.courses.map(\.courseNo)
+
+            viewModel.showFetched(fetched, assignments: [], of: "1142", startedUnder: generation, loginGeneration: 0)
+
+            #expect(viewModel.courses.map(\.courseNo) == (change == .none ? ["GE1010009"] : onScreen))
+        }
+    }
+
     @Test("someone else's course numbers get no saved colour of the user's")
     func noSavedColoursForTheirCourses() throws {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {

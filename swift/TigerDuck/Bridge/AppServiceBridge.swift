@@ -518,15 +518,29 @@ enum AppServiceBridge {
     static func refreshImportedCourses(semester: String, courseNos: [String], current: [SDCourse]) async -> [SDCourse]? {
         guard await NetworkMonitor.shared.isReachable() else { return nil }
         let display = CourseDisplayPreferences.current()
+        return await refreshImportedCourses(
+            semester: semester, courseNos: courseNos, current: current, display: display
+        ) { courseNo in
+            try await CourseLookupService.lookupCourse(
+                semester: semester, courseNo: courseNo, language: display.language, fresh: true
+            )
+        }
+    }
+
+    static func refreshImportedCourses(
+        semester: String,
+        courseNos: [String],
+        current: [SDCourse],
+        display: CourseDisplayPreferences,
+        lookup: @escaping @MainActor @Sendable (_ courseNo: String) async throws -> [CourseSearchResult]
+    ) async -> [SDCourse]? {
         let cachedByNo = Dictionary(
             current.map { ($0.courseNo, CourseData($0)) },
             uniquingKeysWith: { first, _ in first }
         )
         let answers = await concurrentMap(courseNos) { @MainActor courseNo -> (data: CourseData?, failed: Bool) in
             do {
-                let results = try await CourseLookupService.lookupCourse(
-                    semester: semester, courseNo: courseNo, language: display.language, fresh: true
-                )
+                let results = try await lookup(courseNo)
                 guard !results.isEmpty else { return (cachedByNo[courseNo], false) }
                 // Someone else's term: its names and rooms stay out of the cache that relabels
                 // the user's courses, which is keyed by course number alone.
