@@ -15,7 +15,9 @@ struct PushRegistrationServiceTests {
 
     private static func makeService(
         baseURL: URL,
-        debounces: OSAllocatedUnfairLock<[Duration]> = .init(initialState: [])
+        debounces: OSAllocatedUnfairLock<[Duration]> = .init(initialState: []),
+        retries: OSAllocatedUnfairLock<[Duration]> = .init(initialState: []),
+        authHeader: @escaping @Sendable () async -> String? = { nil }
     ) -> PushRegistrationService {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -23,12 +25,15 @@ struct PushRegistrationServiceTests {
             identity: PushIdentity(uuid: "test-device"),
             apiClient: PushAPIClient(
                 baseURLProvider: { baseURL },
-                session: URLSession(configuration: config)
+                session: URLSession(configuration: config),
+                authHeaderProvider: authHeader
             ),
             deviceClass: "iphone",
             // Each test awaits its attempt with `awaitPendingRegistration()`, so the debounce
             // has nothing to merge: it ends at once and only records the window it asked for.
-            debounceSleep: { window in debounces.withLock { $0.append(window) } }
+            debounceSleep: { window in debounces.withLock { $0.append(window) } },
+            // The backoff after a failed attempt likewise ends at once.
+            retrySleep: { delay in retries.withLock { $0.append(delay) } }
         )
     }
 

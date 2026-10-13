@@ -137,9 +137,10 @@ actor PushRegistrationService {
     private var deviceRegisterAttempts: Int = 0
     private let maxDeviceRegisterAttempts = 4
 
-    /// The registration debounce's wait, injectable so a test need not sleep through it. The
-    /// retry backoffs keep their own sleeps.
+    /// The registration debounce's wait and the device-register backoff's, injectable so a test
+    /// need not sleep through them. The Live Activity retry backoff keeps its own sleep.
     private let debounceSleep: @Sendable (Duration) async -> Void
+    private let retrySleep: @Sendable (Duration) async -> Void
 
     init(
         identity: PushIdentity,
@@ -151,7 +152,8 @@ actor PushRegistrationService {
         // an actor init evaluates default arguments in a nonisolated context.
         // Callers pass it from their own main-actor context.
         deviceClass: String,
-        debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.identity = identity
         self.apiClient = apiClient
@@ -160,6 +162,7 @@ actor PushRegistrationService {
         self.apnsEnv = apnsEnv
         self.deviceClass = deviceClass
         self.debounceSleep = debounceSleep
+        self.retrySleep = retrySleep
     }
 
     // MARK: - Locale
@@ -441,12 +444,19 @@ actor PushRegistrationService {
         )
     }
 
-    /// Waits for the debounced registration attempt, if one is scheduled,
-    /// to finish. The debounce runs in an unstructured `Task`, so this is
-    /// the only way for a caller to observe the attempt's outcome
-    /// deterministically.
+    /// Waits for the debounced registration attempt and the backoff retries it
+    /// schedules, if any, to finish. They run in unstructured `Task`s, so this
+    /// is the only way for a caller to observe the outcome deterministically.
+    /// A test that lets an attempt fail injects `retrySleep`, or this waits out
+    /// the backoff.
     func awaitPendingRegistration() async {
-        await lastAttempt?.value
+        while true {
+            let attempt = lastAttempt
+            let retry = deviceRegisterRetryTask
+            await attempt?.value
+            await retry?.value
+            if lastAttempt == attempt, deviceRegisterRetryTask == retry { return }
+        }
     }
 
     // MARK: - Unregister
@@ -631,9 +641,10 @@ actor PushRegistrationService {
             activityRegistrationBaseDelaySeconds * pow(3.0, Double(deviceRegisterAttempts - 1)),
             activityRegistrationMaxDelaySeconds
         )
+        let sleep = retrySleep
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            await sleep(.seconds(delay))
             if Task.isCancelled { return }
             await self?.performRegister(logger: logger)
         }
