@@ -65,6 +65,7 @@ ClassTableViewModel+Loading.swift
 ClassTableTabBarGestures.swift
 ConflictCoursePickerSheet.swift
 ClassTableExportView.swift
+ClassTableImportScannerView.swift  # camera scanner; the Mac reads an image file instead
 ConflictLShape.swift
 TimetableGridView.swift
 

@@ -95,7 +95,7 @@ final class ImportedClassTableStore {
 
     /// Adds the person `code` is from, each term with its course details from `courses`, keyed
     /// by semester. A student ID already here keeps its entry, place and nickname, and takes the
-    /// code's terms, its share time and `importedAt`. Nil when a new person's nickname is blank.
+    /// code's terms, its share time and `importedAt`. Nil for a blank nickname or a failed save.
     @discardableResult
     func add(
         _ code: ClassTableShareCode,
@@ -109,6 +109,7 @@ final class ImportedClassTableStore {
             ImportedPerson.Term(semester: $0.semester, courseNos: $0.courseNos, courses: courses[$0.semester] ?? [])
         }
 
+        var updated = people
         let person: ImportedPerson
         if let studentId = code.studentId, let index = people.firstIndex(where: { $0.studentId == studentId }) {
             let old = people[index]
@@ -116,7 +117,7 @@ final class ImportedClassTableStore {
                 id: old.id, studentId: old.studentId, nickname: old.nickname,
                 importedAt: importedAt, sharedAt: code.sharedAt, terms: terms
             )
-            people[index] = person
+            updated[index] = person
         } else {
             let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return nil }
@@ -124,22 +125,28 @@ final class ImportedClassTableStore {
                 id: UUID(), studentId: code.studentId, nickname: name,
                 importedAt: importedAt, sharedAt: code.sharedAt, terms: terms
             )
-            people.append(person)
+            updated.append(person)
         }
-        owner = account ?? owner
-        save()
+        let newOwner = account ?? owner
+        guard save(people: updated, owner: newOwner) else { return nil }
+        people = updated
+        owner = newOwner
         return person
     }
 
-    func rename(_ id: UUID, to nickname: String) {
+    @discardableResult
+    func rename(_ id: UUID, to nickname: String) -> Bool {
         let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, let index = people.firstIndex(where: { $0.id == id }) else { return }
+        guard !name.isEmpty, let index = people.firstIndex(where: { $0.id == id }) else { return false }
         let old = people[index]
-        people[index] = ImportedPerson(
+        var updated = people
+        updated[index] = ImportedPerson(
             id: old.id, studentId: old.studentId, nickname: name,
             importedAt: old.importedAt, sharedAt: old.sharedAt, terms: old.terms
         )
-        save()
+        guard save(people: updated, owner: owner) else { return false }
+        people = updated
+        return true
     }
 
     /// Swaps in a new lookup of `courseNos`, one term's course codes, for that term of `id`. A term
@@ -154,12 +161,14 @@ final class ImportedClassTableStore {
                 ? ImportedPerson.Term(semester: semester, courseNos: courseNos, courses: courses)
                 : term
         }
-        people[index] = ImportedPerson(
+        var updated = people
+        updated[index] = ImportedPerson(
             id: old.id, studentId: old.studentId, nickname: old.nickname,
             importedAt: old.importedAt, sharedAt: old.sharedAt, terms: terms
         )
+        guard save(people: updated, owner: owner) else { return }
+        people = updated
         lookups += 1
-        save()
     }
 
     /// Shows the class table after the shown one: the user's own, then each person in import
@@ -170,12 +179,16 @@ final class ImportedClassTableStore {
         shownPersonID = order[(index + 1) % order.count]
     }
 
-    func delete(_ id: UUID) {
-        guard people.contains(where: { $0.id == id }) else { return }
-        people.removeAll { $0.id == id }
+    @discardableResult
+    func delete(_ id: UUID) -> Bool {
+        guard people.contains(where: { $0.id == id }) else { return false }
+        let updated = people.filter { $0.id != id }
+        let newOwner = updated.isEmpty ? nil : owner
+        guard save(people: updated, owner: newOwner) else { return false }
+        people = updated
+        owner = newOwner
         if shownPersonID == id { shownPersonID = nil }
-        if people.isEmpty { owner = nil }
-        save()
+        return true
     }
 
     /// Shows `id`'s class table, or the user's own for nil; an id not in the store is ignored.
@@ -213,7 +226,7 @@ final class ImportedClassTableStore {
             removeAll()
         } else if owner == nil {
             owner = studentId
-            save()
+            save(people: people, owner: owner)
         }
     }
 
@@ -240,24 +253,37 @@ final class ImportedClassTableStore {
         }
     }
 
-    private func save() {
-        guard mayWrite else { return }
+    @discardableResult
+    private func save(people: [ImportedPerson], owner: String?) -> Bool {
+        guard mayWrite else { return false }
         do {
-            try FileManager.default.createDirectory(
+            let manager = FileManager.default
+            try manager.createDirectory(
                 at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
             )
+            let staging = try manager.url(
+                for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: fileURL, create: true
+            )
+            defer { try? manager.removeItem(at: staging) }
+            var replacement = staging.appendingPathComponent(fileURL.lastPathComponent)
             let data = try JSONEncoder().encode(StoredFile(owner: owner, people: people.map { StoredPerson($0) }))
             // Readable from the first unlock after a restart, unlike `DataCache`'s files: the store
             // reads the file once, and a read refused while the phone is locked would leave it
             // empty for the rest of the run.
-            try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-            // An atomic write replaces the file, and the exclusion with it, so it is set each time.
+            try data.write(to: replacement, options: [.completeFileProtectionUntilFirstUserAuthentication])
+            // The replacement must be protected and excluded before it becomes the durable copy.
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
-            var url = fileURL
-            try url.setResourceValues(values)
+            try replacement.setResourceValues(values)
+            if manager.fileExists(atPath: fileURL.path) {
+                _ = try manager.replaceItemAt(fileURL, withItemAt: replacement, options: .usingNewMetadataOnly)
+            } else {
+                try manager.moveItem(at: replacement, to: fileURL)
+            }
+            return true
         } catch {
             AppLogger.captureError(error, context: ["phase": "importedClassTables.save"])
+            return false
         }
     }
 

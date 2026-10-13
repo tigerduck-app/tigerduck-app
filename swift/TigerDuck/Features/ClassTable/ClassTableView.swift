@@ -11,6 +11,7 @@ struct ClassTableView: View {
     @State private var exportedFile: ExportedFile?
     @State private var showExportFailed = false
     @State private var isExporting = false
+    @State private var importModel: ClassTableImportModel?
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -265,6 +266,7 @@ struct ClassTableView: View {
             .alert(String(localized: "class_table_import_lookup_failed"), isPresented: $viewModel.showsLookupFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
+            .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the
@@ -322,6 +324,13 @@ struct ClassTableView: View {
                 otherPersonActions
             } else {
                 ownActions
+            }
+            Section {
+                Button {
+                    importModel = .live(authService: appState.authService)
+                } label: {
+                    Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
+                }
             }
         } label: {
             headerIcon("ellipsis")

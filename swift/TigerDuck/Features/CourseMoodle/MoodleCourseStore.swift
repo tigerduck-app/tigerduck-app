@@ -23,6 +23,8 @@ nonisolated struct MoodleCourseAPI: Sendable {
         MoodleMemberList(ownId: nil, members: [])
     }
     var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
+    var gradeItems: @Sendable (_ courseId: Int) async throws -> [MoodleGradeItem] = { _ in [] }
+    var summary: @Sendable (_ courseId: Int) async throws -> MoodleCourseSummary = { _ in .empty }
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -73,6 +75,17 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await MoodleWebserviceClient.withToken { token in
                 let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
                 return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
+            }
+        },
+        gradeItems: { courseId in
+            try await MoodleWebserviceClient.withToken { token in
+                let userId = try await MoodleSiteInfoService.shared.userId(token: token)
+                return try await MoodleGradeService.gradeItems(courseId: courseId, userId: userId, token: token)
+            }
+        },
+        summary: { courseId in
+            try await MoodleWebserviceClient.withToken {
+                try await MoodleCourseSummaryService.summary(courseId: courseId, token: $0)
             }
         }
     )
@@ -207,18 +220,34 @@ nonisolated struct MoodleMemberList: Codable, Sendable, Equatable {
     }
 }
 
+/// A course's gradebook for the signed-in student, in Moodle's order.
+nonisolated struct MoodleCourseGrades: Codable, Sendable, Equatable {
+    var items: [MoodleGradeItem]
+
+    var total: MoodleGradeItem? {
+        items.first { $0.isCourseTotal && $0.isShown }
+    }
+
+    /// The items the grades screen lists and its row counts: graded and shown, with the course
+    /// total and the categories' subtotals left out.
+    var graded: [MoodleGradeItem] {
+        items.filter { !$0.isCourseTotal && !$0.isCategoryTotal && $0.isShown }
+    }
+}
+
 /// A screen the course detail opens from its Moodle section.
 enum MoodleCourseRoute: Hashable {
     case announcements
     case announcement(MoodleDiscussion)
     case materials
+    case grades
     case members
     case member(MoodleMember)
 
     /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {
         switch self {
-        case .announcements, .materials, .members: true
+        case .announcements, .materials, .grades, .members: true
         case .announcement, .member: false
         }
     }
@@ -229,6 +258,7 @@ struct MoodleSectionRow: Identifiable, Equatable {
     enum Kind: Hashable {
         case announcements
         case materials
+        case grades
         case members
     }
 
@@ -252,12 +282,15 @@ final class MoodleCourseStore {
     let forums: MoodleFeed<MoodleTermForums>
     let announcements: MoodleFeed<MoodleDiscussionList>
     let materials: MoodleFeed<MoodleCourseMaterials>
+    let grades: MoodleFeed<MoodleCourseGrades>
     let members: MoodleFeed<MoodleMemberList>
+    let summary: MoodleFeed<MoodleCourseSummary>
     private(set) var isLoadingMoreAnnouncements = false
     private(set) var announcementsPageFailure: (any Error)?
 
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
+    @ObservationIgnored private let courseCodes: [String]
     @ObservationIgnored private let api: MoodleCourseAPI
     @ObservationIgnored private let context: MoodleCacheContext
     @ObservationIgnored private let downloads: MoodleFileDownloads
@@ -267,12 +300,14 @@ final class MoodleCourseStore {
     init(
         courseId: Int,
         termCourseIds: [Int],
+        courseCodes: [String] = [],
         context: MoodleCacheContext,
         api: MoodleCourseAPI = .live,
         downloads: MoodleFileDownloads? = nil
     ) {
         self.courseId = courseId
         self.termCourseIds = Array(Set(termCourseIds).union([courseId])).sorted()
+        self.courseCodes = courseCodes
         self.api = api
         self.context = context
         self.downloads = downloads ?? .shared
@@ -283,11 +318,14 @@ final class MoodleCourseStore {
         materials = MoodleFeed(
             cacheName: "courses/\(courseId)/materials", ttl: MoodleRefreshInterval.materials, context: context
         )
+        grades = MoodleFeed(cacheName: "courses/\(courseId)/grades", ttl: MoodleRefreshInterval.grades, context: context)
         members = MoodleFeed(cacheName: "courses/\(courseId)/members", ttl: MoodleRefreshInterval.members, context: context)
+        summary = MoodleFeed(cacheName: "courses/\(courseId)/summary", ttl: MoodleRefreshInterval.summary, context: context)
     }
 
     // MARK: Section
 
+    /// In the section's order; a kind with nothing to count has no row.
     var sectionRows: [MoodleSectionRow] {
         var rows: [MoodleSectionRow] = []
         if let news = newsForum, news.discussionCount > 0 {
@@ -296,18 +334,23 @@ final class MoodleCourseStore {
         if let count = materials.value?.count, count > 0 {
             rows.append(MoodleSectionRow(kind: .materials, count: count, hasUnread: false))
         }
+        if let graded = grades.value?.graded.count, graded > 0 {
+            rows.append(MoodleSectionRow(kind: .grades, count: graded, hasUnread: false))
+        }
         if let list = members.value, list.showsOthers {
             rows.append(MoodleSectionRow(kind: .members, count: list.members.count, hasUnread: false))
         }
         return rows
     }
 
-    var isSectionRefreshing: Bool { forums.isRefreshing || materials.isRefreshing || members.isRefreshing }
+    var isSectionRefreshing: Bool {
+        forums.isRefreshing || materials.isRefreshing || grades.isRefreshing || members.isRefreshing || summary.isRefreshing
+    }
 
     /// Failed when one of the section's feeds failed, else OK once one reads OK: a feed still
     /// unknown has its first fetch on the way, as the section fetches every feed it shows.
     var sectionStatus: ServerStatus {
-        let statuses = [forums.status, materials.status, members.status]
+        let statuses = [forums.status, materials.status, grades.status, members.status, summary.status]
         if statuses.contains(.failed) { return .failed }
         return statuses.contains(.ok) ? .ok : .unknown
     }
@@ -386,6 +429,19 @@ final class MoodleCourseStore {
 
     func cancelDownload(of file: MoodleFile, in owner: MoodleFileOwner) {
         downloads.cancel(location(of: file, in: owner))
+    }
+
+    // MARK: Grades
+
+    /// The course's grade items for the signed-in student. A site that does not allow the call
+    /// answers as if the course had none, which hides the row.
+    func refreshGrades() async {
+        await grades.refresh { [api, courseId] in
+            guard try await api.functions().contains(MoodleGradeService.gradeItemsFunction) else {
+                return MoodleCourseGrades(items: [])
+            }
+            return MoodleCourseGrades(items: try await api.gradeItems(courseId))
+        }
     }
 
     // MARK: Announcements
@@ -593,5 +649,22 @@ final class MoodleCourseStore {
     private nonisolated static func image(from data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+
+    // MARK: Summary
+
+    /// What the foot of the section shows, nil while the course has no summary worth showing.
+    var shownSummary: MoodleCourseSummary? {
+        guard let value = summary.value, value.isWorthShowing(besides: courseCodes) else { return nil }
+        return value
+    }
+
+    /// One call for this course. A site that does not allow it answers as if the course had no
+    /// summary, which shows nothing.
+    func refreshSummary() async {
+        await summary.refresh { [api, courseId] in
+            guard try await api.functions().contains(MoodleCourseSummaryService.coursesFunction) else { return .empty }
+            return try await api.summary(courseId)
+        }
     }
 }

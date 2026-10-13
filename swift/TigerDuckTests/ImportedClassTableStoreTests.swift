@@ -277,9 +277,48 @@ struct ImportedClassTableStoreTests {
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path) }
 
         let store = Self.store(folder)
-        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
+        let imported = store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
 
+        #expect(imported == nil)
+        #expect(store.people.isEmpty)
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
+        #expect(try Data(contentsOf: folder.file) == kept)
+    }
+
+    @Test("a failed first write returns no person and publishes no in-memory import")
+    func failedFirstWrite() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        try Data("blocked parent".utf8).write(to: folder.url)
+
+        #expect(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]) == nil)
+        #expect(store.people.isEmpty)
+        #expect(store.shownPersonID == nil)
+    }
+
+    @Test("failed changes preserve the previous person, selection and durable file", arguments: ["update", "rename", "delete"])
+    func failedChangesKeepPreviousState(action: String) throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let person = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
+        store.show(person.id)
+        let kept = try Data(contentsOf: folder.file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.url.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.url.path) }
+
+        switch action {
+        case "update":
+            #expect(store.add(Self.code("B11300001", [Self.spring]), nickname: "Hua", courses: [:]) == nil)
+        case "rename":
+            store.rename(person.id, to: "New name")
+        default:
+            store.delete(person.id)
+        }
+
+        #expect(store.people.map(\.id) == [person.id])
+        #expect(store.people.first?.nickname == "Ming")
+        #expect(store.people.first?.terms.map(\.semester) == ["1151"])
+        #expect(store.shownPersonID == person.id)
         #expect(try Data(contentsOf: folder.file) == kept)
     }
 

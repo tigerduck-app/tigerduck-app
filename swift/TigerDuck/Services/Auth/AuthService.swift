@@ -193,6 +193,36 @@ final class AuthService {
         return age >= backendSignInPause || age < 0
     }
 
+    /// True while an automatic backend sign-in that had credentials to send is under way.
+    private(set) var isSigningInToBackend = false
+
+    /// Whether the TigerSync status asks the user to sign in again, in place of the error left by a
+    /// registration that went unsent because an automatic sign-in failed. Not while another is
+    /// under way, which may yet succeed. The school sign-in it opens signs in to the backend too.
+    nonisolated static func asksToSignInAgain(
+        syncEnabled: Bool,
+        credentialsReadable: Bool,
+        hasBackendSession: Bool,
+        signingIn: Bool,
+        registrationFoundNoSession: Bool
+    ) -> Bool {
+        syncEnabled && credentialsReadable && !hasBackendSession && !signingIn && registrationFoundNoSession
+    }
+
+    /// ``asksToSignInAgain(syncEnabled:credentialsReadable:hasBackendSession:signingIn:registrationFoundNoSession:)``
+    /// for this device now, after the registration `registration` describes.
+    func asksToSignInAgain(syncEnabled: Bool, after registration: PushRegistrationSnapshot) async -> Bool {
+        guard let authTokenManager else { return false }
+        let hasBackendSession = await authTokenManager.isLoggedIn
+        return Self.asksToSignInAgain(
+            syncEnabled: syncEnabled,
+            credentialsReadable: storedStudentId != nil && storedPassword != nil,
+            hasBackendSession: hasBackendSession,
+            signingIn: isSigningInToBackend,
+            registrationFoundNoSession: registration.lastAttemptFoundNoSession
+        )
+    }
+
     var storedStudentId: String? {
         _ = _revision
         return KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
@@ -255,7 +285,7 @@ final class AuthService {
                     AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
                 }
 
-                await performV3Login(studentId: normalizedId, password: password)
+                await performV3Login(studentId: normalizedId)
             }
 
             isLoggingIn = false
@@ -277,7 +307,7 @@ final class AuthService {
     /// `harvesting`, a missing token is harvested first; the interactive sign-in passes false,
     /// as it has just tried to harvest one.
     @discardableResult
-    private func performV3Login(studentId: String, password: String, harvesting: Bool = false) async -> Bool {
+    private func performV3Login(studentId: String, harvesting: Bool = false) async -> Bool {
         guard let authTokenManager else { return false }
         let generation = loginGeneration
         let moodleToken = harvesting ? await moodleTokenForBackend() : await moodleTokens.currentToken()
@@ -289,7 +319,6 @@ final class AuthService {
         do {
             _ = try await authTokenManager.login(
                 studentId: studentId,
-                password: password,
                 moodleToken: moodleToken,
                 moodlePrivateToken: moodlePrivateToken,
                 platform: platform
@@ -325,7 +354,6 @@ final class AuthService {
         do {
             _ = try await authTokenManager.login(
                 studentId: studentId,
-                password: "",
                 moodleToken: moodleToken,
                 moodlePrivateToken: moodlePrivateToken,
                 platform: platform
@@ -457,9 +485,11 @@ final class AuthService {
     private func signInToBackendIfSignedOut() async {
         guard let atm = authTokenManager, !(await atm.isLoggedIn),
               Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
-              let studentId = storedStudentId, let password = storedPassword else { return }
+              let studentId = storedStudentId, storedPassword != nil else { return }
         let generation = loginGeneration
-        if await !performV3Login(studentId: studentId, password: password, harvesting: true) {
+        isSigningInToBackend = true
+        defer { isSigningInToBackend = false }
+        if await !performV3Login(studentId: studentId, harvesting: true) {
             noteFailedBackendSignIn(since: generation)
         }
     }

@@ -385,6 +385,38 @@ enum AppServiceBridge {
         }
     }
 
+    /// The courses of a class table imported from a share code, looked up as the user's own are.
+    /// A code NTUST's course query does not know is left out, and a failed query throws, so an
+    /// import never keeps half a class table.
+    static func importedCourses(semester: String, courseNos: [String]) async throws -> [SDCourse] {
+        let display = CourseDisplayPreferences.current()
+        return try await importedCourses(semester: semester, courseNos: courseNos, display: display) { courseNo in
+            try await CourseLookupService.lookupCourse(
+                semester: semester, courseNo: courseNo, language: display.language
+            )
+        }
+    }
+
+    static func importedCourses(
+        semester: String,
+        courseNos: [String],
+        display: CourseDisplayPreferences,
+        lookup: @escaping @MainActor @Sendable (_ courseNo: String) async throws -> [CourseSearchResult]
+    ) async throws -> [SDCourse] {
+        let answers = await concurrentMap(courseNos) { @MainActor courseNo -> Result<CourseData?, any Error> in
+            do {
+                let results = try await lookup(courseNo)
+                guard !results.isEmpty else { return .success(nil) }
+                return .success(enrichedCourseData(
+                    from: results, semester: semester, fallbackMoodleIdNumber: nil, display: display
+                ))
+            } catch {
+                return .failure(error)
+            }
+        }
+        return try answers.compactMap { try $0.get() }.map { $0.course(in: semester) }
+    }
+
     /// QueryCourse rows → the display-ready course data the class table
     /// stores: merged schedule and per-slot rooms, raw names cached for the
     /// abbreviation toggles, and the current abbreviation / Mandarin-display
