@@ -17,7 +17,8 @@ under test reads and writes directly, not through a seam:
 - `AppState.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories`,
   `assignmentMarksSyncedOnce`, `lastSeenCoursesResetAt` and `categoriesSyncedOnce`;
   `AppState.recordFullSync`, which reads the four category switches and writes the last two;
-  `SyncedAccountSeedMigration`, which writes `categoriesSyncedOnce` or runs `forgetSyncProgress()`; `AppState.markForReenableCheck`, which reads `categoriesSyncedOnce` and
+  `SyncedAccountSeedMigration`, which writes `categoriesSyncedOnce` or runs `forgetSyncProgress()`;
+  `AppState.markForReenableCheck`, which reads `categoriesSyncedOnce` and
   writes the pending categories; and `CloudSyncCoordinator`'s default holds on marks and course
   settings, which read the pending categories and the Assignments and Courses switches.
 - `SSOLoginService.storedPasswordRejected`, the latch that stops a school sign-in or a Moodle
