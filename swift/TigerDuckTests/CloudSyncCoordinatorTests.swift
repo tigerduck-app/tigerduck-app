@@ -183,17 +183,6 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
     }
 
-    @Test("Use Server in a full sync's conflict drops the queued edits of the listed marks only")
-    func useServerAfterAFullSyncDropsTheListedMarks() async {
-        let coordinator = Self.makeCoordinator(Backend())
-        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "none")
-        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 43, localStatus: "ignored")
-
-        await coordinator.discardAssignmentOverrides(assignmentIds: ["42"])
-
-        #expect(await coordinator.pendingAssignmentOverrideIds() == ["43"])
-    }
-
     private static let colourReply =
         ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##
 }

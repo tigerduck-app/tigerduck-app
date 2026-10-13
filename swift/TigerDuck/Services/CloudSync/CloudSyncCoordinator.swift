@@ -284,13 +284,12 @@ final class CloudSyncCoordinator {
         return ids
     }
 
-    /// Drops the marks still on their way up, for Use Server, which takes the server's over them:
-    /// all of them after the re-enabled Assignments switch's check, or the listed ones
-    /// (`assignmentIds`) after a full sync's.
-    func discardAssignmentOverrides(assignmentIds: Set<String>? = nil) async {
+    /// For the re-enabled Assignments switch's Use Server, which takes the server's marks over the
+    /// ones still on their way up.
+    func discardAssignmentOverrides() async {
         await outbox.discard { op in
-            guard case .assignmentOverride(_, let moodleAssignmentId, _, _) = op else { return false }
-            return assignmentIds?.contains(String(moodleAssignmentId)) ?? true
+            if case .assignmentOverride = op { return true }
+            return false
         }
     }
 
