@@ -3,8 +3,8 @@ import Testing
 @testable import TigerDuck
 
 /// `gradereport_user_get_grade_items` against `SettingsAPIStub` on a site that does not exist, so
-/// no request reaches Moodle. The answers follow the shape Moodle 4.5 documents for the function;
-/// every name and grade in them is made up.
+/// no request reaches Moodle. The answers follow the shape Moodle 4.5 documents for the function,
+/// with the pass mark's icon its user report puts before a grade; every name and grade is made up.
 struct MoodleGradeServiceTests {
     private static let site = URL(string: "https://moodle-stub.invalid")!
 
@@ -39,7 +39,9 @@ struct MoodleGradeServiceTests {
          "scaleid": null, "locked": false, "cmid": 9101, "weightraw": 0.25, "weightformatted": "25.00 %",
          "graderaw": 92, "gradedatesubmitted": 1792030000, "gradedategraded": 1792040000,
          "gradehiddenbydate": false, "gradeneedsupdate": false, "gradeishidden": false,
-         "gradeislocked": false, "gradeisoverridden": false, "gradeformatted": "92.00", "grademin": 0,
+         "gradeislocked": false, "gradeisoverridden": false,
+         "gradeformatted": "<i class=\"icon fa fa-check text-success fa-fw \" title=\"Pass\" role=\"img\" aria-label=\"Pass\"></i>92.00",
+         "grademin": 0,
          "grademax": 100, "rangeformatted": "0&ndash;100", "percentageformatted": "92.00 %",
          "feedback": "<p>Clear structure, <strong>good</strong> tests.</p>", "feedbackformat": 1},
         {"id": 3002, "itemname": "Quiz 1", "itemtype": "mod", "itemmodule": "quiz", "iteminstance": 55,

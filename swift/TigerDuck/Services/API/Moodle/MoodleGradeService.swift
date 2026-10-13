@@ -82,8 +82,9 @@ private nonisolated struct RawGradeItem: Decodable, Sendable {
     let gradeishidden: Bool?
     let feedback: String?
 
-    /// Moodle writes "-" for an item not graded yet, and sends no `graderaw` for a grade it keeps
-    /// from the student, such as one hidden until a date.
+    /// Moodle writes "-" for an item not graded yet, puts a pass mark's icon as HTML before a
+    /// grade, and sends no `graderaw` for a grade it keeps from the student, such as one hidden
+    /// until a date.
     var model: MoodleGradeItem {
         let formatted = MoodleHTMLText.plainText(fromHTML: gradeformatted ?? "")
         return MoodleGradeItem(
