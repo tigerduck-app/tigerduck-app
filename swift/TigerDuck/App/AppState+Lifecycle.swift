@@ -18,6 +18,9 @@ extension AppState {
         // returns, `backgroundSync()` may write fresh caches, and deleting them after its
         // warm pass leaves the grids blank. Each is a cheap doneKey-guarded one-shot.
         SemesterAttributionCacheMigration.runIfNeeded()
+        // Inline, so that it sees the account signed in at the update before a sign-out or a
+        // sign-in can change it.
+        SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)
         #if os(iOS)
         // Inline because it costs three UserDefaults reads, not for order: the preferences it
         // repairs are read as each register request is built, so a late write self-heals.
