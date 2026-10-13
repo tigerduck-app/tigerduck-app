@@ -207,24 +207,7 @@ enum AppServiceBridge {
                 }
             }.compactMap { $0 }
 
-            let courses = courseDataList.map { course in
-                SDCourse(
-                    courseNo: course.courseNo,
-                    courseName: course.courseName,
-                    instructor: course.instructor,
-                    credits: course.credits,
-                    classroom: course.classroom,
-                    enrolledCount: course.enrolledCount,
-                    maxCount: course.maxCount,
-                    schedule: course.schedule,
-                    moodleIdNumber: course.moodleIdNumber,
-                    semester: semester,
-                    classroomMap: course.classroomMap,
-                    dimension: course.dimension,
-                    allYear: course.allYear,
-                    requireOption: course.requireOption
-                )
-            }
+            let courses = courseDataList.map { $0.course(in: semester) }
 
             // Cancelled (`AppState.syncTask`) or signed out since: Home, Class Table and Calendar
             // refreshes run in Tasks `syncTask?.cancel()` does not reach, and show what this
@@ -400,6 +383,38 @@ enum AppServiceBridge {
             ])
             return cached ?? fallbackCourseData(courseNo: courseNo, moodle: moodle, grade: grade)
         }
+    }
+
+    /// The courses of a class table imported from a share code, looked up as the user's own are.
+    /// A code NTUST's course query does not know is left out, and a failed query throws, so an
+    /// import never keeps half a class table.
+    static func importedCourses(semester: String, courseNos: [String]) async throws -> [SDCourse] {
+        let display = CourseDisplayPreferences.current()
+        return try await importedCourses(semester: semester, courseNos: courseNos, display: display) { courseNo in
+            try await CourseLookupService.lookupCourse(
+                semester: semester, courseNo: courseNo, language: display.language
+            )
+        }
+    }
+
+    static func importedCourses(
+        semester: String,
+        courseNos: [String],
+        display: CourseDisplayPreferences,
+        lookup: @escaping @MainActor @Sendable (_ courseNo: String) async throws -> [CourseSearchResult]
+    ) async throws -> [SDCourse] {
+        let answers = await concurrentMap(courseNos) { @MainActor courseNo -> Result<CourseData?, any Error> in
+            do {
+                let results = try await lookup(courseNo)
+                guard !results.isEmpty else { return .success(nil) }
+                return .success(enrichedCourseData(
+                    from: results, semester: semester, fallbackMoodleIdNumber: nil, display: display
+                ))
+            } catch {
+                return .failure(error)
+            }
+        }
+        return try answers.compactMap { try $0.get() }.map { $0.course(in: semester) }
     }
 
     /// QueryCourse rows → the display-ready course data the class table
@@ -668,6 +683,25 @@ private extension SDCourse {
 }
 
 private extension CourseData {
+    func course(in semester: String) -> SDCourse {
+        SDCourse(
+            courseNo: courseNo,
+            courseName: courseName,
+            instructor: instructor,
+            credits: credits,
+            classroom: classroom,
+            enrolledCount: enrolledCount,
+            maxCount: maxCount,
+            schedule: schedule,
+            moodleIdNumber: moodleIdNumber,
+            semester: semester,
+            classroomMap: classroomMap,
+            dimension: dimension,
+            allYear: allYear,
+            requireOption: requireOption
+        )
+    }
+
     init(_ course: SDCourse) {
         self.init(
             courseNo: course.courseNo,
