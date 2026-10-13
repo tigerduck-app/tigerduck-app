@@ -115,6 +115,9 @@ extension AppState {
         // be thrown away once it ends.
         MoodleFileDownloads.shared.cancelAll()
         DataCache.shared.clearUserScopedData()
+        // The colours held in memory went with the file only when a class table reloaded, and
+        // the next account's first colour write would save the departing account's whole map.
+        TigerDuckTheme.reload()
         ImportedClassTableStore.shared.removeAll()
         BulletinsViewModel.forgetListSession()
         // Unresolved conflicts come from the departing account's data; resolving one would write
