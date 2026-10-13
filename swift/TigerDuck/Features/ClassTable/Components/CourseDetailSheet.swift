@@ -59,6 +59,8 @@ struct CourseDetailSheet: View {
                 .moodleSectionRefresh(moodle)
             }
             .background(Color.backgroundPrimary)
+            // The course summary's links open as a pushed Moodle screen's do.
+            .moodleLinkOpening()
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
@@ -106,6 +108,8 @@ struct CourseDetailSheet: View {
             MoodleAnnouncementView(store: store, discussion: discussion) { routes.wrappedValue.append($0) }
         case .materials:
             MoodleMaterialsView(store: store)
+        case .grades:
+            MoodleGradesView(store: store)
         case .members:
             MoodleMembersView(store: store) { routes.wrappedValue.append($0) }
         case .member(let member):
@@ -127,18 +131,30 @@ struct CourseDetailSheet: View {
         let authService = appState.authService
         let generation = authService.loginGeneration
         let term = SDCourse.semesterPrefix(ofMoodleId: idnumber)
-        let termCourseIds = DataCache.shared.loadMoodleCourseIdMap()
+        let idMap = DataCache.shared.loadMoodleCourseIdMap()
+        let termCourseIds = idMap
             .filter { term != nil && SDCourse.semesterPrefix(ofMoodleId: $0.key) == term }
             .map(\.value)
         return MoodleCourseStore(
             courseId: courseId,
             termCourseIds: termCourseIds,
+            courseCodes: Self.moodleCourseCodes(
+                idnumber: idnumber, courseNo: course.courseNo, courseId: courseId, idMap: idMap
+            ),
             context: MoodleCacheContext(
                 account: account,
                 cache: .shared,
                 isCurrent: { [weak authService] in authService?.loginGeneration == generation }
             )
         )
+    }
+
+    /// The codes a course's Moodle summary is checked against: every idnumber the Moodle course
+    /// `courseId` goes by in `idMap`, since a co-listed course answers to each department's, the
+    /// course number in each, and `idnumber` and `courseNo` from the class table.
+    static func moodleCourseCodes(idnumber: String, courseNo: String, courseId: Int, idMap: [String: Int]) -> [String] {
+        let idnumbers = [idnumber] + idMap.filter { $0.value == courseId }.map(\.key)
+        return idnumbers + idnumbers.map(SDCourse.courseNoFromMoodleId) + [courseNo]
     }
 
     // MARK: - Header

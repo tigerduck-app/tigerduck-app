@@ -11,6 +11,7 @@ struct ClassTableView: View {
     @State private var exportedFile: ExportedFile?
     @State private var showExportFailed = false
     @State private var isExporting = false
+    @State private var importModel: ClassTableImportModel?
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -231,6 +232,7 @@ struct ClassTableView: View {
             .alert(String(localized: "class_table_export_failed"), isPresented: $showExportFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
+            .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the
@@ -304,6 +306,13 @@ struct ClassTableView: View {
                 // export a header over nothing. Held off while an export is
                 // still being written, so two cannot race for the same file.
                 .disabled(pageAccessState != .content || isExporting)
+            }
+            Section {
+                Button {
+                    importModel = .live(authService: appState.authService)
+                } label: {
+                    Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
+                }
             }
         } label: {
             headerIcon("ellipsis")
