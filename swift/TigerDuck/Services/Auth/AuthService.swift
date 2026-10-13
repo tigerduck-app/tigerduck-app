@@ -78,7 +78,7 @@ final class AuthService {
         credentialObservers.append(center.addObserver(
             forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.ensureBackendSignedIn() }
+            Task { @MainActor in await self?.signInAfterUnlock() }
         })
         #endif
     }
@@ -377,6 +377,16 @@ final class AuthService {
         backendSignIn = task
         await task.value
         if backendSignIn == task { backendSignIn = nil }
+    }
+
+    /// A sign-in already running may have begun behind the locked screen, where the credentials
+    /// could not be read, so the unlock waits for it and then tries on its own.
+    private func signInAfterUnlock() async {
+        if let running = backendSignIn {
+            await running.value
+            if backendSignIn == running { backendSignIn = nil }
+        }
+        await ensureBackendSignedIn()
     }
 
     private func signInToBackendIfSignedOut() async {

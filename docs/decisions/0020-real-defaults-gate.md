@@ -14,6 +14,9 @@ under test reads and writes directly, not through a seam:
   `syncPreferencesPushPending`, and `LiveActivityPreferencesStore`, with its notification settings.
 - `DefaultTabsPinMigration`, and `UpdateNotifyCoordinator.checkManually()`, which stamps
   `lastUpdateCheckAt` and, for an unreadable store version, `lastReportedUnparseableStoreVersion`.
+- `AppState.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories` and
+  `assignmentMarksSyncedOnce`, and `CloudSyncCoordinator`'s default holds on marks and course
+  settings, which read the pending categories and the Assignments and Courses switches.
 - `SSOLoginService.storedPasswordRejected`, the latch that stops a school sign-in or a Moodle
   token harvest from posting a rejected password, and `ssoLoginTimestamp`.
 
@@ -45,4 +48,5 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   through `withExclusiveRealDefaults` and puts back what it changed. Current users:
   `BulletinPushOptOutMigrationTests`, `PushRegistrationServiceTests`,
   `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `UpdateCheckTests`,
-  `SSOServiceLoginTests` and `BackendSessionTests`.
+  `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`, `SSOServiceLoginTests` and
+  `BackendSessionTests`.

@@ -79,9 +79,10 @@ extension AppState {
     ///   and releases it when it ends, as the outer call would have.
     func checkPendingConflicts(retriesLeft: Int, isRetry: Bool) {
         let pending = Defaults[.pendingConflictCategories]
+        let generation = authService.loginGeneration
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
-            if isRetry { endConflictCheck(checked: pending) }
+            if isRetry { endConflictCheck(checked: pending, startedIn: generation) }
             return
         }
         // One check at a time: a verdict is valid only for its `pending` snapshot, and a slower
@@ -95,7 +96,6 @@ extension AppState {
             isCheckingConflicts = true
         }
         AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
-        let generation = authService.loginGeneration
         Task {
             // Set when we hand the flag to a 401 retry, which owns it from
             // there. The retry runs in its own Task, so releasing the flag here
@@ -103,7 +103,7 @@ extension AppState {
             var handedOffToRetry = false
             defer {
                 if !handedOffToRetry {
-                    Task { @MainActor in self.endConflictCheck(checked: pending) }
+                    Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: generation) }
                 }
             }
             do {
@@ -287,15 +287,27 @@ extension AppState {
         }
     }
 
-    private func endConflictCheck(checked pending: Set<String>) {
+    private func endConflictCheck(checked pending: Set<String>, startedIn generation: Int) {
         isCheckingConflicts = false
-        // A category marked mid-check was turned away by the guard; re-run now
-        // rather than strand it until the next Settings visit. This terminates:
-        // the re-run snapshots the grown set, so its completion sees no growth.
-        let current = Defaults[.pendingConflictCategories]
-        if reenableConflict == nil, !current.subtracting(pending).isEmpty {
+        // Re-run now rather than strand a category the guard turned away until the next Settings
+        // visit. This terminates: the re-run snapshots the current set and sign-in, so unless one
+        // changes again its completion finds nothing left.
+        let unchecked = Self.categoriesLeftToCheck(
+            pending: Defaults[.pendingConflictCategories], checked: pending,
+            signedOutSince: generation != authService.loginGeneration
+        )
+        if reenableConflict == nil, !unchecked.isEmpty {
             checkPendingConflicts()
         }
+    }
+
+    /// The categories a finished re-enable check leaves to another: those marked while it ran, which
+    /// the one-at-a-time guard turned away, or after a sign-out every pending one, as the check drops
+    /// its result then and so settled none.
+    nonisolated static func categoriesLeftToCheck(
+        pending: Set<String>, checked: Set<String>, signedOutSince: Bool
+    ) -> Set<String> {
+        signedOutSince ? pending : pending.subtracting(checked)
     }
 
     /// Applies the user's answer to `reenableConflict`. Keeping local courses awaits every
@@ -306,6 +318,11 @@ extension AppState {
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
         let coordinator = pushCoordinator
+        // Keep Local stops at a sign-out: its course requests would go out on the next account's
+        // session, the check it asks again for would be left to that account, and the rest would
+        // read emptied caches.
+        let generation = authService.loginGeneration
+        let isCurrent = { [weak self] in self?.authService.loginGeneration == generation }
         Task {
             if !keepLocal, conflict.categories.contains("assignments") {
                 // Before the subtract below: until then the pending check holds these in the
@@ -336,13 +353,15 @@ extension AppState {
                     }
                     do {
                         try await Self.keepLocalCourses(
-                            terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: coordinator
+                            terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: coordinator,
+                            isCurrent: isCurrent
                         )
                     } catch {
                         AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .public)")
-                        await MainActor.run { markCategoryReenabled("courses") }
+                        await MainActor.run { if isCurrent() { markCategoryReenabled("courses") } }
                     }
                 }
+                guard isCurrent() else { return }
                 if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
                     // The colour and name maps are keyed by courseNo, but the override endpoint
                     // resolves moodle_id: map through the cached course list and skip courses
@@ -425,10 +444,12 @@ extension AppState {
     /// which bind this device too, so the roster its next refresh uploads cannot bring a hidden course
     /// back. Not a full reset: that erases every term's tombstones and sets `courses_reset_at`, which
     /// tells every device, this one included, to drop its hidden and manual courses.
+    /// Once `isCurrent` turns false, as at a sign-out, it sends nothing more and throws `CancellationError`.
     static func keepLocalCourses(
         _ terms: [(semester: String, courses: [SDCourse])],
         hiding deletedNos: Set<String>,
-        on backend: some CourseSyncBackend
+        on backend: some CourseSyncBackend,
+        isCurrent: () -> Bool = { true }
     ) async throws {
         for (semester, courses) in terms {
             let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
@@ -436,10 +457,13 @@ extension AppState {
                 .map { SDCourse(courseNo: $0, courseName: $0) }
             guard !courses.isEmpty || !stubs.isEmpty else { continue }
             if !courses.isEmpty {
+                guard isCurrent() else { throw CancellationError() }
                 try await backend.deleteAllCourses(semester: semester)
             }
+            guard isCurrent() else { throw CancellationError() }
             try await backend.uploadCourses(courseUploadRequest(courses + stubs, semester: semester, forceKeys: []))
             for courseNo in hiddenNos.sorted() {
+                guard isCurrent() else { throw CancellationError() }
                 try await backend.deleteCourse(courseKey: "client:\(semester):\(courseNo)")
             }
         }

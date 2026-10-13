@@ -266,6 +266,30 @@ struct BackendSignInTests {
         withExtendedLifetime(auth) {}
     }
 
+    @Test("an unlock that meets a sign-in ending signed out tries once more")
+    func unlockRetriesAfterASignInThatFailed() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture(signedIn: false)
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data(), gate: gate), for: backend.loginURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let center = NotificationCenter()
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: center)
+        auth.authTokenManager = backend.manager
+
+        try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            async let first: Void = auth.ensureBackendSignedIn()
+            try await waitUntil { SettingsAPIStub.requests(for: backend.loginURL).count == 1 }
+            center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+            gate.open()
+            await first
+            try await waitUntil { backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9" }
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 2)
+        withExtendedLifetime(auth) {}
+    }
+
     @Test("sign-ins that overlap share one login")
     func overlappingSignInsShareOneLogin() async throws {
         let backend = BackendFixture(signedIn: false)
