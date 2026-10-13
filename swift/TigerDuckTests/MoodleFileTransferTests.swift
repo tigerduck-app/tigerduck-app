@@ -86,6 +86,21 @@ struct MoodleFileTransferTests {
         }
     }
 
+    @Test("a JSON file is kept, but a web service error in its place throws its case all the same")
+    func jsonFile() throws {
+        let error = try Self.body(#"{"error": "Invalid token", "errorcode": "invalidtoken"}"#)
+        let file = try Self.body(#"[{"week": 1, "topic": "HTTP"}]"#)
+        defer {
+            try? FileManager.default.removeItem(at: error)
+            try? FileManager.default.removeItem(at: file)
+        }
+
+        #expect(throws: MoodleWebserviceError.invalidToken) {
+            try MoodleFileTransfer.check(Self.response(type: "application/json"), at: error, mimeType: "application/json")
+        }
+        try MoodleFileTransfer.check(Self.response(type: "application/json"), at: file, mimeType: "application/json")
+    }
+
     @Test("a download lands in a temporary file with the reply's bytes")
     func fetch() async throws {
         let url = try #require(URL(string: "https://moodle-stub.invalid/tokenpluginfile.php/\(Self.key)/\(UUID().uuidString)/a.pdf"))

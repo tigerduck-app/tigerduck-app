@@ -52,21 +52,28 @@ nonisolated enum MoodleFileTransfer {
     }
 
     /// Moodle sends a stored file with the MIME type it lists for it, so another type is a page
-    /// standing in for the file. A web service error comes as JSON and throws its own case.
+    /// standing in for the file. A web service error comes as JSON and throws its own case, even
+    /// for a JSON file, whose own type the error shares.
     static func check(_ response: URLResponse, at location: URL, mimeType: String?) throws {
         guard let http = response as? HTTPURLResponse else {
             throw MoodleWebserviceError.malformedResponse(detail: "No HTTP response")
         }
         let served = baseType(http.value(forHTTPHeaderField: "Content-Type"))
         let expected = baseType(mimeType)
-        if served == "application/json", expected != "application/json",
-           let data = try? Data(contentsOf: location), let error = MoodleWebserviceError.from(jsonData: data) {
-            throw error
-        }
+        if served == "application/json", let error = moodleError(at: location) { throw error }
         guard http.statusCode == 200 else { throw MoodleWebserviceError.httpStatus(code: http.statusCode) }
         if let expected, !expected.isEmpty, served != expected {
             throw MoodleWebserviceError.malformedResponse(detail: served ?? "")
         }
+    }
+
+    /// A Moodle error is a few hundred bytes, so a longer JSON reply is the file itself.
+    private static let errorReplyLimit = 64 * 1024
+
+    private static func moodleError(at location: URL) -> MoodleWebserviceError? {
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: location.path))?[.size] as? Int,
+              size <= errorReplyLimit, let data = try? Data(contentsOf: location) else { return nil }
+        return MoodleWebserviceError.from(jsonData: data)
     }
 
     /// `"Application/PDF; name=a.pdf"` -> `"application/pdf"`.
