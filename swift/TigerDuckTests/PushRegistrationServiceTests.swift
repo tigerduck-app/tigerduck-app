@@ -437,6 +437,28 @@ struct PushRegistrationServiceTests {
         }
     }
 
+    @Test("a registration that finds no session says so, until one goes out and the backend refuses it")
+    func registrationRecordsWhetherItFoundNoSession() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let header = OSAllocatedUnfairLock<String?>(initialState: nil)
+        let service = Self.makeService(baseURL: baseURL, authHeader: { header.withLock { $0 } })
+        for _ in 0..<4 {
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: Self.announceURL(baseURL))
+        }
+
+        await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+        await service.awaitPendingRegistration()
+        #expect(await service.snapshot().lastAttemptFoundNoSession)
+
+        header.withLock { $0 = "Bearer test" }
+        for _ in 0..<4 { Self.expectRefusedAttempt(baseURL) }
+        await service.registerAgain()
+        await service.awaitPendingRegistration()
+
+        try #require(SettingsAPIStub.requests(for: Self.registerURL(baseURL)).count == 4)
+        #expect(await !service.snapshot().lastAttemptFoundNoSession)
+    }
+
     // MARK: - The bulletin toggle PATCHes before it persists
 
     @Test("a bulletin opt-out the server rejects leaves the local preference alone")

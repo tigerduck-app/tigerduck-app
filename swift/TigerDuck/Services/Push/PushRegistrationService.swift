@@ -16,6 +16,9 @@ struct PushRegistrationSnapshot: Sendable {
     let ptsTokenLength: Int
     let deviceTokenLength: Int
     let lastError: String?
+    /// Whether the last registration was not sent for want of a session
+    /// (`PushAPIError.notSignedIn`).
+    let lastAttemptFoundNoSession: Bool
     let lastRegisteredAt: Date?
 }
 
@@ -106,6 +109,7 @@ actor PushRegistrationService {
     private var ptsTokenHex: String?
     private var lastAttempt: Task<Void, Never>?
     private var lastError: String?
+    private var lastAttemptFoundNoSession = false
     private var lastRegisteredAt: Date?
     /// Most recently scheduled opt-out PATCH. New `updateServerPushOptOut`
     /// calls chain onto this task so PATCHes run in tap order, and the
@@ -451,6 +455,7 @@ actor PushRegistrationService {
             ptsTokenLength: ptsTokenHex?.count ?? 0,
             deviceTokenLength: deviceTokenHex?.count ?? 0,
             lastError: lastError,
+            lastAttemptFoundNoSession: lastAttemptFoundNoSession,
             lastRegisteredAt: lastRegisteredAt
         )
     }
@@ -676,11 +681,13 @@ actor PushRegistrationService {
     private func noteSuccessfulRegistration() {
         lastRegisteredAt = Date()
         lastError = nil
+        lastAttemptFoundNoSession = false
         registerAgainIfRunningFails = false
     }
 
     private func noteRegistrationError(_ error: Error) {
         lastError = "register: \(error.localizedDescription)"
+        lastAttemptFoundNoSession = if case PushAPIError.notSignedIn = error { true } else { false }
     }
 
     #if os(iOS)
