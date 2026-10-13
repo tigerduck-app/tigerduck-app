@@ -93,6 +93,8 @@ extension AppState {
         Defaults[.categoriesSyncedOnce].contains(category)
     }
 
+    static let reenableCategories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
+
     /// The re-enable check's categories whose sync switch is on.
     static func switchedOnCategories() -> Set<String> {
         var categories: Set<String> = []

@@ -20,8 +20,8 @@ enum SyncedAccountSeedMigration {
             AppState.forgetSyncProgress()
             return
         }
-        // The switches stand in for what its syncs took: one with a category's switch off takes
-        // none of that category's data.
-        Defaults[.categoriesSyncedOnce].formUnion(AppState.switchedOnCategories())
+        // 2.3.0 checked every category switched back on. Each switch starts on, so one off at the
+        // update was most likely turned off after its data synced here.
+        Defaults[.categoriesSyncedOnce].formUnion(AppState.reenableCategories)
     }
 }

@@ -220,7 +220,7 @@ nonisolated extension Defaults.Keys {
     static let assignmentMarksSyncedOnce = Key<Bool>("assignmentMarksSyncedOnce", default: false)
     /// The re-enable check's categories whose server data this device holds for the signed-in
     /// account: each one a full sync took, which it does only with the category's switch on, or
-    /// that was switched on when the device updated from a version that kept no such record.
+    /// every one when the device updated, signed in, from a version that kept no such record.
     /// Cleared at sign-out. See `AppState.hasSynced(_:)`.
     static let categoriesSyncedOnce = Key<Set<String>>("categoriesSyncedOnce", default: [])
 

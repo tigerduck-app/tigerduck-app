@@ -51,14 +51,14 @@ struct SyncedAccountSeedMigrationTests {
         }
     }
 
-    @Test("An install signed in at the update counts the categories switched on as synced, and only that launch decides")
-    func signedInAtTheUpdateCountsItsSwitchedOnCategoriesOnce() async {
+    @Test("An install signed in at the update counts every category as synced, its switches off too, and only that launch decides")
+    func signedInAtTheUpdateCountsEveryCategoryOnce() async {
         await Self.withUpdatedInstall {
             Defaults[.syncCourseNames] = false
 
             SyncedAccountSeedMigration.runIfNeeded(signedIn: true)
 
-            #expect(Self.synced == ["courses", "course_colors", "assignments"])
+            #expect(Self.synced == ["courses", "course_colors", "course_names", "assignments"])
 
             // As a sign-out leaves it: a later launch must not count the next account as synced.
             Defaults[.categoriesSyncedOnce] = []
