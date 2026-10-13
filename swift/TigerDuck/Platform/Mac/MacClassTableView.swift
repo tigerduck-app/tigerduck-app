@@ -28,6 +28,7 @@ struct MacClassTableView: View {
     /// The Moodle screens pushed in the course detail overlay, which Escape leaves first.
     @State private var detailMoodlePath: [MoodleCourseRoute] = []
     @State private var showAddCourse: Bool = false
+    @State private var shareModel: ClassTableShareModel?
     /// Non-nil while the macOS color picker sheet is presented. Set from the
     /// per-cell context menu; the iOS path stores this on its view-model, but
     /// the Mac classtable is a plain View so it lives in @State here.
@@ -176,7 +177,27 @@ struct MacClassTableView: View {
                 }
                 .help(String(localized: "add_course_title"))
             }
+            if ImportedClassTableStore.shared.shownPerson == nil {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        openShareSheet()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "qrcode")
+                            Text(String(localized: "class_table_share"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "class_table_share"))
+                    .disabled(!ClassTableShareModel.canShare(
+                        studentId: appState.authService.storedStudentId,
+                        shownCourses: courses,
+                        semesters: availableSemesters
+                    ))
+                }
+            }
         }
+        .sheet(item: $shareModel) { ClassTableShareSheet(model: $0) }
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
                 semester: selectedSemester,
@@ -413,6 +434,15 @@ struct MacClassTableView: View {
 
 
     // MARK: - Helpers
+
+    private func openShareSheet() {
+        guard let studentId = appState.authService.storedStudentId else { return }
+        shareModel = ClassTableShareModel(
+            studentId: studentId,
+            terms: ClassTableShareModel.terms(in: availableSemesters),
+            semesterLabel: displayLabel(for:)
+        )
+    }
 
     private var totalCredits: Double {
         courses.reduce(0) { $0 + $1.credits }
