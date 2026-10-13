@@ -55,40 +55,52 @@ struct MoodleGradeItemDisplayTests {
 import UIKit
 
 /// The grade row laid out in a hosting controller: the name stops at two lines however long it
-/// runs, and only feedback opened under the row makes it taller.
+/// runs, a grade too long to sit beside the name goes under it, and only feedback opened under
+/// the row makes it taller.
 @MainActor
 struct MoodleGradeRowTests {
     private static let longName = String(repeating: "期末專題書面報告與口頭簡報（含同儕互評）", count: 6)
 
-    private static func item(name: String, feedback: String = "") -> MoodleGradeItem {
+    private static func item(name: String, grade: String = "100.00", feedback: String = "") -> MoodleGradeItem {
         MoodleGradeItem(
-            id: 1, name: name, type: "mod", module: "assign", cmid: 9101, grade: "100.00",
+            id: 1, name: name, type: "mod", module: "assign", cmid: 9101, grade: grade,
             maxGrade: 100, isHidden: false, feedback: feedback
         )
     }
 
-    private func height(_ item: MoodleGradeItem, expanded: Bool = false) -> CGFloat {
+    private func size(_ item: MoodleGradeItem, width: CGFloat = 390, expanded: Bool = false) -> CGSize {
         let host = UIHostingController(
             rootView: MoodleGradeRow(item: item, accent: .blue, isExpanded: .constant(expanded))
         )
-        return host.sizeThatFits(in: CGSize(width: 390, height: CGFloat.greatestFiniteMagnitude)).height
+        return host.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
     }
 
     @Test("the name stops at two lines, so a longer one does not grow the row")
     func nameStopsAtTwoLines() {
-        let short = height(Self.item(name: "Lab 1"))
-        let long = height(Self.item(name: Self.longName))
-        let longer = height(Self.item(name: Self.longName + Self.longName))
+        let short = size(Self.item(name: "Lab 1")).height
+        let long = size(Self.item(name: Self.longName)).height
+        let longer = size(Self.item(name: Self.longName + Self.longName)).height
 
         #expect(long > short)
         #expect(abs(longer - long) < 0.5, "row grew from \(long)pt to \(longer)pt")
+    }
+
+    @Test("on a narrow screen a long scale word goes under the name, and the row keeps the screen's width")
+    func longGradeGoesUnderTheName() {
+        let width: CGFloat = 320
+        let beside = size(Self.item(name: "Lab 1", grade: "Good"), width: width)
+        let under = size(Self.item(name: "Lab 1", grade: "Exceeds expectations in every part of the brief"), width: width)
+
+        #expect(beside.width <= width + 0.5)
+        #expect(under.width <= width + 0.5, "row is \(under.width)pt wide")
+        #expect(under.height > beside.height + 10)
     }
 
     @Test("feedback shows under the row only while it is open")
     func feedbackOpensInPlace() {
         let item = Self.item(name: "Lab 1", feedback: "Clear structure, **good** tests.")
 
-        #expect(height(item, expanded: true) > height(item) + 10)
+        #expect(size(item, expanded: true).height > size(item).height + 10)
     }
 }
 #endif

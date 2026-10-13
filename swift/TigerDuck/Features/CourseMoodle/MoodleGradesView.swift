@@ -135,7 +135,8 @@ struct MoodleGradeTotalCard: View {
 
 /// A graded item: its kind's icon, its name, and its grade over the most it could be, which
 /// never truncate. An item with feedback is a button that shows the feedback under it; the
-/// rest cannot be tapped. At accessibility sizes the grade moves under the name.
+/// rest cannot be tapped. The grade moves under the name at accessibility sizes, and wherever
+/// beside the name it would leave the name too little room.
 struct MoodleGradeRow: View {
     let item: MoodleGradeItem
     let accent: Color
@@ -143,6 +144,8 @@ struct MoodleGradeRow: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The room the name keeps beside the grade.
+    @ScaledMetric(relativeTo: .body) private var nameMinWidth: CGFloat = 120
 
     /// The line between rows and the feedback start under the name, not under the icon.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + iconWidth + TigerDuckTheme.Spacing.md
@@ -172,36 +175,58 @@ struct MoodleGradeRow: View {
     }
 
     private var summary: some View {
-        HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.md) {
-            // Past this size the wider symbols, such as the quiz's, run out of the icon's column.
-            Image(systemName: item.symbol)
-                .font(TigerDuckTheme.Typography.body)
-                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                .foregroundStyle(.tint)
-                .frame(width: Self.iconWidth)
+        Group {
             if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-                    name
-                    HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
-                        gradeText
-                        maxText
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                gradeUnderName
             } else {
-                name
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .trailing, spacing: 2) {
-                    gradeText
-                    maxText
+                ViewThatFits(in: .horizontal) {
+                    gradeBesideName
+                    gradeUnderName
                 }
-                .fixedSize()
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.vertical, TigerDuckTheme.Spacing.md)
         .frame(minHeight: 44)
         .contentShape(Rectangle())
+    }
+
+    /// Measured with the name at `nameMinWidth`, so only a grade too wide for that leaves this
+    /// layout; a long name wraps instead.
+    private var gradeBesideName: some View {
+        HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.md) {
+            icon
+            name
+                .frame(minWidth: 0, idealWidth: nameMinWidth, maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .trailing, spacing: 2) {
+                gradeText
+                maxText
+            }
+            .fixedSize()
+        }
+    }
+
+    private var gradeUnderName: some View {
+        HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.md) {
+            icon
+            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
+                name
+                HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
+                    gradeText
+                    maxText
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var icon: some View {
+        // Past this size the wider symbols, such as the quiz's, run out of the icon's column.
+        Image(systemName: item.symbol)
+            .font(TigerDuckTheme.Typography.body)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            .foregroundStyle(.tint)
+            .frame(width: Self.iconWidth)
     }
 
     private var name: some View {
@@ -249,7 +274,6 @@ struct MoodleGradeRow: View {
 }
 
 extension MoodleGradeItem {
-    /// The icon of the item's kind: an assignment, a quiz, or any other grade.
     var symbol: String {
         switch module {
         case "assign": "doc.text"
@@ -268,7 +292,6 @@ extension MoodleGradeItem {
         )
     }
 
-    /// The grade as VoiceOver reads it, with the most it could be.
     var spokenGrade: String {
         guard let grade else { return "" }
         return maxText.map { "\(grade) / \($0)" } ?? grade
@@ -283,7 +306,6 @@ extension MoodleGradeItem {
 }
 
 extension MoodlePage {
-    /// The course's grade report, which lists the items not graded yet too.
     static func gradeReport(courseId: Int) -> MoodlePage {
         MoodlePage(path: "/grade/report/user/index.php?id=\(courseId)")
     }
