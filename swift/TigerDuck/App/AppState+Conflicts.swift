@@ -79,9 +79,10 @@ extension AppState {
     ///   and releases it when it ends, as the outer call would have.
     func checkPendingConflicts(retriesLeft: Int, isRetry: Bool) {
         let pending = Defaults[.pendingConflictCategories]
+        let generation = authService.loginGeneration
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
-            if isRetry { endConflictCheck(checked: pending) }
+            if isRetry { endConflictCheck(checked: pending, startedIn: generation) }
             return
         }
         // One check at a time: a verdict is valid only for its `pending` snapshot, and a slower
@@ -95,7 +96,6 @@ extension AppState {
             isCheckingConflicts = true
         }
         AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
-        let generation = authService.loginGeneration
         Task {
             // Set when we hand the flag to a 401 retry, which owns it from
             // there. The retry runs in its own Task, so releasing the flag here
@@ -103,7 +103,7 @@ extension AppState {
             var handedOffToRetry = false
             defer {
                 if !handedOffToRetry {
-                    Task { @MainActor in self.endConflictCheck(checked: pending) }
+                    Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: generation) }
                 }
             }
             do {
@@ -287,15 +287,27 @@ extension AppState {
         }
     }
 
-    private func endConflictCheck(checked pending: Set<String>) {
+    private func endConflictCheck(checked pending: Set<String>, startedIn generation: Int) {
         isCheckingConflicts = false
-        // A category marked mid-check was turned away by the guard; re-run now
-        // rather than strand it until the next Settings visit. This terminates:
-        // the re-run snapshots the grown set, so its completion sees no growth.
-        let current = Defaults[.pendingConflictCategories]
-        if reenableConflict == nil, !current.subtracting(pending).isEmpty {
+        // Re-run now rather than strand a category the guard turned away until the next Settings
+        // visit. This terminates: the re-run snapshots the current set and sign-in, so unless one
+        // changes again its completion finds nothing left.
+        let unchecked = Self.categoriesLeftToCheck(
+            pending: Defaults[.pendingConflictCategories], checked: pending,
+            signedOutSince: generation != authService.loginGeneration
+        )
+        if reenableConflict == nil, !unchecked.isEmpty {
             checkPendingConflicts()
         }
+    }
+
+    /// The categories a finished re-enable check leaves to another: those marked while it ran, which
+    /// the one-at-a-time guard turned away, or after a sign-out every pending one, as the check drops
+    /// its result then and so settled none.
+    nonisolated static func categoriesLeftToCheck(
+        pending: Set<String>, checked: Set<String>, signedOutSince: Bool
+    ) -> Set<String> {
+        signedOutSince ? pending : pending.subtracting(checked)
     }
 
     /// Applies the user's answer to `reenableConflict`. Keeping local courses awaits every
