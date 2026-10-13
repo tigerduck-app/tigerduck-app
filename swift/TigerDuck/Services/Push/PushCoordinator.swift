@@ -349,7 +349,7 @@ final class PushCoordinator {
     /// counter — instead of waiting on exponential backoff (or never retrying
     /// if it already exhausted its attempts while unauthenticated).
     func refreshRegistrationAfterAuth() {
-        Task { await registration.retryAfterAuthChange() }
+        Task { await registration.registerAgain() }
     }
 
     /// Returns the latest diagnostic snapshot for the settings view.

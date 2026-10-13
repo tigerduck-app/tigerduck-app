@@ -136,6 +136,12 @@ actor PushRegistrationService {
     private var deviceRegisterRetryTask: Task<Void, Never>?
     private var deviceRegisterAttempts: Int = 0
     private let maxDeviceRegisterAttempts = 4
+    /// `performRegister` runs that have started and not ended. A count, as a cancelled run can
+    /// still be finishing when the next one starts.
+    private var registrationsInFlight = 0
+    /// Set by a `registerAgain()` that found a registration running: if that one fails, the
+    /// next goes at once instead of after the backoff.
+    private var registerAgainIfRunningFails = false
 
     /// The registration debounce's wait and the device-register backoff's, injectable so a test
     /// need not sleep through them. The Live Activity retry backoff keeps its own sleep.
@@ -486,6 +492,7 @@ actor PushRegistrationService {
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = nil
         deviceRegisterAttempts = 0
+        registerAgainIfRunningFails = false
     }
 
     // MARK: - Internals
@@ -496,13 +503,17 @@ actor PushRegistrationService {
         deviceTokenHex != nil || ptsTokenHex != nil
     }
 
-    /// Re-attempt registration after the auth state changes — the user just
-    /// signed in and a v3 JWT is now available. Resets the give-up counter so
-    /// a registration that exhausted its retries while unauthenticated gets a
-    /// fresh chance, then fires immediately (subject to `registerIfReady`'s
-    /// token gate).
-    func retryAfterAuthChange() async {
+    /// Registers again with the give-up counter reset, so a registration that
+    /// exhausted its retries gets a fresh chance: after a sign-in or relogin,
+    /// once a v3 JWT is available. A `performRegister` already running is not
+    /// doubled; if it fails, it starts the next one at once instead of backing
+    /// off.
+    func registerAgain() async {
         deviceRegisterAttempts = 0
+        guard registrationsInFlight == 0 else {
+            registerAgainIfRunningFails = true
+            return
+        }
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = nil
         #if os(iOS)
@@ -566,6 +577,8 @@ actor PushRegistrationService {
             ))
         }
         guard !tokens.isEmpty else { return }
+        registrationsInFlight += 1
+        defer { registrationsInFlight -= 1 }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
         // Announce every launch, signed in or not: signed out, operator push
@@ -627,7 +640,12 @@ actor PushRegistrationService {
         } catch {
             logger.error("register failed: \(error.localizedDescription, privacy: .public)")
             noteRegistrationError(error)
-            scheduleDeviceRegisterRetry(logger: logger)
+            if registerAgainIfRunningFails {
+                registerAgainIfRunningFails = false
+                await registerIfReady()
+            } else {
+                scheduleDeviceRegisterRetry(logger: logger)
+            }
         }
     }
 
@@ -653,6 +671,7 @@ actor PushRegistrationService {
     private func noteSuccessfulRegistration() {
         lastRegisteredAt = Date()
         lastError = nil
+        registerAgainIfRunningFails = false
     }
 
     private func noteRegistrationError(_ error: Error) {

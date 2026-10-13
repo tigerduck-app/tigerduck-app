@@ -80,6 +80,32 @@ struct PushRegistrationServiceTests {
         }
     }
 
+    /// Stubs one attempt whose registration the backend refuses the way it refuses a request
+    /// that carries no access token.
+    private static func expectRefusedAttempt(_ baseURL: URL) {
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: announceURL(baseURL))
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 401, body: Data(#"{"detail":"missing_bearer_token"}"#.utf8)),
+            for: registerURL(baseURL)
+        )
+    }
+
+    /// Registers the standard token while the backend refuses every attempt, until the backoff
+    /// gives up: the first attempt and three retries.
+    private static func registerUntilGivenUp(
+        _ service: PushRegistrationService,
+        baseURL: URL,
+        retries: OSAllocatedUnfairLock<[Duration]>
+    ) async throws {
+        for _ in 0..<4 { expectRefusedAttempt(baseURL) }
+        await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+        await service.awaitPendingRegistration()
+        try #require(retries.withLock { $0 } == [.seconds(30), .seconds(90), .seconds(270)])
+        let snapshot = await service.snapshot()
+        try #require(snapshot.lastError != nil)
+        try #require(snapshot.lastRegisteredAt == nil)
+    }
+
     /// Every `/devices/register` body sent so far, in order.
     private static func sentRegistrations(_ baseURL: URL) throws -> [[String: Any]] {
         try SettingsAPIStub.requests(for: registerURL(baseURL)).map { request in
@@ -280,6 +306,86 @@ struct PushRegistrationServiceTests {
         #expect(secondAttempt.contains { Self.tokenKind($0) == "standard" })
     }
 
+    // MARK: - Registering again after a failed registration
+    // https://github.com/tigerduck-app/tigerduck-app/issues/378
+
+    @Test("a registration that gave up goes again after a sign-in, and its error clears")
+    func registrationThatGaveUpRegistersAgainAfterSignIn() async throws {
+        try await Self.withSyncPreferences {
+            Defaults[.syncPreferencesPushPending] = false
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let retries = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+            let service = Self.makeService(baseURL: baseURL, retries: retries)
+            try await Self.registerUntilGivenUp(service, baseURL: baseURL, retries: retries)
+
+            // What a sign-in, a relogin and `ensureBackendSignedIn` end in, through
+            // `PushCoordinator.refreshRegistrationAfterAuth()`.
+            Self.expectAttempt(baseURL, registrations: 1)
+            await service.registerAgain()
+            await service.awaitPendingRegistration()
+
+            let registrations = try Self.sentRegistrations(baseURL)
+            #expect(registrations.count == 5)
+            let snapshot = await service.snapshot()
+            #expect(snapshot.lastError == nil)
+            #expect(snapshot.lastRegisteredAt != nil)
+        }
+    }
+
+    @Test("a registration already running when the session comes back is not started a second time")
+    func runningRegistrationIsNotStartedAgain() async throws {
+        try await Self.withSyncPreferences {
+            Defaults[.syncPreferencesPushPending] = false
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let session = HeldRegistrationSession()
+            let service = Self.makeService(baseURL: baseURL, authHeader: { await session.header() })
+            Self.expectAttempt(baseURL, registrations: 1)
+
+            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+            await session.waitUntilHeld()
+            await service.registerAgain()
+            session.release()
+            await service.awaitPendingRegistration()
+
+            #expect(SettingsAPIStub.requests(for: Self.announceURL(baseURL)).count == 1)
+            let registrations = try Self.sentRegistrations(baseURL)
+            #expect(registrations.count == 1)
+            #expect(await service.snapshot().lastError == nil)
+        }
+    }
+
+    @Test("a running registration the backend refuses is followed at once when the session came back meanwhile")
+    func refusedRunningRegistrationIsFollowedAtOnce() async throws {
+        try await Self.withSyncPreferences {
+            Defaults[.syncPreferencesPushPending] = false
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let session = HeldRegistrationSession()
+            let debounces = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+            let retries = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+            let service = Self.makeService(
+                baseURL: baseURL, debounces: debounces, retries: retries,
+                authHeader: { await session.header() }
+            )
+            // The running attempt went out before the session came back; the next one has it.
+            Self.expectRefusedAttempt(baseURL)
+            Self.expectAttempt(baseURL, registrations: 1)
+
+            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+            await session.waitUntilHeld()
+            await service.registerAgain()
+            session.release()
+            await service.awaitPendingRegistration()
+
+            #expect(retries.withLock { $0 }.isEmpty)
+            #expect(debounces.withLock { $0 } == [.milliseconds(250), .milliseconds(250)])
+            let registrations = try Self.sentRegistrations(baseURL)
+            #expect(registrations.count == 2)
+            let snapshot = await service.snapshot()
+            #expect(snapshot.lastError == nil)
+            #expect(snapshot.lastRegisteredAt != nil)
+        }
+    }
+
     // MARK: - The bulletin toggle PATCHes before it persists
 
     @Test("a bulletin opt-out the server rejects leaves the local preference alone")
@@ -356,5 +462,37 @@ struct PushRegistrationServiceTests {
 
             #expect(Defaults[.bulletinPushEnabled] == true)
         }
+    }
+}
+
+/// A session that hands every request a bearer but holds an attempt's registration POST, its
+/// second request after the announce, until `release()`, so a test can act while that
+/// registration is running.
+private final class HeldRegistrationSession: Sendable {
+    private let held: AsyncStream<Void>
+    private let heldContinuation: AsyncStream<Void>.Continuation
+    private let released: AsyncStream<Void>
+    private let releasedContinuation: AsyncStream<Void>.Continuation
+    private let calls = OSAllocatedUnfairLock(initialState: 0)
+
+    init() {
+        (held, heldContinuation) = AsyncStream.makeStream()
+        (released, releasedContinuation) = AsyncStream.makeStream()
+    }
+
+    func header() async -> String? {
+        if calls.withLock({ count in count += 1; return count }) == 2 {
+            heldContinuation.yield()
+            for await _ in released {}
+        }
+        return "Bearer test"
+    }
+
+    func waitUntilHeld() async {
+        for await _ in held { return }
+    }
+
+    func release() {
+        releasedContinuation.finish()
     }
 }
