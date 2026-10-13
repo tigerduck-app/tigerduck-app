@@ -115,12 +115,16 @@ struct CourseDetailSheet: View {
         let authService = appState.authService
         let generation = authService.loginGeneration
         let term = SDCourse.semesterPrefix(ofMoodleId: idnumber)
-        let termCourseIds = DataCache.shared.loadMoodleCourseIdMap()
+        let idMap = DataCache.shared.loadMoodleCourseIdMap()
+        let termCourseIds = idMap
             .filter { term != nil && SDCourse.semesterPrefix(ofMoodleId: $0.key) == term }
             .map(\.value)
+        // A co-listed course answers to every department's idnumber, and its summary may repeat any.
+        let idnumbers = [idnumber] + idMap.filter { $0.value == courseId }.map(\.key)
         return MoodleCourseStore(
             courseId: courseId,
             termCourseIds: termCourseIds,
+            courseCodes: idnumbers + idnumbers.map(SDCourse.courseNoFromMoodleId) + [course.courseNo],
             context: MoodleCacheContext(
                 account: account,
                 cache: .shared,

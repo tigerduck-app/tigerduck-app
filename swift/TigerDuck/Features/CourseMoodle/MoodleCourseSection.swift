@@ -1,33 +1,42 @@
+import MarkdownUI
 import SwiftUI
 
 /// The course detail's Moodle section, under its incomplete assignments: a header with the
-/// status dot, then one card with a row for each kind of data the course has on Moodle. A row
-/// shows only once its data has something in it, and the section only once it has a row; with
-/// none it adds nothing to the sheet, not even spacing.
+/// status dot, one card with a row for each kind of data the course has on Moodle, then the
+/// course's summary. A row shows only once its data has something in it, and the section only
+/// once it has a row or a summary; with neither it adds nothing to the sheet, not even spacing.
 struct MoodleCourseSection: View {
     let store: MoodleCourseStore
     let policy: VisualStylePolicy
 
     var body: some View {
         let rows = store.sectionRows
-        if !rows.isEmpty {
+        let summary = store.shownSummary
+        if !rows.isEmpty || summary != nil {
             Divider().background(Color.textSecondary)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             header
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            VStack(spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 {
-                        Divider().padding(.leading, MoodleSectionRowView.textInset)
+            if !rows.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        if index > 0 {
+                            Divider().padding(.leading, MoodleSectionRowView.textInset)
+                        }
+                        NavigationLink(value: Self.route(for: row.kind)) {
+                            MoodleSectionRowView(row: row)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    NavigationLink(value: Self.route(for: row.kind)) {
-                        MoodleSectionRowView(row: row)
-                    }
-                    .buttonStyle(.plain)
                 }
+                .presetCard(policy: policy)
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
-            .presetCard(policy: policy)
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            if let summary {
+                MoodleCourseSummaryView(summary: summary)
+                    .padding(.top, TigerDuckTheme.Spacing.sm)
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            }
         }
     }
 
@@ -51,7 +60,7 @@ struct MoodleCourseSection: View {
 
 extension View {
     /// Keeps the section's data fresh while the course detail shows, rows or none: the first
-    /// fetch is what brings the rows.
+    /// fetch is what brings the rows and the summary.
     func moodleSectionRefresh(_ store: MoodleCourseStore?) -> some View {
         background {
             if let store {
@@ -59,9 +68,85 @@ extension View {
                     .moodleAutoRefresh(every: store.forums.ttl, fetchedAt: { store.forumsFetchedAt }) {
                         await store.refreshForums()
                     }
+                    .moodleAutoRefresh(every: store.summary.ttl, fetchedAt: { store.summary.fetchedAt }) {
+                        await store.refreshSummary()
+                    }
                     .id(ObjectIdentifier(store))
             }
         }
+    }
+}
+
+/// A course's summary on Moodle, at the foot of its section: four lines of plain text that open
+/// in place to the whole summary, drawn as an announcement's message is. The open summary keeps
+/// its links working, so the chevron under it, not the text, closes it again.
+struct MoodleCourseSummaryView: View {
+    let summary: MoodleCourseSummary
+
+    private static let previewLineLimit = 4
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+            Text(String(localized: "course_detail_summary_label"))
+                .font(TigerDuckTheme.Typography.headline)
+                .foregroundStyle(Color.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+            if isExpanded {
+                VStack(alignment: .trailing, spacing: 0) {
+                    MoodleCourseSummaryBody(html: summary.html)
+                    toggle(label: String(localized: "course_detail_summary_label")) {
+                        chevron("chevron.up")
+                            .frame(minWidth: 44, minHeight: 44, alignment: .topTrailing)
+                    }
+                }
+            } else {
+                toggle(label: summary.text) {
+                    HStack(alignment: .lastTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
+                        Text(summary.text)
+                            .font(TigerDuckTheme.Typography.body)
+                            .foregroundStyle(Color.textPrimary)
+                            .lineLimit(Self.previewLineLimit)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        chevron("chevron.down")
+                    }
+                }
+            }
+        }
+    }
+
+    private func chevron(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.textSecondary)
+            .accessibilityHidden(true)
+    }
+
+    private func toggle(label: String, @ViewBuilder content: () -> some View) -> some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { isExpanded.toggle() }
+        } label: {
+            content().contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// The whole summary, links included, in the school bulletins' theme.
+private struct MoodleCourseSummaryBody: View {
+    let html: String
+
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: html)))
+            .markdownTheme(.bulletin(accent: appState.accentColor))
+            .moodleTextLinks()
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
