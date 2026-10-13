@@ -7,10 +7,12 @@ import Testing
 /// number, the value VoiceOver reads, the kind's icon and the activity a long press opens.
 @MainActor
 struct MoodleGradeItemDisplayTests {
-    private static func item(grade: String?, max: Double? = 100, module: String? = "assign", cmid: Int? = 9101) -> MoodleGradeItem {
+    private static func item(
+        grade: String?, max: Double? = 100, module: String? = "assign", cmid: Int? = 9101, feedback: String = ""
+    ) -> MoodleGradeItem {
         MoodleGradeItem(
             id: 1, name: "Lab 1", type: module == nil ? "manual" : "mod", module: module, cmid: cmid,
-            grade: grade, maxGrade: max, isHidden: false, feedback: ""
+            grade: grade, maxGrade: max, isHidden: false, feedback: feedback
         )
     }
 
@@ -29,8 +31,25 @@ struct MoodleGradeItemDisplayTests {
 
     @Test("VoiceOver reads the grade with the most it could be")
     func spokenGrade() {
-        #expect(Self.item(grade: "92.00").spokenGrade == "92.00 / 100")
+        let maximum = String(format: String(localized: "course_moodle_grade_out_of"), "100")
+        #expect(maximum.contains("100"))
+        #expect(Self.item(grade: "92.00").spokenGrade == "92.00, \(maximum)")
         #expect(Self.item(grade: "A-").spokenGrade == "A-")
+        #expect(Self.item(grade: nil).spokenGrade.isEmpty)
+    }
+
+    @Test("VoiceOver announces whether feedback is open, and adds no state to an item without feedback")
+    func feedbackExpandedState() {
+        let maximum = String(format: String(localized: "course_moodle_grade_out_of"), "100")
+        for (expanded, state) in [
+            (false, String(localized: "course_moodle_grade_collapsed")),
+            (true, String(localized: "course_moodle_grade_expanded")),
+        ] {
+            #expect(Self.item(grade: "92.00", feedback: "Well done").spokenGrade(isExpanded: expanded)
+                == "92.00, \(maximum), \(state)")
+            #expect(Self.item(grade: "A-", feedback: "Well done").spokenGrade(isExpanded: expanded) == "A-, \(state)")
+            #expect(Self.item(grade: "A-").spokenGrade(isExpanded: expanded) == "A-")
+        }
     }
 
     @Test("an assignment, a quiz and any other item each have their icon")

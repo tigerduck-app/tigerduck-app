@@ -165,7 +165,7 @@ struct MoodleGradeRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.name)
-                .accessibilityValue(item.spokenGrade)
+                .accessibilityValue(item.spokenGrade(isExpanded: isExpanded))
                 if isExpanded {
                     feedback
                 }
@@ -297,7 +297,17 @@ extension MoodleGradeItem {
 
     var spokenGrade: String {
         guard let grade else { return "" }
-        return maxText.map { "\(grade) / \($0)" } ?? grade
+        guard let maxText else { return grade }
+        let maximum = String(format: String(localized: "course_moodle_grade_out_of"), maxText)
+        return "\(grade), \(maximum)"
+    }
+
+    func spokenGrade(isExpanded: Bool) -> String {
+        guard !feedback.isEmpty else { return spokenGrade }
+        let state = isExpanded
+            ? String(localized: "course_moodle_grade_expanded")
+            : String(localized: "course_moodle_grade_collapsed")
+        return "\(spokenGrade), \(state)"
     }
 
     /// The item's activity on Moodle; nil for an item no activity gives, such as one the teacher
