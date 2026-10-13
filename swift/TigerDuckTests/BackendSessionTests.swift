@@ -562,23 +562,36 @@ struct BackendSignInTests {
         let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
         auth.authTokenManager = backend.manager
         SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data(), gate: gate), for: backend.loginURL)
-        let unsent = PushRegistrationSnapshot(
-            ptsTokenLength: 0, deviceTokenLength: 6, lastError: "register: x",
-            lastAttemptFoundNoSession: true, lastRegisteredAt: nil
-        )
 
         try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
             async let signIn: Void = auth.ensureBackendSignedIn()
             try await waitUntil { SettingsAPIStub.requests(for: backend.loginURL).count == 1 }
             #expect(auth.isSigningInToBackend)
-            #expect(await !auth.asksToSignInAgain(syncEnabled: true, after: unsent))
+            #expect(await !auth.asksToSignInAgain(syncEnabled: true, after: Self.unsentRegistration))
 
             gate.open()
             await signIn
             #expect(!auth.isSigningInToBackend)
-            #expect(await auth.asksToSignInAgain(syncEnabled: true, after: unsent))
+            #expect(await auth.asksToSignInAgain(syncEnabled: true, after: Self.unsentRegistration))
         }
     }
+
+    @Test("with no backend client the status does not ask to sign in again")
+    func signInAgainNeedsABackend() async {
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+
+        let asks = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            await auth.asksToSignInAgain(syncEnabled: true, after: Self.unsentRegistration)
+        }
+
+        #expect(!asks)
+    }
+
+    /// A registration that went unsent for want of a session.
+    private static let unsentRegistration = PushRegistrationSnapshot(
+        ptsTokenLength: 0, deviceTokenLength: 6, lastError: "register: x",
+        lastAttemptFoundNoSession: true, lastRegisteredAt: nil
+    )
 }
 
 /// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next

@@ -201,7 +201,8 @@ final class AuthService {
     /// ``asksToSignInAgain(syncEnabled:credentialsReadable:hasBackendSession:signingIn:registrationFoundNoSession:)``
     /// for this device now, after the registration `registration` describes.
     func asksToSignInAgain(syncEnabled: Bool, after registration: PushRegistrationSnapshot) async -> Bool {
-        let hasBackendSession = await authTokenManager?.isLoggedIn ?? false
+        guard let authTokenManager else { return false }
+        let hasBackendSession = await authTokenManager.isLoggedIn
         return Self.asksToSignInAgain(
             syncEnabled: syncEnabled,
             credentialsReadable: storedStudentId != nil && storedPassword != nil,
