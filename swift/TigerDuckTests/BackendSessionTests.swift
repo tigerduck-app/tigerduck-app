@@ -51,8 +51,8 @@ struct BackendTokenRefreshTests {
         #expect(request.timeoutInterval == 20)
     }
 
-    @Test("a status other than 401 keeps the session and asks for no relogin", arguments: [403, 429, 500, 503])
-    func otherStatusKeepsTheSession(status: Int) async throws {
+    @Test("a 429 or a 5xx keeps the session and asks for no relogin", arguments: [429, 500, 503])
+    func transientStatusKeepsTheSession(status: Int) async throws {
         let backend = BackendFixture()
         let relogins = CallCount()
         await backend.manager.setRefreshFailedHandler {
@@ -68,6 +68,42 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
         // An answer, even an error, is no lost reply, so nothing is sent again.
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 1)
+    }
+
+    @Test("another 4xx asks for a relogin and keeps the token when that fails", arguments: [400, 403, 404, 422])
+    func rejectedTokenIsKeptWhenTheReloginFails(status: Int) async throws {
+        let backend = BackendFixture()
+        let relogins = CallCount()
+        await backend.manager.setRefreshFailedHandler {
+            relogins.increment()
+            return false
+        }
+        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(relogins.value == 1)
+        #expect(await backend.manager.isLoggedIn)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 1)
+    }
+
+    @Test("a token the backend turns down with a 422 gives way to the relogin's session")
+    func rejectedTokenIsReplacedByTheRelogin() async throws {
+        let backend = BackendFixture()
+        let manager = backend.manager
+        await manager.setRefreshFailedHandler {
+            (try? await manager.login(
+                studentId: "B11000000", password: "", moodleToken: "moodle-token",
+                moodlePrivateToken: nil, platform: "ios"
+            )) != nil
+        }
+        SettingsAPIStub.enqueue(.init(statusCode: 422, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        #expect(await manager.validAccessToken() == "A9")
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
     }
 
     @Test("a 401 signs in again and goes on with the new session")

@@ -235,13 +235,18 @@ actor AuthTokenManager {
         }
 
         await APIVersionGate.shared.note(statusCode: http.statusCode)
-        // Only a 401 means the token is dead; then a relogin is tried before clearing it. Any
-        // other status keeps it, such as a 429 from the per-IP limit, a 5xx or a 410 (API retired).
-        guard http.statusCode == 401 else { return nil }
+        // A 4xx means the backend turned this token down, so a relogin is tried. A 429 from the
+        // per-IP limit, a 410 (API retired) and a 5xx say nothing about the token and keep it.
+        guard (400...499).contains(http.statusCode), ![410, 429].contains(http.statusCode) else {
+            return nil
+        }
 
         if let relogin = onRefreshFailed, await relogin() {
             return accessToken
         }
+        // Only a 401 says the token is dead. Another 4xx keeps it, so a relogin that cannot run
+        // behind a locked screen does not sign the device out; the next refresh tries again.
+        guard http.statusCode == 401 else { return nil }
         // Not `logout()`: the account has not signed out, so a relogin that another caller has
         // in flight may still store its pair.
         clearTokens()
