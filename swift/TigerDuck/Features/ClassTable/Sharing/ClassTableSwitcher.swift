@@ -45,22 +45,22 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
         }
     }
 
-    func choose(in store: ImportedClassTableStore) {
+    func choose(in store: ImportedClassTableStore, requestImport: () -> Void) {
         switch self {
         case .importClassTable:
-            Self.requestImport()
+            requestImport()
         case .person(let id, _, _):
             store.show(id)
         case .user:
             store.show(nil)
         }
     }
+}
 
-    /// The import flow presents itself on `classTableImportRequested`, so the menus that offer it
-    /// need no reference to it.
-    static func requestImport() {
-        NotificationCenter.default.post(name: AppConstants.classTableImportRequested, object: nil)
-    }
+extension EnvironmentValues {
+    /// Opens the class table import over the window that asks. Its presenter sets this for the
+    /// views under it, so with several iPad windows only the one asking presents the import.
+    @Entry var requestClassTableImport: () -> Void = {}
 }
 
 /// The ⋯ menu of someone else's class table, which is read-only: export and import as on the
@@ -105,20 +105,22 @@ struct ClassTableSwitcherMenuItems: View {
     let store: ImportedClassTableStore
     let userName: String
 
+    @Environment(\.requestClassTableImport) private var requestImport
+
     var body: some View {
         ForEach(ClassTableSwitcherEntry.sections(in: store, userName: userName), id: \.first?.id) { section in
             Section {
                 ForEach(section) { entry in
                     if case .importClassTable = entry {
                         Button {
-                            entry.choose(in: store)
+                            entry.choose(in: store, requestImport: requestImport)
                         } label: {
                             Label(entry.title, systemImage: "plus")
                         }
                     } else {
                         Toggle(entry.title, isOn: Binding(
                             get: { entry.isShown },
-                            set: { _ in entry.choose(in: store) }
+                            set: { _ in entry.choose(in: store, requestImport: requestImport) }
                         ))
                     }
                 }

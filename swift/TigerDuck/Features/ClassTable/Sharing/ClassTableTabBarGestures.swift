@@ -29,6 +29,7 @@ struct ClassTableTabBarGestures: UIViewRepresentable {
         handler.store = store
         handler.userName = userName
         handler.showClassTable = showClassTable
+        handler.requestImport = context.environment.requestClassTableImport
         view.attach()
         if isShowingClassTable {
             DispatchQueue.main.async { [weak handler] in handler?.logIfTabMissing() }
@@ -83,6 +84,7 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
     var store: ImportedClassTableStore
     var userName = ""
     var showClassTable: () -> Void = {}
+    var requestImport: () -> Void = {}
 
     /// The view that draws the tabs, which the gestures are on.
     private(set) weak var bar: UIView?
@@ -234,7 +236,7 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
                 self.showClassTable()
                 // The class table's page may not exist until its tab has shown, and the import flow
                 // presents over it.
-                DispatchQueue.main.async { entry.choose(in: self.store) }
+                DispatchQueue.main.async { entry.choose(in: self.store, requestImport: self.requestImport) }
             }
         }
         configuration.preferredMenuElementOrder = .fixed

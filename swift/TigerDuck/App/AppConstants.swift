@@ -72,8 +72,6 @@ nonisolated enum AppConstants {
     /// Posted when the user picks another accent colour. The widget snapshot carries the accent,
     /// so its writer rewrites the snapshot on this.
     static let accentColorDidChange = Notification.Name("TigerDuck.accentColorDidChange")
-    /// Asks for the class table import flow, which presents itself on it.
-    static let classTableImportRequested = Notification.Name("TigerDuck.classTableImportRequested")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
     /// Wraps a site-relative Moodle path in the envelope the Moodle Mobile app

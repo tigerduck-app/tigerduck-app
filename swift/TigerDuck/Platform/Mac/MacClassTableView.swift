@@ -251,10 +251,7 @@ struct MacClassTableView: View {
             }
         }
         // The switcher's Import entry asks for the import this screen presents.
-        .onReceive(NotificationCenter.default.publisher(for: AppConstants.classTableImportRequested)) { _ in
-            guard importModel?.isLookingUp != true, importModel?.isReadingImage != true else { return }
-            showImportPicker = true
-        }
+        .environment(\.requestClassTableImport, requestImport)
         .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.image]) { result in
             let model = ClassTableImportModel.live(authService: appState.authService)
             importModel = model
@@ -563,12 +560,17 @@ struct MacClassTableView: View {
         .help(String(localized: "class_table_more_actions"))
     }
 
+    private func requestImport() {
+        guard importModel?.isLookingUp != true, importModel?.isReadingImage != true else { return }
+        showImportPicker = true
+    }
+
     private func perform(_ action: ClassTableOtherPersonAction) {
         switch action {
         case .exportScreenshot:
             break
         case .importClassTable:
-            ClassTableSwitcherEntry.requestImport()
+            requestImport()
         case .rename:
             personInAlert = shownPerson
             nicknameDraft = shownPerson?.nickname ?? ""

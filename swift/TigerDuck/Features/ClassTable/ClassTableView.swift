@@ -5,6 +5,7 @@ struct ClassTableView: View {
     var embedded = false
 
     @Environment(AppState.self) private var appState
+    @Environment(\.requestClassTableImport) private var requestImport
     @State private var viewModel = ClassTableViewModel(
         isClassDay: { AcademicCalendarStore.shared.isClassDay($0) }
     )
@@ -372,7 +373,7 @@ struct ClassTableView: View {
         }
         Section {
             Button {
-                ClassTableSwitcherEntry.requestImport()
+                requestImport()
             } label: {
                 Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
             }
@@ -400,7 +401,7 @@ struct ClassTableView: View {
     private func perform(_ action: ClassTableOtherPersonAction) {
         switch action {
         case .exportScreenshot: exportScreenshot()
-        case .importClassTable: ClassTableSwitcherEntry.requestImport()
+        case .importClassTable: requestImport()
         case .rename: viewModel.startRenamingPerson()
         case .deleteUser: viewModel.startDeletingPerson()
         }

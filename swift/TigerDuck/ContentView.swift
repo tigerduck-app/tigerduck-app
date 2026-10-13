@@ -20,15 +20,15 @@ struct ContentView: View {
 }
 
 #if os(iOS)
-/// The one presenter of the class table import, which every menu that offers it asks for with
-/// `ClassTableSwitcherEntry.requestImport()`: the ⋯ menus and the tab bar's switcher.
+/// The window's one presenter of the class table import, which every menu that offers it asks
+/// for through `requestClassTableImport`: the ⋯ menus and the tab bar's switcher.
 private struct ClassTableImportHost: ViewModifier {
     @Environment(AppState.self) private var appState
     @State private var importModel: ClassTableImportModel?
 
     func body(content: Content) -> some View {
         content
-            .onReceive(NotificationCenter.default.publisher(for: AppConstants.classTableImportRequested)) { _ in
+            .environment(\.requestClassTableImport) {
                 guard importModel == nil else { return }
                 importModel = .live(authService: appState.authService)
             }

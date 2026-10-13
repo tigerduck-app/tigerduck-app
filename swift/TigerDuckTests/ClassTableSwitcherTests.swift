@@ -83,16 +83,16 @@ struct ClassTableSwitcherTests {
     func choosingARow() throws {
         let people = try Self.people(Folder())
         let importRequests = Count()
-        let observer = NotificationCenter.default.addObserver(
-            forName: AppConstants.classTableImportRequested, object: nil, queue: nil
-        ) { _ in importRequests.value += 1 }
-        defer { NotificationCenter.default.removeObserver(observer) }
+        let requestImport = { importRequests.value += 1 }
 
-        ClassTableSwitcherEntry.person(id: people.hua.id, nickname: "Hua", isShown: false).choose(in: people.store)
+        ClassTableSwitcherEntry.person(id: people.hua.id, nickname: "Hua", isShown: false)
+            .choose(in: people.store, requestImport: requestImport)
         #expect(people.store.shownPersonID == people.hua.id)
-        ClassTableSwitcherEntry.user(name: "B11300000", isShown: false).choose(in: people.store)
+        ClassTableSwitcherEntry.user(name: "B11300000", isShown: false)
+            .choose(in: people.store, requestImport: requestImport)
         #expect(people.store.shownPersonID == nil)
-        ClassTableSwitcherEntry.importClassTable.choose(in: people.store)
+        #expect(importRequests.value == 0)
+        ClassTableSwitcherEntry.importClassTable.choose(in: people.store, requestImport: requestImport)
         #expect(importRequests.value == 1)
         #expect(people.store.shownPersonID == nil)
     }
@@ -151,11 +151,13 @@ struct ClassTableSwitcherTests {
 
     /// A full-screen window, so the bar lays out as the app's does: at the bottom on iPhone, and
     /// at the top, apart from the controller's own tab bar, on iPad.
-    private func host(_ store: ImportedClassTableStore) async throws -> Hosted {
+    private func host(_ store: ImportedClassTableStore, requestImport: @escaping () -> Void = {}) async throws -> Hosted {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        window.rootViewController = UIHostingController(rootView: Tabs(store: store))
+        window.rootViewController = UIHostingController(
+            rootView: Tabs(store: store).environment(\.requestClassTableImport, requestImport)
+        )
         window.makeKeyAndVisible()
         try await waitUntil { Self.finder(in: window)?.handler.classTableTabFrame() != nil }
         let handler = try #require(Self.finder(in: window)?.handler)
@@ -192,6 +194,22 @@ struct ClassTableSwitcherTests {
             #expect(barFrame.midY > hosted.window.bounds.midY)
         }
         #expect(hosted.bar.interactions.contains { $0 is UIContextMenuInteraction })
+    }
+
+    @Test("the tab bar's Import asks the presenter of its own window, so another window opens nothing")
+    func importStaysInItsWindow() async throws {
+        let people = try Self.people(Folder())
+        let here = Count()
+        let elsewhere = Count()
+        let hosted = try await host(people.store) { here.value += 1 }
+        defer { hosted.window.isHidden = true }
+        let other = try await host(people.store) { elsewhere.value += 1 }
+        defer { other.window.isHidden = true }
+
+        ClassTableSwitcherEntry.importClassTable.choose(in: people.store, requestImport: hosted.handler.requestImport)
+
+        #expect(here.value == 1)
+        #expect(elsewhere.value == 0)
     }
 
     @Test("the long press opens the switcher on the class table tab and on no other")
