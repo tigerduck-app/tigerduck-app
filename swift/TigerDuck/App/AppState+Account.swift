@@ -106,6 +106,9 @@ extension AppState {
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.
         didSkipMacLogin = false
+        // The downloaded files go with the cache below; a download still running would only
+        // be thrown away once it ends.
+        MoodleFileDownloads.shared.cancelAll()
         DataCache.shared.clearUserScopedData()
         BulletinsViewModel.forgetListSession()
         // Unresolved conflicts come from the departing account's data; resolving one would write
