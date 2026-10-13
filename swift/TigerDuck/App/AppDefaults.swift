@@ -143,8 +143,9 @@ nonisolated extension Defaults.Keys {
     /// When Moodle last answered a whole assignment round for the signed-in account.
     static let schoolDataSyncedAt = Key<Date?>("schoolDataSyncedAt")
     /// The last `courses_reset_at` a full sync read, in server time, or `distantPast` once one has
-    /// read none, for the signed-in account; see `AppState.coursesReset(server:lastSeen:)`. Nil
-    /// until the account's first full sync here, which `AppState.hasSyncedAccount` relies on.
+    /// read none, for the signed-in account; see `AppState.coursesReset(server:lastSeen:)`. Only a
+    /// full sync sets it: any other value can make the next sync apply an old reset, which drops the
+    /// hand-added and hidden courses.
     static let lastSeenCoursesResetAt = Key<Date?>("lastSeenCoursesResetAt")
     /// Optional on purpose: `nil` means "never picked a semester", which
     /// `SemesterCatalog.selectedSemester(storedPick:)` resolves to the newest
@@ -217,6 +218,10 @@ nonisolated extension Defaults.Keys {
     /// Turning sync off keeps it, though that drops queued marks: turning it back on marks the
     /// category for the re-enable check, and a pull leaves marks alone until the user picks a side.
     static let assignmentMarksSyncedOnce = Key<Bool>("assignmentMarksSyncedOnce", default: false)
+    /// This device holds the signed-in account's data: a full sync has applied it here, or the
+    /// account was signed in when the device updated from a version that kept no such record.
+    /// Cleared at sign-out. See `AppState.hasSyncedAccount`.
+    static let accountSyncedOnce = Key<Bool>("accountSyncedOnce", default: false)
 
     // MARK: Academic calendar
     /// Decoded `AcademicCalendar` from the last successful fetch. Cached so

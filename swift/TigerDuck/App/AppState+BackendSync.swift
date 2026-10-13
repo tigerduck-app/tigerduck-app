@@ -221,7 +221,7 @@ extension AppState {
                 changed = true
                 AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: coursesResetAt), privacy: .public) > lastSeen=\(String(describing: lastSeenReset), privacy: .public)), wiped local state")
             }
-            Defaults[.lastSeenCoursesResetAt] = reset.remember
+            Self.recordFullSync(coursesReset: reset.remember)
 
             if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
@@ -539,6 +539,13 @@ extension AppState {
         guard let lastSeen else { return (false, server ?? .distantPast) }
         guard let server else { return (false, lastSeen) }
         return (server > lastSeen, server)
+    }
+
+    /// What every full sync keeps, whichever switches are on: the course reset it read, for the
+    /// next one to compare, and that this device now holds the account's data (`hasSyncedAccount`).
+    static func recordFullSync(coursesReset: Date) {
+        Defaults[.lastSeenCoursesResetAt] = coursesReset
+        Defaults[.accountSyncedOnce] = true
     }
 
     /// Whether a full sync begun under login `generation` may still write. A sign-out moves the

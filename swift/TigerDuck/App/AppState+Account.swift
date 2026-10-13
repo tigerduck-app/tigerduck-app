@@ -152,6 +152,7 @@ extension AppState {
         Defaults[.pendingConflictCategories] = []
         Defaults[.assignmentMarksSyncedOnce] = false
         Defaults[.lastSeenCoursesResetAt] = nil
+        Defaults[.accountSyncedOnce] = false
     }
 
     func notifyLibraryStateChanged() {

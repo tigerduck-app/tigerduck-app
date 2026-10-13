@@ -84,11 +84,11 @@ extension AppState {
         AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
     }
 
-    /// Whether a full sync has applied the signed-in account's data on this device: each one stamps
-    /// `lastSeenCoursesResetAt`, and sign-out clears it (`forgetSyncProgress`).
+    /// Whether this device holds the signed-in account's data: each full sync records it
+    /// (`recordFullSync`), and sign-out clears it (`forgetSyncProgress`).
     /// `assignmentMarksSyncedOnce` cannot tell, as it stays false while the Assignments switch is off.
     static var hasSyncedAccount: Bool {
-        Defaults[.lastSeenCoursesResetAt] != nil
+        Defaults[.accountSyncedOnce]
     }
 
     func checkPendingConflicts(retriesLeft: Int = 2) {
