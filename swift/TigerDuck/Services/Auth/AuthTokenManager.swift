@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 /// Manages v3 JWT access and refresh tokens.
 ///
@@ -15,12 +18,19 @@ actor AuthTokenManager {
     /// server rotates the refresh token on use, that second request would
     /// send an already-invalidated token and fail.
     private var refreshTask: Task<String?, Never>?
+    /// Moved by ``logout()``: a login or refresh reply that comes back after a sign-out belongs
+    /// to the account that left, so it stores nothing.
+    private var signInGeneration = 0
 
     /// Re-evaluated on every request, like ``PushAPIClient``, so an endpoint
     /// override applied at runtime moves login/refresh together with the
     /// data calls instead of leaving auth pinned to the launch-time host.
     private let baseURLProvider: @Sendable () -> URL
     private let deviceUUID: String
+    private let session: URLSession
+    private let tokens: TokenStore
+    /// Starts what keeps the app running until a refresh is done, and returns what ends it.
+    private let beginBackgroundTask: @Sendable () async -> @Sendable () async -> Void
     private var onRefreshFailed: (() async -> Bool)?
 
     func setRefreshFailedHandler(_ handler: @escaping () async -> Bool) {
@@ -31,15 +41,38 @@ actor AuthTokenManager {
     static let refreshTokenKey = "v3_refresh_token"
     static let expiresAtKey = "v3_token_expires_at"
 
+    /// Well under the backend's 60 s reuse grace, so the retry after a timeout still falls in it.
+    static let refreshTimeout: TimeInterval = 20
+
+    /// Where the tokens persist. Tests pass a stand-in so they leave the Keychain alone.
+    nonisolated struct TokenStore: Sendable {
+        let load: @Sendable (_ key: String) -> String?
+        let save: @Sendable (_ key: String, _ value: String) -> Void
+        let delete: @Sendable (_ key: String) -> Void
+
+        static let keychain = TokenStore(
+            load: { KeychainManager.loadString(key: $0) },
+            save: { KeychainManager.saveString(key: $0, value: $1) },
+            delete: { KeychainManager.delete(key: $0) }
+        )
+    }
+
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
-        deviceUUID: String
+        deviceUUID: String,
+        session: URLSession = .shared,
+        tokens: TokenStore = .keychain,
+        beginBackgroundTask: @escaping @Sendable () async -> @Sendable () async -> Void
+            = AuthTokenManager.beginRefreshBackgroundTask
     ) {
         self.baseURLProvider = baseURLProvider
         self.deviceUUID = deviceUUID
-        self.accessToken = KeychainManager.loadString(key: Self.accessTokenKey)
-        self.refreshToken = KeychainManager.loadString(key: Self.refreshTokenKey)
-        if let raw = KeychainManager.loadString(key: Self.expiresAtKey),
+        self.session = session
+        self.tokens = tokens
+        self.beginBackgroundTask = beginBackgroundTask
+        self.accessToken = tokens.load(Self.accessTokenKey)
+        self.refreshToken = tokens.load(Self.refreshTokenKey)
+        if let raw = tokens.load(Self.expiresAtKey),
            let interval = TimeInterval(raw) {
             self.expiresAt = Date(timeIntervalSince1970: interval)
         }
@@ -132,7 +165,8 @@ actor AuthTokenManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let generation = signInGeneration
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             if let http = response as? HTTPURLResponse {
                 await APIVersionGate.shared.note(statusCode: http.statusCode)
@@ -140,6 +174,7 @@ actor AuthTokenManager {
             throw AuthError.loginFailed
         }
         let result = try JSONDecoder().decode(LoginResponse.self, from: data)
+        guard signInGeneration == generation else { throw CancellationError() }
         store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
         return LoginResult(
             accessToken: result.access_token,
@@ -151,71 +186,132 @@ actor AuthTokenManager {
     }
 
     func logout() {
+        signInGeneration &+= 1
+        clearTokens()
+    }
+
+    private func clearTokens() {
         accessToken = nil
         refreshToken = nil
         expiresAt = .distantPast
-        KeychainManager.delete(key: Self.accessTokenKey)
-        KeychainManager.delete(key: Self.refreshTokenKey)
-        KeychainManager.delete(key: Self.expiresAtKey)
+        tokens.delete(Self.accessTokenKey)
+        tokens.delete(Self.refreshTokenKey)
+        tokens.delete(Self.expiresAtKey)
     }
 
     private func refresh() async -> String? {
         guard let refreshToken else { return nil }
-        struct RefreshRequest: Encodable { let refresh_token: String }
+        let generation = signInGeneration
+        // Suspended before the reply is stored, the app loses the pair the server rotated to, and
+        // the old token it sends later revokes every session of the device.
+        let endBackgroundTask = await beginBackgroundTask()
+        let token = await refresh(sending: refreshToken, generation: generation)
+        await endBackgroundTask()
+        return token
+    }
+
+    private func refresh(sending refreshToken: String, generation: Int) async -> String? {
         struct RefreshResponse: Decodable {
             let access_token: String
             let refresh_token: String
             let expires_in: Int
         }
-        var request = URLRequest(url: baseURLProvider().appendingPathComponent("auth/refresh"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))
 
-        // Transient failures (no network, 5xx, a malformed 200 body) return nil and keep the
-        // still-valid refresh token for a later retry. Only an auth rejection (4xx) means the
-        // token is dead, and then a full relogin is tried before clearing it.
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse
-        else {
-            return nil
+        // A request with no reply may still have rotated the token. For 60 s the backend answers
+        // the old token once more with a fresh pair; a second reuse is taken for theft.
+        var reply = await postRefresh(refreshToken)
+        if reply == nil, signInGeneration == generation {
+            reply = await postRefresh(refreshToken)
         }
+        guard let (data, http) = reply else { return nil }
 
         if http.statusCode == 200 {
-            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else {
+            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data),
+                  signInGeneration == generation else {
                 return nil
             }
             store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
             return result.access_token
         }
 
-        // A 410 here is not "the refresh token went bad" — it is the whole
-        // API version being gone, so do not fall through to the relogin /
-        // logout path below and sign the user out over it.
         await APIVersionGate.shared.note(statusCode: http.statusCode)
-        if http.statusCode == 410 { return nil }
-
-        guard (400...499).contains(http.statusCode) else {
+        // A 4xx means the backend turned this token down, so a relogin is tried. A 429 from the
+        // per-IP limit, a 410 (API retired) and a 5xx say nothing about the token and keep it.
+        guard (400...499).contains(http.statusCode), ![410, 429].contains(http.statusCode) else {
             return nil
         }
 
         if let relogin = onRefreshFailed, await relogin() {
             return accessToken
         }
-        logout()
+        // Only a 401 says the token is dead. Another 4xx keeps it, so a relogin that cannot run
+        // behind a locked screen does not sign the device out; the next refresh tries again.
+        guard http.statusCode == 401 else { return nil }
+        // Not `logout()`: the account has not signed out, so a relogin that another caller has
+        // in flight may still store its pair.
+        clearTokens()
         return nil
+    }
+
+    /// Sends one refresh request. Nil when no HTTP reply came back, as on a timeout.
+    private func postRefresh(_ refreshToken: String) async -> (Data, HTTPURLResponse)? {
+        struct RefreshRequest: Encodable { let refresh_token: String }
+        var request = URLRequest(
+            url: baseURLProvider().appendingPathComponent("auth/refresh"),
+            timeoutInterval: Self.refreshTimeout
+        )
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))
+
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse
+        else {
+            return nil
+        }
+        return (data, http)
     }
 
     private func store(access: String, refresh: String, expiresIn: Int) {
         self.accessToken = access
         self.refreshToken = refresh
         self.expiresAt = Date.now.addingTimeInterval(TimeInterval(expiresIn))
-        KeychainManager.saveString(key: Self.accessTokenKey, value: access)
-        KeychainManager.saveString(key: Self.refreshTokenKey, value: refresh)
-        KeychainManager.saveString(key: Self.expiresAtKey, value: String(expiresAt.timeIntervalSince1970))
+        tokens.save(Self.accessTokenKey, access)
+        tokens.save(Self.refreshTokenKey, refresh)
+        tokens.save(Self.expiresAtKey, String(expiresAt.timeIntervalSince1970))
+    }
+
+    /// The default for `beginBackgroundTask`. A Mac app is not suspended in the background, so
+    /// only iOS needs one.
+    nonisolated static func beginRefreshBackgroundTask() async -> @Sendable () async -> Void {
+        #if os(iOS)
+        let task = await RefreshBackgroundTask()
+        return { await task.end() }
+        #else
+        return {}
+        #endif
     }
 
     enum AuthError: Error {
         case loginFailed
     }
 }
+
+#if os(iOS)
+/// A UIKit background task, which the refresh and its expiry can both end.
+private final class RefreshBackgroundTask {
+    private var id = UIBackgroundTaskIdentifier.invalid
+
+    init() {
+        id = UIApplication.shared.beginBackgroundTask(withName: "Backend token refresh") { [weak self] in
+            self?.end()
+        }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
+}
+#endif

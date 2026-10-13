@@ -87,6 +87,25 @@ struct KeepLocalCoursesTests {
         #expect(server.fullResets == 0)
         #expect(server.rows == ["client:1151:CS1", "client:1142:CS9"])
     }
+
+    @Test("Use Local sends nothing more once the sign-in it was answered under is gone")
+    func stopsAfterASignOut() async {
+        let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
+        var checks = 0
+
+        await #expect(throws: CancellationError.self) {
+            try await AppState.keepLocalCourses(
+                [("1151", Self.roster("CS1")), ("1142", Self.roster("CS9"))], hiding: [], on: server,
+                // Signed out once the first request has gone.
+                isCurrent: {
+                    checks += 1
+                    return checks == 1
+                }
+            )
+        }
+
+        #expect(server.rows == ["client:1142:CS9"])
+    }
 }
 
 /// One device's view of the backend: rows and tombstones by course key, every tombstone written
