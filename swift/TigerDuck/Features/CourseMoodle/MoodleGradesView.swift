@@ -144,7 +144,6 @@ struct MoodleGradeRow: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The room the name keeps beside the grade.
     @ScaledMetric(relativeTo: .body) private var nameMinWidth: CGFloat = 120
 
     /// The line between rows and the feedback start under the name, not under the icon.

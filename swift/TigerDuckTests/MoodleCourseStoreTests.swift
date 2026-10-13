@@ -1,7 +1,11 @@
 import Foundation
 import os
+import SwiftUI
 import Testing
 @testable import TigerDuck
+#if os(iOS)
+import UIKit
+#endif
 
 /// `MoodleCourseStore` over a stand-in `MoodleCourseAPI` and a `DataCache` in a folder of its
 /// own: the cache comes first, writes stop at a sign-out, the site's functions gate each call,
@@ -701,4 +705,23 @@ struct MoodleCourseStoreTests {
         #expect(await sleeper.requestedDurations == [.seconds(240), .seconds(300)])
         timer.stop()
     }
+
+    #if os(iOS)
+    @Test("the course detail's section fetches the grades as it shows, so a course with grades gets its row unopened")
+    func sectionFetchesGrades() async throws {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        let store = Self.store(folder, site: site)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 200))
+        window.rootViewController = UIHostingController(
+            rootView: Color.clear.moodleSectionRefresh(store).environment(\.scenePhase, .active)
+        )
+        window.isHidden = false
+        defer { window.isHidden = true }
+
+        try await waitUntil { site.gradeCalls == [Self.courseId] }
+        try await waitUntil { store.sectionRows.contains { $0.kind == .grades } }
+    }
+    #endif
 }
