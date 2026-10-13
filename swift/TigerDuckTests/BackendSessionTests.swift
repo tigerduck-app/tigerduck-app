@@ -814,7 +814,7 @@ private func withPasswordLatchCleared<T>(_ body: () async throws -> T) async ret
 
 /// `SecureStore`'s `.whenUnlockedThisDeviceOnly` valet in memory, holding the NTUST account and
 /// Moodle token a backend sign-in sends.
-private nonisolated final class MemoryKeychain: KeychainStore, @unchecked Sendable {
+nonisolated final class MemoryKeychain: KeychainStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: Data] = [:]
 
