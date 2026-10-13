@@ -12,7 +12,8 @@ import UIKit
 /// ``TimetableGridView/showsAssignmentBadges``.
 struct ClassTableExportView: View {
     let viewModel: ClassTableViewModel
-    let studentId: String?
+    /// The user's student ID, or the nickname of someone else's class table.
+    let owner: String?
     /// The page's Differentiate Without Color, handed to the grid directly:
     /// the renderer's environment cannot carry it.
     let differentiateWithoutColor: Bool
@@ -28,8 +29,8 @@ struct ClassTableExportView: View {
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: TigerDuckTheme.Spacing.sm)
-                if let studentId, !studentId.isEmpty {
-                    Text(studentId)
+                if let owner, !owner.isEmpty {
+                    Text(owner)
                         .font(TigerDuckTheme.Typography.body)
                         .foregroundStyle(Color.textSecondary)
                 }
@@ -67,10 +68,10 @@ enum ClassTableExporter {
         legibilityWeight: LegibilityWeight?,
         differentiateWithoutColor: Bool
     ) async -> URL? {
-        let studentId = appState.authService.storedStudentId
+        let owner = viewModel.shownPerson?.nickname ?? appState.authService.storedStudentId
         let content = ClassTableExportView(
             viewModel: viewModel,
-            studentId: studentId,
+            owner: owner,
             differentiateWithoutColor: differentiateWithoutColor
         )
             .environment(appState)
@@ -94,7 +95,8 @@ enum ClassTableExporter {
         let name = fileName(
             title: String(localized: "feature_class_table"),
             semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
-            studentId: studentId
+            // A nickname has no length limit, and a file name past 255 bytes cannot be written.
+            studentId: owner.map { String($0.prefix(40)) }
         )
         // Drawing needs the main actor; encoding a 3x PNG and writing it does
         // not, and is the slower half.

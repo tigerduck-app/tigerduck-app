@@ -22,8 +22,8 @@ struct MacClassTableView: View {
     @State var selectedSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
     )
-    /// Set only while `warmCachesIfNeeded` moves the selection to the newest
-    /// term, so that assignment doesn't get recorded as a user pick.
+    /// Set while the screen moves the selection itself, to the newest term or to the term of the
+    /// class table shown, so that assignment doesn't get recorded as a user pick.
     @State private var isFollowingNewestSemester = false
     @State var selectedSlot: SelectedSlot?
     /// The Moodle screens pushed in the course detail overlay, which Escape leaves first.
@@ -43,6 +43,14 @@ struct MacClassTableView: View {
     @State var courseToRename: SDCourse?
     @State var renameText: String = ""
     @State var showRenameAlert: Bool = false
+
+    @State private var isRenamingPerson = false
+    @State private var nicknameDraft = ""
+    @State private var isDeletingPerson = false
+    @State private var showsSaveFailed = false
+    /// The person the open rename or delete alert names, who may no longer show by the time the
+    /// user answers it.
+    @State private var personInAlert: ImportedPerson?
 
     /// Carries the weekday alongside the tapped course so the detail sheet
     /// can render the concrete slot's classroom + time range. Without the
@@ -70,8 +78,13 @@ struct MacClassTableView: View {
     /// `CourseTombstone` keys of the courses whose assignments are all ignored, read once per
     /// `cacheRevision` like `courses`, since every cell asks.
     var ignoredAssignmentCourses: Set<String> {
-        ignoredCoursesMemo.value(for: cacheRevision) { DataCache.shared.loadIgnoredAssignmentCourses() }
+        guard shownPerson == nil else { return [] }
+        return ignoredCoursesMemo.value(for: cacheRevision) { DataCache.shared.loadIgnoredAssignmentCourses() }
     }
+
+    /// Whose class table this is, nil for the user's own. Another person's is read-only, and
+    /// nothing of the user's, such as assignments or Moodle, is shown on it.
+    var shownPerson: ImportedPerson? { ImportedClassTableStore.shared.shownPerson }
     @State private var hasWarmedCaches = false
     @State private var isLoadingSemester = false
     @State var tripleConflictError: TripleConflictError?
@@ -108,6 +121,7 @@ struct MacClassTableView: View {
     /// appear without rebuilding the view. `selectedSemester` is folded in so
     /// a persisted selection that aged out of the window still renders its label.
     private var availableSemesters: [String] {
+        if let shownPerson { return shownPerson.semesters }
         let options = SemesterCatalog.availableSemesters()
         return options.contains(selectedSemester) ? options : options + [selectedSemester]
     }
@@ -116,6 +130,9 @@ struct MacClassTableView: View {
     /// term and `cacheRevision`.
     var courses: [SDCourse] {
         let semester = selectedSemester
+        // Someone else's courses stay as shared: the user's tombstones and custom names are keyed
+        // by course number alone and would hide or rename theirs.
+        if let shownPerson { return shownPerson.courses(in: semester) }
         return coursesMemo.value(for: CoursesKey(semester: semester, revision: cacheRevision)) {
             // Use the canonical merge so the deletedCourseNos tombstones and customNames overlay
             // apply. Not `currentCourses()`: it is pinned to the live `CourseSelectionService`
@@ -165,20 +182,26 @@ struct MacClassTableView: View {
                 }
                 .pickerStyle(.menu)
             }
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    showAddCourse = true
-                } label: {
-                    // A bare `Label` in a macOS toolbar draws the glyph on a higher baseline than
-                    // the title. The HStack matches the semester picker's row geometry, and
-                    // `.fixedSize` stops AppKit squeezing it to an icon when the picker widens.
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                        Text(String(localized: "add_course_title"))
-                    }
-                    .fixedSize()
+            if shownPerson != nil {
+                ToolbarItem(placement: .automatic) {
+                    otherPersonActions
                 }
-                .help(String(localized: "add_course_title"))
+            } else {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showAddCourse = true
+                    } label: {
+                        // A bare `Label` in a macOS toolbar draws the glyph on a higher baseline than
+                        // the title. The HStack matches the semester picker's row geometry, and
+                        // `.fixedSize` stops AppKit squeezing it to an icon when the picker widens.
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                            Text(String(localized: "add_course_title"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "add_course_title"))
+                }
             }
             if ImportedClassTableStore.shared.shownPerson == nil {
                 ToolbarItem(placement: .automatic) {
@@ -227,6 +250,8 @@ struct MacClassTableView: View {
                 }
             }
         }
+        // The switcher's Import entry asks for the import this screen presents.
+        .environment(\.requestClassTableImport, requestImport)
         .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.image]) { result in
             let model = ClassTableImportModel.live(authService: appState.authService)
             importModel = model
@@ -314,6 +339,30 @@ struct MacClassTableView: View {
                 Text(String(format: String(localized: "class_table_rename_default_label"), course.courseName))
             }
         }
+        .alert(String(localized: "class_table_rename_title"), isPresented: $isRenamingPerson) {
+            TextField(String(localized: "class_table_nickname"), text: $nicknameDraft)
+            Button(String(localized: "action_save")) {
+                if let personInAlert, ImportedClassTableStore.shared.rename(personInAlert.id, to: nicknameDraft) == .failed {
+                    showsSaveFailed = true
+                }
+            }
+            .disabled(nicknameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        }
+        .alert(
+            String(format: String(localized: "class_table_delete_user_confirm"), personInAlert?.nickname ?? ""),
+            isPresented: $isDeletingPerson
+        ) {
+            Button(String(localized: "class_table_delete"), role: .destructive) {
+                if let personInAlert, ImportedClassTableStore.shared.delete(personInAlert.id) == .failed {
+                    showsSaveFailed = true
+                }
+            }
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        }
+        .alert(String(localized: "bulletin_save_failed_title"), isPresented: $showsSaveFailed) {
+            Button(String(localized: "action_confirm"), role: .cancel) {}
+        }
         .task {
             await warmCachesIfNeeded()
             await ensureCurrentSemesterFetched()
@@ -321,10 +370,27 @@ struct MacClassTableView: View {
         .onChange(of: selectedSemester) { _, newValue in
             if isFollowingNewestSemester {
                 isFollowingNewestSemester = false
-            } else {
+            } else if shownPerson == nil {
                 Defaults[.classTableSelectedSemester] = newValue
             }
             Task { await ensureCurrentSemesterFetched() }
+        }
+        // Someone else's class table keeps the term on screen when they shared it and otherwise
+        // opens on their latest term; the user's own opens on its own term, as at launch.
+        .onChange(of: ImportedClassTableStore.shared.shownTable, initial: true) { _, _ in
+            if shownPerson != nil {
+                // An import finishing in the background can switch while one of the user's own
+                // edits is open, and it must not save into someone else's.
+                showAddCourse = false
+                showRenameAlert = false
+                courseToRename = nil
+                courseToRecolor = nil
+            }
+            let semester = shownPerson?.semester(keeping: selectedSemester)
+                ?? SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
+            guard semester != selectedSemester else { return }
+            isFollowingNewestSemester = true
+            selectedSemester = semester
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             cacheRevision &+= 1
@@ -353,10 +419,13 @@ struct MacClassTableView: View {
 
             CourseDetailSheet(
                 course: slot.course,
-                assignments: DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo),
+                assignments: shownPerson == nil
+                    ? DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo)
+                    : [],
                 timeRange: slot.course.timeRange(for: slot.weekday),
                 weekday: slot.weekday,
-                moodlePath: $detailMoodlePath
+                moodlePath: $detailMoodlePath,
+                showsMoodle: shownPerson == nil
             )
             // Max bounds, not a fixed size: a small window shrinks the overlay to fit, and a
             // large one gives the inner ScrollView more room before it scrolls.
@@ -406,7 +475,8 @@ struct MacClassTableView: View {
     /// The catalogue can land after the view is built on a cold launch, so
     /// re-apply the "never picked → newest term" rule once it does.
     private func followNewestSemesterIfUnpicked() {
-        guard Defaults[.classTableSelectedSemester] == nil,
+        guard shownPerson == nil,
+              Defaults[.classTableSelectedSemester] == nil,
               let newest = SemesterCatalog.availableSemesters().first,
               newest != selectedSemester else { return }
         isFollowingNewestSemester = true
@@ -420,7 +490,7 @@ struct MacClassTableView: View {
     /// fetched").
     private func ensureCurrentSemesterFetched() async {
         let target = selectedSemester
-        guard DataCache.shared.loadCourses(semester: target).isEmpty else { return }
+        guard shownPerson == nil, DataCache.shared.loadCourses(semester: target).isEmpty else { return }
         await MainActor.run { isLoadingSemester = true }
         _ = await AppServiceBridge.fetchCourses(
             authService: appState.authService,
@@ -451,6 +521,71 @@ struct MacClassTableView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            switcher
+        }
+    }
+
+    /// Whose class table this is, a menu of the class tables to switch to once any has been
+    /// imported. The Mac has no tab bar to long-press, so this is its only switcher.
+    @ViewBuilder
+    private var switcher: some View {
+        let store = ImportedClassTableStore.shared
+        if store.hasImportedClassTables {
+            let userName = ClassTableSwitcherEntry.userName(studentId: appState.authService.storedStudentId)
+            let name = shownPerson?.nickname ?? userName
+            Menu {
+                ClassTableSwitcherMenuItems(store: store, userName: userName)
+            } label: {
+                Text(name)
+            }
+            .menuOrder(.fixed)
+            .fixedSize()
+            .accessibilityLabel(Text("a11y_class_table_switch"))
+            .accessibilityValue(Text(name))
+        }
+    }
+
+    /// The Mac exports no screenshot, so it offers the rest of what someone else's class table does.
+    private var otherPersonActions: some View {
+        let sections = ClassTableOtherPersonAction.sections
+            .map { $0.filter { $0 != .exportScreenshot } }
+            .filter { !$0.isEmpty }
+        return Menu {
+            ForEach(sections, id: \.self) { section in
+                Section {
+                    ForEach(section, id: \.self) { action in
+                        Button(role: action.role) {
+                            perform(action)
+                        } label: {
+                            Label(action.title, systemImage: action.systemImage)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label(String(localized: "class_table_more_actions"), systemImage: "ellipsis.circle")
+        }
+        .help(String(localized: "class_table_more_actions"))
+    }
+
+    private func requestImport() {
+        guard importModel?.isLookingUp != true, importModel?.isReadingImage != true else { return }
+        showImportPicker = true
+    }
+
+    private func perform(_ action: ClassTableOtherPersonAction) {
+        switch action {
+        case .exportScreenshot:
+            break
+        case .importClassTable:
+            requestImport()
+        case .rename:
+            personInAlert = shownPerson
+            nicknameDraft = shownPerson?.nickname ?? ""
+            isRenamingPerson = true
+        case .deleteUser:
+            personInAlert = shownPerson
+            isDeletingPerson = true
         }
     }
 

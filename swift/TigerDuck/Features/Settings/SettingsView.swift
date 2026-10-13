@@ -20,6 +20,7 @@ struct SettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingTabEditor = false
     @State private var showLibraryLogin = false
+    @State private var confirmsSignOut = false
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
     #if os(iOS)
@@ -377,6 +378,14 @@ struct SettingsView: View {
         .sheet(isPresented: $showingTabEditor) {
             TabEditorView()
         }
+        .alert(String(localized: "action_sign_out"), isPresented: $confirmsSignOut) {
+            Button(String(localized: "action_sign_out"), role: .destructive) {
+                appState.logoutNTUST()
+            }
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "settings_sign_out_imported_tables"))
+        }
         .sheet(isPresented: $showOfficialWebsite) {
             InAppBrowserView(url: Self.websiteURL)
                 .ignoresSafeArea()
@@ -566,7 +575,12 @@ struct SettingsView: View {
             isLoggedIn: appState.authService.hasStoredCredentials,
             detail: appState.authService.storedStudentId,
             onLogin: { appState.presentNTUSTLogin() },
-            onLogout: { appState.logoutNTUST() }
+            onLogout: {
+                ImportedClassTableStore.shared.requestSignOut(
+                    confirm: { confirmsSignOut = true },
+                    signOut: { appState.logoutNTUST() }
+                )
+            }
         )
     }
 
