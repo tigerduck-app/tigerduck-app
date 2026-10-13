@@ -332,6 +332,53 @@ struct PushRegistrationServiceTests {
         }
     }
 
+    @Test("turning TigerSync on after a registration gave up registers the device again")
+    func turningSyncOnRegistersAgainAfterAFailedRegistration() async throws {
+        try await Self.withSyncPreferences {
+            Defaults[.syncPreferencesPushPending] = false
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let retries = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+            let service = Self.makeService(baseURL: baseURL, retries: retries)
+            try await Self.registerUntilGivenUp(service, baseURL: baseURL, retries: retries)
+
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: true)),
+                for: Self.preferencesURL(baseURL)
+            )
+            Self.expectAttempt(baseURL, registrations: 1)
+            await service.updateCloudSyncEnabled(true)
+            await service.awaitPendingRegistration()
+
+            let registrations = try Self.sentRegistrations(baseURL)
+            #expect(registrations.count == 5)
+            let snapshot = await service.snapshot()
+            #expect(snapshot.lastError == nil)
+            #expect(snapshot.lastRegisteredAt != nil)
+        }
+    }
+
+    @Test("turning TigerSync on after a registration went through sends no second one")
+    func turningSyncOnAfterARegistrationSendsNoSecond() async throws {
+        try await Self.withSyncPreferences {
+            Defaults[.syncPreferencesPushPending] = false
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            Self.expectAttempt(baseURL, registrations: 1)
+            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+            await service.awaitPendingRegistration()
+
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: true)),
+                for: Self.preferencesURL(baseURL)
+            )
+            await service.updateCloudSyncEnabled(true)
+            await service.awaitPendingRegistration()
+
+            let registrations = try Self.sentRegistrations(baseURL)
+            #expect(registrations.count == 1)
+        }
+    }
+
     @Test("a registration already running when the session comes back is not started a second time")
     func runningRegistrationIsNotStartedAgain() async throws {
         try await Self.withSyncPreferences {

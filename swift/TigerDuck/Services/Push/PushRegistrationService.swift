@@ -364,6 +364,11 @@ actor PushRegistrationService {
         } catch {
             logger.error("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH failed: \(error.localizedDescription, privacy: .public)")
         }
+        #if os(iOS)
+        // Turning TigerSync on is how a user restarts sync. `PushCoordinator.enable()` only asks
+        // iOS for the APNs token again, and an unchanged token registers nothing; the Mac's registers.
+        if enabled, lastError != nil { await registerAgain() }
+        #endif
     }
 
     /// PATCHes the six "Synced content" switches as they stand when the
@@ -505,9 +510,9 @@ actor PushRegistrationService {
 
     /// Registers again with the give-up counter reset, so a registration that
     /// exhausted its retries gets a fresh chance: after a sign-in or relogin,
-    /// once a v3 JWT is available. A `performRegister` already running is not
-    /// doubled; if it fails, it starts the next one at once instead of backing
-    /// off.
+    /// once a v3 JWT is available, and when TigerSync turns on after a failed
+    /// registration. A `performRegister` already running is not doubled; if it
+    /// fails, it starts the next one at once instead of backing off.
     func registerAgain() async {
         deviceRegisterAttempts = 0
         guard registrationsInFlight == 0 else {
