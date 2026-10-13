@@ -196,22 +196,19 @@ struct CloudSyncSettingsView: View {
 /// screen where a sync category can be switched back on: this screen's own
 /// "Sync course information" toggle, and `SyncContentSettingsView`'s
 /// per-category toggles. Not used by the Mac equivalent, which keeps its
-/// own copy in `MacAccountSettingsView`.
+/// own copy in `MacTigerSyncSettingsView`.
 struct ReenableConflictAlert: ViewModifier {
     @Environment(AppState.self) private var appState
 
     func body(content: Content) -> some View {
         content.alert(
             String(localized: "sync_conflict_title"),
-            isPresented: Binding(
-                get: { appState.reenableConflict != nil },
-                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
-            )
+            isPresented: AppState.reenableAlertIsPresented(Bindable(appState).reenableConflict)
         ) {
             Button(String(localized: "sync_conflict_use_server")) {
                 appState.resolveReenableConflict(keepLocal: false)
             }
-            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
+            Button(String(localized: "sync_conflict_use_local")) {
                 appState.resolveReenableConflict(keepLocal: true)
             }
         } message: {

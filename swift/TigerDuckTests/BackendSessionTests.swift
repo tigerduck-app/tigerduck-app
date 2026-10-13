@@ -1,10 +1,12 @@
 // `AuthTokenManager` and `AuthService` through `SettingsAPIStub`. The backend rotates the refresh
 // token on every refresh, redeems the old one once more within 60 s, and takes any later reuse for
 // theft (https://github.com/tigerduck-app/tigerduck-app/issues/375).
+import Defaults
 import Foundation
 import Testing
 import UIKit
 import Valet
+import os
 @testable import TigerDuck
 
 @Suite("Backend token refresh")
@@ -305,6 +307,190 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
     }
+
+    // MARK: - Signing in again after the backend revoked the session
+    // https://github.com/tigerduck-app/tigerduck-app/issues/385
+
+    /// How a test reaches a backend sign-in.
+    enum SignInPath: String, CaseIterable, CustomTestStringConvertible {
+        /// The relogin after a refresh the backend answers 401.
+        case relogin
+        /// `ensureBackendSignedIn()` with no session.
+        case signIn
+
+        var testDescription: String { rawValue }
+    }
+
+    @Test("with no Moodle token stored, a sign-in harvests one and signs in with it", arguments: SignInPath.allCases)
+    func signInHarvestsAMissingMoodleToken(path: SignInPath) async throws {
+        try await withPasswordLatchCleared {
+            let backend = BackendFixture(signedIn: path == .relogin)
+            let harvests = CallCount()
+            let auth = AuthService(
+                keychainHasCredentials: { false }, notificationCenter: NotificationCenter(),
+                moodleTokens: .standIn(harvests: harvests)
+            )
+            auth.authTokenManager = backend.manager
+            await backend.manager.setRefreshFailedHandler { await auth.reloginToBackend() }
+            if path == .relogin {
+                SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+            }
+            SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn(withMoodleToken: false)) {
+                switch path {
+                case .relogin: _ = await backend.manager.validAccessToken()
+                case .signIn: await auth.ensureBackendSignedIn()
+                }
+            }
+
+            let sent = try backend.sentMoodleTokens()
+            #expect(harvests.value == 1)
+            #expect(sent == ["harvested"])
+            #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        }
+    }
+
+    @Test("behind a locked screen a relogin harvests nothing and sends nothing")
+    func lockedReloginSendsNothing() async throws {
+        let backend = BackendFixture()
+        let harvests = CallCount()
+        let auth = AuthService(
+            keychainHasCredentials: { false }, notificationCenter: NotificationCenter(),
+            moodleTokens: .standIn(harvests: harvests)
+        )
+        auth.authTokenManager = backend.manager
+        await backend.manager.setRefreshFailedHandler { await auth.reloginToBackend() }
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+
+        let token = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
+            await backend.manager.validAccessToken()
+        }
+
+        #expect(token == nil)
+        #expect(harvests.value == 0)
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+    }
+
+    @Test("a return to the app after a relogin that failed signs in again")
+    func returnToTheAppSignsInAgain() async throws {
+        let backend = BackendFixture()
+        let center = NotificationCenter()
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: center)
+        auth.authTokenManager = backend.manager
+        await backend.manager.setRefreshFailedHandler { await auth.reloginToBackend() }
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let keychain = MemoryKeychain.locked()
+
+        try await SecureStore.$sharedForTesting.withValue(keychain) {
+            #expect(await backend.manager.validAccessToken() == nil)
+            try #require(await !backend.manager.isLoggedIn)
+
+            keychain.unlock()
+            center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+            try await waitUntil { backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9" }
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        withExtendedLifetime(auth) {}
+    }
+
+    @Test("an automatic sign-in waits five minutes after one that failed")
+    func failedSignInPauses() {
+        let failed = Date()
+        #expect(AuthService.backendSignInIsDue(lastFailure: nil, now: failed))
+        #expect(!AuthService.backendSignInIsDue(lastFailure: failed, now: failed.addingTimeInterval(299)))
+        #expect(AuthService.backendSignInIsDue(lastFailure: failed, now: failed.addingTimeInterval(300)))
+        #expect(AuthService.backendSignInIsDue(lastFailure: failed, now: failed.addingTimeInterval(-1)))
+    }
+
+    @Test("after a sign-in that failed, the next one sends nothing")
+    func failedSignInHoldsOffTheNext() async throws {
+        let backend = BackendFixture(signedIn: false)
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = backend.manager
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data()), for: backend.loginURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            await auth.ensureBackendSignedIn()
+            await auth.ensureBackendSignedIn()
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        #expect(await !backend.manager.isLoggedIn)
+    }
+
+    @Test("a registration with no session signs in first and goes out with the new session")
+    func registrationWithNoSessionSignsInFirst() async throws {
+        try await withNoSyncPreferencesPending {
+            let backend = BackendFixture(signedIn: false)
+            let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+            auth.authTokenManager = backend.manager
+            await backend.manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
+            SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+            let push = RegistrationFixture(manager: backend.manager)
+            push.answerAnnounce()
+            push.answerRegister()
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+                await push.register()
+            }
+
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+            let registrations = SettingsAPIStub.requests(for: push.registerURL)
+            try #require(registrations.count == 1)
+            #expect(registrations[0].value(forHTTPHeaderField: "Authorization") == "Bearer A9")
+            let announces = SettingsAPIStub.requests(for: push.announceURL)
+            #expect(announces.map { $0.value(forHTTPHeaderField: "Authorization") } == [nil])
+            #expect(await push.service.snapshot().lastError == nil)
+        }
+    }
+
+    @Test("a registration that cannot sign in sends nothing without a token and records why")
+    func registrationThatCannotSignInSendsNothing() async throws {
+        try await withNoSyncPreferencesPending {
+            let backend = BackendFixture(signedIn: false)
+            let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+            auth.authTokenManager = backend.manager
+            await backend.manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
+            SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data()), for: backend.loginURL)
+            let push = RegistrationFixture(manager: backend.manager)
+            for _ in 0..<4 { push.answerAnnounce() }
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+                await push.register()
+            }
+
+            // The first attempt and its three retries each ask for a session. The failed sign-in
+            // holds off the later ones, and the announce, which needs none, goes every time.
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+            #expect(SettingsAPIStub.requests(for: push.registerURL).isEmpty)
+            #expect(SettingsAPIStub.requests(for: push.announceURL).count == 4)
+            let reason = PushAPIError.notSignedIn.localizedDescription
+            #expect(await push.service.snapshot().lastError == "register: \(reason)")
+        }
+    }
+
+    @Test("requests that find no session at once share one sign-in")
+    func requestsWithNoSessionShareOneSignIn() async throws {
+        let backend = BackendFixture(signedIn: false)
+        let manager = backend.manager
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = manager
+        await manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        let headers = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            async let first = manager.authorizationHeader()
+            async let second = manager.authorizationHeader()
+            return await [first, second]
+        }
+
+        #expect(headers == ["Bearer A9", "Bearer A9"])
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+    }
 }
 
 /// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next
@@ -350,6 +536,15 @@ private struct BackendFixture {
         }
     }
 
+    /// The Moodle token each login request carried, in order.
+    func sentMoodleTokens() throws -> [String?] {
+        try SettingsAPIStub.requests(for: loginURL).map { request in
+            let body = try #require(SettingsAPIStub.bodyData(from: request))
+            let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            return json["moodle_token"] as? String
+        }
+    }
+
     static func refreshReply(
         access: String, refresh: String, heldBy gate: SettingsAPIStub.ReplyGate? = nil
     ) -> SettingsAPIStub.StubResponse {
@@ -369,6 +564,50 @@ private struct BackendFixture {
 
     static var reuseDetected: SettingsAPIStub.StubResponse {
         .init(statusCode: 401, body: Data(#"{"detail":"refresh_reuse_detected"}"#.utf8))
+    }
+}
+
+/// A registration service whose requests carry `manager`'s session, as `PushCoordinator` wires
+/// it, with its debounce and backoff ending at once.
+private struct RegistrationFixture {
+    let service: PushRegistrationService
+    let announceURL: URL
+    let registerURL: URL
+
+    init(manager: AuthTokenManager) {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        announceURL = baseURL.appendingPathComponent("devices/anonymous")
+        registerURL = baseURL.appendingPathComponent("devices/register")
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        service = PushRegistrationService(
+            identity: PushIdentity(uuid: "test-device"),
+            apiClient: PushAPIClient(
+                baseURLProvider: { baseURL },
+                session: URLSession(configuration: config),
+                authHeaderProvider: { await manager.authorizationHeader() }
+            ),
+            deviceClass: "iphone",
+            debounceSleep: { _ in },
+            retrySleep: { _ in }
+        )
+    }
+
+    func answerAnnounce() {
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: announceURL)
+    }
+
+    func answerRegister() {
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(#"{"device_id":"server-device","push_token_id":1}"#.utf8)),
+            for: registerURL
+        )
+    }
+
+    /// Registers the standard token and waits for the attempt and the retries it schedules.
+    func register() async {
+        await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+        await service.awaitPendingRegistration()
     }
 }
 
@@ -426,22 +665,79 @@ private nonisolated final class CallCount: @unchecked Sendable {
     var value: Int { lock.withLock { count } }
 }
 
+private extension MoodleTokenService {
+    /// Has no token stored. Its harvest hands out "harvested", or fails with `failure`, and
+    /// reaches no school server.
+    static func standIn(
+        harvests: CallCount,
+        failure: MoodleWebserviceError? = nil
+    ) -> MoodleTokenService {
+        let stored = OSAllocatedUnfairLock<String?>(initialState: nil)
+        return MoodleTokenService(
+            storedCredentials: { (studentId: "B11000000", password: "password") },
+            tokens: TokenStore(
+                load: { stored.withLock { $0 } },
+                save: { triple in stored.withLock { $0 = triple.wstoken } },
+                drop: { stored.withLock { $0 = nil } }
+            ),
+            harvest: { _, _ in
+                harvests.increment()
+                if let failure { throw failure }
+                return TokenTriple(signature: "", wstoken: "harvested", privatetoken: nil)
+            }
+        )
+    }
+}
+
+/// Runs `body` with `syncPreferencesPushPending`, which a registration that goes through reads,
+/// cleared, then puts it back. It is a real `Defaults` key, so this takes the shared gate.
+private func withNoSyncPreferencesPending<T>(_ body: () async throws -> T) async rethrows -> T {
+    try await withExclusiveRealDefaults {
+        let saved = Defaults[.syncPreferencesPushPending]
+        Defaults[.syncPreferencesPushPending] = false
+        defer { Defaults[.syncPreferencesPushPending] = saved }
+        return try await body()
+    }
+}
+
+/// Runs `body` with the stored-password latch, which stops a harvest before it starts, cleared,
+/// then puts it back. The latch is a real `Defaults` key, so this takes the shared gate.
+private func withPasswordLatchCleared<T>(_ body: () async throws -> T) async rethrows -> T {
+    try await withExclusiveRealDefaults {
+        let saved = SSOLoginService.storedPasswordRejected
+        SSOLoginService.storedPasswordRejected = false
+        defer { SSOLoginService.storedPasswordRejected = saved }
+        return try await body()
+    }
+}
+
 /// `SecureStore`'s `.whenUnlockedThisDeviceOnly` valet in memory, holding the NTUST account and
 /// Moodle token a backend sign-in sends.
 private nonisolated final class MemoryKeychain: KeychainStore, @unchecked Sendable {
     private let lock = NSLock()
-    private var items: [String: Data]
+    private var items: [String: Data] = [:]
 
-    static func signedIn() -> MemoryKeychain {
-        MemoryKeychain(items: [
-            AppConstants.KeychainKeys.studentId: Data("B11000000".utf8),
-            AppConstants.KeychainKeys.password: Data("password".utf8),
-            AppConstants.KeychainKeys.moodleToken: Data("moodle-token".utf8),
-        ])
+    static func signedIn(withMoodleToken: Bool = true) -> MemoryKeychain {
+        let keychain = MemoryKeychain()
+        keychain.unlock(withMoodleToken: withMoodleToken)
+        return keychain
     }
 
-    private init(items: [String: Data]) {
-        self.items = items
+    /// Reads nothing, as behind a locked screen, until `unlock`.
+    static func locked() -> MemoryKeychain {
+        MemoryKeychain()
+    }
+
+    private init() {}
+
+    func unlock(withMoodleToken: Bool = true) {
+        lock.withLock {
+            items[AppConstants.KeychainKeys.studentId] = Data("B11000000".utf8)
+            items[AppConstants.KeychainKeys.password] = Data("password".utf8)
+            if withMoodleToken {
+                items[AppConstants.KeychainKeys.moodleToken] = Data("moodle-token".utf8)
+            }
+        }
     }
 
     func object(forKey key: String) throws -> Data {
