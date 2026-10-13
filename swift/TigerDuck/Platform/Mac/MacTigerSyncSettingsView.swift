@@ -130,15 +130,12 @@ struct MacTigerSyncSettingsView: View {
         }
         .alert(
             String(localized: "sync_conflict_title"),
-            isPresented: Binding(
-                get: { appState.reenableConflict != nil },
-                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
-            )
+            isPresented: AppState.reenableAlertIsPresented($state.reenableConflict)
         ) {
             Button(String(localized: "sync_conflict_use_server")) {
                 appState.resolveReenableConflict(keepLocal: false)
             }
-            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
+            Button(String(localized: "sync_conflict_use_local")) {
                 appState.resolveReenableConflict(keepLocal: true)
             }
         } message: {

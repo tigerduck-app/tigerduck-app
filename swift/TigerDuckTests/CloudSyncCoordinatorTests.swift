@@ -2,6 +2,7 @@
 // requests a tick sends, and what it leaves queued.
 import Defaults
 import Foundation
+import SwiftUI
 import Testing
 import os
 @testable import TigerDuck
@@ -229,9 +230,47 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
     }
 
+    @Test("Closing the re-enable alert unanswered sends nothing and leaves its categories pending")
+    func closingTheReenableAlertUnansweredSendsNothing() async {
+        await withExclusiveRealDefaults {
+            let saved = (Defaults[.syncAssignments], Defaults[.pendingConflictCategories])
+            defer {
+                Defaults[.syncAssignments] = saved.0
+                Defaults[.pendingConflictCategories] = saved.1
+            }
+            Defaults[.syncAssignments] = true
+            Defaults[.pendingConflictCategories] = ["assignments", "course_colors"]
+            let shown = ShownReenableConflict()
+            shown.conflict = AppState.ReenableConflict(
+                categories: ["assignments", "course_colors"], description: "",
+                serverIgnoredCourses: nil, serverMarkedAssignments: ["42"]
+            )
+            let isPresented = AppState.reenableAlertIsPresented(
+                Binding(get: { shown.conflict }, set: { shown.conflict = $0 })
+            )
+            let backend = Backend()
+            let coordinator = Self.makeCoordinator(backend, syncsAssignmentMarks: nil)
+            await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "none")
+
+            isPresented.wrappedValue = false
+            await coordinator.syncTick()
+
+            #expect(!isPresented.wrappedValue)
+            #expect(Defaults[.pendingConflictCategories] == ["assignments", "course_colors"])
+            #expect(backend.requests("sync/assignments/42/override").isEmpty)
+            #expect(await coordinator.outbox.pendingCount() == 1)
+        }
+    }
+
     private static let colourReply =
         ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##
 
     private static let ignoreReply =
         #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00"}"#
+}
+
+/// Stands in for `AppState.reenableConflict`, which the alert's binding reads and clears.
+@MainActor
+private final class ShownReenableConflict {
+    var conflict: AppState.ReenableConflict?
 }
