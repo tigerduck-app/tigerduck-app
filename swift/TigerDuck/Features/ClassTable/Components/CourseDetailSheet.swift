@@ -17,7 +17,6 @@ struct CourseDetailSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let course: SDCourse
     let assignments: [SDAssignment]
@@ -42,18 +41,21 @@ struct CourseDetailSheet: View {
     var body: some View {
         NavigationStack(path: routes) {
             ScrollView {
-                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
-                    headerSection
-                    emphasisCards
-                    secondaryInfo
-                    assignmentsSection
+                // No spacing above the Moodle section: one with no rows adds nothing, and its rows
+                // bring their own gap.
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+                        headerSection
+                        emphasisCards
+                        secondaryInfo
+                        assignmentsSection
+                    }
                     if let moodle {
                         MoodleCourseSection(store: moodle, policy: appState.visualStylePolicy)
                     }
                 }
                 .padding(.top, TigerDuckTheme.Spacing.xl)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: moodle?.sectionRows)
                 .moodleSectionRefresh(moodle)
             }
             .background(Color.backgroundPrimary)
@@ -63,14 +65,12 @@ struct CourseDetailSheet: View {
             .navigationDestination(for: MoodleCourseRoute.self) { route in
                 if let moodle {
                     moodleDestination(route, store: moodle)
+                        .moodleLinkOpening()
                 }
             }
         }
         .task(id: MoodleStoreKey(courseNo: course.courseNo, attempt: moodleAttempt)) {
-            // Cached rows are there when the sheet opens; only rows a fetch brings fade in.
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { moodle = makeMoodleStore() }
+            moodle = makeMoodleStore()
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             // A sheet opened before the first sync finds no Moodle course id; a sync may bring it.
@@ -104,6 +104,8 @@ struct CourseDetailSheet: View {
             MoodleAnnouncementsView(store: store) { routes.wrappedValue.append($0) }
         case .announcement(let discussion):
             MoodleAnnouncementView(store: store, discussion: discussion)
+        case .materials:
+            MoodleMaterialsView(store: store)
         }
     }
 
