@@ -263,7 +263,10 @@ struct TimetableGridView: View {
                     // `scrollSafeTapAction` wraps the cell in a real `Button` so
                     // the first tap wins iOS 18 arbitration against the grid's
                     // scroll view. See View+ScrollSafeGesture.
-                    courseFace(course, spanCount: spanCount, leavesRoomHintLine: roomHint != nil)
+                    courseFace(
+                        course, spanCount: spanCount,
+                        showsRoomHint: roomHint != nil, showsMark: hasBadge || ignoresAssignments
+                    )
                         .overlay(alignment: .bottomLeading) {
                             if let room = roomHint {
                                 Text(room)
@@ -360,7 +363,7 @@ struct TimetableGridView: View {
     /// A course's run: one block, or with period tiles one tile per period, each naming the
     /// course. Either way the run's bottom corners hold the room hint and the assignment marks.
     @ViewBuilder
-    private func courseFace(_ course: SDCourse, spanCount: Int, leavesRoomHintLine: Bool) -> some View {
+    private func courseFace(_ course: SDCourse, spanCount: Int, showsRoomHint: Bool, showsMark: Bool) -> some View {
         if drawsPeriodTiles {
             VStack(spacing: rowSpacing) {
                 ForEach(0..<spanCount, id: \.self) { index in
@@ -368,23 +371,25 @@ struct TimetableGridView: View {
                         course,
                         cornerRadius: TigerDuckTheme.CornerRadius.xs,
                         lineLimit: 3,
-                        leavesRoomHintLine: leavesRoomHintLine && index == spanCount - 1
+                        leavesBottomLine: (showsRoomHint || showsMark) && index == spanCount - 1
                     )
                     .frame(height: cellHeight)
                 }
             }
         } else {
+            // A tile's third line reaches the mark's corner. A block's name, at most two lines in
+            // one period and centred in a longer run, ends above it.
             courseTile(
                 course,
                 cornerRadius: TigerDuckTheme.CornerRadius.sm,
                 lineLimit: spanCount > 1 ? 3 : 2,
-                leavesRoomHintLine: leavesRoomHintLine
+                leavesBottomLine: showsRoomHint
             )
         }
     }
 
     private func courseTile(
-        _ course: SDCourse, cornerRadius: CGFloat, lineLimit: Int, leavesRoomHintLine: Bool
+        _ course: SDCourse, cornerRadius: CGFloat, lineLimit: Int, leavesBottomLine: Bool
     ) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius)
             .fill(policy.classTableCourseFill(course.color))
@@ -402,10 +407,10 @@ struct TimetableGridView: View {
                     .minimumScaleFactor(0.7)
                     .multilineTextAlignment(.center)
                     .padding(2)
-                    // Leave the hint its line, or the centred name keeps the
-                    // whole cell and a two-line name in a one-period cell
-                    // prints straight through the room.
-                    .padding(.bottom, leavesRoomHintLine ? roomHintSize + 2 : 0)
+                    // Leave the room hint or the mark its line, or the centred
+                    // name keeps the whole cell and a long name prints straight
+                    // through them.
+                    .padding(.bottom, leavesBottomLine ? roomHintSize + 2 : 0)
             }
     }
 
