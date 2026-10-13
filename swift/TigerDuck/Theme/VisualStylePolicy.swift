@@ -124,4 +124,47 @@ struct VisualStylePolicy: Sendable {
         case .iosInspired: return .secondary
         }
     }
+
+    // MARK: - Class table
+
+    enum ClassTableGridStyle: Sendable {
+        /// A course's run of periods is one block, the period column shows each
+        /// period's start and end, and an empty slot is a faint tile.
+        case blocks
+        /// Each period of a run is a tile of its own, the period column shows
+        /// only the period, and rows alternate background bands while an empty
+        /// slot stays bare.
+        case periodTiles
+    }
+
+    var classTableGridStyle: ClassTableGridStyle {
+        switch preset {
+        case .default, .iosInspired: return .blocks
+        case .tat: return .periodTiles
+        }
+    }
+
+    /// A course's fill on the class table, conflict clusters included.
+    func classTableCourseFill(_ courseColor: Color) -> Color {
+        switch preset {
+        case .default, .iosInspired: return courseColor.opacity(0.4)
+        case .tat: return courseColor.pastel
+        }
+    }
+
+    /// A course's name on ``classTableCourseFill(_:)``.
+    var classTableCourseTextColor: Color {
+        switch preset {
+        case .default, .iosInspired: return Color.textPrimary
+        case .tat: return Color.textOnPastel
+        }
+    }
+
+    /// The room hint and the assignment marks on ``classTableCourseFill(_:)``.
+    var classTableCourseSecondaryTextColor: Color {
+        switch preset {
+        case .default, .iosInspired: return Color.textSecondary
+        case .tat: return Color.textOnPastelSecondary
+        }
+    }
 }
