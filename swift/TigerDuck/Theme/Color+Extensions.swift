@@ -48,7 +48,7 @@ extension Color {
     static let badgeRed = Color(hex: 0xFF3B30)
     /// Text on a ``pastel`` fill, which stays light in either appearance.
     static let textOnPastel = Color(hex: 0x1A1A1A)
-    static let textOnPastelSecondary = Color(hex: 0x1A1A1A, alpha: 0.7)
+    static let textOnPastelSecondary = Color(hex: 0x1A1A1A, alpha: 0.8)
     /// The two tones of a grid's alternating row bands.
     static let rowBand = Color.primary.opacity(0.08)
     static let rowBandAlternate = Color.primary.opacity(0.04)

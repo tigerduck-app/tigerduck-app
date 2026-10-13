@@ -49,7 +49,10 @@ struct VisualStylePolicyTests {
         #expect(Self.contrast(Self.tat.classTableCourseTextColor, on: fill) >= 7)
     }
 
-    @Test("The room hint reads on the pastel of every palette colour", arguments: TigerDuckTheme.coursePaletteHexes)
+    @Test(
+        "The room hint reads on the pastel of every palette colour and of dark picked ones",
+        arguments: TigerDuckTheme.coursePaletteHexes + [0x000000, 0x0000FF]
+    )
     func roomHintOnPastel(hex: UInt32) {
         let fill = Self.tat.classTableCourseFill(Color(hex: UInt(hex))).resolve(in: EnvironmentValues())
 
