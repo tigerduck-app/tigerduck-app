@@ -7,6 +7,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var functions: @Sendable () async throws -> Set<String>
     var forums: @Sendable (_ courseIds: [Int]) async throws -> [MoodleForum]
     var discussions: @Sendable (_ forumId: Int, _ page: Int) async throws -> [MoodleDiscussion]
+    var posts: @Sendable (_ discussionId: Int) async throws -> [MoodlePost]
     var markViewed: @Sendable (_ discussionId: Int) async throws -> Void
 
     static let live = MoodleCourseAPI(
@@ -19,6 +20,11 @@ nonisolated struct MoodleCourseAPI: Sendable {
         discussions: { forumId, page in
             try await MoodleWebserviceClient.withToken {
                 try await MoodleForumService.discussions(forumId: forumId, page: page, token: $0)
+            }
+        },
+        posts: { discussionId in
+            try await MoodleWebserviceClient.withToken {
+                try await MoodleForumService.posts(discussionId: discussionId, token: $0)
             }
         },
         markViewed: { discussionId in
@@ -129,10 +135,13 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
     var hasMore: Bool
 
     /// Pinned first, then newest first.
-    var sorted: [MoodleDiscussion] {
+    var sorted: [MoodleDiscussion] { sorted(by: \.created) }
+
+    /// Pinned first, then newest first by `date`, such as the latest post's time.
+    func sorted(by date: KeyPath<MoodleDiscussion, Date>) -> [MoodleDiscussion] {
         discussions.sorted { lhs, rhs in
             if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
-            if lhs.created != rhs.created { return lhs.created > rhs.created }
+            if lhs[keyPath: date] != rhs[keyPath: date] { return lhs[keyPath: date] > rhs[keyPath: date] }
             return lhs.id > rhs.id
         }
     }
@@ -145,15 +154,24 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
     }
 }
 
+/// A discussion's posts, oldest first.
+nonisolated struct MoodleDiscussionThread: Codable, Sendable, Equatable {
+    let discussionId: Int
+    var posts: [MoodlePost]
+}
+
 /// A screen the course detail opens from its Moodle section.
 enum MoodleCourseRoute: Hashable {
     case announcements
     case announcement(MoodleDiscussion)
+    case forums
+    case forum(MoodleForum)
+    case discussion(MoodleDiscussion, in: MoodleForum)
 
     /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {
         switch self {
-        case .announcements: true
+        case .announcements, .forums, .forum, .discussion: true
         case .announcement: false
         }
     }
@@ -163,6 +181,7 @@ enum MoodleCourseRoute: Hashable {
 struct MoodleSectionRow: Identifiable, Equatable {
     enum Kind: Hashable {
         case announcements
+        case forums
     }
 
     let kind: Kind
@@ -177,37 +196,45 @@ struct MoodleSectionRow: Identifiable, Equatable {
 @Observable
 @MainActor
 final class MoodleCourseStore {
-    nonisolated static let announcementFunctions: Set<String> = [
+    nonisolated static let forumFunctions: Set<String> = [
         MoodleForumService.forumsFunction, MoodleForumService.discussionsFunction,
     ]
 
     let courseId: Int
     let forums: MoodleFeed<MoodleTermForums>
-    let announcements: MoodleFeed<MoodleDiscussionList>
-    private(set) var isLoadingMoreAnnouncements = false
-    private(set) var announcementsPageFailure: (any Error)?
 
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
     @ObservationIgnored private let api: MoodleCourseAPI
-    @ObservationIgnored private var listWork: Task<Void, Never>?
-    @ObservationIgnored private var announcementsRefresh: Task<Void, Never>?
+    @ObservationIgnored private let context: MoodleCacheContext
+    /// Made on first use, by forum and by discussion, and kept while the store lives.
+    @ObservationIgnored private var discussionPages: [Int: MoodleDiscussionPages] = [:]
+    @ObservationIgnored private var threads: [Int: MoodleFeed<MoodleDiscussionThread>] = [:]
 
     init(courseId: Int, termCourseIds: [Int], context: MoodleCacheContext, api: MoodleCourseAPI = .live) {
         self.courseId = courseId
         self.termCourseIds = Array(Set(termCourseIds).union([courseId])).sorted()
         self.api = api
+        self.context = context
         forums = MoodleFeed(cacheName: "forums", ttl: MoodleRefreshInterval.forums, context: context)
-        announcements = MoodleFeed(
-            cacheName: "courses/\(courseId)/announcements", ttl: MoodleRefreshInterval.announcements, context: context
-        )
     }
 
     // MARK: Section
 
     var sectionRows: [MoodleSectionRow] {
-        guard let news = newsForum, news.discussionCount > 0 else { return [] }
-        return [MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0)]
+        var rows: [MoodleSectionRow] = []
+        if let news = newsForum, news.discussionCount > 0 {
+            rows.append(MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0))
+        }
+        let general = generalForums
+        if !general.isEmpty {
+            rows.append(MoodleSectionRow(
+                kind: .forums,
+                count: general.reduce(0) { $0 + $1.discussionCount },
+                hasUnread: general.contains { $0.unreadPostCount > 0 }
+            ))
+        }
+        return rows
     }
 
     var isSectionRefreshing: Bool { forums.isRefreshing }
@@ -220,107 +247,91 @@ final class MoodleCourseStore {
         forums.value?.courseIds.contains(courseId) == true ? forums.fetchedAt : nil
     }
 
+    /// The course's forums in Moodle's order; none while the cache does not cover the course.
+    private var courseForums: [MoodleForum] {
+        guard let term = forums.value, term.courseIds.contains(courseId) else { return [] }
+        return term.forums.filter { $0.courseId == courseId }
+    }
+
     var newsForum: MoodleForum? {
-        guard let term = forums.value, term.courseIds.contains(courseId) else { return nil }
-        return term.forums.first { $0.courseId == courseId && $0.isNews }
+        courseForums.first(where: \.isNews)
+    }
+
+    /// The forums other than the announcements that hold a discussion, in Moodle's order.
+    var generalForums: [MoodleForum] {
+        courseForums.filter { !$0.isNews && $0.discussionCount > 0 }
     }
 
     /// One call for every course of the term. A site that does not allow the forum calls answers
-    /// as if no course had a forum, which hides the announcements.
+    /// as if no course had a forum, which hides the announcements and the forums.
     func refreshForums() async {
         await forums.refresh { [api, termCourseIds] in
-            guard try await api.functions().isSuperset(of: Self.announcementFunctions) else {
+            guard try await api.functions().isSuperset(of: Self.forumFunctions) else {
                 return MoodleTermForums(courseIds: termCourseIds, forums: [])
             }
             return MoodleTermForums(courseIds: termCourseIds, forums: try await api.forums(termCourseIds))
         }
     }
 
-    // MARK: Announcements
+    // MARK: Discussions
 
-    /// The announcements as cached for the news forum the course has now, else nil.
-    var announcementList: MoodleDiscussionList? {
-        guard let list = announcements.value, list.forumId == newsForum?.id else { return nil }
-        return list
+    /// A forum's discussions. The news forum's are the announcements, newest posting first; any
+    /// other forum's list the latest post first.
+    func discussions(of forum: MoodleForum) -> MoodleDiscussionPages {
+        if let pages = discussionPages[forum.id] { return pages }
+        let feed = forum.isNews
+            ? MoodleFeed<MoodleDiscussionList>(
+                cacheName: "courses/\(courseId)/announcements", ttl: MoodleRefreshInterval.announcements, context: context
+            )
+            : MoodleFeed<MoodleDiscussionList>(
+                cacheName: "courses/\(courseId)/forums/\(forum.id)", ttl: MoodleRefreshInterval.forums, context: context
+            )
+        let pages = MoodleDiscussionPages(
+            forumId: forum.id, feed: feed, date: forum.isNews ? \.created : \.modified, forums: forums, api: api
+        )
+        discussionPages[forum.id] = pages
+        return pages
     }
 
-    var announcementsFetchedAt: Date? {
-        announcementList == nil ? nil : announcements.fetchedAt
+    /// The announcements, once the forums say which forum holds them.
+    var announcementPages: MoodleDiscussionPages? {
+        newsForum.map(discussions(of:))
     }
 
-    /// Fetches again every page shown so far. A complete answer also corrects the section row,
-    /// so a list that emptied takes its row with it. A refresh asked for while one is queued or
-    /// running joins it, so a pull during a timed refresh fetches once.
-    func refreshAnnouncements() async {
-        if let announcementsRefresh {
-            await announcementsRefresh.value
-            return
-        }
-        let task = Task { await refreshAnnouncementsInTurn() }
-        announcementsRefresh = task
-        await task.value
-        if announcementsRefresh == task { announcementsRefresh = nil }
+    /// A discussion's posts, cached apart for each discussion.
+    func thread(of discussion: MoodleDiscussion) -> MoodleFeed<MoodleDiscussionThread> {
+        if let feed = threads[discussion.id] { return feed }
+        let feed = MoodleFeed<MoodleDiscussionThread>(
+            cacheName: "courses/\(courseId)/discussions/\(discussion.id)", ttl: MoodleRefreshInterval.forums, context: context
+        )
+        threads[discussion.id] = feed
+        return feed
     }
 
-    private func refreshAnnouncementsInTurn() async {
-        await serially { [self] in
-            guard let forum = newsForum else { return }
-            let pages = max(1, announcementList?.pageCount ?? 1)
-            await announcements.refresh { [api] in
-                var list = MoodleDiscussionList(forumId: forum.id, discussions: [], pageCount: 0, hasMore: false)
-                repeat {
-                    list.append(page: try await api.discussions(forum.id, list.pageCount))
-                } while list.hasMore && list.pageCount < pages
-                return list
+    /// A site that does not allow the posts call answers with none, which leaves the first post
+    /// as the discussion's list brought it.
+    func refreshThread(of discussion: MoodleDiscussion) async {
+        await thread(of: discussion).refresh { [api] in
+            guard try await api.functions().contains(MoodleForumService.discussionPostsFunction) else {
+                return MoodleDiscussionThread(discussionId: discussion.id, posts: [])
             }
-            guard announcements.status == .ok, let list = announcementList, !list.hasMore else { return }
-            announcementsPageFailure = nil
-            forums.update { term in
-                guard let index = term.forums.firstIndex(where: { $0.id == forum.id }) else { return }
-                term.forums[index].discussionCount = list.discussions.count
-                term.forums[index].unreadPostCount = list.discussions.reduce(0) { $0 + $1.unreadCount }
-            }
+            return MoodleDiscussionThread(discussionId: discussion.id, posts: try await api.posts(discussion.id))
         }
     }
 
-    /// The next page, when the list's last announcement, `lastId`, comes on screen. A failure stays
-    /// in ``announcementsPageFailure`` until a page loads, so the list can offer a retry.
-    func loadMoreAnnouncements(after lastId: Int?) async {
-        await serially { [self] in
-            guard let list = announcementList, list.hasMore, lastId == list.sorted.last?.id else { return }
-            isLoadingMoreAnnouncements = true
-            defer { isLoadingMoreAnnouncements = false }
-            do {
-                let page = try await api.discussions(list.forumId, list.pageCount)
-                announcementsPageFailure = nil
-                announcements.update { current in
-                    guard current.forumId == list.forumId, current.pageCount == list.pageCount else { return }
-                    current.append(page: page)
-                }
-            } catch {
-                announcementsPageFailure = error
-            }
-        }
-    }
+    // MARK: Opening
 
-    /// Runs `work` after the list changes already queued: a refresh that started during a page
-    /// load would otherwise end with fewer pages than the list just gained.
-    private func serially(_ work: @escaping @MainActor () async -> Void) async {
-        let previous = listWork
-        let task = Task {
-            await previous?.value
-            await work()
-        }
-        listWork = task
-        await task.value
-    }
-
-    /// An announcement opened on screen: read here at once, and on Moodle through
-    /// `mod_forum_view_forum_discussion` when the site allows it. The list never calls this; a
-    /// failed call is not retried and shows nothing.
+    /// A discussion opened on screen: read here at once, in its forum and its posts, and on
+    /// Moodle through `mod_forum_view_forum_discussion` when the site allows it. The lists never
+    /// call this; a failed call is not retried and shows nothing.
     @discardableResult
-    func open(_ discussion: MoodleDiscussion) -> Task<Void, Never> {
-        markReadHere(discussion)
+    func open(_ discussion: MoodleDiscussion, in forum: MoodleForum?) -> Task<Void, Never> {
+        if let forum { discussions(of: forum).markRead(discussion.id) }
+        if let thread = threads[discussion.id], thread.value?.posts.contains(where: \.isUnread) == true {
+            thread.update { value in
+                for index in value.posts.indices { value.posts[index].isUnread = false }
+            }
+        }
         return Task { [api] in
             guard (try? await api.functions())?.contains(MoodleForumService.viewDiscussionFunction) == true else { return }
             do {
@@ -331,16 +342,21 @@ final class MoodleCourseStore {
         }
     }
 
-    private func markReadHere(_ discussion: MoodleDiscussion) {
-        let unread = announcementList?.discussions.first { $0.id == discussion.id }?.unreadCount ?? 0
-        guard unread > 0 else { return }
-        announcements.update { list in
-            guard let index = list.discussions.firstIndex(where: { $0.id == discussion.id }) else { return }
-            list.discussions[index].unreadCount = 0
+    /// An announcement opened on screen, read as ``open(_:in:)`` reads a discussion.
+    @discardableResult
+    func open(_ discussion: MoodleDiscussion) -> Task<Void, Never> {
+        open(discussion, in: newsForum)
+    }
+
+    /// A discussion's posts opened on screen. They are fetched first when the copy is due, so the
+    /// ones unread at this opening are known before ``open(_:in:)`` reads them; their ids come back.
+    func openThread(of discussion: MoodleDiscussion, in forum: MoodleForum) async -> Set<Int> {
+        let feed = thread(of: discussion)
+        if MoodleRefreshTimer.wait(fetchedAt: feed.fetchedAt, lastTry: nil, ttl: feed.ttl, now: context.now()) == 0 {
+            await refreshThread(of: discussion)
         }
-        forums.update { term in
-            guard let index = term.forums.firstIndex(where: { $0.courseId == courseId && $0.isNews }) else { return }
-            term.forums[index].unreadPostCount = max(0, term.forums[index].unreadPostCount - unread)
-        }
+        let unread = Set(feed.value?.posts.filter(\.isUnread).map(\.id) ?? [])
+        open(discussion, in: forum)
+        return unread
     }
 }

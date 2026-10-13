@@ -10,6 +10,8 @@ struct MoodlePage: Hashable {
 
     static func forum(cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/view.php?id=\(cmid)") }
     static func discussion(_ id: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/discuss.php?d=\(id)") }
+    /// The list of a course's forums.
+    static func forums(courseId: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/index.php?id=\(courseId)") }
 
     var webURL: URL? { URL(string: path, relativeTo: AppConstants.moodleBaseURL)?.absoluteURL }
 
@@ -67,6 +69,21 @@ extension View {
     /// The bar of a pushed Moodle article: the back button alone, over the content.
     func moodleArticleChrome() -> some View {
         modifier(MoodleArticleChrome())
+    }
+
+    /// ⌘R on the Mac for a pushed screen that fetches its own data; the class table hands the
+    /// shortcut over while such a screen shows.
+    func moodleRefreshShortcut(_ refresh: @escaping () async -> Void) -> some View {
+        #if os(macOS)
+        return background {
+            Button("") { Task { await refresh() } }
+                .keyboardShortcut("r", modifiers: .command)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+        #else
+        return self
+        #endif
     }
 
     /// Opens the links in Moodle text drawn inside: a Moodle page signed in, any other where the
@@ -154,13 +171,7 @@ private struct MoodleListChrome: ViewModifier {
                     if let page { openButton(page) }
                 }
             }
-            .background {
-                // The class table hands ⌘R over while this screen shows.
-                Button("") { Task { await refresh() } }
-                    .keyboardShortcut("r", modifiers: .command)
-                    .opacity(0)
-                    .accessibilityHidden(true)
-            }
+            .moodleRefreshShortcut(refresh)
         #endif
     }
 

@@ -33,6 +33,13 @@ struct MoodleDateFormatTests {
     func masthead() {
         #expect(Self.taipei(2026, 10, 13, 10, 24).moodleDateTimeString == "2026/10/13 10:24")
     }
+
+    @Test("a discussion's post shows its day and time, with the year when it is not this one")
+    func postStamps() {
+        #expect(Self.taipei(2026, 10, 13, 9, 30).moodlePostDateString(now: Self.now) == "10/13 09:30")
+        #expect(Self.taipei(2026, 1, 2, 23, 5).moodlePostDateString(now: Self.now) == "01/02 23:05")
+        #expect(Self.taipei(2025, 12, 31, 8, 0).moodlePostDateString(now: Self.now) == "2025/12/31 08:00")
+    }
 }
 
 #if os(iOS)

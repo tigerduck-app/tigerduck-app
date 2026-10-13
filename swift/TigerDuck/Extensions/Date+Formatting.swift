@@ -59,8 +59,17 @@ extension Date {
         Self.moodleDateTimeFormatter.string(from: self)
     }
 
+    /// A post's time in a Moodle discussion: `MM/dd HH:mm` this year, ``moodleDateTimeString``
+    /// in any other.
+    func moodlePostDateString(now: Date = AppClock.now()) -> String {
+        let calendar = Self.scheduleCalendar
+        let thisYear = calendar.component(.year, from: self) == calendar.component(.year, from: now)
+        return (thisYear ? Self.moodleMonthDayTimeFormatter : Self.moodleDateTimeFormatter).string(from: self)
+    }
+
     private static let moodleTimeFormatter = posixFormatter("HH:mm")
     private static let moodleMonthDayFormatter = posixFormatter("MM/dd")
+    private static let moodleMonthDayTimeFormatter = posixFormatter("MM/dd HH:mm")
     private static let moodleDateTimeFormatter = posixFormatter("yyyy/MM/dd HH:mm")
 
     /// Gregorian, POSIX and Taipei, as ``fullDateString`` pins them.
