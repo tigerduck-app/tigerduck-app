@@ -4,20 +4,12 @@ import SwiftUI
 /// what it holds, and the term and format it is in.
 struct ClassTableShareSheet: View {
     @Environment(\.dismiss) private var dismiss
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    #endif
     @Bindable var model: ClassTableShareModel
 
-    /// Big enough to scan from a screenshot a chat app has halved: the code for 8 terms of 10
-    /// courses, a version 18 symbol, still gets about four pixels a module there. A phone draws
-    /// three pixels a point, and an iPad two, with the room for a larger code.
-    private var codeSide: CGFloat {
-        #if os(iOS)
-        if horizontalSizeClass == .regular { return 390 }
-        #endif
-        return 260
-    }
+    /// Big enough to scan from a phone's screenshot, three pixels a point, after a chat app has
+    /// halved it: the code for 8 terms of 10 courses, a version 18 symbol, still gets about four
+    /// pixels a module there.
+    private static let codeSide: CGFloat = 260
 
     #if os(iOS)
     /// About half a phone's screen. `.medium` cuts the code off on a 375 by 667 phone, and this
@@ -67,7 +59,7 @@ struct ClassTableShareSheet: View {
                             .resizable()
                             .interpolation(.none)
                             .aspectRatio(1, contentMode: .fit)
-                            .frame(maxWidth: codeSide)
+                            .frame(maxWidth: Self.codeSide)
                             .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm, style: .continuous))
                     }
                     // Not `Color.textSecondary`, which is white for the dark iOS app: the Mac can be light.
