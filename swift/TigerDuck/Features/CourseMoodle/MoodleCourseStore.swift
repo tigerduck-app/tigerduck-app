@@ -8,6 +8,10 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var forums: @Sendable (_ courseIds: [Int]) async throws -> [MoodleForum]
     var discussions: @Sendable (_ forumId: Int, _ page: Int) async throws -> [MoodleDiscussion]
     var markViewed: @Sendable (_ discussionId: Int) async throws -> Void
+    /// Defaults keep a stand-in for another screen's tests to the calls it is about.
+    var members: @Sendable (_ courseId: Int) async throws -> MoodleMemberList = { _ in
+        MoodleMemberList(ownId: nil, members: [])
+    }
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -24,6 +28,14 @@ nonisolated struct MoodleCourseAPI: Sendable {
         markViewed: { discussionId in
             try await MoodleWebserviceClient.withToken {
                 try await MoodleForumService.markViewed(discussionId: discussionId, token: $0)
+            }
+        },
+        members: { courseId in
+            try await MoodleWebserviceClient.withToken { token in
+                MoodleMemberList(
+                    ownId: try await MoodleSiteInfoService.shared.userId(token: token),
+                    members: try await MoodleCourseMembersService.members(courseId: courseId, token: token)
+                )
             }
         }
     )
@@ -145,16 +157,31 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
     }
 }
 
+/// The people of a course the account can see, which take in the account itself.
+nonisolated struct MoodleMemberList: Codable, Sendable, Equatable {
+    /// The account's own Moodle user, nil when Moodle was not asked.
+    let ownId: Int?
+    var members: [MoodleMember]
+
+    /// Whether anyone but the account is there to show, which a course split into groups the
+    /// account sees alone of may not have.
+    var showsOthers: Bool {
+        members.contains { $0.id != ownId }
+    }
+}
+
 /// A screen the course detail opens from its Moodle section.
 enum MoodleCourseRoute: Hashable {
     case announcements
     case announcement(MoodleDiscussion)
+    case members
+    case member(MoodleMember)
 
     /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {
         switch self {
-        case .announcements: true
-        case .announcement: false
+        case .announcements, .members: true
+        case .announcement, .member: false
         }
     }
 }
@@ -163,6 +190,7 @@ enum MoodleCourseRoute: Hashable {
 struct MoodleSectionRow: Identifiable, Equatable {
     enum Kind: Hashable {
         case announcements
+        case members
     }
 
     let kind: Kind
@@ -184,6 +212,7 @@ final class MoodleCourseStore {
     let courseId: Int
     let forums: MoodleFeed<MoodleTermForums>
     let announcements: MoodleFeed<MoodleDiscussionList>
+    let members: MoodleFeed<MoodleMemberList>
     private(set) var isLoadingMoreAnnouncements = false
     private(set) var announcementsPageFailure: (any Error)?
 
@@ -201,17 +230,30 @@ final class MoodleCourseStore {
         announcements = MoodleFeed(
             cacheName: "courses/\(courseId)/announcements", ttl: MoodleRefreshInterval.announcements, context: context
         )
+        members = MoodleFeed(cacheName: "courses/\(courseId)/members", ttl: MoodleRefreshInterval.members, context: context)
     }
 
     // MARK: Section
 
     var sectionRows: [MoodleSectionRow] {
-        guard let news = newsForum, news.discussionCount > 0 else { return [] }
-        return [MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0)]
+        var rows: [MoodleSectionRow] = []
+        if let news = newsForum, news.discussionCount > 0 {
+            rows.append(MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0))
+        }
+        if let list = members.value, list.showsOthers {
+            rows.append(MoodleSectionRow(kind: .members, count: list.members.count, hasUnread: false))
+        }
+        return rows
     }
 
-    var isSectionRefreshing: Bool { forums.isRefreshing }
-    var sectionStatus: ServerStatus { forums.status }
+    var isSectionRefreshing: Bool { forums.isRefreshing || members.isRefreshing }
+
+    /// The worst of the section's feeds: one that failed, else one not fetched yet.
+    var sectionStatus: ServerStatus {
+        let statuses = [forums.status, members.status]
+        if statuses.contains(.failed) { return .failed }
+        return statuses.contains(.unknown) ? .unknown : .ok
+    }
 
     // MARK: Forums
 
@@ -343,4 +385,21 @@ final class MoodleCourseStore {
             term.forums[index].unreadPostCount = max(0, term.forums[index].unreadPostCount - unread)
         }
     }
+
+    // MARK: Members
+
+    var membersFetchedAt: Date? { members.fetchedAt }
+
+    /// The whole list in one call, which the section counts and the screen groups and searches.
+    /// A site that does not allow the call answers as if the course had no members, which hides
+    /// their row.
+    func refreshMembers() async {
+        await members.refresh { [api, courseId] in
+            guard try await api.functions().contains(MoodleCourseMembersService.membersFunction) else {
+                return MoodleMemberList(ownId: nil, members: [])
+            }
+            return try await api.members(courseId)
+        }
+    }
+
 }

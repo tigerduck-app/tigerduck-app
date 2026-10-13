@@ -104,6 +104,10 @@ struct CourseDetailSheet: View {
             MoodleAnnouncementsView(store: store) { routes.wrappedValue.append($0) }
         case .announcement(let discussion):
             MoodleAnnouncementView(store: store, discussion: discussion)
+        case .members:
+            MoodleMembersView(store: store) { routes.wrappedValue.append($0) }
+        case .member(let member):
+            MoodleMemberView(store: store, member: member)
         }
     }
 

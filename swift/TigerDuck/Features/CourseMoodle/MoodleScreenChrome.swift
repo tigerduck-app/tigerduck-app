@@ -64,9 +64,10 @@ extension View {
         modifier(MoodleListChrome(title: title, status: status, isLoading: isLoading, page: page, refresh: refresh))
     }
 
-    /// The bar of a pushed Moodle article: the back button alone, over the content.
-    func moodleArticleChrome() -> some View {
-        modifier(MoodleArticleChrome())
+    /// The bar of a pushed Moodle article: the back button over the content, and "Open in
+    /// Moodle" for `page`.
+    func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
+        modifier(MoodleArticleChrome(page: page))
     }
 }
 
@@ -76,8 +77,6 @@ private struct MoodleListChrome: ViewModifier {
     let isLoading: Bool
     let page: MoodlePage?
     let refresh: () async -> Void
-
-    @Environment(\.openURL) private var openURL
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -93,7 +92,7 @@ private struct MoodleListChrome: ViewModifier {
                     ToolbarItem(placement: .topBarTrailing) { dot }
                 }
                 if let page {
-                    ToolbarItem(placement: .topBarTrailing) { openButton(page) }
+                    ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page) }
                 }
             }
         #else
@@ -102,7 +101,7 @@ private struct MoodleListChrome: ViewModifier {
             .safeAreaInset(edge: .top, spacing: 0) {
                 MacMoodleTitleBar(title: title) {
                     dot
-                    if let page { openButton(page) }
+                    if let page { MoodleOpenButton(page: page) }
                 }
             }
             .background {
@@ -118,31 +117,47 @@ private struct MoodleListChrome: ViewModifier {
     private var dot: some View {
         MoodleStatusDot(status: status, isLoading: isLoading)
     }
-
-    private func openButton(_ page: MoodlePage) -> some View {
-        Button {
-            Task { await openURL(page) }
-        } label: {
-            Image(systemName: "arrow.up.right.square")
-        }
-        .accessibilityLabel(String(localized: "action_open_in_moodle"))
-    }
 }
 
 private struct MoodleArticleChrome: ViewModifier {
+    let page: MoodlePage?
+
     func body(content: Content) -> some View {
         #if os(iOS)
         content
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                if let page {
+                    ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page) }
+                }
+            }
         #else
         content
             .navigationBarBackButtonHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) {
-                MacMoodleTitleBar(title: nil) { EmptyView() }
+                MacMoodleTitleBar(title: nil) {
+                    if let page { MoodleOpenButton(page: page) }
+                }
             }
         #endif
+    }
+}
+
+/// The bar's "Open in Moodle".
+private struct MoodleOpenButton: View {
+    let page: MoodlePage
+
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            Task { await openURL(page) }
+        } label: {
+            Image(systemName: "arrow.up.right.square")
+        }
+        .accessibilityLabel(String(localized: "action_open_in_moodle"))
     }
 }
 
@@ -258,6 +273,13 @@ nonisolated enum MoodlePersonName {
         guard let at = trimmed.firstIndex(of: "@") else { return trimmed }
         let name = trimmed[trimmed.index(after: at)...].trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? trimmed : name
+    }
+
+    /// The part before the `@`, for a user whose `idnumber` Moodle leaves out.
+    static func studentId(_ fullName: String) -> String? {
+        guard let at = fullName.firstIndex(of: "@") else { return nil }
+        let id = fullName[..<at].trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.isEmpty ? nil : id
     }
 }
 
