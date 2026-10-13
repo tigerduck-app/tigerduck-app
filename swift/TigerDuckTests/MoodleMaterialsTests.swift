@@ -379,6 +379,38 @@ struct MoodleMaterialsTests {
         #expect(!FileManager.default.fileExists(atPath: copy.path))
     }
 
+    @Test("a download of a version Moodle no longer lists stops, and so does one a newer version asks for")
+    func outdatedDownloadStops() async throws {
+        let folder = Folder()
+        let site = Site()
+        let gate = ManualSleeper()
+        let store = Self.store(folder, site: site, beforeDownload: { _, _ in await gate.sleep(for: .zero) })
+        await store.refreshMaterials()
+        let old = Self.syllabusRef.file
+        let newer = Self.file("syllabus.pdf", modified: 60)
+
+        let first = Task { await store.download(old, in: .module(9101)) }
+        try await gate.waitUntilArmed()
+        site.set(materials: MoodleCourseMaterials(sections: [
+            MoodleMaterialSection(id: 100, name: "General", materials: [
+                MoodleMaterial(id: 9101, instance: 301, module: "resource", name: "Syllabus", content: .file(newer)),
+            ]),
+        ]))
+        await store.refreshMaterials()
+        #expect(await first.value == nil)
+        #expect(!FileManager.default.fileExists(atPath: store.location(of: old, in: .module(9101)).path))
+
+        let stale = Task { await store.download(old, in: .module(9101)) }
+        try await gate.waitUntilArmed(atLeast: 2)
+        let fresh = Task { await store.download(newer, in: .module(9101)) }
+        try await gate.waitUntilArmed(atLeast: 3)
+        await gate.fire()
+        #expect(await stale.value == nil)
+        let copy = try #require(await fresh.value)
+        #expect(store.downloadState(of: newer, in: .module(9101)) == .downloaded(copy))
+        #expect(store.downloadState(of: old, in: .module(9101)) == .notDownloaded)
+    }
+
     @Test("files of one name in different folders, posts or accounts are kept apart")
     func locations() {
         let folder = Folder()

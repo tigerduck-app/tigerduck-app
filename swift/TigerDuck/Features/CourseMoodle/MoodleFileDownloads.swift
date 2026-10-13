@@ -2,8 +2,6 @@ import CryptoKit
 import Foundation
 import Observation
 
-/// A Moodle file of a course on this device: not there, on its way, there in the version Moodle
-/// lists, or failed with the error to show for it.
 enum MoodleDownloadState: Equatable {
     case notDownloaded
     case downloading(progress: Double)
@@ -11,7 +9,7 @@ enum MoodleDownloadState: Equatable {
     case failed(message: String)
 }
 
-/// What a file a course lists belongs to: a module, by its course module id, or a post.
+/// Each owner keeps its files in a folder of its own, as two modules can hold files of one name.
 nonisolated enum MoodleFileOwner: Hashable, Sendable {
     case module(Int)
     case post(Int)
@@ -39,7 +37,13 @@ final class MoodleFileDownloads {
     private var failures: [URL: String] = [:]
     /// Moves on when copies land or go, which every state read depends on.
     private var revision = 0
-    @ObservationIgnored private var running: [URL: Task<URL?, Never>] = [:]
+    @ObservationIgnored private var running: [URL: Running] = [:]
+
+    /// A download with the version it is for, which a request for another version stops.
+    private struct Running {
+        let version: Date?
+        let task: Task<URL?, Never>
+    }
 
     init(root: URL) {
         self.root = root
@@ -68,18 +72,22 @@ final class MoodleFileDownloads {
     }
 
     /// The copy of `file` at `location`, downloading it through `fetch` first when there is none.
-    /// A download already on its way is joined. Nil when it fails, is cancelled, or ends after
-    /// `isCurrent` turns false, which writes nothing.
+    /// A download of the same version already on its way is joined, and one of another version
+    /// stopped. Nil when it fails, is stopped, or ends after `isCurrent` turns false, which writes
+    /// nothing.
     @discardableResult
     func download(_ file: MoodleFile, to location: URL, fetch: @escaping Fetch, isCurrent: @escaping () -> Bool) async -> URL? {
         if Self.hasCopy(of: file, at: location) { return location }
-        if let task = running[location] { return await task.value }
+        if let current = running[location] {
+            if Self.isSameVersion(current.version, file.modified) { return await current.task.value }
+            cancel(location)
+        }
         failures[location] = nil
         progress[location] = 0
         let task = Task { await self.transfer(file, to: location, fetch: fetch, isCurrent: isCurrent) }
-        running[location] = task
+        running[location] = Running(version: file.modified, task: task)
         let copy = await task.value
-        if running[location] == task {
+        if running[location]?.task == task {
             running[location] = nil
             progress[location] = nil
         }
@@ -88,14 +96,14 @@ final class MoodleFileDownloads {
     }
 
     func cancel(_ location: URL) {
-        guard let task = running.removeValue(forKey: location) else { return }
+        guard let current = running.removeValue(forKey: location) else { return }
         progress[location] = nil
-        task.cancel()
+        current.task.cancel()
     }
 
     /// Stops every download, as a sign-out does, so none writes for the account that left.
     func cancelAll() {
-        running.values.forEach { $0.cancel() }
+        running.values.forEach { $0.task.cancel() }
         running = [:]
         progress = [:]
         failures = [:]
@@ -121,12 +129,21 @@ final class MoodleFileDownloads {
         return left
     }
 
-    /// Deletes the copies Moodle has a newer version of.
+    /// Deletes the copies of a version Moodle no longer lists and stops the downloads of one, so
+    /// an older version neither stays nor opens.
     func removeOutdated(_ files: [(file: MoodleFile, location: URL)]) {
-        let outdated = files.filter { running[$0.location] == nil && Self.hasOutdatedCopy(of: $0.file, at: $0.location) }
-        guard !outdated.isEmpty else { return }
-        outdated.forEach { try? FileManager.default.removeItem(at: $0.location) }
-        revision += 1
+        var changed = false
+        for (file, location) in files {
+            if let current = running[location] {
+                guard !Self.isSameVersion(current.version, file.modified) else { continue }
+                cancel(location)
+                changed = true
+            } else if Self.hasOutdatedCopy(of: file, at: location) {
+                try? FileManager.default.removeItem(at: location)
+                changed = true
+            }
+        }
+        if changed { revision += 1 }
     }
 
     nonisolated static func totalBytes(in root: URL) -> Int {
@@ -186,6 +203,14 @@ final class MoodleFileDownloads {
     private nonisolated static func hasOutdatedCopy(of file: MoodleFile, at location: URL) -> Bool {
         guard let copied = modificationDate(at: location), let modified = file.modified else { return false }
         return !isSameSecond(modified, copied)
+    }
+
+    private nonisolated static func isSameVersion(_ lhs: Date?, _ rhs: Date?) -> Bool {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?): isSameSecond(lhs, rhs)
+        case (nil, nil): true
+        default: false
+        }
     }
 
     private nonisolated static func modificationDate(at location: URL) -> Date? {
