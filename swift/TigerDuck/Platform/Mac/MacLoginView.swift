@@ -164,7 +164,11 @@ struct MacLoginView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { focused = .studentId }
+        .onAppear {
+            // As the iOS sheet does: signing in as another account first wipes the stored one's data.
+            if studentId.isEmpty, let stored = appState.authService.storedStudentId { studentId = stored }
+            focused = studentId.isEmpty ? .studentId : .password
+        }
         // Whole-view capture protection. NSWindow.sharingType = .none
         // is reference-counted so the per-row reveal wrap nested inside
         // composes safely (release-order independent).
