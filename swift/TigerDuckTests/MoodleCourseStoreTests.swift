@@ -19,7 +19,7 @@ struct MoodleCourseStoreTests {
     )
     private nonisolated static let allFunctions: Set<String> = [
         MoodleForumService.forumsFunction, MoodleForumService.discussionsFunction,
-        MoodleForumService.viewDiscussionFunction, MoodleGradeService.gradeItemsFunction,
+        MoodleForumService.viewDiscussionFunction, MoodleGradeService.gradeItemsFunction, MoodleCourseSummaryService.coursesFunction,
     ]
 
     private static func discussion(_ id: Int, unread: Int = 0, pinned: Bool = false, created: TimeInterval = 0) -> MoodleDiscussion {
@@ -42,18 +42,22 @@ struct MoodleCourseStoreTests {
         private var _viewed: [Int] = []
         private var _gradeItems: [MoodleGradeItem] = []
         private var _gradeCalls: [Int] = []
+        private var _summary = MoodleCourseStoreTests.summary
+        private var _summaryCalls: [Int] = []
 
         func set(
             functions: Set<String>? = nil,
             forums: [MoodleForum]? = nil,
             pages: [[MoodleDiscussion]]? = nil,
-            gradeItems: [MoodleGradeItem]? = nil
+            gradeItems: [MoodleGradeItem]? = nil,
+            summary: MoodleCourseSummary? = nil
         ) {
             lock.withLock {
                 if let functions { _functions = functions }
                 if let forums { _forums = forums }
                 if let pages { _pages = pages }
                 if let gradeItems { _gradeItems = gradeItems }
+                if let summary { _summary = summary }
             }
         }
 
@@ -61,13 +65,15 @@ struct MoodleCourseStoreTests {
         var discussionPages: [Int] { lock.withLock { _discussionCalls.map(\.page) } }
         var viewed: [Int] { lock.withLock { _viewed } }
         var gradeCalls: [Int] { lock.withLock { _gradeCalls } }
+        var summaryCalls: [Int] { lock.withLock { _summaryCalls } }
 
         /// `beforePage` runs before each page answers, with the page and how many times it was
-        /// asked for before; it, `beforeForums` and `beforeGrades` throw to fail their request.
+        /// asked for before; the other hooks can suspend or fail their requests.
         func api(
             beforeForums: @escaping @Sendable () async throws -> Void = {},
             beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in },
-            beforeGrades: @escaping @Sendable () async throws -> Void = {}
+            beforeGrades: @escaping @Sendable () async throws -> Void = {},
+            beforeSummary: @escaping @Sendable () async throws -> Void = {}
         ) -> MoodleCourseAPI {
             MoodleCourseAPI(
                 functions: { self.lock.withLock { self._functions } },
@@ -90,6 +96,11 @@ struct MoodleCourseStoreTests {
                     self.lock.withLock { self._gradeCalls.append(courseId) }
                     try await beforeGrades()
                     return self.lock.withLock { self._gradeItems }
+                },
+                summary: { courseId in
+                    self.lock.withLock { self._summaryCalls.append(courseId) }
+                    try await beforeSummary()
+                    return self.lock.withLock { self._summary }
                 }
             )
         }
@@ -115,16 +126,21 @@ struct MoodleCourseStoreTests {
         signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
         beforeForums: @escaping @Sendable () async throws -> Void = {},
         beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in },
+        beforeSummary: @escaping @Sendable () async throws -> Void = {},
+        courseCodes: [String] = [],
         now: @escaping () -> Date = { Date() },
         beforeGrades: @escaping @Sendable () async throws -> Void = {}
     ) -> MoodleCourseStore {
         MoodleCourseStore(
             courseId: courseId,
             termCourseIds: [20103, courseId],
+            courseCodes: courseCodes,
             context: MoodleCacheContext(
                 account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
             ),
-            api: site.api(beforeForums: beforeForums, beforePage: beforePage, beforeGrades: beforeGrades)
+            api: site.api(
+                beforeForums: beforeForums, beforePage: beforePage, beforeGrades: beforeGrades, beforeSummary: beforeSummary
+            )
         )
     }
 
@@ -724,4 +740,157 @@ struct MoodleCourseStoreTests {
         try await waitUntil { store.sectionRows.contains { $0.kind == .grades } }
     }
     #endif
+
+    // MARK: - Summary
+
+    private nonisolated static let summary = MoodleCourseSummary(
+        html: "<p>Layers and protocols, from <strong>HTTP</strong> to TCP.</p>",
+        text: "Layers and protocols, from HTTP to TCP.",
+        names: ["Computer Networks", "1141CS3105301 Networks"]
+    )
+
+    private static func summaryOnDisk(_ folder: Folder) -> MoodleCourseSummary? {
+        folder.cache.loadMoodleData(MoodleCourseSummary.self, name: "courses/\(courseId)/summary", account: "B11399001")?.value
+    }
+
+    @Test("the summary takes one call for the course, and comes from that account's cache the next time")
+    func summaryCacheFirst() async {
+        let folder = Folder()
+        let site = Site()
+        let first = Self.store(folder, site: site)
+        await first.refreshSummary()
+
+        #expect(site.summaryCalls == [Self.courseId])
+        #expect(first.shownSummary == Self.summary)
+        let again = Self.store(folder, site: Site())
+        #expect(again.shownSummary == Self.summary)
+        #expect(again.summary.status == .ok)
+        #expect(Self.store(folder, site: Site(), account: "B11399002").summary.value == nil)
+    }
+
+    @Test("a summary alone brings the section, which has no row for it")
+    func summaryWithoutRows() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(forums: [])
+        let store = Self.store(folder, site: site)
+        await store.refreshForums()
+        await store.refreshSummary()
+
+        #expect(store.sectionRows.isEmpty)
+        #expect(store.shownSummary == Self.summary)
+    }
+
+    @Test("a site that does not allow the call shows no summary, without asking for one")
+    func summaryGatedByFunctions() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(functions: Self.allFunctions.subtracting([MoodleCourseSummaryService.coursesFunction]))
+        let store = Self.store(folder, site: site)
+
+        await store.refreshSummary()
+
+        #expect(site.summaryCalls.isEmpty)
+        #expect(store.shownSummary == nil)
+        #expect(store.summary.status == .ok)
+    }
+
+    @Test("a summary that only repeats one of the course's codes shows nothing, nor does an empty one")
+    func summaryRepeatingACode() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(summary: MoodleCourseSummary(html: "<p>1141CS3105301</p>", text: "1141CS3105301", names: []))
+        await Self.store(folder, site: site).refreshSummary()
+
+        #expect(Self.store(folder, site: Site()).shownSummary != nil)
+        #expect(Self.store(folder, site: Site(), courseCodes: ["1141cs3105301", "CS3105301"]).shownSummary == nil)
+
+        site.set(summary: .empty)
+        let emptied = Self.store(folder, site: site)
+        await emptied.refreshSummary()
+        #expect(emptied.shownSummary == nil)
+    }
+
+    @Test("the course detail hides a summary that repeats any department's idnumber of a co-listed course, or its course number")
+    func summaryOfACoListedCourse() async {
+        let folder = Folder()
+        let idMap = ["1141CS3105301": Self.courseId, "1141EE3105301": Self.courseId, "1141CS1000301": 20103]
+        let codes = CourseDetailSheet.moodleCourseCodes(
+            idnumber: "1141EE3105301", courseNo: "EE3105301", courseId: Self.courseId, idMap: idMap
+        )
+        #expect(!codes.contains("1141CS1000301"))
+
+        for repeated in ["1141CS3105301", "CS3105301", "1141EE3105301", "EE3105301"] {
+            let site = Site()
+            site.set(summary: MoodleCourseSummary(html: "<p>\(repeated)</p>", text: repeated, names: []))
+            let store = Self.store(folder, site: site, courseCodes: codes)
+            await store.refreshSummary()
+            #expect(store.shownSummary == nil, "\(repeated)")
+        }
+    }
+
+    @Test("signing out deletes the cached summary, and one that lands after a sign-out is not kept")
+    func summarySignOut() async throws {
+        let folder = Folder()
+        await Self.store(folder, site: Site()).refreshSummary()
+        #expect(Self.summaryOnDisk(folder) == Self.summary)
+
+        folder.cache.clearUserScopedData()
+        #expect(Self.summaryOnDisk(folder) == nil)
+        #expect(Self.store(folder, site: Site()).shownSummary == nil)
+
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: Site(), signedIn: signedIn, beforeSummary: {
+            await answer.sleep(for: .zero)
+        })
+        let refresh = Task { await store.refreshSummary() }
+        try await answer.waitUntilArmed()
+        signedIn.withLock { $0 = false }
+        await answer.fire()
+        await refresh.value
+
+        #expect(store.summary.value == nil)
+        #expect(Self.summaryOnDisk(folder) == nil)
+    }
+
+    @Test("a failed fetch keeps the summary shown and turns the section's dot red, after its progress")
+    func summaryFailure() async throws {
+        let folder = Folder()
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        await Self.store(folder, site: Site(), now: { fetched }).refreshSummary()
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: Site(), beforeSummary: {
+            await answer.sleep(for: .zero)
+            throw MoodleWebserviceError.transientNetwork(underlying: "offline")
+        }, now: { fetched + 60 })
+        #expect(store.sectionStatus == .ok)
+
+        let refresh = Task { await store.refreshSummary() }
+        try await answer.waitUntilArmed()
+        #expect(store.isSectionRefreshing)
+        await answer.fire()
+        await refresh.value
+
+        #expect(!store.isSectionRefreshing)
+        #expect(store.sectionStatus == .failed)
+        #expect(store.shownSummary == Self.summary)
+    }
+
+    @Test("a cached summary reads OK for five minutes, and is due once older")
+    func summaryFreshness() async {
+        let folder = Folder()
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        await Self.store(folder, site: Site(), now: { fetched }).refreshSummary()
+
+        for (age, fresh) in [(0.0, true), (299, true), (300, false), (3_600, false)] {
+            let now = fetched + age
+            let reopened = Self.store(folder, site: Site(), now: { now })
+            let wait = MoodleRefreshTimer.wait(
+                fetchedAt: reopened.summary.fetchedAt, lastTry: nil, ttl: reopened.summary.ttl, now: now
+            )
+            #expect((wait > 0) == fresh, "age \(age)")
+            #expect(reopened.summary.status == (fresh ? .ok : .unknown), "age \(age)")
+        }
+    }
 }
