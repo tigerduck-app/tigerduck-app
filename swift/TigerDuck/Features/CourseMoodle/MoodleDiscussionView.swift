@@ -7,7 +7,7 @@ struct MoodleDiscussionView: View {
     let forum: MoodleForum
 
     @Environment(AppState.self) private var appState
-    /// Coming back from a screen pushed over this one is not another opening.
+    /// `.task` runs again each time the screen reappears, which is not another opening.
     @State private var didOpen = false
     /// The posts unread when this opening began, which keep their dot while it lasts.
     @State private var unreadAtOpening: Set<Int>?

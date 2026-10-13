@@ -544,6 +544,29 @@ struct MoodleCourseForumsTests {
         #expect(!site.calls.contains { $0.hasPrefix("viewed") })
     }
 
+    @Test("the view event asks the store whether its account is still signed in when it is about to send")
+    func viewEventAsksTheStore() async throws {
+        let folder = Folder()
+        let site = Site()
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let gate = ManualSleeper()
+        let answers = OSAllocatedUnfairLock<[Bool]>(initialState: [])
+        var api = site.api
+        api.markViewed = { _, isCurrent in
+            await gate.sleep(for: .seconds(1))
+            let answer = await isCurrent()
+            answers.withLock { $0.append(answer) }
+        }
+        let store = Self.store(folder, site: site, signedIn: signedIn, api: api)
+        let event = store.open(Self.discussion(801), in: nil)
+        try await gate.waitUntilArmed()
+        signedIn.withLock { $0 = false }
+        await gate.fire()
+        await event.value
+
+        #expect(answers.withLock { $0 } == [false])
+    }
+
     @Test("an old store does not check functions or send a discussion view event")
     func invalidatedViewBeforeStarting() async {
         let folder = Folder()
@@ -587,9 +610,35 @@ struct MoodleCourseForumsTests {
         #expect(store.thread(of: unread).value?.posts.contains(where: \.isUnread) == false)
 
         // Read here too for the next opening, which a copy still fresh serves without a fetch.
+        let read = try #require(pages.list?.discussions.first { $0.id == 801 })
         let again = Self.store(folder, site: site)
-        #expect(await again.openThread(of: unread, in: Self.qanda) == [])
+        #expect(await again.openThread(of: read, in: Self.qanda) == [])
         #expect(site.calls.filter { $0.hasPrefix("posts") }.count == 1)
+    }
+
+    enum ListSign: CaseIterable {
+        case unread, replies, modified
+    }
+
+    @Test("a copy still fresh that the list shows behind fetches the posts again before reading them", arguments: ListSign.allCases)
+    func openThreadRefetchesACopyBehindTheList(sign: ListSign) async {
+        let folder = Folder()
+        let site = Site()
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801)])
+        await Self.store(folder, site: site, now: { fetched }).refreshThread(of: Self.discussion(801, replies: 1))
+        site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801), Self.post(1803, parent: 1801, unread: true)])
+        let entry = switch sign {
+        case .unread: Self.discussion(801, unread: 1, replies: 1)
+        case .replies: Self.discussion(801, replies: 2)
+        case .modified: Self.discussion(801, modified: fetched.timeIntervalSince1970 - 1_790_000_000 + 1, replies: 1)
+        }
+
+        let later = Self.store(folder, site: site, now: { fetched + 60 })
+        let unreadAtOpening = await later.openThread(of: entry, in: Self.qanda)
+
+        #expect(site.calls.filter { $0.hasPrefix("posts") }.count == 2)
+        #expect(unreadAtOpening == [1803])
     }
 
     @Test("a discussion opened on a copy past its freshness fetches the posts again before reading them")
