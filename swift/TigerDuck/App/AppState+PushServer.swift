@@ -176,7 +176,7 @@ extension AppState {
                 }
             } catch {
                 AppLogger.sync.error(
-                    "holiday override upload failed: \(error.localizedDescription, privacy: .public)"
+                    "holiday override upload failed: \(error.localizedDescription, privacy: .private)"
                 )
             }
         }

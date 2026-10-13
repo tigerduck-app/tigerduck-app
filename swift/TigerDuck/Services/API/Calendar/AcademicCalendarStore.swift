@@ -146,7 +146,7 @@ final class AcademicCalendarStore {
         } catch {
             ServerStatusTracker.shared.noteBackendReachable(false)
             logger.error(
-                "academic calendar refresh failed: \(error.localizedDescription, privacy: .public)"
+                "academic calendar refresh failed: \(error.localizedDescription, privacy: .private)"
             )
             return false
         }

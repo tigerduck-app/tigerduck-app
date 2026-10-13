@@ -230,11 +230,11 @@ actor PushRegistrationService {
         )
         do {
             let response = try await apiClient.registerDevice(request)
-            logger.info("registered passive macOS device device_id=\(response.device_id, privacy: .public)")
+            logger.info("registered passive macOS device device_id=\(response.device_id, privacy: .private)")
             noteSuccessfulRegistration()
             await resendSyncPreferencesIfPending()
         } catch {
-            logger.error("passive device register failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("passive device register failed: \(error.localizedDescription, privacy: .private)")
             noteRegistrationError(error)
         }
     }
@@ -242,7 +242,7 @@ actor PushRegistrationService {
 
     func registrationFailed(_ error: Error) {
         lastError = "APNs register failed: \(error.localizedDescription)"
-        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .private)")
     }
 
     /// PUT one holiday exception so the user's other devices agree.
@@ -293,7 +293,7 @@ actor PushRegistrationService {
                 await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
                 logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
             } catch {
-                logger.error("server push opt-out did not propagate: \(error.localizedDescription, privacy: .public)")
+                logger.error("server push opt-out did not propagate: \(error.localizedDescription, privacy: .private)")
                 throw error
             }
         }
@@ -339,7 +339,7 @@ actor PushRegistrationService {
                 await MainActor.run { Defaults[.bulletinPushEnabled] = enabled }
                 logger.info("bulletin push enabled=\(enabled, privacy: .public) propagated")
             } catch {
-                logger.error("bulletin push enabled=\(enabled, privacy: .public) did not propagate: \(error.localizedDescription, privacy: .public)")
+                logger.error("bulletin push enabled=\(enabled, privacy: .public) did not propagate: \(error.localizedDescription, privacy: .private)")
                 throw error
             }
         }
@@ -362,7 +362,7 @@ actor PushRegistrationService {
             )
             logger.info("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH succeeded")
         } catch {
-            logger.error("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH failed: \(error.localizedDescription, privacy: .private)")
         }
         #if os(iOS)
         // Turning TigerSync on is how a user restarts sync. `PushCoordinator.enable()` only asks
@@ -402,7 +402,7 @@ actor PushRegistrationService {
                     Defaults[.syncPreferencesPushPending] = false
                 }
             } catch {
-                logger.error("[sync] preferences PATCH failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("[sync] preferences PATCH failed: \(error.localizedDescription, privacy: .private)")
             }
         }
         syncPreferencesPatchChain = task
@@ -481,7 +481,7 @@ actor PushRegistrationService {
             try await apiClient.unregisterDevice(deviceId: identity.uuid)
             logger.info("unregistered device on server")
         } catch {
-            logger.error("unregister failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("unregister failed: \(error.localizedDescription, privacy: .private)")
         }
         deviceTokenHex = nil
         ptsTokenHex = nil
@@ -605,7 +605,7 @@ actor PushRegistrationService {
             )
         } catch is CancellationError {
         } catch {
-            logger.error("device announce failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("device announce failed: \(error.localizedDescription, privacy: .private)")
         }
 
         do {
@@ -626,7 +626,7 @@ actor PushRegistrationService {
                     server_push_enabled: !Defaults[.serverPushUserOptOut]
                 )
                 let response = try await apiClient.registerDevice(request)
-                logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .public)")
+                logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .private)")
             }
 
             deviceRegisterRetryTask?.cancel()
@@ -643,7 +643,7 @@ actor PushRegistrationService {
         } catch let error as NSError where error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled {
             // URLSession surfaces cancellation this way on some paths.
         } catch {
-            logger.error("register failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("register failed: \(error.localizedDescription, privacy: .private)")
             noteRegistrationError(error)
             if registerAgainIfRunningFails {
                 registerAgainIfRunningFails = false
@@ -718,7 +718,7 @@ actor PushRegistrationService {
         do {
             let response = try await apiClient.registerLiveActivityToken(request)
             logger.info(
-                "registered live activity token id=\(response.tokenId, privacy: .public)"
+                "registered live activity token id=\(response.tokenId, privacy: .private)"
             )
             if pendingActivityRegistrations[registration.activityId]?.updateTokenHex == registration.updateTokenHex {
                 pendingActivityRegistrations[registration.activityId] = nil
@@ -737,17 +737,17 @@ actor PushRegistrationService {
                     // success path will flush `pendingActivityRegistrations`
                     // immediately, no standalone retry needed.
                     await registerIfReady()
-                    logger.error("live activity token register 404 attempt=\(attempts, privacy: .public) id=\(activityId, privacy: .public) — re-registering device")
+                    logger.error("live activity token register 404 attempt=\(attempts, privacy: .public) id=\(activityId, privacy: .private) — re-registering device")
                     return
                 }
                 // Exhausted 404 retries — fall through to exponential-backoff
                 // so we don't spin unbounded.
-                logger.error("live activity token register 404 exhausted attempts=\(attempts, privacy: .public) id=\(activityId, privacy: .public) — falling back to backoff retry")
+                logger.error("live activity token register 404 exhausted attempts=\(attempts, privacy: .public) id=\(activityId, privacy: .private) — falling back to backoff retry")
             }
-            logger.error("live activity token register failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("live activity token register failed: \(error.localizedDescription, privacy: .private)")
             scheduleActivityRegistrationRetry(registration, logger: logger)
         } catch {
-            logger.error("live activity token register failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("live activity token register failed: \(error.localizedDescription, privacy: .private)")
             scheduleActivityRegistrationRetry(registration, logger: logger)
         }
     }
@@ -764,7 +764,7 @@ actor PushRegistrationService {
         activityRegistrationAttempts[activityId] = attempt
         guard attempt < maxActivityRegistrationAttempts else {
             logger.error(
-                "giving up on live activity token register attempts=\(attempt, privacy: .public) id=\(activityId, privacy: .public)"
+                "giving up on live activity token register attempts=\(attempt, privacy: .public) id=\(activityId, privacy: .private)"
             )
             pendingActivityRegistrations[activityId] = nil
             activityRegistrationRetryTasks[activityId]?.cancel()

@@ -50,10 +50,13 @@ struct MoodleCacheContext {
 @Observable
 @MainActor
 final class MoodleFeed<Value: Codable & Sendable> {
+    /// How long a copy counts as fresh; the screen's refresh timer fetches it again once older.
+    let ttl: TimeInterval
     private(set) var value: Value?
     private(set) var fetchedAt: Date?
     private(set) var isRefreshing = false
-    /// `.unknown` until a fetch ends.
+    /// `.ok` for a cached copy still fresh, as no fetch comes until it ages, else `.unknown` until
+    /// a fetch ends.
     private(set) var status: ServerStatus = .unknown
     /// The last fetch's error, cleared by the next success.
     private(set) var failure: (any Error)?
@@ -62,12 +65,16 @@ final class MoodleFeed<Value: Codable & Sendable> {
     @ObservationIgnored private let context: MoodleCacheContext
     @ObservationIgnored private var running: Task<Void, Never>?
 
-    init(cacheName: String, context: MoodleCacheContext) {
+    init(cacheName: String, ttl: TimeInterval, context: MoodleCacheContext) {
         self.cacheName = cacheName
+        self.ttl = ttl
         self.context = context
         if let cached = context.cache.loadMoodleData(Value.self, name: cacheName, account: context.account) {
             value = cached.value
             fetchedAt = cached.fetchedAt
+            if MoodleRefreshTimer.wait(fetchedAt: cached.fetchedAt, lastTry: nil, ttl: ttl, now: context.now()) > 0 {
+                status = .ok
+            }
         }
     }
 
@@ -216,9 +223,11 @@ final class MoodleCourseStore {
         self.courseId = courseId
         self.termCourseIds = Array(Set(termCourseIds).union([courseId])).sorted()
         self.api = api
-        forums = MoodleFeed(cacheName: "forums", context: context)
-        announcements = MoodleFeed(cacheName: "courses/\(courseId)/announcements", context: context)
-        grades = MoodleFeed(cacheName: "courses/\(courseId)/grades", context: context)
+        forums = MoodleFeed(cacheName: "forums", ttl: MoodleRefreshInterval.forums, context: context)
+        announcements = MoodleFeed(
+            cacheName: "courses/\(courseId)/announcements", ttl: MoodleRefreshInterval.announcements, context: context
+        )
+        grades = MoodleFeed(cacheName: "courses/\(courseId)/grades", ttl: MoodleRefreshInterval.grades, context: context)
     }
 
     // MARK: Section

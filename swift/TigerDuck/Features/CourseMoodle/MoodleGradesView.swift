@@ -56,7 +56,7 @@ struct MoodleGradesView: View {
             page: .gradeReport(courseId: store.courseId),
             refresh: { await store.refreshGrades() }
         )
-        .moodleAutoRefresh(every: MoodleRefreshInterval.grades, fetchedAt: { store.grades.fetchedAt }) {
+        .moodleAutoRefresh(every: store.grades.ttl, fetchedAt: { store.grades.fetchedAt }) {
             await store.refreshGrades()
         }
     }

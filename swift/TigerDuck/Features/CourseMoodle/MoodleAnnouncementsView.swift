@@ -73,7 +73,7 @@ struct MoodleAnnouncementsView: View {
             page: store.newsForum.map { MoodlePage.forum(cmid: $0.cmid) },
             refresh: { await store.refreshAnnouncements() }
         )
-        .moodleAutoRefresh(every: MoodleRefreshInterval.announcements, fetchedAt: { store.announcementsFetchedAt }) {
+        .moodleAutoRefresh(every: store.announcements.ttl, fetchedAt: { store.announcementsFetchedAt }) {
             await store.refreshAnnouncements()
         }
     }

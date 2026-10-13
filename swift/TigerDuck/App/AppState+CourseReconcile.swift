@@ -138,7 +138,7 @@ extension AppState {
                                              semester: semester, name: localNames[courseNo]))
                 knownNos.insert(courseNo)
                 mergedSemesters.insert(semester)
-                AppLogger.sync.info("[sync] \(semester, privacy: .public): merged \(courseNo, privacy: .public) from server")
+                AppLogger.sync.info("[sync] \(semester, privacy: .public): merged \(courseNo, privacy: .private) from server")
             }
         }
 

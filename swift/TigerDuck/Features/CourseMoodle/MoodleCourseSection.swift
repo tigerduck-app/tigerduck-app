@@ -57,10 +57,10 @@ extension View {
         background {
             if let store {
                 Color.clear
-                    .moodleAutoRefresh(every: MoodleRefreshInterval.forums, fetchedAt: { store.forumsFetchedAt }) {
+                    .moodleAutoRefresh(every: store.forums.ttl, fetchedAt: { store.forumsFetchedAt }) {
                         await store.refreshForums()
                     }
-                    .moodleAutoRefresh(every: MoodleRefreshInterval.grades, fetchedAt: { store.grades.fetchedAt }) {
+                    .moodleAutoRefresh(every: store.grades.ttl, fetchedAt: { store.grades.fetchedAt }) {
                         await store.refreshGrades()
                     }
                     .id(ObjectIdentifier(store))
