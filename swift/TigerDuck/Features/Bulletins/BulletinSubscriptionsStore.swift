@@ -81,7 +81,7 @@ final class BulletinSubscriptionsStore {
             loadState = .loaded
             logger.info("subscriptions loaded count=\(response.items.count, privacy: .public)")
         } catch {
-            logger.error("subscription load failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("subscription load failed: \(error.localizedDescription, privacy: .private)")
             loadState = .failed(error.localizedDescription)
         }
     }
@@ -123,7 +123,7 @@ final class BulletinSubscriptionsStore {
                 try? await Task.sleep(for: .milliseconds(delayMs))
                 if Task.isCancelled { return }
             } catch {
-                logger.error("subscription save failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("subscription save failed: \(error.localizedDescription, privacy: .private)")
                 saveState = .failed(error.localizedDescription)
                 return
             }

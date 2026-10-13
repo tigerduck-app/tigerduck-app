@@ -56,7 +56,7 @@ extension View {
         background {
             if let store {
                 Color.clear
-                    .moodleAutoRefresh(every: MoodleRefreshInterval.forums, fetchedAt: { store.forumsFetchedAt }) {
+                    .moodleAutoRefresh(every: store.forums.ttl, fetchedAt: { store.forumsFetchedAt }) {
                         await store.refreshForums()
                     }
                     .id(ObjectIdentifier(store))
