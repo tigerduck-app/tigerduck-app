@@ -141,9 +141,15 @@ extension ClassTableShareModel {
         in semester: String, hidden: Set<String>, cache: DataCache, shownTerm: Term?
     ) -> [SDCourse] {
         guard ClassTableShareCode.isSemester(semester.uppercased()[...]) else { return [] }
+        if let shownTerm {
+            // The grid shares these reference objects; a canonical merge would rewrite their aliases.
+            return shownTerm.courses.filter {
+                carriesCode($0) && !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden)
+            }
+        }
         return CanonicalCourseProvider.merge(
-            primary: shownTerm?.courses ?? cache.loadCourses(semester: semester),
-            userAdded: shownTerm == nil ? cache.loadUserAddedCourses(semester: semester) : [],
+            primary: cache.loadCourses(semester: semester),
+            userAdded: cache.loadUserAddedCourses(semester: semester),
             semester: semester,
             deletedCourseNos: hidden,
             customNames: [:]

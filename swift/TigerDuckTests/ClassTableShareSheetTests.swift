@@ -278,6 +278,29 @@ struct ClassTableShareTermsTests {
             studentId: "B11300000", shownTerm: shown, semesters: ["1151"], cache: store.cache
         ))
     }
+
+    @Test("sharing availability and payload snapshots never change the displayed course's custom name", arguments: [true, false])
+    func displayedSnapshotPreservesNames(checkAvailability: Bool) throws {
+        let store = Cache()
+        let course = SDCourse(courseNo: "CS1010001", courseName: "Programming")
+        course.customName = "My course alias"
+        let shown = ClassTableShareModel.Term(semester: "1151", courses: [course])
+        if checkAvailability {
+            #expect(ClassTableShareModel.canShare(
+                studentId: "B11300000", shownTerm: shown, semesters: ["1151"], cache: store.cache
+            ))
+        } else {
+            let terms = ClassTableShareModel.terms(in: ["1151"], cache: store.cache, shownTerm: shown)
+            #expect(terms.first?.courses.first === course)
+            let model = ClassTableShareModel(studentId: "B11300000", terms: terms, semesterLabel: { $0 })
+            #expect(try ClassTableShareCode.decode(try #require(model.code)).terms == [
+                .init(semester: "1151", courseNos: ["CS1010001"]),
+            ])
+        }
+        #expect(course.customName == "My course alias")
+        #expect(course.displayName == "My course alias")
+        #expect(course.courseName == "Programming")
+    }
 }
 
 /// The QR code Core Image draws for a share code: a detector reads the code back, and it stays in
