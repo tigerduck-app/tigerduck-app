@@ -58,6 +58,9 @@ extension AppState {
         /// What the check found, for Keep Local to clear the ones this device does not ignore, or
         /// nil when it compared no course settings: the resolution then leaves them alone too.
         var serverIgnoredCourses: [ServerIgnoredCourse]?
+        /// The assignments the check found marked on the server, for Keep Local to clear the ones
+        /// this device has no mark on.
+        let serverMarkedAssignments: Set<String>
     }
 
     func markCategoryReenabled(_ category: String) {
@@ -106,6 +109,7 @@ extension AppState {
             do {
                 let json = try await pushCoordinator.fetchFullSync()
                 var diffs: [String] = []
+                var serverMarkedAssignments = Set<String>()
 
                 let coursesArray = json["courses"] as? [[String: Any]] ?? []
                 let serverIgnoredCourses = Self.serverIgnoredCourses(
@@ -220,6 +224,7 @@ extension AppState {
                         default: break
                         }
                     }
+                    serverMarkedAssignments = serverArchivedIds.union(serverCompletedIds)
                     let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
                     let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
                     let archivedMatch = localArchivedIds == serverArchivedIds
@@ -258,7 +263,8 @@ extension AppState {
                         reenableConflict = ReenableConflict(
                             categories: Array(checked),
                             description: diffs.joined(separator: "\n"),
-                            serverIgnoredCourses: serverIgnoredCourses
+                            serverIgnoredCourses: serverIgnoredCourses,
+                            serverMarkedAssignments: serverMarkedAssignments
                         )
                     } else {
                         Defaults[.pendingConflictCategories].subtract(checked)
@@ -299,12 +305,20 @@ extension AppState {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
-        // Subtract, not clear: a category re-enabled after this check started was not in this
-        // dialog, so clearing it would record a decision the user was never asked to make.
-        // Left pending, the next check presents it on its own.
-        Defaults[.pendingConflictCategories].subtract(conflict.categories)
         let coordinator = pushCoordinator
         Task {
+            if !keepLocal, conflict.categories.contains("assignments") {
+                // Before the subtract below: until then the pending check holds these in the
+                // outbox, and once it ends a drain could send them before they are dropped.
+                await cloudSyncCoordinator.discardAssignmentOverrides()
+                if conflict.serverIgnoredCourses != nil {
+                    await cloudSyncCoordinator.discardCourseIgnores()
+                }
+            }
+            // Subtract, not clear: a category re-enabled after this check started was not in this
+            // dialog, so clearing it would record a decision the user was never asked to make.
+            // Left pending, the next check presents it on its own.
+            Defaults[.pendingConflictCategories].subtract(conflict.categories)
             if keepLocal {
                 if conflict.categories.contains("courses"), CourseUploadPolicy.uploadsCourses {
                     let terms = SemesterCatalog.availableSemesters().map { semester in
@@ -356,11 +370,19 @@ extension AppState {
                     }
                 }
                 if conflict.categories.contains("assignments") {
-                    for id in DataCache.shared.loadArchivedAssignmentIds() {
+                    let archived = DataCache.shared.loadArchivedAssignmentIds()
+                    let completed = DataCache.shared.loadLocallyCompletedAssignmentIds()
+                    for id in archived {
                         syncAssignmentOverride(moodleId: id, status: "archived")
                     }
-                    for id in DataCache.shared.loadLocallyCompletedAssignmentIds() {
+                    for id in completed {
                         syncAssignmentOverride(moodleId: id, status: "locally_completed")
+                    }
+                    let cleared = Self.assignmentMarksToClear(
+                        server: conflict.serverMarkedAssignments, local: archived.union(completed)
+                    )
+                    for id in cleared {
+                        syncAssignmentOverride(moodleId: id, status: "none")
                     }
                     if let serverIgnoredCourses = conflict.serverIgnoredCourses {
                         let ignoredCourses = DataCache.shared.loadIgnoredAssignmentCourses()
@@ -388,7 +410,6 @@ extension AppState {
                     DataCache.shared.replaceArchivedAssignmentIds([])
                     DataCache.shared.replaceLocallyCompletedAssignmentIds([])
                     if conflict.serverIgnoredCourses != nil {
-                        await cloudSyncCoordinator.discardCourseIgnores()
                         DataCache.shared.replaceIgnoredAssignmentCourses([])
                     }
                 }
