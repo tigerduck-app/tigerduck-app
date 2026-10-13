@@ -35,7 +35,11 @@ struct UnchangedUploadTests {
         func makeCoordinator() -> PushCoordinator {
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [SettingsAPIStub.self]
-            let client = PushAPIClient(baseURLProvider: { [baseURL] in baseURL }, session: URLSession(configuration: config))
+            let client = PushAPIClient(
+                baseURLProvider: { [baseURL] in baseURL },
+                session: URLSession(configuration: config),
+                authHeaderProvider: { "Bearer test" }
+            )
             return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         }
     }

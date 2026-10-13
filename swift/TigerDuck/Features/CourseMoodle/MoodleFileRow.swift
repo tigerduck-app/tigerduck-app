@@ -74,53 +74,58 @@ nonisolated enum MoodleFileKind: Equatable {
     }
 }
 
-/// A Moodle file in a list: its type's icon, its name, and its date and size. A tap opens it in
-/// the browser, signed in.
+/// One context menu serves the long press, the iPad's secondary click and the Mac's right click.
 struct MoodleFileRow: View {
+    let title: String
     let file: MoodleFile
+    let state: MoodleDownloadState
+    var indent: CGFloat = 0
     var now: Date = AppClock.now()
-
-    @Environment(\.openURL) private var openURL
+    let tap: () -> Void
+    let share: () -> Void
+    let openInMoodle: () -> Void
 
     /// The line between rows starts under the text, not under the icon.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + iconWidth + TigerDuckTheme.Spacing.md
-    private static let iconWidth: CGFloat = 28
+    static let folderIndent: CGFloat = 28
+    fileprivate static let iconWidth: CGFloat = 28
 
     var body: some View {
         let kind = MoodleFileKind(mimeType: file.mimeType, fileName: file.name)
-        Button {
-            guard let url = URL(string: file.url) else { return }
-            Task { await openURL(MoodlePage.browserURL(url), fallback: nil) }
-        } label: {
-            HStack(spacing: TigerDuckTheme.Spacing.md) {
+        Button(action: tap) {
+            MoodleListRowLayout(indent: indent) {
                 Image(systemName: kind.symbol)
                     .font(.system(size: 22))
                     .foregroundStyle(kind.color)
-                    .frame(width: Self.iconWidth)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(file.name)
-                        .font(TigerDuckTheme.Typography.body)
-                        .foregroundStyle(Color.textPrimary)
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                    Text(subline)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "arrow.up.right")
-                    .font(.footnote.weight(.semibold))
+            } text: {
+                Text(title)
+                    .font(TigerDuckTheme.Typography.body)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                Text(subline)
+                    .font(TigerDuckTheme.Typography.caption)
+                    .monospacedDigit()
                     .foregroundStyle(Color.textSecondary)
-                    .accessibilityHidden(true)
+            } trailing: {
+                MoodleDownloadMark(state: state)
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            .padding(.vertical, TigerDuckTheme.Spacing.md)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .moodleRowHover()
+        .contextMenu {
+            MoodleRowMenu(share: share, openInMoodle: openInMoodle)
+        }
+        .accessibilityLabel(title)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityActions {
+            if case .downloading = state {
+                Button(String(localized: "action_cancel"), action: tap)
+            }
+        }
+        #if os(macOS)
+        .modifier(MoodleFileDrag(url: downloadedURL))
+        #endif
     }
 
     /// "Date · size", the date zero-padded and with its year when it is not this year's.
@@ -129,7 +134,191 @@ struct MoodleFileRow: View {
         guard let modified = file.modified else { return size }
         return "\(modified.moodleDateString(now: now)) · \(size)"
     }
+
+    private var accessibilityValue: String {
+        switch state {
+        case .downloading(let progress): "\(subline), \(progress.formatted(.percent.precision(.fractionLength(0))))"
+        case .failed(let message): "\(subline), \(message)"
+        case .notDownloaded, .downloaded: subline
+        }
+    }
+
+    private var downloadedURL: URL? {
+        if case .downloaded(let url) = state { url } else { nil }
+    }
 }
+
+struct MoodleLinkRow: View {
+    let title: String
+    let url: URL
+    let open: () -> Void
+    let share: () -> Void
+    let openInMoodle: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            MoodleListRowLayout(indent: 0) {
+                Image(systemName: "link")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.teal)
+            } text: {
+                Text(title)
+                    .font(TigerDuckTheme.Typography.body)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                Text(Self.site(of: url))
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+            } trailing: {
+                Image(systemName: "arrow.up.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.textSecondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .moodleRowHover()
+        .contextMenu {
+            MoodleRowMenu(share: share, openInMoodle: openInMoodle)
+        }
+        .accessibilityLabel(title)
+        .accessibilityValue(Self.site(of: url))
+    }
+
+    /// The host without its `www.`, which says where the link goes in fewer characters.
+    static func site(of url: URL) -> String {
+        let host = url.host ?? url.absoluteString
+        return host.lowercased().hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+}
+
+/// Not a button: a folder only heads the files listed under it.
+struct MoodleFolderRow: View {
+    let name: String
+    let fileCount: Int
+
+    var body: some View {
+        MoodleListRowLayout(indent: 0) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(Color.textSecondary)
+        } text: {
+            Text(name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.textSecondary)
+                .lineLimit(2)
+                .truncationMode(.tail)
+        } trailing: {
+            Text(fileCount, format: .number)
+                .font(TigerDuckTheme.Typography.caption)
+                .monospacedDigit()
+                .foregroundStyle(Color.textSecondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityValue(fileCount.formatted())
+    }
+}
+
+/// The trailing mark keeps its width however the text wraps, so the marks line up down a card.
+private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: View {
+    let indent: CGFloat
+    @ViewBuilder let icon: Icon
+    @ViewBuilder let text: Lines
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.md) {
+            icon
+                .frame(width: MoodleFileRow.iconWidth)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) { text }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            trailing
+                .frame(width: 30, height: 30)
+                .accessibilityHidden(true)
+        }
+        .padding(.leading, TigerDuckTheme.Spacing.lg + indent)
+        .padding(.trailing, TigerDuckTheme.Spacing.md)
+        .padding(.vertical, TigerDuckTheme.Spacing.md)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+}
+
+/// A downloaded file shows no mark, as in the Files app.
+private struct MoodleDownloadMark: View {
+    let state: MoodleDownloadState
+
+    var body: some View {
+        switch state {
+        case .notDownloaded:
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 22))
+                .foregroundStyle(Color.textSecondary)
+        case .downloading(let progress):
+            ZStack {
+                Circle()
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 2)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(.tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 7))
+                    .foregroundStyle(.tint)
+            }
+            .frame(width: 20, height: 20)
+        case .downloaded:
+            Color.clear
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(Color.schoolOrange)
+        }
+    }
+}
+
+private struct MoodleRowMenu: View {
+    let share: () -> Void
+    let openInMoodle: () -> Void
+
+    var body: some View {
+        Button(action: share) {
+            Label(String(localized: "school_mail_attachment_share"), systemImage: "square.and.arrow.up")
+        }
+        Button(action: openInMoodle) {
+            Label(String(localized: "action_open_in_moodle"), systemImage: "arrow.up.right.square")
+        }
+    }
+}
+
+extension View {
+    func moodleRowHover() -> some View {
+        #if os(iOS)
+        hoverEffect(.highlight)
+        #else
+        self
+        #endif
+    }
+}
+
+#if os(macOS)
+/// Only a copy on the device can be handed to the Finder.
+private struct MoodleFileDrag: ViewModifier {
+    let url: URL?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let url {
+            content.onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
+        } else {
+            content
+        }
+    }
+}
+#endif
 
 extension MoodlePage {
     /// A file link in the browser: Moodle's web service path wants a token, which the browser

@@ -1242,6 +1242,8 @@
 					MoodleAssignmentService.swift,
 					MoodleAutologinService.swift,
 					MoodleForumService.swift,
+					MoodleCourseContentsService.swift,
+					MoodleFileTransfer.swift,
 					MoodleHTMLText.swift,
 					MoodleCourseStore.swift,
 					MoodleRefreshSchedule.swift,
@@ -1251,6 +1253,10 @@
 					MoodleAnnouncementsView.swift,
 					MoodleAnnouncementView.swift,
 					MoodleFileRow.swift,
+					MoodleFileDownloads.swift,
+					MoodleFileOpener.swift,
+					MoodleMaterialsView.swift,
+					MoodleFilesCacheSection.swift,
 					MoodleDiscussionPages.swift,
 					MoodleDiscussionsView.swift,
 					MoodleForumsView.swift,
@@ -1365,6 +1371,9 @@
 					ServerStatusTracker.swift,
 					SyncStatusDot.swift,
 					CourseTombstone.swift,
+					ClassTableShareCode.swift,
+					"ClassTableShareCode+TAT.swift",
+					ImportedClassTableStore.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1504,6 +1513,8 @@
 					MoodleAssignmentService.swift,
 					MoodleAutologinService.swift,
 					MoodleForumService.swift,
+					MoodleCourseContentsService.swift,
+					MoodleFileTransfer.swift,
 					MoodleHTMLText.swift,
 					MoodleCourseStore.swift,
 					MoodleRefreshSchedule.swift,
@@ -1513,6 +1524,10 @@
 					MoodleAnnouncementsView.swift,
 					MoodleAnnouncementView.swift,
 					MoodleFileRow.swift,
+					MoodleFileDownloads.swift,
+					MoodleFileOpener.swift,
+					MoodleMaterialsView.swift,
+					MoodleFilesCacheSection.swift,
 					MoodleDiscussionPages.swift,
 					MoodleDiscussionsView.swift,
 					MoodleForumsView.swift,
@@ -1627,6 +1642,9 @@
 					ServerStatusTracker.swift,
 					SyncStatusDot.swift,
 					CourseTombstone.swift,
+					ClassTableShareCode.swift,
+					"ClassTableShareCode+TAT.swift",
+					ImportedClassTableStore.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

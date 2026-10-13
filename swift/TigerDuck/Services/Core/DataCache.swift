@@ -587,6 +587,7 @@ final class DataCache {
         let bulletinDetails = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
         try? FileManager.default.removeItem(at: bulletinDetails)
         try? FileManager.default.removeItem(at: moodleDir)
+        try? FileManager.default.removeItem(at: moodleFilesDir)
     }
 
     /// Removes every file in both cache directories, user-scoped or not.
@@ -606,6 +607,7 @@ final class DataCache {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+        try? FileManager.default.removeItem(at: moodleFilesDir)
     }
 
     /// Remove every `courses_*.json` file, for a migration whose cached courses cannot be
@@ -669,6 +671,12 @@ final class DataCache {
     }
 
     private var moodleDir: URL { cacheDir.appendingPathComponent("moodle", isDirectory: true) }
+
+    /// Downloaded Moodle files, `Caches/Moodle/` beside this cache: the settings measure and
+    /// clear them without the cached answers, which keep every screen filled.
+    var moodleFilesDir: URL {
+        cacheDir.deletingLastPathComponent().appendingPathComponent("Moodle", isDirectory: true)
+    }
 
     /// The account is a student ID, kept to letters and digits so it is always one folder name.
     private func moodleFileURL(name: String, account: String) -> URL {
@@ -752,7 +760,7 @@ struct AssignmentMarks {
 
 // MARK: - Codable DTOs
 
-private struct CachedCourse: Codable {
+struct CachedCourse: Codable {
     let courseNo: String
     let courseName: String
     let instructor: String

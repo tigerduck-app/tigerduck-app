@@ -14,6 +14,7 @@ struct MoodleDiscussionView: View {
     @State private var didOpen = false
     /// The posts unread when this opening began, which keep their dot while it lasts.
     @State private var unreadAtOpening: Set<Int>?
+    @State private var files = MoodleFileOpener()
 
     var body: some View {
         let thread = store.thread(of: discussion)
@@ -23,7 +24,10 @@ struct MoodleDiscussionView: View {
                     MoodlePostCard(
                         entry: entry,
                         isUnread: unreadAtOpening?.contains(entry.post.id) ?? entry.post.isUnread,
-                        policy: appState.visualStylePolicy
+                        policy: appState.visualStylePolicy,
+                        store: store,
+                        discussion: discussion,
+                        files: files
                     )
                 }
                 if thread.value == nil {
@@ -37,7 +41,7 @@ struct MoodleDiscussionView: View {
         }
         .background(Color.backgroundPrimary)
         .overlay(alignment: .bottomTrailing) {
-            MoodleOpenCapsule(page: .discussion(discussion.id))
+            MoodleOpenCapsule(page: .discussion(discussion.id)) { files.forgetPendingOpen() }
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
@@ -52,6 +56,7 @@ struct MoodleDiscussionView: View {
             didOpen = true
             unreadAtOpening = await store.openThread(of: discussion, in: forum)
         }
+        .moodleFilePresentation(files)
     }
 
     /// Under the first post while the replies have not loaded: a spinner, or the error and a retry.
@@ -157,9 +162,14 @@ private struct MoodlePostCard: View {
     let entry: MoodleThreadEntry
     let isUnread: Bool
     let policy: VisualStylePolicy
+    let store: MoodleCourseStore
+    let discussion: MoodleDiscussion
+    let files: MoodleFileOpener
     var now: Date = AppClock.now()
 
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
+    @Environment(\.openMoodleLink) private var openMoodleLink
 
     private static let indent: CGFloat = 16
     private var post: MoodlePost { entry.post }
@@ -207,10 +217,7 @@ private struct MoodlePostCard: View {
             }
             .padding(isFirst ? TigerDuckTheme.Spacing.lg : TigerDuckTheme.Spacing.md)
             if !post.isDeleted {
-                ForEach(Array(post.attachments.enumerated()), id: \.offset) { _, file in
-                    Divider().padding(.leading, MoodleFileRow.textInset)
-                    MoodleFileRow(file: file)
-                }
+                attachments
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -244,6 +251,24 @@ private struct MoodlePostCard: View {
         .accessibilityLabel(headerAccessibilityText)
     }
 
+    private var attachments: some View {
+        let refs = post.attachments.map { MoodleFileRef(file: $0, owner: .post(post.id)) }
+        return ForEach(Array(refs.enumerated()), id: \.offset) { _, ref in
+            Divider().padding(.leading, MoodleFileRow.textInset)
+            MoodleFileRow(
+                title: ref.file.name,
+                file: ref.file,
+                state: store.downloadState(of: ref.file, in: ref.owner),
+                tap: { files.tap(ref, among: refs, store: store) },
+                share: { files.share(ref, store: store) },
+                openInMoodle: {
+                    files.forgetPendingOpen()
+                    Task { await openURL(MoodlePage.discussion(discussion.id)) }
+                }
+            )
+        }
+    }
+
     @ViewBuilder
     private var message: some View {
         if post.isDeleted {
@@ -254,7 +279,11 @@ private struct MoodlePostCard: View {
         } else {
             Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: post.message)))
                 .markdownTheme(.bulletin(accent: appState.accentColor))
-                .moodleTextLinks()
+                .environment(\.openURL, OpenURLAction { url in
+                    files.forgetPendingOpen()
+                    openMoodleLink(url)
+                    return .handled
+                })
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

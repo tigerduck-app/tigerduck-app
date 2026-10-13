@@ -9,8 +9,11 @@ struct MoodleAnnouncementView: View {
     let discussion: MoodleDiscussion
 
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
+    @Environment(\.openMoodleLink) private var openMoodleLink
     /// Coming back from a screen pushed over this one is not another opening.
     @State private var didOpen = false
+    @State private var files = MoodleFileOpener()
 
     var body: some View {
         ScrollView {
@@ -24,7 +27,11 @@ struct MoodleAnnouncementView: View {
                 Divider().background(Color.textSecondary)
                 Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: discussion.message)))
                     .markdownTheme(.bulletin(accent: appState.accentColor))
-                    .moodleTextLinks()
+                    .environment(\.openURL, OpenURLAction { url in
+                        files.forgetPendingOpen()
+                        openMoodleLink(url)
+                        return .handled
+                    })
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !discussion.attachments.isEmpty {
                     attachments
@@ -37,7 +44,7 @@ struct MoodleAnnouncementView: View {
         }
         .background(Color.backgroundPrimary)
         .overlay(alignment: .bottomTrailing) {
-            MoodleOpenCapsule(page: .discussion(discussion.id))
+            MoodleOpenCapsule(page: .discussion(discussion.id)) { files.forgetPendingOpen() }
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
@@ -47,6 +54,7 @@ struct MoodleAnnouncementView: View {
             didOpen = true
             store.open(discussion)
         }
+        .moodleFilePresentation(files)
     }
 
     private var authorRow: some View {
@@ -73,12 +81,24 @@ struct MoodleAnnouncementView: View {
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
                 .accessibilityAddTraits(.isHeader)
+            let owner = MoodleFileOwner.post(discussion.postId)
+            let refs = discussion.attachments.map { MoodleFileRef(file: $0, owner: owner) }
             VStack(spacing: 0) {
-                ForEach(Array(discussion.attachments.enumerated()), id: \.offset) { index, file in
+                ForEach(Array(refs.enumerated()), id: \.offset) { index, ref in
                     if index > 0 {
                         Divider().padding(.leading, MoodleFileRow.textInset)
                     }
-                    MoodleFileRow(file: file)
+                    MoodleFileRow(
+                        title: ref.file.name,
+                        file: ref.file,
+                        state: store.downloadState(of: ref.file, in: owner),
+                        tap: { files.tap(ref, among: refs, store: store) },
+                        share: { files.share(ref, store: store) },
+                        openInMoodle: {
+                            files.forgetPendingOpen()
+                            Task { await openURL(MoodlePage.discussion(discussion.id)) }
+                        }
+                    )
                 }
             }
             .presetCard(policy: appState.visualStylePolicy)

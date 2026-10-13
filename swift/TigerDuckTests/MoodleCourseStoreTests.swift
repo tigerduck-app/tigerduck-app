@@ -71,7 +71,6 @@ struct MoodleCourseStoreTests {
                     try await beforePage(page, earlier)
                     return self.lock.withLock { page < self._pages.count ? self._pages[page] : [] }
                 },
-                posts: { _ in [] },
                 markViewed: { id in self.lock.withLock { self._viewed.append(id) } }
             )
         }

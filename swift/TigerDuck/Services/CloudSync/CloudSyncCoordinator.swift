@@ -333,7 +333,8 @@ final class CloudSyncCoordinator {
 
     /// 401s are rethrown as `SyncOutboxAuthError` so the drain aborts and
     /// retains the queue without burning retry attempts — the token layer
-    /// refreshes the JWT, and a later tick delivers the ops.
+    /// refreshes the JWT, and a later tick delivers the ops. So is a request
+    /// that was not sent for want of a session.
     private func execute(_ op: ResolvedSyncOp) async throws {
         do {
             switch op {
@@ -423,6 +424,7 @@ final class CloudSyncCoordinator {
 
     private func isUnauthorized(_ error: Error) -> Bool {
         if case PushAPIError.httpStatus(401, _) = error { return true }
+        if case PushAPIError.notSignedIn = error { return true }
         return false
     }
 }

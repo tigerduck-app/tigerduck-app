@@ -164,12 +164,15 @@ final class AppState {
         }
         #endif
 
-        // Install before enabling push, so a refresh the first registration triggers can
-        // relogin instead of calling logout() on a nil handler. ATM keeps the handler, so
-        // capturing self strongly is a cycle; a strong Task capture defeats the inner weak one.
+        // Install before enabling push, so the first registration can relogin after a refused
+        // refresh, or sign in with no session. ATM keeps the handlers, so capturing self strongly
+        // is a cycle; a strong Task capture defeats the inner weak one.
         Task { [weak self] in
             await atm.setRefreshFailedHandler { [weak self] in
                 await self?.attemptBackendRelogin() ?? false
+            }
+            await atm.setNoSessionHandler { [weak self] in
+                await self?.authService.ensureBackendSignedIn()
             }
         }
 

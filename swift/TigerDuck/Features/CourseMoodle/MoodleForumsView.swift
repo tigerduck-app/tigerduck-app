@@ -53,6 +53,7 @@ struct MoodleForumsView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .moodleRowHover()
             }
         }
         .presetCard(policy: appState.visualStylePolicy)

@@ -11,6 +11,9 @@ struct MoodlePage: Hashable {
     static func forum(cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/view.php?id=\(cmid)") }
     static func discussion(_ id: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/discuss.php?d=\(id)") }
     static func forums(courseId: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/index.php?id=\(courseId)") }
+    static func course(_ id: Int) -> MoodlePage { MoodlePage(path: "/course/view.php?id=\(id)") }
+    /// A module's page, such as `/mod/resource/view.php?id=5` for the module `resource`.
+    static func module(_ module: String, cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/\(module)/view.php?id=\(cmid)") }
 
     var webURL: URL? { URL(string: path, relativeTo: AppConstants.moodleBaseURL)?.absoluteURL }
 
@@ -35,64 +38,27 @@ extension OpenURLAction {
     }
 }
 
-/// The status dot of a course's Moodle screens: one source, Moodle.
-struct MoodleStatusDot: View {
-    let status: ServerStatus
-    let isLoading: Bool
+/// Opens a link from Moodle content where the reader expects it: a Moodle page in the browser
+/// signed in, any other web page in the app's browser when the setting asks for it, else as the
+/// system opens it. Signing in goes no further than the Moodle site.
+struct MoodleLinkAction {
+    fileprivate let open: (URL) -> Void
 
-    var body: some View {
-        SyncStatusDot(
-            status: status,
-            label: String(localized: "calendar_source_moodle"),
-            icon: "graduationcap.fill",
-            text: SyncStatusDot.statusText(status),
-            isLoading: isLoading
-        )
-    }
+    func callAsFunction(_ url: URL) { open(url) }
+}
+
+extension EnvironmentValues {
+    @Entry var openMoodleLink = MoodleLinkAction { _ in }
 }
 
 extension View {
-    /// The bar of a pushed Moodle list: the title, the status dot and "Open in Moodle". On the
-    /// Mac the course detail is an overlay in the window, so the bar is drawn in it, not left to
-    /// the window's toolbar, and ⌘R runs `refresh`.
-    func moodleListChrome(
-        title: String,
-        status: ServerStatus,
-        isLoading: Bool,
-        page: MoodlePage?,
-        refresh: @escaping () async -> Void
-    ) -> some View {
-        modifier(MoodleListChrome(title: title, status: status, isLoading: isLoading, page: page, refresh: refresh))
-    }
-
-    /// The bar of a pushed Moodle article: the back button alone, over the content.
-    func moodleArticleChrome() -> some View {
-        modifier(MoodleArticleChrome())
-    }
-
-    /// ⌘R on the Mac for a pushed screen that fetches its own data; the class table hands the
-    /// shortcut over while such a screen shows.
-    func moodleRefreshShortcut(_ refresh: @escaping () async -> Void) -> some View {
-        #if os(macOS)
-        return background {
-            Button("") { Task { await refresh() } }
-                .keyboardShortcut("r", modifiers: .command)
-                .opacity(0)
-                .accessibilityHidden(true)
-        }
-        #else
-        return self
-        #endif
-    }
-
-    /// Opens the links in Moodle text drawn inside: a Moodle page signed in, any other where the
-    /// reader's browser setting says.
-    func moodleTextLinks() -> some View {
-        modifier(MoodleTextLinks())
+    /// Set where a screen is pushed, so the screen itself can read ``EnvironmentValues/openMoodleLink``.
+    func moodleLinkOpening() -> some View {
+        modifier(MoodleLinkOpening())
     }
 }
 
-private struct MoodleTextLinks: ViewModifier {
+private struct MoodleLinkOpening: ViewModifier {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     #if os(iOS)
@@ -101,10 +67,7 @@ private struct MoodleTextLinks: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .environment(\.openURL, OpenURLAction { url in
-                open(url)
-                return .handled
-            })
+            .environment(\.openMoodleLink, MoodleLinkAction(open: open))
             #if os(iOS)
             .sheet(item: $inAppPage) { page in
                 InAppBrowserView(url: page.url)
@@ -135,11 +98,66 @@ private struct InAppPage: Identifiable {
 }
 #endif
 
+/// The status dot of a course's Moodle screens: one source, Moodle.
+struct MoodleStatusDot: View {
+    let status: ServerStatus
+    let isLoading: Bool
+
+    var body: some View {
+        SyncStatusDot(
+            status: status,
+            label: String(localized: "calendar_source_moodle"),
+            icon: "graduationcap.fill",
+            text: SyncStatusDot.statusText(status),
+            isLoading: isLoading
+        )
+    }
+}
+
+extension View {
+    /// The bar of a pushed Moodle list: the title, the status dot and "Open in Moodle". On the
+    /// Mac the course detail is an overlay in the window, so the bar is drawn in it, not left to
+    /// the window's toolbar, and ⌘R runs `refresh`.
+    func moodleListChrome(
+        title: String,
+        status: ServerStatus,
+        isLoading: Bool,
+        page: MoodlePage?,
+        willOpenPage: @escaping () -> Void = {},
+        refresh: @escaping () async -> Void
+    ) -> some View {
+        modifier(MoodleListChrome(
+            title: title, status: status, isLoading: isLoading, page: page, willOpenPage: willOpenPage, refresh: refresh
+        ))
+    }
+
+    /// The bar of a pushed Moodle article: the back button alone, over the content.
+    func moodleArticleChrome() -> some View {
+        modifier(MoodleArticleChrome())
+    }
+
+    /// ⌘R on the Mac for a pushed screen that fetches its own data; the class table hands the
+    /// shortcut over while such a screen shows.
+    func moodleRefreshShortcut(_ refresh: @escaping () async -> Void) -> some View {
+        #if os(macOS)
+        return background {
+            Button("") { Task { await refresh() } }
+                .keyboardShortcut("r", modifiers: .command)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+        #else
+        return self
+        #endif
+    }
+}
+
 private struct MoodleListChrome: ViewModifier {
     let title: String
     let status: ServerStatus
     let isLoading: Bool
     let page: MoodlePage?
+    let willOpenPage: () -> Void
     let refresh: () async -> Void
 
     @Environment(\.openURL) private var openURL
@@ -180,6 +198,7 @@ private struct MoodleListChrome: ViewModifier {
 
     private func openButton(_ page: MoodlePage) -> some View {
         Button {
+            willOpenPage()
             Task { await openURL(page) }
         } label: {
             Image(systemName: "arrow.up.right.square")
@@ -290,11 +309,13 @@ struct MoodleFirstLoadView: View {
 /// bulletin's source button.
 struct MoodleOpenCapsule: View {
     let page: MoodlePage
+    var willOpen: () -> Void = {}
 
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         Button {
+            willOpen()
             Task { await openURL(page) }
         } label: {
             Label(String(localized: "action_open_in_moodle"), systemImage: "arrow.up.right.square")
