@@ -25,8 +25,7 @@ struct ClassTableSwitcherTests {
         let hua: ImportedPerson
     }
 
-    /// The observer runs on the thread that posts, the main one here.
-    private final class Count: @unchecked Sendable {
+    private final class Count {
         var value = 0
     }
 

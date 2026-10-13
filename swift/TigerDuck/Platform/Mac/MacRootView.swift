@@ -73,6 +73,8 @@ struct MacContentView: View {
         guard let destination = appState.pendingWidgetDestination else { return }
         switch destination {
         case .classTable:
+            // The widget draws the user's own class table.
+            ImportedClassTableStore.shared.show(nil)
             if pinnedFeatures.contains(.classTable) {
                 selection = .feature(.classTable)
             } else {

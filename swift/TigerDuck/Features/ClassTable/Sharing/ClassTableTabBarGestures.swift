@@ -234,8 +234,7 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
             ) { [weak self] entry in
                 guard let self else { return }
                 self.showClassTable()
-                // The class table's page may not exist until its tab has shown, and the import flow
-                // presents over it.
+                // The class table's page may not exist until its tab has shown.
                 DispatchQueue.main.async { entry.choose(in: self.store, requestImport: self.requestImport) }
             }
         }
