@@ -110,8 +110,8 @@ struct MoodleMaterialsView: View {
 }
 
 /// One row of a section's card: a file, a link, or a folder followed by its files.
-struct MoodleMaterialRow: Identifiable, Equatable {
-    enum Kind: Equatable {
+struct MoodleMaterialRow: Identifiable {
+    enum Kind {
         case file(MoodleFile)
         case link(URL)
         case folder(fileCount: Int)
