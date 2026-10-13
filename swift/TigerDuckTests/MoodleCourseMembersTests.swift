@@ -43,26 +43,34 @@ struct MoodleCourseMembersTests {
         )
     }
 
+    /// A picture one pixel square.
+    private nonisolated static let png = Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")!
+
     private nonisolated static let me = member(ownId, "B11399001 @ Tiger Duck", idNumber: "B11399001")
     private nonisolated static let classmate = member(43, "B11399002 @ Duck Tiger", idNumber: "B11399002")
 
-    /// What the stand-in site answers, and how often the store asked for members.
+    /// What the stand-in site answers, and what the store asked it for.
     private final class Site: @unchecked Sendable {
         private let lock = NSLock()
         private var _functions: Set<String> = [MoodleCourseMembersService.membersFunction]
         private var _list = MoodleMemberList(ownId: MoodleCourseMembersTests.ownId, members: [me, classmate])
         private var _calls: [Int] = []
+        private var _picture = MoodleCourseMembersTests.png
+        private var _pictureCalls: [URL] = []
 
-        func set(functions: Set<String>? = nil, members: [MoodleMember]? = nil) {
+        func set(functions: Set<String>? = nil, members: [MoodleMember]? = nil, picture: Data? = nil) {
             lock.withLock {
                 if let functions { _functions = functions }
                 if let members { _list.members = members }
+                if let picture { _picture = picture }
             }
         }
 
         var calls: [Int] { lock.withLock { _calls } }
+        var pictureCalls: [URL] { lock.withLock { _pictureCalls } }
 
-        /// `before` runs before members answer; it throws to fail the request.
+        /// `before` runs before members or a picture answer; it throws to fail the request.
         func api(before: @escaping @Sendable () async throws -> Void = {}) -> MoodleCourseAPI {
             MoodleCourseAPI(
                 functions: { self.lock.withLock { self._functions } },
@@ -73,6 +81,11 @@ struct MoodleCourseMembersTests {
                     self.lock.withLock { self._calls.append(courseId) }
                     try await before()
                     return self.lock.withLock { self._list }
+                },
+                picture: { url in
+                    self.lock.withLock { self._pictureCalls.append(url) }
+                    try await before()
+                    return self.lock.withLock { self._picture }
                 }
             )
         }
@@ -254,6 +267,96 @@ struct MoodleCourseMembersTests {
             return
         }
         #expect(sections.flatMap(\.members).map(\.id) == [Self.ownId, 43])
+    }
+
+    // MARK: - Pictures
+
+    private nonisolated static func withPicture(_ member: MoodleMember, rev: Int) -> MoodleMember {
+        MoodleMember(
+            id: member.id, fullName: member.fullName, idNumber: member.idNumber, department: member.department,
+            email: member.email, groups: member.groups, roles: member.roles,
+            pictureURL: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/88/user/icon/moove/f1?rev=\(rev)"),
+            description: member.description, interests: member.interests, fields: member.fields
+        )
+    }
+
+    private func pictures(_ folder: Folder, account: String = "B11399001") -> [String] {
+        let dir = folder.cache.moodleFilesDir.appendingPathComponent(account).appendingPathComponent("pictures")
+        return ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
+    }
+
+    @Test("a member's own picture downloads once, then shows from the device in the account's Moodle files")
+    func pictureDownloadsOnce() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let store = Self.store(folder, site: site)
+
+        await store.loadPicture(of: member)
+        await store.loadPicture(of: member)
+
+        #expect(store.pictures[try #require(member.pictureURL)] != nil)
+        #expect(site.pictureCalls == [member.pictureURL])
+        #expect(pictures(folder) == ["43-5"])
+
+        let reopened = Self.store(folder, site: site)
+        await reopened.loadPicture(of: member)
+        #expect(reopened.pictures[try #require(member.pictureURL)] != nil)
+        #expect(site.pictureCalls.count == 1)
+    }
+
+    @Test("Moodle's default picture is never downloaded, and a new upload replaces the old file")
+    func pictureVersions() async {
+        let folder = Folder()
+        let site = Site()
+        let store = Self.store(folder, site: site)
+
+        await store.loadPicture(of: Self.classmate)
+        #expect(site.pictureCalls.isEmpty)
+        #expect(store.pictures.isEmpty)
+
+        await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 5))
+        await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
+        #expect(pictures(folder) == ["43-6"])
+    }
+
+    @Test("a picture that is not an image, fails, or lands after a sign-out is neither shown nor kept")
+    func pictureNotKept() async throws {
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let url = try #require(member.pictureURL)
+
+        let folder = Folder()
+        let site = Site()
+        site.set(picture: Data("<html></html>".utf8))
+        let store = Self.store(folder, site: site)
+        await store.loadPicture(of: member)
+        #expect(store.pictures[url] == nil)
+
+        let failing = Self.store(folder, site: Site()) { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+        await failing.loadPicture(of: member)
+        #expect(failing.pictures[url] == nil)
+
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let answer = ManualSleeper()
+        let late = Self.store(folder, site: Site(), signedIn: signedIn) { await answer.sleep(for: .zero) }
+        let load = Task { await late.loadPicture(of: member) }
+        try await answer.waitUntilArmed()
+        signedIn.withLock { $0 = false }
+        await answer.fire()
+        await load.value
+        #expect(late.pictures[url] == nil)
+        #expect(pictures(folder).isEmpty)
+    }
+
+    @Test("signing out deletes the pictures with every other Moodle file")
+    func signOutClearsPictures() async {
+        let folder = Folder()
+        await Self.store(folder, site: Site()).loadPicture(of: Self.withPicture(Self.classmate, rev: 5))
+        #expect(!pictures(folder).isEmpty)
+
+        folder.cache.clearUserScopedData()
+
+        #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
     }
 
     // MARK: - Members screen

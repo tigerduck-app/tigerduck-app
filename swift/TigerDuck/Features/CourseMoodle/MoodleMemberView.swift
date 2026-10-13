@@ -29,9 +29,11 @@ struct MoodleMemberView: View {
                 #endif
                 MoodleMemberProfile(
                     member: member,
+                    picture: member.pictureURL.flatMap { store.pictures[$0] },
                     policy: appState.visualStylePolicy,
                     writeTo: writeTo
                 )
+                .task(id: member.pictureURL) { await store.loadPicture(of: member) }
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             .padding(.top, TigerDuckTheme.Spacing.xxl)
@@ -70,6 +72,7 @@ struct MoodleMemberView: View {
 /// there is one, and their own description and interests.
 struct MoodleMemberProfile: View {
     let member: MoodleMember
+    let picture: CGImage?
     let policy: VisualStylePolicy
     let writeTo: (String) -> Void
 
@@ -98,7 +101,7 @@ struct MoodleMemberProfile: View {
 
     private var header: some View {
         VStack(spacing: TigerDuckTheme.Spacing.xs) {
-            MoodleAvatar(name: member.name, size: Self.avatarSize)
+            MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
                 .padding(.bottom, TigerDuckTheme.Spacing.xs)
             Text(member.name)
                 .font(TigerDuckTheme.Typography.title)

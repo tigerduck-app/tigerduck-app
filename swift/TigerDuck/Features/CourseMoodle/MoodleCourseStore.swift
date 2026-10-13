@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Observation
 
 /// The Moodle calls behind a course's Moodle screens. Each runs under the stored token, renewed
@@ -12,6 +13,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var members: @Sendable (_ courseId: Int) async throws -> MoodleMemberList = { _ in
         MoodleMemberList(ownId: nil, members: [])
     }
+    var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -36,6 +38,14 @@ nonisolated struct MoodleCourseAPI: Sendable {
                     ownId: try await MoodleSiteInfoService.shared.userId(token: token),
                     members: try await MoodleCourseMembersService.members(courseId: courseId, token: token)
                 )
+            }
+        },
+        picture: { url in
+            try await MoodleWebserviceClient.withToken { token in
+                guard let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token) else {
+                    throw MoodleWebserviceError.malformedResponse(detail: "no file key")
+                }
+                return try await MoodleCourseMembersService.picture(url, accessKey: key)
             }
         }
     )
@@ -219,6 +229,7 @@ final class MoodleCourseStore {
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
     @ObservationIgnored private let api: MoodleCourseAPI
+    @ObservationIgnored private let context: MoodleCacheContext
     @ObservationIgnored private var listWork: Task<Void, Never>?
     @ObservationIgnored private var announcementsRefresh: Task<Void, Never>?
 
@@ -226,6 +237,7 @@ final class MoodleCourseStore {
         self.courseId = courseId
         self.termCourseIds = Array(Set(termCourseIds).union([courseId])).sorted()
         self.api = api
+        self.context = context
         forums = MoodleFeed(cacheName: "forums", ttl: MoodleRefreshInterval.forums, context: context)
         announcements = MoodleFeed(
             cacheName: "courses/\(courseId)/announcements", ttl: MoodleRefreshInterval.announcements, context: context
@@ -402,4 +414,56 @@ final class MoodleCourseStore {
         }
     }
 
+    // MARK: Pictures
+
+    /// Members' own pictures this course detail has shown, by picture URL.
+    private(set) var pictures: [URL: CGImage] = [:]
+    @ObservationIgnored private var pictureLoads: Set<URL> = []
+
+    /// A member's own picture, from the device, else from Moodle once and then kept with the
+    /// account's other Moodle files. One who keeps Moodle's default picture, or whose download
+    /// fails or lands after a sign-out, keeps their initial.
+    func loadPicture(of member: MoodleMember) async {
+        guard let url = member.pictureURL, pictures[url] == nil, pictureLoads.insert(url).inserted else { return }
+        defer { pictureLoads.remove(url) }
+        let file = pictureFile(of: member.id, url: url)
+        if let image = (try? Data(contentsOf: file)).flatMap(Self.image(from:)) {
+            pictures[url] = image
+            return
+        }
+        guard let data = try? await api.picture(url), let image = Self.image(from: data), context.isCurrent() else { return }
+        savePicture(data, to: file)
+        pictures[url] = image
+    }
+
+    /// One file per member and picture revision, which a new upload changes.
+    private func pictureFile(of memberId: Int, url: URL) -> URL {
+        func folderName(_ text: String) -> String {
+            String(text.unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
+        }
+        let account = folderName(context.account)
+        let revision = folderName(URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "rev" }?.value ?? "")
+        return context.cache.moodleFilesDir
+            .appendingPathComponent(account.isEmpty ? "_" : account, isDirectory: true)
+            .appendingPathComponent("pictures", isDirectory: true)
+            .appendingPathComponent("\(memberId)-\(revision)")
+    }
+
+    /// Replaces the member's earlier pictures.
+    private func savePicture(_ data: Data, to file: URL) {
+        let folder = file.deletingLastPathComponent()
+        let memberPrefix = String(file.lastPathComponent.prefix { $0 != "-" }) + "-"
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let earlier = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        for old in earlier where old.lastPathComponent.hasPrefix(memberPrefix) {
+            try? FileManager.default.removeItem(at: old)
+        }
+        try? data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
+    }
+
+    private nonisolated static func image(from data: Data) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
 }

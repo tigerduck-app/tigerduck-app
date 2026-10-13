@@ -142,7 +142,7 @@ struct MoodleMembersView: View {
             case .sections(let sections):
                 searchRow
                 ForEach(sections) { section in
-                    MoodleMemberSectionView(section: section, policy: appState.visualStylePolicy) { member in
+                    MoodleMemberSectionView(store: store, section: section, policy: appState.visualStylePolicy) { member in
                         open(.member(member))
                     }
                     .listRowBackground(Color.clear)
@@ -230,6 +230,7 @@ struct MoodleMembersView: View {
 
 /// One section of the members screen: its title and head count, then one card of its people.
 private struct MoodleMemberSectionView: View {
+    let store: MoodleCourseStore
     let section: MoodleMemberSection
     let policy: VisualStylePolicy
     let open: (MoodleMember) -> Void
@@ -256,9 +257,10 @@ private struct MoodleMemberSectionView: View {
                         Divider().padding(.leading, MoodleMemberRow.textInset)
                     }
                     Button { open(member) } label: {
-                        MoodleMemberRow(member: member)
+                        MoodleMemberRow(member: member, picture: member.pictureURL.flatMap { store.pictures[$0] })
                     }
                     .buttonStyle(.plain)
+                    .task(id: member.pictureURL) { await store.loadPicture(of: member) }
                 }
             }
             .presetCard(policy: policy)
@@ -271,6 +273,7 @@ private struct MoodleMemberSectionView: View {
 /// the department cut short when the line runs out.
 struct MoodleMemberRow: View {
     let member: MoodleMember
+    let picture: CGImage?
 
     /// The line between rows starts under the text, not under the picture.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + avatarSize + TigerDuckTheme.Spacing.md
@@ -278,7 +281,7 @@ struct MoodleMemberRow: View {
 
     var body: some View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
-            MoodleAvatar(name: member.name, size: Self.avatarSize)
+            MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
             VStack(alignment: .leading, spacing: 2) {
                 Text(member.name)
                     .font(TigerDuckTheme.Typography.body)

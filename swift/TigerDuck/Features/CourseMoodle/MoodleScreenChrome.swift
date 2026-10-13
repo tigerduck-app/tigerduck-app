@@ -283,21 +283,31 @@ nonisolated enum MoodlePersonName {
     }
 }
 
-/// Moodle's own pictures of other users need a file token, so a user shows as the first
-/// character of their name in a circle.
+/// A user's own picture where the screen has one, else the first character of their name in a
+/// circle.
 struct MoodleAvatar: View {
     let name: String
     let size: CGFloat
+    var picture: CGImage?
 
     var body: some View {
-        Circle()
-            .fill(Color.textSecondary.opacity(0.25))
-            .frame(width: size, height: size)
-            .overlay {
-                Text(name.first.map { String($0) } ?? "")
-                    .font(.system(size: size * 0.5, weight: .semibold))
-                    .foregroundStyle(Color.textPrimary)
+        Group {
+            if let picture {
+                Image(decorative: picture, scale: 1)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Circle()
+                    .fill(Color.textSecondary.opacity(0.25))
+                    .overlay {
+                        Text(name.first.map { String($0) } ?? "")
+                            .font(.system(size: size * 0.5, weight: .semibold))
+                            .foregroundStyle(Color.textPrimary)
+                    }
             }
-            .accessibilityHidden(true)
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 }
