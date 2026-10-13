@@ -86,6 +86,26 @@ struct ClassTableSwitchingTests {
 
     // MARK: - Which class table shows
 
+    /// The page draws a switch in one update, so the class table it keeps the rows of on screen
+    /// is the one before the switch, Today carousel included.
+    @Test("the page keeps the class table on screen until it follows the store")
+    func aSwitchWaitsForThePage() throws {
+        try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
+            let people = try Self.people(Folder())
+            let viewModel = ClassTableViewModel(importedTables: people.store)
+
+            people.store.show(people.ming.id)
+            #expect(viewModel.shownPerson == nil)
+            viewModel.showShownTable()
+            #expect(viewModel.shownPerson?.id == people.ming.id)
+
+            people.store.show(nil)
+            #expect(viewModel.shownPerson?.id == people.ming.id)
+            viewModel.showShownTable()
+            #expect(viewModel.shownPerson == nil)
+        }
+    }
+
     @Test("a relaunch opens on the user's own class table")
     func relaunchOpensOnTheUser() throws {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
@@ -184,6 +204,10 @@ struct ClassTableSwitchingTests {
             #expect(viewModel.isDeletingPerson)
             #expect(viewModel.personInAlert?.nickname == "Ming")
             viewModel.deletePersonInAlert()
+            // The page shows the deleted person until it follows the store.
+            #expect(viewModel.shownPerson?.nickname == "Ming")
+            // What `ClassTableView` runs when the shown class table changes.
+            viewModel.showShownTable()
 
             #expect(people.store.people.map(\.nickname) == ["Hua"])
             #expect(viewModel.shownPerson == nil)

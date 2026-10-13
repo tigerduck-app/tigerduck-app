@@ -39,6 +39,22 @@ private extension Shape {
     }
 }
 
+/// Where the grid's period rows start, by period id, in the scroll view that holds the grid.
+nonisolated struct TimetableRowTops: Equatable, Sendable {
+    var switchCount: Int
+    var tops: [String: CGFloat]
+
+    /// How far a switch moved the first row at or below `visibleTop`, the bottom of the bars over
+    /// the scroll view, among the rows both class tables have. Scrolling that far puts the rows back
+    /// where they were on screen.
+    static func shift(from before: Self, to after: Self, visibleTop: CGFloat) -> CGFloat {
+        let moves = before.tops.compactMap { id, top in after.tops[id].map { (from: top, to: $0) } }
+        let row = moves.filter { $0.from >= visibleTop }.min { $0.from < $1.from }
+            ?? moves.max { $0.from < $1.from }
+        return row.map { $0.to - $0.from } ?? 0
+    }
+}
+
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
     /// Off for an exported image: the badge marks work still due, which is
@@ -49,6 +65,12 @@ struct TimetableGridView: View {
     /// a schedule-conflict cluster with a warning triangle; nil follows the
     /// environment. For an export, whose renderer cannot set that value itself.
     var differentiateWithoutColor: Bool? = nil
+    /// The class table bumps this when it switches to another class table, so that `onSwitch`
+    /// hears the layout of that switch and not every scrolled frame.
+    var switchCount = 0
+    /// The row tops before and after a switch, for the class table to scroll by however far a
+    /// row moved.
+    var onSwitch: ((_ before: TimetableRowTops, _ after: TimetableRowTops) -> Void)? = nil
     @Environment(AppState.self) private var appState
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
@@ -97,6 +119,10 @@ struct TimetableGridView: View {
     }
 
     var body: some View {
+        let periods = viewModel.activePeriods
+        let firstRowTop = headerHeight + rowSpacing
+        let rowPitch = cellHeight + rowSpacing
+        let switchCount = switchCount
         VStack(spacing: rowSpacing) {
             // Header row
             HStack(spacing: colSpacing) {
@@ -112,7 +138,7 @@ struct TimetableGridView: View {
             }
 
             // Grid rows
-            ForEach(Array(viewModel.activePeriods.enumerated()), id: \.element.id) { periodIndex, period in
+            ForEach(Array(periods.enumerated()), id: \.element.id) { periodIndex, period in
                 HStack(spacing: colSpacing) {
                     // Start, period number, end: one timestamp would not say which end of
                     // the period it marks, and the last row has no next row to infer from.
@@ -134,22 +160,68 @@ struct TimetableGridView: View {
 
                     // Day cells
                     ForEach(viewModel.activeWeekdays, id: \.self) { weekday in
-                        cellView(weekday: weekday, periodIndex: periodIndex, periodId: period.id)
+                        let role = viewModel.cellRole(weekday: weekday, periodIndex: periodIndex)
+                        let key = contentKey(of: role, weekday: weekday, periodId: period.id)
+                        cellView(role, key: key, weekday: weekday, periodId: period.id)
                             .frame(maxWidth: .infinity)
                             .frame(height: cellHeight)
+                            // Animates the cell's fade when its courses change; the fade sets its own timing.
+                            .animation(.linear(duration: 0.25), value: key)
                     }
                 }
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.xs)
+        // Every row is one cell high, so the grid's top places them all.
+        .onGeometryChange(for: TimetableRowTops.self) { proxy in
+            let gridTop = proxy.frame(in: .scrollView).minY
+            return TimetableRowTops(switchCount: switchCount, tops: Dictionary(
+                uniqueKeysWithValues: periods.enumerated().map { index, period in
+                    (period.id, gridTop + firstRowTop + CGFloat(index) * rowPitch)
+                }
+            ))
+        } action: { before, after in
+            if before.switchCount != after.switchCount { onSwitch?(before, after) }
+        }
+    }
+
+    /// A cell whose courses change, as when the class table switches between people, fades the
+    /// old courses out and then the new ones in, 0.25 s in all. A course both have stays as it is,
+    /// and so does the grid around it.
+    private static let courseFade = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeOut(duration: 0.15).delay(0.1)),
+        removal: .opacity.animation(.easeIn(duration: 0.1))
+    )
+
+    /// What a cell's courses show, as the identity of its block: a change in name, room or rows
+    /// makes a new block, which `courseFade` swaps in. Colour follows the course number.
+    private func contentKey(of role: ClassTableViewModel.CellRole, weekday: Int, periodId: String) -> String {
+        func shown(_ course: SDCourse) -> String { "\(course.courseNo)|\(course.displayName)" }
+        switch role {
+        case .empty:
+            return "empty"
+        case .skip:
+            return "skip"
+        case .solo(let course, let spanCount):
+            let room = appState.showClassroomInClassTable
+                ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId) ?? ""
+                : ""
+            return "solo \(spanCount) \(shown(course))|\(room)"
+        case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
+            return "pair \(combinedSpan) \(spanA) \(offsetA) \(shown(courseA)) \(spanB) \(offsetB) \(shown(courseB))"
+        case let .conflictMany(segments, combinedSpan, laneCount):
+            let lanes = segments.map { "\($0.span) \($0.offset) \($0.lane) \(shown($0.course))" }
+            return "lanes \(combinedSpan) \(laneCount) " + lanes.joined(separator: " ")
+        }
     }
 
     @ViewBuilder
-    private func cellView(weekday: Int, periodIndex: Int, periodId: String) -> some View {
-        switch viewModel.cellRole(weekday: weekday, periodIndex: periodIndex) {
+    private func cellView(_ role: ClassTableViewModel.CellRole, key: String, weekday: Int, periodId: String) -> some View {
+        switch role {
         case .empty:
             RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
                 .fill(Color.cardSurface.opacity(0.15))
+                .transition(.identity)
 
         case .solo(let course, let spanCount):
             let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
@@ -241,6 +313,8 @@ struct TimetableGridView: View {
                             }
                         }
                 }
+                .id(key)
+                .transition(Self.courseFade)
                 .zIndex(1)
 
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
@@ -254,6 +328,9 @@ struct TimetableGridView: View {
                 weekday: weekday,
                 periodId: periodId
             )
+            .id(key)
+            .transition(Self.courseFade)
+            .zIndex(1)
 
         case let .conflictMany(segments, combinedSpan, laneCount):
             conflictCluster(
@@ -263,9 +340,13 @@ struct TimetableGridView: View {
                 weekday: weekday,
                 periodId: periodId
             )
+            .id(key)
+            .transition(Self.courseFade)
+            .zIndex(1)
 
         case .skip:
             Color.clear
+                .transition(.identity)
         }
     }
 
@@ -293,7 +374,6 @@ struct TimetableGridView: View {
                 )
                 .frame(height: clusterHeight)
             }
-            .zIndex(1)
     }
 }
 

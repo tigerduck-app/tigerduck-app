@@ -34,8 +34,8 @@ extension ClassTableViewModel {
         if !merged.isEmpty {
             courses = merged
         }
-        // Another tab or page may have switched to someone else's class table already.
-        if shownPerson != nil { showShownTable() }
+        // Another tab or page may have switched class tables since this model was made.
+        if shownPerson != nil || importedTables.shownPerson != nil { showShownTable() }
         // backgroundSync() on app launch handles the network refresh
     }
 

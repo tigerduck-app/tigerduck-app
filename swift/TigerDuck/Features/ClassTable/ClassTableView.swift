@@ -13,6 +13,9 @@ struct ClassTableView: View {
     @State private var showExportFailed = false
     @State private var isExporting = false
     @State private var shareModel: ClassTableShareModel?
+    @State private var scrollPosition = ScrollPosition(edge: .top)
+    @State private var scroll = ScrollState()
+    @State private var tableSwitches = 0
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -113,6 +116,10 @@ struct ClassTableView: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
             .scrollIndicators(.hidden)
+            .scrollPosition($scrollPosition)
+            .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { _, geometry in
+                scroll.geometry = geometry
+            }
             .refreshable {
                 guard viewModel.shownPerson == nil else {
                     await viewModel.refreshShownPerson()
@@ -126,7 +133,10 @@ struct ClassTableView: View {
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             // Another tab, page or the tab bar's menu may switch to someone else's class table.
-            .onChange(of: viewModel.shownTable) { _, _ in viewModel.showShownTable() }
+            .onChange(of: viewModel.shownTable) { _, _ in
+                tableSwitches += 1
+                viewModel.showShownTable()
+            }
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
                     course: course,
@@ -478,8 +488,20 @@ struct ClassTableView: View {
             }
             semesterPickerBar
 
-            TimetableGridView(viewModel: viewModel)
+            TimetableGridView(viewModel: viewModel, switchCount: tableSwitches, onSwitch: keepRowsInPlace)
         }
+    }
+
+    /// Scrolls by however far the switch moved the rows, so two people's classes line up on screen.
+    /// A page at its top stays there, title and all.
+    private func keepRowsInPlace(before: TimetableRowTops, after: TimetableRowTops) {
+        guard let geometry = scroll.geometry else { return }
+        let top = geometry.contentInsets.top
+        guard geometry.contentOffset.y + top > 0 else { return }
+        let shift = TimetableRowTops.shift(from: before, to: after, visibleTop: top)
+        guard shift != 0 else { return }
+        // `scrollTo(y:)` counts from the top inset, which `contentOffset` does not.
+        scrollPosition.scrollTo(y: max(0, geometry.contentOffset.y + top + shift))
     }
 
     private var todayCoursesSection: some View {
@@ -562,6 +584,12 @@ struct ClassTableView: View {
         guard let owner, !owner.isEmpty else { return credits }
         return "\(owner) · \(credits)"
     }
+}
+
+/// The latest scroll geometry, held outside SwiftUI's state because it changes on every scrolled
+/// frame and only a class table switch reads it.
+private final class ScrollState {
+    var geometry: ScrollGeometry?
 }
 
 /// An exported class table image waiting for the share sheet.

@@ -58,7 +58,15 @@ final class ClassTableViewModel {
 
     /// Whose class table this is, nil for the user's own. Another person's is read-only, and
     /// nothing of the user's, such as assignments or Moodle, is shown on it.
-    var shownPerson: ImportedPerson? { importedTables.shownPerson }
+    ///
+    /// It moves to the store's choice only in `showShownTable()`, with the courses, so the page
+    /// redraws a switch once. The store's copy carries a rename; a deleted person stays until then.
+    var shownPerson: ImportedPerson? {
+        guard let displayedPerson else { return nil }
+        return importedTables.people.first { $0.id == displayedPerson.id } ?? displayedPerson
+    }
+
+    private var displayedPerson: ImportedPerson?
 
     @ObservationIgnored let importedTables: ImportedClassTableStore
 
@@ -231,6 +239,7 @@ final class ClassTableViewModel {
         self.isClassDay = isClassDay
         self.importedTables = importedTables
         self.lookUpImportedTerm = lookUpImportedTerm
+        displayedPerson = importedTables.shownPerson
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
         ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
@@ -342,6 +351,7 @@ final class ClassTableViewModel {
     /// screen when they shared it and otherwise opens on their latest term; the user's own opens
     /// on its own term, as at launch.
     func showShownTable() {
+        displayedPerson = importedTables.shownPerson
         if shownPerson != nil {
             // Another window can switch class tables while one of the user's own edits is open
             // here, and it must not save into someone else's.
@@ -395,14 +405,11 @@ final class ClassTableViewModel {
         isDeletingPerson = true
     }
 
-    /// Deleting the shown person shows the user's own class table again.
+    /// Deleting the shown person shows the user's own class table again, through the class table
+    /// page following the store as for any other switch.
     func deletePersonInAlert() {
         guard let personInAlert else { return }
-        guard importedTables.delete(personInAlert.id) != .failed else {
-            showsSaveFailed = true
-            return
-        }
-        showShownTable()
+        if importedTables.delete(personInAlert.id) == .failed { showsSaveFailed = true }
     }
 
     /// Pull to refresh on someone else's class table: looks the term on screen up again, and says
