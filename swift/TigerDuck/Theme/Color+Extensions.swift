@@ -56,16 +56,21 @@ extension Color {
     /// This colour mixed with white into an opaque pastel. Mixing with white keeps the hue, so a
     /// course still shows the colour it was given, and lifts every channel to at least 65%, where
     /// ``textOnPastel`` reads at better than 7:1.
-    var pastel: Color {
+    var pastel: Color { mixed(toward: 1, by: 0.65) }
+
+    /// This colour mixed half with black, for a line on its own ``pastel`` that stands out from
+    /// it at better than 3:1 whatever the colour.
+    var pastelOutline: Color { mixed(toward: 0, by: 0.5) }
+
+    /// Each sRGB channel moved `share` of the way to `target`, opaque.
+    private func mixed(toward target: Float, by share: Float) -> Color {
         var resolved = resolve(in: EnvironmentValues())
-        resolved.red += (1 - resolved.red) * Self.pastelWhiteShare
-        resolved.green += (1 - resolved.green) * Self.pastelWhiteShare
-        resolved.blue += (1 - resolved.blue) * Self.pastelWhiteShare
+        resolved.red += (target - resolved.red) * share
+        resolved.green += (target - resolved.green) * share
+        resolved.blue += (target - resolved.blue) * share
         resolved.opacity = 1
         return Color(resolved)
     }
-
-    private static let pastelWhiteShare: Float = 0.65
 
     // MARK: - Calendar Event Colors
 

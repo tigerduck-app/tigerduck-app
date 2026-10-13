@@ -391,7 +391,7 @@ struct TimetableGridView: View {
             .overlay {
                 if outlineRequiredCourses, course.isRequired {
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(course.color, lineWidth: 1)
+                        .strokeBorder(policy.classTableCourseOutline(course.color), lineWidth: 1)
                 }
             }
             .overlay {
@@ -639,7 +639,7 @@ private struct ConflictClusterView: View {
             shape
                 .fill(policy.classTableCourseFill(course.color))
                 .overlay {
-                    if isOutlined(course) { shape.innerOutline(course.color) }
+                    if isOutlined(course) { shape.innerOutline(policy.classTableCourseOutline(course.color)) }
                 }
                 .overlay(alignment: .topLeading) {
                     Text(course.displayName)
@@ -790,7 +790,7 @@ private struct ConflictClusterView: View {
             }
         }
         .overlay {
-            if isOutlined(course) { shape.innerOutline(course.color) }
+            if isOutlined(course) { shape.innerOutline(policy.classTableCourseOutline(course.color)) }
         }
         .clipShape(shape)
         .contentShape(shape)

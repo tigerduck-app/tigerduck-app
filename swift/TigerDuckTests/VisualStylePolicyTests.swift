@@ -26,6 +26,7 @@ struct VisualStylePolicyTests {
             let policy = VisualStylePolicy(preset: preset)
             #expect(policy.classTableGridStyle == .blocks)
             #expect(policy.classTableCourseFill(.orange) == Color.orange.opacity(0.4))
+            #expect(policy.classTableCourseOutline(.orange) == Color.orange)
             #expect(policy.classTableCourseTextColor == Color.textPrimary)
             #expect(policy.classTableCourseSecondaryTextColor == Color.textSecondary)
         }
@@ -53,6 +54,17 @@ struct VisualStylePolicyTests {
         let fill = Self.tat.classTableCourseFill(Color(hex: UInt(hex))).resolve(in: EnvironmentValues())
 
         #expect(Self.contrast(Self.tat.classTableCourseSecondaryTextColor, on: fill) >= 4.5)
+    }
+
+    @Test(
+        "A required course's outline stands out from its pastel",
+        arguments: TigerDuckTheme.coursePaletteHexes + [0x000000, 0xFFFFFF, 0x0000FF, 0xFFFF00]
+    )
+    func outlineOnPastel(hex: UInt32) {
+        let colour = Color(hex: UInt(hex))
+        let fill = Self.tat.classTableCourseFill(colour).resolve(in: EnvironmentValues())
+
+        #expect(Self.contrast(Self.tat.classTableCourseOutline(colour), on: fill) >= 3)
     }
 
     /// The HSV hue from 0 up to 1, or nil for a grey, which has none.

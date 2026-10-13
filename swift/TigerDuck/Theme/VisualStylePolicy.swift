@@ -152,6 +152,14 @@ struct VisualStylePolicy: Sendable {
         }
     }
 
+    /// The outline of a required course on ``classTableCourseFill(_:)``.
+    func classTableCourseOutline(_ courseColor: Color) -> Color {
+        switch preset {
+        case .default, .iosInspired: return courseColor
+        case .tat: return courseColor.pastelOutline
+        }
+    }
+
     /// A course's name on ``classTableCourseFill(_:)``.
     var classTableCourseTextColor: Color {
         switch preset {
