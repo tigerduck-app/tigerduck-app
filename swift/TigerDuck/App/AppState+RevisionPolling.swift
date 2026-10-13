@@ -30,8 +30,10 @@ extension AppState {
     /// One poll: fetch the lightweight revision endpoint, compare with
     /// ``_lastKnownRevision``, and apply what moved when the server is ahead.
     func pollRevision() async -> RevisionPollOutcome {
-        guard Defaults[.cloudSyncEnabled], await authTokenManager.isLoggedIn else { return .unchanged }
+        guard Defaults[.cloudSyncEnabled] else { return .unchanged }
         guard NetworkMonitor.shared.isConnected else { return .offline }
+        await authService.ensureBackendSignedIn()
+        guard await authTokenManager.isLoggedIn else { return .unchanged }
         do {
             let serverRevision = try await pushCoordinator.fetchRevision()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self._lastKnownRevision)")
@@ -42,7 +44,7 @@ extension AppState {
         } catch PushAPIError.httpStatus(401, _) {
             return .unauthorized
         } catch {
-            AppLogger.sync.info("[poll] tick failed: \(error, privacy: .public)")
+            AppLogger.sync.info("[poll] tick failed: \(error, privacy: .private)")
             return .failed
         }
     }
@@ -63,7 +65,7 @@ extension AppState {
         do {
             page = try await pushCoordinator.fetchChanges(sinceRevision: since)
         } catch {
-            AppLogger.sync.info("[feed] read failed: \(error, privacy: .public)")
+            AppLogger.sync.info("[feed] read failed: \(error, privacy: .private)")
             page = nil
         }
         guard mayAdvanceRevision(from: since, generation: generation), !fullSyncGate.isRunning else {

@@ -29,6 +29,7 @@ extension AppState {
         // Sign-out clears what this writes but cancels only `syncTask`, which a poll, a push or a
         // pull does not run in. So no write below follows an await without this check.
         let generation = authService.loginGeneration
+        await authService.ensureBackendSignedIn()
         guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return }
         await retryUnsentEdits()
         do {
@@ -264,7 +265,7 @@ extension AppState {
                     await runFullSync(retried: true)
                 }
             }
-            AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
+            AppLogger.sync.error("syncOverrides failed: \(error, privacy: .private)")
         }
     }
 
@@ -621,32 +622,9 @@ extension AppState {
     }
 
     func attemptBackendRelogin() async -> Bool {
-        let atm = authTokenManager
-        guard let studentId = authService.storedStudentId else { return false }
-        let moodleToken = await MoodleTokenService.shared.currentToken()
-        let moodlePrivateToken = KeychainManager.loadString(
-            key: AppConstants.KeychainKeys.moodlePrivateToken
-        )
-        guard let moodleToken, !moodleToken.isEmpty else {
-            AppLogger.sync.info("auto-relogin skipped: no Moodle token")
-            return false
-        }
-        let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
-        do {
-            _ = try await atm.login(
-                studentId: studentId,
-                password: "",
-                moodleToken: moodleToken,
-                moodlePrivateToken: moodlePrivateToken,
-                platform: platform
-            )
-            AppLogger.sync.info("auto-relogin: v3 JWT refreshed")
-            pushCoordinator.refreshRegistrationAfterAuth()
-            return true
-        } catch {
-            AppLogger.sync.error("auto-relogin failed: \(error, privacy: .public)")
-            return false
-        }
+        guard await authService.reloginToBackend() else { return false }
+        pushCoordinator.refreshRegistrationAfterAuth()
+        return true
     }
 
     /// Fire-and-forget override sync to the backend. Local state is already
@@ -743,9 +721,9 @@ extension AppState {
         Task.detached {
             do {
                 try await coordinator.deleteCourse(courseKey: courseKey)
-                AppLogger.sync.info("deleteBackendCourse ok: \(courseKey, privacy: .public)")
+                AppLogger.sync.info("deleteBackendCourse ok: \(courseKey, privacy: .private)")
             } catch {
-                AppLogger.sync.error("deleteBackendCourse failed: \(error, privacy: .public)")
+                AppLogger.sync.error("deleteBackendCourse failed: \(error, privacy: .private)")
             }
         }
     }
@@ -780,7 +758,7 @@ extension AppState {
             resetLocally()
             return true
         } catch {
-            AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .public)")
+            AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .private)")
             return false
         }
     }
@@ -836,7 +814,7 @@ extension AppState {
             }
             await sendUpload(label, generation: generation, retried: true, send)
         } catch {
-            AppLogger.sync.error("\(label, privacy: .public) failed: \(error, privacy: .public)")
+            AppLogger.sync.error("\(label, privacy: .public) failed: \(error, privacy: .private)")
         }
     }
 

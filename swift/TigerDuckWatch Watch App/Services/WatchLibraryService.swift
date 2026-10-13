@@ -117,7 +117,7 @@ enum WatchLibraryService {
         let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
 
         if let apiError = response.error, apiError.code != 0 {
-            logger.error("QR generation failed: \(apiError.message, privacy: .public)")
+            logger.error("QR generation failed: \(apiError.message, privacy: .private)")
             throw WatchLibraryServiceError.qrGenerationFailed(apiError.message)
         }
         guard let payload = response.data else {
@@ -144,7 +144,7 @@ enum WatchLibraryService {
         let response = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
 
         if let apiError = response.error, apiError.code != 0 {
-            logger.error("login failed: \(apiError.message, privacy: .public)")
+            logger.error("login failed: \(apiError.message, privacy: .private)")
             throw WatchLibraryServiceError.loginFailed(apiError.message)
         }
         guard let loginData = response.data else {

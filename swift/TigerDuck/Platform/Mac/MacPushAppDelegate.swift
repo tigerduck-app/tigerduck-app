@@ -52,7 +52,7 @@ final class MacPushAppDelegate: NSObject, NSApplicationDelegate, PushTokenSource
 
     func application(_ application: NSApplication,
                      didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .private)")
         if let forward = forwardError {
             forward(error)
         } else {

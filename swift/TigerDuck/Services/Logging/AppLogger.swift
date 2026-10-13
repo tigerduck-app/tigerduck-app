@@ -33,9 +33,10 @@ nonisolated enum AppLogger {
     /// Scrubs credentials from a string before it is logged as private, which Console and a
     /// sysdiagnose still show on a device with a logging profile that enables private data.
     /// Drops the query string of any `scheme://` URL, which can carry `wstoken=` or an OIDC
-    /// `code=`, and masks `token=`, `wstoken=`, `/wstoken/<...>`, password fields and
-    /// `Bearer ...` values elsewhere, such as in `moodlemobile://token=` or a form body. An
-    /// error's description or user info can hold any of these.
+    /// `code=`, and masks `token=`, `wstoken=`, `/wstoken/<...>`, the access key of a
+    /// `/tokenpluginfile.php/<key>/` file URL, password fields and `Bearer ...` values elsewhere,
+    /// such as in `moodlemobile://token=` or a form body. An error's description or user info can
+    /// hold any of these.
     static func scrubSensitive(_ value: String) -> String {
         var out = value
         for pattern in scrubPatterns {
@@ -57,6 +58,7 @@ nonisolated enum AppLogger {
         ScrubPattern(pattern: #"([a-z][a-z0-9+.-]*://[^\s?#"']*)\?[^\s#"']+"#, replacement: "$1?***"),
         ScrubPattern(pattern: #"(wstoken|token)=[^&\s"']+"#, replacement: "$1=***"),
         ScrubPattern(pattern: #"/wstoken/[A-Za-z0-9+/=_-]+"#, replacement: "/wstoken/***"),
+        ScrubPattern(pattern: #"/tokenpluginfile\.php/(?!wstoken/)[^/\s?#"']+"#, replacement: "/tokenpluginfile.php/***"),
         ScrubPattern(pattern: #"(password|passwd|pwd)=[^&\s"']+"#, replacement: "$1=***"),
         ScrubPattern(pattern: #"Bearer\s+[A-Za-z0-9._\-+/=]+"#, replacement: "Bearer ***"),
     ]

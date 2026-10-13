@@ -73,7 +73,7 @@ struct CourseRequireOptionTests {
         #expect(CourseDetailSheet.requireOptionText("X") == nil)
     }
 
-    @Test func requiredCoursesAreOutlinedUntilTheUserTurnsItOff() {
-        #expect(Defaults.Keys.outlineRequiredCourses.defaultValue)
+    @Test func requiredCoursesAreNotOutlinedUntilTheUserTurnsItOn() {
+        #expect(!Defaults.Keys.outlineRequiredCourses.defaultValue)
     }
 }

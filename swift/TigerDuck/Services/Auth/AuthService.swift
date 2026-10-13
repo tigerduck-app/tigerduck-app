@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
@@ -30,6 +31,8 @@ final class AuthService {
     /// Whether the keychain holds both credentials; two keychain reads.
     private let keychainHasCredentials: () -> Bool
 
+    private let moodleTokens: MoodleTokenService
+
     private var credentialObservers: [any NSObjectProtocol] = []
 
     /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``), so keychain reads
@@ -40,8 +43,13 @@ final class AuthService {
     /// So this re-checks when protected data becomes available and when the app activates.
     /// Otherwise ``_revision`` moves only on login and logout, and after an unlock the Class
     /// Table stays on the login prompt until an unrelated redraw such as pull-to-refresh.
-    init(keychainHasCredentials: @escaping () -> Bool = AuthService.readKeychainHasCredentials) {
+    init(
+        keychainHasCredentials: @escaping () -> Bool = AuthService.readKeychainHasCredentials,
+        notificationCenter center: NotificationCenter = .default,
+        moodleTokens: MoodleTokenService = .shared
+    ) {
         self.keychainHasCredentials = keychainHasCredentials
+        self.moodleTokens = moodleTokens
         let present = keychainHasCredentials()
         lastKnownHasCredentials = present
         // Only ever raised here. A false read at this point may just mean the
@@ -59,12 +67,31 @@ final class AuthService {
         let names: [Notification.Name] = []
         #endif
 
-        let center = NotificationCenter.default
         credentialObservers = names.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.revalidateStoredCredentials() }
             }
         }
+        #if os(iOS)
+        // A relogin behind a locked screen fails for want of the Moodle token, and the unlock
+        // makes it readable again.
+        credentialObservers.append(center.addObserver(
+            forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.signInAfterUnlock() }
+        })
+        let returnToApp = UIApplication.didBecomeActiveNotification
+        #elseif os(macOS)
+        let returnToApp = NSApplication.didBecomeActiveNotification
+        #endif
+        #if os(iOS) || os(macOS)
+        // A sign-in that failed for another reason gets another try on each return to the app.
+        credentialObservers.append(center.addObserver(
+            forName: returnToApp, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.ensureBackendSignedIn() }
+        })
+        #endif
     }
 
     /// Re-read the keychain and invalidate only if its answer changed, so a
@@ -137,6 +164,23 @@ final class AuthService {
 
     var authTokenManager: AuthTokenManager?
     var onV3SignedIn: (() -> Void)?
+    @ObservationIgnored private var backendSignIn: Task<Void, Never>?
+    /// When an automatic backend sign-in that had credentials to send last failed. The backend
+    /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
+    /// https://github.com/tigerduck-app/tigerduck-backend/blob/main/server/config.py), and a
+    /// campus network puts many students behind one IP, so the next automatic one waits
+    /// ``backendSignInPause``.
+    @ObservationIgnored private var backendSignInFailedAt: Date?
+
+    nonisolated static let backendSignInPause: TimeInterval = 5 * 60
+
+    /// Whether an automatic backend sign-in may go. Measured from the failure, so a clock set
+    /// back does not stretch the pause.
+    nonisolated static func backendSignInIsDue(lastFailure: Date?, now: Date) -> Bool {
+        guard let lastFailure else { return true }
+        let age = now.timeIntervalSince(lastFailure)
+        return age >= backendSignInPause || age < 0
+    }
 
     var storedStudentId: String? {
         _ = _revision
@@ -178,6 +222,9 @@ final class AuthService {
                 // Drop this account's cached enrolled courses so the first fetch after login
                 // scrapes fresh data, not stale courses from before a semester crossover.
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
+                // The sign-in sheet also opens over a stored account, so another account can sign
+                // in without a sign-out; it must not inherit the class tables the last one imported.
+                ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId)
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 
@@ -185,7 +232,7 @@ final class AuthService {
 
                 // Obtain Moodle webservice token — non-fatal, never blocks NTUST login result
                 do {
-                    _ = try await MoodleTokenService.shared.obtainToken(studentId: normalizedId, password: password)
+                    _ = try await moodleTokens.obtainToken(studentId: normalizedId, password: password)
                 } catch {
                     AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
                 }
@@ -208,12 +255,15 @@ final class AuthService {
         }
     }
 
-    private func performV3Login(studentId: String, password: String) async {
-        guard let authTokenManager else { return }
-        guard let moodleToken = await MoodleTokenService.shared.currentToken(),
-              !moodleToken.isEmpty else {
-            return
-        }
+    /// Signs in to the backend with the stored Moodle token and returns whether it did. With
+    /// `harvesting`, a missing token is harvested first; the interactive sign-in passes false,
+    /// as it has just tried to harvest one.
+    @discardableResult
+    private func performV3Login(studentId: String, password: String, harvesting: Bool = false) async -> Bool {
+        guard let authTokenManager else { return false }
+        let generation = loginGeneration
+        let moodleToken = harvesting ? await moodleTokenForBackend() : await moodleTokens.currentToken()
+        guard let moodleToken, !moodleToken.isEmpty, loginGeneration == generation else { return false }
         let moodlePrivateToken = KeychainManager.loadString(
             key: AppConstants.KeychainKeys.moodlePrivateToken
         )
@@ -226,9 +276,70 @@ final class AuthService {
                 moodlePrivateToken: moodlePrivateToken,
                 platform: platform
             )
+            // Signed out while the request was out: the session is the departing account's.
+            guard loginGeneration == generation else { return false }
+            backendSignInFailedAt = nil
             onV3SignedIn?()
+            return true
         } catch {
+            guard loginGeneration == generation else { return false }
             AppLogger.captureError(error, context: ["flow": "v3Login"])
+            return false
+        }
+    }
+
+    /// Signs in to the backend again after it turned the session down, from a refresh or a
+    /// request answered 401. It sends the Moodle token and no password.
+    func reloginToBackend() async -> Bool {
+        guard let authTokenManager,
+              Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
+              let studentId = storedStudentId else { return false }
+        let generation = loginGeneration
+        guard let moodleToken = await moodleTokenForBackend(), loginGeneration == generation else {
+            AppLogger.sync.info("auto-relogin skipped: no Moodle token")
+            noteFailedBackendSignIn(since: generation)
+            return false
+        }
+        let moodlePrivateToken = KeychainManager.loadString(
+            key: AppConstants.KeychainKeys.moodlePrivateToken
+        )
+        let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
+        do {
+            _ = try await authTokenManager.login(
+                studentId: studentId,
+                password: "",
+                moodleToken: moodleToken,
+                moodlePrivateToken: moodlePrivateToken,
+                platform: platform
+            )
+            AppLogger.sync.info("auto-relogin: v3 JWT refreshed")
+            backendSignInFailedAt = nil
+            return true
+        } catch {
+            AppLogger.sync.error("auto-relogin failed: \(error, privacy: .private)")
+            noteFailedBackendSignIn(since: generation)
+            return false
+        }
+    }
+
+    /// Starts the pause after an automatic sign-in failed, unless the account signed out
+    /// meanwhile: then the failure was the departing account's.
+    private func noteFailedBackendSignIn(since generation: Int) {
+        guard loginGeneration == generation else { return }
+        backendSignInFailedAt = Date()
+    }
+
+    /// The stored Moodle token, or one harvested with the stored credentials when none is
+    /// stored: a backend sign-in proves the account with it. Nil when that fails. Behind a
+    /// locked screen the credentials are unreadable too, and no request goes out.
+    private func moodleTokenForBackend() async -> String? {
+        do {
+            let token = try await moodleTokens.refreshTokenIfNeeded()
+            return token.isEmpty ? nil : token
+        } catch {
+            let line = AppLogger.errorLine(error, context: [:])
+            AppLogger.auth.info("no Moodle token for the backend: \(line, privacy: .private)")
+            return nil
         }
     }
 
@@ -301,11 +412,38 @@ final class AuthService {
     }
 
     /// Signs in to the TigerDuck backend when its session is gone. It sends the stored
-    /// credentials and Moodle token and makes no request to the school's servers.
+    /// credentials and Moodle token, and reaches the school's servers only to harvest a token
+    /// when none is stored. A call while one runs waits for it instead of signing in again, and
+    /// for ``backendSignInPause`` after one that failed, calls do nothing.
     func ensureBackendSignedIn() async {
+        if let backendSignIn { return await backendSignIn.value }
+        let task = Task { await signInToBackendIfSignedOut() }
+        backendSignIn = task
+        await task.value
+        if backendSignIn == task { backendSignIn = nil }
+    }
+
+    /// A sign-in already running may have begun behind the locked screen, where the credentials
+    /// could not be read, so the unlock waits for it and then tries on its own.
+    private func signInAfterUnlock() async {
+        if let running = backendSignIn {
+            await running.value
+            if backendSignIn == running { backendSignIn = nil }
+        }
+        // A sign-in that failed around the lock may have lost the keychain or the network to it,
+        // so the unlock does not wait out its pause.
+        backendSignInFailedAt = nil
+        await ensureBackendSignedIn()
+    }
+
+    private func signInToBackendIfSignedOut() async {
         guard let atm = authTokenManager, !(await atm.isLoggedIn),
+              Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
               let studentId = storedStudentId, let password = storedPassword else { return }
-        await performV3Login(studentId: studentId, password: password)
+        let generation = loginGeneration
+        if await !performV3Login(studentId: studentId, password: password, harvesting: true) {
+            noteFailedBackendSignIn(since: generation)
+        }
     }
 
     /// Best-effort: the library account signs in with the same NTUST credentials.
@@ -322,7 +460,7 @@ final class AuthService {
         let loggingOutStudentId = storedStudentId
         KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
-        Task { await MoodleTokenService.shared.signOut() }
+        Task { [moodleTokens] in await moodleTokens.signOut() }
         MoodleEnrolledCoursesService.dropSharedAnswer()
         NTUSTSessionManager.shared.invalidateSession()
         // Drop the enrolled-courses cache so the next user does not see
@@ -333,6 +471,9 @@ final class AuthService {
         reauthErrorMessage = nil
         isReauthenticating = false
         loginGeneration &+= 1
+        backendSignIn?.cancel()
+        backendSignIn = nil
+        backendSignInFailedAt = nil
         markCredentialsChanged()
     }
 

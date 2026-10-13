@@ -219,7 +219,7 @@ final class NetworkMonitor {
             // Other errors, such as DNS failures and timeouts, are ambiguous. Fail open so a
             // captive.apple.com hiccup does not mark every view model offline; the real API call
             // surfaces its own error if NTUST is unreachable.
-            logger?.info("captive probe inconclusive (\(error.localizedDescription, privacy: .public)) — failing open")
+            logger?.info("captive probe inconclusive (\(error.localizedDescription, privacy: .private)) — failing open")
             return true
         }
     }

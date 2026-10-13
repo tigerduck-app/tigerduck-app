@@ -61,7 +61,7 @@ nonisolated final class WidgetSnapshotStore {
             }
             return snapshot
         } catch {
-            logger.error("widget snapshot decode failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("widget snapshot decode failed: \(error.localizedDescription, privacy: .private)")
             return nil
         }
     }
@@ -75,7 +75,7 @@ nonisolated final class WidgetSnapshotStore {
             let data = try encoder.encode(snapshot)
             defaults.set(data, forKey: WidgetSnapshot.storeKey)
         } catch {
-            logger.error("widget snapshot encode failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("widget snapshot encode failed: \(error.localizedDescription, privacy: .private)")
         }
     }
 }

@@ -66,8 +66,29 @@ extension AppState {
     func markCategoryReenabled(_ category: String) {
         // The server may have dropped the lists while the category was off on every device.
         pushCoordinator.forgetUploads()
+        Self.markForReenableCheck(category, signedIn: authService.hasStoredCredentials)
+    }
+
+    /// Marks `category` for the re-enable check, which compares this device's copy of the account's
+    /// data with the server's. Before this device has synced the account, as after a sign-in, it has
+    /// no copy to compare, and Use Local would send its emptied caches over the server's: the
+    /// category is left to the first sync, which takes the server's data. Signed out, the check has
+    /// no session, and the mark would wait for whoever signs in next.
+    static func markForReenableCheck(_ category: String, signedIn: Bool) {
+        let synced = hasSyncedAccount
+        guard signedIn, synced else {
+            AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), signedIn=\(signedIn, privacy: .public) synced=\(synced, privacy: .public)")
+            return
+        }
         Defaults[.pendingConflictCategories].insert(category)
         AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
+    }
+
+    /// Whether a full sync has applied the signed-in account's data on this device: each one stamps
+    /// `lastSeenCoursesResetAt`, and sign-out clears it (`forgetSyncProgress`).
+    /// `assignmentMarksSyncedOnce` cannot tell, as it stays false while the Assignments switch is off.
+    static var hasSyncedAccount: Bool {
+        Defaults[.lastSeenCoursesResetAt] != nil
     }
 
     func checkPendingConflicts(retriesLeft: Int = 2) {
@@ -86,7 +107,7 @@ extension AppState {
             return
         }
         // One check at a time: a verdict is valid only for its `pending` snapshot, and a slower
-        // second check re-presents a resolved dialog, whose dismissal re-runs keep-local unasked.
+        // second check re-presents a dialog the user has answered.
         // Callers are views: guard, set and clear run on the main actor and cannot interleave.
         if !isRetry {
             guard !isCheckingConflicts else {
@@ -134,7 +155,7 @@ extension AppState {
                         guard !serverNos.isEmpty, !localNos.isEmpty else { continue }
                         localOnly += localNos.subtracting(serverNos).count
                         serverOnly += serverNos.subtracting(localNos).count
-                        AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .public) server=\(serverNos.sorted(), privacy: .public)")
+                        AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .private) server=\(serverNos.sorted(), privacy: .private)")
                     }
                     if localOnly > 0 && serverOnly > 0 {
                         diffs.append(String(format: String(localized: "sync_conflict_reenable_courses"), String(localOnly), String(serverOnly)))
@@ -172,7 +193,7 @@ extension AppState {
                         }
                         AppLogger.sync.info("[reenable] colors: \(colorMismatches.isEmpty ? "MATCH" : "DIFFER (\(colorMismatches.count))", privacy: .public)")
                         if !colorMismatches.isEmpty {
-                            for m in colorMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .public)") }
+                            for m in colorMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .private)") }
                             diffs.append(String(localized: "sync_conflict_reenable_colors_differ"))
                         }
                     }
@@ -252,7 +273,7 @@ extension AppState {
                     }
                     // Report only categories still pending: a resolve that landed mid-check
                     // cleared its own and changed the server state behind these diffs. Showing
-                    // them again repeats a dismissed dialog, and dismissing it re-runs keep-local.
+                    // them again repeats a dialog the user has answered.
                     let stillPending = Defaults[.pendingConflictCategories]
                     let checked = pending.intersection(stillPending)
                     guard !checked.isEmpty else {
@@ -271,7 +292,7 @@ extension AppState {
                     }
                 }
             } catch {
-                AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .public) — pending kept for retry")
+                AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
                 if case PushAPIError.httpStatus(401, _) = error, retriesLeft > 0 {
                     let reloginOk = await attemptBackendRelogin()
                     if reloginOk {
@@ -308,6 +329,20 @@ extension AppState {
         pending: Set<String>, checked: Set<String>, signedOutSince: Bool
     ) -> Set<String> {
         signedOutSince ? pending : pending.subtracting(checked)
+    }
+
+    /// `isPresented` of the re-enable alert. Only its buttons answer it, and SwiftUI closes the alert
+    /// after their action runs. Closed any other way, it answers nothing: nothing is sent, and the
+    /// categories stay pending for the next check to ask about again.
+    static func reenableAlertIsPresented(_ conflict: Binding<ReenableConflict?>) -> Binding<Bool> {
+        Binding(
+            get: { conflict.wrappedValue != nil },
+            set: { isPresented in
+                guard !isPresented, conflict.wrappedValue != nil else { return }
+                AppLogger.sync.info("[reenable] alert closed unanswered, categories left pending")
+                conflict.wrappedValue = nil
+            }
+        )
     }
 
     /// Applies the user's answer to `reenableConflict`. Keeping local courses awaits every
@@ -357,7 +392,7 @@ extension AppState {
                             isCurrent: isCurrent
                         )
                     } catch {
-                        AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .public)")
+                        AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .private)")
                         await MainActor.run { if isCurrent() { markCategoryReenabled("courses") } }
                     }
                 }

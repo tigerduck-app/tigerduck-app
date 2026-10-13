@@ -65,6 +65,7 @@ struct CourseDetailSheet: View {
             .navigationDestination(for: MoodleCourseRoute.self) { route in
                 if let moodle {
                     moodleDestination(route, store: moodle)
+                        .moodleLinkOpening()
                 }
             }
         }
@@ -103,6 +104,8 @@ struct CourseDetailSheet: View {
             MoodleAnnouncementsView(store: store) { routes.wrappedValue.append($0) }
         case .announcement(let discussion):
             MoodleAnnouncementView(store: store, discussion: discussion)
+        case .materials:
+            MoodleMaterialsView(store: store)
         }
     }
 

@@ -488,7 +488,7 @@ final class LiveActivityCoordinator {
             else { continue }
             for copy in doomed {
                 logger.info(
-                    "Ending duplicate Live Activity id=\(activityId, privacy: .public) reason=already running"
+                    "Ending duplicate Live Activity id=\(activityId, privacy: .private) reason=already running"
                 )
                 endedActivityIds.insert(copy.id)
                 await copy.end(nil, dismissalPolicy: .immediate)
@@ -550,7 +550,7 @@ final class LiveActivityCoordinator {
     ) async {
         let activityId = activity.attributes.activityId
         logger.info(
-            "Ending Live Activity id=\(activityId, privacy: .public) reason=\(reason, privacy: .public)"
+            "Ending Live Activity id=\(activityId, privacy: .private) reason=\(reason, privacy: .public)"
         )
         // Record before the await: ActivityKit can still list an ended copy, and an unrecorded one
         // is picked up again. `apply` would update it instead of starting a fresh activity, and

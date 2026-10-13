@@ -8,6 +8,16 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var forums: @Sendable (_ courseIds: [Int]) async throws -> [MoodleForum]
     var discussions: @Sendable (_ forumId: Int, _ page: Int) async throws -> [MoodleDiscussion]
     var markViewed: @Sendable (_ discussionId: Int) async throws -> Void
+    /// Defaults keep a stand-in for another screen's tests to the calls it is about.
+    var materials: @Sendable (_ courseId: Int) async throws -> MoodleCourseMaterials = { _ in
+        MoodleCourseMaterials(sections: [])
+    }
+    var markMaterialViewed: @Sendable (_ material: MoodleMaterial) async throws -> Void = { _ in }
+    /// Downloads a file to a temporary location the caller moves; `progress` gets the share
+    /// received so far.
+    var download: @Sendable (_ file: MoodleFile, _ progress: @escaping @Sendable (Double) -> Void) async throws -> URL = { _, _ in
+        throw CancellationError()
+    }
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -24,6 +34,26 @@ nonisolated struct MoodleCourseAPI: Sendable {
         markViewed: { discussionId in
             try await MoodleWebserviceClient.withToken {
                 try await MoodleForumService.markViewed(discussionId: discussionId, token: $0)
+            }
+        },
+        materials: { courseId in
+            try await MoodleWebserviceClient.withToken {
+                try await MoodleCourseContentsService.materials(courseId: courseId, token: $0)
+            }
+        },
+        markMaterialViewed: { material in
+            try await MoodleWebserviceClient.withToken {
+                try await MoodleCourseContentsService.markViewed(material, token: $0)
+            }
+        },
+        download: { file, progress in
+            try await MoodleWebserviceClient.withToken { token in
+                let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
+                guard let source = URL(string: file.url),
+                      let url = MoodleFileTransfer.downloadURL(for: source, accessKey: key, token: token) else {
+                    throw MoodleWebserviceError.malformedResponse(detail: "file URL")
+                }
+                return try await MoodleFileTransfer.fetch(url, mimeType: file.mimeType, expectedSize: file.size, progress: progress)
             }
         }
     )
@@ -43,10 +73,13 @@ struct MoodleCacheContext {
 @Observable
 @MainActor
 final class MoodleFeed<Value: Codable & Sendable> {
+    /// How long a copy counts as fresh; the screen's refresh timer fetches it again once older.
+    let ttl: TimeInterval
     private(set) var value: Value?
     private(set) var fetchedAt: Date?
     private(set) var isRefreshing = false
-    /// `.unknown` until a fetch ends.
+    /// `.ok` for a cached copy still fresh, as no fetch comes until it ages, else `.unknown` until
+    /// a fetch ends.
     private(set) var status: ServerStatus = .unknown
     /// The last fetch's error, cleared by the next success.
     private(set) var failure: (any Error)?
@@ -55,12 +88,16 @@ final class MoodleFeed<Value: Codable & Sendable> {
     @ObservationIgnored private let context: MoodleCacheContext
     @ObservationIgnored private var running: Task<Void, Never>?
 
-    init(cacheName: String, context: MoodleCacheContext) {
+    init(cacheName: String, ttl: TimeInterval, context: MoodleCacheContext) {
         self.cacheName = cacheName
+        self.ttl = ttl
         self.context = context
         if let cached = context.cache.loadMoodleData(Value.self, name: cacheName, account: context.account) {
             value = cached.value
             fetchedAt = cached.fetchedAt
+            if MoodleRefreshTimer.wait(fetchedAt: cached.fetchedAt, lastTry: nil, ttl: ttl, now: context.now()) > 0 {
+                status = .ok
+            }
         }
     }
 
@@ -142,11 +179,12 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
 enum MoodleCourseRoute: Hashable {
     case announcements
     case announcement(MoodleDiscussion)
+    case materials
 
     /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {
         switch self {
-        case .announcements: true
+        case .announcements, .materials: true
         case .announcement: false
         }
     }
@@ -156,6 +194,7 @@ enum MoodleCourseRoute: Hashable {
 struct MoodleSectionRow: Identifiable, Equatable {
     enum Kind: Hashable {
         case announcements
+        case materials
     }
 
     let kind: Kind
@@ -177,32 +216,61 @@ final class MoodleCourseStore {
     let courseId: Int
     let forums: MoodleFeed<MoodleTermForums>
     let announcements: MoodleFeed<MoodleDiscussionList>
+    let materials: MoodleFeed<MoodleCourseMaterials>
     private(set) var isLoadingMoreAnnouncements = false
     private(set) var announcementsPageFailure: (any Error)?
 
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
     @ObservationIgnored private let api: MoodleCourseAPI
+    @ObservationIgnored private let context: MoodleCacheContext
+    @ObservationIgnored private let downloads: MoodleFileDownloads
     @ObservationIgnored private var listWork: Task<Void, Never>?
     @ObservationIgnored private var announcementsRefresh: Task<Void, Never>?
 
-    init(courseId: Int, termCourseIds: [Int], context: MoodleCacheContext, api: MoodleCourseAPI = .live) {
+    init(
+        courseId: Int,
+        termCourseIds: [Int],
+        context: MoodleCacheContext,
+        api: MoodleCourseAPI = .live,
+        downloads: MoodleFileDownloads? = nil
+    ) {
         self.courseId = courseId
         self.termCourseIds = Array(Set(termCourseIds).union([courseId])).sorted()
         self.api = api
-        forums = MoodleFeed(cacheName: "forums", context: context)
-        announcements = MoodleFeed(cacheName: "courses/\(courseId)/announcements", context: context)
+        self.context = context
+        self.downloads = downloads ?? .shared
+        forums = MoodleFeed(cacheName: "forums", ttl: MoodleRefreshInterval.forums, context: context)
+        announcements = MoodleFeed(
+            cacheName: "courses/\(courseId)/announcements", ttl: MoodleRefreshInterval.announcements, context: context
+        )
+        materials = MoodleFeed(
+            cacheName: "courses/\(courseId)/materials", ttl: MoodleRefreshInterval.materials, context: context
+        )
     }
 
     // MARK: Section
 
     var sectionRows: [MoodleSectionRow] {
-        guard let news = newsForum, news.discussionCount > 0 else { return [] }
-        return [MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0)]
+        var rows: [MoodleSectionRow] = []
+        if let news = newsForum, news.discussionCount > 0 {
+            rows.append(MoodleSectionRow(kind: .announcements, count: news.discussionCount, hasUnread: news.unreadPostCount > 0))
+        }
+        if let count = materials.value?.count, count > 0 {
+            rows.append(MoodleSectionRow(kind: .materials, count: count, hasUnread: false))
+        }
+        return rows
     }
 
-    var isSectionRefreshing: Bool { forums.isRefreshing }
-    var sectionStatus: ServerStatus { forums.status }
+    var isSectionRefreshing: Bool { forums.isRefreshing || materials.isRefreshing }
+
+    /// Failed when one of the section's feeds failed, else OK once one reads OK: a feed still
+    /// unknown has its first fetch on the way, as the section fetches every feed it shows.
+    var sectionStatus: ServerStatus {
+        let statuses = [forums.status, materials.status]
+        if statuses.contains(.failed) { return .failed }
+        return statuses.contains(.ok) ? .ok : .unknown
+    }
 
     // MARK: Forums
 
@@ -225,6 +293,59 @@ final class MoodleCourseStore {
             }
             return MoodleTermForums(courseIds: termCourseIds, forums: try await api.forums(termCourseIds))
         }
+    }
+
+    // MARK: Materials
+
+    var materialsFetchedAt: Date? { materials.fetchedAt }
+
+    /// A site that does not allow the call answers as if the course had no materials, which hides
+    /// their row. Copies of files Moodle has a newer version of go once the answer is in.
+    func refreshMaterials() async {
+        await materials.refresh { [api, courseId] in
+            guard try await api.functions().contains(MoodleCourseContentsService.contentsFunction) else {
+                return MoodleCourseMaterials(sections: [])
+            }
+            return try await api.materials(courseId)
+        }
+        guard materials.status == .ok, let fresh = materials.value else { return }
+        downloads.removeOutdated(fresh.fileRefs.map { ($0.file, location(of: $0.file, in: $0.owner)) })
+    }
+
+    /// A file or link opened on screen, which Moodle logs as a view of its module when the site
+    /// allows the call. A failed call is not retried and shows nothing.
+    @discardableResult
+    func open(_ material: MoodleMaterial) -> Task<Void, Never> {
+        Task { [api] in
+            guard let call = MoodleCourseContentsService.viewCalls[material.module],
+                  (try? await api.functions())?.contains(call.function) == true else { return }
+            do {
+                try await api.markMaterialViewed(material)
+            } catch {
+                AppLogger.breadcrumb("moodle material view not logged: \(error)", category: "moodle")
+            }
+        }
+    }
+
+    // MARK: Files
+
+    /// Where `file` is kept on the device for the signed-in account.
+    func location(of file: MoodleFile, in owner: MoodleFileOwner) -> URL {
+        downloads.location(of: file, owner: owner, courseId: courseId, account: context.account)
+    }
+
+    func downloadState(of file: MoodleFile, in owner: MoodleFileOwner) -> MoodleDownloadState {
+        downloads.state(of: file, at: location(of: file, in: owner))
+    }
+
+    /// The copy of `file` on the device, downloaded first when there is none; nil when that fails.
+    @discardableResult
+    func download(_ file: MoodleFile, in owner: MoodleFileOwner) async -> URL? {
+        await downloads.download(file, to: location(of: file, in: owner), fetch: api.download, isCurrent: context.isCurrent)
+    }
+
+    func cancelDownload(of file: MoodleFile, in owner: MoodleFileOwner) {
+        downloads.cancel(location(of: file, in: owner))
     }
 
     // MARK: Announcements
