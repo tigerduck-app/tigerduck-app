@@ -36,7 +36,10 @@ final class ClassTableShareModel: Identifiable {
     }
 
     var isTATCompatible = false {
-        didSet { rebuild() }
+        didSet {
+            if isTATCompatible, tatCode() == nil { isTATCompatible = false }
+            rebuild()
+        }
     }
 
     private(set) var offersTAT = false
@@ -81,6 +84,12 @@ final class ClassTableShareModel: Identifiable {
         offersTAT = tat != nil
         code = isTATCompatible ? tat : ourCode()
         qrCode = code.flatMap { ClassTableShareQRCode.image(for: $0) }
+        if qrCode == nil {
+            AppLogger.captureError(
+                code == nil ? ClassTableShareError.noCode : .noQRCode,
+                context: ["phase": "classTableShare.rebuild", "terms": String(terms.count), "tat": String(isTATCompatible)]
+            )
+        }
     }
 
     private func ourCode() -> String? {
@@ -108,29 +117,49 @@ extension ClassTableShareModel {
     static func terms(in semesters: [String], cache: DataCache = .shared) -> [Term] {
         let hidden = Set(cache.loadDeletedCourseNos())
         return semesters.compactMap { semester in
-            let courses = CanonicalCourseProvider.merge(
-                primary: cache.loadCourses(semester: semester),
-                // Added by hand from the course search, so they carry a real NTUST course code.
-                userAdded: cache.loadUserAddedCourses(semester: semester),
-                semester: semester,
-                deletedCourseNos: hidden,
-                customNames: [:]
-            ).filter { ClassTableShareCode.isCourseNo($0.courseNo.uppercased()[...]) }
+            let courses = courses(in: semester, hidden: hidden, cache: cache)
             return courses.isEmpty ? nil : Term(semester: semester, courses: courses)
         }
     }
 
-    /// Whether the class table offers the sheet: someone is signed in and a term has a course to
-    /// share. `shownCourses`, the term on screen, answers without reading the caches.
+    /// Whether the class table offers the sheet: someone is signed in under a student ID a code can
+    /// hold, and a term has a course to share. `shownCourses`, the term on screen, answers without
+    /// reading the caches.
     static func canShare(
         studentId: String?,
         shownCourses: [SDCourse],
         semesters: [String],
         cache: DataCache = .shared
     ) -> Bool {
-        guard studentId != nil else { return false }
-        return !shownCourses.isEmpty || semesters.contains { !terms(in: [$0], cache: cache).isEmpty }
+        guard let studentId, ClassTableShareCode.isUpperAlphanumerics(studentId.uppercased()[...]) else { return false }
+        if shownCourses.contains(where: carriesCode) { return true }
+        let hidden = Set(cache.loadDeletedCourseNos())
+        return semesters.contains { !courses(in: $0, hidden: hidden, cache: cache).isEmpty }
     }
+
+    private static func courses(in semester: String, hidden: Set<String>, cache: DataCache) -> [SDCourse] {
+        guard ClassTableShareCode.isSemester(semester.uppercased()[...]) else { return [] }
+        return CanonicalCourseProvider.merge(
+            primary: cache.loadCourses(semester: semester),
+            // Added from the course search, here or on another device, so they carry NTUST course codes.
+            userAdded: cache.loadUserAddedCourses(semester: semester),
+            semester: semester,
+            deletedCourseNos: hidden,
+            customNames: [:]
+        ).filter(carriesCode)
+    }
+
+    /// A share code carries only course codes of NTUST's shape, the ones the importer can look up.
+    private static func carriesCode(_ course: SDCourse) -> Bool {
+        ClassTableShareCode.isCourseNo(course.courseNo.uppercased()[...])
+    }
+}
+
+/// Why the share sheet has no QR code to show. The class table offers the sheet only when a code
+/// can be written, so either is a bug, which the log records.
+nonisolated enum ClassTableShareError: Error {
+    case noCode
+    case noQRCode
 }
 
 /// QR codes of share codes, at error correction level M. Both formats are in upper case, which

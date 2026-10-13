@@ -105,6 +105,10 @@ struct ClassTableShareModelTests {
         #expect(!model.offersTAT)
         #expect(!model.isTATCompatible)
         #expect(model.code?.hasPrefix(ClassTableShareCode.prefix) == true)
+
+        model.isTATCompatible = true
+        #expect(!model.isTATCompatible, "the switch cannot be turned on for a term TAT cannot carry")
+        #expect(model.code?.hasPrefix(ClassTableShareCode.prefix) == true)
     }
 
     @Test("the caption names the student ID and the term, or all semesters")
@@ -151,6 +155,28 @@ struct ClassTableShareTermsTests {
         #expect(Self.courseNos(terms) == ["1151": ["CS1010001", "GE1010004"], "1142": ["MA1010003"]])
     }
 
+    @Test("a course whose code a share code cannot carry stays out, and a term left without one with it")
+    func coursesACodeCannotCarry() {
+        let store = Cache()
+        store.cache.saveCourses([
+            SDCourse(courseNo: "CS1010001", courseName: "Programming"),
+            SDCourse(courseNo: "1151CS101", courseName: "From Moodle only"),
+        ], semester: "1151")
+        store.cache.saveCourses([SDCourse(courseNo: "1142EE102", courseName: "From Moodle only")], semester: "1142")
+
+        let terms = ClassTableShareModel.terms(in: ["1151", "1142"], cache: store.cache)
+
+        #expect(Self.courseNos(terms) == ["1151": ["CS1010001"]])
+    }
+
+    @Test("a term whose code a share code cannot hold stays out")
+    func termsACodeCannotHold() {
+        let store = Cache()
+        store.cache.saveCourses([SDCourse(courseNo: "CS1000001", courseName: "Old term")], semester: "99 1")
+
+        #expect(ClassTableShareModel.terms(in: ["99 1"], cache: store.cache).isEmpty)
+    }
+
     @Test("a course hidden from the class table stays out, and a term left without one with it")
     func hiddenCourses() {
         let store = Cache()
@@ -173,6 +199,10 @@ struct ClassTableShareTermsTests {
         #expect(!ClassTableShareModel.canShare(
             studentId: "B11300000", shownCourses: [], semesters: semesters, cache: store.cache
         ))
+        #expect(!ClassTableShareModel.canShare(
+            studentId: "B11300000", shownCourses: [SDCourse(courseNo: "1151CS101", courseName: "From Moodle only")],
+            semesters: semesters, cache: store.cache
+        ), "a course on screen whose code a share code cannot carry is not enough")
 
         store.cache.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142")
         #expect(ClassTableShareModel.canShare(
@@ -181,9 +211,14 @@ struct ClassTableShareTermsTests {
         #expect(!ClassTableShareModel.canShare(
             studentId: nil, shownCourses: [], semesters: semesters, cache: store.cache
         ))
+        #expect(!ClassTableShareModel.canShare(
+            studentId: "B113-0000", shownCourses: [], semesters: semesters, cache: store.cache
+        ), "a student ID a code cannot hold")
+
+        let empty = Cache()
         #expect(ClassTableShareModel.canShare(
             studentId: "B11300000", shownCourses: [SDCourse(courseNo: "CS1010001", courseName: "Programming")],
-            semesters: [], cache: store.cache
+            semesters: semesters, cache: empty.cache
         ), "the term on screen answers without the caches")
     }
 }
@@ -193,9 +228,9 @@ struct ClassTableShareTermsTests {
 /// counts its size.
 @MainActor
 struct ClassTableShareQRCodeTests {
-    /// 8 terms of 10 courses of random departments and digits, from a fixed seed: the longest code
-    /// the decision record sizes, a version 18 symbol.
-    static func longestCode() throws -> String {
+    /// 8 terms of 10 courses of random departments and digits, from a fixed seed: the code the
+    /// decision record sizes, a version 18 symbol.
+    static func eightTermsCode() throws -> String {
         var seed: UInt64 = 382
         func random(_ count: UInt64) -> Int {
             seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
@@ -223,7 +258,7 @@ struct ClassTableShareQRCodeTests {
     }
 
     enum Sample: CaseIterable {
-        case ours, tat, longest
+        case ours, tat, eightTerms
     }
 
     @Test("the QR code reads back as the code, in alphanumeric mode at level M", arguments: Sample.allCases)
@@ -231,7 +266,7 @@ struct ClassTableShareQRCodeTests {
         let text = switch sample {
         case .ours: "HTTPS://TIGERDUCK.APP/T/1.B11300001.202610131405.1151.OMHDMNBQGQYDAMGUOGDLFDDULROWCYV6RYYFMACMBQAA.E2YUDIQ"
         case .tat: "HTTPS://NTUST-TAT.WEB.APP/S/TAT21151B11300000CS1010001.134-EE1010002.256"
-        case .longest: try Self.longestCode()
+        case .eightTerms: try Self.eightTermsCode()
         }
         let image = try #require(ClassTableShareQRCode.image(for: text))
 
@@ -241,7 +276,7 @@ struct ClassTableShareQRCodeTests {
         #expect(symbol.errorCorrectionLevel == .levelM)
         // The first four bits of the first data codeword are the mode indicator; 0010 is alphanumeric.
         #expect(symbol.errorCorrectedPayload.first.map { $0 >> 4 } == 0b0010)
-        if sample == .longest {
+        if sample == .eightTerms {
             #expect(symbol.symbolVersion <= 18, "\(text.count) characters")
         }
     }
@@ -280,7 +315,7 @@ struct ClassTableShareSheetTests {
 
     @Test("the longest code scans from a screenshot a chat app has halved, at about four pixels a module")
     func scansFromAHalvedScreenshot() async throws {
-        let code = try ClassTableShareQRCodeTests.longestCode()
+        let code = try ClassTableShareQRCodeTests.eightTermsCode()
         let decoded = try ClassTableShareCode.decode(code)
         let model = ClassTableShareModel(
             studentId: "B11300000",
