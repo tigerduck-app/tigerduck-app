@@ -30,7 +30,7 @@ struct SharedAssignmentRoundTests {
         _ name: String, _ rounds: Rounds, generation: Int = 1, rechecks: Bool
     ) -> Task<Void, Never> {
         Task {
-            _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks) {
+            _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks, isCurrent: { true }) {
                 await rounds.run(name)
             }
         }
@@ -76,6 +76,27 @@ struct SharedAssignmentRoundTests {
         rounds.open()
         _ = await (pull.value, foreground.value)
         #expect(rounds.started == ["pull"])
+    }
+
+    @MainActor
+    private final class SignIn {
+        var isCurrent = true
+    }
+
+    /// A Home pull asks Moodle about every submission, long enough to sign out meanwhile.
+    @Test("a round its account signed out of hands back the cache, not that account's list")
+    func aRoundOutlivedBySignOutHandsBackTheCache() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let signIn = SignIn()
+        let departing = "departing-" + UUID().uuidString
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let shown = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+            signIn.isCurrent = false
+            return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
+        }
+
+        #expect(!shown.contains { $0.assignmentId == departing })
     }
 
     @Test("the next account never joins the departing account's round")
