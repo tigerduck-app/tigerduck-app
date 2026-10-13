@@ -62,9 +62,9 @@ struct MoodleCourseSectionTests {
         return host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
     }
 
-    /// `section` between two bars in a stack spaced as the course detail's.
+    /// `section` between two bars in a stack with no spacing, as the course detail lays it out.
     private func stacked(_ section: MoodleCourseSection?) -> some View {
-        VStack(spacing: TigerDuckTheme.Spacing.lg) {
+        VStack(spacing: 0) {
             Color.clear.frame(height: 10)
             if let section { section }
             Color.clear.frame(height: 10)

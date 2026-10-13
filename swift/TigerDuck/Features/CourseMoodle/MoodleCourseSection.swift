@@ -4,19 +4,28 @@ import SwiftUI
 /// The course detail's Moodle section, under its incomplete assignments: a header with the
 /// status dot, one card with a row for each kind of data the course has on Moodle, then the
 /// course's summary. A row shows only once its data has something in it, and the section only
-/// once it has a row or a summary; with neither it adds nothing to the sheet, not even spacing.
+/// once it has a row or a summary. The section brings the gap above it and the course detail
+/// adds no spacing of its own, so with neither the section adds nothing to the sheet.
 struct MoodleCourseSection: View {
     let store: MoodleCourseStore
     let policy: VisualStylePolicy
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         let rows = store.sectionRows
         let summary = store.shownSummary
-        if !rows.isEmpty || summary != nil {
-            Divider().background(Color.textSecondary)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            header
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        // What comes and goes inside this stack fades in as a fetch brings it. On the course
+        // detail's stack, the keys would change as the store arrives and animate the sheet's first
+        // layout, sliding the content in from a corner.
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+            if !rows.isEmpty || summary != nil {
+                Divider().background(Color.textSecondary)
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                    .padding(.top, TigerDuckTheme.Spacing.lg)
+                header
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            }
             if !rows.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
@@ -38,6 +47,8 @@ struct MoodleCourseSection: View {
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: rows)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: summary)
     }
 
     private var header: some View {
@@ -54,6 +65,8 @@ struct MoodleCourseSection: View {
     static func route(for kind: MoodleSectionRow.Kind) -> MoodleCourseRoute {
         switch kind {
         case .announcements: .announcements
+        case .materials: .materials
+        case .members: .members
         }
     }
 }
@@ -67,6 +80,12 @@ extension View {
                 Color.clear
                     .moodleAutoRefresh(every: store.forums.ttl, fetchedAt: { store.forumsFetchedAt }) {
                         await store.refreshForums()
+                    }
+                    .moodleAutoRefresh(every: store.materials.ttl, fetchedAt: { store.materialsFetchedAt }) {
+                        await store.refreshMaterials()
+                    }
+                    .moodleAutoRefresh(every: store.members.ttl, fetchedAt: { store.membersFetchedAt }) {
+                        await store.refreshMembers()
                     }
                     .moodleAutoRefresh(every: store.summary.ttl, fetchedAt: { store.summary.fetchedAt }) {
                         await store.refreshSummary()
@@ -141,11 +160,15 @@ private struct MoodleCourseSummaryBody: View {
     let html: String
 
     @Environment(AppState.self) private var appState
+    @Environment(\.openMoodleLink) private var openMoodleLink
 
     var body: some View {
         Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: html)))
             .markdownTheme(.bulletin(accent: appState.accentColor))
-            .moodleTextLinks()
+            .environment(\.openURL, OpenURLAction { url in
+                openMoodleLink(url)
+                return .handled
+            })
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -197,12 +220,16 @@ struct MoodleSectionRowView: View {
     private var icon: String {
         switch row.kind {
         case .announcements: "megaphone"
+        case .materials: "folder"
+        case .members: "person.2"
         }
     }
 
     private var title: String {
         switch row.kind {
         case .announcements: String(localized: "feature_announcements")
+        case .materials: String(localized: "course_detail_files_label")
+        case .members: String(localized: "course_detail_members_label")
         }
     }
 

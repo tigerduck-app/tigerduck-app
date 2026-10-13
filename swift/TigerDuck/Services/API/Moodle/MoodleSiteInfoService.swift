@@ -13,6 +13,9 @@ actor MoodleSiteInfoService {
         /// A feature hides when a function it calls is missing here, rather than learning it from
         /// the `accessexception` the call would get.
         let functions: Set<String>
+        /// `userprivateaccesskey`, which file URLs carry in place of the token. A secret, so it is
+        /// never logged.
+        let privateAccessKey: String?
     }
 
     private var cached: (token: String, info: SiteInfo)?
@@ -28,6 +31,10 @@ actor MoodleSiteInfoService {
 
     func functions(token: String) async throws -> Set<String> {
         try await siteInfo(token: token).functions
+    }
+
+    func privateAccessKey(token: String) async throws -> String? {
+        try await siteInfo(token: token).privateAccessKey
     }
 
     private func siteInfo(token: String) async throws -> SiteInfo {
@@ -59,7 +66,11 @@ actor MoodleSiteInfoService {
         let answer = try await MoodleWebserviceClient.call(
             "core_webservice_get_site_info", token: token, as: RawSiteInfo.self, session: session, siteURL: siteURL
         )
-        return SiteInfo(userId: answer.userid, functions: Set((answer.functions ?? []).map(\.name)))
+        return SiteInfo(
+            userId: answer.userid,
+            functions: Set((answer.functions ?? []).map(\.name)),
+            privateAccessKey: answer.userprivateaccesskey.flatMap { $0.isEmpty ? nil : $0 }
+        )
     }
 
     private nonisolated struct RawSiteInfo: Decodable, Sendable {
@@ -69,5 +80,6 @@ actor MoodleSiteInfoService {
 
         let userid: Int
         let functions: [Function]?
+        let userprivateaccesskey: String?
     }
 }
