@@ -101,6 +101,71 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
     }
 
+    @Test("a login whose reply comes back after a sign-out stores nothing")
+    func loginAfterSignOutStoresNothing() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture(signedIn: false)
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.loginReply(access: "A9", refresh: "R9", heldBy: gate), for: backend.loginURL
+        )
+        let login = Task {
+            try await manager.login(
+                studentId: "B11000000", password: "", moodleToken: "moodle-token",
+                moodlePrivateToken: nil, platform: "ios"
+            )
+        }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.loginURL).count == 1 }
+
+        await manager.logout()
+        gate.open()
+
+        await #expect(throws: CancellationError.self) { try await login.value }
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+        #expect(await !manager.isLoggedIn)
+    }
+
+    @Test("a refresh whose reply comes back after a sign-out stores nothing")
+    func refreshAfterSignOutStoresNothing() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A2", refresh: "R2", heldBy: gate), for: backend.refreshURL
+        )
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        await manager.logout()
+        gate.open()
+
+        #expect(await refresh.value == nil)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+        #expect(await !manager.isLoggedIn)
+    }
+
+    @Test("a refresh whose reply is lost after a sign-out is not sent again")
+    func lostReplyAfterSignOutIsNotRetried() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        var lost = SettingsAPIStub.StubResponse.noReply
+        lost.gate = gate
+        SettingsAPIStub.enqueue(lost, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2"), for: backend.refreshURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        await manager.logout()
+        gate.open()
+
+        #expect(await refresh.value == nil)
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 1)
+    }
+
     /// The replies a refresh gets, in order.
     enum Outcome: String, CaseIterable, CustomTestStringConvertible {
         case success, lostThenSuccess, lostTwice, serverError, unauthorized
@@ -225,17 +290,21 @@ private struct BackendFixture {
         }
     }
 
-    static func refreshReply(access: String, refresh: String) -> SettingsAPIStub.StubResponse {
+    static func refreshReply(
+        access: String, refresh: String, heldBy gate: SettingsAPIStub.ReplyGate? = nil
+    ) -> SettingsAPIStub.StubResponse {
         .init(statusCode: 200, body: Data("""
             {"access_token":"\(access)","refresh_token":"\(refresh)","token_type":"Bearer","expires_in":900}
-            """.utf8))
+            """.utf8), gate: gate)
     }
 
-    static func loginReply(access: String, refresh: String) -> SettingsAPIStub.StubResponse {
+    static func loginReply(
+        access: String, refresh: String, heldBy gate: SettingsAPIStub.ReplyGate? = nil
+    ) -> SettingsAPIStub.StubResponse {
         .init(statusCode: 200, body: Data("""
             {"access_token":"\(access)","refresh_token":"\(refresh)","token_type":"Bearer","expires_in":900,\
             "user":{"id":"user-1","student_id":"B11000000","display_name":null},"device_id":"device-1"}
-            """.utf8))
+            """.utf8), gate: gate)
     }
 
     static var reuseDetected: SettingsAPIStub.StubResponse {

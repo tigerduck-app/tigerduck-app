@@ -222,6 +222,7 @@ final class AuthService {
 
     private func performV3Login(studentId: String, password: String) async {
         guard let authTokenManager else { return }
+        let generation = loginGeneration
         guard let moodleToken = await MoodleTokenService.shared.currentToken(),
               !moodleToken.isEmpty else {
             return
@@ -238,8 +239,11 @@ final class AuthService {
                 moodlePrivateToken: moodlePrivateToken,
                 platform: platform
             )
+            // Signed out while the request was out: the session is the departing account's.
+            guard loginGeneration == generation else { return }
             onV3SignedIn?()
         } catch {
+            guard loginGeneration == generation else { return }
             AppLogger.captureError(error, context: ["flow": "v3Login"])
         }
     }
@@ -320,7 +324,7 @@ final class AuthService {
         let task = Task { await signInToBackendIfSignedOut() }
         backendSignIn = task
         await task.value
-        backendSignIn = nil
+        if backendSignIn == task { backendSignIn = nil }
     }
 
     private func signInToBackendIfSignedOut() async {
@@ -354,6 +358,8 @@ final class AuthService {
         reauthErrorMessage = nil
         isReauthenticating = false
         loginGeneration &+= 1
+        backendSignIn?.cancel()
+        backendSignIn = nil
         markCredentialsChanged()
     }
 

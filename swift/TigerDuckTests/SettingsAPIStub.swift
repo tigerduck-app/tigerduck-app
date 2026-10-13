@@ -11,10 +11,18 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         var headerFields: [String: String] = [:]
         /// Fails the request after the stub has logged it, the way a reply lost in transit does.
         var failure: URLError.Code?
+        /// Holds the reply back until the gate opens, so a test can act while the request is out.
+        var gate: ReplyGate?
 
         static var noReply: StubResponse {
             StubResponse(statusCode: 0, body: Data(), failure: .networkConnectionLost)
         }
+    }
+
+    nonisolated final class ReplyGate: Sendable {
+        private let opened = DispatchSemaphore(value: 0)
+        func open() { opened.signal() }
+        fileprivate func wait() { opened.wait() }
     }
 
     private static let lock = NSLock()
@@ -94,6 +102,29 @@ nonisolated final class SettingsAPIStub: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.unknown))
             return
         }
+        guard let gate = next.gate else {
+            reply(next, for: url)
+            return
+        }
+        // A protocol's client takes its calls on the thread that called `startLoading()`, so the
+        // held reply goes back to that thread's run loop.
+        let held = HeldReply(stub: self, runLoop: CFRunLoopGetCurrent())
+        DispatchQueue.global().async {
+            gate.wait()
+            CFRunLoopPerformBlock(held.runLoop, CFRunLoopMode.defaultMode.rawValue) {
+                held.stub.reply(next, for: url)
+            }
+            CFRunLoopWakeUp(held.runLoop)
+        }
+    }
+
+    /// Only the loading thread touches these, once the reply is back on its run loop.
+    private struct HeldReply: @unchecked Sendable {
+        let stub: SettingsAPIStub
+        let runLoop: CFRunLoop
+    }
+
+    private func reply(_ next: StubResponse, for url: URL) {
         if let failure = next.failure {
             client?.urlProtocol(self, didFailWithError: URLError(failure))
             return

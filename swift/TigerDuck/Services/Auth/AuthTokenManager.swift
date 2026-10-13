@@ -18,6 +18,9 @@ actor AuthTokenManager {
     /// server rotates the refresh token on use, that second request would
     /// send an already-invalidated token and fail.
     private var refreshTask: Task<String?, Never>?
+    /// Moved by ``logout()``: a login or refresh reply that comes back after a sign-out belongs
+    /// to the account that left, so it stores nothing.
+    private var signInGeneration = 0
 
     /// Re-evaluated on every request, like ``PushAPIClient``, so an endpoint
     /// override applied at runtime moves login/refresh together with the
@@ -162,6 +165,7 @@ actor AuthTokenManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
+        let generation = signInGeneration
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             if let http = response as? HTTPURLResponse {
@@ -170,6 +174,7 @@ actor AuthTokenManager {
             throw AuthError.loginFailed
         }
         let result = try JSONDecoder().decode(LoginResponse.self, from: data)
+        guard signInGeneration == generation else { throw CancellationError() }
         store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
         return LoginResult(
             accessToken: result.access_token,
@@ -181,6 +186,11 @@ actor AuthTokenManager {
     }
 
     func logout() {
+        signInGeneration &+= 1
+        clearTokens()
+    }
+
+    private func clearTokens() {
         accessToken = nil
         refreshToken = nil
         expiresAt = .distantPast
@@ -191,15 +201,16 @@ actor AuthTokenManager {
 
     private func refresh() async -> String? {
         guard let refreshToken else { return nil }
+        let generation = signInGeneration
         // Suspended before the reply is stored, the app loses the pair the server rotated to, and
         // the old token it sends later revokes every session of the device.
         let endBackgroundTask = await beginBackgroundTask()
-        let token = await refresh(sending: refreshToken)
+        let token = await refresh(sending: refreshToken, generation: generation)
         await endBackgroundTask()
         return token
     }
 
-    private func refresh(sending refreshToken: String) async -> String? {
+    private func refresh(sending refreshToken: String, generation: Int) async -> String? {
         struct RefreshResponse: Decodable {
             let access_token: String
             let refresh_token: String
@@ -209,13 +220,14 @@ actor AuthTokenManager {
         // A request with no reply may still have rotated the token. For 60 s the backend answers
         // the old token once more with a fresh pair; a second reuse is taken for theft.
         var reply = await postRefresh(refreshToken)
-        if reply == nil {
+        if reply == nil, signInGeneration == generation {
             reply = await postRefresh(refreshToken)
         }
         guard let (data, http) = reply else { return nil }
 
         if http.statusCode == 200 {
-            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else {
+            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data),
+                  signInGeneration == generation else {
                 return nil
             }
             store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
@@ -230,7 +242,9 @@ actor AuthTokenManager {
         if let relogin = onRefreshFailed, await relogin() {
             return accessToken
         }
-        logout()
+        // Not `logout()`: the account has not signed out, so a relogin that another caller has
+        // in flight may still store its pair.
+        clearTokens()
         return nil
     }
 
