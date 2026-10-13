@@ -17,6 +17,12 @@ extension AppState {
     /// a pull waits for one more, since that pull may predate the change it announces.
     func syncOverridesFromBackend(followUpIfBusy: Bool = false) async {
         guard Defaults[.cloudSyncEnabled] else { return }
+        #if os(iOS)
+        // A sync trigger can launch the app behind the lock screen, where the local marks,
+        // courses and colours cannot be opened and read as empty, and a sync would write the
+        // server's view over them. Revision polling syncs at the next return to the app.
+        guard UIApplication.shared.isProtectedDataAvailable else { return }
+        #endif
         if fullSyncGate.isRunning {
             AppLogger.sync.info("[syncOverrides] already in flight, follow-up: \(followUpIfBusy, privacy: .public)")
         }

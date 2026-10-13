@@ -113,6 +113,7 @@ actor SyncOutbox {
     static let maxAttempts = 5
 
     private let directory: URL
+    private let read: @Sendable (URL) throws -> Data
     private var entries: [OutboxEntry] = []
     /// Marks the server refused `maxAttempts` times. A pull still treats each as an edit on its
     /// way up, so the local status stands, and `requeueParked()` gives it one more try per full
@@ -121,12 +122,25 @@ actor SyncOutbox {
     /// Bumped by `clearAll()`. A drain suspended at `await execute` when the
     /// queue is cleared must not merge its retained entries back afterwards.
     private var generation = 0
+    /// False while a queue file exists but could not be read, as at a launch behind the lock
+    /// screen (`completeFileProtectionUnlessOpen`). Until it is read nothing is written over the
+    /// files, and what was queued meanwhile joins what they hold.
+    private var isLoaded: Bool
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
-    init(directory: URL = SyncOutbox.defaultDirectory()) {
+    init(
+        directory: URL = SyncOutbox.defaultDirectory(),
+        read: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
+    ) {
         self.directory = directory
-        self.entries = Self.loadEntries(from: directory, fileName: Self.fileName)
-        self.parked = Self.loadEntries(from: directory, fileName: Self.parkedFileName)
+        self.read = read
+        let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read)
+        let parked = Self.loadEntries(from: directory, fileName: Self.parkedFileName, read: read)
+        // Both or neither, so a retry takes each file whole.
+        let loaded = queued != nil && parked != nil
+        self.entries = loaded ? queued ?? [] : []
+        self.parked = loaded ? parked ?? [] : []
+        self.isLoaded = loaded
     }
 
     static func defaultDirectory() -> URL {
@@ -135,6 +149,7 @@ actor SyncOutbox {
     }
 
     func enqueue(_ op: SyncOp) {
+        loadIfNeeded()
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
@@ -142,15 +157,26 @@ actor SyncOutbox {
         persist()
     }
 
-    func pendingCount() -> Int { entries.count }
+    func pendingCount() -> Int {
+        loadIfNeeded()
+        return entries.count
+    }
 
-    func snapshot() -> [OutboxEntry] { entries }
+    func snapshot() -> [OutboxEntry] {
+        loadIfNeeded()
+        return entries
+    }
 
-    func parkedSnapshot() -> [OutboxEntry] { parked }
+    func parkedSnapshot() -> [OutboxEntry] {
+        loadIfNeeded()
+        return parked
+    }
 
     func clearAll() {
         entries = []
         parked = []
+        // Sign-out empties the files whether or not they were read.
+        isLoaded = true
         generation += 1
         persist()
     }
@@ -158,6 +184,7 @@ actor SyncOutbox {
     /// Drops the queued and parked ops `isDropped` names, edits the user chose to throw away. A
     /// drain under way keeps none of them; one already sent stays sent.
     func discard(where isDropped: @Sendable (SyncOp) -> Bool) {
+        loadIfNeeded()
         entries.removeAll { isDropped($0.op) }
         parked.removeAll { isDropped($0.op) }
         persist()
@@ -166,6 +193,7 @@ actor SyncOutbox {
     /// Queues every parked mark again with one attempt left. One whose old copy a drain still
     /// holds stays parked: that drain drops the copy when it ends, so requeuing would lose both.
     func requeueParked() {
+        loadIfNeeded()
         guard !parked.isEmpty else { return }
         let queuedKeys = Set(entries.map(\.op.dedupKey))
         var stillParked: [OutboxEntry] = []
@@ -208,6 +236,7 @@ actor SyncOutbox {
         // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
         // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
         // mid-drain bumps `generation`: stop and never merge back, or cleared entries resurrect.
+        loadIfNeeded()
         let snapshot = entries
         let snapshotIds = Set(snapshot.map(\.id))
         let startGeneration = generation
@@ -316,7 +345,22 @@ actor SyncOutbox {
     /// Apart from `fileName`, which a build without parking would read as queued edits.
     private static let parkedFileName = "outbox-parked.json"
 
+    /// Reads the files the init could not. What was queued since stays, after what they hold, and
+    /// replaces an op of theirs with the same key.
+    private func loadIfNeeded() {
+        guard !isLoaded,
+              let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read),
+              let parkedOnDisk = Self.loadEntries(from: directory, fileName: Self.parkedFileName, read: read)
+        else { return }
+        let newer = Set((entries + parked).map(\.op.dedupKey))
+        entries = queued.filter { !newer.contains($0.op.dedupKey) } + entries
+        parked = parkedOnDisk.filter { !newer.contains($0.op.dedupKey) } + parked
+        isLoaded = true
+        persist()
+    }
+
     private func persist() {
+        guard isLoaded else { return }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             for (list, name) in [(entries, Self.fileName), (parked, Self.parkedFileName)] {
@@ -340,9 +384,19 @@ actor SyncOutbox {
         }
     }
 
-    private static func loadEntries(from directory: URL, fileName: String) -> [OutboxEntry] {
+    /// Nil when the file exists but cannot be read now; none when it is missing or undecodable.
+    private static func loadEntries(
+        from directory: URL,
+        fileName: String,
+        read: (URL) throws -> Data
+    ) -> [OutboxEntry]? {
         let url = directory.appendingPathComponent(fileName)
-        guard let data = try? Data(contentsOf: url) else { return [] }
+        let data: Data
+        do {
+            data = try read(url)
+        } catch {
+            return FileManager.default.fileExists(atPath: url.path) ? nil : []
+        }
         let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
         guard let wrapped = try? JSONDecoder().decode([FailableEntry].self, from: data) else {
             logger.warning("\(fileName, privacy: .public) decode failed — starting empty")
