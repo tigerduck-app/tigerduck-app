@@ -33,8 +33,8 @@ actor RealDefaultsGate {
 }
 
 /// Runs `body` with exclusive use of the real `Defaults` keys the gated tests share: push and
-/// sync preferences, sync progress, notification settings, the tab-bar migration keys and the
-/// update-check stamps.
+/// sync preferences, sync progress, notification settings, the tab-bar migration keys, the
+/// update-check stamps and the stored-password latch.
 func withExclusiveRealDefaults<T>(_ body: () async throws -> T) async rethrows -> T {
     await RealDefaultsGate.shared.acquire()
     do {
