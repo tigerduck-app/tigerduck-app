@@ -496,6 +496,49 @@ struct MoodleMaterialsTests {
         #expect(store.downloadState(of: Self.syllabusRef.file, in: Self.syllabusRef.owner) != .notDownloaded)
     }
 
+    @Test("a Share chosen while a tapped file downloads shares it without also opening a preview")
+    func shareReplacesThePreview() async throws {
+        let folder = Folder()
+        let gate = ManualSleeper()
+        let store = Self.store(folder, site: Site(), beforeDownload: { _, _ in await gate.sleep(for: .zero) })
+        let opener = MoodleFileOpener()
+        opener.isOnScreen = true
+        let copy = store.location(of: Self.syllabusRef.file, in: Self.syllabusRef.owner)
+
+        opener.tap(Self.syllabusRef, among: [Self.syllabusRef], store: store)
+        try await gate.waitUntilArmed()
+        opener.share(Self.syllabusRef, store: store)
+        await gate.fire()
+
+        // The tap started the download, so its check has run once the download's state settles.
+        try await waitUntil {
+            opener.shared != nil && store.downloadState(of: Self.syllabusRef.file, in: Self.syllabusRef.owner) == .downloaded(copy)
+        }
+        #expect(opener.shared?.url == copy)
+        #expect(opener.preview == nil)
+    }
+
+    @Test("a link opened while a tapped file downloads keeps the file from opening over its page")
+    func linkReplacesThePreview() async throws {
+        let folder = Folder()
+        let gate = ManualSleeper()
+        let store = Self.store(folder, site: Site(), beforeDownload: { _, _ in await gate.sleep(for: .zero) })
+        let opener = MoodleFileOpener()
+        opener.isOnScreen = true
+        let link = URL(string: "https://developer.mozilla.org/en-US/docs/Web/HTTP")!
+        var opened: [URL] = []
+
+        opener.tap(Self.syllabusRef, among: [Self.syllabusRef], store: store)
+        try await gate.waitUntilArmed()
+        opener.open(link: link) { opened.append($0) }
+        await gate.fire()
+
+        let copy = store.location(of: Self.syllabusRef.file, in: Self.syllabusRef.owner)
+        try await waitUntil { store.downloadState(of: Self.syllabusRef.file, in: Self.syllabusRef.owner) == .downloaded(copy) }
+        #expect(opened == [link])
+        #expect(opener.preview == nil)
+    }
+
     @Test("a tap on a downloading file stops it, and HTML or SVG opens in the share sheet, never Quick Look")
     func tapStopsAndSharesHTML() async throws {
         let folder = Folder()

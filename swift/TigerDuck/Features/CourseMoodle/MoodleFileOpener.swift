@@ -4,14 +4,13 @@ import SwiftUI
 import AppKit
 #endif
 
-/// A file a Moodle screen lists, with what it belongs to.
+/// The owner is part of where a copy is kept, so a file alone does not say which copy is its.
 nonisolated struct MoodleFileRef: Hashable, Sendable {
     let file: MoodleFile
     let owner: MoodleFileOwner
 }
 
 extension MoodleMaterial {
-    /// The files it holds, which belong to its module.
     var fileRefs: [MoodleFileRef] {
         switch content {
         case .file(let file): [MoodleFileRef(file: file, owner: .module(id))]
@@ -27,10 +26,9 @@ extension MoodleCourseMaterials {
     }
 }
 
-/// What a screen of Moodle files does with them. A tap downloads a file, stops its download, or
-/// opens it in Quick Look with the screen's other downloaded files to swipe through. A file that
-/// finishes downloading opens only while the screen shows and it is the last file tapped, so
-/// several taps in a row do not open one preview after another.
+/// What a screen of Moodle files does with them. A file that finishes downloading opens only
+/// while the screen shows and only for the latest action, so several taps in a row do not open
+/// one preview after another, and a Share does not also open a preview.
 @Observable
 @MainActor
 final class MoodleFileOpener {
@@ -38,7 +36,8 @@ final class MoodleFileOpener {
     private(set) var previewItems: [URL] = []
     var shared: MoodleSharedItem?
     @ObservationIgnored var isOnScreen = false
-    @ObservationIgnored private var lastTapped: URL?
+    /// Moves on with every tap, share and link, so a download's end opens only the latest one.
+    @ObservationIgnored private var latestAction = 0
 
     /// `opened` runs each time the file opens, for its view on Moodle.
     func tap(
@@ -47,8 +46,7 @@ final class MoodleFileOpener {
         store: MoodleCourseStore,
         opened: @escaping () -> Void = {}
     ) {
-        let location = store.location(of: ref.file, in: ref.owner)
-        lastTapped = location
+        let action = nextAction()
         switch store.downloadState(of: ref.file, in: ref.owner) {
         case .downloading:
             store.cancelDownload(of: ref.file, in: ref.owner)
@@ -57,24 +55,42 @@ final class MoodleFileOpener {
             opened()
         case .notDownloaded, .failed:
             Task {
-                guard let copy = await store.download(ref.file, in: ref.owner), isOnScreen, lastTapped == location else { return }
+                guard let copy = await store.download(ref.file, in: ref.owner), isLatest(action) else { return }
                 show(copy, of: ref.file, among: neighbours, store: store)
                 opened()
             }
         }
     }
 
-    /// Share or Save, for a file not here yet once it downloads.
     func share(_ ref: MoodleFileRef, store: MoodleCourseStore) {
-        let location = store.location(of: ref.file, in: ref.owner)
-        lastTapped = location
+        let action = nextAction()
         Task {
-            guard let copy = await store.download(ref.file, in: ref.owner), isOnScreen, lastTapped == location else { return }
-            share(copy)
+            guard let copy = await store.download(ref.file, in: ref.owner), isLatest(action) else { return }
+            present(copy)
         }
     }
 
-    func share(_ item: URL) {
+    func share(link: URL) {
+        _ = nextAction()
+        present(link)
+    }
+
+    /// Opens a link through `open`; a file still downloading then no longer opens over its page.
+    func open(link: URL, with open: (URL) -> Void) {
+        _ = nextAction()
+        open(link)
+    }
+
+    private func nextAction() -> Int {
+        latestAction += 1
+        return latestAction
+    }
+
+    private func isLatest(_ action: Int) -> Bool {
+        isOnScreen && latestAction == action
+    }
+
+    private func present(_ item: URL) {
         #if os(iOS)
         shared = MoodleSharedItem(url: item)
         #else
@@ -82,10 +98,9 @@ final class MoodleFileOpener {
         #endif
     }
 
-    /// HTML and SVG go to the share sheet, never to Quick Look, as mail attachments do.
     private func show(_ copy: URL, of file: MoodleFile, among neighbours: [MoodleFileRef], store: MoodleCourseStore) {
         guard !file.opensInShareSheet else {
-            share(copy)
+            present(copy)
             return
         }
         let downloaded = neighbours.compactMap { neighbour -> URL? in
@@ -98,7 +113,6 @@ final class MoodleFileOpener {
     }
 }
 
-/// A file or a link to hand to the share sheet.
 struct MoodleSharedItem: Identifiable {
     let url: URL
     var id: URL { url }
@@ -115,7 +129,6 @@ extension MoodleFile {
 }
 
 extension View {
-    /// Presents what `opener` opens: Quick Look, and on iOS the share sheet.
     func moodleFilePresentation(_ opener: MoodleFileOpener) -> some View {
         modifier(MoodleFilePresentation(opener: opener))
     }

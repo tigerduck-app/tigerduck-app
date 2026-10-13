@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A course's materials in the sections and order of its Moodle page, one card a section: files,
-/// links, and folders with their files under them. Files download here and open in Quick Look.
+/// A course's materials in the order of its Moodle page, which teachers arrange by week or topic,
+/// so the screen keeps Moodle's sections rather than sorting by date or name.
 struct MoodleMaterialsView: View {
     let store: MoodleCourseStore
 
@@ -97,10 +97,10 @@ struct MoodleMaterialsView: View {
                 title: material.name,
                 url: url,
                 open: {
-                    openMoodleLink(url)
+                    files.open(link: url) { openMoodleLink($0) }
                     store.open(material)
                 },
-                share: { files.share(url) },
+                share: { files.share(link: url) },
                 openInMoodle: { Task { await openURL(page) } }
             )
         case .folder(let count):
@@ -109,7 +109,6 @@ struct MoodleMaterialsView: View {
     }
 }
 
-/// One row of a section's card: a file, a link, or a folder followed by its files.
 struct MoodleMaterialRow: Identifiable {
     enum Kind {
         case file(MoodleFile)
@@ -119,7 +118,6 @@ struct MoodleMaterialRow: Identifiable {
 
     let material: MoodleMaterial
     let kind: Kind
-    /// A folder's files sit in under its row.
     let indent: CGFloat
 
     var id: String {
