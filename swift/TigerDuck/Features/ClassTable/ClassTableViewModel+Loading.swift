@@ -102,6 +102,7 @@ extension ClassTableViewModel {
     private func fetchData(authService: AuthService, semester: String? = nil) async {
         let manager = NTUSTSessionManager.shared
         let targetSemester = semester ?? currentSemester
+        let generation = await MainActor.run { authService.loginGeneration }
         // Pre-flight here too so `refresh(authService:)`, used outside
         // triggerRefresh, is gated as well. NetworkMonitor memoises the probe,
         // so the second check on the triggerRefresh path is effectively free.
@@ -133,10 +134,16 @@ extension ClassTableViewModel {
         let userAdded = await userAddedTask
 
         await MainActor.run {
+            // A sign-out during the fetch leaves the screen to the next account.
+            guard authService.loginGeneration == generation else {
+                manager.loadingState = .loaded
+                return
+            }
             isUpdatingFromNetwork = true
             let fetched = buildCourseList(fetchedCourses, userAdded)
-            // Someone else's class table may have come up during the fetch.
-            if shownPerson == nil { courses = fetched }
+            // Someone else's class table, or another term picked during the fetch, may be on screen;
+            // the share code reads `courses` as the term on screen.
+            if shownPerson == nil, currentSemester == targetSemester { courses = fetched }
             if targetSemester == CourseSelectionService.currentSemesterCode() {
                 currentSemesterCourses = fetched
                 refreshCourseColors()
