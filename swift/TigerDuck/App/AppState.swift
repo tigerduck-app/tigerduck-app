@@ -195,6 +195,9 @@ final class AppState {
             self.reconcileNotificationSettings()
             #endif
         }
+        authService.signOutStoredAccount = { [weak self] in
+            await self?.logoutNTUST().value
+        }
 
         // Every change to Sync course information, whichever writer
         // made it — see `cloudSyncEnabled`.
