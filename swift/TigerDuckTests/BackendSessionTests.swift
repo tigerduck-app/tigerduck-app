@@ -1,8 +1,10 @@
-// `AuthTokenManager` through `SettingsAPIStub`. The backend rotates the refresh token on every
-// refresh, redeems the old one once more within 60 s, and takes any later reuse for theft
-// (https://github.com/tigerduck-app/tigerduck-app/issues/375).
+// `AuthTokenManager` and `AuthService` through `SettingsAPIStub`. The backend rotates the refresh
+// token on every refresh, redeems the old one once more within 60 s, and takes any later reuse for
+// theft (https://github.com/tigerduck-app/tigerduck-app/issues/375).
 import Foundation
 import Testing
+import UIKit
+import Valet
 @testable import TigerDuck
 
 @Suite("Backend token refresh")
@@ -142,6 +144,44 @@ struct BackendTokenRefreshTests {
     }
 }
 
+@Suite("Backend sign-in")
+@MainActor
+struct BackendSignInTests {
+    @Test("an unlock signs a signed-out backend back in")
+    func unlockSignsTheBackendIn() async throws {
+        let backend = BackendFixture(signedIn: false)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let center = NotificationCenter()
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: center)
+        auth.authTokenManager = backend.manager
+
+        try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+            try await waitUntil { backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9" }
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        withExtendedLifetime(auth) {}
+    }
+
+    @Test("sign-ins that overlap share one login")
+    func overlappingSignInsShareOneLogin() async throws {
+        let backend = BackendFixture(signedIn: false)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = backend.manager
+
+        await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            async let first: Void = auth.ensureBackendSignedIn()
+            async let second: Void = auth.ensureBackendSignedIn()
+            _ = await (first, second)
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+    }
+}
+
 /// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next
 /// `validAccessToken()` refreshes with refresh token R0.
 private struct BackendFixture {
@@ -255,4 +295,42 @@ private nonisolated final class CallCount: @unchecked Sendable {
     private var count = 0
     func increment() { lock.withLock { count += 1 } }
     var value: Int { lock.withLock { count } }
+}
+
+/// `SecureStore`'s `.whenUnlockedThisDeviceOnly` valet in memory, holding the NTUST account and
+/// Moodle token a backend sign-in sends.
+private nonisolated final class MemoryKeychain: KeychainStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String: Data]
+
+    static func signedIn() -> MemoryKeychain {
+        MemoryKeychain(items: [
+            AppConstants.KeychainKeys.studentId: Data("B11000000".utf8),
+            AppConstants.KeychainKeys.password: Data("password".utf8),
+            AppConstants.KeychainKeys.moodleToken: Data("moodle-token".utf8),
+        ])
+    }
+
+    private init(items: [String: Data]) {
+        self.items = items
+    }
+
+    func object(forKey key: String) throws -> Data {
+        try lock.withLock {
+            guard let item = items[key] else { throw KeychainError.itemNotFound }
+            return item
+        }
+    }
+
+    func setObject(_ object: Data, forKey key: String) throws {
+        lock.withLock { items[key] = object }
+    }
+
+    func removeObject(forKey key: String) throws {
+        lock.withLock { items[key] = nil }
+    }
+
+    func removeAllObjects() throws {
+        lock.withLock { items.removeAll() }
+    }
 }
