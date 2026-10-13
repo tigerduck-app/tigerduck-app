@@ -237,7 +237,7 @@ final class AuthService {
                     AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
                 }
 
-                await performV3Login(studentId: normalizedId, password: password)
+                await performV3Login(studentId: normalizedId)
             }
 
             isLoggingIn = false
@@ -259,7 +259,7 @@ final class AuthService {
     /// `harvesting`, a missing token is harvested first; the interactive sign-in passes false,
     /// as it has just tried to harvest one.
     @discardableResult
-    private func performV3Login(studentId: String, password: String, harvesting: Bool = false) async -> Bool {
+    private func performV3Login(studentId: String, harvesting: Bool = false) async -> Bool {
         guard let authTokenManager else { return false }
         let generation = loginGeneration
         let moodleToken = harvesting ? await moodleTokenForBackend() : await moodleTokens.currentToken()
@@ -271,7 +271,6 @@ final class AuthService {
         do {
             _ = try await authTokenManager.login(
                 studentId: studentId,
-                password: password,
                 moodleToken: moodleToken,
                 moodlePrivateToken: moodlePrivateToken,
                 platform: platform
@@ -307,7 +306,6 @@ final class AuthService {
         do {
             _ = try await authTokenManager.login(
                 studentId: studentId,
-                password: "",
                 moodleToken: moodleToken,
                 moodlePrivateToken: moodlePrivateToken,
                 platform: platform
@@ -439,9 +437,9 @@ final class AuthService {
     private func signInToBackendIfSignedOut() async {
         guard let atm = authTokenManager, !(await atm.isLoggedIn),
               Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
-              let studentId = storedStudentId, let password = storedPassword else { return }
+              let studentId = storedStudentId, storedPassword != nil else { return }
         let generation = loginGeneration
-        if await !performV3Login(studentId: studentId, password: password, harvesting: true) {
+        if await !performV3Login(studentId: studentId, harvesting: true) {
             noteFailedBackendSignIn(since: generation)
         }
     }
