@@ -529,11 +529,21 @@ actor PushRegistrationService {
     }
 
     /// ``registerAgain()`` on a return to the app, once the last registration gave up. A session
-    /// that comes back through a token refresh alone runs none of its other triggers, which left
-    /// the device unregistered until a relaunch (https://github.com/tigerduck-app/tigerduck-app/issues/386).
+    /// that comes back through a token refresh alone runs none of its other triggers, so the return
+    /// to the app is what gives such a registration another round
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/386).
     func registerAgainIfGaveUp() async {
-        guard deviceRegisterAttempts >= maxDeviceRegisterAttempts, lastError != nil else { return }
+        guard lastError != nil, registrationGaveUp else { return }
         await registerAgain()
+    }
+
+    /// The Mac's passive registration tries once and schedules no retry, so one failure gives up.
+    private var registrationGaveUp: Bool {
+        #if os(iOS)
+        deviceRegisterAttempts >= maxDeviceRegisterAttempts
+        #else
+        true
+        #endif
     }
 
     /// Registers as soon as the device holds either token. The APNs token must
