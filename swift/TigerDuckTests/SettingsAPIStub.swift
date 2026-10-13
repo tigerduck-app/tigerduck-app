@@ -9,6 +9,12 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         let statusCode: Int
         let body: Data
         var headerFields: [String: String] = [:]
+        /// Fails the request after the stub has logged it, the way a reply lost in transit does.
+        var failure: URLError.Code?
+
+        static var noReply: StubResponse {
+            StubResponse(statusCode: 0, body: Data(), failure: .networkConnectionLost)
+        }
     }
 
     private static let lock = NSLock()
@@ -86,6 +92,10 @@ nonisolated final class SettingsAPIStub: URLProtocol {
 
         guard let next else {
             client?.urlProtocol(self, didFailWithError: URLError(.unknown))
+            return
+        }
+        if let failure = next.failure {
+            client?.urlProtocol(self, didFailWithError: URLError(failure))
             return
         }
         let response = HTTPURLResponse(
