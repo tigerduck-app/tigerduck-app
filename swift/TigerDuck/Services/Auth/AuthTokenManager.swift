@@ -222,15 +222,10 @@ actor AuthTokenManager {
             return result.access_token
         }
 
-        // A 410 here is not "the refresh token went bad" — it is the whole
-        // API version being gone, so do not fall through to the relogin /
-        // logout path below and sign the user out over it.
         await APIVersionGate.shared.note(statusCode: http.statusCode)
-        if http.statusCode == 410 { return nil }
-
-        guard (400...499).contains(http.statusCode) else {
-            return nil
-        }
+        // Only a 401 means the token is dead; then a relogin is tried before clearing it. Any
+        // other status keeps it, such as a 429 from the per-IP limit, a 5xx or a 410 (API retired).
+        guard http.statusCode == 401 else { return nil }
 
         if let relogin = onRefreshFailed, await relogin() {
             return accessToken

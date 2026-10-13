@@ -49,6 +49,56 @@ struct BackendTokenRefreshTests {
         #expect(request.timeoutInterval == 20)
     }
 
+    @Test("a status other than 401 keeps the session and asks for no relogin", arguments: [403, 429, 500, 503])
+    func otherStatusKeepsTheSession(status: Int) async throws {
+        let backend = BackendFixture()
+        let relogins = CallCount()
+        await backend.manager.setRefreshFailedHandler {
+            relogins.increment()
+            return false
+        }
+        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(relogins.value == 0)
+        #expect(await backend.manager.isLoggedIn)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
+        // An answer, even an error, is no lost reply, so nothing is sent again.
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 1)
+    }
+
+    @Test("a 401 signs in again and goes on with the new session")
+    func unauthorizedRelogsIn() async throws {
+        let backend = BackendFixture()
+        let manager = backend.manager
+        await manager.setRefreshFailedHandler {
+            (try? await manager.login(
+                studentId: "B11000000", password: "", moodleToken: "moodle-token",
+                moodlePrivateToken: nil, platform: "ios"
+            )) != nil
+        }
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        #expect(await manager.validAccessToken() == "A9")
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 1)
+    }
+
+    @Test("a 401 whose relogin fails signs out of the backend")
+    func unauthorizedWithoutReloginSignsOut() async throws {
+        let backend = BackendFixture()
+        await backend.manager.setRefreshFailedHandler { false }
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(await !backend.manager.isLoggedIn)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+    }
+
     /// The replies a refresh gets, in order.
     enum Outcome: String, CaseIterable, CustomTestStringConvertible {
         case success, lostThenSuccess, lostTwice, serverError, unauthorized
@@ -198,4 +248,11 @@ private nonisolated final class Recorder: @unchecked Sendable {
     func stored(_ key: String) -> String? { lock.withLock { values[key] } }
     var backgroundTasks: BackgroundTasks { lock.withLock { tasks } }
     var writesOutsideABackgroundTask: Int { lock.withLock { outsideWrites } }
+}
+
+private nonisolated final class CallCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
 }
