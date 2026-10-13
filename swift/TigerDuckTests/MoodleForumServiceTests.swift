@@ -131,7 +131,7 @@ struct MoodleForumServiceTests {
         #expect(first.attachments == [MoodleFile(
             name: "scope.pdf", size: 1_258_291,
             url: "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/123/mod_forum/attachment/7001/scope.pdf",
-            mimeType: "application/pdf", modified: Date(timeIntervalSince1970: 1_792_030_000)
+            mimeType: "application/pdf", modified: Date(timeIntervalSince1970: 1_792_030_000), path: "/"
         )])
 
         let second = try #require(discussions.last)

@@ -184,8 +184,6 @@ struct MoodleCourseStoreTests {
         let first = Self.store(folder, site: site, now: { fetched })
         await first.refreshForums()
         await first.refreshAnnouncements()
-        // The section's status is its feeds' worst; members stay fresh longer than these.
-        await first.refreshMembers()
 
         // Within the freshness, at its end, past it, and stamped ahead of a clock set back.
         for (age, fresh) in [(0.0, true), (60, true), (299, true), (300, false), (3_600, false), (-60, false)] {
@@ -211,9 +209,7 @@ struct MoodleCourseStoreTests {
     func refreshFromAFreshCopy() async throws {
         let folder = Folder()
         let fetched = Date(timeIntervalSince1970: 1_800_000_000)
-        let first = Self.store(folder, site: Site(), now: { fetched })
-        await first.refreshForums()
-        await first.refreshMembers()
+        await Self.store(folder, site: Site(), now: { fetched }).refreshForums()
         let answer = ManualSleeper()
         let offline = OSAllocatedUnfairLock(initialState: true)
         let store = Self.store(folder, site: Site(), beforeForums: {

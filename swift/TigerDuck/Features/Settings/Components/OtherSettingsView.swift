@@ -4,8 +4,9 @@ import SwiftUI
 /// NavigationLink in `SettingsView`'s "Other settings" section next to the
 /// one into `LibrarySettingsView`, so the top-level list stays short. One
 /// Section per group: course font size, slider direction, API endpoint,
-/// course colours. Android's page has the same groups plus vibration,
-/// screen rotation, colour theme and analytics, which iOS does not offer.
+/// course colours, downloaded Moodle files. Android's page has the first four
+/// plus vibration, screen rotation, colour theme and analytics, which iOS does
+/// not offer.
 /// The links out are on `AboutOthersView`, under the About section.
 struct OtherSettingsView: View {
     @Environment(AppState.self) private var appState
@@ -54,6 +55,7 @@ struct OtherSettingsView: View {
                         .foregroundStyle(.primary)
                 }
             }
+            MoodleFilesCacheSection()
         }
         .navigationTitle(String(localized: "settings_section_other_settings"))
         .navigationBarTitleDisplayMode(.inline)

@@ -672,8 +672,8 @@ final class DataCache {
 
     private var moodleDir: URL { cacheDir.appendingPathComponent("moodle", isDirectory: true) }
 
-    /// Files downloaded from Moodle, such as members' own pictures: `Caches/Moodle/` beside this
-    /// cache, kept apart from the cached answers.
+    /// Downloaded Moodle files, `Caches/Moodle/` beside this cache: the settings measure and
+    /// clear them without the cached answers, which keep every screen filled.
     var moodleFilesDir: URL {
         cacheDir.deletingLastPathComponent().appendingPathComponent("Moodle", isDirectory: true)
     }
