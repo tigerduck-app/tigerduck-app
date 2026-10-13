@@ -33,6 +33,9 @@ final class AuthService {
 
     private let moodleTokens: MoodleTokenService
 
+    /// The interactive SSO sign-in. Tests pass a stand-in, so no request reaches the school.
+    private let schoolSignIn: (_ studentId: String, _ password: String) async throws -> Bool
+
     private var credentialObservers: [any NSObjectProtocol] = []
 
     /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``), so keychain reads
@@ -46,10 +49,13 @@ final class AuthService {
     init(
         keychainHasCredentials: @escaping () -> Bool = AuthService.readKeychainHasCredentials,
         notificationCenter center: NotificationCenter = .default,
-        moodleTokens: MoodleTokenService = .shared
+        moodleTokens: MoodleTokenService = .shared,
+        schoolSignIn: @escaping (_ studentId: String, _ password: String) async throws -> Bool
+            = AuthService.signInToSchool
     ) {
         self.keychainHasCredentials = keychainHasCredentials
         self.moodleTokens = moodleTokens
+        self.schoolSignIn = schoolSignIn
         let present = keychainHasCredentials()
         lastKnownHasCredentials = present
         // Only ever raised here. A false read at this point may just mean the
@@ -199,22 +205,25 @@ final class AuthService {
 
     private static let ssoServiceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
 
+    static func signInToSchool(studentId: String, password: String) async throws -> Bool {
+        try await SSOLoginService.ensureServiceLogin(
+            session: NTUSTSessionManager.shared.session,
+            serviceURL: ssoServiceURL,
+            studentId: studentId,
+            password: password,
+            generation: NTUSTSessionManager.shared.generation,
+            interactive: true
+        )
+    }
+
     func login(studentId: String, password: String) async -> Bool {
         isLoggingIn = true
         loginError = nil
 
         do {
-            let session = NTUSTSessionManager.shared.session
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
 
-            let success = try await SSOLoginService.ensureServiceLogin(
-                session: session,
-                serviceURL: Self.ssoServiceURL,
-                studentId: normalizedId,
-                password: password,
-                generation: NTUSTSessionManager.shared.generation,
-                interactive: true
-            )
+            let success = try await schoolSignIn(normalizedId, password)
 
             if success {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
