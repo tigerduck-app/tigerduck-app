@@ -81,10 +81,7 @@ struct MainTabView: View {
     @State private var selectedTab: AppFeature = .home
     @State private var showTimezoneAlert: Bool = false
 
-    /// Configured tabs filtered to hide library features when disabled
-    private var visibleTabs: [AppFeature] {
-        AppFeature.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled)
-    }
+    private var visibleTabs: [AppFeature] { appState.configuredTabs }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -207,14 +204,8 @@ struct MainTabView: View {
         guard let destination = appState.pendingWidgetDestination else { return }
         switch destination {
         case .library:
-            // Disabled: open More with an "enable first" alert, as Android does. Enabled but
-            // unpinned, MoreView pushes Library; switching to More alone would never show the QR.
-            if appState.libraryFeatureEnabled {
-                open(.library)
-            } else {
-                selectedTab = .more
-                appState.pendingLibraryEnablePrompt = true
-            }
+            // Unpinned, MoreView pushes Library; switching to More alone would never show the QR.
+            open(.library)
         case .classTable:
             // The widget draws the user's own class table.
             ImportedClassTableStore.shared.show(nil)

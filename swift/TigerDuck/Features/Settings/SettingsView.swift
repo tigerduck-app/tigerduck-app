@@ -67,9 +67,7 @@ struct SettingsView: View {
             // MARK: - Account
             Section(String(localized: "settings_section_account")) {
                 ntustAccountRow
-                if appState.libraryFeatureEnabled {
-                    libraryAccountRow
-                }
+                libraryAccountRow
                 #if os(iOS)
                 if SchoolMailAvailability.isEnabled {
                     schoolMailAccountRow
@@ -253,11 +251,13 @@ struct SettingsView: View {
             }
 
             // MARK: - Other settings
-            // Two sub-pages: the library switches, and the rest of the
-            // miscellany.
+            // Sub-pages: flip-to-library on a phone that can sense the flip, School Mail's account
+            // and the rest of the miscellany.
             Section(String(localized: "settings_section_other_settings")) {
-                NavigationLink(String(localized: "settings_library_related_features")) {
-                    LibrarySettingsView()
+                if LibrarySettingsView.isAvailable {
+                    NavigationLink(String(localized: "settings_library_related_features")) {
+                        LibrarySettingsView()
+                    }
                 }
                 #if os(iOS)
                 if SchoolMailAvailability.isEnabled {

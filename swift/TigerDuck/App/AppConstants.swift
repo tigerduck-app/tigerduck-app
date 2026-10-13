@@ -144,7 +144,6 @@ nonisolated enum AppConstants {
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"
-        static let libraryFeatureEnabled = "libraryFeatureEnabled"
         static let flipToLibraryEnabled = "flipToLibraryEnabled"
         /// Multiplier (0.8…1.6) applied to the course-name font in the
         /// class table and widget course-name labels. Stored in the App

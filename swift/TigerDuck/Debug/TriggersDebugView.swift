@@ -71,7 +71,7 @@ struct TriggersDebugView: View {
                 Text("Flip to Library")
             } footer: {
                 if !canTriggerFlip {
-                    Text("Requires both Library and Flip-to-Library to be enabled. Toggle them on in Settings → Other settings first.")
+                    Text("Requires Flip-to-Library to be enabled. Turn it on in Settings → Other settings first.")
                 } else {
                     Text("Resets the first-trigger seen flag, waits 3 seconds, then replays the same prompt a real face-down gesture would surface.")
                 }
@@ -98,7 +98,7 @@ struct TriggersDebugView: View {
     }
 
     private var canTriggerFlip: Bool {
-        appState.libraryFeatureEnabled && appState.flipToLibraryEnabled
+        appState.flipToLibraryEnabled
     }
 
     private func triggerFirstLibraryFlip() {

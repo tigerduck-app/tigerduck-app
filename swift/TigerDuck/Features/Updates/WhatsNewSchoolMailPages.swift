@@ -6,7 +6,6 @@ import SwiftUI
 /// init reaches the Keychain and runs migrations.
 protocol WhatsNewBottomBarState: AnyObject {
     var configuredTabs: [AppFeature] { get set }
-    var libraryFeatureEnabled: Bool { get }
 }
 
 extension AppState: WhatsNewBottomBarState {}
@@ -52,14 +51,14 @@ extension WhatsNewPage {
 
     /// Whether the bottom-bar question applies to `state`'s bar.
     static func asksAboutMail(_ state: some WhatsNewBottomBarState) -> Bool {
-        recommendedTabsWithMail(visibleTabs(state)) != nil
+        recommendedTabsWithMail(state.configuredTabs) != nil
     }
 
     /// What the question's Apply does: stores the recommended bar, or
     /// leaves the bar alone when there's none — e.g. Back after applying
     /// and Apply again. Keep Mine calls nothing.
     static func applyMailRecommendation(to state: some WhatsNewBottomBarState) {
-        if let tabs = recommendedTabsWithMail(visibleTabs(state)) {
+        if let tabs = recommendedTabsWithMail(state.configuredTabs) {
             state.configuredTabs = tabs
         }
     }
@@ -75,10 +74,6 @@ extension WhatsNewPage {
     /// The bar with Mail added: Calendar's slot taken over when the bar
     /// has Calendar, otherwise Mail appended when there's room. `nil`
     /// when Mail is already there or there's nowhere to put it.
-    ///
-    /// Works on the bar the user sees, as the tab editor does — a library
-    /// tab hidden by the library opt-in neither takes a slot nor survives
-    /// the change, the same as the editor's Apply.
     static func recommendedTabsWithMail(_ visible: [AppFeature]) -> [AppFeature]? {
         guard AppFeature.schoolMail.isImplemented, !visible.contains(.schoolMail) else { return nil }
         if let calendar = visible.firstIndex(of: .calendar) {
@@ -87,10 +82,6 @@ extension WhatsNewPage {
             return tabs
         }
         return visible.count < AppFeature.maxTabs ? visible + [.schoolMail] : nil
-    }
-
-    private static func visibleTabs(_ state: some WhatsNewBottomBarState) -> [AppFeature] {
-        AppFeature.visibleTabs(state.configuredTabs, libraryEnabled: state.libraryFeatureEnabled)
     }
 }
 #endif

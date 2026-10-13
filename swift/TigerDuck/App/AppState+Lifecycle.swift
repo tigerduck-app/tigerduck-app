@@ -32,6 +32,10 @@ extension AppState {
         if DefaultTabsPinMigration.runIfNeeded() {
             configuredTabs = AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) ?? AppFeature.defaultTabs
         }
+        // After the pin above, so a pre-2.3.0 bar it stores gets Library too.
+        if LibraryTabAddMigration.runIfNeeded() {
+            configuredTabs = AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) ?? AppFeature.defaultTabs
+        }
         // iOS only and off the macOS allow-list, like the store whose key it deletes.
         LiveActivitySnapshotPurgeMigration.runIfNeeded()
         #endif

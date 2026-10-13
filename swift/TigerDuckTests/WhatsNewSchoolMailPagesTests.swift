@@ -36,11 +36,6 @@ struct WhatsNewSchoolMailPagesTests {
         #expect(WhatsNewPage.recommendedTabsWithMail([.home, .schoolMail]) == nil)
     }
 
-    @Test func aHiddenLibraryTabDoesNotTakeASlot() {
-        let visible = AppFeature.visibleTabs([.home, .classTable, .gpa, .library], libraryEnabled: false)
-        #expect(WhatsNewPage.recommendedTabsWithMail(visible) == [.home, .classTable, .gpa, .schoolMail])
-    }
-
     @Test func aBarWithoutMailGetsTheMailPages() {
         #expect(WhatsNewPage.offersMailPages(configuredTabs: [.home, .classTable, .calendar]))
         #expect(WhatsNewPage.offersMailPages(configuredTabs: [.home, .announcements, .gpa, .library]))
@@ -84,13 +79,6 @@ struct WhatsNewSchoolMailPagesTests {
         #expect(bar.configuredTabs == full)
     }
 
-    @Test func aHiddenLibraryTabLeavesRoomForMail() {
-        let bar = StandInBar([.home, .classTable, .gpa, .library], libraryEnabled: false)
-        #expect(WhatsNewPage.asksAboutMail(bar))
-        WhatsNewPage.applyMailRecommendation(to: bar)
-        #expect(bar.configuredTabs == [.home, .classTable, .gpa, .schoolMail])
-    }
-
     // MARK: - Registration
 
     @Test func theMailPagesAreRegisteredFor230() throws {
@@ -124,11 +112,9 @@ struct WhatsNewSchoolMailPagesTests {
 @MainActor
 private final class StandInBar: WhatsNewBottomBarState {
     var configuredTabs: [AppFeature]
-    let libraryFeatureEnabled: Bool
 
-    init(_ configuredTabs: [AppFeature], libraryEnabled: Bool = true) {
+    init(_ configuredTabs: [AppFeature]) {
         self.configuredTabs = configuredTabs
-        self.libraryFeatureEnabled = libraryEnabled
     }
 }
 #endif

@@ -4,8 +4,8 @@ import Foundation
 extension AppFeature {
     /// Features not surfaced in the macOS UI.
     ///
-    /// Library sits behind an opt-in toggle on iOS and depends on flows not designed for Mac
-    /// (Discussion Room booking, Lecture sign-up) that would be dead taps in the sidebar.
+    /// Library depends on flows not designed for Mac (Discussion Room booking, Lecture sign-up)
+    /// that would be dead taps in the sidebar.
     /// `LibraryService` still compiles so a Mac port can flip the switch without code changes.
     ///
     /// School Mail is iOS and iPadOS only: its code is `#if os(iOS)`, SwiftMail is not

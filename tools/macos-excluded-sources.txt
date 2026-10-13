@@ -250,6 +250,11 @@ BulletinPushOptOutMigration.swift
 # Mail isn't on the Mac at all.
 DefaultTabsPinMigration.swift
 
+# LibraryTabAddMigration.swift — pins Library on a stored iPhone bottom bar with
+# room once the library switch is gone. iOS-only like the bar, and called from
+# the same `#if os(iOS)` block.
+LibraryTabAddMigration.swift
+
 # Services/Sync — the `notification` settings-document model and its client.
 # Both sections `NotificationSettingsDocument` carries (`assignments`,
 # `live_activity`) describe local reminder scheduling and Live Activity

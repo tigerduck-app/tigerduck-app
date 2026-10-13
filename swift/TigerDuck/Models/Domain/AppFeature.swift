@@ -163,14 +163,8 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .englishVocab,
     ].filter(\.isImplemented)
 
-    /// Library-related features gated behind the library opt-in toggle
+    /// The library's features, which the Mac does not show (`macHiddenFeatures`).
     static let libraryRelatedFeatures: Set<AppFeature> = [.library, .discussionRoom, .libraryLecture]
-
-    /// The pinned tabs the iOS tab bar actually shows: library tabs drop
-    /// out while the library opt-in is off. "More" is appended after these.
-    static func visibleTabs(_ tabs: [AppFeature], libraryEnabled: Bool) -> [AppFeature] {
-        tabs.filter { libraryEnabled || !libraryRelatedFeatures.contains($0) }
-    }
 
     /// Where opening `feature` lands: its own tab when the bar shows one, otherwise More, which
     /// pushes `moreDeepLink`. A selection no `Tab` matches breaks the `TabView`.
@@ -192,8 +186,10 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     /// restores. Calendar until 2.3.0, when Mail took its place — an
     /// existing user who never customized keeps Calendar
     /// (`DefaultTabsPinMigration`) and is asked about Mail in What's New.
+    /// Library joined at 2.4.0; `LibraryTabAddMigration` adds it to a stored
+    /// bar with room.
     static let defaultTabs: [AppFeature] = [
-        .home, .classTable, .schoolMail,
+        .home, .classTable, .schoolMail, .library,
     ].filter(\.isImplemented)
 
     /// The most tabs a user can pin; the tab bar adds "More" after them.

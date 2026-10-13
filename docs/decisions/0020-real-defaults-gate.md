@@ -51,6 +51,7 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
 - The gate orders only the tests that take it, so a new test that reads or writes these keys goes
   through `withExclusiveRealDefaults` and puts back what it changed. Current users:
   `BulletinPushOptOutMigrationTests`, `PushRegistrationServiceTests`,
-  `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `UpdateCheckTests`,
-  `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`, `ReenableMarkTests`,
-  `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests` and `BackendSessionTests`.
+  `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `LibraryTabAddMigrationTests`,
+  `UpdateCheckTests`, `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`,
+  `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests` and
+  `BackendSessionTests`.

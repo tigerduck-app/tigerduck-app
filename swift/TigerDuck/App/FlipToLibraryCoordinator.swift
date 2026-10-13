@@ -2,10 +2,9 @@
 import SwiftUI
 import UIKit
 
-/// Wires `FlipDetector` into the app, gated by user opt-in, the parent
-/// library feature toggle, scene phase, and idiom. On a successful face-down
-/// gesture, routes through the existing widget-destination drain so tab
-/// switching (and the "library disabled" fall-through) stays in one place.
+/// Wires `FlipDetector` into the app, gated by the user's switch, scene phase
+/// and idiom. A face-down gesture goes through the widget-destination drain,
+/// so the tab switching stays in one place.
 ///
 /// Attach to the root tab view via `.flipToLibraryAttached()`.
 private struct FlipToLibraryModifier: ViewModifier {
@@ -17,7 +16,6 @@ private struct FlipToLibraryModifier: ViewModifier {
         content
             .onAppear { reconcile() }
             .onChange(of: appState.flipToLibraryEnabled) { _, _ in reconcile() }
-            .onChange(of: appState.libraryFeatureEnabled) { _, _ in reconcile() }
             .onChange(of: scenePhase) { _, new in
                 // Tear down only on .background. .inactive comes with transient
                 // interruptions (Control Center, a banner), and tearing down then would
@@ -36,7 +34,6 @@ private struct FlipToLibraryModifier: ViewModifier {
         UIDevice.current.userInterfaceIdiom == .phone
             && FlipDetector.isSupported
             && appState.flipToLibraryEnabled
-            && appState.libraryFeatureEnabled
             && scenePhase != .background
     }
 
@@ -60,8 +57,7 @@ private struct FlipToLibraryModifier: ViewModifier {
         // Fire-time guards: settings can flip while a sensor event was in
         // flight, and the library session can come and go independently of
         // the registration gate.
-        guard appState.libraryFeatureEnabled,
-              appState.flipToLibraryEnabled else { return }
+        guard appState.flipToLibraryEnabled else { return }
 
         // Skip while a modal is up: SwiftUI may reject or defer the root-level prompt sheet
         // over it, leaving `pending` set, and a tab switch would land behind it. Sheets are

@@ -17,7 +17,6 @@ struct TabEditorView: View {
             // when pinnableFeatures already excludes it.
             .filter { $0 != .more }
             .filter { !tabs.contains($0) }
-            .filter { appState.libraryFeatureEnabled || !AppFeature.libraryRelatedFeatures.contains($0) }
     }
 
     var body: some View {
@@ -176,7 +175,7 @@ struct TabEditorView: View {
             }
         }
         .onAppear {
-            tabs = AppFeature.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled)
+            tabs = appState.configuredTabs
         }
     }
 

@@ -78,13 +78,8 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.invertSliderDirection,
         default: false
     )
-    static let libraryFeatureEnabled = Key<Bool>(
-        AppConstants.UserDefaultsKeys.libraryFeatureEnabled,
-        default: false
-    )
-    /// Default ON: the gesture is harmless when the parent library feature
-    /// is off (which is itself default-off), and the first-trigger prompt
-    /// gives users an explicit choice on their first accidental flip.
+    /// Default ON: the first-trigger prompt gives users an explicit choice on
+    /// their first accidental flip.
     static let flipToLibraryEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.flipToLibraryEnabled,
         default: true

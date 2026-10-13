@@ -7,8 +7,7 @@ struct MoreView: View {
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        @Bindable var appState = appState
-        return NavigationStack(path: $navigationPath) {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     HStack(alignment: .top) {
@@ -43,9 +42,7 @@ struct MoreView: View {
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
 
-                    ForEach(viewModel.groupedFeatures.filter { group in
-                        group.category != .library || appState.libraryFeatureEnabled
-                    }, id: \.category) { group in
+                    ForEach(viewModel.groupedFeatures, id: \.category) { group in
                         FeatureCategorySection(
                             category: group.category,
                             features: group.features,
@@ -64,14 +61,6 @@ struct MoreView: View {
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .notImplementedAlert(isPresented: $showNotImplementedAlert)
-            .alert(
-                String(localized: "settings_library_feature_disabled_title"),
-                isPresented: $appState.pendingLibraryEnablePrompt
-            ) {
-                Button(String(localized: "settings_acknowledged"), role: .cancel) {}
-            } message: {
-                Text(String(localized: "settings_library_feature_disabled_message"))
-            }
             // Features pushed from here match their tab-bar pages: no back chevron, with the escape
             // action in `MoreFeatureDestination`. The nav bar stays for titles and toolbar items.
             // Settings is pushed by its own NavigationLink above, so it keeps its back button.

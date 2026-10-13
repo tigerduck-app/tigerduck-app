@@ -366,12 +366,6 @@ final class AppState {
     /// `.onAppear` drain picks it up.
     var pendingWidgetDestination: WidgetDestination?
 
-    /// Transient signal from the library-shortcut widget: when the user taps
-    /// the widget while the library feature is disabled, `MainTabView` switches
-    /// to the More tab and raises this flag so `MoreView` surfaces an
-    /// "enable first" alert. Not persisted — lives only within the process.
-    var pendingLibraryEnablePrompt = false
-
     /// Transient deep-link into the More tab's NavigationStack. Set when a
     /// feature needs to be opened but isn't pinned as a top-level tab (e.g.
     /// flip-to-Library when the user hasn't added the Library tab to their
@@ -491,11 +485,6 @@ final class AppState {
     /// Show each course's room under its name in the class table.
     var showClassroomInClassTable: Bool = Defaults[.showClassroomInClassTable] {
         didSet { Defaults[.showClassroomInClassTable] = showClassroomInClassTable }
-    }
-
-    /// Whether library-related features are enabled (requires explicit user consent)
-    var libraryFeatureEnabled: Bool = Defaults[.libraryFeatureEnabled] {
-        didSet { Defaults[.libraryFeatureEnabled] = libraryFeatureEnabled }
     }
 
     /// Whether the "flip phone face-down to open Library QR" gesture is armed.

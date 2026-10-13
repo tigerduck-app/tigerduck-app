@@ -12,7 +12,7 @@ struct SchoolMailFeatureTests {
         #expect(AppFeature.schoolMail.isImplemented)  // DEBUG build
         #expect(AppFeature.moreFeatures.contains(.schoolMail))
         #expect(AppFeature.pinnableFeatures.contains(.schoolMail))
-        #expect(AppFeature.defaultTabs == [.home, .classTable, .schoolMail])
+        #expect(AppFeature.defaultTabs == [.home, .classTable, .schoolMail, .library])
     }
 
     @Test func schoolMailIsLastInThePageSection() {

@@ -26,7 +26,7 @@ struct WhatsNewTabBarChangeDemo: View {
     }
 
     var body: some View {
-        let before = held ?? visibleTabs
+        let before = held ?? appState.configuredTabs
         let offered = after(before)
         Group {
             if before == offered {
@@ -50,7 +50,7 @@ struct WhatsNewTabBarChangeDemo: View {
             }
         }
         .onChange(of: isCurrent, initial: true) { _, isCurrent in
-            if isCurrent { held = visibleTabs }
+            if isCurrent { held = appState.configuredTabs }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenDescription(before: before, after: offered))
@@ -69,10 +69,6 @@ struct WhatsNewTabBarChangeDemo: View {
         return language == .zhHant
             ? caption.resolved(for: language) + "：" + names.joined(separator: "、")
             : caption.resolved(for: language) + ": " + names.joined(separator: ", ")
-    }
-
-    private var visibleTabs: [AppFeature] {
-        AppFeature.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled)
     }
 }
 
