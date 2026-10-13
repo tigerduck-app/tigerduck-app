@@ -14,11 +14,28 @@ struct ContentView: View {
         .ntustLoginSheetHost()
         #if os(iOS)
         .serverPushPopupHost()
+        .modifier(ClassTableImportHost())
         #endif
     }
 }
 
 #if os(iOS)
+/// The one presenter of the class table import, which every menu that offers it asks for with
+/// `ClassTableSwitcherEntry.requestImport()`: the ⋯ menus and the tab bar's switcher.
+private struct ClassTableImportHost: ViewModifier {
+    @Environment(AppState.self) private var appState
+    @State private var importModel: ClassTableImportModel?
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: AppConstants.classTableImportRequested)) { _ in
+                guard importModel == nil else { return }
+                importModel = .live(authService: appState.authService)
+            }
+            .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
+    }
+}
+
 /// Hosts the modal alert that surfaces an operator-issued
 /// `custom_push_popup` tap. Pulled into its own modifier so the binding
 /// dance (Optional<ServerPopupPayload> → Bool) stays local and the
