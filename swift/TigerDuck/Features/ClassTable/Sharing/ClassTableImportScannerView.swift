@@ -70,7 +70,7 @@ struct ClassTableImportScannerView: View {
         .onChange(of: photo) { _, item in
             guard let item else { return }
             photo = nil
-            Task { await model.readImage(await Self.data(of: item)) }
+            model.readImage(load: { await Self.data(of: item) })
         }
         .onChange(of: model.isFinished) { _, isFinished in
             if isFinished { dismiss() }

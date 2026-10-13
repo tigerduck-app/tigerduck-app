@@ -44,10 +44,12 @@ final class ClassTableImportModel: Identifiable {
     private(set) var pending: Pending?
     var nickname = ""
     private(set) var isLookingUp = false
+    private(set) var isReadingImage = false
     /// Set once the person is saved, or once the account signed out during the lookup; the
     /// screens close then.
     private(set) var isFinished = false
     @ObservationIgnored private(set) var lookupTask: Task<Void, Never>?
+    @ObservationIgnored private var imageTask: Task<Void, Never>?
 
     private let store: ImportedClassTableStore
     private let signedInStudentId: () -> String?
@@ -78,7 +80,7 @@ final class ClassTableImportModel: Identifiable {
         )
     }
 
-    var isIdle: Bool { prompt == nil && pending == nil && !isLookingUp && !isFinished }
+    var isIdle: Bool { prompt == nil && pending == nil && !isLookingUp && !isReadingImage && !isFinished }
 
     var canImport: Bool {
         !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLookingUp && !isFinished
@@ -110,27 +112,50 @@ final class ClassTableImportModel: Identifiable {
         }
     }
 
-    /// An image's data from the photo picker; nil when it could not be loaded.
-    func readImage(_ data: Data?) async {
-        guard let data else {
-            imageRead([])
-            return
+    /// Reserves the import before loading a photo, so camera callbacks cannot replace its code.
+    @discardableResult
+    func readImage(load: @escaping () async -> Data?) -> Task<Void, Never>? {
+        guard isIdle else { return nil }
+        isReadingImage = true
+        let task = Task {
+            let data = await load()
+            guard !Task.isCancelled else { return }
+            let payloads: [String]
+            if let data {
+                payloads = await Task.detached { Self.qrPayloads(in: data) }.value
+            } else {
+                payloads = []
+            }
+            guard !Task.isCancelled else { return }
+            isReadingImage = false
+            imageTask = nil
+            guard isCurrent() else {
+                isFinished = true
+                return
+            }
+            imageRead(payloads)
         }
-        imageRead(await Task.detached { Self.qrPayloads(in: data) }.value)
+        imageTask = task
+        return task
+    }
+
+    func readImage(_ data: Data?) async {
+        await readImage(load: { data })?.value
     }
 
     func readImage(fileAt url: URL) async {
-        let data = await Task.detached { () -> Data? in
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            do {
-                return try Data(contentsOf: url)
-            } catch {
-                AppLogger.captureError(error, context: ["phase": "classTableImport.readFile"])
-                return nil
-            }
-        }.value
-        await readImage(data)
+        await readImage(load: {
+            await Task.detached { () -> Data? in
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    return try Data(contentsOf: url)
+                } catch {
+                    AppLogger.captureError(error, context: ["phase": "classTableImport.readFile"])
+                    return nil
+                }
+            }.value
+        })?.value
     }
 
     nonisolated static func qrPayloads(in data: Data) -> [String] {
@@ -223,6 +248,9 @@ final class ClassTableImportModel: Identifiable {
 
     /// A lookup still running saves nothing once this returns, even if its answer comes later.
     func cancel() {
+        imageTask?.cancel()
+        imageTask = nil
+        isReadingImage = false
         lookupTask?.cancel()
         lookupTask = nil
         isLookingUp = false

@@ -203,7 +203,7 @@ struct MacClassTableView: View {
                         .fixedSize()
                     }
                     .help(String(localized: "class_table_import"))
-                    .disabled(importModel?.isLookingUp == true)
+                    .disabled(importModel?.isLookingUp == true || importModel?.isReadingImage == true)
                 }
             }
         }

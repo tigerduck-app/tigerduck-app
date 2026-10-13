@@ -165,6 +165,100 @@ struct ClassTableImportModelTests {
 
     // MARK: - Images
 
+    @Test("a chosen photo reserves the import before loading starts, so a camera code cannot replace it")
+    func photoReadWinsOverCamera() async throws {
+        let image = try Self.qrImage(try Self.code("B11300001"))
+        let gate = Gate()
+        let model = makeModel()
+        let reading = try #require(model.readImage(load: {
+            await gate.wait()
+            return image
+        }))
+
+        #expect(!model.isIdle)
+        #expect(!model.scanned(try Self.code("B11300002")))
+        try await Self.waitUntil { gate.isWaiting }
+        gate.open()
+        await reading.value
+
+        #expect(model.pending?.code.studentId == "B11300001")
+        #expect(model.prompt == nil)
+    }
+
+    @Test("a cancelled photo read cannot open a confirm screen when its loader answers afterwards")
+    func cancelDuringPhotoRead() async throws {
+        let image = try Self.qrImage(try Self.code("B11300001"))
+        let gate = Gate()
+        let model = makeModel()
+        let reading = try #require(model.readImage(load: {
+            await gate.wait()
+            return image
+        }))
+        try await Self.waitUntil { gate.isWaiting }
+
+        model.cancel()
+        gate.open()
+        await reading.value
+
+        #expect(model.pending == nil)
+        #expect(model.prompt == nil)
+        #expect(model.isIdle)
+        #expect(store.people.isEmpty)
+    }
+
+    @Test("an old cancelled photo cannot make a newer photo idle or replace its result")
+    func cancelledPhotoDoesNotUnblockNewPhoto() async throws {
+        let firstImage = try Self.qrImage(try Self.code("B11300001"))
+        let secondImage = try Self.qrImage(try Self.code("B11300002"))
+        let firstGate = Gate()
+        let secondGate = Gate()
+        let model = makeModel()
+        let first = try #require(model.readImage(load: {
+            await firstGate.wait()
+            return firstImage
+        }))
+        try await Self.waitUntil { firstGate.isWaiting }
+        model.cancel()
+        let second = try #require(model.readImage(load: {
+            await secondGate.wait()
+            return secondImage
+        }))
+        try await Self.waitUntil { secondGate.isWaiting }
+
+        firstGate.open()
+        await first.value
+        #expect(!model.isIdle)
+        #expect(!model.scanned(try Self.code("B11300003")))
+        secondGate.open()
+        await second.value
+
+        #expect(model.pending?.code.studentId == "B11300002")
+        #expect(model.prompt == nil)
+    }
+
+    @Test("a photo read that finishes after sign-out closes without offering or saving the import")
+    func signOutDuringPhotoRead() async throws {
+        var current = true
+        let image = try Self.qrImage(try Self.code("B11300001"))
+        let gate = Gate()
+        let model = makeModel(isCurrent: { current })
+        let reading = try #require(model.readImage(load: {
+            await gate.wait()
+            return image
+        }))
+        try await Self.waitUntil { gate.isWaiting }
+
+        current = false
+        gate.open()
+        await reading.value
+
+        #expect(model.pending == nil)
+        #expect(model.prompt == nil)
+        #expect(model.isFinished)
+        #expect(store.people.isEmpty)
+        #expect(Self.reloadedPeople(folder).isEmpty)
+    }
+
     @Test("the share code in an image is read through Vision")
     func imageWithShareCode() async throws {
         let text = try Self.code("B11300001")
