@@ -131,6 +131,30 @@ struct ImportedClassTableStoreTests {
         #expect(store.shownPersonID == nil)
     }
 
+    @Test("going back shows the class table before the current one, or the next one with none to go back to")
+    func showPreviousSwapsBack() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
+        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:]))
+
+        store.showPrevious()
+        #expect(store.shownPersonID == ming.id)
+        store.showPrevious()
+        #expect(store.shownPersonID == nil)
+
+        store.show(hua.id)
+        store.showPrevious()
+        #expect(store.shownPersonID == nil)
+        store.showPrevious()
+        #expect(store.shownPersonID == hua.id)
+
+        store.show(nil)
+        store.delete(hua.id)
+        store.showPrevious()
+        #expect(store.shownPersonID == ming.id)
+    }
+
     @Test("a new lookup replaces one term's course details, keeps the rest, and moves the shown table")
     func updateCourses() throws {
         let folder = Folder()

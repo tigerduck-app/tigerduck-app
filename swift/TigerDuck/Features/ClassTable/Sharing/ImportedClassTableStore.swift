@@ -49,7 +49,15 @@ final class ImportedClassTableStore {
 
     /// Whose class table the class table shows, nil for the user's own. Kept in memory only, so
     /// each launch opens on the user's own.
-    private(set) var shownPersonID: UUID?
+    private(set) var shownPersonID: UUID? {
+        didSet {
+            if shownPersonID != oldValue { previousShownID = .some(oldValue) }
+        }
+    }
+
+    /// The class table shown before the current one, `.some(nil)` for the user's own, and nil
+    /// before the first switch.
+    @ObservationIgnored private var previousShownID: UUID?? = nil
 
     var shownPerson: ImportedPerson? { people.first { $0.id == shownPersonID } }
 
@@ -180,6 +188,17 @@ final class ImportedClassTableStore {
         return .saved
     }
 
+    /// Shows the class table shown before the current one, or the next one when there is none to
+    /// go back to: before the first switch, or once that person is deleted.
+    func showPrevious() {
+        if case .some(let previous) = previousShownID,
+           previous == nil || people.contains(where: { $0.id == previous }) {
+            shownPersonID = previous
+        } else {
+            showNext()
+        }
+    }
+
     /// Shows the class table after the shown one: the user's own, then each person in import
     /// order, then the user's own again.
     func showNext() {
@@ -216,6 +235,7 @@ final class ImportedClassTableStore {
     func removeAll() {
         people = []
         shownPersonID = nil
+        previousShownID = nil
         owner = nil
         mayWrite = true
         do {

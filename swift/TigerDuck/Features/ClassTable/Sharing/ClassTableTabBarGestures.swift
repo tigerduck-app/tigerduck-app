@@ -3,7 +3,8 @@ import UIKit
 import UIKit.UIGestureRecognizerSubclass
 
 /// The class table tab's long press, which opens the switcher next to the tab, and double tap,
-/// which shows the next class table. `TabView` has no gesture API for its items, so both go on the
+/// which goes back to the class table shown before, or within 3 s of the last double tap shows
+/// the next one. `TabView` has no gesture API for its items, so both go on the
 /// system tab bar, where the tab is found by its title. Put it behind the `TabView`.
 struct ClassTableTabBarGestures: UIViewRepresentable {
     /// Nil while the class table tab is under More.
@@ -91,6 +92,10 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
     private var menuInteraction: UIContextMenuInteraction?
     private var doubleTap: ClassTableTabDoubleTap?
     private var hasLoggedMissingTab = false
+    private var lastDoubleTap: ContinuousClock.Instant?
+
+    /// Double taps this close together step through the list; one after a pause swaps back.
+    static let cyclingWindow: Duration = .seconds(3)
 
     init(store: ImportedClassTableStore) {
         self.store = store
@@ -152,11 +157,16 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         AppLogger.breadcrumb("class table tab not found", category: "classTableTabBar")
     }
 
-    /// Cycles only when the class table was showing before the double tap: from another tab, its
+    /// Switches only when the class table was showing before the double tap: from another tab, its
     /// first tap has just opened the class table.
-    func doubleTapped(at location: CGPoint, startedOnClassTable: Bool) {
+    func doubleTapped(at location: CGPoint, startedOnClassTable: Bool, now: ContinuousClock.Instant = .now) {
         guard startedOnClassTable, classTableTabFrame()?.contains(location) == true else { return }
-        store.showNext()
+        defer { lastDoubleTap = now }
+        if let lastDoubleTap, now - lastDoubleTap <= Self.cyclingWindow {
+            store.showNext()
+        } else {
+            store.showPrevious()
+        }
     }
 
     /// The user's own row stays next to the tab: above a bar at the bottom the rows read in their

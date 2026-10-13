@@ -248,6 +248,26 @@ struct ClassTableSwitcherTests {
         #expect(people.store.shownPersonID == nil)
     }
 
+    @Test("a double tap after a pause goes back to the class table before; quick ones step through the list")
+    func doubleTapGoesBackAfterAPause() async throws {
+        let people = try Self.people(Folder())
+        let hosted = try await host(people.store)
+        defer { hosted.window.isHidden = true }
+        let center = CGPoint(x: hosted.tab.midX, y: hosted.tab.midY)
+        let start = ContinuousClock.now
+        people.store.show(people.ming.id)
+        people.store.show(people.hua.id)
+
+        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start)
+        #expect(people.store.shownPersonID == people.ming.id)
+        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(2))
+        #expect(people.store.shownPersonID == people.hua.id)
+        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(4))
+        #expect(people.store.shownPersonID == nil)
+        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(8))
+        #expect(people.store.shownPersonID == people.hua.id)
+    }
+
     @Test("the double tap lets every tap through at once, so a single tap still switches tabs at once")
     func doubleTapDelaysNothing() async throws {
         let people = try Self.people(Folder())
