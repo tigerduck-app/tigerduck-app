@@ -246,3 +246,90 @@ struct ClassTableShareQRCodeTests {
         }
     }
 }
+
+#if os(iOS)
+import SwiftUI
+import UIKit
+
+/// The sheet laid out in a window: its QR code scans from a screenshot, and the TAT switch follows
+/// the pick.
+@MainActor
+@Suite(.serialized)
+struct ClassTableShareSheetTests {
+    private func host(_ model: ClassTableShareModel) throws -> UIWindow {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        window.rootViewController = UIHostingController(rootView: ClassTableShareSheet(model: model))
+        window.makeKeyAndVisible()
+        return window
+    }
+
+    /// A phone's screenshot, three pixels a point, after a chat app has halved it.
+    private func halvedScreenshot(_ window: UIWindow) -> CGImage? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.5
+        return UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }.cgImage
+    }
+
+    private static func switches(in view: UIView) -> [UISwitch] {
+        view.subviews.flatMap { [$0 as? UISwitch].compactMap { $0 } + switches(in: $0) }
+    }
+
+    @Test("the longest code scans from a screenshot a chat app has halved, at about four pixels a module")
+    func scansFromAHalvedScreenshot() async throws {
+        let code = try ClassTableShareQRCodeTests.longestCode()
+        let decoded = try ClassTableShareCode.decode(code)
+        let model = ClassTableShareModel(
+            studentId: "B11300000",
+            terms: decoded.terms.map { term in
+                ClassTableShareModel.Term(
+                    semester: term.semester,
+                    courses: term.courseNos.map { SDCourse(courseNo: $0, courseName: $0) }
+                )
+            },
+            semesterLabel: { $0 }
+        )
+        model.selection = .allSemesters
+        let window = try host(model)
+        defer { window.isHidden = true }
+
+        var read: CIQRCodeFeature?
+        try await waitUntil {
+            read = halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) }
+            return read != nil
+        }
+        let feature = try #require(read)
+        #expect(feature.messageString == model.code)
+        let version = try #require(feature.symbolDescriptor?.symbolVersion)
+        let pixelsPerModule = feature.bounds.width / CGFloat(17 + 4 * version)
+        #expect(pixelsPerModule >= 3.5, "\(pixelsPerModule) pixels a module")
+    }
+
+    @Test("the TAT switch turns off and disables for all semesters")
+    func tatSwitchFollowsThePick() async throws {
+        let model = ClassTableShareModel(
+            studentId: "B11300000",
+            terms: [ClassTableShareModel.Term(
+                semester: "1151",
+                courses: [SDCourse(courseNo: "CS1010001", courseName: "Programming", schedule: [1: ["3"]])]
+            )],
+            semesterLabel: { $0 }
+        )
+        let window = try host(model)
+        defer { window.isHidden = true }
+        try await waitUntil { Self.switches(in: window).count == 1 }
+        let toggle = try #require(Self.switches(in: window).first)
+        #expect(toggle.isEnabled)
+        #expect(!toggle.isOn)
+
+        model.isTATCompatible = true
+        try await waitUntil { toggle.isOn }
+
+        model.selection = .allSemesters
+        try await waitUntil { !toggle.isEnabled && !toggle.isOn }
+    }
+}
+#endif
