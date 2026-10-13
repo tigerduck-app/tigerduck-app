@@ -137,7 +137,7 @@ final class BulletinAPIClient: Sendable {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            logger.error("Bulletin.API ✗ \(method, privacy: .public) \(host, privacy: .public)\(path, privacy: .public) — \(error.localizedDescription, privacy: .public)")
+            logger.error("Bulletin.API ✗ \(method, privacy: .public) \(host, privacy: .public)\(path, privacy: .public) — \(error.localizedDescription, privacy: .private)")
             throw error
         }
         guard let http = response as? HTTPURLResponse else {
@@ -160,7 +160,7 @@ final class BulletinAPIClient: Sendable {
         do {
             return try Self.decoder.decode(Response.self, from: data)
         } catch {
-            logger.error("Bulletin.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            logger.error("Bulletin.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .private)")
             throw BulletinAPIError.decodingFailed(error)
         }
     }

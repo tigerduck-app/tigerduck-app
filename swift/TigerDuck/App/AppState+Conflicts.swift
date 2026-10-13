@@ -134,7 +134,7 @@ extension AppState {
                         guard !serverNos.isEmpty, !localNos.isEmpty else { continue }
                         localOnly += localNos.subtracting(serverNos).count
                         serverOnly += serverNos.subtracting(localNos).count
-                        AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .public) server=\(serverNos.sorted(), privacy: .public)")
+                        AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .private) server=\(serverNos.sorted(), privacy: .private)")
                     }
                     if localOnly > 0 && serverOnly > 0 {
                         diffs.append(String(format: String(localized: "sync_conflict_reenable_courses"), String(localOnly), String(serverOnly)))
@@ -172,7 +172,7 @@ extension AppState {
                         }
                         AppLogger.sync.info("[reenable] colors: \(colorMismatches.isEmpty ? "MATCH" : "DIFFER (\(colorMismatches.count))", privacy: .public)")
                         if !colorMismatches.isEmpty {
-                            for m in colorMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .public)") }
+                            for m in colorMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .private)") }
                             diffs.append(String(localized: "sync_conflict_reenable_colors_differ"))
                         }
                     }
@@ -271,7 +271,7 @@ extension AppState {
                     }
                 }
             } catch {
-                AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .public) — pending kept for retry")
+                AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
                 if case PushAPIError.httpStatus(401, _) = error, retriesLeft > 0 {
                     let reloginOk = await attemptBackendRelogin()
                     if reloginOk {
@@ -357,7 +357,7 @@ extension AppState {
                             isCurrent: isCurrent
                         )
                     } catch {
-                        AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .public)")
+                        AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .private)")
                         await MainActor.run { if isCurrent() { markCategoryReenabled("courses") } }
                     }
                 }

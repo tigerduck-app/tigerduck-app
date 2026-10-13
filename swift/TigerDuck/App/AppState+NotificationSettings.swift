@@ -49,7 +49,7 @@ extension AppState {
             }
         } catch {
             AppLogger.sync.error(
-                "pushNotificationSettings failed: \(error.localizedDescription, privacy: .public)"
+                "pushNotificationSettings failed: \(error.localizedDescription, privacy: .private)"
             )
         }
     }
@@ -98,7 +98,7 @@ extension AppState {
                 }
             } catch {
                 AppLogger.sync.error(
-                    "reconcileNotificationSettings failed: \(error.localizedDescription, privacy: .public)"
+                    "reconcileNotificationSettings failed: \(error.localizedDescription, privacy: .private)"
                 )
             }
         }

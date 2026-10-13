@@ -176,7 +176,7 @@ final class BulletinsViewModel {
         do {
             detail = try await apiClient.getBulletin(id: id)
         } catch {
-            logger.error("summary(forId:) fetch failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            logger.error("summary(forId:) fetch failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
             throw error
         }
         // Never surface or merge a tombstoned bulletin. /list filters them out, and
@@ -241,7 +241,7 @@ final class BulletinsViewModel {
             persistSummaries()
             startBackgroundPrefetch()
         } catch {
-            logger.error("refresh failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("refresh failed: \(error.localizedDescription, privacy: .private)")
             // With cached items, stay `loaded` so the user can browse history
             // offline. Fail only when there is nothing to show.
             if items.isEmpty {
@@ -287,7 +287,7 @@ final class BulletinsViewModel {
                 try? await Task.sleep(for: .milliseconds(200))
             } catch {
                 consecutiveFailures += 1
-                logger.error("prefetch page failed: \(error.localizedDescription, privacy: .public) attempt=\(consecutiveFailures, privacy: .public)")
+                logger.error("prefetch page failed: \(error.localizedDescription, privacy: .private) attempt=\(consecutiveFailures, privacy: .public)")
                 if consecutiveFailures >= 3 {
                     // Give up for this session; the user can pull-to-refresh
                     // later to restart the prefetch chain. Note we leave
@@ -322,7 +322,7 @@ final class BulletinsViewModel {
             // Keep `hasMore` and `nextCursor` so the next scroll trigger or a
             // pull-to-refresh retries this page. Clearing `hasMore` here would let
             // one network blip silently strand the user mid-history.
-            logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .public)")
+            logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .private)")
         }
     }
 

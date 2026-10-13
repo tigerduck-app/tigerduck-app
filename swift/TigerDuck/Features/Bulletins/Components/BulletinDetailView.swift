@@ -214,7 +214,7 @@ struct BulletinDetailView: View {
             detail = fresh
             DataCache.shared.saveBulletinDetail(fresh)
         } catch {
-            logger.error("detail load failed id=\(bulletin.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            logger.error("detail load failed id=\(bulletin.id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
             // Don't surface the error when we have cached content —
             // offline-first behaviour means the user keeps reading.
             if !hadCached {

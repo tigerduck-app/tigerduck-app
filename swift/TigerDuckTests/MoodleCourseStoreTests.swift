@@ -50,16 +50,16 @@ struct MoodleCourseStoreTests {
         var viewed: [Int] { lock.withLock { _viewed } }
 
         /// `beforePage` runs before each page answers, with the page and how many times it was
-        /// asked for before; it throws to fail that request.
+        /// asked for before; it and `beforeForums` throw to fail their request.
         func api(
-            beforeForums: @escaping @Sendable () async -> Void = {},
+            beforeForums: @escaping @Sendable () async throws -> Void = {},
             beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in }
         ) -> MoodleCourseAPI {
             MoodleCourseAPI(
                 functions: { self.lock.withLock { self._functions } },
                 forums: { courseIds in
                     self.lock.withLock { self._forumCalls.append(courseIds) }
-                    await beforeForums()
+                    try await beforeForums()
                     return self.lock.withLock { self._forums }
                 },
                 discussions: { forumId, page in
@@ -94,13 +94,16 @@ struct MoodleCourseStoreTests {
         site: Site,
         account: String = "B11399001",
         signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
-        beforeForums: @escaping @Sendable () async -> Void = {},
-        beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in }
+        beforeForums: @escaping @Sendable () async throws -> Void = {},
+        beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in },
+        now: @escaping () -> Date = { Date() }
     ) -> MoodleCourseStore {
         MoodleCourseStore(
             courseId: courseId,
             termCourseIds: [20103, courseId],
-            context: MoodleCacheContext(account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }),
+            context: MoodleCacheContext(
+                account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
+            ),
             api: site.api(beforeForums: beforeForums, beforePage: beforePage)
         )
     }
@@ -121,7 +124,7 @@ struct MoodleCourseStoreTests {
         #expect(again.announcementList?.discussions.map(\.id) == [801, 802])
         #expect(again.forumsFetchedAt != nil)
         #expect(again.announcementsFetchedAt != nil)
-        #expect(again.forums.status == .unknown)
+        #expect(again.forums.status == .ok)
     }
 
     @Test("one forums call covers the term, and each account keeps its own copy")
@@ -168,6 +171,68 @@ struct MoodleCourseStoreTests {
 
         #expect(folder.cache.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") == nil)
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
+    }
+
+    // MARK: - Status
+
+    @Test("a course detail opened again reads OK on a copy still fresh, and unknown only where a fetch is due at once")
+    func cachedCopyStatus() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(pages: [[Self.discussion(801)]])
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        let first = Self.store(folder, site: site, now: { fetched })
+        await first.refreshForums()
+        await first.refreshAnnouncements()
+
+        // Within the freshness, at its end, past it, and stamped ahead of a clock set back.
+        for (age, fresh) in [(0.0, true), (60, true), (299, true), (300, false), (3_600, false), (-60, false)] {
+            let now = fetched + age
+            let reopened = Self.store(folder, site: Site(), now: { now })
+            #expect(!reopened.sectionRows.isEmpty)
+            #expect(reopened.announcementList != nil)
+
+            let forumsWait = MoodleRefreshTimer.wait(
+                fetchedAt: reopened.forumsFetchedAt, lastTry: nil, ttl: reopened.forums.ttl, now: now
+            )
+            let announcementsWait = MoodleRefreshTimer.wait(
+                fetchedAt: reopened.announcementsFetchedAt, lastTry: nil, ttl: reopened.announcements.ttl, now: now
+            )
+            #expect((forumsWait > 0) == fresh, "age \(age)")
+            #expect((announcementsWait > 0) == fresh, "age \(age)")
+            #expect(reopened.sectionStatus == (fresh ? .ok : .unknown), "age \(age)")
+            #expect(reopened.announcements.status == (fresh ? .ok : .unknown), "age \(age)")
+        }
+    }
+
+    @Test("from a fresh copy's OK a refresh shows its progress, then its failure, then the next success")
+    func refreshFromAFreshCopy() async throws {
+        let folder = Folder()
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        await Self.store(folder, site: Site(), now: { fetched }).refreshForums()
+        let answer = ManualSleeper()
+        let offline = OSAllocatedUnfairLock(initialState: true)
+        let store = Self.store(folder, site: Site(), beforeForums: {
+            await answer.sleep(for: .zero)
+            if offline.withLock({ $0 }) { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+        }, now: { fetched + 60 })
+        #expect(store.sectionStatus == .ok)
+
+        let failing = Task { await store.refreshForums() }
+        try await answer.waitUntilArmed()
+        #expect(store.isSectionRefreshing)
+        await answer.fire()
+        await failing.value
+        #expect(!store.isSectionRefreshing)
+        #expect(store.sectionStatus == .failed)
+        #expect(!store.sectionRows.isEmpty)
+
+        offline.withLock { $0 = false }
+        let retry = Task { await store.refreshForums() }
+        try await answer.waitUntilArmed(atLeast: 2)
+        await answer.fire()
+        await retry.value
+        #expect(store.sectionStatus == .ok)
     }
 
     // MARK: - Functions
