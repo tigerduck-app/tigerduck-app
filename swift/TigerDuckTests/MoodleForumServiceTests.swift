@@ -127,6 +127,7 @@ struct MoodleForumServiceTests {
         #expect(first.unreadCount == 1)
         #expect(first.replyCount == 0)
         #expect(first.authorName == "B11399001 @ Tiger Duck")
+        #expect(first.authorId == 3)
         #expect(first.attachments == [MoodleFile(
             name: "scope.pdf", size: 1_258_291,
             url: "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/123/mod_forum/attachment/7001/scope.pdf",
@@ -135,6 +136,7 @@ struct MoodleForumServiceTests {
 
         let second = try #require(discussions.last)
         #expect(second.authorName == nil)
+        #expect(second.authorId == nil)
         #expect(second.attachments.isEmpty)
         #expect(second.preview.isEmpty)
         #expect(second.replyCount == 2)

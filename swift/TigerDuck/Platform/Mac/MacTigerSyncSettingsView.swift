@@ -17,6 +17,8 @@ struct MacTigerSyncSettingsView: View {
     @Default(.syncCourseNames) private var syncCourseNames
     @Default(.syncAssignments) private var syncAssignments
     @State private var snapshot: PushDiagnostic?
+    @State private var asksToSignInAgain = false
+    @State private var showSignIn = false
     @State private var refreshTimer: Timer?
 
     /// Sets a class-table row under its category heading.
@@ -86,7 +88,11 @@ struct MacTigerSyncSettingsView: View {
                         okText: String(localized: "push_server_status_done"),
                         badText: String(localized: "push_server_pending_incomplete")
                     )
-                    if let error = s.registration.lastError {
+                    if asksToSignInAgain {
+                        LabeledContent(String(localized: "common_auto_sign_in_failed")) {
+                            Button(String(localized: "action_sign_in_again")) { showSignIn = true }
+                        }
+                    } else if let error = s.registration.lastError {
                         LabeledContent(String(localized: "push_server_latest_error")) {
                             Text(error).foregroundStyle(.red).font(.caption)
                         }
@@ -115,11 +121,11 @@ struct MacTigerSyncSettingsView: View {
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task { snapshot = await appState.pushCoordinator.currentSnapshot() }
+        .task { await refreshSnapshot() }
         .onAppear {
             refreshTimer?.invalidate()
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
-                Task { @MainActor in snapshot = await appState.pushCoordinator.currentSnapshot() }
+                Task { @MainActor in await refreshSnapshot() }
             }
             appState.checkPendingConflicts()
         }
@@ -143,6 +149,18 @@ struct MacTigerSyncSettingsView: View {
             + Text("\n")
             + Text(appState.reenableConflict?.description ?? "")
         }
+        .sheet(isPresented: $showSignIn) {
+            MacLoginView(showsSkipButton: false, onSignedIn: { showSignIn = false })
+                .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
+        }
+    }
+
+    private func refreshSnapshot() async {
+        let current = await appState.pushCoordinator.currentSnapshot()
+        asksToSignInAgain = await appState.authService.asksToSignInAgain(
+            syncEnabled: appState.cloudSyncEnabled, after: current.registration
+        )
+        snapshot = current
     }
 
     private var syncedContentOn: Bool { syncCourses || syncCourseColors || syncCourseNames }

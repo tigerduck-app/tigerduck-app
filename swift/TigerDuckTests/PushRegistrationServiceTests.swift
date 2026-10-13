@@ -357,6 +357,45 @@ struct PushRegistrationServiceTests {
         }
     }
 
+    @Test("a return to the app after a registration gave up registers the device again")
+    func returnToAppRegistersAgainAfterARegistrationGaveUp() async throws {
+        try await Self.withSyncPreferences {
+            Defaults[.syncPreferencesPushPending] = false
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let retries = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+            let service = Self.makeService(baseURL: baseURL, retries: retries)
+            try await Self.registerUntilGivenUp(service, baseURL: baseURL, retries: retries)
+
+            Self.expectAttempt(baseURL, registrations: 1)
+            await service.registerAgainIfGaveUp()
+            await service.awaitPendingRegistration()
+
+            let registrations = try Self.sentRegistrations(baseURL)
+            #expect(registrations.count == 5)
+            let snapshot = await service.snapshot()
+            #expect(snapshot.lastError == nil)
+            #expect(snapshot.lastRegisteredAt != nil)
+        }
+    }
+
+    @Test("a return to the app after a registration went through sends no second one")
+    func returnToAppAfterARegistrationSendsNoSecond() async throws {
+        try await Self.withSyncPreferences {
+            Defaults[.syncPreferencesPushPending] = false
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            Self.expectAttempt(baseURL, registrations: 1)
+            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+            await service.awaitPendingRegistration()
+
+            await service.registerAgainIfGaveUp()
+            await service.awaitPendingRegistration()
+
+            let registrations = try Self.sentRegistrations(baseURL)
+            #expect(registrations.count == 1)
+        }
+    }
+
     @Test("turning TigerSync on after a registration went through sends no second one")
     func turningSyncOnAfterARegistrationSendsNoSecond() async throws {
         try await Self.withSyncPreferences {
@@ -435,6 +474,28 @@ struct PushRegistrationServiceTests {
             #expect(snapshot.lastError == nil)
             #expect(snapshot.lastRegisteredAt != nil)
         }
+    }
+
+    @Test("a registration that finds no session says so, until one goes out and the backend refuses it")
+    func registrationRecordsWhetherItFoundNoSession() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let header = OSAllocatedUnfairLock<String?>(initialState: nil)
+        let service = Self.makeService(baseURL: baseURL, authHeader: { header.withLock { $0 } })
+        for _ in 0..<4 {
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: Self.announceURL(baseURL))
+        }
+
+        await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+        await service.awaitPendingRegistration()
+        #expect(await service.snapshot().lastAttemptFoundNoSession)
+
+        header.withLock { $0 = "Bearer test" }
+        for _ in 0..<4 { Self.expectRefusedAttempt(baseURL) }
+        await service.registerAgain()
+        await service.awaitPendingRegistration()
+
+        try #require(SettingsAPIStub.requests(for: Self.registerURL(baseURL)).count == 4)
+        #expect(await !service.snapshot().lastAttemptFoundNoSession)
     }
 
     // MARK: - The bulletin toggle PATCHes before it persists

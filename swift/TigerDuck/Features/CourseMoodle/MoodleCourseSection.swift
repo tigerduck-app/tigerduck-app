@@ -59,6 +59,8 @@ struct MoodleCourseSection: View {
             return .announcements
         case .materials:
             return .materials
+        case .members:
+            return .members
         case .forums:
             let forums = store.generalForums
             if forums.count == 1, let only = forums.first { return .forum(only) }
@@ -80,6 +82,9 @@ extension View {
                     .moodleAutoRefresh(every: store.materials.ttl, fetchedAt: { store.materialsFetchedAt }) {
                         await store.refreshMaterials()
                     }
+                    .moodleAutoRefresh(every: store.members.ttl, fetchedAt: { store.membersFetchedAt }) {
+                        await store.refreshMembers()
+                    }
                     .id(ObjectIdentifier(store))
             }
         }
@@ -98,6 +103,7 @@ struct MoodleSectionRowView: View {
         switch row.kind {
         case .announcements: "megaphone"
         case .materials: "folder"
+        case .members: "person.2"
         case .forums: "bubble.left.and.bubble.right"
         }
     }
@@ -106,6 +112,7 @@ struct MoodleSectionRowView: View {
         switch row.kind {
         case .announcements: String(localized: "feature_announcements")
         case .materials: String(localized: "course_detail_files_label")
+        case .members: String(localized: "course_detail_members_label")
         case .forums: String(localized: "course_detail_forums_label")
         }
     }

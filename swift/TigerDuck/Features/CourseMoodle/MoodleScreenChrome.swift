@@ -131,9 +131,10 @@ extension View {
         ))
     }
 
-    /// The bar of a pushed Moodle article: the back button alone, over the content.
-    func moodleArticleChrome() -> some View {
-        modifier(MoodleArticleChrome())
+    /// The bar of a pushed Moodle article: the back button over the content, and "Open in
+    /// Moodle" for `page`.
+    func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
+        modifier(MoodleArticleChrome(page: page))
     }
 
     /// ⌘R on the Mac for a pushed screen that fetches its own data; the class table hands the
@@ -160,8 +161,6 @@ private struct MoodleListChrome: ViewModifier {
     let willOpenPage: () -> Void
     let refresh: () async -> Void
 
-    @Environment(\.openURL) private var openURL
-
     func body(content: Content) -> some View {
         #if os(iOS)
         content
@@ -176,7 +175,7 @@ private struct MoodleListChrome: ViewModifier {
                     ToolbarItem(placement: .topBarTrailing) { dot }
                 }
                 if let page {
-                    ToolbarItem(placement: .topBarTrailing) { openButton(page) }
+                    ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
             }
         #else
@@ -185,7 +184,7 @@ private struct MoodleListChrome: ViewModifier {
             .safeAreaInset(edge: .top, spacing: 0) {
                 MacMoodleTitleBar(title: title) {
                     dot
-                    if let page { openButton(page) }
+                    if let page { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
             }
             .moodleRefreshShortcut(refresh)
@@ -195,32 +194,48 @@ private struct MoodleListChrome: ViewModifier {
     private var dot: some View {
         MoodleStatusDot(status: status, isLoading: isLoading)
     }
-
-    private func openButton(_ page: MoodlePage) -> some View {
-        Button {
-            willOpenPage()
-            Task { await openURL(page) }
-        } label: {
-            Image(systemName: "arrow.up.right.square")
-        }
-        .accessibilityLabel(String(localized: "action_open_in_moodle"))
-    }
 }
 
 private struct MoodleArticleChrome: ViewModifier {
+    let page: MoodlePage?
+
     func body(content: Content) -> some View {
         #if os(iOS)
         content
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                if let page {
+                    ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page) }
+                }
+            }
         #else
         content
             .navigationBarBackButtonHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) {
-                MacMoodleTitleBar(title: nil) { EmptyView() }
+                MacMoodleTitleBar(title: nil) {
+                    if let page { MoodleOpenButton(page: page) }
+                }
             }
         #endif
+    }
+}
+
+private struct MoodleOpenButton: View {
+    let page: MoodlePage
+    var willOpen: () -> Void = {}
+
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            willOpen()
+            Task { await openURL(page) }
+        } label: {
+            Image(systemName: "arrow.up.right.square")
+        }
+        .accessibilityLabel(String(localized: "action_open_in_moodle"))
     }
 }
 
@@ -339,23 +354,40 @@ nonisolated enum MoodlePersonName {
         let name = trimmed[trimmed.index(after: at)...].trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? trimmed : name
     }
+
+    /// The part before the `@`, for a user whose `idnumber` Moodle leaves out.
+    static func studentId(_ fullName: String) -> String? {
+        guard let at = fullName.firstIndex(of: "@") else { return nil }
+        let id = fullName[..<at].trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.isEmpty ? nil : id
+    }
 }
 
-/// Moodle's own pictures of other users need a file token, so a user shows as the first
-/// character of their name in a circle.
+/// A user's own picture where the screen has one, else the first character of their name in a
+/// circle.
 struct MoodleAvatar: View {
     let name: String
     let size: CGFloat
+    var picture: CGImage?
 
     var body: some View {
-        Circle()
-            .fill(Color.textSecondary.opacity(0.25))
-            .frame(width: size, height: size)
-            .overlay {
-                Text(name.first.map { String($0) } ?? "")
-                    .font(.system(size: size * 0.5, weight: .semibold))
-                    .foregroundStyle(Color.textPrimary)
+        Group {
+            if let picture {
+                Image(decorative: picture, scale: 1)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Circle()
+                    .fill(Color.textSecondary.opacity(0.25))
+                    .overlay {
+                        Text(name.first.map { String($0) } ?? "")
+                            .font(.system(size: size * 0.5, weight: .semibold))
+                            .foregroundStyle(Color.textPrimary)
+                    }
             }
-            .accessibilityHidden(true)
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 }

@@ -37,6 +37,8 @@ nonisolated struct MoodleDiscussion: Codable, Sendable, Hashable, Identifiable {
     /// Nil where the forum hides authors.
     let authorName: String?
     let attachments: [MoodleFile]
+    /// The author's Moodle user, which finds them among the course's members.
+    var authorId: Int? = nil
 }
 
 /// A post of a discussion, from `mod_forum_get_discussion_posts`.
@@ -194,6 +196,7 @@ private nonisolated struct RawDiscussion: Decodable, Sendable {
     let pinned: Bool
     let numunread: Int?
     let numreplies: Int?
+    let userid: Int?
     let userfullname: String?
     let attachments: [MoodleRawFile]?
 
@@ -210,7 +213,8 @@ private nonisolated struct RawDiscussion: Decodable, Sendable {
             unreadCount: numunread ?? 0,
             replyCount: numreplies ?? 0,
             authorName: userfullname,
-            attachments: (attachments ?? []).compactMap(\.model)
+            attachments: (attachments ?? []).compactMap(\.model),
+            authorId: userid
         )
     }
 }
