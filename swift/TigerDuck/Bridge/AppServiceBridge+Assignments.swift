@@ -27,7 +27,12 @@ extension AppServiceBridge {
     /// ones ``recordsToAskAbout(_:confirmed:closed:)`` leaves out, so a pull, or Refresh on the
     /// Mac, is what shows a reverted submission.
     static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
-        await sharedRound(generation: authService.loginGeneration, rechecks: recheckSubmissions) {
+        let generation = authService.loginGeneration
+        return await sharedRound(
+            generation: generation,
+            rechecks: recheckSubmissions,
+            isCurrent: { authService.loginGeneration == generation }
+        ) {
             await runAssignmentRound(authService: authService, recheckSubmissions: recheckSubmissions)
         }
     }
@@ -35,6 +40,7 @@ extension AppServiceBridge {
     static func sharedRound(
         generation: Int,
         rechecks: Bool,
+        isCurrent: @MainActor () -> Bool,
         run: @escaping @MainActor () async -> [SDAssignment]
     ) async -> [SDAssignment] {
         // A round that finished stays in `runningRound` until its starter resumes; the
@@ -42,15 +48,23 @@ extension AppServiceBridge {
         var waitedFor: AssignmentRound?
         while let round = runningRound, round.generation == generation, round !== waitedFor {
             await round.task?.value
-            if round.rechecks || !rechecks { return round.assignments }
+            if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
             waitedFor = round
         }
+        // One that waited past its account's sign-out would run beside the next account's round.
+        guard isCurrent() else { return DataCache.shared.loadAssignments() }
         let round = AssignmentRound(generation: generation, rechecks: rechecks)
         round.task = Task { round.assignments = await run() }
         runningRound = round
         await round.task?.value
         if runningRound === round { runningRound = nil }
-        return round.assignments
+        return answer(round, isCurrent: isCurrent)
+    }
+
+    /// A round the account signed out of while Moodle answered built the departing account's
+    /// list, which the next account's screens would show; the cache the sign-out emptied is theirs.
+    private static func answer(_ round: AssignmentRound, isCurrent: @MainActor () -> Bool) -> [SDAssignment] {
+        isCurrent() ? round.assignments : DataCache.shared.loadAssignments()
     }
 
     /// A return to the app refreshes Moodle assignments once the school data is this old.
@@ -249,7 +263,10 @@ extension AppServiceBridge {
                 }
                 #endif
             }
-            await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .moodle) }
+            // Sign-out reset the tracker, and the departing account's answer is not the next one's.
+            if authService.loginGeneration == startGeneration {
+                await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .moodle) }
+            }
             return assignmentsToPersist
         } catch {
             await MainActor.run {
