@@ -128,6 +128,9 @@ struct MoodleCountRow: View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             Image(systemName: icon)
                 .font(TigerDuckTheme.Typography.body)
+                // The widest icon, the forums' two bubbles, fills the column at this size and
+                // would run into the name past it.
+                .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .foregroundStyle(.tint)
                 .frame(width: Self.iconWidth)
             VStack(alignment: .leading, spacing: 2) {
