@@ -12,6 +12,7 @@ struct ClassTableView: View {
     @State private var showExportFailed = false
     @State private var isExporting = false
     @State private var shareModel: ClassTableShareModel?
+    @State private var importModel: ClassTableImportModel?
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -239,6 +240,7 @@ struct ClassTableView: View {
             // An iPad's other window can sign out under the open sheet, which a sign-in with
             // another student ID also does first.
             .onChange(of: appState.authService.loginGeneration) { shareModel = nil }
+            .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the
@@ -325,6 +327,13 @@ struct ClassTableView: View {
                 // export a header over nothing. Held off while an export is
                 // still being written, so two cannot race for the same file.
                 .disabled(pageAccessState != .content || isExporting)
+            }
+            Section {
+                Button {
+                    importModel = .live(authService: appState.authService)
+                } label: {
+                    Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
+                }
             }
         } label: {
             headerIcon("ellipsis")
