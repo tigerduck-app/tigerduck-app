@@ -12,6 +12,7 @@ struct ClassTableImportScannerView: View {
     @Bindable var model: ClassTableImportModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var camera: Camera = .checking
     @State private var photo: PhotosPickerItem?
 
@@ -61,6 +62,11 @@ struct ClassTableImportScannerView: View {
             }
         }
         .task { camera = await Self.cameraState() }
+        // Back from Go to Settings, access may have been granted.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, camera == .denied else { return }
+            Task { camera = await Self.cameraState() }
+        }
         .onChange(of: photo) { _, item in
             guard let item else { return }
             photo = nil

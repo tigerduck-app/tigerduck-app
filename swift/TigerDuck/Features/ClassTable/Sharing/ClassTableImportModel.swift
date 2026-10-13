@@ -26,7 +26,6 @@ final class ClassTableImportModel: Identifiable {
         case lookupFailed(Job)
     }
 
-    /// The code the confirm screen shows.
     struct Pending: Identifiable {
         let id = UUID()
         let code: ClassTableShareCode
@@ -79,7 +78,6 @@ final class ClassTableImportModel: Identifiable {
         )
     }
 
-    /// No alert, confirm screen or lookup is in the way of the next code.
     var isIdle: Bool { prompt == nil && pending == nil && !isLookingUp && !isFinished }
 
     var canImport: Bool {
@@ -121,7 +119,6 @@ final class ClassTableImportModel: Identifiable {
         imageRead(await Task.detached { Self.qrPayloads(in: data) }.value)
     }
 
-    /// An image file from the Mac's file importer.
     func readImage(fileAt url: URL) async {
         let data = await Task.detached { () -> Data? in
             let scoped = url.startAccessingSecurityScopedResource()
@@ -136,7 +133,6 @@ final class ClassTableImportModel: Identifiable {
         await readImage(data)
     }
 
-    /// The payloads of the QR codes Vision finds in image data.
     nonisolated static func qrPayloads(in data: Data) -> [String] {
         let request = VNDetectBarcodesRequest()
         request.symbologies = [.qr]
@@ -170,14 +166,13 @@ final class ClassTableImportModel: Identifiable {
 
     // MARK: - Importing
 
-    /// The confirm screen's Import.
     func importPending() {
         guard let pending, canImport else { return }
         lookUp(Job(code: pending.code, nickname: nickname))
     }
 
-    /// Import on the confirm screen, Update on the replace prompt and Retry after a failure. Nothing
-    /// is saved until every term's lookup has answered.
+    /// Saves nothing until every term's lookup has answered, and nothing at all after a failure, a
+    /// cancel or a sign-out.
     func lookUp(_ job: Job) {
         guard !isLookingUp, !isFinished else { return }
         prompt = nil
@@ -221,12 +216,12 @@ final class ClassTableImportModel: Identifiable {
         (pending != nil) == onConfirmScreen ? prompt : nil
     }
 
-    /// An alert closed with Cancel or OK. A failed lookup's leaves the confirm screen as it was.
+    /// Cancel on a failed lookup's alert leaves the confirm screen as it was.
     func dismissPrompt() {
         prompt = nil
     }
 
-    /// Closes the confirm screen and any alert and stops a running lookup, saving nothing.
+    /// A lookup still running saves nothing once this returns, even if its answer comes later.
     func cancel() {
         lookupTask?.cancel()
         lookupTask = nil

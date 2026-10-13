@@ -180,20 +180,31 @@ struct MacClassTableView: View {
                 .help(String(localized: "add_course_title"))
             }
             ToolbarItem(placement: .automatic) {
-                Button {
-                    showImportPicker = true
-                } label: {
-                    // An update has no screen of its own, so its lookup spins here.
-                    LoadingButtonLabel(isLoading: importModel?.isLookingUp == true) {
+                if let importModel, importModel.isLookingUp, importModel.pending == nil {
+                    // An update has no screen of its own, so it spins, and can be stopped, here.
+                    Button {
+                        importModel.cancel()
+                    } label: {
+                        HStack(spacing: 4) {
+                            ProgressView().controlSize(.small)
+                            Text(String(localized: "action_cancel"))
+                        }
+                        .fixedSize()
+                    }
+                    .help(String(localized: "action_cancel"))
+                } else {
+                    Button {
+                        showImportPicker = true
+                    } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "qrcode.viewfinder")
                             Text(String(localized: "class_table_import"))
                         }
                         .fixedSize()
                     }
+                    .help(String(localized: "class_table_import"))
+                    .disabled(importModel?.isLookingUp == true)
                 }
-                .help(String(localized: "class_table_import"))
-                .disabled(importModel?.isLookingUp == true)
             }
         }
         .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.image]) { result in

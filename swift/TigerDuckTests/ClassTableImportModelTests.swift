@@ -415,31 +415,66 @@ struct ClassTableImportModelTests {
         #expect(model.isIdle)
     }
 
-    @Test("Cancel during the lookup saves nothing")
+    @Test("Cancel during the lookup saves nothing, even when the lookup answers afterwards")
     func cancelDuringLookup() async throws {
         let gate = Gate()
-        let model = ClassTableImportModel(
-            store: store,
-            signedInStudentId: { Self.signedIn },
-            isCurrent: { true },
-            lookup: { _, _ in
-                await gate.wait()
-                return []
-            }
-        )
+        let model = gatedModel(gate)
         model.scanned(try Self.code("B11300001"))
         model.importPending()
-        for _ in 0..<1_000 where !gate.isWaiting { await Task.yield() }
-        #expect(gate.isWaiting)
+        try await Self.waitUntil { gate.isWaiting }
+        let lookup = model.lookupTask
 
         model.cancel()
         gate.open()
-        await model.lookupTask?.value
+        await lookup?.value
 
         #expect(store.people.isEmpty)
+        #expect(Self.reloadedPeople(folder).isEmpty)
         #expect(!model.isFinished)
         #expect(model.pending == nil)
         #expect(!model.isLookingUp)
+    }
+
+    /// The Mac's Cancel in the toolbar, and the scanner's close button, stop an update this way.
+    @Test("Cancel during an update leaves the person's courses as they were")
+    func cancelDuringUpdate() async throws {
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
+        let gate = Gate()
+        let model = gatedModel(gate)
+        model.scanned(try Self.code("B11300001", [Self.spring]))
+        guard case .replace(let job) = model.prompt else {
+            Issue.record("expected the replace prompt, got \(String(describing: model.prompt))")
+            return
+        }
+        model.lookUp(job)
+        try await Self.waitUntil { gate.isWaiting }
+        let lookup = model.lookupTask
+
+        model.cancel()
+        gate.open()
+        await lookup?.value
+
+        #expect(store.person(withStudentId: "B11300001")?.terms.map(\.semester) == ["1151"])
+        #expect(!model.isFinished)
+        #expect(model.isIdle)
+    }
+
+    /// A model whose lookup waits for `gate`, then answers each term with one course.
+    private func gatedModel(_ gate: Gate) -> ClassTableImportModel {
+        ClassTableImportModel(
+            store: store,
+            signedInStudentId: { Self.signedIn },
+            isCurrent: { true },
+            lookup: { semester, _ in
+                await gate.wait()
+                return [Self.course("CS1010001", "資料結構", semester: semester)]
+            }
+        )
+    }
+
+    private static func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<1_000 where !condition() { await Task.yield() }
+        try #require(condition())
     }
 
     /// A sign-out moves the login generation, and so does the one another student ID's sign-in
