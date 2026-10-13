@@ -59,6 +59,12 @@ struct ClassTableShareSheet: View {
                             .aspectRatio(1, contentMode: .fit)
                             .frame(maxWidth: Self.codeSide)
                             .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm, style: .continuous))
+                    } else {
+                        Text(String(localized: "library_qr_generate_failed"))
+                            .font(TigerDuckTheme.Typography.body)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(width: Self.codeSide, height: Self.codeSide)
                     }
                     // Not `Color.textSecondary`, which is white for the dark iOS app: the Mac can be light.
                     Text(model.caption)

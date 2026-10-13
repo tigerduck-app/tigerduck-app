@@ -162,8 +162,7 @@ extension ClassTableShareModel {
     }
 }
 
-/// Why the share sheet has no QR code to show. The class table offers the sheet only when a code
-/// can be written, so either is a bug, which the log records.
+/// A valid share code can exceed a QR symbol's capacity.
 nonisolated enum ClassTableShareError: Error {
     case noCode
     case noQRCode

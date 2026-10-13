@@ -365,6 +365,7 @@ struct ClassTableShareQRCodeTests {
 #if os(iOS)
 import SwiftUI
 import UIKit
+import Vision
 
 @MainActor
 @Suite(.serialized)
@@ -404,15 +405,71 @@ struct ClassTableShareSheetTests {
         }.cgImage
     }
 
-    private static func switches(in view: UIView) -> [UISwitch] {
-        view.subviews.flatMap { [$0 as? UISwitch].compactMap { $0 } + switches(in: $0) }
+    private static func text(in image: CGImage, words: [String]) throws -> [VNRecognizedTextObservation] {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["en-US", "zh-Hant"]
+        request.usesLanguageCorrection = false
+        request.customWords = words
+        try VNImageRequestHandler(cgImage: image).perform([request])
+        return request.results ?? []
     }
 
-    private static func accessibilityObjects(in object: NSObject, depth: Int = 0) -> [NSObject] {
-        guard depth < 20 else { return [] }
-        let children = (object.accessibilityElements ?? []).compactMap { $0 as? NSObject }
-        let subviews = (object as? UIView)?.subviews ?? []
-        return [object] + (children + subviews).flatMap { accessibilityObjects(in: $0, depth: depth + 1) }
+    private static func crowdedModel() -> ClassTableShareModel {
+        var seed: UInt64 = 382
+        func random(_ count: UInt64) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % count)
+        }
+        let departments = ["CS", "EE", "EC", "MA", "PE", "GE", "FE", "CH", "ME", "TX", "DT", "MI"]
+        let semesters = ["1151"] + (107...114).reversed().flatMap { ["\($0)H", "\($0)2", "\($0)1"] }
+        return ClassTableShareModel(
+            studentId: "B10700000",
+            terms: semesters.prefix(24).map { semester in
+                .init(semester: semester, courses: (0..<20).map { _ in
+                    let code = departments[random(12)] + (0..<7).map { _ in String(random(10)) }.joined()
+                    return SDCourse(courseNo: code, courseName: code)
+                })
+            },
+            semesterLabel: { $0 },
+            now: { Date(timeIntervalSince1970: 1_791_871_500) }
+        )
+    }
+
+    @Test("a payload too large for a QR shows a visible failure and a different term restores the code")
+    func qrCapacityFailure() async throws {
+        let model = Self.crowdedModel()
+        #expect(model.qrCode != nil)
+        model.selection = .allSemesters
+        let decoded = try ClassTableShareCode.decode(try #require(model.code))
+        #expect(decoded.terms.count == 24)
+        #expect(decoded.terms.reduce(0) { $0 + $1.courseNos.count } == 480)
+        #expect(model.qrCode == nil, "the fixture must exceed real QR capacity without truncating courses")
+        let window = try host(model)
+        defer { window.isHidden = true }
+        let failure = String(localized: "library_qr_generate_failed")
+        let words = [model.studentId, failure]
+        var lines: [String] = []
+        try await waitUntil {
+            guard let screenshot = halvedScreenshot(window) else { return false }
+            lines = (try? Self.text(in: screenshot, words: words))?.compactMap { $0.topCandidates(1).first?.string } ?? []
+            return lines.contains { $0.contains(model.studentId) }
+        }
+        #expect(lines.contains { $0.contains(failure) }, "a missing QR must explain its failure on screen: \(lines)")
+        #expect(halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) } == nil)
+
+        model.selection = .semester("1151")
+        try await waitUntil {
+            halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) }?.messageString == model.code
+        }
+        #expect(try ClassTableShareCode.decode(try #require(model.code)).terms.map(\.semester) == ["1151"])
+        let restored = try Self.text(in: try #require(halvedScreenshot(window)), words: words)
+            .compactMap { $0.topCandidates(1).first?.string }
+        #expect(!restored.contains { $0.contains(failure) })
+    }
+
+    private static func switches(in view: UIView) -> [UISwitch] {
+        view.subviews.flatMap { [$0 as? UISwitch].compactMap { $0 } + switches(in: $0) }
     }
 
     @Test("the complete QR code and caption are visible at the opening detent on a small phone")
@@ -438,22 +495,31 @@ struct ClassTableShareSheetTests {
         try await waitUntil { host.presentedViewController?.view.bounds.height ?? 0 > 0 }
         let presented = try #require(host.presentedViewController)
         try await waitUntil { !presented.isBeingPresented }
-        var caption: NSObject?
-        try await waitUntil {
-            caption = Self.accessibilityObjects(in: presented.view).first { $0.accessibilityLabel == model.caption }
-            return caption != nil
-        }
         var read: CIQRCodeFeature?
+        var screenshot: CGImage?
         try await waitUntil {
-            read = halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) }
+            screenshot = halvedScreenshot(window)
+            read = screenshot.flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) }
             return read != nil
         }
         let feature = try #require(read)
+        // Screenshot pixels verify visible text without relying on accessibility-tree initialization.
+        let captured = try #require(screenshot)
+        let recognized = try Self.text(in: captured, words: [model.studentId, "115-1"])
+        let caption = try #require(recognized.first {
+            guard let line = $0.topCandidates(1).first?.string else { return false }
+            return line.contains("B11300000") && line.contains("115-1")
+        })
         let visible = presented.view.convert(presented.view.bounds, to: window).intersection(window.bounds)
         #expect(window.bounds.size == CGSize(width: 375, height: 667))
         #expect(abs(presented.view.bounds.height - 440) < 1, "the sheet must remain at its opening height: \(presented.view.bounds)")
         #expect(visible.width >= 350 && visible.width <= 375)
-        let captionFrame = window.convert(try #require(caption).accessibilityFrame, from: nil)
+        let captionFrame = CGRect(
+            x: caption.boundingBox.minX * window.bounds.width,
+            y: (1 - caption.boundingBox.maxY) * window.bounds.height,
+            width: caption.boundingBox.width * window.bounds.width,
+            height: caption.boundingBox.height * window.bounds.height
+        )
         #expect(!captionFrame.isEmpty)
         #expect(visible.contains(captionFrame), "the whole caption must fit before scrolling: \(captionFrame)")
         #expect(feature.messageString == model.code)
