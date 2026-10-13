@@ -265,7 +265,7 @@ extension AppState {
                     await runFullSync(retried: true)
                 }
             }
-            AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
+            AppLogger.sync.error("syncOverrides failed: \(error, privacy: .private)")
         }
     }
 
@@ -721,9 +721,9 @@ extension AppState {
         Task.detached {
             do {
                 try await coordinator.deleteCourse(courseKey: courseKey)
-                AppLogger.sync.info("deleteBackendCourse ok: \(courseKey, privacy: .public)")
+                AppLogger.sync.info("deleteBackendCourse ok: \(courseKey, privacy: .private)")
             } catch {
-                AppLogger.sync.error("deleteBackendCourse failed: \(error, privacy: .public)")
+                AppLogger.sync.error("deleteBackendCourse failed: \(error, privacy: .private)")
             }
         }
     }
@@ -758,7 +758,7 @@ extension AppState {
             resetLocally()
             return true
         } catch {
-            AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .public)")
+            AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .private)")
             return false
         }
     }
@@ -814,7 +814,7 @@ extension AppState {
             }
             await sendUpload(label, generation: generation, retried: true, send)
         } catch {
-            AppLogger.sync.error("\(label, privacy: .public) failed: \(error, privacy: .public)")
+            AppLogger.sync.error("\(label, privacy: .public) failed: \(error, privacy: .private)")
         }
     }
 

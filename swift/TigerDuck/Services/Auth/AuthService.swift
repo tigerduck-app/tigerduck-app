@@ -313,7 +313,7 @@ final class AuthService {
             backendSignInFailedAt = nil
             return true
         } catch {
-            AppLogger.sync.error("auto-relogin failed: \(error, privacy: .public)")
+            AppLogger.sync.error("auto-relogin failed: \(error, privacy: .private)")
             noteFailedBackendSignIn(since: generation)
             return false
         }

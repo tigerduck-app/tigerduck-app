@@ -24,6 +24,11 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
   nowhere else. `captureError` and `breadcrumb` log their text as private, which a logging
   profile can reveal, so they still scrub tokens, passwords and URL query strings first; do not
   use `print`.
+- Console and a sysdiagnose show `.public` values without a logging profile. Log errors and
+  their descriptions as `.private`, since they can hold a response body or a server message,
+  and course data and backend ids too: course numbers and keys, device, Live Activity and token
+  ids, and request paths that hold one. Fixed labels, counts, booleans and status codes stay
+  `.public`. `tools/check_comments.py` reports an error logged as `.public`.
 
 ## Anti-patterns
 

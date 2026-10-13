@@ -277,7 +277,7 @@ final class PushAPIClient: Sendable {
         do {
             return try Self.decoder.decode(PushAPI.SyncChangesPage.self, from: data)
         } catch {
-            logger.error("Push.API decode failed path=/sync error=\(String(describing: error), privacy: .public)")
+            logger.error("Push.API decode failed path=/sync error=\(String(describing: error), privacy: .private)")
             throw PushAPIError.decodingFailed(error)
         }
     }
@@ -310,7 +310,7 @@ final class PushAPIClient: Sendable {
         do {
             return try Self.decoder.decode(Response.self, from: data)
         } catch {
-            logger.error("Push.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            logger.error("Push.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .private)")
             throw PushAPIError.decodingFailed(error)
         }
     }
@@ -336,7 +336,7 @@ final class PushAPIClient: Sendable {
         do {
             return try Self.decoder.decode(Response.self, from: data)
         } catch {
-            logger.error("Push.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            logger.error("Push.API decode failed path=\(path, privacy: .private) error=\(String(describing: error), privacy: .private)")
             throw PushAPIError.decodingFailed(error)
         }
     }
@@ -393,7 +393,7 @@ final class PushAPIClient: Sendable {
         guard (200..<300).contains(http.statusCode) else {
             if let expected = expectedFailure(http.statusCode, data) { throw expected }
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
+            logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .private): \(snippet, privacy: .private)")
             versionGate.note(statusCode: http.statusCode)
             throw PushAPIError.httpStatus(http.statusCode, body: snippet)
         }
