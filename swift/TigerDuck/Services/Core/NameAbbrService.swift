@@ -66,10 +66,7 @@ final class NameAbbrService: @unchecked Sendable {
         let parts = SDCourse.splitRoom(raw)
         let abbreviated = lock.withLock {
             parts.map { part -> String in
-                // Resolve `part` in any form back to its Mandarin key: a direct hit first (raw,
-                // or a short form equal to the key), then the reverse index for pinyin,
-                // translated or short forms that differ.
-                let key = classroomAbbr[part] != nil ? part : (classroomReverseIndex[part] ?? part)
+                let key = classroomKey(for: part)
                 guard let entry = classroomAbbr[key] else { return part }
                 let short = entry.shortenedName.trimmingCharacters(in: .whitespaces)
                 let pinyin = entry.pinyin.trimmingCharacters(in: .whitespaces)
@@ -83,6 +80,19 @@ final class NameAbbrService: @unchecked Sendable {
             }
         }
         return abbreviated.joined(separator: ", ")
+    }
+
+    /// The school's name for one room shown in any of its display forms.
+    func rawClassroom(_ shown: String) -> String {
+        ensureLoaded()
+        return lock.withLock { classroomKey(for: shown) }
+    }
+
+    /// Resolves `part` in any form back to its Mandarin key: a direct hit first (raw, or a
+    /// short form equal to the key), then the reverse index for pinyin, translated or short
+    /// forms that differ. The caller holds `lock`.
+    private func classroomKey(for part: String) -> String {
+        classroomAbbr[part] != nil ? part : (classroomReverseIndex[part] ?? part)
     }
 
     // MARK: - Batch relabel
