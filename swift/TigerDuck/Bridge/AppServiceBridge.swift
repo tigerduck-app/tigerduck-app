@@ -207,24 +207,7 @@ enum AppServiceBridge {
                 }
             }.compactMap { $0 }
 
-            let courses = courseDataList.map { course in
-                SDCourse(
-                    courseNo: course.courseNo,
-                    courseName: course.courseName,
-                    instructor: course.instructor,
-                    credits: course.credits,
-                    classroom: course.classroom,
-                    enrolledCount: course.enrolledCount,
-                    maxCount: course.maxCount,
-                    schedule: course.schedule,
-                    moodleIdNumber: course.moodleIdNumber,
-                    semester: semester,
-                    classroomMap: course.classroomMap,
-                    dimension: course.dimension,
-                    allYear: course.allYear,
-                    requireOption: course.requireOption
-                )
-            }
+            let courses = courseDataList.map { $0.course(in: semester) }
 
             // Cancelled (`AppState.syncTask`) or signed out since: Home, Class Table and Calendar
             // refreshes run in Tasks `syncTask?.cancel()` does not reach, and show what this
@@ -410,7 +393,8 @@ enum AppServiceBridge {
         from results: [CourseSearchResult],
         semester: String,
         fallbackMoodleIdNumber: String?,
-        display: CourseDisplayPreferences
+        display: CourseDisplayPreferences,
+        recordsRawLabels: Bool = true
     ) -> CourseData {
         let course = buildSDCourse(
             from: results,
@@ -434,10 +418,12 @@ enum AppServiceBridge {
         )
         // Cache the raw API name so abbreviation toggles can re-derive
         // without a network round-trip.
-        NameAbbrService.shared.storeRawName(courseNo: data.courseNo, name: data.courseName)
-        NameAbbrService.shared.storeRawClassroom(
-            courseNo: data.courseNo, classroom: data.classroom, map: data.classroomMap
-        )
+        if recordsRawLabels {
+            NameAbbrService.shared.storeRawName(courseNo: data.courseNo, name: data.courseName)
+            NameAbbrService.shared.storeRawClassroom(
+                courseNo: data.courseNo, classroom: data.classroom, map: data.classroomMap
+            )
+        }
         if display.language == "en" && display.courseAbbrEnabled {
             data.courseName = NameAbbrService.shared.abbreviateName(data.courseName)
         }
@@ -490,6 +476,40 @@ enum AppServiceBridge {
         }
         DataCache.shared.saveUserAddedCourses(updated)
         return updated.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+    }
+
+    /// Looks one term of an imported class table up again, for `ImportedClassTableStore` to keep.
+    /// A course the query does not answer keeps its row in `current`. Nil when no lookup went
+    /// through, offline included, so the caller can say the refresh failed.
+    static func refreshImportedCourses(semester: String, courseNos: [String], current: [SDCourse]) async -> [SDCourse]? {
+        guard await NetworkMonitor.shared.isReachable() else { return nil }
+        let display = CourseDisplayPreferences.current()
+        let cachedByNo = Dictionary(
+            current.map { ($0.courseNo, CourseData($0)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let answers = await concurrentMap(courseNos) { @MainActor courseNo -> (data: CourseData?, failed: Bool) in
+            do {
+                let results = try await CourseLookupService.lookupCourse(
+                    semester: semester, courseNo: courseNo, language: display.language, fresh: true
+                )
+                guard !results.isEmpty else { return (cachedByNo[courseNo], false) }
+                // Someone else's term: its names and rooms stay out of the cache that relabels
+                // the user's courses, which is keyed by course number alone.
+                let data = enrichedCourseData(
+                    from: results, semester: semester, fallbackMoodleIdNumber: nil, display: display,
+                    recordsRawLabels: false
+                )
+                return (data, false)
+            } catch {
+                AppLogger.captureError(error, context: [
+                    "service": "courseLookup", "flow": "importedClassTable", "semester": semester,
+                ])
+                return (cachedByNo[courseNo], true)
+            }
+        }
+        guard answers.contains(where: { !$0.failed }) else { return nil }
+        return answers.compactMap { $0.data?.course(in: semester) }
     }
 
     /// Looks up every course of `semester` that still has no classroom —
@@ -668,6 +688,25 @@ private extension SDCourse {
 }
 
 private extension CourseData {
+    func course(in semester: String) -> SDCourse {
+        SDCourse(
+            courseNo: courseNo,
+            courseName: courseName,
+            instructor: instructor,
+            credits: credits,
+            classroom: classroom,
+            enrolledCount: enrolledCount,
+            maxCount: maxCount,
+            schedule: schedule,
+            moodleIdNumber: moodleIdNumber,
+            semester: semester,
+            classroomMap: classroomMap,
+            dimension: dimension,
+            allYear: allYear,
+            requireOption: requireOption
+        )
+    }
+
     init(_ course: SDCourse) {
         self.init(
             courseNo: course.courseNo,

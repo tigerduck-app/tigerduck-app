@@ -34,6 +34,8 @@ extension ClassTableViewModel {
         if !merged.isEmpty {
             courses = merged
         }
+        // Another tab or page may have switched to someone else's class table already.
+        if shownPerson != nil { showShownTable() }
         // backgroundSync() on app launch handles the network refresh
     }
 
@@ -132,9 +134,11 @@ extension ClassTableViewModel {
 
         await MainActor.run {
             isUpdatingFromNetwork = true
-            courses = buildCourseList(fetchedCourses, userAdded)
+            let fetched = buildCourseList(fetchedCourses, userAdded)
+            // Someone else's class table may have come up during the fetch.
+            if shownPerson == nil { courses = fetched }
             if targetSemester == CourseSelectionService.currentSemesterCode() {
-                currentSemesterCourses = courses
+                currentSemesterCourses = fetched
                 refreshCourseColors()
             }
             assignments = fetchedAssignments
