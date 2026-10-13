@@ -164,6 +164,102 @@ struct BackendTokenRefreshTests {
         #expect(await !manager.isLoggedIn)
     }
 
+    /// Sign-out unregisters the device as the departing account
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/411), while the session has already
+    /// ended for everything else, the keychain included.
+    @Test("a sign-out ends the session at once, and only its own calls still carry the account's token")
+    func signOutEndsTheSessionButItsCallsGoOut() async throws {
+        let backend = BackendFixture()
+        let registration = RegistrationFixture(manager: backend.manager)
+        // A0 has expired, so the token kept for the sign-out's calls is refreshed first.
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: registration.unregisterURL)
+
+        let token = await backend.manager.endSession()
+
+        #expect(token == "A1")
+        #expect(await !backend.manager.isLoggedIn)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+        await registration.service.unregister()
+        #expect(SettingsAPIStub.requests(for: registration.unregisterURL).isEmpty)
+        await AuthTokenManager.$departing.withValue(.init(accessToken: token)) {
+            await registration.service.unregister()
+        }
+        let unregister = try #require(SettingsAPIStub.requests(for: registration.unregisterURL).first)
+        #expect(unregister.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
+    }
+
+    /// The refresh is out only when the token would not outlast the unregister. Another call meanwhile
+    /// would go as the departing account, and the TigerSync-off PATCH deletes its synced data.
+    @Test("while a sign-out refreshes the token for its unregister, no one else has a session")
+    func signOutRefreshLeavesNoSession() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL
+        )
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+
+        let ending = Task { await manager.endSession() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+        #expect(await !manager.isLoggedIn)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+
+        #expect(await ending.value == "A1")
+        #expect(await manager.validAccessToken() == "B1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
+    }
+
+    @Test("a sign-in while a sign-out's calls are out keeps its session, and they keep the departing token")
+    func signInDuringTheSignOutCalls() async throws {
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+
+        let token = await manager.endSession()
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        let departing = await AuthTokenManager.$departing.withValue(.init(accessToken: token)) {
+            await manager.validAccessToken()
+        }
+
+        #expect(departing == "A1")
+        #expect(await manager.validAccessToken() == "B1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
+    }
+
+    @Test("a login still out when a sign-out starts stores nothing")
+    func signOutDropsALoginInFlight() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture(signedIn: false)
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.loginReply(access: "A9", refresh: "R9", heldBy: gate), for: backend.loginURL
+        )
+        let login = Task {
+            try await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token",
+                moodlePrivateToken: nil, platform: "ios"
+            )
+        }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.loginURL).count == 1 }
+
+        #expect(await manager.endSession() == nil)
+        gate.open()
+
+        await #expect(throws: CancellationError.self) { try await login.value }
+        #expect(await !manager.isLoggedIn)
+    }
+
     @Test("a refresh whose reply comes back after a sign-out stores nothing")
     func refreshAfterSignOutStoresNothing() async throws {
         let gate = SettingsAPIStub.ReplyGate()
@@ -707,11 +803,13 @@ private struct RegistrationFixture {
     let service: PushRegistrationService
     let announceURL: URL
     let registerURL: URL
+    let unregisterURL: URL
 
     init(manager: AuthTokenManager) {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         announceURL = baseURL.appendingPathComponent("devices/anonymous")
         registerURL = baseURL.appendingPathComponent("devices/register")
+        unregisterURL = baseURL.appendingPathComponent("devices/test-device")
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         service = PushRegistrationService(
