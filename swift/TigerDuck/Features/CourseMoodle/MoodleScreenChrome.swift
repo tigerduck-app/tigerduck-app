@@ -51,8 +51,7 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Gives the content an ``EnvironmentValues/openMoodleLink`` that opens links as
-    /// ``MoodleLinkAction`` says, with the app's browser on iOS.
+    /// Set where a screen is pushed, so the screen itself can read ``EnvironmentValues/openMoodleLink``.
     func moodleLinkOpening() -> some View {
         modifier(MoodleLinkOpening())
     }

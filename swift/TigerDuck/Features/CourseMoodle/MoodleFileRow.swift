@@ -74,14 +74,11 @@ nonisolated enum MoodleFileKind: Equatable {
     }
 }
 
-/// A Moodle file in a list: its type's icon, its name, its date and size, and where its download
-/// stands. A tap downloads it, stops its download or opens it; a long press, a secondary click or
-/// a right click offers Share or Save and Open in Moodle.
+/// One context menu serves the long press, the iPad's secondary click and the Mac's right click.
 struct MoodleFileRow: View {
     let title: String
     let file: MoodleFile
     let state: MoodleDownloadState
-    /// How far a file of a folder sits in from the folder's row.
     var indent: CGFloat = 0
     var now: Date = AppClock.now()
     let tap: () -> Void
@@ -151,7 +148,6 @@ struct MoodleFileRow: View {
     }
 }
 
-/// A link a course lists: its name and the site it goes to, which opens in the browser.
 struct MoodleLinkRow: View {
     let title: String
     let url: URL
@@ -197,7 +193,7 @@ struct MoodleLinkRow: View {
     }
 }
 
-/// A folder a course lists, which only heads the files under it.
+/// Not a button: a folder only heads the files listed under it.
 struct MoodleFolderRow: View {
     let name: String
     let fileCount: Int
@@ -225,8 +221,7 @@ struct MoodleFolderRow: View {
     }
 }
 
-/// The columns every row of a Moodle material list shares: the icon, the text, and a trailing
-/// mark that keeps its width however the text wraps.
+/// The trailing mark keeps its width however the text wraps, so the marks line up down a card.
 private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: View {
     let indent: CGFloat
     @ViewBuilder let icon: Icon
@@ -252,8 +247,7 @@ private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: Vie
     }
 }
 
-/// A file row's trailing mark: a download arrow, a ring with a stop square while it downloads,
-/// nothing once the file is here, as in the Files app, or the failure.
+/// A downloaded file shows no mark, as in the Files app.
 private struct MoodleDownloadMark: View {
     let state: MoodleDownloadState
 
@@ -286,7 +280,6 @@ private struct MoodleDownloadMark: View {
     }
 }
 
-/// The long-press menu of a file or link row.
 private struct MoodleRowMenu: View {
     let share: () -> Void
     let openInMoodle: () -> Void
@@ -302,7 +295,6 @@ private struct MoodleRowMenu: View {
 }
 
 private extension View {
-    /// The pointer's highlight on iPad.
     func moodleRowHover() -> some View {
         #if os(iOS)
         hoverEffect(.highlight)
@@ -313,7 +305,7 @@ private extension View {
 }
 
 #if os(macOS)
-/// A downloaded file drags out to the Finder.
+/// Only a copy on the device can be handed to the Finder.
 private struct MoodleFileDrag: ViewModifier {
     let url: URL?
 

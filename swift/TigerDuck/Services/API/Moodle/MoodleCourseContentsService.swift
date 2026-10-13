@@ -17,7 +17,6 @@ nonisolated struct MoodleMaterialSection: Codable, Sendable, Hashable, Identifia
     let materials: [MoodleMaterial]
 }
 
-/// A file, folder or link module of a course.
 nonisolated struct MoodleMaterial: Codable, Sendable, Hashable, Identifiable {
     enum Content: Codable, Sendable, Hashable {
         case file(MoodleFile)
