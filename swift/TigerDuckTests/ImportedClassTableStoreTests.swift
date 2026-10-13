@@ -114,6 +114,111 @@ struct ImportedClassTableStoreTests {
         #expect(store.shownPerson == nil)
     }
 
+    @Test("each next class table is the next person in import order, then the user's own again")
+    func showNextCycles() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        store.showNext()
+        #expect(store.shownPersonID == nil)
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
+        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:]))
+
+        store.showNext()
+        #expect(store.shownPersonID == ming.id)
+        store.showNext()
+        #expect(store.shownPersonID == hua.id)
+        store.showNext()
+        #expect(store.shownPersonID == nil)
+    }
+
+    @Test("a new lookup replaces one term's course details, keeps the rest, and moves the shown table")
+    func updateCourses() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let sharedAt = Date(timeIntervalSince1970: 1_791_871_500)
+        let importedAt = Date(timeIntervalSince1970: 1_791_900_000)
+        let ming = try #require(store.add(
+            Self.code("B11300001", [Self.fall, Self.spring], sharedAt: sharedAt), nickname: "Ming",
+            courses: ["1142": [SDCourse(courseNo: "EE1010002", courseName: "Circuits")]], importedAt: importedAt
+        ))
+        store.show(ming.id)
+        let before = store.shownTable
+
+        store.updateCourses(
+            ming.id, semester: "1151", courseNos: Self.fall.courseNos,
+            courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures", classroom: "TR-313")]
+        )
+        store.updateCourses(UUID(), semester: "1151", courseNos: Self.fall.courseNos, courses: [])
+
+        #expect(store.shownTable != before)
+        for person in [try #require(store.people.first), try #require(Self.store(folder).people.first)] {
+            #expect(person.id == ming.id)
+            #expect(person.nickname == "Ming")
+            #expect(person.importedAt == importedAt)
+            #expect(person.sharedAt == sharedAt)
+            #expect(person.terms.map(\.courseNos) == [["CS1010001", "MA1010001"], ["EE1010002"]])
+            #expect(person.courses(in: "1151").map(\.classroom) == ["TR-313"])
+            #expect(person.courses(in: "1142").map(\.courseName) == ["Circuits"])
+        }
+    }
+
+    @Test("a lookup that ran for the codes before a new import of the term leaves the new import alone")
+    func updateCoursesAfterReimport() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
+        let reimported = Term(semester: "1151", courseNos: ["GE1010001"])
+        store.add(
+            Self.code("B11300001", [reimported]), nickname: "Ming",
+            courses: ["1151": [SDCourse(courseNo: "GE1010001", courseName: "Art")]]
+        )
+        let shown = store.shownTable
+
+        store.updateCourses(
+            ming.id, semester: "1151", courseNos: Self.fall.courseNos,
+            courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures")]
+        )
+
+        let person = try #require(store.people.first)
+        #expect(person.terms.map(\.courseNos) == [["GE1010001"]])
+        #expect(person.courses(in: "1151").map(\.courseName) == ["Art"])
+        #expect(store.shownTable == shown)
+    }
+
+    @Test("importing the shown person again moves the shown table")
+    func reimportMovesTheShownTable() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let ming = try #require(store.add(
+            Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:],
+            importedAt: Date(timeIntervalSince1970: 1_791_900_000)
+        ))
+        store.show(ming.id)
+        let before = store.shownTable
+
+        store.add(
+            Self.code("B11300001", [Self.spring]), nickname: "Ming", courses: [:],
+            importedAt: Date(timeIntervalSince1970: 1_791_990_000)
+        )
+
+        #expect(store.shownTable.personID == ming.id)
+        #expect(store.shownTable != before)
+    }
+
+    @Test("someone's class table opens on the term on screen when they shared it, else on their latest")
+    func termToOpenOn() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let ming = try #require(store.add(
+            Self.code("B11300001", [Self.spring, Self.fall, Term(semester: "114H", courseNos: ["PE1010001"])]),
+            nickname: "Ming", courses: [:]
+        ))
+
+        #expect(ming.semesters == ["1151", "114H", "1142"])
+        #expect(ming.semester(keeping: "1142") == "1142")
+        #expect(ming.semester(keeping: "1141") == "1151")
+    }
+
     @Test("a new store reads back everything the last one kept")
     func persistence() throws {
         let folder = Folder()

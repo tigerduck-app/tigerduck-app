@@ -18,6 +18,18 @@ struct ImportedPerson: Identifiable {
     let importedAt: Date
     let sharedAt: Date?
     let terms: [Term]
+
+    /// Newest first, as the term picker lists them.
+    var semesters: [String] { terms.map(\.semester).sorted(by: >) }
+
+    /// The term to open this class table on: `current` when the person has it, else their latest.
+    func semester(keeping current: String) -> String {
+        semesters.contains(current) ? current : semesters.first ?? current
+    }
+
+    func courses(in semester: String) -> [SDCourse] {
+        terms.first { $0.semester == semester }?.courses ?? []
+    }
 }
 
 /// The class tables imported from share codes, kept on this device only: never in TigerSync, the
@@ -40,6 +52,21 @@ final class ImportedClassTableStore {
     private(set) var shownPersonID: UUID?
 
     var shownPerson: ImportedPerson? { people.first { $0.id == shownPersonID } }
+
+    /// Changes when another class table is shown, or the shown one is imported or looked up again,
+    /// for every class table page to follow.
+    var shownTable: ShownTable {
+        ShownTable(personID: shownPersonID, importedAt: shownPerson?.importedAt, lookups: lookups)
+    }
+
+    struct ShownTable: Equatable {
+        let personID: UUID?
+        let importedAt: Date?
+        let lookups: Int
+    }
+
+    /// Counts `updateCourses` writes, which leave the person's id and import time as they were.
+    private var lookups = 0
 
     var hasImportedClassTables: Bool { !people.isEmpty }
 
@@ -115,6 +142,34 @@ final class ImportedClassTableStore {
         save()
     }
 
+    /// Swaps in a new lookup of `courseNos`, one term's course codes, for that term of `id`. A term
+    /// imported again with other codes while the lookup ran keeps the new import's courses.
+    func updateCourses(_ id: UUID, semester: String, courseNos: [String], courses: [SDCourse]) {
+        guard let index = people.firstIndex(where: { $0.id == id }),
+              people[index].terms.contains(where: { $0.semester == semester && $0.courseNos == courseNos })
+        else { return }
+        let old = people[index]
+        let terms = old.terms.map { term in
+            term.semester == semester
+                ? ImportedPerson.Term(semester: semester, courseNos: courseNos, courses: courses)
+                : term
+        }
+        people[index] = ImportedPerson(
+            id: old.id, studentId: old.studentId, nickname: old.nickname,
+            importedAt: old.importedAt, sharedAt: old.sharedAt, terms: terms
+        )
+        lookups += 1
+        save()
+    }
+
+    /// Shows the class table after the shown one: the user's own, then each person in import
+    /// order, then the user's own again.
+    func showNext() {
+        let order: [UUID?] = [nil] + people.map { $0.id }
+        let index = order.firstIndex(of: shownPersonID) ?? 0
+        shownPersonID = order[(index + 1) % order.count]
+    }
+
     func delete(_ id: UUID) {
         guard people.contains(where: { $0.id == id }) else { return }
         people.removeAll { $0.id == id }
@@ -127,6 +182,12 @@ final class ImportedClassTableStore {
     func show(_ id: UUID?) {
         guard id == nil || people.contains(where: { $0.id == id }) else { return }
         shownPersonID = id
+    }
+
+    /// The account rows' sign-out deletes the imported class tables, so with any here it calls
+    /// `confirm` to ask first; otherwise it signs out at once.
+    func requestSignOut(confirm: () -> Void, signOut: () -> Void) {
+        if hasImportedClassTables { confirm() } else { signOut() }
     }
 
     /// For a sign-out by the user: an expired session and TigerSync turned off must not call it.
