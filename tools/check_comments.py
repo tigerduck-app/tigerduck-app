@@ -2,7 +2,8 @@
 """Check Swift comments against the comment rules in AGENTS.md.
 
 check [--base REF] [--all] [PATH ...]
-    Report each comment that breaks a rule as `path:line: rule: message`.
+    Report each comment that breaks a rule as `path:line: rule: message`,
+    and each error or error text interpolated with `privacy: .public`.
     Without paths it checks the Swift files changed since REF, or every
     tracked Swift file with --all. Given REF, the length rule only reports
     blocks that hold a line added or changed since REF.
@@ -37,11 +38,17 @@ OPENSPEC_PATH = re.compile(r'(?i)\bopenspec/')
 HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', re.M)
 STRING_OPEN = re.compile(r'(#*)("""|"|/)')
 WORD = re.compile(r'\S+')
+# An error's description can hold a response body (swift/TigerDuck/Services/AGENTS.md). Its type
+# name and its code cannot, so `type(of:)` and `.code` stay public.
+PUBLIC_VALUE = re.compile(r'\\\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*?),\s*privacy:\s*\.public\s*\)')
+ERROR_VALUE = re.compile(r'\b(?:error|\w+Error)\b(?!\.code\b)|\blocalizedDescription\b')
+TYPE_NAME = re.compile(r'\btype\(of:')
 
 MESSAGES = {
     'han': 'comment contains Han characters; write comments in English',
     'trace': 'cites a review round, a dispatch or a section of an outside document; state the reason',
     'openspec': 'cites an openspec/ path, which moves when the change is archived; state the reason',
+    'log-privacy': 'logs an error or its description as .public; it can hold server text, so log it as .private',
 }
 
 
@@ -222,7 +229,19 @@ def check_source(path: str, src: str, changed: set[int] | None = None) -> list[F
             continue
         message = f'{kind} comment block is {length} lines; the limit is {limit}'
         findings.append(Finding(path, start + 1, 'length', message))
-    return findings
+    return findings + public_errors(path, src)
+
+
+def public_errors(path: str, src: str) -> list[Finding]:
+    """Return a finding for each interpolation that logs an error or its text as `.public`."""
+    code = list(src)
+    for kind, s, e in lex(src):
+        if kind in ('comment', 'doc'):
+            code[s:e] = re.sub(r'[^\n]', ' ', src[s:e])
+    text = ''.join(code)
+    return [Finding(path, text.count('\n', 0, m.start()) + 1, 'log-privacy', MESSAGES['log-privacy'])
+            for m in PUBLIC_VALUE.finditer(text)
+            if ERROR_VALUE.search(m.group(1)) and not TYPE_NAME.search(m.group(1))]
 
 
 def tokens(src: str) -> list[tuple[str, int]]:

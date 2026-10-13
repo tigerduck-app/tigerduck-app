@@ -123,6 +123,29 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(rules(src), [(1, 'length'), (7, 'length')])
 
 
+class LogPrivacyTests(unittest.TestCase):
+    def test_public_error_values(self) -> None:
+        for value in ('error', 'error.localizedDescription', 'String(describing: error)',
+                      'apiError.message', 'trustError'):
+            with self.subTest(value=value):
+                src = f'log.error("failed: \\({value}, privacy: .public)")\n'
+                self.assertEqual(rules(src), [(1, 'log-privacy')])
+
+    def test_private_errors_labels_type_names_and_codes_pass(self) -> None:
+        for value in ('error, privacy: .private', 'error', 'label, privacy: .public',
+                      'errorCount, privacy: .public', 'urlError.code.rawValue, privacy: .public',
+                      'String(describing: type(of: error)), privacy: .public'):
+            with self.subTest(value=value):
+                self.assertEqual(rules(f'log.error("a \\({value}) b")\n'), [])
+
+    def test_comments_are_not_log_calls(self) -> None:
+        self.assertEqual(rules('// not "\\(error, privacy: .public)" here\n'), [])
+
+    def test_line_of_a_multiline_call(self) -> None:
+        src = 'log.error(\n    "a \\(x.isEmpty ? "(" : "", privacy: .public) \\(error, privacy: .public)"\n)\n'
+        self.assertEqual(rules(src), [(2, 'log-privacy')])
+
+
 class TokenTests(unittest.TestCase):
     def test_comment_edits_keep_tokens(self) -> None:
         old = 'let a = 1 // old\n/* long\n block */\nlet b = "x // y"\n'
