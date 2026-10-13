@@ -236,12 +236,9 @@ struct ClassTableView: View {
                 ClassTableShareSheet(model: model)
                     .presentationDetents([ClassTableShareSheet.openingDetent, .large])
             }
-            // An iPad's other window can sign out, or sign another account in, under the open sheet.
-            // A nil ID alone may be the keychain locked with the phone, so it keeps the sheet.
+            // An iPad's other window can sign out under the open sheet, which a sign-in with
+            // another student ID also does first.
             .onChange(of: appState.authService.loginGeneration) { shareModel = nil }
-            .onChange(of: appState.authService.storedStudentId) { _, studentId in
-                if let studentId, studentId.uppercased() != shareModel?.studentId { shareModel = nil }
-            }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the
