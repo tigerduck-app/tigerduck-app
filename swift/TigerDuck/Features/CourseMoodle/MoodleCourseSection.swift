@@ -2,33 +2,43 @@ import SwiftUI
 
 /// The course detail's Moodle section, under its incomplete assignments: a header with the
 /// status dot, then one card with a row for each kind of data the course has on Moodle. A row
-/// shows only once its data has something in it, and the section only once it has a row; with
-/// none it adds nothing to the sheet, not even spacing.
+/// shows only once its data has something in it, and the section only once it has a row. The
+/// rows bring the gap above them and the course detail adds no spacing of its own, so with none
+/// the section adds nothing to the sheet.
 struct MoodleCourseSection: View {
     let store: MoodleCourseStore
     let policy: VisualStylePolicy
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         let rows = store.sectionRows
-        if !rows.isEmpty {
-            Divider().background(Color.textSecondary)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            header
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            VStack(spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 {
-                        Divider().padding(.leading, MoodleSectionRowView.textInset)
+        // The rows come and go inside this stack, whose animation fades in the rows a fetch brings.
+        // On the course detail's stack, the key would change as the store arrives and animate the
+        // sheet's first layout, sliding the content in from a corner.
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+            if !rows.isEmpty {
+                Divider().background(Color.textSecondary)
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                    .padding(.top, TigerDuckTheme.Spacing.lg)
+                header
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        if index > 0 {
+                            Divider().padding(.leading, MoodleSectionRowView.textInset)
+                        }
+                        NavigationLink(value: Self.route(for: row.kind)) {
+                            MoodleSectionRowView(row: row)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    NavigationLink(value: Self.route(for: row.kind)) {
-                        MoodleSectionRowView(row: row)
-                    }
-                    .buttonStyle(.plain)
                 }
+                .presetCard(policy: policy)
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
-            .presetCard(policy: policy)
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: rows)
     }
 
     private var header: some View {

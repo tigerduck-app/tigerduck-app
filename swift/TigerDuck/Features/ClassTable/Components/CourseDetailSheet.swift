@@ -41,11 +41,15 @@ struct CourseDetailSheet: View {
     var body: some View {
         NavigationStack(path: routes) {
             ScrollView {
-                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
-                    headerSection
-                    emphasisCards
-                    secondaryInfo
-                    assignmentsSection
+                // No spacing above the Moodle section: one with no rows adds nothing, and its rows
+                // bring their own gap.
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+                        headerSection
+                        emphasisCards
+                        secondaryInfo
+                        assignmentsSection
+                    }
                     if let moodle {
                         MoodleCourseSection(store: moodle, policy: appState.visualStylePolicy)
                     }
