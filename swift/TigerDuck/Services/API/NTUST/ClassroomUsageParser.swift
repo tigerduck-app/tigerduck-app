@@ -63,6 +63,11 @@ nonisolated enum ClassroomUsageParser {
         /// Nil when the page has no grid: a sign-in page, the bridge to one or an error page.
         let grid: Grid?
         let buildingNames: [String: String]
+
+        /// The campus the page's list has chosen.
+        var campus: String? {
+            fields.first { $0.name == ClassroomUsageParser.campusField }?.value
+        }
     }
 
     struct FormField: Equatable, Sendable {
@@ -163,7 +168,8 @@ nonisolated enum ClassroomUsageParser {
         return .course(name: first, teacher: lines.dropFirst().joined(separator: " "))
     }
 
-    private static let bookingMarks = ["已借用", "已預約"]
+    /// Parts of the words the site writes for a confirmed booking and a pending one.
+    private static let bookingMarks = ["借用", "預約"]
 
     private static func pager(in row: Element?) -> (page: Int, links: [Int: Postback]) {
         guard let row else { return (1, [:]) }

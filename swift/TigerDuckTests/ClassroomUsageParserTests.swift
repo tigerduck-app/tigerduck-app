@@ -68,7 +68,7 @@ enum ClassroomPageFixtures {
         campus: String = "HQ",
         viewState: String = "dGVzdA+/=="
     ) -> String {
-        let hq = campus == "HQ" ? " selected=\"selected\"" : ""
+        func selected(_ code: String) -> String { code == campus ? " selected=\"selected\"" : "" }
         return """
         <html><head><title>教室使用狀況</title></head><body>
         <form name="Form2" method="post" action="./classroom_usecondition.aspx" id="Form2">
@@ -80,8 +80,8 @@ enum ClassroomPageFixtures {
         <input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="ZXZlbnQ=" />
         <input type="submit" name="query_btn" value="查詢" />
         <select name="DropdownCampusListID" id="DropdownCampusListID">
-          <option value="">請選擇校區</option><option value="HHC">華夏校區</option>
-          <option\(hq) value="HQ">校本部</option>
+          <option value="">請選擇校區</option><option\(selected("HHC")) value="HHC">華夏校區</option>
+          <option\(selected("HQ")) value="HQ">校本部</option>
         </select>
         <select name="DropDownBuildingListID" id="DropDownBuildingListID">
           <option selected="selected" value="">請選擇大樓</option>
@@ -118,17 +118,19 @@ struct ClassroomUsageParserTests {
             + Pages.cell(Pages.namelessBooking)
             + Pages.cell("工程數學</br>多位教師")
             + Pages.cell("林小美</br> 已預約")
-            + String(repeating: Pages.cell(Pages.free), count: 9)
+            + Pages.cell("林小美</br> 確定借用")
+            + String(repeating: Pages.cell(Pages.free), count: 8)
             + "</tr>"
         let grid = try #require(ClassroomUsageParser.page(Pages.page(rows: [row])).grid)
 
         let room = try #require(grid.rooms.first)
         #expect(room.room == "TR-214")
-        #expect(Array(room.slots.prefix(6)) == [
+        #expect(Array(room.slots.prefix(7)) == [
             .course(name: "線性代數（一）", teacher: "王大明"),
             .booked,
             .booked,
             .course(name: "工程數學", teacher: "多位教師"),
+            .booked,
             .booked,
             .free,
         ])
@@ -195,6 +197,8 @@ struct ClassroomUsageParserTests {
         #expect(values["DropDownBuildingListID"] == "")
         #expect(values["query_btn"] == nil)
         #expect(fields.count == 8)
+        #expect(ClassroomUsageParser.page(Pages.page()).campus == "HQ")
+        #expect(ClassroomUsageParser.page(Pages.page(campus: "HHC")).campus == "HHC")
     }
 
     @Test("buildings are named as the site names them")

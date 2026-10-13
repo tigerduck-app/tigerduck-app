@@ -46,12 +46,16 @@ struct EmptyClassroomViewModelTests {
             )
             let signIn = signIn
             model.reader = {
-                .init(credentials: .init(studentId: "B00000000", password: "not-a-password"), isCurrent: { signIn.isCurrent })
+                .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
             }
         }
 
-        func serve(_ html: String) {
-            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(html.utf8)), for: url)
+        static let credentials = ClassroomUsageService.Credentials(
+            studentId: "B00000000", password: "not-a-password", generation: 1
+        )
+
+        func serve(_ html: String, gate: SettingsAPIStub.ReplyGate? = nil) {
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(html.utf8), gate: gate), for: url)
         }
 
         /// The sign-in, the campus postback and the day's one page.

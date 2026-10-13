@@ -51,6 +51,9 @@ final class ClassroomUsageService {
     struct Credentials: Sendable {
         let studentId: String
         let password: String
+        /// `NTUSTSessionManager.generation`, read with the credentials. A sign-out moves it, so a
+        /// read for an older one stops before it could sign the departed account in again.
+        let generation: Int
     }
 
     typealias SignIn = @MainActor (_ serviceURL: URL, _ credentials: Credentials, _ generation: Int) async throws -> Bool
@@ -90,12 +93,14 @@ final class ClassroomUsageService {
     func usage(on day: Date, isToday: Bool, force: Bool, credentials: Credentials) async throws -> CampusUsage {
         let number = ClassroomUsageParser.dayNumber(of: day)
         adoptSession()
+        let ticket = Ticket(generation: credentials.generation, epoch: epoch)
+        try check(ticket)
         if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
         return try await oneAtATime {
-            // A caller that waited may find the day the one before it read.
-            adoptSession()
+            // A sign-out while this read waited ends it before any request; a read that waited
+            // may also find the day the one before it read.
+            try check(ticket)
             if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
-            let ticket = Ticket(generation: sessionGeneration(), epoch: epoch)
             let usage = try await fetch(number, credentials: credentials, ticket: ticket)
             try check(ticket)
             kept[number] = (usage, Date())
@@ -167,12 +172,16 @@ final class ClassroomUsageService {
             if monthSteps >= Self.maxMonthSteps { throw ClassroomUsageError.dateUnavailable }
         }
 
-        // A postback can answer with a later page first, so pages are read by number.
+        // A postback can answer with a later page first, so pages are read by number. A page
+        // read twice, one for another campus or more pages than the cap is no whole day.
         var rooms: [Int: [RoomUsage]] = [:]
-        for _ in 0..<Self.maxPages {
-            guard let grid = page.grid else { throw ClassroomUsageError.unreadable }
+        while true {
+            guard let grid = page.grid, page.campus == Self.campus, rooms[grid.page] == nil else {
+                throw ClassroomUsageError.unreadable
+            }
             rooms[grid.page] = grid.rooms
             guard let next = grid.pageLinks.filter({ rooms[$0.key] == nil }).min(by: { $0.key < $1.key }) else { break }
+            guard rooms.count < Self.maxPages else { throw ClassroomUsageError.unreadable }
             page = try await post(next.value, from: page, ticket: ticket)
         }
         return CampusUsage(rooms: rooms.keys.sorted().flatMap { rooms[$0] ?? [] }, buildingNames: page.buildingNames)
@@ -183,6 +192,7 @@ final class ClassroomUsageService {
         if let lastPage { return lastPage }
         var html = try await load(URLRequest(url: queryURL))
         if html.map(ClassroomUsageParser.isQueryPage) != true {
+            try check(ticket)
             guard try await signIn(queryURL, credentials, ticket.generation) else {
                 throw ClassroomUsageError.notSignedIn
             }
@@ -190,12 +200,15 @@ final class ClassroomUsageService {
         }
         guard let html, ClassroomUsageParser.isQueryPage(html) else { throw ClassroomUsageError.unreadable }
         let query = await Self.parse(html)
-        return try await post(
+        let campus = try await post(
             .init(target: ClassroomUsageParser.campusField, argument: ""),
             from: query,
             values: [ClassroomUsageParser.campusField: Self.campus],
             ticket: ticket
         )
+        // The query page opens on another campus, whose answer would read as a day with no rooms.
+        guard campus.campus == Self.campus else { throw ClassroomUsageError.unreadable }
+        return campus
     }
 
     private func post(

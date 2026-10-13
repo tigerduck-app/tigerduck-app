@@ -29,7 +29,9 @@ struct ClassroomUsageServiceTests {
                 session: URLSession(configuration: config),
                 queryURL: url,
                 sessionGeneration: { account.generation },
-                signIn: { _, _, _ in
+                // As the SSO sign-in does, refuses a sign-in for a session a sign-out has ended.
+                signIn: { _, _, generation in
+                    guard generation == account.generation else { throw CancellationError() }
                     account.signIns += 1
                     return true
                 }
@@ -66,10 +68,14 @@ struct ClassroomUsageServiceTests {
             return fields
         }
 
-        func usage(on day: Date, force: Bool = false) async throws -> CampusUsage {
+        /// `generation` is the session the credentials were read in, the current one unless given.
+        func usage(on day: Date, force: Bool = false, generation: Int? = nil) async throws -> CampusUsage {
             try await service.usage(
                 on: day, isToday: true, force: force,
-                credentials: .init(studentId: "B00000000", password: "not-a-password")
+                credentials: .init(
+                    studentId: "B00000000", password: "not-a-password",
+                    generation: generation ?? account.generation
+                )
             )
         }
     }
@@ -212,6 +218,101 @@ struct ClassroomUsageServiceTests {
 
         await #expect(throws: CancellationError.self) { try await read.value }
         #expect(harness.requests.count == 5)
+        #expect(harness.account.signIns == 0)
+    }
+
+    @Test("a read queued behind a sign-out never signs the departed account in again")
+    func queuedReadAfterSignOut() async throws {
+        let harness = Harness()
+        let gate = SettingsAPIStub.ReplyGate()
+        harness.serve(Pages.signInPage, gate: gate)
+        harness.serve(Pages.signInPage)
+        let departed = harness.account.generation
+
+        let first = Task { try await harness.usage(on: Self.day(10, 14), generation: departed) }
+        try await waitUntil { harness.requests.count == 1 }
+        let second = Task { try await harness.usage(on: Self.day(10, 15), generation: departed) }
+        for _ in 0..<5 { await Task.yield() }
+        harness.service.forget()
+        harness.account.generation += 1
+        gate.open()
+
+        await #expect(throws: (any Error).self) { try await first.value }
+        await #expect(throws: CancellationError.self) { try await second.value }
+        #expect(harness.account.signIns == 0)
+        #expect(harness.requests.count == 1)
+    }
+
+    @Test("a date that answers with its second page first is read from the first page on")
+    func secondPageFirst() async throws {
+        let harness = Harness()
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus"))
+        harness.serve(Pages.page(
+            rows: [Pages.row("TR-617", "cc............")], pager: Pages.secondOfTwoPages, viewState: "second"
+        ))
+        harness.serve(Pages.page(
+            rows: [Pages.row("E1-306", "cccc.........."), Pages.row("IB-508", "..............")],
+            pager: Pages.firstOfTwoPages
+        ))
+
+        let usage = try await harness.usage(on: Self.day(10, 14))
+
+        #expect(usage.rooms.map(\.room) == ["E1-306", "IB-508", "TR-617"])
+        #expect(harness.form(3)["__EVENTTARGET"] == "showinfo_grd$_ctl42$_ctl0")
+        #expect(harness.form(3)["__VIEWSTATE"] == "second")
+        #expect(harness.requests.count == 4)
+    }
+
+    /// A pager row on page `page` that links the page after it.
+    private static func pager(_ page: Int) -> String {
+        "<tr align=\"left\"><td colspan=\"15\"><span>\(page)</span>&nbsp;"
+            + "<a href=\"\(Pages.postback("pager$\(page + 1)", ""))\">\(page + 1)</a></td></tr>"
+    }
+
+    /// Serves the sign-in again after the first read fails, where the query page never returns.
+    private static func serveFailingRetry(_ harness: Harness) {
+        harness.serve(Pages.errorPage)
+        harness.serve(Pages.errorPage)
+    }
+
+    @Test("a pager that runs past 20 pages gives no day rather than part of one")
+    func pageCap() async {
+        let harness = Harness()
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus"))
+        for page in 1...20 {
+            harness.serve(Pages.page(rows: [Pages.row("TR-\(500 + page)", "..............")], pager: Self.pager(page)))
+        }
+        Self.serveFailingRetry(harness)
+
+        await #expect(throws: ClassroomUsageError.unreadable) { try await harness.usage(on: Self.day(10, 14)) }
+
+        let targets = harness.requests.indices.compactMap { harness.form($0)["__EVENTTARGET"] }
+        #expect(targets.filter { $0.hasPrefix("pager$") }.count == 19)
+        #expect(!targets.contains("pager$21"))
+    }
+
+    @Test("a pager that answers with a page already read gives no day")
+    func repeatedPage() async {
+        let harness = Harness()
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus"))
+        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")], pager: Pages.firstOfTwoPages))
+        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")], pager: Pages.firstOfTwoPages))
+        Self.serveFailingRetry(harness)
+
+        await #expect(throws: ClassroomUsageError.unreadable) { try await harness.usage(on: Self.day(10, 14)) }
+        #expect(harness.requests.count == 6)
+    }
+
+    @Test("a campus postback that leaves another campus chosen is not read as a day without rooms")
+    func mainCampusOnly() async {
+        let harness = Harness()
+        for _ in 0..<4 { harness.serve(Pages.page(campus: "HHC")) }
+
+        await #expect(throws: ClassroomUsageError.unreadable) { try await harness.usage(on: Self.day(10, 14)) }
+        #expect(harness.requests.map(\.httpMethod) == ["GET", "POST", "GET", "POST"])
         #expect(harness.account.signIns == 0)
     }
 

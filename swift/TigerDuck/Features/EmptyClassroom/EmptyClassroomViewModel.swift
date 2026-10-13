@@ -72,7 +72,11 @@ final class EmptyClassroomViewModel {
                   let password = authService.storedPassword else { return nil }
             let generation = authService.loginGeneration
             return Reader(
-                credentials: .init(studentId: studentId, password: password),
+                credentials: .init(
+                    studentId: studentId,
+                    password: password,
+                    generation: NTUSTSessionManager.shared.generation
+                ),
                 isCurrent: { [weak authService] in authService?.loginGeneration == generation }
             )
         }
