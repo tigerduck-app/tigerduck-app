@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The QR code of the user's class table, which is screenshotted and passed on, the caption saying
-/// what it holds, and the term and format it is in.
 struct ClassTableShareSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var model: ClassTableShareModel
@@ -83,5 +81,19 @@ struct ClassTableShareSheet: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+extension View {
+    func classTableShareSheet(model: Binding<ClassTableShareModel?>, loginGeneration: Int) -> some View {
+        sheet(item: model) { model in
+            #if os(iOS)
+            ClassTableShareSheet(model: model)
+                .presentationDetents([ClassTableShareSheet.openingDetent, .large])
+            #else
+            ClassTableShareSheet(model: model)
+            #endif
+        }
+        .onChange(of: loginGeneration) { model.wrappedValue = nil }
     }
 }

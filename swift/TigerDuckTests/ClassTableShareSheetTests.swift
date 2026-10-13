@@ -1,10 +1,9 @@
 import CoreImage
 import Foundation
+import Observation
 import Testing
 @testable import TigerDuck
 
-/// The share sheet's model: the terms it offers, the code it builds for the pick, in our format or
-/// TAT's, and the caption naming what the code holds.
 @MainActor
 struct ClassTableShareModelTests {
     private typealias Term = ClassTableShareModel.Term
@@ -16,7 +15,6 @@ struct ClassTableShareModelTests {
         String(semester.dropLast()) + "-" + String(semester.suffix(1))
     }
 
-    /// Two terms, the newest first: 115-1 with two courses, 114-2 with one.
     private static func model(_ terms: [Term]? = nil) -> ClassTableShareModel {
         ClassTableShareModel(
             studentId: "b11300000",
@@ -121,7 +119,6 @@ struct ClassTableShareModelTests {
     }
 }
 
-/// The terms the sheet offers and the ⋯ menu item's state, read from the course caches.
 @MainActor
 struct ClassTableShareTermsTests {
     /// A cache in folders of its own, removed when the test ends.
@@ -197,29 +194,89 @@ struct ClassTableShareTermsTests {
         let store = Cache()
         let semesters = ["1151", "1142"]
         #expect(!ClassTableShareModel.canShare(
-            studentId: "B11300000", shownCourses: [], semesters: semesters, cache: store.cache
+            studentId: "B11300000", shownTerm: .init(semester: "1151", courses: []), semesters: semesters, cache: store.cache
         ))
         #expect(!ClassTableShareModel.canShare(
-            studentId: "B11300000", shownCourses: [SDCourse(courseNo: "1151CS101", courseName: "From Moodle only")],
+            studentId: "B11300000", shownTerm: .init(semester: "1151", courses: [SDCourse(courseNo: "1151CS101", courseName: "From Moodle only")]),
             semesters: semesters, cache: store.cache
         ), "a course on screen whose code a share code cannot carry is not enough")
 
         store.cache.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142")
         #expect(ClassTableShareModel.canShare(
-            studentId: "B11300000", shownCourses: [], semesters: semesters, cache: store.cache
+            studentId: "B11300000", shownTerm: .init(semester: "1151", courses: []), semesters: semesters, cache: store.cache
         ), "a course in an older term than the one on screen is enough")
         #expect(!ClassTableShareModel.canShare(
-            studentId: nil, shownCourses: [], semesters: semesters, cache: store.cache
+            studentId: nil, shownTerm: .init(semester: "1151", courses: []), semesters: semesters, cache: store.cache
         ))
         #expect(!ClassTableShareModel.canShare(
-            studentId: "B113-0000", shownCourses: [], semesters: semesters, cache: store.cache
+            studentId: "B113-0000", shownTerm: .init(semester: "1151", courses: []), semesters: semesters, cache: store.cache
         ), "a student ID a code cannot hold")
 
         let empty = Cache()
         #expect(ClassTableShareModel.canShare(
-            studentId: "B11300000", shownCourses: [SDCourse(courseNo: "CS1010001", courseName: "Programming")],
+            studentId: "B11300000", shownTerm: .init(semester: "1151", courses: [SDCourse(courseNo: "CS1010001", courseName: "Programming")]),
             semesters: semesters, cache: empty.cache
         ), "the term on screen answers without the caches")
+    }
+
+    @Test("an empty displayed term does not resurrect cached courses or enable sharing")
+    func emptyDisplayedTerm() {
+        let store = Cache()
+        store.cache.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151")
+        let shown = ClassTableShareModel.Term(semester: "1151", courses: [])
+
+        #expect(ClassTableShareModel.terms(in: ["1151"], cache: store.cache, shownTerm: shown).isEmpty)
+        #expect(!ClassTableShareModel.canShare(
+            studentId: "B11300000", shownTerm: shown, semesters: ["1151"], cache: store.cache
+        ))
+    }
+
+    @Test("the displayed term uses its current snapshot instead of stale enrolled and added courses")
+    func displayedSnapshot() {
+        let store = Cache()
+        store.cache.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151")
+        store.cache.saveUserAddedCourses([SDCourse(courseNo: "GE1010004", courseName: "Removed", semester: "1151")])
+        let shown = ClassTableShareModel.Term(semester: "1151", courses: [
+            SDCourse(courseNo: "EE1010002", courseName: "Current"),
+            SDCourse(courseNo: "MA1010003", courseName: "Added"),
+        ])
+
+        #expect(Self.courseNos(ClassTableShareModel.terms(
+            in: ["1151"], cache: store.cache, shownTerm: shown
+        )) == ["1151": ["EE1010002", "MA1010003"]])
+    }
+
+    @Test("older terms still share from cache without reviving an empty displayed term in the QR code")
+    func olderTermsWithEmptyDisplayedTerm() throws {
+        let store = Cache()
+        store.cache.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151")
+        store.cache.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Past")], semester: "1142")
+        let shown = ClassTableShareModel.Term(semester: "1151", courses: [])
+        let terms = ClassTableShareModel.terms(in: ["1151", "1142"], cache: store.cache, shownTerm: shown)
+        let model = ClassTableShareModel(studentId: "B11300000", terms: terms, semesterLabel: { $0 })
+        model.selection = .allSemesters
+
+        #expect(ClassTableShareModel.canShare(
+            studentId: "B11300000", shownTerm: shown, semesters: ["1151", "1142"], cache: store.cache
+        ))
+        #expect(try ClassTableShareCode.decode(try #require(model.code)).terms == [
+            .init(semester: "1142", courseNos: ["MA1010003"]),
+        ])
+    }
+
+    @Test("the displayed snapshot still excludes hidden and unsupported course codes")
+    func displayedSnapshotFilters() {
+        let store = Cache()
+        store.cache.saveDeletedCourseNos(["1151:CS1010001"])
+        let shown = ClassTableShareModel.Term(semester: "1151", courses: [
+            SDCourse(courseNo: "CS1010001", courseName: "Hidden"),
+            SDCourse(courseNo: "1151EE101", courseName: "Moodle only"),
+        ])
+
+        #expect(ClassTableShareModel.terms(in: ["1151"], cache: store.cache, shownTerm: shown).isEmpty)
+        #expect(!ClassTableShareModel.canShare(
+            studentId: "B11300000", shownTerm: shown, semesters: ["1151"], cache: store.cache
+        ))
     }
 }
 
@@ -286,11 +343,26 @@ struct ClassTableShareQRCodeTests {
 import SwiftUI
 import UIKit
 
-/// The sheet laid out in a window: its QR code scans from a screenshot, and the TAT switch follows
-/// the pick.
 @MainActor
 @Suite(.serialized)
 struct ClassTableShareSheetTests {
+    @Observable
+    final class Session {
+        var generation = 0
+    }
+
+    private struct PresentedSheet: View {
+        let model: ClassTableShareModel
+        let session: Session
+        @State private var presented: ClassTableShareModel?
+
+        var body: some View {
+            Color.clear
+                .classTableShareSheet(model: $presented, loginGeneration: session.generation)
+                .onAppear { presented = model }
+        }
+    }
+
     private func host(_ model: ClassTableShareModel) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -311,6 +383,69 @@ struct ClassTableShareSheetTests {
 
     private static func switches(in view: UIView) -> [UISwitch] {
         view.subviews.flatMap { [$0 as? UISwitch].compactMap { $0 } + switches(in: $0) }
+    }
+
+    private static func accessibilityObjects(in object: NSObject, depth: Int = 0) -> [NSObject] {
+        guard depth < 20 else { return [] }
+        let children = (object.accessibilityElements ?? []).compactMap { $0 as? NSObject }
+        let subviews = (object as? UIView)?.subviews ?? []
+        return [object] + (children + subviews).flatMap { accessibilityObjects(in: $0, depth: depth + 1) }
+    }
+
+    @Test("the complete QR code and caption are visible at the opening detent on a small phone")
+    func smallPhoneOpeningDetent() async throws {
+        #expect(ClassTableShareSheet.openingDetent == .height(440))
+        let model = ClassTableShareModel(
+            studentId: "B11300000",
+            terms: [.init(semester: "1151", courses: [SDCourse(courseNo: "CS1010001", courseName: "Programming")])],
+            semesterLabel: { _ in "115-1" }
+        )
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        let session = Session()
+        let host = UIHostingController(rootView: PresentedSheet(model: model, session: session))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            host.dismiss(animated: false)
+            window.isHidden = true
+        }
+
+        try await waitUntil { host.presentedViewController?.view.bounds.height ?? 0 > 0 }
+        let presented = try #require(host.presentedViewController)
+        try await waitUntil { !presented.isBeingPresented }
+        var caption: NSObject?
+        try await waitUntil {
+            caption = Self.accessibilityObjects(in: presented.view).first { $0.accessibilityLabel == model.caption }
+            return caption != nil
+        }
+        var read: CIQRCodeFeature?
+        try await waitUntil {
+            read = halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) }
+            return read != nil
+        }
+        let feature = try #require(read)
+        let visible = presented.view.convert(presented.view.bounds, to: window).intersection(window.bounds)
+        #expect(window.bounds.size == CGSize(width: 375, height: 667))
+        #expect(abs(presented.view.bounds.height - 440) < 1, "the sheet must remain at its opening height: \(presented.view.bounds)")
+        #expect(visible.width >= 350 && visible.width <= 375)
+        let captionFrame = window.convert(try #require(caption).accessibilityFrame, from: nil)
+        #expect(!captionFrame.isEmpty)
+        #expect(visible.contains(captionFrame), "the whole caption must fit before scrolling: \(captionFrame)")
+        #expect(feature.messageString == model.code)
+        let version = try #require(feature.symbolDescriptor?.symbolVersion)
+        let module = feature.bounds.width / CGFloat(17 + 4 * version) / 1.5
+        let symbol = CGRect(
+            x: feature.bounds.minX / 1.5,
+            y: window.bounds.height - feature.bounds.maxY / 1.5,
+            width: feature.bounds.width / 1.5,
+            height: feature.bounds.height / 1.5
+        )
+        #expect(visible.contains(symbol.insetBy(dx: -4 * module, dy: -4 * module)), "the QR code's quiet zone must fit")
+
+        session.generation += 1
+        try await waitUntil { host.presentedViewController == nil }
     }
 
     @Test("8 terms of 10 courses scan from a phone screenshot a chat app has halved, at about four pixels a module")

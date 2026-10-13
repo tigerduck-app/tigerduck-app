@@ -194,7 +194,7 @@ struct MacClassTableView: View {
                     .help(String(localized: "class_table_share"))
                     .disabled(!ClassTableShareModel.canShare(
                         studentId: appState.authService.storedStudentId,
-                        shownCourses: courses,
+                        shownTerm: .init(semester: selectedSemester, courses: courses),
                         semesters: availableSemesters
                     ))
                 }
@@ -248,7 +248,7 @@ struct MacClassTableView: View {
         .onChange(of: importModel?.isFinished) { _, isFinished in
             if isFinished == true { importModel = nil }
         }
-        .sheet(item: $shareModel) { ClassTableShareSheet(model: $0) }
+        .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
                 semester: selectedSemester,
@@ -488,9 +488,13 @@ struct MacClassTableView: View {
 
     private func openShareSheet() {
         guard let studentId = appState.authService.storedStudentId else { return }
+        let terms = ClassTableShareModel.terms(
+            in: availableSemesters, shownTerm: .init(semester: selectedSemester, courses: courses)
+        )
+        guard !terms.isEmpty else { return }
         shareModel = ClassTableShareModel(
             studentId: studentId,
-            terms: ClassTableShareModel.terms(in: availableSemesters),
+            terms: terms,
             semesterLabel: displayLabel(for:)
         )
     }

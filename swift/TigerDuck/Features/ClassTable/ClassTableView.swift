@@ -233,13 +233,7 @@ struct ClassTableView: View {
             .alert(String(localized: "class_table_export_failed"), isPresented: $showExportFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
-            .sheet(item: $shareModel) { model in
-                ClassTableShareSheet(model: model)
-                    .presentationDetents([ClassTableShareSheet.openingDetent, .large])
-            }
-            // An iPad's other window can sign out under the open sheet, which a sign-in with
-            // another student ID also does first.
-            .onChange(of: appState.authService.loginGeneration) { shareModel = nil }
+            .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
             .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
     }
 
@@ -314,7 +308,7 @@ struct ClassTableView: View {
                     // Held off with the export, whose share sheet would wait behind this one.
                     .disabled(isExporting || !ClassTableShareModel.canShare(
                         studentId: appState.authService.storedStudentId,
-                        shownCourses: viewModel.courses,
+                        shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
                         semesters: viewModel.availableSemesters
                     ))
                 }
@@ -389,9 +383,14 @@ struct ClassTableView: View {
 
     private func openShareSheet() {
         guard let studentId = appState.authService.storedStudentId else { return }
+        let terms = ClassTableShareModel.terms(
+            in: viewModel.availableSemesters,
+            shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses)
+        )
+        guard !terms.isEmpty else { return }
         shareModel = ClassTableShareModel(
             studentId: studentId,
-            terms: ClassTableShareModel.terms(in: viewModel.availableSemesters),
+            terms: terms,
             semesterLabel: viewModel.displayLabel(for:)
         )
     }

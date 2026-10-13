@@ -3,12 +3,9 @@ import CoreImage.CIFilterBuiltins
 import Foundation
 import Observation
 
-/// The share sheet's state: the code for the term the user picks, or for every term, in our format
-/// or TAT's, its QR code, and the caption that says whose code it is and what it holds.
-/// See docs/decisions/0023-class-table-share-code.md.
+/// Share codes exclude names and display preferences; see docs/decisions/0023-class-table-share-code.md.
 @Observable
 final class ClassTableShareModel: Identifiable {
-    /// One of the user's terms and the courses its code is made from.
     struct Term {
         let semester: String
         let courses: [SDCourse]
@@ -20,7 +17,6 @@ final class ClassTableShareModel: Identifiable {
     }
 
     let studentId: String
-    /// Newest first, each with a course to share.
     let terms: [Term]
 
     var selection: Selection {
@@ -112,37 +108,42 @@ final class ClassTableShareModel: Identifiable {
 }
 
 extension ClassTableShareModel {
-    /// The user's own courses of each of `semesters` that has any, in that order: what the class
-    /// table shows, without the courses hidden there. Names and colours never reach a code.
-    static func terms(in semesters: [String], cache: DataCache = .shared) -> [Term] {
+    /// A refreshed displayed term can be newer than disk, including an empty roster.
+    /// Other terms still use cached data so sharing does not require another network request.
+    static func terms(in semesters: [String], cache: DataCache = .shared, shownTerm: Term? = nil) -> [Term] {
         let hidden = Set(cache.loadDeletedCourseNos())
         return semesters.compactMap { semester in
-            let courses = courses(in: semester, hidden: hidden, cache: cache)
+            let courses = courses(
+                in: semester, hidden: hidden, cache: cache,
+                shownTerm: shownTerm?.semester == semester ? shownTerm : nil
+            )
             return courses.isEmpty ? nil : Term(semester: semester, courses: courses)
         }
     }
 
-    /// Whether the class table offers the sheet: someone is signed in under a student ID a code can
-    /// hold, and a term has a course to share. `shownCourses`, the term on screen, answers without
-    /// reading the caches.
     static func canShare(
         studentId: String?,
-        shownCourses: [SDCourse],
+        shownTerm: Term,
         semesters: [String],
         cache: DataCache = .shared
     ) -> Bool {
         guard let studentId, ClassTableShareCode.isUpperAlphanumerics(studentId.uppercased()[...]) else { return false }
-        if shownCourses.contains(where: carriesCode) { return true }
         let hidden = Set(cache.loadDeletedCourseNos())
-        return semesters.contains { !courses(in: $0, hidden: hidden, cache: cache).isEmpty }
+        return semesters.contains { semester in
+            !courses(
+                in: semester, hidden: hidden, cache: cache,
+                shownTerm: shownTerm.semester == semester ? shownTerm : nil
+            ).isEmpty
+        }
     }
 
-    private static func courses(in semester: String, hidden: Set<String>, cache: DataCache) -> [SDCourse] {
+    private static func courses(
+        in semester: String, hidden: Set<String>, cache: DataCache, shownTerm: Term?
+    ) -> [SDCourse] {
         guard ClassTableShareCode.isSemester(semester.uppercased()[...]) else { return [] }
         return CanonicalCourseProvider.merge(
-            primary: cache.loadCourses(semester: semester),
-            // Added from the course search, here or on another device, so they carry NTUST course codes.
-            userAdded: cache.loadUserAddedCourses(semester: semester),
+            primary: shownTerm?.courses ?? cache.loadCourses(semester: semester),
+            userAdded: shownTerm == nil ? cache.loadUserAddedCourses(semester: semester) : [],
             semester: semester,
             deletedCourseNos: hidden,
             customNames: [:]
