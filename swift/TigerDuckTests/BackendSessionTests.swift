@@ -236,6 +236,29 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
     }
 
+    @Test("a sign-out whose token outlasts its unregister refreshes nothing")
+    func signOutKeepsATokenThatLasts() async {
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+
+        #expect(await backend.manager.endSession() == "A0")
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
+    }
+
+    @Test("a sign-out whose refresh is turned down sends no unregister")
+    func signOutWithoutATokenSendsNothing() async {
+        let backend = BackendFixture()
+        let registration = RegistrationFixture(manager: backend.manager)
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+
+        let token = await backend.manager.endSession()
+        await AuthTokenManager.$departing.withValue(.init(accessToken: token)) {
+            await registration.service.unregister()
+        }
+
+        #expect(token == nil)
+        #expect(SettingsAPIStub.requests(for: registration.unregisterURL).isEmpty)
+    }
+
     @Test("a login still out when a sign-out starts stores nothing")
     func signOutDropsALoginInFlight() async throws {
         let gate = SettingsAPIStub.ReplyGate()
@@ -727,7 +750,8 @@ private struct BackendFixture {
     let refreshURL: URL
     let loginURL: URL
 
-    init(signedIn: Bool = true) {
+    /// `accessTokenExpiry` is when A0 runs out; the default has it expired.
+    init(signedIn: Bool = true, accessTokenExpiry: Date = Date(timeIntervalSince1970: 0)) {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         refreshURL = baseURL.appendingPathComponent("auth/refresh")
         loginURL = baseURL.appendingPathComponent("auth/login")
@@ -736,7 +760,7 @@ private struct BackendFixture {
                 ? [
                     AuthTokenManager.accessTokenKey: "A0",
                     AuthTokenManager.refreshTokenKey: "R0",
-                    AuthTokenManager.expiresAtKey: "0",
+                    AuthTokenManager.expiresAtKey: String(accessTokenExpiry.timeIntervalSince1970),
                 ]
                 : [:],
             refreshURL: refreshURL
