@@ -1,11 +1,15 @@
 import Foundation
 import os
+import SwiftUI
 import Testing
 @testable import TigerDuck
+#if os(iOS)
+import UIKit
+#endif
 
 /// `MoodleCourseStore` over a stand-in `MoodleCourseAPI` and a `DataCache` in a folder of its
 /// own: the cache comes first, writes stop at a sign-out, the site's functions gate each call,
-/// and only opening an announcement tells Moodle it was read.
+/// only opening an announcement tells Moodle it was read, and only graded items make a grades row.
 @MainActor
 struct MoodleCourseStoreTests {
     private nonisolated static let courseId = 20119
@@ -15,7 +19,7 @@ struct MoodleCourseStoreTests {
     )
     private nonisolated static let allFunctions: Set<String> = [
         MoodleForumService.forumsFunction, MoodleForumService.discussionsFunction,
-        MoodleForumService.viewDiscussionFunction, MoodleCourseSummaryService.coursesFunction,
+        MoodleForumService.viewDiscussionFunction, MoodleGradeService.gradeItemsFunction, MoodleCourseSummaryService.coursesFunction,
     ]
 
     private static func discussion(_ id: Int, unread: Int = 0, pinned: Bool = false, created: TimeInterval = 0) -> MoodleDiscussion {
@@ -36,6 +40,8 @@ struct MoodleCourseStoreTests {
         private var _forumCalls: [[Int]] = []
         private var _discussionCalls: [(forumId: Int, page: Int)] = []
         private var _viewed: [Int] = []
+        private var _gradeItems: [MoodleGradeItem] = []
+        private var _gradeCalls: [Int] = []
         private var _summary = MoodleCourseStoreTests.summary
         private var _summaryCalls: [Int] = []
 
@@ -43,12 +49,14 @@ struct MoodleCourseStoreTests {
             functions: Set<String>? = nil,
             forums: [MoodleForum]? = nil,
             pages: [[MoodleDiscussion]]? = nil,
+            gradeItems: [MoodleGradeItem]? = nil,
             summary: MoodleCourseSummary? = nil
         ) {
             lock.withLock {
                 if let functions { _functions = functions }
                 if let forums { _forums = forums }
                 if let pages { _pages = pages }
+                if let gradeItems { _gradeItems = gradeItems }
                 if let summary { _summary = summary }
             }
         }
@@ -56,13 +64,15 @@ struct MoodleCourseStoreTests {
         var forumCalls: [[Int]] { lock.withLock { _forumCalls } }
         var discussionPages: [Int] { lock.withLock { _discussionCalls.map(\.page) } }
         var viewed: [Int] { lock.withLock { _viewed } }
+        var gradeCalls: [Int] { lock.withLock { _gradeCalls } }
         var summaryCalls: [Int] { lock.withLock { _summaryCalls } }
 
         /// `beforePage` runs before each page answers, with the page and how many times it was
-        /// asked for before; it, `beforeForums` and `beforeSummary` throw to fail their request.
+        /// asked for before; the other hooks can suspend or fail their requests.
         func api(
             beforeForums: @escaping @Sendable () async throws -> Void = {},
             beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in },
+            beforeGrades: @escaping @Sendable () async throws -> Void = {},
             beforeSummary: @escaping @Sendable () async throws -> Void = {}
         ) -> MoodleCourseAPI {
             MoodleCourseAPI(
@@ -82,6 +92,11 @@ struct MoodleCourseStoreTests {
                     return self.lock.withLock { page < self._pages.count ? self._pages[page] : [] }
                 },
                 markViewed: { id in self.lock.withLock { self._viewed.append(id) } },
+                gradeItems: { courseId in
+                    self.lock.withLock { self._gradeCalls.append(courseId) }
+                    try await beforeGrades()
+                    return self.lock.withLock { self._gradeItems }
+                },
                 summary: { courseId in
                     self.lock.withLock { self._summaryCalls.append(courseId) }
                     try await beforeSummary()
@@ -113,7 +128,8 @@ struct MoodleCourseStoreTests {
         beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in },
         beforeSummary: @escaping @Sendable () async throws -> Void = {},
         courseCodes: [String] = [],
-        now: @escaping () -> Date = { Date() }
+        now: @escaping () -> Date = { Date() },
+        beforeGrades: @escaping @Sendable () async throws -> Void = {}
     ) -> MoodleCourseStore {
         MoodleCourseStore(
             courseId: courseId,
@@ -122,7 +138,9 @@ struct MoodleCourseStoreTests {
             context: MoodleCacheContext(
                 account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
             ),
-            api: site.api(beforeForums: beforeForums, beforePage: beforePage, beforeSummary: beforeSummary)
+            api: site.api(
+                beforeForums: beforeForums, beforePage: beforePage, beforeGrades: beforeGrades, beforeSummary: beforeSummary
+            )
         )
     }
 
@@ -163,9 +181,9 @@ struct MoodleCourseStoreTests {
         let folder = Folder()
         let signedIn = OSAllocatedUnfairLock(initialState: true)
         let answer = ManualSleeper()
-        let store = Self.store(folder, site: Site(), signedIn: signedIn) {
+        let store = Self.store(folder, site: Site(), signedIn: signedIn, beforeForums: {
             await answer.sleep(for: .zero)
-        }
+        })
 
         let refresh = Task { await store.refreshForums() }
         try await answer.waitUntilArmed()
@@ -457,6 +475,271 @@ struct MoodleCourseStoreTests {
         #expect(site.viewed.isEmpty)
         #expect(store.announcementList?.discussions.first?.unreadCount == 0)
     }
+
+    // MARK: - Grades
+
+    private nonisolated static func gradeItem(
+        _ id: Int, type: String = "mod", module: String? = "assign", grade: String? = "90.00", hidden: Bool = false
+    ) -> MoodleGradeItem {
+        MoodleGradeItem(
+            id: id, name: "Item \(id)", type: type, module: module, cmid: type == "mod" ? id + 5000 : nil,
+            grade: grade, maxGrade: 100, isHidden: hidden, feedback: ""
+        )
+    }
+
+    /// One line of each kind: two graded items, which the row counts, then an ungraded item, a
+    /// hidden grade, a category's subtotal and the course total, which it does not.
+    private nonisolated static let gradebook = [
+        gradeItem(3001),
+        gradeItem(3002, module: "quiz", grade: nil),
+        gradeItem(3003, type: "manual", module: nil, grade: "7.50"),
+        gradeItem(3004, grade: "88.00", hidden: true),
+        gradeItem(3005, type: "category", module: nil, grade: "89.00"),
+        gradeItem(3000, type: "course", module: nil, grade: "87.50"),
+    ]
+
+    @Test("the grades row counts the graded items shown, after the announcements, never the total or a subtotal")
+    func gradesRowCount() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        let store = Self.store(folder, site: site)
+        await store.refreshForums()
+        await store.refreshGrades()
+
+        #expect(site.gradeCalls == [Self.courseId])
+        #expect(store.sectionRows == [
+            MoodleSectionRow(kind: .announcements, count: 2, hasUnread: true),
+            MoodleSectionRow(kind: .grades, count: 2, hasUnread: false),
+        ])
+        #expect(store.grades.value?.graded.map(\.id) == [3001, 3003])
+        #expect(store.grades.value?.total?.id == 3000)
+    }
+
+    @Test("the grades row hides while no item but the total or a subtotal has a grade to show")
+    func gradesRowNeedsAGradedItem() async {
+        let folder = Folder()
+        let site = Site()
+        let ungraded = [
+            Self.gradeItem(3001, grade: nil),
+            Self.gradeItem(3004, hidden: true),
+            Self.gradeItem(3005, type: "category", module: nil),
+            Self.gradeItem(3000, type: "course", module: nil),
+        ]
+        for items in [ungraded, []] {
+            site.set(gradeItems: items)
+            let store = Self.store(folder, site: site)
+            await store.refreshGrades()
+            #expect(store.grades.value?.graded.isEmpty == true)
+            #expect(!store.sectionRows.contains { $0.kind == .grades })
+        }
+    }
+
+    @Test("the total shows only with a grade the student may see")
+    func totalNeedsAShownGrade() {
+        func total(_ item: MoodleGradeItem) -> MoodleGradeItem? {
+            MoodleCourseGrades(items: [Self.gradeItem(3001), item]).total
+        }
+        #expect(total(Self.gradeItem(3000, type: "course", module: nil))?.id == 3000)
+        #expect(total(Self.gradeItem(3000, type: "course", module: nil, hidden: true)) == nil)
+        #expect(total(Self.gradeItem(3000, type: "course", module: nil, grade: nil)) == nil)
+    }
+
+    @Test("a site that does not allow the grade call hides the row without asking for grades")
+    func gradesGatedByFunctions() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(functions: MoodleCourseStore.announcementFunctions, gradeItems: Self.gradebook)
+        let store = Self.store(folder, site: site)
+
+        await store.refreshGrades()
+
+        #expect(site.gradeCalls.isEmpty)
+        #expect(store.sectionRows.isEmpty)
+        #expect(store.grades.status == .ok)
+    }
+
+    @Test("grades come from the cache first, each account keeps its own, and signing out deletes them")
+    func gradesCache() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        await Self.store(folder, site: site).refreshGrades()
+
+        let again = Self.store(folder, site: Site())
+        #expect(again.sectionRows == [MoodleSectionRow(kind: .grades, count: 2, hasUnread: false)])
+        #expect(again.grades.fetchedAt != nil)
+        #expect(again.grades.status == .ok)
+        #expect(Self.store(folder, site: Site(), account: "B11399002").grades.value == nil)
+
+        folder.cache.clearUserScopedData()
+
+        #expect(Self.store(folder, site: Site()).grades.value == nil)
+    }
+
+    @Test("grades that land after a sign-out are neither shown nor kept")
+    func gradesAfterSignOut() async throws {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: site, signedIn: signedIn, beforeGrades: {
+            await answer.sleep(for: .zero)
+        })
+
+        let refresh = Task { await store.refreshGrades() }
+        try await answer.waitUntilArmed()
+        signedIn.withLock { $0 = false }
+        await answer.fire()
+        await refresh.value
+
+        #expect(store.grades.value == nil)
+        #expect(folder.cache.loadMoodleData(
+            MoodleCourseGrades.self, name: "courses/\(Self.courseId)/grades", account: "B11399001"
+        ) == nil)
+    }
+
+    @Test("with nothing cached the screen waits, a failed first fetch offers a retry, and a failed refresh keeps the copy")
+    func gradesScreenStates() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        let offline = OSAllocatedUnfairLock(initialState: true)
+        let store = Self.store(folder, site: site, beforeGrades: {
+            if offline.withLock({ $0 }) { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+        })
+        #expect(store.grades.value == nil)
+        #expect(store.grades.failure == nil)
+
+        await store.refreshGrades()
+        #expect(store.grades.value == nil)
+        #expect(store.grades.status == .failed)
+        #expect(store.grades.failure.map(MoodleFirstLoadView.isNetworkError) == true)
+
+        offline.withLock { $0 = false }
+        await store.refreshGrades()
+        #expect(store.grades.value?.graded.count == 2)
+        #expect(store.grades.failure == nil)
+
+        offline.withLock { $0 = true }
+        await store.refreshGrades()
+        #expect(store.grades.value?.graded.count == 2)
+        #expect(store.grades.status == .failed)
+    }
+
+    @Test("a refresh that leaves no graded item empties the screen and takes the row with it")
+    func gradesEmptied() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        let store = Self.store(folder, site: site)
+        await store.refreshGrades()
+        #expect(store.sectionRows.contains { $0.kind == .grades })
+
+        site.set(gradeItems: [])
+        await store.refreshGrades()
+
+        #expect(store.grades.value?.graded == [])
+        #expect(store.grades.value?.total == nil)
+        #expect(store.sectionRows.isEmpty)
+    }
+
+    @Test("the section's dot spins while the grades load and shows the worst of its feeds")
+    func sectionStatusCoversGrades() async throws {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        let failing = OSAllocatedUnfairLock(initialState: true)
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: site, beforeGrades: {
+            await answer.sleep(for: .zero)
+            if failing.withLock({ $0 }) { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+        })
+        await store.refreshForums()
+        // Grades not fetched yet count for nothing beside the forums' answer.
+        #expect(store.sectionStatus == .ok)
+
+        let refresh = Task { await store.refreshGrades() }
+        try await answer.waitUntilArmed()
+        #expect(store.isSectionRefreshing)
+        await answer.fire()
+        await refresh.value
+        #expect(!store.isSectionRefreshing)
+        #expect(store.sectionStatus == .failed)
+
+        failing.withLock { $0 = false }
+        let retry = Task { await store.refreshGrades() }
+        try await answer.waitUntilArmed(atLeast: 2)
+        await answer.fire()
+        await retry.value
+        #expect(store.sectionStatus == .ok)
+    }
+
+    @Test("a grades refresh asked for during another joins it, as the section's and the screen's timers can")
+    func gradesRefreshJoins() async throws {
+        let folder = Folder()
+        let site = Site()
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: site, beforeGrades: { await answer.sleep(for: .zero) })
+
+        let section = Task { await store.refreshGrades() }
+        try await answer.waitUntilArmed()
+        let screen = Task { await store.refreshGrades() }
+        for _ in 0..<5 { await Task.yield() }
+        await answer.fire()
+        await section.value
+        await screen.value
+
+        #expect(site.gradeCalls == [Self.courseId])
+    }
+
+    @Test("grades a minute old wait out the rest of their freshness, then refresh on the grades interval")
+    func gradesRefreshTiming() async throws {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        let clock = OSAllocatedUnfairLock(initialState: Date(timeIntervalSince1970: 1_800_000_000))
+        let now: @Sendable () -> Date = { clock.withLock { $0 } }
+        await Self.store(folder, site: site, now: now).refreshGrades()
+        clock.withLock { $0 += 60 }
+
+        let store = Self.store(folder, site: site, now: now)
+        #expect(store.grades.ttl == MoodleRefreshInterval.grades)
+        let sleeper = ManualSleeper()
+        let timer = MoodleRefreshTimer(ttl: store.grades.ttl, now: now, sleep: { await sleeper.sleep(for: $0) })
+        timer.start(fetchedAt: { store.grades.fetchedAt }) { await store.refreshGrades() }
+
+        try await sleeper.waitUntilArmed()
+        #expect(await sleeper.requestedDurations == [.seconds(240)])
+        #expect(site.gradeCalls.count == 1)
+
+        clock.withLock { $0 += 240 }
+        await sleeper.fire()
+        try await sleeper.waitUntilArmed(atLeast: 2)
+        #expect(site.gradeCalls.count == 2)
+        #expect(await sleeper.requestedDurations == [.seconds(240), .seconds(300)])
+        timer.stop()
+    }
+
+    #if os(iOS)
+    @Test("the course detail's section fetches the grades as it shows, so a course with grades gets its row unopened")
+    func sectionFetchesGrades() async throws {
+        let folder = Folder()
+        let site = Site()
+        site.set(gradeItems: Self.gradebook)
+        let store = Self.store(folder, site: site)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 200))
+        window.rootViewController = UIHostingController(
+            rootView: Color.clear.moodleSectionRefresh(store).environment(\.scenePhase, .active)
+        )
+        window.isHidden = false
+        defer { window.isHidden = true }
+
+        try await waitUntil { site.gradeCalls == [Self.courseId] }
+        try await waitUntil { store.sectionRows.contains { $0.kind == .grades } }
+    }
+    #endif
 
     // MARK: - Summary
 

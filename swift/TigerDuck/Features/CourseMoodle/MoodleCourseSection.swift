@@ -66,6 +66,7 @@ struct MoodleCourseSection: View {
         switch kind {
         case .announcements: .announcements
         case .materials: .materials
+        case .grades: .grades
         case .members: .members
         }
     }
@@ -83,6 +84,9 @@ extension View {
                     }
                     .moodleAutoRefresh(every: store.materials.ttl, fetchedAt: { store.materialsFetchedAt }) {
                         await store.refreshMaterials()
+                    }
+                    .moodleAutoRefresh(every: store.grades.ttl, fetchedAt: { store.grades.fetchedAt }) {
+                        await store.refreshGrades()
                     }
                     .moodleAutoRefresh(every: store.members.ttl, fetchedAt: { store.membersFetchedAt }) {
                         await store.refreshMembers()
@@ -220,6 +224,7 @@ struct MoodleSectionRowView: View {
         switch row.kind {
         case .announcements: "megaphone"
         case .materials: "folder"
+        case .grades: "chart.bar"
         case .members: "person.2"
         }
     }
@@ -228,6 +233,7 @@ struct MoodleSectionRowView: View {
         switch row.kind {
         case .announcements: String(localized: "feature_announcements")
         case .materials: String(localized: "course_detail_files_label")
+        case .grades: String(localized: "course_detail_moodle_grades_label")
         case .members: String(localized: "course_detail_members_label")
         }
     }
