@@ -198,7 +198,7 @@ struct MoodleMemberProfile: View {
 
     private var interests: some View {
         FlowLayout(spacing: 6, lineSpacing: 6) {
-            ForEach(member.interests, id: \.self) { interest in
+            ForEach(Array(member.interests.enumerated()), id: \.offset) { _, interest in
                 Text(verbatim: "#\(interest)")
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(.tint)

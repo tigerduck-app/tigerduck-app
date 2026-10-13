@@ -36,6 +36,8 @@ nonisolated struct MoodleMember: Codable, Sendable, Hashable, Identifiable {
 /// caller runs it inside `MoodleWebserviceClient.withToken`.
 nonisolated enum MoodleCourseMembersService {
     static let membersFunction = "core_enrol_get_enrolled_users"
+    /// Moodle's error code where a course does not let the account view its participants.
+    static let hiddenCode = "nopermissions"
 
     /// Only what the members screens show, so Moodle sends no other personal data, such as last
     /// access times or other courses.

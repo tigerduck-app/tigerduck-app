@@ -403,14 +403,19 @@ final class MoodleCourseStore {
     var membersFetchedAt: Date? { members.fetchedAt }
 
     /// The whole list in one call, which the section counts and the screen groups and searches.
-    /// A site that does not allow the call answers as if the course had no members, which hides
-    /// their row.
+    /// A site that does not allow the call, or a course that keeps its participants from the
+    /// account, answers as if the course had no members, which hides their row for good rather
+    /// than failing on every refresh.
     func refreshMembers() async {
         await members.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseMembersService.membersFunction) else {
                 return MoodleMemberList(ownId: nil, members: [])
             }
-            return try await api.members(courseId)
+            do {
+                return try await api.members(courseId)
+            } catch MoodleWebserviceError.malformedResponse(let code) where code == MoodleCourseMembersService.hiddenCode {
+                return MoodleMemberList(ownId: nil, members: [])
+            }
         }
     }
 
@@ -442,7 +447,14 @@ final class MoodleCourseStore {
         let turn = Task { [api] () -> Data? in
             _ = await previous?.value
             guard !Task.isCancelled else { return nil }
-            return try? await api.picture(url)
+            do {
+                return try await api.picture(url)
+            } catch {
+                if !Task.isCancelled {
+                    AppLogger.breadcrumb("moodle member picture not downloaded: \(error)", category: "moodle")
+                }
+                return nil
+            }
         }
         lastPictureDownload = turn
         return await withTaskCancellationHandler { await turn.value } onCancel: { turn.cancel() }

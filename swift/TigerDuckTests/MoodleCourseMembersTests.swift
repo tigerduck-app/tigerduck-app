@@ -149,6 +149,7 @@ struct MoodleCourseMembersTests {
 
         let refresh = Task { await store.refreshMembers() }
         try await answer.waitUntilArmed()
+        #expect(store.isSectionRefreshing)
         signedIn.withLock { $0 = false }
         await answer.fire()
         await refresh.value
@@ -183,6 +184,24 @@ struct MoodleCourseMembersTests {
         #expect(site.calls.isEmpty)
         #expect(store.sectionRows.isEmpty)
         #expect(store.members.status == .ok)
+    }
+
+    @Test("a course that keeps its participants from the account hides the row instead of failing each time")
+    func participantsHidden() async {
+        let folder = Folder()
+        let hidden = Self.store(folder, site: Site()) {
+            throw MoodleWebserviceError.malformedResponse(detail: MoodleCourseMembersService.hiddenCode)
+        }
+        await hidden.refreshMembers()
+        #expect(hidden.members.status == .ok)
+        #expect(hidden.members.value?.members == [])
+        #expect(hidden.sectionRows.isEmpty)
+
+        let broken = Self.store(folder, site: Site()) {
+            throw MoodleWebserviceError.malformedResponse(detail: "errorcoursecontextnotvalid")
+        }
+        await broken.refreshMembers()
+        #expect(broken.members.status == .failed)
     }
 
     @Test("the row counts everyone the account can see, itself included, and hides with no one else", arguments: [
