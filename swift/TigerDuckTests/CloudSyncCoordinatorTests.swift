@@ -1,5 +1,6 @@
 // `CloudSyncCoordinator` drains the outbox against a stubbed backend (`SettingsAPIStub`): which
 // requests a tick sends, and what it leaves queued.
+import Defaults
 import Foundation
 import Testing
 import os
@@ -19,9 +20,11 @@ struct CloudSyncCoordinatorTests {
         }
     }
 
+    /// Course settings wait as in the app, on the real `Defaults`, and so do marks with
+    /// `syncsAssignmentMarks` nil.
     private static func makeCoordinator(
         _ backend: Backend,
-        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { true }
+        syncsAssignmentMarks: (@Sendable () -> Bool)? = { true }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -32,6 +35,9 @@ struct CloudSyncCoordinatorTests {
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("CloudSyncCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
+        guard let syncsAssignmentMarks else {
+            return CloudSyncCoordinator(pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true)
+        }
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
             syncsAssignmentMarks: syncsAssignmentMarks
@@ -163,6 +169,44 @@ struct CloudSyncCoordinatorTests {
         #expect(!CloudSyncCoordinator.sendsAssignmentMarks(assignments: true, pendingChecks: ["assignments"]))
     }
 
+    @Test("After a sign-out the next account's marks and course settings go out, though a re-enable check was pending")
+    func signOutLeavesNoCheckHoldingTheNextAccountsEdits() async {
+        await withExclusiveRealDefaults {
+            let saved = (
+                Defaults[.syncAssignments], Defaults[.syncCourses],
+                Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce]
+            )
+            defer {
+                Defaults[.syncAssignments] = saved.0
+                Defaults[.syncCourses] = saved.1
+                Defaults[.pendingConflictCategories] = saved.2
+                Defaults[.assignmentMarksSyncedOnce] = saved.3
+            }
+            Defaults[.syncAssignments] = true
+            Defaults[.syncCourses] = true
+            Defaults[.pendingConflictCategories] = ["assignments", "courses"]
+            Defaults[.assignmentMarksSyncedOnce] = true
+
+            AppState.forgetSyncProgress()
+
+            #expect(Defaults[.pendingConflictCategories].isEmpty)
+            #expect(!Defaults[.assignmentMarksSyncedOnce])
+            let backend = Backend()
+            backend.answer("sync/assignments/42/override", body: Self.markReply)
+            backend.answer("sync/courses/1151CS1001301/override", body: Self.ignoreReply)
+            let coordinator = Self.makeCoordinator(backend, syncsAssignmentMarks: nil)
+            await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+            await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                                  moodleCourseId: nil, ignore: true)
+
+            await coordinator.syncTick()
+
+            #expect(backend.requests("sync/assignments/42/override").count == 1)
+            #expect(backend.requests("sync/courses/1151CS1001301/override").count == 1)
+            #expect(await coordinator.outbox.pendingCount() == 0)
+        }
+    }
+
     @Test("Use Server after the re-enable check drops every mark still on its way up, parked too, and no other edit")
     func useServerAfterTheReenableCheckDropsEveryMark() async {
         let backend = Backend()
@@ -185,4 +229,7 @@ struct CloudSyncCoordinatorTests {
 
     private static let colourReply =
         ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##
+
+    private static let ignoreReply =
+        #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00"}"#
 }
