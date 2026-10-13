@@ -83,7 +83,7 @@ private struct ClassTableImportPrompts: ViewModifier {
             case .replace(let job):
                 Button(String(localized: "action_cancel"), role: .cancel) {}
                 Button(String(localized: "action_update")) { model?.lookUp(job) }
-            case .lookupFailed(let job):
+            case .lookupFailed(let job), .saveFailed(let job):
                 Button(String(localized: "action_cancel"), role: .cancel) {}
                 Button(String(localized: "action_retry")) { model?.lookUp(job) }
             }

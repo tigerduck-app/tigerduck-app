@@ -14,7 +14,7 @@ final class ClassTableImportModel: Identifiable {
         let nickname: String
     }
 
-    /// The alert on screen. The two that start a lookup carry its job, so their buttons work
+    /// The alerts that start a lookup carry its job, so their buttons work
     /// whether SwiftUI clears the alert before or after it runs them.
     enum Prompt: Equatable {
         /// A wrong checksum, layout or course code, or a format version this app does not know.
@@ -24,6 +24,7 @@ final class ClassTableImportModel: Identifiable {
         /// The code's student ID is imported already; updating keeps that person's nickname.
         case replace(Job)
         case lookupFailed(Job)
+        case saveFailed(Job)
     }
 
     struct Pending: Identifiable {
@@ -214,7 +215,10 @@ final class ClassTableImportModel: Identifiable {
                 prompt = .lookupFailed(job)
                 return
             }
-            guard let person = store.add(job.code, nickname: job.nickname, courses: courses) else { return }
+            guard let person = store.add(job.code, nickname: job.nickname, courses: courses) else {
+                prompt = .saveFailed(job)
+                return
+            }
             store.show(person.id)
             isFinished = true
         }
@@ -320,7 +324,7 @@ final class ClassTableImportModel: Identifiable {
 extension ClassTableImportModel.Prompt {
     var title: String {
         switch self {
-        case .invalid, .noCode, .ownCode:
+        case .invalid, .noCode, .ownCode, .saveFailed:
             String(localized: "class_table_import_failed")
         case .replace(let job):
             String(format: String(localized: "class_table_import_replace_title"), job.nickname)
@@ -335,7 +339,7 @@ extension ClassTableImportModel.Prompt {
         case .noCode: String(localized: "class_table_import_no_code_message")
         case .ownCode: String(localized: "class_table_import_own_code_message")
         case .replace: String(localized: "class_table_import_replace_message")
-        case .lookupFailed: nil
+        case .lookupFailed, .saveFailed: nil
         }
     }
 }

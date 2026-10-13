@@ -374,6 +374,58 @@ struct ClassTableImportModelTests {
 
     // MARK: - Lookup
 
+    @Test("a failed save keeps confirmation open and a retry succeeds once the file can be written")
+    func saveFailureCanRetry() async throws {
+        lookup.courses = ["1151": [Self.course("CS1010001", "Networks", semester: "1151")]]
+        try Data("blocked parent".utf8).write(to: folder.url)
+        let model = makeModel()
+        model.scanned(try Self.code("B11300001"))
+        model.importPending()
+        await model.lookupTask?.value
+
+        #expect(!model.isFinished)
+        #expect(!model.isLookingUp)
+        #expect(model.pending != nil)
+        #expect(model.prompt?.title == String(localized: "class_table_import_failed"))
+        #expect(model.prompt?.message == nil)
+        #expect(store.people.isEmpty)
+        #expect(store.shownPersonID == nil)
+
+        try FileManager.default.removeItem(at: folder.url)
+        model.dismissPrompt()
+        model.importPending()
+        await model.lookupTask?.value
+
+        #expect(model.isFinished)
+        #expect(model.prompt == nil)
+        #expect(store.people.count == 1)
+        #expect(Self.reloadedPeople(folder).first?.terms.first?.courses.first?.courseName == "Networks")
+    }
+
+    @Test("an unusable existing store refuses an import without closing confirmation or replacing the file")
+    func unusableStoreKeepsConfirmation() async throws {
+        try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+        let kept = Data("{\"people\":\"newer format\"}".utf8)
+        try kept.write(to: folder.file)
+        let protectedStore = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { Self.signedIn })
+        let model = ClassTableImportModel(
+            store: protectedStore,
+            signedInStudentId: { Self.signedIn },
+            isCurrent: { true },
+            lookup: { semester, _ in [Self.course("CS1010001", "Networks", semester: semester)] }
+        )
+        model.scanned(try Self.code("B11300001"))
+        model.importPending()
+        await model.lookupTask?.value
+
+        #expect(!model.isFinished)
+        #expect(model.pending != nil)
+        #expect(model.prompt?.title == String(localized: "class_table_import_failed"))
+        #expect(protectedStore.people.isEmpty)
+        #expect(protectedStore.shownPersonID == nil)
+        #expect(try Data(contentsOf: folder.file) == kept)
+    }
+
     @Test("Import saves the person with each term's courses, shows them and closes")
     func importSaves() async throws {
         lookup.courses = [
