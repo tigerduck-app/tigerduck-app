@@ -43,6 +43,7 @@ struct MoodleMaterialsView: View {
             status: store.materials.status,
             isLoading: store.materials.isRefreshing,
             page: .course(store.courseId),
+            willOpenPage: { files.forgetPendingOpen() },
             refresh: { await store.refreshMaterials() }
         )
         .moodleAutoRefresh(every: store.materials.ttl, fetchedAt: { store.materialsFetchedAt }) {
@@ -90,22 +91,28 @@ struct MoodleMaterialsView: View {
                 indent: row.indent,
                 tap: { files.tap(ref, among: neighbours, store: store) { store.open(material) } },
                 share: { files.share(ref, store: store) },
-                openInMoodle: { Task { await openURL(page) } }
+                openInMoodle: { open(page) }
             )
         case .link(let url):
             MoodleLinkRow(
                 title: material.name,
                 url: url,
                 open: {
-                    files.open(link: url) { openMoodleLink($0) }
+                    files.forgetPendingOpen()
+                    openMoodleLink(url)
                     store.open(material)
                 },
                 share: { files.share(link: url) },
-                openInMoodle: { Task { await openURL(page) } }
+                openInMoodle: { open(page) }
             )
         case .folder(let count):
             MoodleFolderRow(name: material.name, fileCount: count)
         }
+    }
+
+    private func open(_ page: MoodlePage) {
+        files.forgetPendingOpen()
+        Task { await openURL(page) }
     }
 }
 

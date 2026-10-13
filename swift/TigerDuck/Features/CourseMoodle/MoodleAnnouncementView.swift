@@ -28,6 +28,7 @@ struct MoodleAnnouncementView: View {
                 Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: discussion.message)))
                     .markdownTheme(.bulletin(accent: appState.accentColor))
                     .environment(\.openURL, OpenURLAction { url in
+                        files.forgetPendingOpen()
                         openMoodleLink(url)
                         return .handled
                     })
@@ -43,7 +44,7 @@ struct MoodleAnnouncementView: View {
         }
         .background(Color.backgroundPrimary)
         .overlay(alignment: .bottomTrailing) {
-            MoodleOpenCapsule(page: .discussion(discussion.id))
+            MoodleOpenCapsule(page: .discussion(discussion.id)) { files.forgetPendingOpen() }
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
@@ -93,7 +94,10 @@ struct MoodleAnnouncementView: View {
                         state: store.downloadState(of: ref.file, in: owner),
                         tap: { files.tap(ref, among: refs, store: store) },
                         share: { files.share(ref, store: store) },
-                        openInMoodle: { Task { await openURL(MoodlePage.discussion(discussion.id)) } }
+                        openInMoodle: {
+                            files.forgetPendingOpen()
+                            Task { await openURL(MoodlePage.discussion(discussion.id)) }
+                        }
                     )
                 }
             }

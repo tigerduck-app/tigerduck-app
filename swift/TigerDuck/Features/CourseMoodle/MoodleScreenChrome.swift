@@ -122,9 +122,12 @@ extension View {
         status: ServerStatus,
         isLoading: Bool,
         page: MoodlePage?,
+        willOpenPage: @escaping () -> Void = {},
         refresh: @escaping () async -> Void
     ) -> some View {
-        modifier(MoodleListChrome(title: title, status: status, isLoading: isLoading, page: page, refresh: refresh))
+        modifier(MoodleListChrome(
+            title: title, status: status, isLoading: isLoading, page: page, willOpenPage: willOpenPage, refresh: refresh
+        ))
     }
 
     /// The bar of a pushed Moodle article: the back button alone, over the content.
@@ -138,6 +141,7 @@ private struct MoodleListChrome: ViewModifier {
     let status: ServerStatus
     let isLoading: Bool
     let page: MoodlePage?
+    let willOpenPage: () -> Void
     let refresh: () async -> Void
 
     @Environment(\.openURL) private var openURL
@@ -184,6 +188,7 @@ private struct MoodleListChrome: ViewModifier {
 
     private func openButton(_ page: MoodlePage) -> some View {
         Button {
+            willOpenPage()
             Task { await openURL(page) }
         } label: {
             Image(systemName: "arrow.up.right.square")
@@ -294,11 +299,13 @@ struct MoodleFirstLoadView: View {
 /// bulletin's source button.
 struct MoodleOpenCapsule: View {
     let page: MoodlePage
+    var willOpen: () -> Void = {}
 
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         Button {
+            willOpen()
             Task { await openURL(page) }
         } label: {
             Label(String(localized: "action_open_in_moodle"), systemImage: "arrow.up.right.square")

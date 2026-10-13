@@ -75,10 +75,10 @@ final class MoodleFileOpener {
         present(link)
     }
 
-    /// Opens a link through `open`; a file still downloading then no longer opens over its page.
-    func open(link: URL, with open: (URL) -> Void) {
+    /// For a link or a Moodle page about to open over or out of the screen: a file still
+    /// downloading then no longer opens over it.
+    func forgetPendingOpen() {
         _ = nextAction()
-        open(link)
     }
 
     private func nextAction() -> Int {
