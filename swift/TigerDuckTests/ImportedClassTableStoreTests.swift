@@ -159,19 +159,22 @@ struct ImportedClassTableStoreTests {
         #expect(try folder.file.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
     }
 
-    @Test("a file that is there but cannot be read is not written over")
-    func unreadableFileKept() throws {
+    /// `unreadable`: the file cannot be opened; otherwise it opens but does not decode, as a file
+    /// from a newer version of the app might not.
+    @Test("a file that is there but cannot be read or decoded is not written over", arguments: [true, false])
+    func unusableFileKept(unreadable: Bool) throws {
         let folder = Folder()
         try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
-        let kept = Data("{\"people\":[]}".utf8)
+        let kept = Data((unreadable ? "{\"people\":[]}" : "{\"people\":\"written by a newer version\"}").utf8)
         try kept.write(to: folder.file)
-        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: folder.file.path)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: folder.file.path) }
+        let path = folder.file.path
+        if unreadable { try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: path) }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path) }
 
         let store = Self.store(folder)
         store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
 
-        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: folder.file.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
         #expect(try Data(contentsOf: folder.file) == kept)
     }
 

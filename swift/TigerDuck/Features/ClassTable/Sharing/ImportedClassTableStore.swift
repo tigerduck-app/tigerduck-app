@@ -47,7 +47,8 @@ final class ImportedClassTableStore {
     @ObservationIgnored private var owner: String?
     private let fileURL: URL
     private let signedInStudentId: () -> String?
-    /// Off after the file was there but could not be read, so no write replaces what it holds.
+    /// Off after the file was there but could not be read or decoded, so no write replaces what
+    /// it holds, such as people a newer version of the app wrote.
     @ObservationIgnored private var mayWrite = true
 
     init(
@@ -103,7 +104,6 @@ final class ImportedClassTableStore {
         return person
     }
 
-    /// Ignores a blank nickname, which the store never keeps.
     func rename(_ id: UUID, to nickname: String) {
         let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, let index = people.firstIndex(where: { $0.id == id }) else { return }
@@ -174,6 +174,7 @@ final class ImportedClassTableStore {
             owner = file.owner
             people = file.people.map { $0.person }
         } catch {
+            mayWrite = false
             AppLogger.captureError(error, context: ["phase": "importedClassTables.decode"])
         }
     }
