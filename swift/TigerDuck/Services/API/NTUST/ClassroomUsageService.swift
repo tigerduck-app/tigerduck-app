@@ -142,6 +142,7 @@ final class ClassroomUsageService {
         do {
             return try await read(day, credentials: credentials, ticket: ticket)
         } catch ClassroomUsageError.unreadable {
+            try check(ticket)
             lastPage = nil
             NTUSTSessionManager.shared.dropServiceCookies(for: queryURL)
             do {

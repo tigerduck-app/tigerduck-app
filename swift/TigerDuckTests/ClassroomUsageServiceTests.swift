@@ -197,6 +197,24 @@ struct ClassroomUsageServiceTests {
         #expect(harness.requests[4].httpMethod == "GET")
     }
 
+    @Test("a read that a sign-out ends does not sign in again after a page without the grid")
+    func signOutBeforeTheRetry() async throws {
+        let harness = Harness()
+        harness.serveFirstDay()
+        _ = try await harness.usage(on: Self.day(10, 14))
+        let gate = SettingsAPIStub.ReplyGate()
+        harness.serve(Pages.signInPage, gate: gate)
+
+        let read = Task { try await harness.usage(on: Self.day(10, 15)) }
+        try await waitUntil { harness.requests.count == 5 }
+        harness.service.forget()
+        gate.open()
+
+        await #expect(throws: CancellationError.self) { try await read.value }
+        #expect(harness.requests.count == 5)
+        #expect(harness.account.signIns == 0)
+    }
+
     @Test("a day still loading when the user signs out is not kept")
     func signOutDuringARead() async throws {
         let harness = Harness()
