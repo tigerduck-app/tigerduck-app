@@ -109,7 +109,17 @@ struct MoodleCourseForumsTests {
                     try self.record("posts \(discussionId)", kind: "posts")
                     return self.lock.withLock { self._posts[discussionId] ?? [] }
                 },
-                markViewed: { discussionId, _ in try self.record("viewed \(discussionId)", kind: "viewed") }
+                // Moodle marks every post of the discussion read.
+                markViewed: { discussionId, _ in
+                    try self.record("viewed \(discussionId)", kind: "viewed")
+                    self.lock.withLock {
+                        self._posts[discussionId] = self._posts[discussionId]?.map { post in
+                            var read = post
+                            read.isUnread = false
+                            return read
+                        }
+                    }
+                }
             )
         }
     }
@@ -609,33 +619,25 @@ struct MoodleCourseForumsTests {
         #expect(store.generalForums.first { $0.id == Self.qanda.id }?.unreadPostCount == 0)
         #expect(store.thread(of: unread).value?.posts.contains(where: \.isUnread) == false)
 
-        // Read here too for the next opening, which a copy still fresh serves without a fetch.
+        // The next opening fetches again and finds them read, as Moodle now has them.
         let read = try #require(pages.list?.discussions.first { $0.id == 801 })
         let again = Self.store(folder, site: site)
         #expect(await again.openThread(of: read, in: Self.qanda) == [])
-        #expect(site.calls.filter { $0.hasPrefix("posts") }.count == 1)
+        #expect(site.calls.filter { $0.hasPrefix("posts") }.count == 2)
     }
 
-    enum ListSign: CaseIterable {
-        case unread, replies, modified
-    }
-
-    @Test("a copy still fresh that the list shows behind fetches the posts again before reading them", arguments: ListSign.allCases)
-    func openThreadRefetchesACopyBehindTheList(sign: ListSign) async {
+    @Test("a copy still fresh is fetched again at opening, whose list entry may not know of a new reply")
+    func openThreadFetchesAFreshCopy() async {
         let folder = Folder()
         let site = Site()
+        let discussion = Self.discussion(801, replies: 1)
         let fetched = Date(timeIntervalSince1970: 1_800_000_000)
         site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801)])
-        await Self.store(folder, site: site, now: { fetched }).refreshThread(of: Self.discussion(801, replies: 1))
+        await Self.store(folder, site: site, now: { fetched }).refreshThread(of: discussion)
         site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801), Self.post(1803, parent: 1801, unread: true)])
-        let entry = switch sign {
-        case .unread: Self.discussion(801, unread: 1, replies: 1)
-        case .replies: Self.discussion(801, replies: 2)
-        case .modified: Self.discussion(801, modified: fetched.timeIntervalSince1970 - 1_790_000_000 + 1, replies: 1)
-        }
 
         let later = Self.store(folder, site: site, now: { fetched + 60 })
-        let unreadAtOpening = await later.openThread(of: entry, in: Self.qanda)
+        let unreadAtOpening = await later.openThread(of: discussion, in: Self.qanda)
 
         #expect(site.calls.filter { $0.hasPrefix("posts") }.count == 2)
         #expect(unreadAtOpening == [1803])
@@ -657,24 +659,31 @@ struct MoodleCourseForumsTests {
         #expect(site.calls.filter { $0.hasPrefix("posts") }.count == 2)
     }
 
-    @Test("posts that fail to load at opening give no unread set, so the ones a retry brings keep their mark")
+    @Test("an opening whose posts fail to load reads nothing as read, and the next opening that loads them does")
     func openThreadWithoutPosts() async throws {
         let folder = Folder()
         let site = Site()
+        let discussion = Self.discussion(801, unread: 1, replies: 1)
+        site.set(pages: [[discussion]])
         site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801, unread: true)])
-        site.fail("posts")
         let store = Self.store(folder, site: site)
+        await store.refreshForums()
+        let pages = store.discussions(of: Self.qanda)
+        await pages.refresh()
+        site.fail("posts")
 
-        let unreadAtOpening = await store.openThread(of: Self.discussion(801, replies: 1), in: Self.qanda)
+        let unreadAtOpening = await store.openThread(of: discussion, in: Self.qanda)
 
         #expect(unreadAtOpening == nil)
-        try await waitUntil { site.calls.contains("viewed 801") }
+        #expect(pages.list?.discussions.first?.unreadCount == 1)
         site.fail("posts", false)
-        await store.refreshThread(of: Self.discussion(801))
-        #expect(store.thread(of: Self.discussion(801)).value?.posts.filter(\.isUnread).map(\.id) == [1802])
+        #expect(await store.openThread(of: discussion, in: Self.qanda) == [1802])
+        #expect(pages.list?.discussions.first?.unreadCount == 0)
+        try await waitUntil { site.calls.contains("viewed 801") }
+        #expect(site.calls.filter { $0 == "viewed 801" }.count == 1)
     }
 
-    @Test("an expired cached thread whose opening refresh fails gives no unread snapshot for a later retry")
+    @Test("a cached thread whose opening fetch fails keeps its unread posts, here and on Moodle")
     func openThreadWithFailedStaleRefresh() async throws {
         let folder = Folder()
         let site = Site()
@@ -690,11 +699,10 @@ struct MoodleCourseForumsTests {
 
         #expect(unreadAtOpening == nil)
         #expect(later.thread(of: discussion).status == .failed)
-        try await waitUntil { site.calls.contains("viewed 801") }
+        #expect(later.thread(of: discussion).value?.posts.filter(\.isUnread).map(\.id) == [1802])
         site.fail("posts", false)
         await later.refreshThread(of: discussion)
         #expect(later.thread(of: discussion).value?.posts.filter(\.isUnread).map(\.id) == [1803])
-        #expect(site.calls.filter { $0 == "viewed 801" }.count == 1)
     }
 
     @Test("a site that does not allow the view call is not told, and the discussion still reads as read here")

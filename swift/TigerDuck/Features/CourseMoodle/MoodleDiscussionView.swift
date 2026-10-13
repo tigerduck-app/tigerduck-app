@@ -7,10 +7,10 @@ struct MoodleDiscussionView: View {
     let forum: MoodleForum
 
     @Environment(AppState.self) private var appState
-    /// `.task` runs again each time the screen reappears, which is not another opening.
-    @State private var didOpen = false
-    /// The posts unread when this opening began, which keep their dot while it lasts.
+    /// The posts unread when the opening loaded them, which keep their dot while it lasts. Nil
+    /// until an opening loads the posts.
     @State private var unreadAtOpening: Set<Int>?
+    @State private var isOpening = false
     @State private var files = MoodleFileOpener()
 
     var body: some View {
@@ -42,19 +42,31 @@ struct MoodleDiscussionView: View {
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
-        .refreshable { await store.refreshThread(of: discussion) }
+        .refreshable { await refresh() }
         // Cached posts stay on screen through a failed refresh, so the dot is what shows it failed.
         .moodleArticleChrome(status: thread.status, isLoading: thread.isRefreshing)
-        .moodleRefreshShortcut { await store.refreshThread(of: discussion) }
+        .moodleRefreshShortcut { await refresh() }
         .moodleAutoRefresh(every: thread.ttl, fetchedAt: { thread.fetchedAt }) {
-            await store.refreshThread(of: discussion)
+            await refresh()
         }
+        // `.task` runs on every appearance; only one before the posts have loaded opens.
         .task {
-            guard !didOpen else { return }
-            didOpen = true
-            unreadAtOpening = await store.openThread(of: discussion, in: forum)
+            guard unreadAtOpening == nil else { return }
+            await refresh()
         }
         .moodleFilePresentation(files)
+    }
+
+    /// Until an opening has loaded the posts, a refresh is that opening, so Moodle hears of the
+    /// view once they show. One opening runs at a time; a refresh meanwhile joins its fetch.
+    private func refresh() async {
+        guard unreadAtOpening == nil, !isOpening else {
+            await store.refreshThread(of: discussion)
+            return
+        }
+        isOpening = true
+        defer { isOpening = false }
+        unreadAtOpening = await store.openThread(of: discussion, in: forum)
     }
 
     @ViewBuilder
@@ -66,7 +78,7 @@ struct MoodleDiscussionView: View {
                     .foregroundStyle(Color.textSecondary)
                     .multilineTextAlignment(.center)
                 Button(String(localized: "action_retry")) {
-                    Task { await store.refreshThread(of: discussion) }
+                    Task { await refresh() }
                 }
                 .buttonStyle(.bordered)
             }

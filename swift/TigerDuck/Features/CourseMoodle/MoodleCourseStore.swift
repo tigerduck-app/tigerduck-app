@@ -563,22 +563,18 @@ final class MoodleCourseStore {
         open(discussion, in: newsForum)
     }
 
-    /// Capture fresh unread flags before marking the thread read. A failed refresh must leave
-    /// no snapshot, since later retry results need their own unread flags. A copy still fresh is
-    /// fetched again when the list shows a reply it lacks, which opening would mark read unseen;
-    /// the counts back up the time, since Moodle's clock and the device's can differ.
+    /// Every opening fetches the posts, as the list may not know of a reply yet, and keeps which
+    /// were unread for the dots. Moodle marks the whole discussion read on the view event, so it
+    /// goes only once the posts load: an opening whose fetch fails sends nothing and returns nil,
+    /// leaving the replies unread for the next opening.
     func openThread(of discussion: MoodleDiscussion, in forum: MoodleForum) async -> Set<Int>? {
         guard context.isCurrent(), !Task.isCancelled else { return nil }
         let feed = thread(of: discussion)
-        let isBehindTheList = discussion.unreadCount > 0
-            || feed.value?.posts.count != discussion.replyCount + 1
-            || discussion.modified > feed.fetchedAt ?? .distantPast
-        if isBehindTheList
-            || MoodleRefreshTimer.wait(fetchedAt: feed.fetchedAt, lastTry: nil, ttl: feed.ttl, now: context.now()) == 0 {
-            await refreshThread(of: discussion)
+        await refreshThread(of: discussion)
+        guard context.isCurrent(), !Task.isCancelled, feed.status == .ok, let posts = feed.value?.posts else {
+            return nil
         }
-        guard context.isCurrent(), !Task.isCancelled else { return nil }
-        let unread = feed.status == .ok ? feed.value.map { Set($0.posts.filter(\.isUnread).map(\.id)) } : nil
+        let unread = Set(posts.filter(\.isUnread).map(\.id))
         open(discussion, in: forum)
         return unread
     }
