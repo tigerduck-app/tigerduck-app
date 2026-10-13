@@ -15,9 +15,11 @@ under test reads and writes directly, not through a seam:
 - `DefaultTabsPinMigration`, and `UpdateNotifyCoordinator.checkManually()`, which stamps
   `lastUpdateCheckAt` and, for an unreadable store version, `lastReportedUnparseableStoreVersion`.
 - `AppState.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories`,
-  `assignmentMarksSyncedOnce` and `lastSeenCoursesResetAt`, `AppState.markForReenableCheck`, which
-  reads the last and writes the first, and `CloudSyncCoordinator`'s default holds on marks and
-  course settings, which read the pending categories and the Assignments and Courses switches.
+  `assignmentMarksSyncedOnce`, `lastSeenCoursesResetAt` and `accountSyncedOnce`;
+  `AppState.recordFullSync`, which writes the last two; `SyncedAccountSeedMigration`, which writes
+  `accountSyncedOnce`; `AppState.markForReenableCheck`, which reads it and writes the pending
+  categories; and `CloudSyncCoordinator`'s default holds on marks and course settings, which read
+  the pending categories and the Assignments and Courses switches.
 - `SSOLoginService.storedPasswordRejected`, the latch that stops a school sign-in or a Moodle
   token harvest from posting a rejected password, and `ssoLoginTimestamp`.
 
@@ -50,4 +52,4 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   `BulletinPushOptOutMigrationTests`, `PushRegistrationServiceTests`,
   `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `UpdateCheckTests`,
   `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`, `ReenableMarkTests`,
-  `SSOServiceLoginTests` and `BackendSessionTests`.
+  `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests` and `BackendSessionTests`.
