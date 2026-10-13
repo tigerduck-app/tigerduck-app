@@ -170,6 +170,11 @@ final class AuthService {
 
     var authTokenManager: AuthTokenManager?
     var onV3SignedIn: (() -> Void)?
+    /// The full sign-out, `AppState.logoutNTUST()`. ``login(studentId:password:)`` waits for it
+    /// when another student ID signs in over the stored one, so that student inherits none of the
+    /// stored account's data. It also empties the school session, which the SSO sign-in would
+    /// otherwise accept as signed in without checking the new password.
+    var signOutStoredAccount: (() async -> Void)?
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
     /// When an automatic backend sign-in that had credentials to send last failed. The backend
     /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
@@ -205,6 +210,8 @@ final class AuthService {
 
     private static let ssoServiceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
 
+    /// Reads the session generation when it starts, which is after the sign-out that
+    /// ``login(studentId:password:)`` runs first for another student ID.
     static func signInToSchool(studentId: String, password: String) async throws -> Bool {
         try await SSOLoginService.ensureServiceLogin(
             session: NTUSTSessionManager.shared.session,
@@ -222,6 +229,9 @@ final class AuthService {
 
         do {
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
+            if let stored = storedStudentId, stored != normalizedId {
+                await signOutStoredAccount?()
+            }
 
             let success = try await schoolSignIn(normalizedId, password)
 
@@ -231,8 +241,7 @@ final class AuthService {
                 // Drop this account's cached enrolled courses so the first fetch after login
                 // scrapes fresh data, not stale courses from before a semester crossover.
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
-                // The sign-in sheet also opens over a stored account, so another account can sign
-                // in without a sign-out; it must not inherit the class tables the last one imported.
+                // Class tables imported while no one was signed in become this account's.
                 ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId)
                 reauthErrorMessage = nil
                 markCredentialsChanged()
