@@ -45,8 +45,8 @@ final class ClassTableImportModel: Identifiable {
     private(set) var pending: Pending?
     var nickname = ""
     private(set) var isLookingUp = false
-    /// Set once the person is saved, or once the account changed during the lookup; the screens
-    /// close then.
+    /// Set once the person is saved, or once the account signed out during the lookup; the
+    /// screens close then.
     private(set) var isFinished = false
     @ObservationIgnored private(set) var lookupTask: Task<Void, Never>?
 
@@ -54,9 +54,6 @@ final class ClassTableImportModel: Identifiable {
     private let signedInStudentId: () -> String?
     private let isCurrent: () -> Bool
     private let lookup: CourseLookup
-    /// Signed in when the import began. Signing in to another account through the sign-in sheet
-    /// does not move the login generation, so the save checks this too.
-    private let account: String?
 
     init(
         store: ImportedClassTableStore,
@@ -68,10 +65,10 @@ final class ClassTableImportModel: Identifiable {
         self.signedInStudentId = signedInStudentId
         self.isCurrent = isCurrent
         self.lookup = lookup
-        account = signedInStudentId()
     }
 
-    /// An import for the account signed in now, which saves nothing once another one signs in.
+    /// An import for the account signed in now, which saves nothing once it signs out, as it does
+    /// before another student ID signs in.
     static func live(authService: AuthService) -> ClassTableImportModel {
         let generation = authService.loginGeneration
         return ClassTableImportModel(
@@ -189,7 +186,7 @@ final class ClassTableImportModel: Identifiable {
             let courses = await courses(for: job.code)
             guard !Task.isCancelled else { return }
             isLookingUp = false
-            guard isCurrent(), signedInStudentId() == account else {
+            guard isCurrent() else {
                 isFinished = true
                 return
             }

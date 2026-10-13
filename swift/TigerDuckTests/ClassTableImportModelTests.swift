@@ -442,7 +442,8 @@ struct ClassTableImportModelTests {
         #expect(!model.isLookingUp)
     }
 
-    /// The sign-out moves the login generation while the course query is still out.
+    /// A sign-out moves the login generation, and so does the one another student ID's sign-in
+    /// runs first; here it happens while the course query is still out.
     @Test("a sign-out during the lookup saves nothing and closes the import")
     func signOutSavesNothing() async throws {
         var generation = 1
@@ -464,30 +465,6 @@ struct ClassTableImportModelTests {
         #expect(Self.reloadedPeople(folder).isEmpty)
         #expect(store.shownPersonID == nil)
         #expect(model.prompt == nil)
-        #expect(model.isFinished)
-    }
-
-    /// The sign-in sheet can sign another account in over a stored one, which leaves the login
-    /// generation where it was.
-    @Test("another student ID signed in during the lookup saves nothing and closes the import")
-    func accountSwitchSavesNothing() async throws {
-        var signedIn: String? = Self.signedIn
-        let model = ClassTableImportModel(
-            store: store,
-            signedInStudentId: { signedIn },
-            isCurrent: { true },
-            lookup: { semester, _ in
-                signedIn = "B11300009"
-                return [Self.course("CS1010001", "資料結構", semester: semester)]
-            }
-        )
-        model.scanned(try Self.code("B11300001"))
-
-        model.importPending()
-        await model.lookupTask?.value
-
-        #expect(store.people.isEmpty)
-        #expect(Self.reloadedPeople(folder).isEmpty)
         #expect(model.isFinished)
     }
 
