@@ -550,7 +550,7 @@ struct MoodleCourseStoreTests {
     func gradesGatedByFunctions() async {
         let folder = Folder()
         let site = Site()
-        site.set(functions: MoodleCourseStore.announcementFunctions, gradeItems: Self.gradebook)
+        site.set(functions: MoodleCourseStore.forumFunctions, gradeItems: Self.gradebook)
         let store = Self.store(folder, site: site)
 
         await store.refreshGrades()

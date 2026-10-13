@@ -1,14 +1,12 @@
 import SwiftUI
 
-/// A discussion in a Moodle list: its title beside its time, then a preview of its message.
-/// At accessibility sizes the marks and the time take their own line above the title.
+/// Accessibility text sizes need a separate metadata line to avoid compressing the title.
 struct MoodleDiscussionCard: View {
     let discussion: MoodleDiscussion
     /// The time the card shows: the posting time for an announcement, the latest post's for a
     /// forum's discussion.
     let date: Date
     let policy: VisualStylePolicy
-    /// A forum's discussion ends with its author and its reply count.
     var showsFooter = false
     var now: Date = AppClock.now()
 
@@ -134,8 +132,6 @@ struct MoodleDiscussionCard: View {
             .fixedSize()
     }
 
-    /// The card read as one element: its marks, title, time and preview, then a forum
-    /// discussion's author and replies.
     static func accessibilityText(discussion: MoodleDiscussion, date: Date, showsFooter: Bool) -> String {
         var style = Date.FormatStyle(date: .long, time: .shortened)
         style.timeZone = AppConstants.taipeiTimeZone

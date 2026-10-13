@@ -1,12 +1,10 @@
 import SwiftUI
 
-/// A forum's discussions as cards, pinned ones first, the next page loading at the end of the
-/// list. Opening one is what tells Moodle it was read; the list never does.
+/// Loading a list must not mark discussions read; only opening one sends a view event.
 struct MoodleDiscussionsView: View {
     let pages: MoodleDiscussionPages
     let title: String
     let page: MoodlePage?
-    /// A forum's discussions end with their author and reply count; announcements do not.
     var showsFooter = false
     let open: (MoodleDiscussion) -> Void
 

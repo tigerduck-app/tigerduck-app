@@ -59,8 +59,7 @@ extension Date {
         Self.moodleDateTimeFormatter.string(from: self)
     }
 
-    /// A post's time in a Moodle discussion: `MM/dd HH:mm` this year, ``moodleDateTimeString``
-    /// in any other.
+    /// Use the school calendar's year so the device's time zone cannot change a post's label.
     func moodlePostDateString(now: Date = AppClock.now()) -> String {
         let calendar = Self.scheduleCalendar
         let thisYear = calendar.component(.year, from: self) == calendar.component(.year, from: now)

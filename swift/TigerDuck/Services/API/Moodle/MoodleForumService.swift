@@ -11,7 +11,6 @@ nonisolated struct MoodleForum: Codable, Sendable, Hashable, Identifiable {
     let cmid: Int
     var discussionCount: Int
     var unreadPostCount: Int
-    /// The forum's description as one line of text, nil when it has none.
     var intro: String? = nil
 
     var isNews: Bool { type == "news" }
@@ -41,7 +40,6 @@ nonisolated struct MoodleDiscussion: Codable, Sendable, Hashable, Identifiable {
     var authorId: Int? = nil
 }
 
-/// A post of a discussion, from `mod_forum_get_discussion_posts`.
 nonisolated struct MoodlePost: Codable, Sendable, Hashable, Identifiable {
     let id: Int
     /// The post this one answers; nil for the discussion's first post.
@@ -120,7 +118,7 @@ nonisolated enum MoodleForumService {
         ).discussions.map(\.model)
     }
 
-    /// Every post of a discussion, oldest first. Moodle does not page this call.
+    /// Moodle returns the whole thread from this call, so it has no paging parameters.
     static func posts(
         discussionId: Int,
         token: String,

@@ -62,7 +62,6 @@ struct MoodleCourseSection: View {
         }
     }
 
-    /// A course with one forum besides its announcements opens that forum's discussions at once.
     static func route(for kind: MoodleSectionRow.Kind, in store: MoodleCourseStore) -> MoodleCourseRoute {
         switch kind {
         case .announcements:
@@ -196,6 +195,7 @@ struct MoodleSectionRowView: View {
         switch row.kind {
         case .announcements: "megaphone"
         case .materials: "folder"
+        case .grades: "chart.bar"
         case .members: "person.2"
         case .forums: "bubble.left.and.bubble.right"
         }
@@ -205,14 +205,13 @@ struct MoodleSectionRowView: View {
         switch row.kind {
         case .announcements: String(localized: "feature_announcements")
         case .materials: String(localized: "course_detail_files_label")
+        case .grades: String(localized: "course_detail_moodle_grades_label")
         case .members: String(localized: "course_detail_members_label")
         case .forums: String(localized: "course_detail_forums_label")
         }
     }
 }
 
-/// A row that opens a Moodle list: an icon, a name with an optional line under it, then an unread
-/// dot, a count and a chevron, which stay on the right however the name wraps.
 struct MoodleCountRow: View {
     let icon: String
     let title: String
@@ -220,7 +219,7 @@ struct MoodleCountRow: View {
     let count: Int
     let hasUnread: Bool
 
-    /// The line between rows starts under the text, not under the icon.
+    /// Align dividers with text so multi-line rows remain visually grouped with their icons.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + iconWidth + TigerDuckTheme.Spacing.md
     private static let iconWidth: CGFloat = 28
 

@@ -98,5 +98,30 @@ struct MoodleCourseSectionTests {
         #expect(abs((long - short) - (fourLines - oneLine)) < 1, "grew \(long - short)pt, not three lines")
         #expect(abs(longer - long) < 0.5, "grew from \(long)pt to \(longer)pt")
     }
+
+    @Test("an announcements screen whose refreshed news forum disappears stops showing the initial spinner")
+    func announcementsWithoutNewsForum() async throws {
+        let store = await Self.store(summary: .empty)
+        #expect(store.announcementPages == nil)
+        #expect(store.forumsFetchedAt != nil)
+        #expect(hasSpinner(MoodleFirstLoadView(failure: nil, retry: {})))
+        #expect(!hasSpinner(MoodleAnnouncementsView(store: store) { _ in }))
+    }
+
+    private func hasSpinner(_ view: some View) -> Bool {
+        let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        func spinners(in view: UIView) -> [UIActivityIndicatorView] {
+            view.subviews.flatMap { [$0 as? UIActivityIndicatorView].compactMap { $0 } + spinners(in: $0) }
+        }
+        return !spinners(in: host.view).isEmpty
+    }
 }
 #endif

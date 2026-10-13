@@ -1,15 +1,12 @@
 import Foundation
 import Observation
 
-/// One forum's discussions as its list shows them, a page at a time, with the forum's counts in
-/// the term's forums kept in step. Changes to the list run one after another: a refresh that
-/// started during a page load would otherwise end with fewer pages than the list just gained.
+/// A refresh racing a page load could discard pages just added, so list work runs serially.
 @Observable
 @MainActor
 final class MoodleDiscussionPages {
     let forumId: Int
     let feed: MoodleFeed<MoodleDiscussionList>
-    /// What the list sorts by after the pinned discussions, and the time each card shows.
     let date: KeyPath<MoodleDiscussion, Date>
     private(set) var isLoadingMore = false
     /// The last next-page load's error, kept until a page loads, so the list can offer a retry.
@@ -34,7 +31,6 @@ final class MoodleDiscussionPages {
         self.api = api
     }
 
-    /// The list as cached for this forum, else nil.
     var list: MoodleDiscussionList? {
         guard let list = feed.value, list.forumId == forumId else { return nil }
         return list
@@ -79,14 +75,17 @@ final class MoodleDiscussionPages {
         }
     }
 
-    /// The next page, when the list's last discussion, `lastId`, comes on screen. A row that is no
-    /// longer the last one asks for nothing.
     func loadMore(after lastId: Int?) async {
         await serially { [self] in
             guard let list, list.hasMore, lastId == list.sorted(by: date).last?.id else { return }
             isLoadingMore = true
             defer { isLoadingMore = false }
             do {
+                guard try await api.functions().contains(MoodleForumService.discussionsFunction) else {
+                    pageFailure = nil
+                    feed.update { $0.hasMore = false }
+                    return
+                }
                 let page = try await api.discussions(forumId, list.pageCount)
                 pageFailure = nil
                 feed.update { current in
@@ -99,7 +98,6 @@ final class MoodleDiscussionPages {
         }
     }
 
-    /// Reads `discussionId` here: no unread post left in it, and as many fewer in the forum.
     func markRead(_ discussionId: Int) {
         let unread = list?.discussions.first { $0.id == discussionId }?.unreadCount ?? 0
         guard unread > 0 else { return }

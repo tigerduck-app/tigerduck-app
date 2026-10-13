@@ -3,10 +3,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// A course's forums other than its announcements, through `MoodleCourseStore` over a stand-in
-/// `MoodleCourseAPI` and a `DataCache` in a folder of its own: the section row's count, the
-/// route a row opens, each forum's discussions a page at a time, each discussion's posts, the
-/// gates on the site's functions, and opening a discussion.
 @MainActor
 struct MoodleCourseForumsTests {
     private nonisolated static let courseId = 20119
@@ -326,6 +322,33 @@ struct MoodleCourseForumsTests {
         #expect(store.discussions(of: Self.qanda).list?.discussions == [])
     }
 
+    @Test("a cached partial list stops paging without an error when the site removes the discussions call")
+    func nextPageGatedByFunctions() async throws {
+        let folder = Folder()
+        let site = Site()
+        let full = (1...MoodleForumService.discussionsPerPage).map { Self.discussion(800 + $0) }
+        site.set(pages: [full, [Self.discussion(900)]])
+        let store = Self.store(folder, site: site)
+        await store.refreshForums()
+        let pages = store.discussions(of: Self.qanda)
+        await pages.refresh()
+        let last = try #require(pages.list?.sorted(by: pages.date).last?.id)
+        site.fail("discussions")
+        await pages.loadMore(after: last)
+        #expect(pages.pageFailure != nil)
+        let calls = site.calls
+        site.set(functions: Self.allFunctions.subtracting([MoodleForumService.discussionsFunction]))
+
+        await pages.loadMore(after: last)
+
+        #expect(site.calls == calls)
+        #expect(pages.pageFailure == nil)
+        #expect(!pages.isLoadingMore)
+        #expect(pages.list?.discussions == full)
+        #expect(pages.list?.pageCount == 1)
+        #expect(pages.list?.hasMore == false)
+    }
+
     @Test("a forum's first list that fails leaves no list and the error for the screen's retry")
     func discussionsFirstLoadFails() async {
         let folder = Folder()
@@ -521,6 +544,29 @@ struct MoodleCourseForumsTests {
         site.fail("posts", false)
         await store.refreshThread(of: Self.discussion(801))
         #expect(store.thread(of: Self.discussion(801)).value?.posts.filter(\.isUnread).map(\.id) == [1802])
+    }
+
+    @Test("an expired cached thread whose opening refresh fails gives no unread snapshot for a later retry")
+    func openThreadWithFailedStaleRefresh() async throws {
+        let folder = Folder()
+        let site = Site()
+        let discussion = Self.discussion(801, replies: 2)
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801, unread: true)])
+        await Self.store(folder, site: site, now: { fetched }).refreshThread(of: discussion)
+        site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801), Self.post(1803, parent: 1801, unread: true)])
+        site.fail("posts")
+        let later = Self.store(folder, site: site, now: { fetched + MoodleRefreshInterval.forums })
+
+        let unreadAtOpening = await later.openThread(of: discussion, in: Self.qanda)
+
+        #expect(unreadAtOpening == nil)
+        #expect(later.thread(of: discussion).status == .failed)
+        try await waitUntil { site.calls.contains("viewed 801") }
+        site.fail("posts", false)
+        await later.refreshThread(of: discussion)
+        #expect(later.thread(of: discussion).value?.posts.filter(\.isUnread).map(\.id) == [1803])
+        #expect(site.calls.filter { $0 == "viewed 801" }.count == 1)
     }
 
     @Test("a site that does not allow the view call is not told, and the discussion still reads as read here")

@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The course's forums other than its announcements, each with its description, an unread dot
-/// and its discussion count. A forum with no discussion is left out.
 struct MoodleForumsView: View {
     let store: MoodleCourseStore
     let open: (MoodleCourseRoute) -> Void
@@ -60,8 +58,6 @@ struct MoodleForumsView: View {
     }
 }
 
-/// A forum's discussions: the announcement cards with each one's author and reply count, the
-/// latest reply first.
 struct MoodleForumView: View {
     let store: MoodleCourseStore
     let forum: MoodleForum

@@ -1,9 +1,6 @@
 import MarkdownUI
 import SwiftUI
 
-/// A forum's discussion: its first post, then each reply under the post it answers, and a capsule
-/// to reply in Moodle, since the app only reads forums. Until the posts load, the first post shows
-/// as the list brought it. Opening the discussion tells Moodle once that it was read.
 struct MoodleDiscussionView: View {
     let store: MoodleCourseStore
     let discussion: MoodleDiscussion
@@ -59,7 +56,6 @@ struct MoodleDiscussionView: View {
         .moodleFilePresentation(files)
     }
 
-    /// Under the first post while the replies have not loaded: a spinner, or the error and a retry.
     @ViewBuilder
     private func repliesPlaceholder(_ thread: MoodleFeed<MoodleDiscussionThread>) -> some View {
         if let failure = thread.failure, !thread.isRefreshing {
@@ -83,11 +79,8 @@ struct MoodleDiscussionView: View {
     }
 }
 
-/// A post where its discussion shows it.
 nonisolated struct MoodleThreadEntry: Equatable, Identifiable {
     let post: MoodlePost
-    /// 0 for the first post, one more for each level of reply, never past
-    /// ``MoodleDiscussionThread/maxDepth``.
     let depth: Int
     /// Whom a reply nested deeper than the levels shown answers.
     let replyingTo: String?
@@ -98,9 +91,8 @@ nonisolated struct MoodleThreadEntry: Equatable, Identifiable {
 nonisolated extension MoodleDiscussionThread {
     static let maxDepth = 3
 
-    /// The posts of `discussion` in reading order: each followed by its replies, oldest first. A
-    /// reply to a post not among them joins the first level. With no posts fetched, or none the
-    /// site lets the app fetch, the first post shows as the discussion's list brought it.
+    /// Missing parents and cyclic links must not hide replies. The cached first post keeps
+    /// a discussion readable before its full thread arrives.
     static func entries(of discussion: MoodleDiscussion, in thread: MoodleDiscussionThread?) -> [MoodleThreadEntry] {
         let posts = thread?.posts ?? []
         guard !posts.isEmpty else {
@@ -156,8 +148,6 @@ extension MoodlePost {
     }
 }
 
-/// A post in a discussion: author, time and unread dot, then its message and attachments. The
-/// first post also carries the subject; a reply sits indented with a guide line per level.
 private struct MoodlePostCard: View {
     let entry: MoodleThreadEntry
     let isUnread: Bool

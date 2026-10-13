@@ -199,7 +199,6 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
     /// Pinned first, then newest first.
     var sorted: [MoodleDiscussion] { sorted(by: \.created) }
 
-    /// Pinned first, then newest first by `date`, such as the latest post's time.
     func sorted(by date: KeyPath<MoodleDiscussion, Date>) -> [MoodleDiscussion] {
         discussions.sorted { lhs, rhs in
             if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
@@ -229,7 +228,6 @@ nonisolated struct MoodleMemberList: Codable, Sendable, Equatable {
     }
 }
 
-/// A discussion's posts, oldest first.
 nonisolated struct MoodleDiscussionThread: Codable, Sendable, Equatable {
     let discussionId: Int
     var posts: [MoodlePost]
@@ -310,7 +308,6 @@ final class MoodleCourseStore {
     @ObservationIgnored private let api: MoodleCourseAPI
     @ObservationIgnored private let context: MoodleCacheContext
     @ObservationIgnored private let downloads: MoodleFileDownloads
-    /// Made on first use, by forum and by discussion, and kept while the store lives.
     @ObservationIgnored private var discussionPages: [Int: MoodleDiscussionPages] = [:]
     @ObservationIgnored private var threads: [Int: MoodleFeed<MoodleDiscussionThread>] = [:]
 
@@ -384,7 +381,6 @@ final class MoodleCourseStore {
         forums.value?.courseIds.contains(courseId) == true ? forums.fetchedAt : nil
     }
 
-    /// The course's forums in Moodle's order; none while the cache does not cover the course.
     private var courseForums: [MoodleForum] {
         guard let term = forums.value, term.courseIds.contains(courseId) else { return [] }
         return term.forums.filter { $0.courseId == courseId }
@@ -394,7 +390,6 @@ final class MoodleCourseStore {
         courseForums.first(where: \.isNews)
     }
 
-    /// The forums other than the announcements that hold a discussion, in Moodle's order.
     var generalForums: [MoodleForum] {
         courseForums.filter { !$0.isNews && $0.discussionCount > 0 }
     }
@@ -482,8 +477,7 @@ final class MoodleCourseStore {
 
     // MARK: Discussions
 
-    /// A forum's discussions. The news forum's are the announcements, newest posting first; any
-    /// other forum's list the latest post first.
+    /// Keep announcement cache paths stable so upgrading does not discard their offline copies.
     func discussions(of forum: MoodleForum) -> MoodleDiscussionPages {
         if let pages = discussionPages[forum.id] { return pages }
         let feed = forum.isNews
@@ -500,12 +494,10 @@ final class MoodleCourseStore {
         return pages
     }
 
-    /// The announcements, once the forums say which forum holds them.
     var announcementPages: MoodleDiscussionPages? {
         newsForum.map(discussions(of:))
     }
 
-    /// A discussion's posts, cached apart for each discussion.
     func thread(of discussion: MoodleDiscussion) -> MoodleFeed<MoodleDiscussionThread> {
         if let feed = threads[discussion.id] { return feed }
         let feed = MoodleFeed<MoodleDiscussionThread>(
@@ -528,9 +520,7 @@ final class MoodleCourseStore {
 
     // MARK: Opening
 
-    /// A discussion opened on screen: read here at once, in its forum and its posts, and on
-    /// Moodle through `mod_forum_view_forum_discussion` when the site allows it. The lists never
-    /// call this; a failed call is not retried and shows nothing.
+    /// List loads must not mark discussions read; a view event is best-effort and is not retried.
     @discardableResult
     func open(_ discussion: MoodleDiscussion, in forum: MoodleForum?) -> Task<Void, Never> {
         if let forum { discussions(of: forum).markRead(discussion.id) }
@@ -549,21 +539,19 @@ final class MoodleCourseStore {
         }
     }
 
-    /// An announcement opened on screen, read as ``open(_:in:)`` reads a discussion.
     @discardableResult
     func open(_ discussion: MoodleDiscussion) -> Task<Void, Never> {
         open(discussion, in: newsForum)
     }
 
-    /// A discussion's posts opened on screen. They are fetched first when the copy is due, so the
-    /// ones unread at this opening are known before ``open(_:in:)`` reads them. Their ids come
-    /// back, or nil while no posts could be had, so posts a retry brings keep their own mark.
+    /// Capture fresh unread flags before marking the thread read. A failed refresh must leave
+    /// no snapshot, since later retry results need their own unread flags.
     func openThread(of discussion: MoodleDiscussion, in forum: MoodleForum) async -> Set<Int>? {
         let feed = thread(of: discussion)
         if MoodleRefreshTimer.wait(fetchedAt: feed.fetchedAt, lastTry: nil, ttl: feed.ttl, now: context.now()) == 0 {
             await refreshThread(of: discussion)
         }
-        let unread = feed.value.map { Set($0.posts.filter(\.isUnread).map(\.id)) }
+        let unread = feed.status == .ok ? feed.value.map { Set($0.posts.filter(\.isUnread).map(\.id)) } : nil
         open(discussion, in: forum)
         return unread
     }
