@@ -42,7 +42,7 @@ extension AppState {
         } catch PushAPIError.httpStatus(401, _) {
             return .unauthorized
         } catch {
-            AppLogger.sync.info("[poll] tick failed: \(error, privacy: .public)")
+            AppLogger.sync.info("[poll] tick failed: \(error, privacy: .private)")
             return .failed
         }
     }
@@ -63,7 +63,7 @@ extension AppState {
         do {
             page = try await pushCoordinator.fetchChanges(sinceRevision: since)
         } catch {
-            AppLogger.sync.info("[feed] read failed: \(error, privacy: .public)")
+            AppLogger.sync.info("[feed] read failed: \(error, privacy: .private)")
             page = nil
         }
         guard mayAdvanceRevision(from: since, generation: generation), !fullSyncGate.isRunning else {
