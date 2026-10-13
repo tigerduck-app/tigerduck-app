@@ -69,7 +69,7 @@ struct MoodleMaterialsTests {
                 functions: { self.lock.withLock { self._functions } },
                 forums: { _ in [] },
                 discussions: { _, _ in [] },
-                markViewed: { _ in },
+                markViewed: { _, _ in },
                 materials: { courseId in
                     await beforeMaterials()
                     return try self.lock.withLock {
@@ -134,7 +134,7 @@ struct MoodleMaterialsTests {
         await store.refreshMaterials()
 
         #expect(store.sectionRows == [MoodleSectionRow(kind: .materials, count: 5, hasUnread: false)])
-        #expect(MoodleCourseSection.route(for: .materials) == .materials)
+        #expect(MoodleCourseSection.route(for: .materials, in: store) == .materials)
     }
 
     @Test("a site that does not allow the call hides the row without asking for the materials")

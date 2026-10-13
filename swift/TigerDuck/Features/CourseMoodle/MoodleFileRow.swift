@@ -294,7 +294,7 @@ private struct MoodleRowMenu: View {
     }
 }
 
-private extension View {
+extension View {
     func moodleRowHover() -> some View {
         #if os(iOS)
         hoverEffect(.highlight)

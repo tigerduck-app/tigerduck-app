@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// A discussion in a Moodle list: its title beside its time, then a preview of its message.
-/// At accessibility sizes the marks and the time take their own line above the title.
+/// Accessibility text sizes need a separate metadata line to avoid compressing the title.
 struct MoodleDiscussionCard: View {
     let discussion: MoodleDiscussion
-    /// The time the card shows: the posting time for an announcement.
+    /// The time the card shows: the posting time for an announcement, the latest post's for a
+    /// forum's discussion.
     let date: Date
     let policy: VisualStylePolicy
+    var showsFooter = false
     var now: Date = AppClock.now()
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -48,12 +49,42 @@ struct MoodleDiscussionCard: View {
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
             }
+            if showsFooter, authorName != nil || discussion.replyCount > 0 {
+                footer
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardPadding()
         .presetCard(policy: policy)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityLabel(Self.accessibilityText(discussion: discussion, date: date, showsFooter: showsFooter))
+    }
+
+    private var authorName: String? { Self.authorName(of: discussion) }
+
+    private static func authorName(of discussion: MoodleDiscussion) -> String? {
+        discussion.authorName.map(MoodlePersonName.displayName).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 6) {
+            if let authorName {
+                MoodleAvatar(name: authorName, size: 18)
+                Text(authorName)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: TigerDuckTheme.Spacing.sm)
+            if discussion.replyCount > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "bubble.left")
+                    Text(discussion.replyCount, format: .number)
+                        .monospacedDigit()
+                }
+                .fixedSize()
+            }
+        }
+        .font(TigerDuckTheme.Typography.caption)
+        .foregroundStyle(Color.textSecondary)
     }
 
     @ViewBuilder
@@ -101,16 +132,22 @@ struct MoodleDiscussionCard: View {
             .fixedSize()
     }
 
-    private var accessibilityText: String {
+    static func accessibilityText(discussion: MoodleDiscussion, date: Date, showsFooter: Bool) -> String {
         var style = Date.FormatStyle(date: .long, time: .shortened)
         style.timeZone = AppConstants.taipeiTimeZone
         var parts: [String] = []
-        if isUnread { parts.append(String(localized: "bulletin_unread_dot_label")) }
+        if discussion.unreadCount > 0 { parts.append(String(localized: "bulletin_unread_dot_label")) }
         if discussion.isPinned { parts.append(String(localized: "course_forum_pinned")) }
         parts.append(discussion.title)
         parts.append(date.formatted(style))
         if !discussion.preview.isEmpty { parts.append(discussion.preview) }
-        if hasAttachments { parts.append(String(localized: "school_mail_attachments")) }
+        if !discussion.attachments.isEmpty { parts.append(String(localized: "school_mail_attachments")) }
+        if showsFooter {
+            if let name = authorName(of: discussion) { parts.append(name) }
+            if discussion.replyCount > 0 {
+                parts.append("\(String(localized: "school_mail_reply")) \(discussion.replyCount.formatted())")
+            }
+        }
         return parts.joined(separator: ", ")
     }
 }

@@ -11,6 +11,7 @@ nonisolated struct MoodleForum: Codable, Sendable, Hashable, Identifiable {
     let cmid: Int
     var discussionCount: Int
     var unreadPostCount: Int
+    var intro: String? = nil
 
     var isNews: Bool { type == "news" }
 }
@@ -39,6 +40,22 @@ nonisolated struct MoodleDiscussion: Codable, Sendable, Hashable, Identifiable {
     var authorId: Int? = nil
 }
 
+nonisolated struct MoodlePost: Codable, Sendable, Hashable, Identifiable {
+    let id: Int
+    /// The post this one answers; nil for the discussion's first post.
+    let parentId: Int?
+    let subject: String
+    /// HTML, already through Moodle's text filters. A deleted post holds Moodle's note instead.
+    let message: String
+    let created: Date?
+    /// Nil where the forum hides authors.
+    let authorName: String?
+    let attachments: [MoodleFile]
+    /// False where the forum does not track what was read.
+    var isUnread: Bool
+    let isDeleted: Bool
+}
+
 /// A file as Moodle's `external_files` lists it.
 nonisolated struct MoodleFile: Codable, Sendable, Hashable {
     let name: String
@@ -55,6 +72,7 @@ nonisolated struct MoodleFile: Codable, Sendable, Hashable {
 nonisolated enum MoodleForumService {
     static let forumsFunction = "mod_forum_get_forums_by_courses"
     static let discussionsFunction = "mod_forum_get_forum_discussions"
+    static let discussionPostsFunction = "mod_forum_get_discussion_posts"
     static let viewDiscussionFunction = "mod_forum_view_forum_discussion"
 
     /// Asked for explicitly: Moodle's default `perpage` of 0 returns every discussion at once.
@@ -100,6 +118,28 @@ nonisolated enum MoodleForumService {
         ).discussions.map(\.model)
     }
 
+    /// Moodle returns the whole thread from this call, so it has no paging parameters.
+    static func posts(
+        discussionId: Int,
+        token: String,
+        session: URLSession = MoodleWebserviceClient.session,
+        siteURL: URL = AppConstants.moodleBaseURL
+    ) async throws -> [MoodlePost] {
+        try await MoodleWebserviceClient.call(
+            discussionPostsFunction,
+            params: [
+                ("discussionid", String(discussionId)),
+                ("sortby", "created"),
+                ("sortdirection", "ASC"),
+                ("moodlewssettingfilter", "true"),
+            ],
+            token: token,
+            as: RawPosts.self,
+            session: session,
+            siteURL: siteURL
+        ).posts.map(\.model)
+    }
+
     /// Logs the view on Moodle, which marks the discussion read and may count toward completion.
     static func markViewed(
         discussionId: Int,
@@ -128,11 +168,14 @@ private nonisolated struct RawForum: Decodable, Sendable {
     let cmid: Int
     let numdiscussions: Int?
     let unreadpostscount: Int?
+    let intro: String?
 
     var model: MoodleForum {
-        MoodleForum(
+        let intro = intro.map(MoodleHTMLText.plainText(fromHTML:)) ?? ""
+        return MoodleForum(
             id: id, courseId: course, type: type, name: MoodleHTMLText.plainText(fromHTML: name), cmid: cmid,
-            discussionCount: numdiscussions ?? 0, unreadPostCount: unreadpostscount ?? 0
+            discussionCount: numdiscussions ?? 0, unreadPostCount: unreadpostscount ?? 0,
+            intro: intro.isEmpty ? nil : intro
         )
     }
 }
@@ -192,6 +235,64 @@ nonisolated struct MoodleRawFile: Decodable, Sendable {
             mimeType: mimetype,
             modified: timemodified.map { Date(timeIntervalSince1970: TimeInterval($0)) },
             path: filepath
+        )
+    }
+}
+
+private nonisolated struct RawPosts: Decodable, Sendable {
+    let posts: [RawPost]
+}
+
+private nonisolated struct RawPost: Decodable, Sendable {
+    struct Author: Decodable, Sendable {
+        let fullname: String?
+    }
+
+    /// Moodle's file exporter names the link `url`; `external_files` names it `fileurl`.
+    struct File: Decodable, Sendable {
+        let filename: String?
+        let filepath: String?
+        let filesize: Int?
+        let url: String?
+        let fileurl: String?
+        let mimetype: String?
+        let timemodified: Int?
+
+        var model: MoodleFile? {
+            guard let filename, let link = url ?? fileurl else { return nil }
+            return MoodleFile(
+                name: filename,
+                size: filesize ?? 0,
+                url: link,
+                mimeType: mimetype,
+                modified: timemodified.map { Date(timeIntervalSince1970: TimeInterval($0)) },
+                path: filepath
+            )
+        }
+    }
+
+    let id: Int
+    let subject: String?
+    let message: String?
+    let author: Author?
+    let hasparent: Bool?
+    let parentid: Int?
+    let timecreated: Int?
+    let unread: Bool?
+    let isdeleted: Bool?
+    let attachments: [File]?
+
+    var model: MoodlePost {
+        MoodlePost(
+            id: id,
+            parentId: hasparent == false ? nil : parentid.flatMap { $0 > 0 ? $0 : nil },
+            subject: MoodleHTMLText.plainText(fromHTML: subject ?? ""),
+            message: message ?? "",
+            created: timecreated.flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil },
+            authorName: author?.fullname,
+            attachments: (attachments ?? []).compactMap(\.model),
+            isUnread: unread ?? false,
+            isDeleted: isdeleted ?? false
         )
     }
 }

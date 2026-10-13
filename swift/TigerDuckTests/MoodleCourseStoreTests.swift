@@ -91,7 +91,7 @@ struct MoodleCourseStoreTests {
                     try await beforePage(page, earlier)
                     return self.lock.withLock { page < self._pages.count ? self._pages[page] : [] }
                 },
-                markViewed: { id in self.lock.withLock { self._viewed.append(id) } },
+                markViewed: { id, _ in self.lock.withLock { self._viewed.append(id) } },
                 gradeItems: { courseId in
                     self.lock.withLock { self._gradeCalls.append(courseId) }
                     try await beforeGrades()
@@ -153,13 +153,13 @@ struct MoodleCourseStoreTests {
         site.set(pages: [[Self.discussion(801, unread: 1), Self.discussion(802)]])
         let first = Self.store(folder, site: site)
         await first.refreshForums()
-        await first.refreshAnnouncements()
+        await first.announcementPages?.refresh()
 
         let again = Self.store(folder, site: Site())
         #expect(again.sectionRows == [MoodleSectionRow(kind: .announcements, count: 2, hasUnread: true)])
-        #expect(again.announcementList?.discussions.map(\.id) == [801, 802])
+        #expect(again.announcementPages?.list?.discussions.map(\.id) == [801, 802])
         #expect(again.forumsFetchedAt != nil)
-        #expect(again.announcementsFetchedAt != nil)
+        #expect(again.announcementPages?.fetchedAt != nil)
         #expect(again.forums.status == .ok)
     }
 
@@ -212,32 +212,33 @@ struct MoodleCourseStoreTests {
     // MARK: - Status
 
     @Test("a course detail opened again reads OK on a copy still fresh, and unknown only where a fetch is due at once")
-    func cachedCopyStatus() async {
+    func cachedCopyStatus() async throws {
         let folder = Folder()
         let site = Site()
         site.set(pages: [[Self.discussion(801)]])
         let fetched = Date(timeIntervalSince1970: 1_800_000_000)
         let first = Self.store(folder, site: site, now: { fetched })
         await first.refreshForums()
-        await first.refreshAnnouncements()
+        await first.announcementPages?.refresh()
 
         // Within the freshness, at its end, past it, and stamped ahead of a clock set back.
         for (age, fresh) in [(0.0, true), (60, true), (299, true), (300, false), (3_600, false), (-60, false)] {
             let now = fetched + age
             let reopened = Self.store(folder, site: Site(), now: { now })
+            let announcements = try #require(reopened.announcementPages)
             #expect(!reopened.sectionRows.isEmpty)
-            #expect(reopened.announcementList != nil)
+            #expect(announcements.list != nil)
 
             let forumsWait = MoodleRefreshTimer.wait(
                 fetchedAt: reopened.forumsFetchedAt, lastTry: nil, ttl: reopened.forums.ttl, now: now
             )
             let announcementsWait = MoodleRefreshTimer.wait(
-                fetchedAt: reopened.announcementsFetchedAt, lastTry: nil, ttl: reopened.announcements.ttl, now: now
+                fetchedAt: announcements.fetchedAt, lastTry: nil, ttl: announcements.feed.ttl, now: now
             )
             #expect((forumsWait > 0) == fresh, "age \(age)")
             #expect((announcementsWait > 0) == fresh, "age \(age)")
             #expect(reopened.sectionStatus == (fresh ? .ok : .unknown), "age \(age)")
-            #expect(reopened.announcements.status == (fresh ? .ok : .unknown), "age \(age)")
+            #expect(announcements.feed.status == (fresh ? .ok : .unknown), "age \(age)")
         }
     }
 
@@ -287,7 +288,7 @@ struct MoodleCourseStoreTests {
         #expect(store.forums.status == .ok)
     }
 
-    @Test("the row hides with no news forum or no announcements")
+    @Test("the announcements row hides with no news forum or no announcements")
     func rowNeedsAnnouncements() async {
         let folder = Folder()
         let site = Site()
@@ -301,7 +302,7 @@ struct MoodleCourseStoreTests {
             site.set(forums: forums)
             let store = Self.store(folder, site: site)
             await store.refreshForums()
-            #expect(store.sectionRows.isEmpty)
+            #expect(!store.sectionRows.contains { $0.kind == .announcements })
         }
     }
 
@@ -316,19 +317,19 @@ struct MoodleCourseStoreTests {
         let store = Self.store(folder, site: site)
         await store.refreshForums()
 
-        await store.refreshAnnouncements()
+        await store.announcementPages?.refresh()
         #expect(site.discussionPages == [0])
-        #expect(store.announcementList?.hasMore == true)
+        #expect(store.announcementPages?.list?.hasMore == true)
 
-        await store.loadMoreAnnouncements(after: store.announcementList?.sorted.last?.id)
+        await store.announcementPages?.loadMore(after: store.announcementPages?.list?.sorted.last?.id)
         #expect(site.discussionPages == [0, 1])
-        #expect(store.announcementList?.discussions.count == MoodleForumService.discussionsPerPage + 1)
-        #expect(store.announcementList?.hasMore == false)
+        #expect(store.announcementPages?.list?.discussions.count == MoodleForumService.discussionsPerPage + 1)
+        #expect(store.announcementPages?.list?.hasMore == false)
 
         // A refresh fetches as many pages as the list shows, so it keeps its length.
-        await store.refreshAnnouncements()
+        await store.announcementPages?.refresh()
         #expect(site.discussionPages == [0, 1, 0, 1])
-        #expect(store.announcementList?.discussions.count == MoodleForumService.discussionsPerPage + 1)
+        #expect(store.announcementPages?.list?.discussions.count == MoodleForumService.discussionsPerPage + 1)
     }
 
     @Test("a refresh during a page load waits for it, so the page that loaded stays")
@@ -344,11 +345,11 @@ struct MoodleCourseStoreTests {
             if page == 0, earlier == 1 { await refreshFirstPage.sleep(for: .zero) }
         })
         await store.refreshForums()
-        await store.refreshAnnouncements()
+        await store.announcementPages?.refresh()
 
-        let paging = Task { await store.loadMoreAnnouncements(after: store.announcementList?.sorted.last?.id) }
+        let paging = Task { await store.announcementPages?.loadMore(after: store.announcementPages?.list?.sorted.last?.id) }
         try await nextPage.waitUntilArmed()
-        let refresh = Task { await store.refreshAnnouncements() }
+        let refresh = Task { await store.announcementPages?.refresh() }
         // A refresh not held back would start here, sized to the list before the next page.
         for _ in 0..<5 { await Task.yield() }
         await nextPage.fire()
@@ -357,7 +358,7 @@ struct MoodleCourseStoreTests {
         await refreshFirstPage.fire()
         await refresh.value
 
-        #expect(store.announcementList?.discussions.count == MoodleForumService.discussionsPerPage + 1)
+        #expect(store.announcementPages?.list?.discussions.count == MoodleForumService.discussionsPerPage + 1)
         #expect(site.discussionPages == [0, 1, 0, 1])
     }
 
@@ -371,11 +372,11 @@ struct MoodleCourseStoreTests {
             if page == 0, earlier == 1 { await firstPage.sleep(for: .zero) }
         })
         await store.refreshForums()
-        await store.refreshAnnouncements()
+        await store.announcementPages?.refresh()
 
-        let timed = Task { await store.refreshAnnouncements() }
+        let timed = Task { await store.announcementPages?.refresh() }
         try await firstPage.waitUntilArmed()
-        let pull = Task { await store.refreshAnnouncements() }
+        let pull = Task { await store.announcementPages?.refresh() }
         for _ in 0..<5 { await Task.yield() }
         await firstPage.fire()
         await timed.value
@@ -394,20 +395,20 @@ struct MoodleCourseStoreTests {
             if page == 1, earlier == 0 { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
         })
         await store.refreshForums()
-        await store.refreshAnnouncements()
-        let last = store.announcementList?.sorted.last?.id
+        await store.announcementPages?.refresh()
+        let last = store.announcementPages?.list?.sorted.last?.id
 
-        await store.loadMoreAnnouncements(after: last)
-        #expect(store.announcementsPageFailure != nil)
-        #expect(store.announcementList?.hasMore == true)
+        await store.announcementPages?.loadMore(after: last)
+        #expect(store.announcementPages?.pageFailure != nil)
+        #expect(store.announcementPages?.list?.hasMore == true)
 
         // A page asked for by a row that is no longer the last one is not loaded.
-        await store.loadMoreAnnouncements(after: 999)
+        await store.announcementPages?.loadMore(after: 999)
         #expect(site.discussionPages == [0, 1])
 
-        await store.loadMoreAnnouncements(after: last)
-        #expect(store.announcementsPageFailure == nil)
-        #expect(store.announcementList?.discussions.count == MoodleForumService.discussionsPerPage + 1)
+        await store.announcementPages?.loadMore(after: last)
+        #expect(store.announcementPages?.pageFailure == nil)
+        #expect(store.announcementPages?.list?.discussions.count == MoodleForumService.discussionsPerPage + 1)
     }
 
     @Test("pinned announcements come first, then the newest")
@@ -417,9 +418,9 @@ struct MoodleCourseStoreTests {
         site.set(pages: [[Self.discussion(1, created: 10), Self.discussion(2, pinned: true, created: 0), Self.discussion(3, created: 20)]])
         let store = Self.store(folder, site: site)
         await store.refreshForums()
-        await store.refreshAnnouncements()
+        await store.announcementPages?.refresh()
 
-        #expect(store.announcementList?.sorted.map(\.id) == [2, 3, 1])
+        #expect(store.announcementPages?.list?.sorted.map(\.id) == [2, 3, 1])
     }
 
     @Test("a refresh that empties the list takes the section row with it")
@@ -430,9 +431,9 @@ struct MoodleCourseStoreTests {
         await store.refreshForums()
         #expect(!store.sectionRows.isEmpty)
 
-        await store.refreshAnnouncements()
+        await store.announcementPages?.refresh()
 
-        #expect(store.announcementList?.discussions == [])
+        #expect(store.announcementPages?.list?.discussions == [])
         #expect(store.sectionRows.isEmpty)
     }
 
@@ -446,15 +447,15 @@ struct MoodleCourseStoreTests {
         site.set(pages: [[unread, Self.discussion(802)]])
         let store = Self.store(folder, site: site)
         await store.refreshForums()
-        await store.refreshAnnouncements()
-        await store.loadMoreAnnouncements(after: store.announcementList?.sorted.last?.id)
+        await store.announcementPages?.refresh()
+        await store.announcementPages?.loadMore(after: store.announcementPages?.list?.sorted.last?.id)
         #expect(site.viewed.isEmpty)
         #expect(store.sectionRows.first?.hasUnread == true)
 
         await store.open(unread).value
 
         #expect(site.viewed == [801])
-        #expect(store.announcementList?.discussions.first { $0.id == 801 }?.unreadCount == 0)
+        #expect(store.announcementPages?.list?.discussions.first { $0.id == 801 }?.unreadCount == 0)
         #expect(store.sectionRows.first?.hasUnread == false)
         #expect(Self.store(folder, site: Site()).sectionRows.first?.hasUnread == false)
     }
@@ -467,13 +468,13 @@ struct MoodleCourseStoreTests {
         site.set(pages: [[unread]])
         let store = Self.store(folder, site: site)
         await store.refreshForums()
-        await store.refreshAnnouncements()
-        site.set(functions: MoodleCourseStore.announcementFunctions)
+        await store.announcementPages?.refresh()
+        site.set(functions: MoodleCourseStore.forumFunctions)
 
         await store.open(unread).value
 
         #expect(site.viewed.isEmpty)
-        #expect(store.announcementList?.discussions.first?.unreadCount == 0)
+        #expect(store.announcementPages?.list?.discussions.first?.unreadCount == 0)
     }
 
     // MARK: - Grades
@@ -549,7 +550,7 @@ struct MoodleCourseStoreTests {
     func gradesGatedByFunctions() async {
         let folder = Folder()
         let site = Site()
-        site.set(functions: MoodleCourseStore.announcementFunctions, gradeItems: Self.gradebook)
+        site.set(functions: MoodleCourseStore.forumFunctions, gradeItems: Self.gradebook)
         let store = Self.store(folder, site: site)
 
         await store.refreshGrades()

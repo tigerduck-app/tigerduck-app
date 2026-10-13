@@ -59,8 +59,16 @@ extension Date {
         Self.moodleDateTimeFormatter.string(from: self)
     }
 
+    /// Use the school calendar's year so the device's time zone cannot change a post's label.
+    func moodlePostDateString(now: Date = AppClock.now()) -> String {
+        let calendar = Self.scheduleCalendar
+        let thisYear = calendar.component(.year, from: self) == calendar.component(.year, from: now)
+        return (thisYear ? Self.moodleMonthDayTimeFormatter : Self.moodleDateTimeFormatter).string(from: self)
+    }
+
     private static let moodleTimeFormatter = posixFormatter("HH:mm")
     private static let moodleMonthDayFormatter = posixFormatter("MM/dd")
+    private static let moodleMonthDayTimeFormatter = posixFormatter("MM/dd HH:mm")
     private static let moodleDateTimeFormatter = posixFormatter("yyyy/MM/dd HH:mm")
 
     /// Gregorian, POSIX and Taipei, as ``fullDateString`` pins them.

@@ -10,6 +10,7 @@ struct MoodlePage: Hashable {
 
     static func forum(cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/view.php?id=\(cmid)") }
     static func discussion(_ id: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/discuss.php?d=\(id)") }
+    static func forums(courseId: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/index.php?id=\(courseId)") }
     static func course(_ id: Int) -> MoodlePage { MoodlePage(path: "/course/view.php?id=\(id)") }
     /// A module's page, such as `/mod/resource/view.php?id=5` for the module `resource`.
     static func module(_ module: String, cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/\(module)/view.php?id=\(cmid)") }
@@ -130,10 +131,29 @@ extension View {
         ))
     }
 
-    /// The bar of a pushed Moodle article: the back button over the content, and "Open in
-    /// Moodle" for `page`.
-    func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
-        modifier(MoodleArticleChrome(page: page))
+    /// The bar of a pushed Moodle article: the back button over the content, "Open in Moodle" for
+    /// `page`, and the status dot for an article that fetches its own data.
+    func moodleArticleChrome(
+        page: MoodlePage? = nil,
+        status: ServerStatus? = nil,
+        isLoading: Bool = false
+    ) -> some View {
+        modifier(MoodleArticleChrome(page: page, status: status, isLoading: isLoading))
+    }
+
+    /// ⌘R on the Mac for a pushed screen that fetches its own data; the class table hands the
+    /// shortcut over while such a screen shows.
+    func moodleRefreshShortcut(_ refresh: @escaping () async -> Void) -> some View {
+        #if os(macOS)
+        return background {
+            Button("") { Task { await refresh() } }
+                .keyboardShortcut("r", modifiers: .command)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+        #else
+        return self
+        #endif
     }
 }
 
@@ -171,13 +191,7 @@ private struct MoodleListChrome: ViewModifier {
                     if let page { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
             }
-            .background {
-                // The class table hands ⌘R over while this screen shows.
-                Button("") { Task { await refresh() } }
-                    .keyboardShortcut("r", modifiers: .command)
-                    .opacity(0)
-                    .accessibilityHidden(true)
-            }
+            .moodleRefreshShortcut(refresh)
         #endif
     }
 
@@ -188,6 +202,8 @@ private struct MoodleListChrome: ViewModifier {
 
 private struct MoodleArticleChrome: ViewModifier {
     let page: MoodlePage?
+    let status: ServerStatus?
+    let isLoading: Bool
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -196,6 +212,14 @@ private struct MoodleArticleChrome: ViewModifier {
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                if let status {
+                    if #available(iOS 26, *) {
+                        ToolbarItem(placement: .topBarTrailing) { MoodleStatusDot(status: status, isLoading: isLoading) }
+                            .sharedBackgroundVisibility(.hidden)
+                    } else {
+                        ToolbarItem(placement: .topBarTrailing) { MoodleStatusDot(status: status, isLoading: isLoading) }
+                    }
+                }
                 if let page {
                     ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page) }
                 }
@@ -205,6 +229,7 @@ private struct MoodleArticleChrome: ViewModifier {
             .navigationBarBackButtonHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) {
                 MacMoodleTitleBar(title: nil) {
+                    if let status { MoodleStatusDot(status: status, isLoading: isLoading) }
                     if let page { MoodleOpenButton(page: page) }
                 }
             }

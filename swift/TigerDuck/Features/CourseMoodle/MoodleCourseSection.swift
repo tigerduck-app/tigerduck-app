@@ -30,9 +30,9 @@ struct MoodleCourseSection: View {
                 VStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         if index > 0 {
-                            Divider().padding(.leading, MoodleSectionRowView.textInset)
+                            Divider().padding(.leading, MoodleCountRow.textInset)
                         }
-                        NavigationLink(value: Self.route(for: row.kind)) {
+                        NavigationLink(value: Self.route(for: row.kind, in: store)) {
                             MoodleSectionRowView(row: row)
                         }
                         .buttonStyle(.plain)
@@ -62,12 +62,20 @@ struct MoodleCourseSection: View {
         }
     }
 
-    static func route(for kind: MoodleSectionRow.Kind) -> MoodleCourseRoute {
+    static func route(for kind: MoodleSectionRow.Kind, in store: MoodleCourseStore) -> MoodleCourseRoute {
         switch kind {
-        case .announcements: .announcements
-        case .materials: .materials
-        case .grades: .grades
-        case .members: .members
+        case .announcements:
+            return .announcements
+        case .materials:
+            return .materials
+        case .grades:
+            return .grades
+        case .members:
+            return .members
+        case .forums:
+            let forums = store.generalForums
+            if forums.count == 1, let only = forums.first { return .forum(only) }
+            return .forums
         }
     }
 }
@@ -176,12 +184,42 @@ private struct MoodleCourseSummaryBody: View {
     }
 }
 
-/// One row of the Moodle section: the kind's icon and name, then its unread dot, its count and
-/// a chevron, which stay on the right however the name wraps.
 struct MoodleSectionRowView: View {
     let row: MoodleSectionRow
 
-    /// The line between rows starts under the text, not under the icon.
+    var body: some View {
+        MoodleCountRow(icon: icon, title: title, count: row.count, hasUnread: row.hasUnread)
+    }
+
+    private var icon: String {
+        switch row.kind {
+        case .announcements: "megaphone"
+        case .materials: "folder"
+        case .grades: "chart.bar"
+        case .members: "person.2"
+        case .forums: "bubble.left.and.bubble.right"
+        }
+    }
+
+    private var title: String {
+        switch row.kind {
+        case .announcements: String(localized: "feature_announcements")
+        case .materials: String(localized: "course_detail_files_label")
+        case .grades: String(localized: "course_detail_moodle_grades_label")
+        case .members: String(localized: "course_detail_members_label")
+        case .forums: String(localized: "course_detail_forums_label")
+        }
+    }
+}
+
+struct MoodleCountRow: View {
+    let icon: String
+    let title: String
+    var subtitle: String? = nil
+    let count: Int
+    let hasUnread: Bool
+
+    /// Align dividers with text so multi-line rows remain visually grouped with their icons.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + iconWidth + TigerDuckTheme.Spacing.md
     private static let iconWidth: CGFloat = 28
 
@@ -189,19 +227,30 @@ struct MoodleSectionRowView: View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             Image(systemName: icon)
                 .font(TigerDuckTheme.Typography.body)
+                // The widest icon, the forums' two bubbles, fills the column at this size and
+                // would run into the name past it.
+                .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .foregroundStyle(.tint)
                 .frame(width: Self.iconWidth)
-            Text(title)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(TigerDuckTheme.Typography.body)
+                    .foregroundStyle(Color.textPrimary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                if row.hasUnread {
+                if hasUnread {
                     Circle()
                         .fill(.tint)
                         .frame(width: 7, height: 7)
                 }
-                Text(row.count, format: .number)
+                Text(count, format: .number)
                     .font(TigerDuckTheme.Typography.body)
                     .monospacedDigit()
                     .foregroundStyle(Color.textSecondary)
@@ -216,30 +265,12 @@ struct MoodleSectionRowView: View {
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
+        .accessibilityLabel([title, subtitle].compactMap(\.self).joined(separator: ", "))
         .accessibilityValue(accessibilityValue)
     }
 
-    private var icon: String {
-        switch row.kind {
-        case .announcements: "megaphone"
-        case .materials: "folder"
-        case .grades: "chart.bar"
-        case .members: "person.2"
-        }
-    }
-
-    private var title: String {
-        switch row.kind {
-        case .announcements: String(localized: "feature_announcements")
-        case .materials: String(localized: "course_detail_files_label")
-        case .grades: String(localized: "course_detail_moodle_grades_label")
-        case .members: String(localized: "course_detail_members_label")
-        }
-    }
-
     private var accessibilityValue: String {
-        let count = row.count.formatted()
-        return row.hasUnread ? "\(count), \(String(localized: "bulletin_unread_dot_label"))" : count
+        let count = count.formatted()
+        return hasUnread ? "\(count), \(String(localized: "bulletin_unread_dot_label"))" : count
     }
 }
