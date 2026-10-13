@@ -73,6 +73,7 @@ TimetableGridView.swift
 # the feature (MacFeatureFiltering.swift) and keeps only its cour01 client
 BuildingDirectory.swift
 EmptyClassroomSchedule.swift
+EmptyClassroomViewModel.swift
 RoomPlace.swift
 RoomSuggestion.swift
 
