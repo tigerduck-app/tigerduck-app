@@ -760,7 +760,7 @@ struct AssignmentMarks {
 
 // MARK: - Codable DTOs
 
-private struct CachedCourse: Codable {
+struct CachedCourse: Codable {
     let courseNo: String
     let courseName: String
     let instructor: String
