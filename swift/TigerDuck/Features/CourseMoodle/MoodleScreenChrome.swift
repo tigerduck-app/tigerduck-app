@@ -10,6 +10,9 @@ struct MoodlePage: Hashable {
 
     static func forum(cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/view.php?id=\(cmid)") }
     static func discussion(_ id: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/discuss.php?d=\(id)") }
+    static func course(_ id: Int) -> MoodlePage { MoodlePage(path: "/course/view.php?id=\(id)") }
+    /// A module's page, such as `/mod/resource/view.php?id=5` for the module `resource`.
+    static func module(_ module: String, cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/\(module)/view.php?id=\(cmid)") }
 
     var webURL: URL? { URL(string: path, relativeTo: AppConstants.moodleBaseURL)?.absoluteURL }
 
@@ -33,6 +36,67 @@ extension OpenURLAction {
         await self(url, fallback: links.open == nil ? nil : links.fallback)
     }
 }
+
+/// Opens a link from Moodle content where the reader expects it: a Moodle page in the browser
+/// signed in, any other web page in the app's browser when the setting asks for it, else as the
+/// system opens it. Signing in goes no further than the Moodle site.
+struct MoodleLinkAction {
+    fileprivate let open: (URL) -> Void
+
+    func callAsFunction(_ url: URL) { open(url) }
+}
+
+extension EnvironmentValues {
+    @Entry var openMoodleLink = MoodleLinkAction { _ in }
+}
+
+extension View {
+    /// Gives the content an ``EnvironmentValues/openMoodleLink`` that opens links as
+    /// ``MoodleLinkAction`` says, with the app's browser on iOS.
+    func moodleLinkOpening() -> some View {
+        modifier(MoodleLinkOpening())
+    }
+}
+
+private struct MoodleLinkOpening: ViewModifier {
+    @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
+    #if os(iOS)
+    @State private var inAppPage: InAppPage?
+    #endif
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.openMoodleLink, MoodleLinkAction(open: open))
+            #if os(iOS)
+            .sheet(item: $inAppPage) { page in
+                InAppBrowserView(url: page.url)
+                    .ignoresSafeArea()
+            }
+            #endif
+    }
+
+    private func open(_ url: URL) {
+        if MoodleAutologinService.isMoodlePage(url) {
+            Task { await openURL(MoodlePage.browserURL(url), fallback: nil) }
+            return
+        }
+        #if os(iOS)
+        if appState.browserPreference == .inApp, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            inAppPage = InAppPage(url: url)
+            return
+        }
+        #endif
+        openURL(url)
+    }
+}
+
+#if os(iOS)
+private struct InAppPage: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+#endif
 
 /// The status dot of a course's Moodle screens: one source, Moodle.
 struct MoodleStatusDot: View {
