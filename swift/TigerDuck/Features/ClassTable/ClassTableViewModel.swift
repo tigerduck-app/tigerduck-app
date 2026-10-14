@@ -136,14 +136,51 @@ final class ClassTableViewModel {
             let merged = self.buildCourseList(fresh, userAdded)
             // Silent overwrite: only swap in-memory list when content actually
             // changed, so SwiftUI doesn't churn on identical data.
-            if self.shownPerson == nil,
-               merged.map(\.courseNo).sorted() != self.courses.map(\.courseNo).sorted() {
+            if self.shownPerson == nil, Self.showsChange(merged, over: self.courses) {
                 self.courses = merged
             }
             if target == CourseSelectionService.currentSemesterCode() {
                 self.currentSemesterCourses = merged
                 self.refreshCourseColors()
             }
+        }
+    }
+
+    /// Whether a fetched list draws anything the shown one does not. A term fetched again can
+    /// bring the same courses back with a new room, time or name.
+    static func showsChange(_ fresh: [SDCourse], over shown: [SDCourse]) -> Bool {
+        func drawn(_ courses: [SDCourse]) -> [DrawnCourse] {
+            courses.sorted { $0.courseNo < $1.courseNo }.map(DrawnCourse.init)
+        }
+        return drawn(fresh) != drawn(shown)
+    }
+
+    /// The fields the grid and the detail sheet show. The schedule and the room map are compared
+    /// decoded, since their JSON does not keep a key order.
+    private struct DrawnCourse: Equatable {
+        let courseNo, name, customName, instructor, classroom: String
+        let credits: Double
+        let enrolledCount, maxCount: Int
+        let schedule: [Int: [String]]
+        let classroomMap: [String: String]
+        let moodleIdNumber: String?
+        let dimension, allYear, requireOption: String
+
+        init(_ course: SDCourse) {
+            courseNo = course.courseNo
+            name = course.courseName
+            customName = course.customName ?? ""
+            instructor = course.instructor
+            classroom = course.classroom
+            credits = course.credits
+            enrolledCount = course.enrolledCount
+            maxCount = course.maxCount
+            schedule = course.schedule
+            classroomMap = course.classroomMap
+            moodleIdNumber = course.moodleIdNumber
+            dimension = course.dimension
+            allYear = course.allYear
+            requireOption = course.requireOption
         }
     }
 

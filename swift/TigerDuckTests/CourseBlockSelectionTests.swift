@@ -57,3 +57,25 @@ struct CourseBlockSelectionTests {
     }
 }
 
+/// Switching terms shows the cached list, then fetches the term again. The fetch has to replace
+/// what is on screen when a course comes back changed, not only when the set of courses changes
+/// (https://github.com/tigerduck-app/tigerduck-app/issues/518).
+@MainActor
+struct ClassTableRefreshTests {
+    private static func course(
+        name: String = "Test",
+        schedule: [Int: [String]] = [1: ["3", "4"]],
+        rooms: [String: String] = ["1-3": "TR-313", "1-4": "TR-313"]
+    ) -> SDCourse {
+        SDCourse(courseNo: "TEST0518", courseName: name, classroom: "TR-313", schedule: schedule, classroomMap: rooms)
+    }
+
+    @Test("a course back with a new room, time or name replaces the shown one")
+    func aChangedCourseReplacesTheShownOne() {
+        let shown = [Self.course()]
+        #expect(!ClassTableViewModel.showsChange([Self.course()], over: shown))
+        #expect(ClassTableViewModel.showsChange([Self.course(rooms: ["1-3": "IB-503", "1-4": "IB-503"])], over: shown))
+        #expect(ClassTableViewModel.showsChange([Self.course(schedule: [2: ["3", "4"]])], over: shown))
+        #expect(ClassTableViewModel.showsChange([Self.course(name: "Renamed")], over: shown))
+    }
+}
