@@ -43,7 +43,8 @@ struct EmptyClassroomViewModelTests {
                 session: URLSession(configuration: config),
                 queryURL: url,
                 sessionGeneration: { 1 },
-                signIn: { _, _, _ in true }
+                signIn: { _, _, _ in true },
+                timeouts: (600, 600)
             )
             let classTable = classTable
             model = EmptyClassroomViewModel(

@@ -36,7 +36,8 @@ struct ClassroomUsageServiceTests {
                     guard generation == account.generation else { throw CancellationError() }
                     account.signIns += 1
                     return true
-                }
+                },
+                timeouts: (600, 600)
             )
         }
 

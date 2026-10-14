@@ -62,6 +62,9 @@ final class ClassroomUsageService {
     private let queryURL: URL
     private let sessionGeneration: @MainActor () -> Int
     private let signIn: SignIn
+    /// The posts wait 15 s, as the SSO posts do; `URLRequest`'s default, kept for the page loads,
+    /// is 60 s. Tests that hold a reply pass more, as a busy runner can stall them past either.
+    private let timeouts: (load: TimeInterval, post: TimeInterval)
 
     private var kept: [Int: (usage: CampusUsage, fetchedAt: Date)] = [:]
     private var lastPage: ClassroomUsageParser.Page?
@@ -76,12 +79,14 @@ final class ClassroomUsageService {
         session: URLSession,
         queryURL: URL,
         sessionGeneration: @escaping @MainActor () -> Int,
-        signIn: @escaping SignIn
+        signIn: @escaping SignIn,
+        timeouts: (load: TimeInterval, post: TimeInterval) = (60, 15)
     ) {
         self.session = session
         self.queryURL = queryURL
         self.sessionGeneration = sessionGeneration
         self.signIn = signIn
+        self.timeouts = timeouts
     }
 
     /// The day as last read in this school session, however old, to show while it refreshes.
@@ -190,13 +195,13 @@ final class ClassroomUsageService {
     /// The query page with the main campus chosen: the kept one, or one reached by signing in.
     private func campusPage(credentials: Credentials, ticket: Ticket) async throws -> ClassroomUsageParser.Page {
         if let lastPage { return lastPage }
-        var html = try await load(URLRequest(url: queryURL))
+        var html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))
         if html.map(ClassroomUsageParser.isQueryPage) != true {
             try check(ticket)
             guard try await signIn(queryURL, credentials, ticket.generation) else {
                 throw ClassroomUsageError.notSignedIn
             }
-            html = try await load(URLRequest(url: queryURL))
+            html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))
         }
         guard let html, ClassroomUsageParser.isQueryPage(html) else { throw ClassroomUsageError.unreadable }
         let query = await Self.parse(html)
@@ -224,8 +229,7 @@ final class ClassroomUsageService {
         for (name, value) in overrides.sorted(by: { $0.key < $1.key }) where !fields.contains(where: { $0.name == name }) {
             fields.append((name, value))
         }
-        // 15 s, as the SSO posts use: `URLRequest`'s default is 60 s.
-        var request = URLRequest(url: queryURL, timeoutInterval: 15)
+        var request = URLRequest(url: queryURL, timeoutInterval: timeouts.post)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue(queryURL.absoluteString, forHTTPHeaderField: "Referer")
