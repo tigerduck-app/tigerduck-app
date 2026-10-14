@@ -397,10 +397,11 @@ extension AppState {
 
         /// The dialog was answered, and `pending` is what is left. A category switched back on
         /// while the answered check ran was turned away by the one-at-a-time guard, and the
-        /// verdict covered only the categories the check compared, so it is owed a check.
-        mutating func noteAnswered(leaving pending: Set<String>, generation: Int) {
+        /// verdict covered only the categories the check compared, so it is owed a check. With
+        /// another dialog up by then, that dialog covers it, and its own answer notes the rest.
+        mutating func noteAnswered(leaving pending: Set<String>, awaitingAnswer: Bool, generation: Int) {
             adopt(generation)
-            if !pending.isEmpty { owed = true }
+            if !pending.isEmpty, !awaitingAnswer { owed = true }
         }
 
         private mutating func recordFailure(at now: Date) {
@@ -591,7 +592,10 @@ extension AppState {
             }
             // After the answer's own requests, which the next check would otherwise read halfway.
             guard isCurrent() else { return }
-            conflictCheckRetry.noteAnswered(leaving: Defaults[.pendingConflictCategories], generation: generation)
+            conflictCheckRetry.noteAnswered(
+                leaving: Defaults[.pendingConflictCategories], awaitingAnswer: reenableConflict != nil,
+                generation: generation
+            )
             retryOwedConflictCheck()
         }
     }

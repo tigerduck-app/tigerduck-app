@@ -159,7 +159,7 @@ struct ConflictCheckRetryTests {
         retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, pending: ["assignments", "courses"], awaitingAnswer: true))
 
-        retry.noteAnswered(leaving: ["assignments"], generation: 0)
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, generation: 0)
         #expect(Self.isDue(retry, pending: ["assignments"]))
     }
 
@@ -168,9 +168,23 @@ struct ConflictCheckRetryTests {
         var retry = AppState.ConflictCheckRetry()
         retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
 
-        retry.noteAnswered(leaving: [], generation: 0)
+        retry.noteAnswered(leaving: [], awaitingAnswer: false, generation: 0)
 
         // A category switched back on later is checked by the Settings screen that marks it.
+        #expect(!Self.isDue(retry, pending: ["assignments"]))
+    }
+
+    /// A second check can raise its dialog while the answer's own requests are still out. Closed
+    /// without an answer, that dialog is not raised again by itself.
+    @Test("An answer that finds another dialog up owes no check of its own")
+    func anAnswerWithAnotherDialogUpOwesNothing() {
+        var retry = AppState.ConflictCheckRetry()
+        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
+        retry.note(.conflict(["assignments"]), at: Self.start, generation: 0)
+
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: true, generation: 0)
+
+        // That dialog is closed without an answer.
         #expect(!Self.isDue(retry, pending: ["assignments"]))
     }
 
