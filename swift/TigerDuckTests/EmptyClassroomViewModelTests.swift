@@ -28,6 +28,11 @@ struct EmptyClassroomViewModelTests {
     }
 
     @MainActor
+    private final class Term {
+        var isInSession = true
+    }
+
+    @MainActor
     private struct Harness {
         let url = URL(string: "https://cour01.stub.invalid/\(UUID().uuidString)/classroom_usecondition.aspx")!
         let signIn = SignIn()
@@ -139,6 +144,22 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.content == .noData)
         #expect(harness.model.nextTeachingDay == Self.day(26))
         #expect(harness.requestCount == 0)
+    }
+
+    @Test("a term's dates that arrive after the day was read take its rooms off the screen")
+    func lateCalendar() async throws {
+        let term = Term()
+        let harness = Harness(at: Self.time(14, 10, 5), isInSession: { _ in term.isInSession })
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+
+        harness.model.dataDidUpdate()
+        #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
+
+        term.isInSession = false
+        harness.model.dataDidUpdate()
+        #expect(harness.model.content == .noData)
     }
 
     @Test("the day's rooms show once read, and a day the site has no rooms for is no data")

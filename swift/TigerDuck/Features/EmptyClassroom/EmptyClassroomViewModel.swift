@@ -224,6 +224,15 @@ final class EmptyClassroomViewModel {
         refreshClasses()
     }
 
+    /// A sync or the academic calendar changed the app's data. The calendar can arrive after the
+    /// day was read, as on a first launch, so a day it takes off stops showing rooms.
+    func dataDidUpdate() {
+        reloadCourses()
+        guard let off = dayOff(selectedDay) else { return }
+        stopLoading()
+        content = Self.content(for: off)
+    }
+
     func select(day: Date) {
         let day = AppConstants.taipeiCalendar.startOfDay(for: day)
         guard day != selectedDay else { return }
@@ -278,15 +287,9 @@ final class EmptyClassroomViewModel {
         // already stopped it, so coming back after a disappear() always starts a new read.
         if !force, running?.day == day { return }
         stopLoading()
-        switch dayOff(day) {
-        case .weekend, .outOfTerm:
-            content = .noData
+        if let off = dayOff(day) {
+            content = Self.content(for: off)
             return
-        case .holiday(let holiday):
-            content = .holiday(name: holiday.name())
-            return
-        case nil:
-            break
         }
         guard let reader = reader() else { return }
         if let kept = service.keptUsage(on: day) {
@@ -318,6 +321,13 @@ final class EmptyClassroomViewModel {
                 guard !(error is CancellationError), content == .loading else { return }
                 content = .failed(offline: Self.isOffline(error))
             }
+        }
+    }
+
+    private static func content(for off: EmptyClassroomSchedule.DayOff) -> Content {
+        switch off {
+        case .weekend, .outOfTerm: .noData
+        case .holiday(let holiday): .holiday(name: holiday.name())
         }
     }
 

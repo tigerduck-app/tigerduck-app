@@ -75,7 +75,7 @@ struct EmptyClassroomView: View {
         .onChange(of: appState.authService.loginGeneration) { viewModel.accountChanged() }
         .onChange(of: appState.authService.hasStoredCredentials) { viewModel.accountChanged() }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
-            viewModel.reloadCourses()
+            viewModel.dataDidUpdate()
         }
     }
 
