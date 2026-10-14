@@ -189,6 +189,22 @@ final class AuthService {
     /// password whatever it finds, but an automatic one that finds a live session posts none and
     /// would go on in the stored account's.
     var signOutStoredAccount: (() async -> Void)?
+    /// The calls the sign-outs still send as the departing account, the device's unregister among
+    /// them. Landing after a sign-in, the unregister would revoke the session and push tokens
+    /// that sign-in registers, so ``login(studentId:password:)`` waits for them.
+    private(set) var signOutCalls: Task<Void, Never>?
+
+    /// Starts the calls of a sign-out, `AppState.logoutNTUST()`, behind those of the sign-outs
+    /// before it, as two windows can sign out at once, and keeps them for the next sign-in.
+    func startSignOutCalls(_ calls: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let previous = signOutCalls
+        let task = Task { @MainActor in
+            await previous?.value
+            await calls()
+        }
+        signOutCalls = task
+        return task
+    }
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
     /// When an automatic backend sign-in that had credentials to send last failed. The backend
     /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
@@ -273,6 +289,7 @@ final class AuthService {
 
         do {
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
+            await signOutCalls?.value
             if let stored = storedStudentId, stored != normalizedId {
                 await signOutStoredAccount?()
             }

@@ -26,6 +26,10 @@ final class ScheduleSyncService {
         /// backend files a push-to-start job for every event it receives, and
         /// an empty list is what cancels the ones this device queued before.
         let liveActivityAvailable: Bool
+        /// The term `courses` belong to. A class goes up only for a day this term is current on
+        /// (`CourseSelectionService.semesterCode(on:calendar:)`): the day before a term begins,
+        /// the window reaches the new term's first day, whose classes this list does not hold.
+        let term: String
         /// The school calendar and the holidays this user still has class on.
         /// A class event on a day classes do not meet is left out, the rule
         /// the on-device resolver applies, since the server would start an
@@ -103,6 +107,7 @@ final class ScheduleSyncService {
         let futureSlots = timeline
             .filter { !$0.course.isSkipped(on: $0.date) }
             .filter { inputs.calendar.isClassDay($0.date, optedIn: inputs.optedInHolidayIDs) }
+            .filter { CourseSelectionService.semesterCode(on: $0.date, calendar: inputs.calendar) == inputs.term }
             .filter { $0.start >= now && $0.start <= horizonEnd }
 
         for slot in futureSlots {
@@ -212,6 +217,7 @@ extension ScheduleSyncService.Inputs {
     /// Live Activity switch off, the server has nothing to start.
     init(
         courses: [SDCourse],
+        term: String,
         assignments: [SDAssignment],
         preferences: LiveActivityPreferencesStore,
         cloudSyncEnabled: Bool,
@@ -232,6 +238,7 @@ extension ScheduleSyncService.Inputs {
                 isLiveActivityEnabled: preferences.isLiveActivityEnabled,
                 cloudSyncEnabled: cloudSyncEnabled
             ),
+            term: term,
             calendar: calendar,
             optedInHolidayIDs: optedInHolidayIDs
         )

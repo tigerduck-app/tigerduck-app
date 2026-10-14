@@ -60,7 +60,8 @@ struct ScheduleSyncServiceTests {
         classPreparingLead: TimeInterval = 15 * 60,
         assignmentLead: TimeInterval = 3 * 3600,
         calendar: AcademicCalendar = .empty,
-        optedInHolidayIDs: Set<Int> = []
+        optedInHolidayIDs: Set<Int> = [],
+        term: String = "1142"
     ) -> ScheduleSyncService.Inputs {
         ScheduleSyncService.Inputs(
             courses: courses,
@@ -72,6 +73,7 @@ struct ScheduleSyncServiceTests {
             showInClass: showInClass,
             showAssignmentScenario: showAssignmentScenario,
             liveActivityAvailable: true,
+            term: term,
             calendar: calendar,
             optedInHolidayIDs: optedInHolidayIDs
         )
@@ -135,6 +137,7 @@ struct ScheduleSyncServiceTests {
                 let events = ScheduleSyncService.buildEvents(
                     inputs: ScheduleSyncService.Inputs(
                         courses: [course],
+                        term: "1142",
                         assignments: [assignment],
                         preferences: store,
                         cloudSyncEnabled: cloudSync,
@@ -222,6 +225,54 @@ struct ScheduleSyncServiceTests {
         )
 
         #expect(events.map(\.scenario) == [.assignmentUrgent])
+    }
+
+    /// Seen from the Monday evening before a term that begins on Tuesday, the window reaches the
+    /// new term's first day. The timetable on hand is the old term's, so its Tuesday class does not
+    /// go up; a list of the new term's courses files that day.
+    @Test func theNewTermsFirstDay_getsNoneOfTheOldTermsClasses() {
+        let ctx = Self.context()
+        let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
+        let tuesday = AcademicCalendar.startOfDay(Self.tuesdayAt(8))
+        let day = { (offset: Int) in AcademicCalendar.calendar.date(byAdding: .day, value: offset, to: tuesday)! }
+        let calendar = AcademicCalendar(
+            revision: 1,
+            terms: [
+                SemesterTerm(code: "1142", start: day(-120), end: day(-1)),
+                SemesterTerm(code: "1151", start: tuesday, end: day(120)),
+            ],
+            holidays: []
+        )
+        let events = { (term: String) in
+            ScheduleSyncService.buildEvents(
+                inputs: Self.defaultInputs(courses: [course], assignments: [assignment], calendar: calendar, term: term),
+                now: now,
+                horizonEnd: now.addingTimeInterval(48 * 3600)
+            )
+        }
+
+        #expect(events("1142").map(\.scenario) == [.assignmentUrgent])
+        #expect(Set(events("1151").map(\.scenario)) == [.classPreparing, .inClass, .assignmentUrgent])
+    }
+
+    /// Before the calendar is fetched the month heuristic's term is current: from February 1 on,
+    /// the spring term, whose timetable a January list does not hold.
+    @Test func withoutACalendar_theHeuristicsTermDecidesTheDay() {
+        let ctx = Self.context()
+        let course = Self.makeCourse(courseNo: "CS401", name: "Networks", weekdayToPeriods: [1: ["3"]], context: ctx)
+        var comps = DateComponents()
+        (comps.year, comps.month, comps.day, comps.hour) = (2027, 1, 31, 20)
+        let sundayEvening = AppConstants.taipeiCalendar.date(from: comps)!
+        let events = { (term: String) in
+            ScheduleSyncService.buildEvents(
+                inputs: Self.defaultInputs(courses: [course], term: term),
+                now: sundayEvening,
+                horizonEnd: sundayEvening.addingTimeInterval(48 * 3600)
+            )
+        }
+
+        #expect(events("1151").isEmpty)
+        #expect(Set(events("1152").map(\.scenario)) == [.classPreparing, .inClass])
     }
 
     /// Tuesday periods 3-4 and a deadline at Tuesday noon, seen from the

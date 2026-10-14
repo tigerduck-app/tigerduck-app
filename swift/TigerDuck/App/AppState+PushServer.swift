@@ -39,12 +39,15 @@ extension AppState {
                     showClassPreparing: false,
                     showInClass: false,
                     showAssignmentScenario: false,
-                    liveActivityAvailable: false
+                    liveActivityAvailable: false,
+                    term: CourseSelectionService.currentSemesterCode()
                 )
             }
             #if os(iOS)
+            let term = CourseSelectionService.currentSemesterCode()
             return ScheduleSyncService.Inputs(
-                courses: courseProvider.currentCourses(),
+                courses: courseProvider.currentCourses(semester: term),
+                term: term,
                 assignments: DataCache.shared.loadAssignments(),
                 preferences: liveActivityPreferences,
                 cloudSyncEnabled: cloudSyncEnabled,
@@ -65,7 +68,8 @@ extension AppState {
                 showClassPreparing: false,
                 showInClass: false,
                 showAssignmentScenario: false,
-                liveActivityAvailable: false
+                liveActivityAvailable: false,
+                term: CourseSelectionService.currentSemesterCode()
             )
             #endif
         }
