@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Observation
 import os
@@ -25,8 +26,13 @@ final class BulletinsViewModel {
     private(set) var isPaginating: Bool = false
     private(set) var hasMore: Bool = true
 
+    /// Saved on every change and restored at the next visit while "Remember bulletin filter" is
+    /// on, which clears it when turned off.
     var selectedOrgs: Set<String> = [] {
-        didSet { refilter() }
+        didSet {
+            refilter()
+            Self.savedOrgs = selectedOrgs
+        }
     }
     var selectedTags: Set<String> = [] {
         didSet { refilter() }
@@ -60,6 +66,25 @@ final class BulletinsViewModel {
         if !cached.isEmpty {
             items = Self.sortedUnique(cached)
             filteredItems = items
+        }
+        if Defaults[.rememberAnnouncementFilter] {
+            selectedOrgs = Self.savedOrgs
+            refilter()
+        }
+    }
+
+    static var savedOrgs: Set<String> {
+        get {
+            guard let data = Defaults[.savedAnnouncementDepartmentsData],
+                  let orgs = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+            return Set(orgs)
+        }
+        set {
+            do {
+                Defaults[.savedAnnouncementDepartmentsData] = try JSONEncoder().encode(newValue.sorted())
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "savedAnnouncementDepartments.encode"])
+            }
         }
     }
 

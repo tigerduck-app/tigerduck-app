@@ -103,4 +103,23 @@ extension BulletinListSessionTests {
             #expect(!unread.contains(hidden))
         }
     }
+
+    /// "Remember bulletin filter" brings the department filter back on the next visit, and only
+    /// while it is on (https://github.com/tigerduck-app/tigerduck-app/issues/523).
+    @Test("a remembered department filter comes back on the next visit")
+    func aRememberedFilterComesBack() async throws {
+        try await withExclusiveRealDefaults {
+            let (remember, saved) = (Defaults[.rememberAnnouncementFilter], Defaults[.savedAnnouncementDepartmentsData])
+            defer {
+                Defaults[.rememberAnnouncementFilter] = remember
+                Defaults[.savedAnnouncementDepartmentsData] = saved
+            }
+            let client = Stub().client
+            Defaults[.rememberAnnouncementFilter] = true
+            BulletinsViewModel(apiClient: client).selectedOrgs = ["TEST-A"]
+            #expect(BulletinsViewModel(apiClient: client).selectedOrgs == ["TEST-A"])
+            Defaults[.rememberAnnouncementFilter] = false
+            #expect(BulletinsViewModel(apiClient: client).selectedOrgs.isEmpty)
+        }
+    }
 }
