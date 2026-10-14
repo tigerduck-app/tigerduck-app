@@ -267,7 +267,10 @@ extension AppState {
                     let completedMatch = localCompletedIds == serverCompletedIds
                     let coursesDiffer = Self.ignoredCoursesDiffer(
                         server: serverIgnoredCourses.map { Set($0.map(\.key)) },
-                        decided: Self.serverDecidedCourses(json["course_overrides"] as? [[String: Any]] ?? []),
+                        decided: Self.serverDecidedCourses(json["course_overrides"] as? [[String: Any]] ?? [])
+                            .union(Self.recreatedCourses(
+                                listed: Self.listedCourseRows(coursesArray), seen: Defaults[.courseRowIdsSeen]
+                            )),
                         listed: Self.listedCourses(coursesArray),
                         local: DataCache.shared.loadIgnoredAssignmentCourses(),
                         snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })

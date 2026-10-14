@@ -442,6 +442,32 @@ extension AppState {
         })
     }
 
+    /// The server row id of each course the snapshot's `courses` lists, by `CourseTombstone` key.
+    nonisolated static func listedCourseRows(_ courses: [[String: Any]]) -> [String: Int] {
+        var rows: [String: Int] = [:]
+        for row in courses {
+            guard let semester = row["semester"] as? String, !semester.isEmpty,
+                  let courseNo = row["course_no"] as? String, !courseNo.isEmpty,
+                  let id = row["id"] as? Int
+            else { continue }
+            rows[CourseTombstone.key(semester: semester, courseNo: courseNo)] = id
+        }
+        return rows
+    }
+
+    /// The listed courses some device deleted and added back since this device recorded `seen`
+    /// (`courseRowIdsSeen`): each is a new server row while another row kept its id. The delete
+    /// took the course's setting, so a pull does not send this device's again. Only a server that
+    /// dropped every course row, as while no device synced courses, leaves no row with its id; a
+    /// pull then sends again what that drop lost.
+    nonisolated static func recreatedCourses(listed: [String: Int], seen: [String: Int]) -> Set<String> {
+        guard listed.contains(where: { seen[$0.key] == $0.value }) else { return [] }
+        return Set(listed.compactMap { key, id in
+            guard let old = seen[key], old != id else { return nil }
+            return key
+        })
+    }
+
     nonisolated static func listedCourses(_ courses: [[String: Any]]) -> Set<String> {
         Set(courses.compactMap { row in
             guard let semester = row["semester"] as? String, !semester.isEmpty,
@@ -516,7 +542,8 @@ extension AppState {
     }
 
     /// Takes the server's ignored courses as `ignoredCoursesAfterPull` says, sends again the ones
-    /// it lost, and sends the numeric Moodle ids it lacks. Returns whether the local set changed.
+    /// it lost, and sends the numeric Moodle ids it lacks. A course some device deleted and added
+    /// back counts as decided (`recreatedCourses`). Returns whether the local set changed.
     private func applyIgnoredCourses(
         _ server: [ServerIgnoredCourse],
         decided: Set<String>,
@@ -531,6 +558,9 @@ extension AppState {
         )
         let current = DataCache.shared.loadIgnoredAssignmentCourses()
         let listed = Self.listedCourses(coursesArray)
+        let listedRows = Self.listedCourseRows(coursesArray)
+        let recreated = Self.recreatedCourses(listed: listedRows, seen: Defaults[.courseRowIdsSeen])
+        Defaults[.courseRowIdsSeen] = listedRows
         let protected = protected.union(Self.courseKeysPullLeaves(
             Set(server.map(\.key)).union(listed).union(current),
             deleting: Set(deleting.keys),
@@ -550,7 +580,7 @@ extension AppState {
 
         let (merged, resend) = Self.ignoredCoursesAfterPull(
             server: Set(server.map(\.key)),
-            decided: decided,
+            decided: decided.union(recreated),
             listed: listed,
             local: current,
             protected: protected,

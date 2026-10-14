@@ -177,6 +177,7 @@ extension AppState {
         Defaults[.assignmentMarksSyncedOnce] = false
         Defaults[.lastSeenCoursesResetAt] = nil
         Defaults[.categoriesSyncedOnce] = []
+        Defaults[.courseRowIdsSeen] = [:]
     }
 
     func notifyLibraryStateChanged() {

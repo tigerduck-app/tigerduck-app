@@ -123,7 +123,7 @@ struct ReenableMarkTests {
         await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce],
-                Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce]
+                Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce], Defaults[.courseRowIdsSeen]
             )
             let savedSwitches = switches.map { ($0.key, Defaults[$0.key]) }
             defer {
@@ -131,6 +131,7 @@ struct ReenableMarkTests {
                 Defaults[.assignmentMarksSyncedOnce] = saved.1
                 Defaults[.lastSeenCoursesResetAt] = saved.2
                 Defaults[.categoriesSyncedOnce] = saved.3
+                Defaults[.courseRowIdsSeen] = saved.4
                 for (key, value) in savedSwitches { Defaults[key] = value }
             }
             Defaults[.pendingConflictCategories] = []
@@ -195,6 +196,7 @@ struct ReenableMarkTests {
     func aFullSyncRecordsItsCategoriesAndASignOutForgetsThem() async {
         await Self.withSyncProgress {
             Self.recordSync()
+            Defaults[.courseRowIdsSeen] = ["1151:CS1": 1]
 
             #expect(Self.synced == Self.categories)
             #expect(Defaults[.lastSeenCoursesResetAt] == Date.distantPast)
@@ -202,6 +204,7 @@ struct ReenableMarkTests {
             AppState.forgetSyncProgress()
 
             #expect(Self.synced.isEmpty)
+            #expect(Defaults[.courseRowIdsSeen].isEmpty)
         }
     }
 
