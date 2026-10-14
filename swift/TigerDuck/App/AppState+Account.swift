@@ -158,8 +158,8 @@ extension AppState {
         // Before the network calls below, which offline run until they time out: the widgets
         // show the departing account's timetable until this rewrites their snapshot.
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        // A sign-in as another account waits for this, so none of it lands on that account.
-        return Task { @MainActor in
+        // Every sign-in waits for this, so none of it lands on the session that sign-in starts.
+        return authService.startSignOutCalls { [self] in
             await cloudSyncCoordinator.settleForSignOut()
             let departing = AuthTokenManager.DepartingAccount(accessToken: await endingSession.value)
             await AuthTokenManager.$departing.withValue(departing) { await pushCoordinator.disable() }

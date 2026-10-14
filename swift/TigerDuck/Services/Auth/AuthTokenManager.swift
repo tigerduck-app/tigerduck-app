@@ -21,6 +21,10 @@ actor AuthTokenManager {
     /// Moved by ``logout()``: a login or refresh reply that comes back after a sign-out belongs
     /// to the account that left, so it stores nothing.
     private var signInGeneration = 0
+    /// What a refresh that the sign-out of `generation` overtook got, for that sign-out's
+    /// ``endSession()``: the access token of a reply, or whether the refresh token may go once
+    /// more, which it may after one send the backend did not turn down.
+    private var lateRefresh: (generation: Int, accessToken: String?, mayResend: Bool)?
 
     /// Re-evaluated on every request, like ``PushAPIClient``, so an endpoint
     /// override applied at runtime moves login/refresh together with the
@@ -214,12 +218,24 @@ actor AuthTokenManager {
     /// follows starts its own, a launch after the app is ended mid-sign-out has none, and a login
     /// or refresh still out stores nothing. Returns an access token for the device's unregister,
     /// which goes out as the departing account under ``departing``. One that would not outlast it
-    /// is refreshed first, and the pair that brings is not kept.
+    /// is refreshed first, and the pair that brings is not kept; a refresh already out is waited
+    /// for instead.
     func endSession() async -> String? {
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
+        let refreshOut = refreshTask, generation = signInGeneration
         logout()
         guard let refresh else { return nil }
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
+        // That refresh sent this token once, or twice after a lost reply, and the backend takes a
+        // third use for theft, which revokes every session of the device. So it goes once more
+        // only after one send the backend did not turn down.
+        if let refreshOut {
+            _ = await refreshOut.value
+            let late = lateRefresh?.generation == generation ? lateRefresh : nil
+            lateRefresh = nil
+            if let token = late?.accessToken { return token }
+            if let late, !late.mayResend { return nil }
+        }
         struct RefreshResponse: Decodable { let access_token: String }
         guard let (data, http) = await postRefresh(refresh), http.statusCode == 200 else { return nil }
         return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
@@ -255,14 +271,23 @@ actor AuthTokenManager {
         // A request with no reply may still have rotated the token. For 60 s the backend answers
         // the old token once more with a fresh pair; a second reuse is taken for theft.
         var reply = await postRefresh(refreshToken)
+        var sends = 1
         if reply == nil, signInGeneration == generation {
             reply = await postRefresh(refreshToken)
+            sends = 2
         }
-        guard let (data, http) = reply else { return nil }
+        guard let (data, http) = reply else {
+            noteOvertaken(generation, accessToken: nil, mayResend: sends == 1)
+            return nil
+        }
 
         if http.statusCode == 200 {
-            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data),
-                  signInGeneration == generation else {
+            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else {
+                noteOvertaken(generation, accessToken: nil, mayResend: sends == 1)
+                return nil
+            }
+            guard signInGeneration == generation else {
+                noteOvertaken(generation, accessToken: result.access_token, mayResend: false)
                 return nil
             }
             store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
@@ -272,20 +297,31 @@ actor AuthTokenManager {
         await APIVersionGate.shared.note(statusCode: http.statusCode)
         // A 4xx means the backend turned this token down, so a relogin is tried. A 429 from the
         // per-IP limit, a 410 (API retired) and a 5xx say nothing about the token and keep it.
-        guard (400...499).contains(http.statusCode), ![410, 429].contains(http.statusCode) else {
+        let turnedDown = (400...499).contains(http.statusCode) && ![410, 429].contains(http.statusCode)
+        // Answered after a sign-out: the session it turned down is the departing account's.
+        guard signInGeneration == generation else {
+            noteOvertaken(generation, accessToken: nil, mayResend: sends == 1 && !turnedDown)
             return nil
         }
+        guard turnedDown else { return nil }
 
-        if let relogin = onRefreshFailed, await relogin() {
+        if let relogin = onRefreshFailed, await relogin(), signInGeneration == generation {
             return accessToken
         }
         // Only a 401 says the token is dead. Another 4xx keeps it, so a relogin that cannot run
-        // behind a locked screen does not sign the device out; the next refresh tries again.
-        guard http.statusCode == 401 else { return nil }
+        // behind a locked screen does not sign the device out. A sign-out during the relogin
+        // leaves the next account's session alone.
+        guard http.statusCode == 401, signInGeneration == generation else { return nil }
         // Not `logout()`: the account has not signed out, so a relogin that another caller has
         // in flight may still store its pair.
         clearTokens()
         return nil
+    }
+
+    /// Keeps what a refresh got for the sign-out of `generation`, if one overtook it.
+    private func noteOvertaken(_ generation: Int, accessToken: String?, mayResend: Bool) {
+        guard signInGeneration != generation else { return }
+        lateRefresh = (generation, accessToken, mayResend)
     }
 
     /// Sends one refresh request. Nil when no HTTP reply came back, as on a timeout.

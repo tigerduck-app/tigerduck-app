@@ -323,6 +323,180 @@ struct BackendTokenRefreshTests {
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 1)
     }
 
+    // MARK: - Refreshes a sign-out meets (https://github.com/tigerduck-app/tigerduck-app/issues/468)
+
+    /// The refresh already out may be the retry after a lost reply, the token's second use; one
+    /// more from the sign-out is taken for theft and revokes the device's sessions, the unregister
+    /// with them.
+    @Test("a sign-out while a refresh is out takes that refresh's token instead of sending another")
+    func signOutDuringARefreshTakesItsToken() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL
+        )
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == "A1")
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+    }
+
+    /// Sent once, the token may go once more: the backend rotates it again while nothing has used
+    /// the pair a lost reply carried, and a server error may not have rotated it at all.
+    @Test("a sign-out whose refresh got no reply or a server error sends the token once more", arguments: [
+        SettingsAPIStub.StubResponse.noReply,
+        SettingsAPIStub.StubResponse(statusCode: 503, body: Data()),
+    ])
+    func signOutResendsARefreshThatGotNoToken(firstReply: SettingsAPIStub.StubResponse) async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        var held = firstReply
+        held.gate = gate
+        SettingsAPIStub.enqueue(held, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == "A1")
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+    }
+
+    @Test("a sign-out sends no third use of a refresh token its refresh already sent twice")
+    func signOutSendsNoThirdUse() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        var lostAgain = SettingsAPIStub.StubResponse.noReply
+        lostAgain.gate = gate
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(lostAgain, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 2 }
+
+        let ending = Task { await manager.endSession() }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == nil)
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    /// Turned down, the token is dead, and one more use of it is taken for theft, which revokes
+    /// every session of the device, a sign-in's after this one included.
+    @Test("a sign-out sends nothing more for a refresh the backend turned down")
+    func signOutSendsNothingAfterARefusal() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        var turnedDown = BackendFixture.reuseDetected
+        turnedDown.gate = gate
+        SettingsAPIStub.enqueue(turnedDown, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == nil)
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+    }
+
+    @Test("a refresh turned down after a sign-out signs nothing in again and leaves the next session alone")
+    func refreshTurnedDownAfterASignOut() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        let relogins = CallCount()
+        await manager.setRefreshFailedHandler {
+            relogins.increment()
+            return false
+        }
+        var turnedDown = BackendFixture.reuseDetected
+        turnedDown.gate = gate
+        SettingsAPIStub.enqueue(turnedDown, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        await manager.logout()
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+
+        #expect(await refresh.value == nil)
+        #expect(relogins.value == 0)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
+        #expect(await manager.isLoggedIn)
+    }
+
+    @Test("a sign-out during the relogin after a 401 leaves the next session alone")
+    func signOutDuringTheReloginAfterA401() async throws {
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        await manager.setRefreshFailedHandler {
+            // The account signs out and the next one signs in while the relogin runs, which fails.
+            await manager.logout()
+            _ = try? await manager.login(
+                studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+            return false
+        }
+
+        #expect(await manager.validAccessToken() == nil)
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
+        #expect(await manager.isLoggedIn)
+    }
+
+    /// The request that asked for the departing account's token gets none, rather than the token
+    /// of the account that signed in after it.
+    @Test("a relogin that a sign-out outlived hands out no token")
+    func reloginASignOutOutlivedHandsOutNoToken() async throws {
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        await manager.setRefreshFailedHandler {
+            await manager.logout()
+            _ = try? await manager.login(
+                studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+            return true
+        }
+
+        #expect(await manager.validAccessToken() == nil)
+
+        #expect(await manager.validAccessToken() == "B1")
+    }
+
     /// The replies a refresh gets, in order.
     enum Outcome: String, CaseIterable, CustomTestStringConvertible {
         case success, lostThenSuccess, lostTwice, serverError, unauthorized

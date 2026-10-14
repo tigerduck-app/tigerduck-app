@@ -50,6 +50,9 @@ final class PushCoordinator {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Coord")
 
     private var isStarted = false
+    /// Set by ``disable()``, which only a sign-out calls: its unregister dropped the APNs tokens,
+    /// and nothing but a launch or this flag starts the stack again.
+    private var stoppedBySignOut = false
     private var pendingSyncTask: Task<Void, Never>?
 
     init(
@@ -347,8 +350,13 @@ final class PushCoordinator {
     /// registration runs before the v3 JWT exists and 401s; calling this once
     /// a Bearer is available gives it a fresh attempt — and resets the give-up
     /// counter — instead of waiting on exponential backoff (or never retrying
-    /// if it already exhausted its attempts while unauthenticated).
+    /// if it already exhausted its attempts while unauthenticated). After a sign-out in the same
+    /// run it starts the stack again first, for the tokens that sign-out's unregister dropped.
     func refreshRegistrationAfterAuth() {
+        if stoppedBySignOut {
+            stoppedBySignOut = false
+            enable()
+        }
         Task { await registration.registerAgain() }
     }
 
@@ -379,6 +387,7 @@ final class PushCoordinator {
     func disable() async {
         guard isStarted else { return }
         isStarted = false
+        stoppedBySignOut = true
         acceptedMoodleCredentials = nil
         logger.info("disabling push stack")
 
