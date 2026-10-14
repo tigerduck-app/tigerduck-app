@@ -7,6 +7,9 @@ import SwiftUI
 /// post-login refresh path.
 struct NTUSTLoginSheetHost: ViewModifier {
     @Environment(AppState.self) private var appState
+    /// The sign-in the sheet started. A sign-in first waits for a sign-out's calls, a minute and
+    /// more on a stalled network, and Cancel stops it so that it saves nothing.
+    @State private var signIn: Task<Void, Never>?
 
     func body(content: Content) -> some View {
         @Bindable var appState = appState
@@ -23,7 +26,7 @@ struct NTUSTLoginSheetHost: ViewModifier {
                 isLoggingIn: appState.authService.isLoggingIn,
                 loginError: appState.authService.loginError,
                 onLogin: { studentId, password in
-                    Task {
+                    signIn = Task {
                         _ = await appState.authService.login(
                             studentId: studentId,
                             password: password
@@ -35,7 +38,10 @@ struct NTUSTLoginSheetHost: ViewModifier {
                         }
                     }
                 },
-                onDismiss: { appState.dismissNTUSTLogin() }
+                onDismiss: {
+                    signIn?.cancel()
+                    appState.dismissNTUSTLogin()
+                }
             )
         }
     }

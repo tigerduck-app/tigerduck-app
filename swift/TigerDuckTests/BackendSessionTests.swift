@@ -664,6 +664,54 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
     }
 
+    /// Once the school has signed the account in and its credentials are stored, a cancel from the
+    /// sign-in sheet lets the rest finish, so Moodle and the backend are not left half signed in
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/589).
+    @Test("a sign-in cancelled after the school step still signs in to the backend")
+    func signInCancelledAfterTheSchoolStepFinishes() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.ntustCredentialsPresent]
+            defer { Defaults[.ntustCredentialsPresent] = saved }
+            let backend = BackendFixture(signedIn: false)
+            SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+            let sheet = SheetSignIn()
+            let stored = OSAllocatedUnfairLock<String?>(initialState: nil)
+            let auth = AuthService(
+                keychainHasCredentials: { false },
+                notificationCenter: NotificationCenter(),
+                moodleTokens: MoodleTokenService(
+                    storedCredentials: { nil },
+                    tokens: .init(
+                        load: { stored.withLock { $0 } },
+                        save: { triple in stored.withLock { $0 = triple.wstoken } },
+                        drop: { stored.withLock { $0 = nil } }
+                    ),
+                    harvest: { _, _ in
+                        // The user cancels the sheet while the Moodle token is fetched.
+                        await MainActor.run { sheet.task?.cancel() }
+                        return .init(signature: "", wstoken: "harvested", privatetoken: nil)
+                    }
+                ),
+                schoolSignIn: { _, _ in true },
+                endSchoolSession: { _ in }
+            )
+            auth.authTokenManager = backend.manager
+            let keychain = MemoryKeychain.locked()
+            // A live library token skips the library sign-in, which would reach the library's server.
+            let expiry = Int64(Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000)
+            try keychain.setObject(Data("library-token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
+            try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
+
+            let signedIn = await SecureStore.$sharedForTesting.withValue(keychain) {
+                sheet.task = Task { await auth.login(studentId: "B11000000", password: "password") }
+                return await sheet.task?.value
+            }
+
+            #expect(signedIn == true)
+            #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        }
+    }
+
     @Test("an unlock signs a signed-out backend back in")
     func unlockSignsTheBackendIn() async throws {
         let backend = BackendFixture(signedIn: false)
@@ -1207,6 +1255,12 @@ private nonisolated final class Recorder: @unchecked Sendable {
     func stored(_ key: String) -> String? { lock.withLock { values[key] } }
     var backgroundTasks: BackgroundTasks { lock.withLock { tasks } }
     var writesOutsideABackgroundTask: Int { lock.withLock { outsideWrites } }
+}
+
+/// The sign-in a sign-in sheet started, which a test cancels as the sheet's Cancel does.
+@MainActor
+private final class SheetSignIn {
+    var task: Task<Bool, Never>?
 }
 
 private nonisolated final class CallCount: @unchecked Sendable {

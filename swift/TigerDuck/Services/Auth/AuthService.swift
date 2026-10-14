@@ -290,16 +290,19 @@ final class AuthService {
         do {
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
             await signOutCalls?.value
+            // Cancelled from the sign-in sheet meanwhile: nothing is signed out or in.
+            try Task.checkCancellation()
             if let stored = storedStudentId, stored != normalizedId {
                 await signOutStoredAccount?()
+                try Task.checkCancellation()
             }
             // Read after that sign-out, which moves it, and before the school step.
             let generation = loginGeneration
 
             let success = try await schoolSignIn(normalizedId, password)
-            // A sign-out from another window that landed as the school's answer came back: the
-            // account left, so none of it is saved and no later step signs it in.
-            guard loginGeneration == generation else {
+            // A sign-out from another window that landed as the school's answer came back, or the
+            // sheet cancelled: none of it is saved and no later step signs it in.
+            guard loginGeneration == generation, !Task.isCancelled else {
                 isLoggingIn = false
                 return false
             }
@@ -315,11 +318,19 @@ final class AuthService {
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 
-                await signInToServices(studentId: normalizedId, password: password, generation: generation)
+                // In a task of its own, which the sheet's cancel does not reach: with the account
+                // saved, stopping here would leave the library, Moodle and the backend half signed in.
+                await Task {
+                    await signInToServices(studentId: normalizedId, password: password, generation: generation)
+                }.value
             }
 
             isLoggingIn = false
             return success
+        } catch where Task.isCancelled {
+            // Cancelled from the sign-in sheet, which shows no error for it.
+            isLoggingIn = false
+            return false
         } catch {
             // SSOLoginError.loginFailed is a user-facing outcome (wrong
             // credentials); logging it as an error would drown out real
