@@ -281,8 +281,11 @@ actor MailChecker {
         // Re-check the account: the key is shared, and a sign-in mid-notify wrote its own baseline.
         guard stillSignedIn(as: account) else { return nil }
         let advanced = unnotified.min().map { min($0, ceiling) } ?? ceiling
-        // The open list may have moved it further during the notify (`noteSeenByPage`).
-        prefs.inboxNextUID = max(advanced, prefs.inboxNextUID ?? 0)
+        // The open list may have moved it further during the notify (`noteSeenByPage`), or adopted
+        // a new UIDVALIDITY, whose marker this check's UIDs say nothing about.
+        if prefs.inboxUIDValidity == status.uidValidity {
+            prefs.inboxNextUID = max(advanced, prefs.inboxNextUID ?? 0)
+        }
         return InboxCheck(
             outcome: fresh.isEmpty ? .noNewMail : .newMail(fresh.count),
             uidValidity: status.uidValidity,
