@@ -21,6 +21,9 @@ actor AuthTokenManager {
     /// Moved by ``logout()``: a login or refresh reply that comes back after a sign-out belongs
     /// to the account that left, so it stores nothing.
     private var signInGeneration = 0
+    /// The access token of a refresh reply that came back after the sign-out of `generation`, for
+    /// that sign-out's ``endSession()``.
+    private var lateRefresh: (generation: Int, accessToken: String)?
 
     /// Re-evaluated on every request, like ``PushAPIClient``, so an endpoint
     /// override applied at runtime moves login/refresh together with the
@@ -214,12 +217,22 @@ actor AuthTokenManager {
     /// follows starts its own, a launch after the app is ended mid-sign-out has none, and a login
     /// or refresh still out stores nothing. Returns an access token for the device's unregister,
     /// which goes out as the departing account under ``departing``. One that would not outlast it
-    /// is refreshed first, and the pair that brings is not kept.
+    /// is refreshed first, and the pair that brings is not kept; a refresh already out is waited
+    /// for instead.
     func endSession() async -> String? {
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
+        let refreshOut = refreshTask, generation = signInGeneration
         logout()
         guard let refresh else { return nil }
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
+        // That refresh has sent this token, twice after a lost reply, and the backend takes a
+        // third use for theft, which revokes the device's sessions and the unregister with them.
+        if let refreshOut {
+            _ = await refreshOut.value
+            guard let late = lateRefresh, late.generation == generation else { return nil }
+            lateRefresh = nil
+            return late.accessToken
+        }
         struct RefreshResponse: Decodable { let access_token: String }
         guard let (data, http) = await postRefresh(refresh), http.statusCode == 200 else { return nil }
         return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
@@ -261,8 +274,9 @@ actor AuthTokenManager {
         guard let (data, http) = reply else { return nil }
 
         if http.statusCode == 200 {
-            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data),
-                  signInGeneration == generation else {
+            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else { return nil }
+            guard signInGeneration == generation else {
+                lateRefresh = (generation, result.access_token)
                 return nil
             }
             store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
@@ -270,18 +284,21 @@ actor AuthTokenManager {
         }
 
         await APIVersionGate.shared.note(statusCode: http.statusCode)
+        // Answered after a sign-out: the session it turned down is the departing account's.
+        guard signInGeneration == generation else { return nil }
         // A 4xx means the backend turned this token down, so a relogin is tried. A 429 from the
         // per-IP limit, a 410 (API retired) and a 5xx say nothing about the token and keep it.
         guard (400...499).contains(http.statusCode), ![410, 429].contains(http.statusCode) else {
             return nil
         }
 
-        if let relogin = onRefreshFailed, await relogin() {
+        if let relogin = onRefreshFailed, await relogin(), signInGeneration == generation {
             return accessToken
         }
         // Only a 401 says the token is dead. Another 4xx keeps it, so a relogin that cannot run
-        // behind a locked screen does not sign the device out; the next refresh tries again.
-        guard http.statusCode == 401 else { return nil }
+        // behind a locked screen does not sign the device out. A sign-out during the relogin
+        // leaves the next account's session alone.
+        guard http.statusCode == 401, signInGeneration == generation else { return nil }
         // Not `logout()`: the account has not signed out, so a relogin that another caller has
         // in flight may still store its pair.
         clearTokens()
