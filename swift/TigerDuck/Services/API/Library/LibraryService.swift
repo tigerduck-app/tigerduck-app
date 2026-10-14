@@ -171,9 +171,16 @@ enum LibraryService {
             if !hasAccount { NotificationCenter.default.post(name: accountDidChange, object: nil) }
             return false
         }
-        guard username.caseInsensitiveCompare(studentId) == .orderedSame else { return false }
+        guard isSameStudent(username, studentId) else { return false }
         clearCredentials()
         return true
+    }
+
+    /// Whether a library username and a school student ID name one student. The sign-in form
+    /// trims what it saves, but a username saved before it did can carry spaces.
+    nonisolated static func isSameStudent(_ username: String, _ studentId: String) -> Bool {
+        func normalized(_ id: String) -> String { id.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
+        return normalized(username) == normalized(studentId)
     }
 
     // MARK: - Token Management
@@ -303,7 +310,7 @@ enum LibraryService {
     /// A school sign-in keeps such an account, as ``clearCredentials(ifSchoolAccount:)`` does.
     @MainActor static func hasAccount(otherThan studentId: String) -> Bool {
         guard hasAccount, let username = storedUsername else { return false }
-        return username.caseInsensitiveCompare(studentId) != .orderedSame
+        return !isSameStudent(username, studentId)
     }
 
     /// Signs in with the stored credentials when there is no live token, so the Library page

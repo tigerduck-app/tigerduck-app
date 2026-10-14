@@ -32,13 +32,15 @@ struct LibrarySignInTests {
     }
 
     /// Runs `body` with a library account of its own in the keychain and no refusal on record.
-    private static func withStoredAccount(_ body: (MemoryKeychain) async throws -> Void) async throws {
+    private static func withStoredAccount(
+        username: String = "B1LIB" + UUID().uuidString.prefix(8),
+        _ body: (MemoryKeychain) async throws -> Void
+    ) async throws {
         try await withExclusiveRealDefaults {
             let saved = LibraryService.storedPasswordRejected
             LibraryService.storedPasswordRejected = false
             defer { LibraryService.storedPasswordRejected = saved }
             let keychain = MemoryKeychain.locked()
-            let username = "B1LIB" + UUID().uuidString.prefix(8)
             try keychain.setObject(Data(username.utf8), forKey: AppConstants.KeychainKeys.libraryUsername)
             try keychain.setObject(Data("password".utf8), forKey: AppConstants.KeychainKeys.libraryPassword)
             try await SecureStore.$sharedForTesting.withValue(keychain) { try await body(keychain) }
@@ -264,6 +266,17 @@ struct LibrarySignInTests {
             #expect(LibraryService.storedUsername == username)
 
             #expect(LibraryService.clearCredentials(ifSchoolAccount: username.lowercased()))
+            #expect(LibraryService.storedUsername == nil)
+        }
+    }
+
+    /// The sign-in form trims what it saves, but a username saved before it did can carry spaces
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/588).
+    @Test func aUsernameWithSpacesIsTheSchoolAccountOfItsID() async throws {
+        try await Self.withStoredAccount(username: " B1LIBSPACE ") { _ in
+            #expect(!LibraryService.hasAccount(otherThan: "b1libspace"))
+            #expect(LibraryService.hasAccount(otherThan: "B19999999"))
+            #expect(LibraryService.clearCredentials(ifSchoolAccount: "b1libspace"))
             #expect(LibraryService.storedUsername == nil)
         }
     }
