@@ -344,6 +344,46 @@ struct LibrarySignInTests {
         }
     }
 
+    /// A refusal found by another caller, such as the sign-in at launch or for the Watch, signs out
+    /// a page waiting to retry a failed code request at once, not at its retry
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/556).
+    @Test func aRefusalElsewhereSignsOutAPageBackingOff() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.backoffSchedule = [300]
+            model.fetchCode = { throw URLError(.timedOut) }
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.errorMessage != nil }
+            #expect(model.isLoggedIn)
+
+            _ = try? await LibraryService.ensureToken { _, _ in throw LibraryServiceError.loginFailed("wrong password") }
+
+            #expect(!model.isLoggedIn)
+            #expect(model.errorMessage == nil)
+        }
+    }
+
+    /// A sign-in that worked elsewhere leaves a signed-in page as it is.
+    @Test func aSignInElsewhereKeepsThePageSignedIn() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.backoffSchedule = [300]
+            model.fetchCode = { throw URLError(.timedOut) }
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.errorMessage != nil }
+
+            _ = try await LibraryService.ensureToken { _, _ in Self.answer() }
+
+            #expect(model.isLoggedIn)
+        }
+    }
+
     @Test func thePauseRunsFromTheFailure() {
         let failure = Date(timeIntervalSince1970: 1_000_000)
         #expect(LibraryService.signInIsDue(lastFailure: nil, now: failure))

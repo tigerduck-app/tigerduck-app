@@ -569,13 +569,17 @@ final class MoodleCourseStore {
 
     /// Every opening fetches the posts, as the list may not know of a reply yet, and keeps which
     /// were unread for the dots. Moodle marks the whole discussion read on the view event, so it
-    /// goes only once the posts load: an opening whose fetch fails sends nothing and returns nil,
-    /// leaving the replies unread for the next opening.
-    func openThread(of discussion: MoodleDiscussion, in forum: MoodleForum) async -> Set<Int>? {
+    /// goes only once the posts load on a page still on screen (`isShown`): an opening whose fetch
+    /// fails, or whose page has left by then, sends nothing and returns nil, leaving the replies
+    /// unread for the next opening.
+    func openThread(
+        of discussion: MoodleDiscussion, in forum: MoodleForum, isShown: () -> Bool = { true }
+    ) async -> Set<Int>? {
         guard context.isCurrent(), !Task.isCancelled else { return nil }
         let feed = thread(of: discussion)
         await refreshThread(of: discussion)
-        guard context.isCurrent(), !Task.isCancelled, feed.status == .ok, let posts = feed.value?.posts else {
+        guard context.isCurrent(), !Task.isCancelled, isShown(),
+              feed.status == .ok, let posts = feed.value?.posts else {
             return nil
         }
         let unread = Set(posts.filter(\.isUnread).map(\.id))
@@ -615,6 +619,9 @@ final class MoodleCourseStore {
     /// Decoded once per course detail, so a row that comes back shows its picture at once.
     private(set) var pictures: [URL: CGImage] = [:]
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
+    @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
+    /// Reads a picture kept on the device, replaced in tests to see where it runs.
+    @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
 
     /// A member's own picture, from the device, else from Moodle once and then kept with the
     /// account's other Moodle files. One who keeps Moodle's default picture, or whose download
@@ -622,13 +629,26 @@ final class MoodleCourseStore {
     func loadPicture(of member: MoodleMember) async {
         guard let url = member.pictureURL, pictures[url] == nil else { return }
         let file = pictureFile(of: member.id, url: url)
-        if let image = (try? Data(contentsOf: file)).flatMap(Self.image(from:)) {
-            pictures[url] = image
+        if let image = await readInTurn(file) {
+            if context.isCurrent() { pictures[url] = image }
             return
         }
         guard let data = await downloadInTurn(url), let image = Self.image(from: data), context.isCurrent() else { return }
         savePicture(data, to: file)
         pictures[url] = image
+    }
+
+    /// Off the main actor, as a course of hundreds asks for every member's picture at once. One
+    /// read at a time, in the order rows ask, so the downloads that follow keep that order.
+    private func readInTurn(_ file: URL) async -> CGImage? {
+        let previous = lastPictureRead
+        let read = readPictureFile
+        let turn = Task.detached(priority: .userInitiated) { () -> CGImage? in
+            _ = await previous?.value
+            return read(file).flatMap(Self.image(from:))
+        }
+        lastPictureRead = turn
+        return await turn.value
     }
 
     /// One download at a time, in the order rows ask, so the pictures on screen come first. A
@@ -677,9 +697,11 @@ final class MoodleCourseStore {
         try? data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
     }
 
+    /// Decoded at once rather than at the first draw, which runs on the main actor; a kept
+    /// picture's read calls this off it.
     private nonisolated static func image(from data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
     }
 
     // MARK: Summary
