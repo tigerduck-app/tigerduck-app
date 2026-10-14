@@ -212,6 +212,12 @@ final class CloudSyncCoordinator {
         tickInFlight = true
         defer { tickInFlight = false }
 
+        #if canImport(UIKit)
+        let protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable
+        #else
+        let protectedDataAvailable = true
+        #endif
+        await outbox.loadOrGiveUp(protectedDataAvailable: protectedDataAvailable)
         guard await outbox.pendingCount() > 0 else { return }
 
         let syncsMarks = syncsAssignmentMarks

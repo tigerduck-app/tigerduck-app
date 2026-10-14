@@ -123,9 +123,11 @@ actor SyncOutbox {
     /// queue is cleared must not merge its retained entries back afterwards.
     private var generation = 0
     /// False while a queue file exists but could not be read, as at a launch behind the lock
-    /// screen (`completeFileProtectionUnlessOpen`). Until it is read nothing is written over the
-    /// files, and what was queued meanwhile joins what they hold.
+    /// screen (`completeFileProtectionUnlessOpen`). Until it is read, or `loadOrGiveUp` gives up
+    /// on it, nothing is written over the files, and what was queued meanwhile joins what they hold.
     private var isLoaded: Bool
+    /// Reads `loadOrGiveUp` found the files unreadable with protected data available.
+    private var unreadableLoads = 0
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
     init(
@@ -160,6 +162,28 @@ actor SyncOutbox {
     func pendingCount() -> Int {
         loadIfNeeded()
         return entries.count
+    }
+
+    static let unreadableLoadLimit = 3
+
+    /// For a caller that can tell whether protected data is available, which this actor cannot
+    /// ask. A queue file still unreadable with it available is damaged or has the wrong
+    /// permissions rather than waiting for an unlock. After `unreadableLoadLimit` such reads the
+    /// outbox stops waiting: it keeps what it can read and what was queued since, and its next
+    /// write replaces the files, so those edits survive a relaunch.
+    func loadOrGiveUp(protectedDataAvailable: Bool) {
+        guard !isLoaded else { return }
+        let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read)
+        let parkedOnDisk = Self.loadEntries(from: directory, fileName: Self.parkedFileName, read: read)
+        if let queued, let parkedOnDisk {
+            adopt(queued: queued, parked: parkedOnDisk)
+            return
+        }
+        guard protectedDataAvailable else { return }
+        unreadableLoads += 1
+        guard unreadableLoads >= Self.unreadableLoadLimit else { return }
+        logger.error("Outbox: queue files unreadable while protected data is available, giving up on them")
+        adopt(queued: queued ?? [], parked: parkedOnDisk ?? [])
     }
 
     func snapshot() -> [OutboxEntry] {
@@ -352,6 +376,10 @@ actor SyncOutbox {
               let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read),
               let parkedOnDisk = Self.loadEntries(from: directory, fileName: Self.parkedFileName, read: read)
         else { return }
+        adopt(queued: queued, parked: parkedOnDisk)
+    }
+
+    private func adopt(queued: [OutboxEntry], parked parkedOnDisk: [OutboxEntry]) {
         let newer = Set((entries + parked).map(\.op.dedupKey))
         entries = queued.filter { !newer.contains($0.op.dedupKey) } + entries
         parked = parkedOnDisk.filter { !newer.contains($0.op.dedupKey) } + parked
