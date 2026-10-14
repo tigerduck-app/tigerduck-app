@@ -11,7 +11,9 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
   own cookie jar; do not create another `URLSession` for them. The jar lives in the App Group, so
   the SSO session outlives a relaunch.
 - Sign in lazily. Only a fetch that needs a service's page logs in, and `ensureAuthenticated`
-  renews the SSO session alone. SSO logins queue through `SSOLoginService.oneAtATime`.
+  renews the SSO session alone. SSO logins queue through `SSOLoginService.oneAtATime`, and
+  automatic posts of the stored password, an SSO sign-in's or a Moodle token renewal's, through
+  `SSOLoginService.postingStoredPassword`; a sign-in the user typed does not wait for it.
 - School answers are shared: `MoodleEnrolledCoursesService` keeps one per wstoken for a minute,
   `MoodleSiteInfoService` keys the user id by token, and `CourseLookupService` keeps lookups for
   30 minutes. A pull skips them, and so does Add Course, which shows seat counts.

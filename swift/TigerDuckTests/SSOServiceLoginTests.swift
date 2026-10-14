@@ -423,4 +423,116 @@ struct SSOServiceLoginTests {
         #expect(token.withLock { $0 } == nil)
         #expect(await log.calls == 1)
     }
+
+    // MARK: - One automatic post of the stored password at a time
+    // https://github.com/tigerduck-app/tigerduck-app/issues/574
+
+    private static func result<T>(_ body: () async throws -> T) async -> Result<T, Error> {
+        do {
+            return .success(try await body())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func automaticSignIn(_ serviceURL: URL) async -> Result<Bool, Error> {
+        await Self.result {
+            try await SSOLoginService.ensureServiceLogin(
+                session: SSOServerStub.session(),
+                serviceURL: serviceURL,
+                studentId: "B00000000",
+                password: "unused",
+                generation: NTUSTSessionManager.shared.generation
+            )
+        }
+    }
+
+    /// After a password change elsewhere, a cold start whose Moodle token is also dead runs both;
+    /// each post of the old password counts toward the account's lockout.
+    @Test("an automatic sign-in waits while a renewal posts the stored password, and posts none once it is refused")
+    func automaticSignInWaitsForARenewalsPost() async {
+        let service = Self.serviceURL()
+        SSOServerStub.reset()
+        Self.enqueueSignInForm(for: service)
+        Self.enqueueSignInForm(for: service)
+        SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: Self.postURL)
+        let log = HarvestLog()
+        let answered = OSAllocatedUnfairLock(initialState: false)
+        let renewal = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), duringHarvest: {
+            while !answered.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
+        })
+        let (signIn, rejected) = await withLatch(false) { () async -> (Result<Bool, Error>, Bool) in
+            async let renewing = try? renewal.refreshTokenIfNeeded()
+            while await log.calls == 0 { try? await Task.sleep(for: .milliseconds(5)) }
+            async let signingIn = automaticSignIn(service)
+            // Long enough for a sign-in that does not wait to reach its POST.
+            for _ in 0..<100 where posts.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
+            answered.withLock { $0 = true }
+            _ = await renewing
+            return (await signingIn, SSOLoginService.storedPasswordRejected)
+        }
+        guard case .failure(SSOLoginError.loginFailed) = signIn else {
+            Issue.record("expected loginFailed, got \(signIn)")
+            return
+        }
+        #expect(posts.isEmpty)
+        #expect(await log.calls == 1)
+        #expect(rejected)
+    }
+
+    @Test("a renewal waits while an automatic sign-in posts the stored password, and harvests nothing once it is refused")
+    func renewalWaitsForAnAutomaticSignInsPost() async {
+        let log = HarvestLog()
+        let renewal = tokenService(log: log, failure: nil)
+        let (outcome, harvests) = await withLatch(false) { () async -> (Result<String, Error>, Int) in
+            // The test holds the lock as an automatic sign-in does while the school answers its post.
+            let renewing = await SSOLoginService.postingStoredPassword {
+                let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
+                // Long enough for the renewal to pass its first check of the latch and queue.
+                try? await Task.sleep(for: .milliseconds(200))
+                SSOLoginService.storedPasswordRejected = true
+                return renewing
+            }
+            return (await renewing.value, await log.calls)
+        }
+        guard case .failure(MoodleWebserviceError.ssoLoginRejected) = outcome else {
+            Issue.record("expected ssoLoginRejected, got \(outcome)")
+            return
+        }
+        #expect(harvests == 0)
+    }
+
+    /// A sign-in the user typed posts what was typed, so it goes ahead while an automatic post of
+    /// the stored password holds the lock. Waiting would hang, hence the time limit.
+    @Test("a sign-in the user typed does not wait for an automatic post of the stored password", .timeLimit(.minutes(1)))
+    func typedSignInsDoNotWaitForTheStoredPasswordsPosts() async {
+        let service = Self.serviceURL()
+        SSOServerStub.reset()
+        Self.enqueueSignInForm(for: service)
+        Self.enqueueSignInForm(for: service)
+        SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
+        SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
+        let log = HarvestLog()
+        let tokens = tokenService(log: log, failure: nil)
+        let (signedIn, token) = await withLatch(false) { () async -> (Result<Bool, Error>, String?) in
+            await SSOLoginService.postingStoredPassword {
+                let signedIn = await Self.result {
+                    try await SSOLoginService.ensureServiceLogin(
+                        session: SSOServerStub.session(),
+                        serviceURL: service,
+                        studentId: "B00000000",
+                        password: "typed",
+                        generation: NTUSTSessionManager.shared.generation,
+                        interactive: true
+                    )
+                }
+                return (signedIn, try? await tokens.obtainToken(studentId: "B00000000", password: "typed"))
+            }
+        }
+        guard case .success(true) = signedIn else {
+            Issue.record("expected a sign-in, got \(signedIn)")
+            return
+        }
+        #expect(token == "new")
+    }
 }
