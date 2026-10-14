@@ -175,11 +175,12 @@ final class EmptyClassroomViewModel {
 
     // MARK: - Actions
 
-    /// Opens on the current period, or the next teaching day's first, the first time and after
-    /// the day shown has passed; then loads the day.
+    /// Opens on the current period, or the next teaching day's first, the first time, after the
+    /// day shown has passed and once the period chosen today has ended; then loads the day. A
+    /// pinned tab keeps this model, so a morning's period would otherwise stay into the afternoon.
     func appear() {
         isOnScreen = true
-        if !hasOpened || selectedDay < today {
+        if !hasOpened || selectedDay < today || selectedPeriod < endedPeriods {
             let opening = EmptyClassroomSchedule.opening(
                 at: now, horizon: Self.dayCount - 1, isTeachingDay: isTeachingDay
             )

@@ -283,6 +283,37 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.openRoom == nil)
     }
 
+    @Test("a period chosen today moves to the current one at a later visit once it has ended")
+    func endedPeriod() {
+        let harness = Harness(at: Self.time(14, 8, 30))
+        harness.model.appear()
+        #expect(harness.model.selectedPeriod == 0)
+
+        // A pinned tab tapped again in the afternoon.
+        harness.model.disappear()
+        harness.now.date = Self.time(14, 13, 40)
+        harness.model.appear()
+        #expect(harness.model.selectedDay == Self.day(14))
+        #expect(harness.model.selectedPeriod == 5)
+
+        // A period still to come stays, and so does one on a later day.
+        harness.model.select(period: 9)
+        harness.model.appear()
+        #expect(harness.model.selectedPeriod == 9)
+        harness.model.select(day: Self.day(15))
+        harness.model.select(period: 0)
+        harness.model.appear()
+        #expect(harness.model.selectedDay == Self.day(15))
+        #expect(harness.model.selectedPeriod == 0)
+
+        // After the last period it moves to the next teaching day.
+        harness.model.select(day: Self.day(14))
+        harness.now.date = Self.time(14, 22, 30)
+        harness.model.appear()
+        #expect(harness.model.selectedDay == Self.day(15))
+        #expect(harness.model.selectedPeriod == 0)
+    }
+
     /// Wednesday's sign-in and campus pages, and its one page of rooms held until `gate` opens.
     private static func serveHeldWednesday(_ harness: Harness, gate: SettingsAPIStub.ReplyGate) {
         harness.serve(Pages.page(campus: ""))
