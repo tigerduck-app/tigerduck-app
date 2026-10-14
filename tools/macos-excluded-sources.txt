@@ -371,7 +371,6 @@ MailNotifier.swift
 
 # Services/Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see
 # Features/SchoolMail above
-AsyncSerialLock.swift
 LiveMailClient.swift
 MailMover.swift
 MailTLSVerifier.swift
