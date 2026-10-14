@@ -237,7 +237,7 @@ struct MoodleCourseStoreTests {
             )
             #expect((forumsWait > 0) == fresh, "age \(age)")
             #expect((announcementsWait > 0) == fresh, "age \(age)")
-            #expect(reopened.sectionStatus == (fresh ? .ok : .unknown), "age \(age)")
+            #expect(reopened.forums.status == (fresh ? .ok : .unknown), "age \(age)")
             #expect(announcements.feed.status == (fresh ? .ok : .unknown), "age \(age)")
         }
     }
@@ -253,15 +253,15 @@ struct MoodleCourseStoreTests {
             await answer.sleep(for: .zero)
             if offline.withLock({ $0 }) { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
         }, now: { fetched + 60 })
-        #expect(store.sectionStatus == .ok)
+        #expect(store.forums.status == .ok)
 
         let failing = Task { await store.refreshForums() }
         try await answer.waitUntilArmed()
-        #expect(store.isSectionRefreshing)
+        #expect(store.forums.isRefreshing)
         await answer.fire()
         await failing.value
-        #expect(!store.isSectionRefreshing)
-        #expect(store.sectionStatus == .failed)
+        #expect(!store.forums.isRefreshing)
+        #expect(store.forums.status == .failed)
         #expect(!store.sectionRows.isEmpty)
 
         offline.withLock { $0 = false }
@@ -269,7 +269,7 @@ struct MoodleCourseStoreTests {
         try await answer.waitUntilArmed(atLeast: 2)
         await answer.fire()
         await retry.value
-        #expect(store.sectionStatus == .ok)
+        #expect(store.forums.status == .ok)
     }
 
     // MARK: - Functions
@@ -646,8 +646,8 @@ struct MoodleCourseStoreTests {
         #expect(store.sectionRows.isEmpty)
     }
 
-    @Test("the section's dot spins while the grades load and shows the worst of its feeds")
-    func sectionStatusCoversGrades() async throws {
+    @Test("the grades show their progress, then their failure, then the next success")
+    func gradesRefreshStatus() async throws {
         let folder = Folder()
         let site = Site()
         site.set(gradeItems: Self.gradebook)
@@ -657,24 +657,20 @@ struct MoodleCourseStoreTests {
             await answer.sleep(for: .zero)
             if failing.withLock({ $0 }) { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
         })
-        await store.refreshForums()
-        // Grades not fetched yet count for nothing beside the forums' answer.
-        #expect(store.sectionStatus == .ok)
-
         let refresh = Task { await store.refreshGrades() }
         try await answer.waitUntilArmed()
-        #expect(store.isSectionRefreshing)
+        #expect(store.grades.isRefreshing)
         await answer.fire()
         await refresh.value
-        #expect(!store.isSectionRefreshing)
-        #expect(store.sectionStatus == .failed)
+        #expect(!store.grades.isRefreshing)
+        #expect(store.grades.status == .failed)
 
         failing.withLock { $0 = false }
         let retry = Task { await store.refreshGrades() }
         try await answer.waitUntilArmed(atLeast: 2)
         await answer.fire()
         await retry.value
-        #expect(store.sectionStatus == .ok)
+        #expect(store.grades.status == .ok)
     }
 
     @Test("a grades refresh asked for during another joins it, as the section's and the screen's timers can")
@@ -862,7 +858,7 @@ struct MoodleCourseStoreTests {
         #expect(Self.summaryOnDisk(folder) == nil)
     }
 
-    @Test("a failed fetch keeps the summary shown and turns the section's dot red, after its progress")
+    @Test("a failed fetch keeps the summary shown and marks it failed, after its progress")
     func summaryFailure() async throws {
         let folder = Folder()
         let fetched = Date(timeIntervalSince1970: 1_800_000_000)
@@ -872,16 +868,16 @@ struct MoodleCourseStoreTests {
             await answer.sleep(for: .zero)
             throw MoodleWebserviceError.transientNetwork(underlying: "offline")
         }, now: { fetched + 60 })
-        #expect(store.sectionStatus == .ok)
+        #expect(store.summary.status == .ok)
 
         let refresh = Task { await store.refreshSummary() }
         try await answer.waitUntilArmed()
-        #expect(store.isSectionRefreshing)
+        #expect(store.summary.isRefreshing)
         await answer.fire()
         await refresh.value
 
-        #expect(!store.isSectionRefreshing)
-        #expect(store.sectionStatus == .failed)
+        #expect(!store.summary.isRefreshing)
+        #expect(store.summary.status == .failed)
         #expect(store.shownSummary == Self.summary)
     }
 

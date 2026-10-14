@@ -46,6 +46,31 @@ extension Color {
     /// pages carry their own per-page colours rather than the app tint.
     static let onboardingAccent = Color(hex: 0x007AFF)
     static let badgeRed = Color(hex: 0xFF3B30)
+    /// Text on a ``pastel`` fill, which stays light in either appearance.
+    static let textOnPastel = Color(hex: 0x1A1A1A)
+    static let textOnPastelSecondary = Color(hex: 0x1A1A1A, alpha: 0.8)
+    /// The two tones of a grid's alternating row bands.
+    static let rowBand = Color.primary.opacity(0.08)
+    static let rowBandAlternate = Color.primary.opacity(0.04)
+
+    /// This colour mixed with white into an opaque pastel. Mixing with white keeps the hue, so a
+    /// course still shows the colour it was given, and lifts every channel to at least 65%, where
+    /// ``textOnPastel`` reads at better than 7:1.
+    var pastel: Color { mixed(toward: 1, by: 0.65) }
+
+    /// This colour mixed half with black, for a line on its own ``pastel`` that stands out from
+    /// it at better than 3:1 whatever the colour.
+    var pastelOutline: Color { mixed(toward: 0, by: 0.5) }
+
+    /// Each sRGB channel moved `share` of the way to `target`, opaque.
+    private func mixed(toward target: Float, by share: Float) -> Color {
+        var resolved = resolve(in: EnvironmentValues())
+        resolved.red += (target - resolved.red) * share
+        resolved.green += (target - resolved.green) * share
+        resolved.blue += (target - resolved.blue) * share
+        resolved.opacity = 1
+        return Color(resolved)
+    }
 
     // MARK: - Calendar Event Colors
 

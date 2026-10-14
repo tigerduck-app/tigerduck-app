@@ -199,9 +199,21 @@ final class MoodleFileDownloads {
         try files.createDirectory(at: location.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? files.removeItem(at: location)
         try files.moveItem(at: temporary, to: location)
-        if let modified {
-            try files.setAttributes([.modificationDate: modified], ofItemAtPath: location.path)
+        let attributes = placedAttributes(modified: modified)
+        if !attributes.isEmpty {
+            try files.setAttributes(attributes, ofItemAtPath: location.path)
         }
+    }
+
+    /// What a placed copy is given: closed behind the lock screen, as the other Moodle files on
+    /// disk are, and the modification date Moodle lists.
+    nonisolated static func placedAttributes(modified: Date?) -> [FileAttributeKey: Any] {
+        var attributes: [FileAttributeKey: Any] = [:]
+        #if os(iOS)
+        attributes[.protectionKey] = FileProtectionType.completeUnlessOpen
+        #endif
+        if let modified { attributes[.modificationDate] = modified }
+        return attributes
     }
 
     private nonisolated static func hasCopy(of file: MoodleFile, at location: URL) -> Bool {

@@ -180,7 +180,7 @@ struct MoodleMaterialsTests {
         await store.refreshMaterials()
         #expect(store.materials.value == nil)
         #expect(store.materials.failure != nil)
-        #expect(store.sectionStatus == .failed)
+        #expect(store.materials.status == .failed)
 
         site.set()
         await store.refreshMaterials()
@@ -189,33 +189,6 @@ struct MoodleMaterialsTests {
         #expect(store.materials.value == Self.materials)
         #expect(store.materials.status == .failed)
         #expect(store.sectionRows.map(\.kind) == [.materials])
-    }
-
-    @Test("the section dot shows a failed feed first, else OK once one feed reads OK, and spins while either fetches")
-    func sectionStatus() async throws {
-        let folder = Folder()
-        let site = Site()
-        let answer = ManualSleeper()
-        let store = Self.store(folder, site: site, beforeMaterials: { await answer.sleep(for: .zero) })
-        #expect(store.sectionStatus == .unknown)
-
-        let first = Task { await store.refreshMaterials() }
-        try await answer.waitUntilArmed()
-        #expect(store.isSectionRefreshing)
-        await answer.fire()
-        await first.value
-        #expect(!store.isSectionRefreshing)
-        #expect(store.forums.status == .unknown)
-        #expect(store.sectionStatus == .ok)
-
-        await store.refreshForums()
-        site.set(failure: MoodleWebserviceError.siteMaintenance)
-        let failing = Task { await store.refreshMaterials() }
-        try await answer.waitUntilArmed(atLeast: 2)
-        await answer.fire()
-        await failing.value
-        #expect(store.forums.status == .ok)
-        #expect(store.sectionStatus == .failed)
     }
 
     // MARK: - Cache
@@ -317,6 +290,15 @@ struct MoodleMaterialsTests {
         #expect(store.downloadState(of: file, in: .module(9101)) == .downloaded(copy))
         #expect(await store.download(file, in: .module(9101)) == copy)
         #expect(site.downloads.count == 1)
+    }
+
+    /// The other Moodle files on disk are closed behind the lock screen, and an attachment such as
+    /// a grade list should be too (https://github.com/tigerduck-app/tigerduck-app/issues/444).
+    @Test("a downloaded file is closed to reads while the device is locked")
+    func downloadedFileProtection() {
+        // A simulator keeps no protection class on a file, so this reads what a copy is given.
+        let attributes = MoodleFileDownloads.placedAttributes(modified: nil)
+        #expect(attributes[.protectionKey] as? FileProtectionType == .completeUnlessOpen)
     }
 
     @Test("a cancelled download leaves no file and shows as not downloaded")

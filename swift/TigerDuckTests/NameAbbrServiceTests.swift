@@ -52,6 +52,15 @@ final class NameAbbrServiceTests: XCTestCase {
         XCTAssertEqual(result, "TR-313, 115 Seminar Room")
     }
 
+    func test_rawClassroom_resolvesEveryDisplayFormToTheSchoolsName() {
+        let svc = NameAbbrService.shared
+        XCTAssertEqual(svc.rawClassroom("115 Seminar Room"), "115研討室")
+        XCTAssertEqual(svc.rawClassroom("115 Yan Tao Shi"), "115研討室")
+        XCTAssertEqual(svc.rawClassroom("115研討室"), "115研討室")
+        XCTAssertEqual(svc.rawClassroom("TR-313"), "TR-313")
+        XCTAssertEqual(svc.rawClassroom("A Room No List Has"), "A Room No List Has")
+    }
+
     func test_relabelInPlace_propagatesPinyinToClassroomMap() {
         let svc = NameAbbrService.shared
         svc.clearRawNameCache()

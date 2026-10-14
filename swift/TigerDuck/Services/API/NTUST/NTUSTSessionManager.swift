@@ -160,16 +160,23 @@ final class NTUSTSessionManager {
     }
 
     func invalidateSession() {
-        // The departing account's requests would put its cookies back after the purge below.
         // Flows keep this session, and a request on an invalidated one ends the app with an
         // exception, so its tasks are cancelled instead.
         generation &+= 1
-        session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
-        // Cookies live in the NTUST-only jar now; clear it wholesale —
-        // no host-filter tip-toeing required, and Moodle / Library /
-        // WebView state in `HTTPCookieStorage.shared` is untouched.
-        cookieStorage.cookies?.forEach { cookieStorage.deleteCookie($0) }
+        Self.cancelTasks(of: session, thenEmpty: cookieStorage)
         Defaults[.ssoLoginTimestamp] = nil
+    }
+
+    /// Empties `jar` now and again once `session`'s tasks are cancelled: `getAllTasks` answers
+    /// after this returns, and a response that lands before its task is cancelled stores the
+    /// departing account's cookies in between. The jar holds only NTUST cookies, so Moodle,
+    /// Library and WebView state in `HTTPCookieStorage.shared` is untouched.
+    nonisolated static func cancelTasks(of session: URLSession, thenEmpty jar: HTTPCookieStorage) {
+        jar.cookies?.forEach { jar.deleteCookie($0) }
+        session.getAllTasks { tasks in
+            tasks.forEach { $0.cancel() }
+            jar.cookies?.forEach { jar.deleteCookie($0) }
+        }
     }
 }
 

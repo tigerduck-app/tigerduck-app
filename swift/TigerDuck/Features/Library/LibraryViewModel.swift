@@ -63,12 +63,7 @@ final class LibraryViewModel {
         isLoggedIn = LibraryService.isTokenValid || LibraryService.canSignInWithStoredCredentials
         signedInUsername = LibraryService.storedUsername
 
-        // Pre-fill username from stored library credentials or NTUST student ID
-        if let stored = LibraryService.storedUsername {
-            libUsername = stored
-        } else if let ntustId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId) {
-            libUsername = ntustId
-        }
+        libUsername = Self.prefilledUsername
     }
 
     func onAppear() {
@@ -290,6 +285,15 @@ final class LibraryViewModel {
         consecutiveErrors = 0
         isLoggedIn = LibraryService.isTokenValid
         signedInUsername = LibraryService.storedUsername
+        libUsername = Self.prefilledUsername
+        libPassword = ""
+    }
+
+    /// The sign-in form's student ID: the stored library account's, else the school account's.
+    private static var prefilledUsername: String {
+        LibraryService.storedUsername
+            ?? KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
+            ?? ""
     }
 
     func stopTimers() {

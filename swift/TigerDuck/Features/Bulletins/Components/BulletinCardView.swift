@@ -129,7 +129,7 @@ struct BulletinCardView: View {
 
     private func summaryFont(policy: VisualStylePolicy) -> Font {
         switch policy.preset {
-        case .default: return TigerDuckTheme.Typography.body
+        case .default, .tat: return TigerDuckTheme.Typography.body
         case .iosInspired: return .subheadline
         }
     }

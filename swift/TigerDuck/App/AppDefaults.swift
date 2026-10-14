@@ -78,11 +78,10 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.invertSliderDirection,
         default: false
     )
-    /// Default ON: the first-trigger prompt gives users an explicit choice on
-    /// their first accidental flip.
+    /// Default off: a prompt offers it once a library account is signed in.
     static let flipToLibraryEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.flipToLibraryEnabled,
-        default: true
+        default: false
     )
     static let homeSectionLayoutData = Key<Data?>(
         AppConstants.UserDefaultsKeys.homeSectionLayout
@@ -156,6 +155,8 @@ nonisolated extension Defaults.Keys {
     static let classTableSelectedSemester = Key<String?>(
         AppConstants.UserDefaultsKeys.classTableSelectedSemester
     )
+    /// The building the user last picked in the empty-classroom finder, by code.
+    static let emptyClassroomBuilding = Key<String?>("emptyClassroomBuilding")
     static let homeAssignmentFilter = Key<String>(
         AppConstants.UserDefaultsKeys.homeAssignmentFilter,
         default: AssignmentFilter.incomplete.rawValue

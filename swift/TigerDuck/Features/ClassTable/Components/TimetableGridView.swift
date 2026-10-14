@@ -85,11 +85,17 @@ struct TimetableGridView: View {
     /// beyond, which is what someone who asked for bigger text wants anyway.
     @ScaledMetric(relativeTo: .caption2) private var scaledCellHeight: CGFloat = 40
     @ScaledMetric(relativeTo: .caption2) private var scaledPeriodWidth: CGFloat = 28
+    @ScaledMetric(relativeTo: .caption2) private var scaledPeriodNumberWidth: CGFloat = 16
     @ScaledMetric(relativeTo: .caption2) private var periodTimeSize: CGFloat = 9
     @ScaledMetric(relativeTo: .caption2) private var periodLabelSize: CGFloat = 12
 
+    private var policy: VisualStylePolicy { appState.visualStylePolicy }
+    private var drawsPeriodTiles: Bool { policy.classTableGridStyle == .periodTiles }
+
     private var cellHeight: CGFloat { max(52, scaledCellHeight) }
-    private var periodWidth: CGFloat { max(36, scaledPeriodWidth) }
+    private var periodWidth: CGFloat {
+        drawsPeriodTiles ? max(20, scaledPeriodNumberWidth) : max(36, scaledPeriodWidth)
+    }
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
 
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
@@ -144,15 +150,19 @@ struct TimetableGridView: View {
                     // the period it marks, and the last row has no next row to infer from.
                     // Each line shrinks rather than truncating, since "08:…" says nothing.
                     VStack(spacing: 0) {
-                        Text(period.startTime)
-                            .font(.system(size: periodTimeSize))
-                            .foregroundStyle(Color.textSecondary)
+                        if !drawsPeriodTiles {
+                            Text(period.startTime)
+                                .font(.system(size: periodTimeSize))
+                                .foregroundStyle(Color.textSecondary)
+                        }
                         Text(period.displayLabel)
                             .font(.system(size: periodLabelSize, weight: .bold))
                             .foregroundStyle(Color.textPrimary)
-                        Text(period.endTime)
-                            .font(.system(size: periodTimeSize))
-                            .foregroundStyle(Color.textSecondary)
+                        if !drawsPeriodTiles {
+                            Text(period.endTime)
+                                .font(.system(size: periodTimeSize))
+                                .foregroundStyle(Color.textSecondary)
+                        }
                     }
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -172,6 +182,20 @@ struct TimetableGridView: View {
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.xs)
+        // Behind the whole grid, not each row: a course block reaches down over the rows below
+        // its first, and a later row's band would cover it.
+        .background(alignment: .top) {
+            if drawsPeriodTiles {
+                VStack(spacing: 0) {
+                    ForEach(periods.indices, id: \.self) { index in
+                        (index.isMultiple(of: 2) ? Color.rowBand : Color.rowBandAlternate)
+                            .frame(height: rowPitch)
+                    }
+                }
+                // Each band reaches halfway into the gaps around its row, so the bands meet.
+                .padding(.top, firstRowTop - rowSpacing / 2)
+            }
+        }
         // Every row is one cell high, so the grid's top places them all.
         .onGeometryChange(for: TimetableRowTops.self) { proxy in
             let gridTop = proxy.frame(in: .scrollView).minY
@@ -220,7 +244,7 @@ struct TimetableGridView: View {
         switch role {
         case .empty:
             RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                .fill(Color.cardSurface.opacity(0.15))
+                .fill(drawsPeriodTiles ? Color.clear : Color.cardSurface.opacity(0.15))
                 .transition(.identity)
 
         case .solo(let course, let spanCount):
@@ -232,38 +256,22 @@ struct TimetableGridView: View {
             let roomHint = appState.showClassroomInClassTable
                 ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
                 : nil
+            let markColor = policy.classTableCourseSecondaryTextColor.opacity(0.5)
 
             Color.clear
                 .overlay(alignment: .top) {
                     // `scrollSafeTapAction` wraps the cell in a real `Button` so
                     // the first tap wins iOS 18 arbitration against the grid's
                     // scroll view. See View+ScrollSafeGesture.
-                    RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                        .fill(course.color.opacity(0.4))
-                        .overlay {
-                            if outlineRequiredCourses, course.isRequired {
-                                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                                    .strokeBorder(course.color, lineWidth: 1)
-                            }
-                        }
-                        .overlay {
-                            Text(course.displayName)
-                                .font(.system(size: courseNameSize, weight: .medium))
-                                .foregroundStyle(Color.textPrimary)
-                                .lineLimit(spanCount > 1 ? 3 : 2)
-                                .minimumScaleFactor(0.7)
-                                .multilineTextAlignment(.center)
-                                .padding(2)
-                                // Leave the hint its line, or the centred name keeps the
-                                // whole cell and a two-line name in a one-period cell
-                                // prints straight through the room.
-                                .padding(.bottom, roomHint == nil ? 0 : roomHintSize + 2)
-                        }
+                    courseFace(
+                        course, spanCount: spanCount,
+                        showsRoomHint: roomHint != nil, showsMark: hasBadge || ignoresAssignments
+                    )
                         .overlay(alignment: .bottomLeading) {
                             if let room = roomHint {
                                 Text(room)
                                     .font(.system(size: roomHintSize))
-                                    .foregroundStyle(Color.textSecondary)
+                                    .foregroundStyle(policy.classTableCourseSecondaryTextColor)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.6)
                                     .padding(.leading, 3)
@@ -274,8 +282,10 @@ struct TimetableGridView: View {
                                     .accessibilityHidden(true)
                             }
                         }
-                        .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
-                        .ignoredAssignmentsBadge(show: ignoresAssignments, iconSize: badgeIconSize, padding: 4)
+                        .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4, color: markColor)
+                        .ignoredAssignmentsBadge(
+                            show: ignoresAssignments, iconSize: badgeIconSize, padding: 4, color: markColor
+                        )
                         .frame(height: totalHeight)
                         .scrollSafeTapAction {
                             viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
@@ -320,8 +330,8 @@ struct TimetableGridView: View {
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
             conflictCluster(
                 segments: [
-                    ClassTableConflictSegment(course: courseA, span: spanA, offset: offsetA, lane: 0),
-                    ClassTableConflictSegment(course: courseB, span: spanB, offset: offsetB, lane: 1),
+                    ClassTableConflictSegment(course: courseA, key: courseA.courseNo, span: spanA, offset: offsetA, lane: 0),
+                    ClassTableConflictSegment(course: courseB, key: courseB.courseNo, span: spanB, offset: offsetB, lane: 1),
                 ],
                 combinedSpan: combinedSpan,
                 laneCount: 2,
@@ -348,6 +358,60 @@ struct TimetableGridView: View {
             Color.clear
                 .transition(.identity)
         }
+    }
+
+    /// A course's run: one block, or with period tiles one tile per period, each naming the
+    /// course. Either way the run's bottom corners hold the room hint and the assignment marks.
+    @ViewBuilder
+    private func courseFace(_ course: SDCourse, spanCount: Int, showsRoomHint: Bool, showsMark: Bool) -> some View {
+        if drawsPeriodTiles {
+            VStack(spacing: rowSpacing) {
+                ForEach(0..<spanCount, id: \.self) { index in
+                    courseTile(
+                        course,
+                        cornerRadius: TigerDuckTheme.CornerRadius.xs,
+                        lineLimit: 3,
+                        leavesBottomLine: (showsRoomHint || showsMark) && index == spanCount - 1
+                    )
+                    .frame(height: cellHeight)
+                }
+            }
+        } else {
+            // A tile's third line reaches the mark's corner. A block's name, at most two lines in
+            // one period and centred in a longer run, ends above it.
+            courseTile(
+                course,
+                cornerRadius: TigerDuckTheme.CornerRadius.sm,
+                lineLimit: spanCount > 1 ? 3 : 2,
+                leavesBottomLine: showsRoomHint
+            )
+        }
+    }
+
+    private func courseTile(
+        _ course: SDCourse, cornerRadius: CGFloat, lineLimit: Int, leavesBottomLine: Bool
+    ) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(policy.classTableCourseFill(course.color))
+            .overlay {
+                if outlineRequiredCourses, course.isRequired {
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(policy.classTableCourseOutline(course.color), lineWidth: 1)
+                }
+            }
+            .overlay {
+                Text(course.displayName)
+                    .font(.system(size: courseNameSize, weight: .medium))
+                    .foregroundStyle(policy.classTableCourseTextColor)
+                    .lineLimit(lineLimit)
+                    .minimumScaleFactor(0.7)
+                    .multilineTextAlignment(.center)
+                    .padding(2)
+                    // Leave the room hint or the mark its line, or the centred
+                    // name keeps the whole cell and a long name prints straight
+                    // through them.
+                    .padding(.bottom, leavesBottomLine ? roomHintSize + 2 : 0)
+            }
     }
 
     private func conflictCluster(
@@ -377,7 +441,7 @@ struct TimetableGridView: View {
     }
 }
 
-/// Renders a conflict cluster. For two courses we draw the interlocking
+/// Renders a conflict cluster. For two blocks we draw the interlocking
 /// L-shapes (Γ + mirror-L) that follow the Android `ConflictCourseCell`
 /// geometry; for three or more, lanes, with a course across the whole
 /// width in the rows where it meets no other: the L-shape geometry only
@@ -400,6 +464,8 @@ private struct ConflictClusterView: View {
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
+
+    private var policy: VisualStylePolicy { appState.visualStylePolicy }
 
     /// Same convention as `TimetableGridView.courseNameSize` — see there
     /// for the rationale, including why we read through `AppState`
@@ -543,7 +609,7 @@ private struct ConflictClusterView: View {
                 rowSpacing: rowSpacing
             )
             ZStack(alignment: .topLeading) {
-                ForEach(segments, id: \.course.courseNo) { segment in
+                ForEach(segments) { segment in
                     laneMember(segment, geometry: geometry)
                 }
             }
@@ -567,6 +633,7 @@ private struct ConflictClusterView: View {
         let label = runs.max { $0.width * $0.height < $1.width * $1.height } ?? .zero
         let hasBadge = showsBadge(for: course)
         let ignoresAssignments = showsIgnoredMark(for: course)
+        let markColor = policy.classTableCourseSecondaryTextColor.opacity(0.5)
         // A course can start below the cluster's first period; VoiceOver names its own.
         let periods = viewModel.activePeriods
         let firstPeriod = periods.firstIndex { $0.id == periodId }.flatMap { periods[safe: $0 + segment.offset] }
@@ -575,21 +642,23 @@ private struct ConflictClusterView: View {
             viewModel.selectCourse(course, weekday: weekday, periodId: firstPeriod?.id ?? periodId)
         } label: {
             shape
-                .fill(course.color.opacity(0.4))
+                .fill(policy.classTableCourseFill(course.color))
                 .overlay {
-                    if isOutlined(course) { shape.innerOutline(course.color) }
+                    if isOutlined(course) { shape.innerOutline(policy.classTableCourseOutline(course.color)) }
                 }
                 .overlay(alignment: .topLeading) {
                     Text(course.displayName)
                         .font(.system(size: courseNameSize, weight: .medium))
-                        .foregroundStyle(Color.textPrimary)
+                        .foregroundStyle(policy.classTableCourseTextColor)
                         .lineLimit(label.height > cellHeight ? 3 : 2)
                         .minimumScaleFactor(0.7)
                         .multilineTextAlignment(.center)
                         .padding(2)
                         .frame(width: label.width, height: label.height)
-                        .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
-                        .ignoredAssignmentsBadge(show: ignoresAssignments, iconSize: badgeIconSize, padding: 4)
+                        .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4, color: markColor)
+                        .ignoredAssignmentsBadge(
+                            show: ignoresAssignments, iconSize: badgeIconSize, padding: 4, color: markColor
+                        )
                         .offset(x: label.minX, y: label.minY)
                 }
                 .contentShape(shape)
@@ -625,7 +694,7 @@ private struct ConflictClusterView: View {
 
     @ViewBuilder
     private func conflictContextMenu() -> some View {
-        ForEach(segments, id: \.course.courseNo) { segment in
+        ForEach(segments) { segment in
             // One menu section per course. Names may not tell them apart, since two
             // sections of one course clashing is the usual reason to open this menu, so
             // the "Pick color" row carries its cell's fill colour; `colorDot` says why there.
@@ -697,13 +766,13 @@ private struct ConflictClusterView: View {
         let ignoresAssignments = showsIgnoredMark(for: course)
         return GeometryReader { boxProxy in
             ZStack(alignment: labelAlignment) {
-                course.color.opacity(0.4)
+                policy.classTableCourseFill(course.color)
                 // The name sits in the L's bar: 72% wide, leaving Android's 28% tail, and
                 // `barFraction` tall. Aligning top-right (Γ) or bottom-left (L) keeps the
                 // text inside the visible color region.
                 Text(course.displayName)
                     .font(.system(size: courseNameSize, weight: .medium))
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(policy.classTableCourseTextColor)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
                     .multilineTextAlignment(.center)
@@ -716,17 +785,17 @@ private struct ConflictClusterView: View {
                 if hasBadge {
                     Image(systemName: "book.fill")
                         .font(.system(size: badgeIconSize))
-                        .foregroundStyle(Color.textPrimary.opacity(0.7))
+                        .foregroundStyle(policy.classTableCourseTextColor.opacity(0.7))
                         .padding(3)
                 } else if ignoresAssignments {
                     IgnoredAssignmentsIcon(size: badgeIconSize)
-                        .foregroundStyle(Color.textPrimary.opacity(0.7))
+                        .foregroundStyle(policy.classTableCourseTextColor.opacity(0.7))
                         .padding(3)
                 }
             }
         }
         .overlay {
-            if isOutlined(course) { shape.innerOutline(course.color) }
+            if isOutlined(course) { shape.innerOutline(policy.classTableCourseOutline(course.color)) }
         }
         .clipShape(shape)
         .contentShape(shape)

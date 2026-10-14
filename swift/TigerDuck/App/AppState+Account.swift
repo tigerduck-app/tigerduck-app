@@ -95,10 +95,14 @@ extension AppState {
 
         let departingStudentId = authService.storedStudentId
         authService.logout()
-        // A library account signed in with this school account goes with it.
+        // A library or school mail account signed in as this student goes with it, the mail's
+        // checks and notifications too; another student's stays.
         if let departingStudentId, LibraryService.clearCredentials(ifSchoolAccount: departingStudentId) {
             _libraryRevision += 1
         }
+        #if os(iOS)
+        if let departingStudentId { MailAccountManager.shared.logout(ifSchoolAccount: departingStudentId) }
+        #endif
         // The session ends now. Only the device's unregister below still goes out as the departing
         // account, with the token this hands back; without it the device keeps getting that
         // account's reminders.
@@ -108,8 +112,10 @@ extension AppState {
         // green before anything has synced.
         ServerStatusTracker.shared.reset()
         Defaults[.schoolDataSyncedAt] = nil
-        // The next account opens the class table on the newest term, not on this one's pick.
+        // The next account opens the class table on the newest term, not on this one's pick, and
+        // the empty-classroom finder on its own building.
         Defaults[.classTableSelectedSemester] = nil
+        Defaults[.emptyClassroomBuilding] = nil
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.

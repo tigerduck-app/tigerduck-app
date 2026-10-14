@@ -168,7 +168,7 @@ struct WeekGridView: View {
                     HStack(spacing: 1) {
                         ForEach(0..<laneCount, id: \.self) { lane in
                             ZStack(alignment: .top) {
-                                ForEach(segments.filter { $0.lane == lane }, id: \.course.courseNo) { segment in
+                                ForEach(segments.filter { $0.lane == lane }) { segment in
                                     conflictColumn(
                                         segment.course,
                                         span: segment.span,

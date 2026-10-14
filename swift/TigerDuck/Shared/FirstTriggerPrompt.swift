@@ -86,7 +86,7 @@ final class FirstTriggerPromptCenter {
     ///
     /// Seen is written here, not on `.onAppear`: a sheet dismissed any other
     /// way (app backgrounded, root view recreated) is not a choice, and counting
-    /// it as one would arm the gesture without consent; a later flip re-shows it.
+    /// it as one would answer for the user; the next trigger shows it again.
     func finish(accept: Bool) {
         guard let p = pending else { return }
         markSeen(p.key)
@@ -163,12 +163,6 @@ private struct FirstTriggerPromptSheet: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 40)
-        .onAppear {
-            // A heavy haptic anchors this unexpected interrupt to the gesture that
-            // caused it. Seen is recorded in `finish(accept:)` on a Keep or Turn-off
-            // tap, not here.
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
-        }
     }
 }
 
@@ -224,9 +218,8 @@ private struct FirstTriggerPromptHost: ViewModifier {
         return content.sheet(
             item: $center.pending,
             onDismiss: {
-                // Any close but a Keep or Turn-off tap leaves the prompt unseen. Clear
-                // a stranded `pending` so the next flip prompts again; otherwise the
-                // default-on `flipToLibraryEnabled` stays with no prompt until relaunch.
+                // Any close but a tap on one of its buttons leaves the prompt unseen. Clear a
+                // stranded `pending`, or the next trigger could not show it again.
                 if let stranded = center.pending,
                    !center.hasSeen(stranded.key) {
                     center.pending = nil
@@ -236,7 +229,7 @@ private struct FirstTriggerPromptHost: ViewModifier {
             FirstTriggerPromptSheet(promptKey: pending.key, content: pending.content)
                 // `.medium` clips the animation and both buttons on standard phones, and
                 // full screen is too much for an opt-in question. No drag indicator: the
-                // user can close it only with Keep or Turn off, so a grab handle does nothing.
+                // user can close it only with its two buttons, so a grab handle does nothing.
                 .presentationDetents([.fraction(0.7)])
                 .interactiveDismissDisabled()
         }

@@ -305,13 +305,13 @@ enum SSOLoginService {
         var request = URLRequest(url: url, timeoutInterval: 15)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
-        let body = fields.map { name, value in
-            "\(urlEncode(name))=\(urlEncode(value))"
-        }.joined(separator: "&")
-        request.httpBody = body.data(using: .utf8)
+        request.httpBody = Data(formBody(fields).utf8)
 
         return try await session.data(for: request)
+    }
+
+    static func formBody(_ fields: [(name: String, value: String)]) -> String {
+        fields.map { "\(urlEncode($0.name))=\(urlEncode($0.value))" }.joined(separator: "&")
     }
 
     /// Form-encode a single name or value per

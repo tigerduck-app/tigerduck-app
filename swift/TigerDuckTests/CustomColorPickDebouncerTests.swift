@@ -15,6 +15,24 @@ struct CustomColorPickDebouncerTests {
     /// The course's colour before the drag.
     private static let appliedHex: UInt32 = 0xAAAAAA
 
+    /// A preset applies at once, and not after the account that opened the sheet signed out
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/482).
+    @Test func aPresetAfterASignOutSavesNothing() {
+        let applied = Applied()
+        var signedIn = true
+        let picks = CustomColorPickDebouncer(
+            apply: { applied.hexes.append($0) },
+            appliedHex: { Self.appliedHex },
+            isCurrent: { signedIn }
+        )
+
+        picks.select(0x111111)
+        signedIn = false
+        picks.select(0x222222)
+
+        #expect(applied.hexes == [0x111111])
+    }
+
     @Test func aDragAppliesOnlyTheColourItPausesOn() async throws {
         let applied = Applied()
         let timer = ManualSleeper()
@@ -130,11 +148,11 @@ struct CustomColorPickDebouncerTests {
         picks.pick(0x123456)
         let window = try #require(picks.pendingTask)
 
-        picks.cancel()
+        picks.select(0x654321)
         await window.value
         // What the sheet does as it closes after the preset tap.
         picks.flush()
 
-        #expect(applied.hexes.isEmpty)
+        #expect(applied.hexes == [0x654321])
     }
 }

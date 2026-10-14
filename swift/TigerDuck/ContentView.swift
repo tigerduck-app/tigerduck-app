@@ -229,7 +229,7 @@ struct MainTabView: View {
         case .libraryLecture: PlaceholderFeatureView(feature: feature)
         case .freeLunch: PlaceholderFeatureView(feature: feature)
         case .clubs: PlaceholderFeatureView(feature: feature)
-        case .emptyClassroom: PlaceholderFeatureView(feature: feature)
+        case .emptyClassroom: EmptyClassroomView()
         case .scholarship: PlaceholderFeatureView(feature: feature)
         case .englishVocab: PlaceholderFeatureView(feature: feature)
         #if os(iOS)

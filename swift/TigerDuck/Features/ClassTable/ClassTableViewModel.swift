@@ -350,20 +350,22 @@ final class ClassTableViewModel {
     /// Whose class table shows and which version of it, for `showShownTable()` to follow.
     var shownTable: ImportedClassTableStore.ShownTable { importedTables.shownTable }
 
+    /// Another window can switch class tables or sign out while one of the user's own edits is
+    /// open here, and the edit must not save into someone else's class table or the next account.
+    func closeOwnEdits() {
+        showAddCourse = false
+        showResetConfirm = false
+        showRenameAlert = false
+        courseToRename = nil
+        courseToRecolor = nil
+    }
+
     /// Moves the table to whoever `importedTables` shows now. Someone else's keeps the term on
     /// screen when they shared it and otherwise opens on their latest term; the user's own opens
     /// on its own term, as at launch.
     func showShownTable() {
         displayedPerson = importedTables.shownPerson
-        if shownPerson != nil {
-            // Another window can switch class tables while one of the user's own edits is open
-            // here, and it must not save into someone else's.
-            showAddCourse = false
-            showResetConfirm = false
-            showRenameAlert = false
-            courseToRename = nil
-            courseToRecolor = nil
-        }
+        if shownPerson != nil { closeOwnEdits() }
         let semester = shownPerson?.semester(keeping: currentSemester)
             ?? SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
         guard semester != currentSemester else {

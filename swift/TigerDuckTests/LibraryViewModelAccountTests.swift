@@ -21,6 +21,21 @@ struct LibraryViewModelAccountTests {
         #expect(model.isLoadingQR == false)
     }
 
+    /// After a school sign-out takes the library account with it, the sign-in form keeps neither
+    /// the departing student ID nor a typed password (#440).
+    @Test func anAccountChangeEmptiesTheSignInForm() {
+        SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
+            let model = LibraryViewModel()
+            model.libUsername = "B1DEPARTING"
+            model.libPassword = "typed"
+
+            NotificationCenter.default.post(name: LibraryService.accountDidChange, object: nil)
+
+            #expect(model.libUsername.isEmpty)
+            #expect(model.libPassword.isEmpty)
+        }
+    }
+
     @Test func otherNotificationsLeaveTheCodeAlone() {
         let model = LibraryViewModel()
         model.qrPayload = "code"

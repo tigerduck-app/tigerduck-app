@@ -149,7 +149,7 @@ struct MoodleCourseMembersTests {
 
         let refresh = Task { await store.refreshMembers() }
         try await answer.waitUntilArmed()
-        #expect(store.isSectionRefreshing)
+        #expect(store.members.isRefreshing)
         signedIn.withLock { $0 = false }
         await answer.fire()
         await refresh.value
@@ -279,7 +279,7 @@ struct MoodleCourseMembersTests {
         }
     }
 
-    @Test("a failed refresh keeps the list it had, and turns the section's dot red")
+    @Test("a failed refresh keeps the list it had, and marks it failed")
     func failureKeepsTheList() async {
         let folder = Folder()
         await Self.store(folder, site: Site()).refreshMembers()
@@ -290,7 +290,6 @@ struct MoodleCourseMembersTests {
         await store.refreshMembers()
 
         #expect(store.members.status == .failed)
-        #expect(store.sectionStatus == .failed)
         #expect(store.sectionRows == [MoodleSectionRow(kind: .members, count: 2, hasUnread: false)])
         guard case .sections(let sections) = MoodleMembersView.Content(
             list: store.members.value, isRefreshing: false, failure: store.members.failure, query: ""

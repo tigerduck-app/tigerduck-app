@@ -116,7 +116,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     /// is already `nonisolated` (a compile-time flag, no state).
     nonisolated var isImplemented: Bool {
         switch self {
-        case .home, .classTable, .calendar, .library, .announcements, .gpa:
+        case .home, .classTable, .calendar, .library, .announcements, .gpa, .emptyClassroom:
             return true
         case .schoolMail:
             return SchoolMailAvailability.isEnabled

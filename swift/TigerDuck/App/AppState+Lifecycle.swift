@@ -38,6 +38,11 @@ extension AppState {
         }
         // iOS only and off the macOS allow-list, like the store whose key it deletes.
         LiveActivitySnapshotPurgeMigration.runIfNeeded()
+        // Synchronous because `flipToLibraryEnabled` was read before init() got here. iOS only,
+        // like the gesture.
+        if FlipToLibraryDefaultOffMigration.runIfNeeded() {
+            flipToLibraryEnabled = Defaults[.flipToLibraryEnabled]
+        }
         #endif
         Task(priority: .utility) { @MainActor in
             #if os(iOS)

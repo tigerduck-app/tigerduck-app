@@ -110,13 +110,19 @@ final class AccountSwitchingNotificationCenter: MailNotificationCenter, @uncheck
 final class MarkerMovingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
     private let prefs: any MailPreferences
     private let moveTo: UInt32
+    private let validity: UInt32?
 
-    init(prefs: any MailPreferences, moveTo: UInt32) {
+    /// With `validity`, the list also adopts that UIDVALIDITY, as it does after the server's changes.
+    init(prefs: any MailPreferences, moveTo: UInt32, validity: UInt32? = nil) {
         self.prefs = prefs
         self.moveTo = moveTo
+        self.validity = validity
     }
 
-    func add(_ request: UNNotificationRequest) async throws { prefs.inboxNextUID = moveTo }
+    func add(_ request: UNNotificationRequest) async throws {
+        if let validity { prefs.inboxUIDValidity = validity }
+        prefs.inboxNextUID = moveTo
+    }
     func removeDelivered(withIdentifiers identifiers: [String]) {}
     func removeAllMailNotifications() async {}
 }
@@ -267,6 +273,23 @@ struct MailCheckerTests {
                                   openSession: { fake }, onAuthFailure: {})
         #expect(await checker.check(trigger: .foreground) == .newMail(1))
         #expect(prefs.inboxNextUID == 9)
+    }
+
+    /// The list's new UIDVALIDITY makes its marker another generation's. Raised to this check's
+    /// UIDs, it would hide new mail below them for good
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/484).
+    @Test func aCheckLeavesTheMarkerOfAGenerationTheOpenListAdoptedDuringItsNotify() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 3
+        let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)]])
+        let center = MarkerMovingNotificationCenter(prefs: prefs, moveTo: 2, validity: 2)
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: {})
+        #expect(await checker.check(trigger: .foreground) == .newMail(2))
+        #expect(prefs.inboxUIDValidity == 2)
+        #expect(prefs.inboxNextUID == 2)
     }
 
     @Test func aRejectedPasswordStopsFurtherChecks() async {

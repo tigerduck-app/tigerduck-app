@@ -305,6 +305,33 @@ struct ClassTableSwitchingTests {
         }
     }
 
+    @Test("a sign-out in another window closes the user's own edits, which then save nothing")
+    func signOutClosesTheUsersEdits() throws {
+        let viewModel = ClassTableViewModel(importedTables: try Self.people(Folder()).store)
+        let own = Self.course("GE1010009", "Own course", semester: "1151")
+        own.customName = "Own name"
+        viewModel.courseToRename = own
+        viewModel.renameText = "Renamed"
+        viewModel.showRenameAlert = true
+        viewModel.courseToRecolor = own
+        viewModel.showAddCourse = true
+        viewModel.showResetConfirm = true
+        let customNames = DataCache.shared.loadCourseCustomNames()
+
+        // What the class table does when the sign-in changes.
+        viewModel.closeOwnEdits()
+        #expect(!viewModel.showRenameAlert)
+        #expect(viewModel.courseToRecolor == nil)
+        #expect(!viewModel.showAddCourse)
+        #expect(!viewModel.showResetConfirm)
+
+        // The rename alert's buttons, tapped as it closes.
+        viewModel.confirmRename()
+        viewModel.revertRename(own)
+        #expect(own.customName == "Own name")
+        #expect(DataCache.shared.loadCourseCustomNames() == customNames)
+    }
+
     @Test("the user's deleted courses and custom names stay off someone else's same course numbers")
     func usersEditsStayOffTheirCourses() throws {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {

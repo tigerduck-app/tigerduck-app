@@ -50,6 +50,31 @@ final class ScheduleStoreTests: XCTestCase {
         XCTAssertEqual(fresh.snapshot, sampleSnapshot())
     }
 
+    /// A newer Watch build can leave a preset this one does not know in the cache.
+    @MainActor
+    func test_loadFromDisk_unknownVisualPreset_keepsTheSnapshotAsTigerDuck() throws {
+        let cached = """
+        {
+            "version": 1,
+            "courses": [{
+                "id": "X1-1-3", "courseNo": "X1", "name": "Algorithms", "teacher": "",
+                "classroom": "TR-313", "colorHex": "#FF8800", "weekday": 1,
+                "startHHmm": "10:20", "endHHmm": "12:10", "periodLabel": "3-4"
+            }],
+            "accentHex": "#FF8800",
+            "syncedAtMs": 1747000000000,
+            "loggedIn": true,
+            "visualPreset": "someFuturePreset"
+        }
+        """
+        try Data(cached.utf8).write(to: snapshotFile)
+
+        let store = ScheduleStore(snapshotFileURL: snapshotFile, defaults: defaults, widgetReloader: {})
+
+        XCTAssertEqual(store.snapshot?.courses.map(\.courseNo), ["X1"])
+        XCTAssertEqual(store.snapshot?.visualPreset, .default)
+    }
+
     @MainActor
     func test_loadFromDisk_missingFile_snapshotIsNil() {
         let store = ScheduleStore(snapshotFileURL: snapshotFile, defaults: defaults, widgetReloader: {})

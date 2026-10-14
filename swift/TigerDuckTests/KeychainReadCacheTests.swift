@@ -30,6 +30,22 @@ struct KeychainReadCacheTests {
         #expect(keychain.reads == 1)
     }
 
+    /// Before the first unlock after a restart the read fails, and kept as "no override" it would
+    /// send a self-hosting user's background syncs to the production backend until an unlock
+    /// notification the suspended app may never get
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/488).
+    @Test func doesNotKeepAReadThatCouldNotReachTheKeychain() {
+        let unreadable = OSAllocatedUnfairLock(initialState: true)
+        let cache = KeychainReadCache(load: {
+            if unreadable.withLock({ $0 }) { throw CocoaError(.fileReadNoPermission) }
+            return "https://a.example"
+        })
+
+        #expect(cache.value() == nil)
+        unreadable.withLock { $0 = false }
+        #expect(cache.value() == "https://a.example")
+    }
+
     @Test func keepsAReadThatFoundNothing() {
         let keychain = FakeKeychain([nil, "https://a.example"])
         let cache = KeychainReadCache(load: { keychain.read() })

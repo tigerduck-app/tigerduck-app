@@ -1,19 +1,24 @@
 import Foundation
 
-/// One member of a 3+ course conflict cluster. `offset` is the
-/// 0-indexed row inside the cluster where this course's block begins
-/// (measured from the cluster's earliest row); `span` is the course's
-/// own contiguous block length. Renderers stack these as offset-aware
+/// One block of a conflict cluster of three or more. `offset` is the
+/// 0-indexed row inside the cluster where the block begins
+/// (measured from the cluster's earliest row); `span` is the block's
+/// contiguous length. Renderers stack these as offset-aware
 /// columns so a course only paints rows it's actually scheduled in.
-/// `lane` is the column the course takes: courses that never meet share one.
-public struct ClassTableConflictSegment<Course> {
+/// `lane` is the column the block takes: blocks that never meet share one. A course meeting
+/// twice in one cluster has a segment per block, so `id` pairs its `key` with the block's row.
+public struct ClassTableConflictSegment<Course>: Identifiable {
     public let course: Course
+    public let key: String
     public let span: Int
     public let offset: Int
     public let lane: Int
 
-    public init(course: Course, span: Int, offset: Int, lane: Int) {
+    public var id: String { "\(key)@\(offset)" }
+
+    public init(course: Course, key: String, span: Int, offset: Int, lane: Int) {
         self.course = course
+        self.key = key
         self.span = span
         self.offset = offset
         self.lane = lane
@@ -75,12 +80,12 @@ public enum ClassTableCellRole<Course> {
         courseB: Course, spanB: Int, offsetB: Int,
         combinedSpan: Int
     )
-    /// 3+ overlapping courses sharing a single cluster. Each segment
+    /// 3+ overlapping blocks sharing a single cluster. Each segment
     /// carries its own offset/span inside `combinedSpan` so renderers
     /// can place a course only in the rows it's actually scheduled in,
     /// and its lane among `laneCount`: in an A/B/C chain A and C never
     /// meet, so they share a lane and the cluster is two lanes wide.
-    /// Courses in the cluster's first row lead the array and take the
+    /// Blocks in the cluster's first row lead the array and take the
     /// lowest lanes.
     case conflictMany(
         segments: [ClassTableConflictSegment<Course>],
@@ -124,18 +129,20 @@ public enum ClassTableLayout {
         let coursesHere = coursesAt(periodIndex)
         guard !coursesHere.isEmpty else { return .empty }
 
-        // Transitive closure of overlapping blocks rooted at this cell.
+        // Transitive closure of overlapping blocks rooted at this cell. A block is one course's
+        // run of consecutive periods, so a course meeting twice that day joins with each block
+        // another course bridges to.
         var closure: [(course: C, first: Int, span: Int)] = []
-        var seenKeys = Set<String>()
+        var seenBlocks = Set<ClusterBlock>()
 
         func addCourse(_ c: C, seedIndex: Int) {
-            guard seenKeys.insert(keyOf(c)).inserted else { return }
             let key = keyOf(c)
             var first = seedIndex
             while first - 1 >= 0,
                   coursesAt(first - 1).contains(where: { keyOf($0) == key }) {
                 first -= 1
             }
+            guard seenBlocks.insert(ClusterBlock(key: key, first: first)).inserted else { return }
             var last = seedIndex
             while last + 1 < periodIds.count,
                   coursesAt(last + 1).contains(where: { keyOf($0) == key }) {
@@ -144,7 +151,7 @@ public enum ClassTableLayout {
             let span = last - first + 1
             closure.append((c, first, span))
             for i in first..<(first + span) {
-                for other in coursesAt(i) where !seenKeys.contains(keyOf(other)) {
+                for other in coursesAt(i) {
                     addCourse(other, seedIndex: i)
                 }
             }
@@ -171,8 +178,8 @@ public enum ClassTableLayout {
             )
         }
 
-        // 3+ closure: one cluster with per-course offset and span, so renderers place each
-        // course only in its own rows. Anchored-slot courses lead so column order matches the
+        // 3+ closure: one cluster with per-block offset and span, so renderers place each
+        // block only in its own rows. Anchored-slot courses lead so column order matches the
         // tapped cell; recursive insertion could put a later-period course first.
         let anchoredKeys = Set(coursesHere.map(keyOf))
         let anchoredFirst = closure.filter { anchoredKeys.contains(keyOf($0.course)) }
@@ -182,6 +189,7 @@ public enum ClassTableLayout {
         let segments = ordered.enumerated().map { index, entry in
             ClassTableConflictSegment(
                 course: entry.course,
+                key: keyOf(entry.course),
                 span: entry.span,
                 offset: entry.first - clusterStart,
                 lane: lanes[index]
@@ -215,4 +223,10 @@ public enum ClassTableLayout {
         }
         return runs
     }
+}
+
+/// A course's block in a cluster: its key and the row it begins on.
+private struct ClusterBlock: Hashable {
+    let key: String
+    let first: Int
 }

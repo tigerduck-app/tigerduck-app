@@ -156,6 +156,28 @@ struct SecureStoreLockedReadTests {
         }
     }
 
+    /// `loadIfReadable` tells a read the Keychain refused from one that found nothing, which
+    /// `load` answers alike, so a cache of the answer keeps only the second.
+    @Test func aReadWhileLockedThrowsAndAnAbsentItemDoesNot() throws {
+        let key = AppConstants.KeychainKeys.studentId
+        SecureStore.delete(key: key)
+        defer { SecureStore.delete(key: key) }
+        let shared = LockablePhoneKeychain()
+
+        try SecureStore.$sharedForTesting.withValue(shared) {
+            #expect(try SecureStore.loadIfReadable(key: key) == nil)
+            try SecureStore.save(Data("value".utf8), forKey: key)
+            shared.isLocked = true
+
+            #expect(throws: KeychainError.couldNotAccessKeychain) {
+                try SecureStore.loadIfReadable(key: key)
+            }
+
+            shared.isLocked = false
+            #expect(try SecureStore.loadIfReadable(key: key) == Data("value".utf8))
+        }
+    }
+
     /// Where every earlier build wrote every secret.
     private let earlierBuildsValet = Valet.valet(
         with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
