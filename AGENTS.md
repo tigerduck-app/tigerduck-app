@@ -118,6 +118,9 @@ applies the rest. Before pushing, run `python3 tools/check_comments.py check --b
 - Pull requests from `dev` to `main` must raise `MARKETING_VERSION` by one SemVer step, or keep
   it and raise `CURRENT_PROJECT_VERSION` by exactly 1, and `swift/TigerDuck/whatsnew.json` must
   have an entry for the marketing version. The `release-bump` skill does this.
+- Every version bump, a patch or a build-number-only one too, first gets a local code review of
+  `origin/main...origin/dev`, repeated until no finding of High severity or above is left; the
+  `release-bump` skill has the steps.
 - The Watch complication target, `TigerDuckWatchWidgetExtension`, compiles only the files from
   `swift/Shared/`, the Watch app and `Clock/` that its membership exceptions in `project.pbxproj`
   list, so a file they come to need joins that list. The Watch app also compiles the
