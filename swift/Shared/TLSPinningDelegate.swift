@@ -57,7 +57,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                     "BxOmElsPeD54MBOb5h+TPNJnBlsAk6spRc/wLnko0cc=",
                 ]
             ),
-            // api.lib.ntust.edu.tw has its own chain: the leaf, Sectigo DV E36, and Sectigo's roots
+            // api.lib.ntust.edu.tw has its own pin set: the leaf, Sectigo DV E36, and Sectigo's roots
             // E46 and R46. Each renewal since 2022 changed the key and the issuer, and Sectigo now
             // issues only under these two roots, so the next certificate still matches.
             PinSet(

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -70,6 +71,9 @@ extension TLSPinningDelegateTests {
     /// set pins both roots Sectigo issues under: E46, which the library serves cross-signed, and R46.
     @Test("The library pins both Sectigo roots")
     func libraryPinsBothSectigoRoots() {
+        // The SHA-256 fingerprint Sectigo publishes, since other roots share the R46 name.
+        let fingerprint = SHA256.hash(data: Data(Self.sectigoRootR46)).map { String(format: "%02X", $0) }.joined()
+        #expect(fingerprint == "7BB647A62AEEAC88BF257AA522D01FFEA395E0AB45C73F93F65654EC38F25A06")
         let roots = [Self.libraryChain[2], Self.sectigoRootR46].compactMap(Self.spkiHash)
         #expect(roots.count == 2)
         let policy = TLSPinningDelegate.pinPolicy(forHost: "api.lib.ntust.edu.tw", now: Self.capturedDate)
@@ -78,6 +82,21 @@ extension TLSPinningDelegateTests {
             return
         }
         #expect(Set(roots).isSubset(of: pins), "\(Set(roots).subtracting(pins))")
+    }
+
+    /// A renewal may serve only its leaf and intermediate, so a root pin has to match the anchor
+    /// that trust evaluation adds from the system store.
+    @Test("A root pin matches a chain served without its root")
+    func aRootPinMatchesTheAnchorOfTheEvaluatedChain() throws {
+        let leafAndIntermediate = Array(Self.libraryChain.prefix(2))
+        let e46 = try #require(Self.spkiHash(Self.libraryChain[2]))
+        let r46 = try #require(Self.spkiHash(Self.sectigoRootR46))
+        #expect(MailTLSVerifier.verify(
+            derChain: leafAndIntermediate, host: "api.lib.ntust.edu.tw", now: Self.capturedDate, pinPolicy: .pinned([e46])
+        ))
+        #expect(!MailTLSVerifier.verify(
+            derChain: leafAndIntermediate, host: "api.lib.ntust.edu.tw", now: Self.capturedDate, pinPolicy: .pinned([r46])
+        ))
     }
 
     static func spkiHash(_ der: [UInt8]) -> String? {

@@ -29,12 +29,15 @@ The pin table is `pinSets` in `swift/Shared/TLSPinningDelegate.swift`; the reaso
    `cardsystem.ntust.edu.tw`'s is why the `ntust.edu.tw` set also pins TWCA SSL Certification
    Authority.
 2. Set each set's `pins` to those values, keeping any intermediate a renewal may still come
-   from, and its `expiration` to six months after the `notAfter` of the leaf it pins.
+   from, and its `expiration` to six months after the `notAfter` of the leaf it pins. Keep the
+   `api.lib.ntust.edu.tw` set's Sectigo roots, E46 and R46: its renewals change the issuer, and
+   Sectigo issues only under these two.
 3. Update the tests that hold certificate data: `appPins` in
    `swift/TigerDuckTests/SchoolMail/MailTLSVerifierTests.swift`, and `servedChains` in
    `TLSPinningDelegateTests`. Each set needs a chain one of its hosts served, with a date inside
    the chain's validity, that holds a certificate for every pin in the set. Add a chain as
    base64 DER, one certificate each (`openssl x509 -outform der | openssl enc -base64 -A`).
+   A root no host serves yet, such as Sectigo R46, goes in `renewalRoots` instead.
 4. Make the same change in `tigerduck-app-android`: the pin sets in both
    `app/src/main/res/xml/network_security_config.xml` and
    `app/src/debug/res/xml/network_security_config.xml`, and `PIN_EXPIRY_EPOCH` in
