@@ -115,6 +115,20 @@ struct ClassTableLayoutTests {
         #expect(Self.monday([long, early, late]) == ["[P@0×4 L0 Q@1×1 L1 R@3×1 L1]/4 in 2", "^", "^", "^", ".", "."])
     }
 
+    /// A meets on 1-2 and 4-5, and B on 2-4 joins its two blocks: B and both of A's blocks are
+    /// one cluster down to period 5, with A's blocks in one lane
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/470).
+    @Test func aCourseWhoseTwoBlocksAnotherBridgesKeepsBoth() {
+        let a = Course(no: "A", schedule: [1: ["1", "2", "4", "5"]])
+        let b = Course(no: "B", schedule: [1: ["2", "3", "4"]])
+        #expect(Self.monday([a, b]) == ["[A@0×2 L0 A@3×2 L0 B@1×3 L1]/5 in 2", "^", "^", "^", "^", "."])
+        guard case let .conflictMany(segments, _, _) = Self.role([a, b], at: 0) else {
+            Issue.record("expected one cluster from period 1")
+            return
+        }
+        #expect(segments.map(\.id) == ["A@0", "A@3", "B@1"])
+    }
+
     @Test func threeCoursesInOnePeriodTakeThreeLanes() {
         let courses = ["A", "B", "C"].map { Course(no: $0, schedule: [1: ["1", "2"]]) }
         #expect(Self.monday(courses) == ["[A@0×2 L0 B@0×2 L1 C@0×2 L2]/2 in 3", "^", ".", ".", ".", "."])
@@ -156,7 +170,7 @@ struct OverlapLanesTests {
 struct ClassTableLaneRunTests {
 
     private static func segment(_ no: String, offset: Int, span: Int, lane: Int) -> ClassTableConflictSegment<String> {
-        ClassTableConflictSegment(course: no, span: span, offset: offset, lane: lane)
+        ClassTableConflictSegment(course: no, key: no, span: span, offset: offset, lane: lane)
     }
 
     @Test func aChainsEndsWidenWhereTheyAreAlone() {
