@@ -295,6 +295,13 @@ enum LibraryService {
         isTokenValid || canSignInWithStoredCredentials
     }
 
+    /// Whether ``hasAccount`` holds for a library account of another student ID than `studentId`.
+    /// A school sign-in keeps such an account, as ``clearCredentials(ifSchoolAccount:)`` does.
+    @MainActor static func hasAccount(otherThan studentId: String) -> Bool {
+        guard hasAccount, let username = storedUsername else { return false }
+        return username.caseInsensitiveCompare(studentId) != .orderedSame
+    }
+
     /// Signs in with the stored credentials when there is no live token, so the Library page
     /// shows its code at once. Called at launch and on each return to the app. Returns whether
     /// it signed in.

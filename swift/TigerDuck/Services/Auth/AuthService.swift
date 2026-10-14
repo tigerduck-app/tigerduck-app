@@ -515,11 +515,12 @@ final class AuthService {
         }
     }
 
-    /// Best-effort: the library account signs in with the same NTUST credentials. A school
-    /// sign-out while the request is out keeps nothing, as no library account of that ID is
-    /// stored yet for the sign-out to clear.
+    /// Best-effort: the library account signs in with the same NTUST credentials. A library
+    /// account of another student ID that can sign in by itself stays, as a school sign-out keeps
+    /// it. A school sign-out while the request is out keeps nothing, as no library account of
+    /// that ID may be stored yet for the sign-out to clear.
     private func loginToLibraryIfNeeded(studentId: String, password: String) async {
-        guard !LibraryService.isTokenValid else { return }
+        guard !LibraryService.isTokenValid, !LibraryService.hasAccount(otherThan: studentId) else { return }
         let generation = loginGeneration
         do {
             _ = try await LibraryService.login(

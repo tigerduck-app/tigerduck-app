@@ -25,6 +25,8 @@ under test reads and writes directly, not through a seam:
   token harvest from posting a rejected password, and `ssoLoginTimestamp`.
 - `LibraryService.storedPasswordRejected`, the same latch for the library sign-in with the
   stored credentials.
+- `ntustCredentialsPresent`, which `AuthService.login(studentId:password:)` and `logout()` write
+  once they have changed the keychain.
 
 Swift Testing runs suites concurrently, and `.serialized` orders one suite's own tests and nothing
 else. The push registration tests set these keys and then await the service; a registration alone
@@ -56,4 +58,4 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `LibraryTabAddMigrationTests`,
   `UpdateCheckTests`, `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`,
   `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests`,
-  `LibrarySignInTests` and `BackendSessionTests`.
+  `LibrarySignInTests`, `SchoolSignInStepsTests` and `BackendSessionTests`.
