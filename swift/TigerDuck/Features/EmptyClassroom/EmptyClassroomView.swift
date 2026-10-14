@@ -9,6 +9,7 @@ struct EmptyClassroomView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = EmptyClassroomViewModel()
     @State private var openRoom: RoomUsage?
+    @State private var wasInBackground = false
 
     var body: some View {
         if embedded {
@@ -63,9 +64,17 @@ struct EmptyClassroomView: View {
             viewModel.appear()
         }
         .onDisappear { viewModel.disappear() }
+        // A glance at Control Center goes inactive and back; only a stay in the background lets
+        // the day's rooms age.
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { viewModel.returnToApp() }
+            if phase == .background { wasInBackground = true }
+            guard phase == .active, wasInBackground else { return }
+            wasInBackground = false
+            viewModel.returnToApp()
         }
+        // A return to the app can move the day; an open sheet would show the new date over the
+        // room's old day.
+        .onChange(of: viewModel.selectedDay) { openRoom = nil }
         // A sign-out moves the generation; a sign-in on this screen only stores credentials.
         .onChange(of: appState.authService.loginGeneration) { accountChanged() }
         .onChange(of: appState.authService.hasStoredCredentials) { accountChanged() }
