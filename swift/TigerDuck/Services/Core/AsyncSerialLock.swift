@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 /// A minimal FIFO async mutex: at most one `withLock` or `acquire`/`release` section runs at a
@@ -59,4 +58,3 @@ actor AsyncSerialLock {
         }
     }
 }
-#endif

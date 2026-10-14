@@ -175,25 +175,8 @@ actor MoodleTokenService {
         }
         let generation = signInGeneration
         let task = Task<String, Error> {
-            guard let creds = storedCredentials() else {
-                throw MoodleWebserviceError.missingStoredCredentials
-            }
-            let normalizedId = creds.studentId
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .uppercased()
-            let triple: TokenTriple
-            do {
-                triple = try await harvest(normalizedId, creds.password)
-            } catch {
-                if case MoodleWebserviceError.ssoLoginRejected = error {
-                    // A sign-in with a new password can finish while this harvest runs on the old one.
-                    if signInGeneration == generation, storedCredentials()?.password == creds.password {
-                        SSOLoginService.storedPasswordRejected = true
-                    }
-                } else if signInGeneration == generation, !Self.isNetworkFailure(error) {
-                    lastHarvestFailure = (now(), error)
-                }
-                throw error
+            let triple = try await SSOLoginService.postingStoredPassword {
+                try await harvestWithStoredCredentials(generation: generation)
             }
             guard signInGeneration == generation else { throw CancellationError() }
             tokens.save(triple)
@@ -205,6 +188,35 @@ actor MoodleTokenService {
             if inFlightRefreshTask == task { inFlightRefreshTask = nil }
         }
         return try await task.value
+    }
+
+    /// The harvest with the stored password, run under `SSOLoginService.postingStoredPassword`, so
+    /// the latch is checked again here: an SSO sign-in that held it first may have latched a refusal.
+    private func harvestWithStoredCredentials(generation: Int) async throws -> TokenTriple {
+        // Signed out while this waited for the lock: the stored account may be the next one's.
+        guard signInGeneration == generation else { throw CancellationError() }
+        guard !SSOLoginService.storedPasswordRejected else {
+            throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
+        }
+        guard let creds = storedCredentials() else {
+            throw MoodleWebserviceError.missingStoredCredentials
+        }
+        let normalizedId = creds.studentId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        do {
+            return try await harvest(normalizedId, creds.password)
+        } catch {
+            if case MoodleWebserviceError.ssoLoginRejected = error {
+                // A sign-in with a new password can finish while this harvest runs on the old one.
+                if signInGeneration == generation, storedCredentials()?.password == creds.password {
+                    SSOLoginService.storedPasswordRejected = true
+                }
+            } else if signInGeneration == generation, !Self.isNetworkFailure(error) {
+                lastHarvestFailure = (now(), error)
+            }
+            throw error
+        }
     }
 
     /// Offline the harvest mostly stops before the password goes out, and a pause would outlast
@@ -381,7 +393,7 @@ actor MoodleTokenService {
         let payload: [String: String]
     }
 
-    private nonisolated static func resolveTokenTriple(
+    nonisolated static func resolveTokenTriple(
         session: URLSession,
         data: Data,
         responseURL: URL,
@@ -431,12 +443,9 @@ actor MoodleTokenService {
 
         if responseURL.host == "ssoam2.ntust.edu.tw" {
             let fields = parseSSOLoginFields(from: html)
+            // Without the form no password goes out, so a page at the sign-in path without one,
+            // such as a maintenance page, is no refusal: it pauses the renewal as other failures do.
             if fields.antiforgery.isEmpty {
-                if responseURL.path.contains("/account/login") {
-                    throw MoodleWebserviceError.ssoLoginRejected(
-                        reason: HTMLParser.loginErrorMessage(in: html),
-                    )
-                }
                 throw MoodleWebserviceError.malformedResponse(
                     detail: "SSO login form missing anti-forgery token",
                 )
