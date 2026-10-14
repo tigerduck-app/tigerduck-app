@@ -68,4 +68,24 @@ struct ClassStopTests {
         #expect(stops.map(\.firstPeriod) == [0, 5])
         #expect(stops.map(\.lastPeriod) == [1, 5])
     }
+
+    /// A block of consecutive periods can change rooms halfway, so the walk to the next room
+    /// starts from where the class ends (https://github.com/tigerduck-app/tigerduck-app/issues/538).
+    @Test("a block that changes rooms halfway is a stop for each room")
+    func aBlockThatChangesRoomsIsTwoStops() {
+        let course = SDCourse(
+            courseNo: "CS1001302",
+            courseName: "作業系統",
+            classroom: "TR-214, IB-305",
+            schedule: [3: ["1", "2", "3", "4"]],
+            classroomMap: ["3-1": "TR-214", "3-2": "TR-214", "3-3": "IB-305", "3-4": "IB-305"]
+        )
+        let slots = CourseTimeSlot.meetingSlots(from: [course], on: Self.wednesday, isClassDay: { _ in true })
+
+        let stops = ClassStop.stops(from: slots) { $0 }
+
+        #expect(stops.map(\.room) == ["TR-214", "IB-305"])
+        #expect(stops.map(\.firstPeriod) == [0, 2])
+        #expect(stops.map(\.lastPeriod) == [1, 3])
+    }
 }
