@@ -374,6 +374,7 @@ final class TimeSliderViewModel {
     func step(byMinutes minutes: Int) {
         if !isUserDragging { onDragStarted() }
         selectedTime = selectedTime.addingTimeInterval(TimeInterval(minutes * 60))
+        lastHapticSlot = hapticSlot(for: selectedTime)
         checkTimelineRebuildNeeded()
     }
 

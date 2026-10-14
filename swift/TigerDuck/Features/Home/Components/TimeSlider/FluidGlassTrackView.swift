@@ -111,6 +111,9 @@ struct FluidGlassTrackView: View {
         .accessibilityAction(named: Text(String(localized: "home_time_slider_now"))) {
             viewModel.returnToNow()
         }
+        // VoiceOver's double tap would otherwise reach the drag as a touch and stop the track
+        // following the clock.
+        .accessibilityAction {}
     }
 
     static let accessibilityStepMinutes = 15
