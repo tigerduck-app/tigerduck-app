@@ -120,7 +120,7 @@ final class LiveActivityCoordinator {
 
         // The snapshot was resolved before the prune's await. Recheck, so one resolved just before
         // Live Activity turned unavailable, its class day turned quiet (a "still have class"
-        // toggle, a new holiday) or its assignment stopped being outstanding does not start.
+        // toggle, a new holiday), its class was skipped or its assignment was done does not start.
         guard let snapshot,
               Self.canStart(
                   snapshot,
@@ -199,9 +199,9 @@ final class LiveActivityCoordinator {
                 // A push-to-start twin of an activity this app already
                 // started is ended inside the prune; nothing below is for it.
                 if endedActivityIds.contains(activity.id) { continue }
-                // The server may start one from a schedule uploaded before Live Activity turned
-                // unavailable, its class day turned quiet or its assignment was done. End it on
-                // arrival and never register its token; the prune may not have listed it yet.
+                // The server may start one from a schedule uploaded before Live Activity turned off,
+                // its class day turned quiet, its class was skipped or its assignment was done. End it
+                // on arrival and never register its token; the prune may not have listed it yet.
                 if let reason = Self.endReason(
                     for: Self.makeFacts(activity),
                     now: now,
@@ -295,9 +295,11 @@ final class LiveActivityCoordinator {
         let instanceId: String
         /// `attributes.activityId`, the scenario-scoped identity.
         let activityId: String
-        /// `snapshot.sourceId`; an assignment activity's is the assignment id.
+        /// `snapshot.sourceId`: a class activity's is its slot id, which names the course and the
+        /// day; an assignment activity's is the assignment id.
         let sourceId: String
-        /// Only class scenarios (classPreparing, inClass) end on a day classes do not meet.
+        /// Only class scenarios (classPreparing, inClass) end on a day classes do not meet, or when
+        /// their class is skipped that day.
         let scenario: LiveActivityScenarioKind
         let countdownTarget: Date?
         /// Whether APNs has minted an update token for this copy.
