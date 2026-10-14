@@ -86,6 +86,35 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R0", "R0"])
     }
 
+    private static var offline: SettingsAPIStub.StubResponse {
+        .init(statusCode: 0, body: Data(), failure: .notConnectedToInternet)
+    }
+
+    /// Offline, the request never leaves the device, so the backend cannot have used the token.
+    @Test("a refresh that never leaves the device uses none of the token's sends")
+    func offlineRefreshesUseNothing() async throws {
+        let backend = BackendFixture()
+        for _ in 0..<4 { SettingsAPIStub.enqueue(Self.offline, for: backend.refreshURL) }
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(await backend.manager.validAccessToken() == "A1")
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R0", "R0", "R0"])
+    }
+
+    @Test("a sign-out after a refresh that never left the device still gets a token for its unregister")
+    func signOutAfterAnOfflineRefreshSendsTheToken() async throws {
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(Self.offline, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(Self.offline, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(await backend.manager.endSession() == "A1")
+    }
+
     @Test("a new pair gets two sends of its own")
     func aNewPairStartsTheCountOver() async throws {
         let backend = BackendFixture()

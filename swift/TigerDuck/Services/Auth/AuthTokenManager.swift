@@ -26,9 +26,10 @@ actor AuthTokenManager {
     /// more, which it may below ``refreshTokenUseLimit`` uses if the backend did not turn it down.
     private var lateRefresh: (generation: Int, accessToken: String?, mayResend: Bool)?
     /// How many times the backend may have used the stored refresh token without this device
-    /// keeping the pair: sends that got no reply, a server error or a 200 it could not keep. The
-    /// backend rotates a token sent again while its successor is unused and takes a third use for
-    /// theft, which revokes every session of the device. A new pair starts it over.
+    /// keeping the pair: sends that may have reached it and got no reply, a server error or a 200
+    /// it could not keep. The backend rotates a token sent again while its successor is unused and
+    /// takes a third use for theft, which revokes every session of the device. A new pair starts
+    /// it over.
     private var refreshTokenUses = 0
     static let refreshTokenUseLimit = 2
 
@@ -245,7 +246,7 @@ actor AuthTokenManager {
         }
         guard uses < Self.refreshTokenUseLimit else { return nil }
         struct RefreshResponse: Decodable { let access_token: String }
-        guard let (data, http) = await postRefresh(refresh), http.statusCode == 200 else { return nil }
+        guard let (data, http) = await postRefresh(refresh).reply, http.statusCode == 200 else { return nil }
         return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
     }
 
@@ -285,13 +286,14 @@ actor AuthTokenManager {
         guard uses < Self.refreshTokenUseLimit else {
             return await signedInAgain(since: generation) ? accessToken : nil
         }
-        var reply = await postRefresh(refreshToken)
-        if Self.mayHaveUsed(reply) { uses += 1 }
-        if reply == nil, signInGeneration == generation, uses < Self.refreshTokenUseLimit {
-            reply = await postRefresh(refreshToken)
-            if Self.mayHaveUsed(reply) { uses += 1 }
+        var send = await postRefresh(refreshToken)
+        if send.mayHaveUsed { uses += 1 }
+        if send.reply == nil, signInGeneration == generation, uses < Self.refreshTokenUseLimit {
+            send = await postRefresh(refreshToken)
+            if send.mayHaveUsed { uses += 1 }
         }
         if self.refreshToken == refreshToken { refreshTokenUses = uses }
+        let reply = send.reply
         let mayResend = uses < Self.refreshTokenUseLimit
         guard let (data, http) = reply else {
             noteOvertaken(generation, accessToken: nil, mayResend: mayResend)
@@ -347,15 +349,21 @@ actor AuthTokenManager {
         return await relogin() && signInGeneration == generation
     }
 
-    /// Whether the backend may have used the token a refresh sent: it answers a 4xx before it
-    /// touches the token, while no reply or a server error leaves that open.
-    private static func mayHaveUsed(_ reply: (Data, HTTPURLResponse)?) -> Bool {
-        guard let (_, http) = reply else { return true }
-        return !(400...499).contains(http.statusCode)
+    /// What one refresh request got: the HTTP reply, nil when none came back, as on a timeout,
+    /// and whether the backend may have used the token. It answers a 4xx before it touches the
+    /// token, and a request that failed before it left the device never reached it.
+    private struct RefreshSend {
+        let reply: (Data, HTTPURLResponse)?
+        let mayHaveUsed: Bool
     }
 
-    /// Sends one refresh request. Nil when no HTTP reply came back, as on a timeout.
-    private func postRefresh(_ refreshToken: String) async -> (Data, HTTPURLResponse)? {
+    /// `URLError`s of a request that never left the device: no network, or no host to reach.
+    private static let unsentErrors: Set<URLError.Code> = [
+        .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff, .callIsActive,
+        .cannotFindHost, .dnsLookupFailed, .cannotConnectToHost,
+    ]
+
+    private func postRefresh(_ refreshToken: String) async -> RefreshSend {
         struct RefreshRequest: Encodable { let refresh_token: String }
         var request = URLRequest(
             url: baseURLProvider().appendingPathComponent("auth/refresh"),
@@ -365,12 +373,14 @@ actor AuthTokenManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))
 
-        guard let (data, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse
-        else {
-            return nil
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return RefreshSend(reply: nil, mayHaveUsed: true) }
+            return RefreshSend(reply: (data, http), mayHaveUsed: !(400...499).contains(http.statusCode))
+        } catch {
+            let unsent = (error as? URLError).map { Self.unsentErrors.contains($0.code) } ?? false
+            return RefreshSend(reply: nil, mayHaveUsed: !unsent)
         }
-        return (data, http)
     }
 
     private func store(access: String, refresh: String, expiresIn: Int) {
