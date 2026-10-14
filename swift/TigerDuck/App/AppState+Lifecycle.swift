@@ -54,7 +54,7 @@ extension AppState {
                 self.reconcileNotificationSettings(onSettled: onSettled)
             }
             // iOS only and off the macOS allow-list, like the protection class it sets.
-            await MoodleDownloadProtectMigration.runIfNeeded()
+            await MoodleDownloadProtectMigration.runIfNeeded(root: DataCache.shared.moodleFilesDir)
             #endif
             // Add future migrations here in sequence. Anything that deletes
             // cached data belongs above the task, not in it.

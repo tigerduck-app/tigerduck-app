@@ -10,7 +10,7 @@ enum MoodleDownloadProtectMigration {
 
     /// `protect` is replaced in tests, as a simulator keeps no protection class on a file.
     static func runIfNeeded(
-        root: URL = DataCache.shared.moodleFilesDir,
+        root: URL,
         protect: @escaping @Sendable (URL) throws -> Void = MoodleDownloadProtectMigration.protect(_:)
     ) async {
         guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
