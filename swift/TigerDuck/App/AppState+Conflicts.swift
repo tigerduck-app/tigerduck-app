@@ -143,7 +143,6 @@ extension AppState {
             }
             do {
                 let json = try await pushCoordinator.fetchFullSync()
-                conflictCheckOwed = false
                 var diffs: [String] = []
                 var serverMarkedAssignments = Set<String>()
 
@@ -286,6 +285,8 @@ extension AppState {
                     // After a sign-out the diffs compare the previous account's server state
                     // with cleared caches, and with sync off there is nothing to reconcile.
                     guard fullSyncMayWrite(since: generation) else {
+                        // It may have resumed behind the lock screen: a later full sync or poll runs it again.
+                        conflictCheckOwed = true
                         AppLogger.sync.info("[reenable] result discarded — signed out or sync off while in flight")
                         return
                     }
@@ -298,6 +299,7 @@ extension AppState {
                         AppLogger.sync.info("[reenable] result discarded — resolved while in flight")
                         return
                     }
+                    conflictCheckOwed = false
                     if !diffs.isEmpty {
                         reenableConflict = ReenableConflict(
                             categories: Array(checked),
@@ -353,8 +355,9 @@ extension AppState {
         checkPendingConflicts()
     }
 
-    /// Whether the pending categories are owed a check: none has reached the server since this
-    /// launch or since the last one failed, none is running, and no verdict waits for the user.
+    /// Whether the pending categories are owed a check: none has given a verdict since this launch,
+    /// or the last one failed or had its result dropped, none is running, and no verdict waits for
+    /// the user's answer.
     nonisolated static func conflictCheckIsOwed(
         owed: Bool, pending: Set<String>, checking: Bool, awaitingAnswer: Bool
     ) -> Bool {

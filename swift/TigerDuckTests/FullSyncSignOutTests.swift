@@ -85,13 +85,13 @@ struct ReenableCheckSignOutTests {
 /// is pending, and the check used to run only from the Settings screens, so one that failed offline
 /// kept the setting from the server until the next visit there.
 struct OwedConflictCheckTests {
-    @Test("A check that failed, or none this launch, runs again once the server answers")
+    @Test("A check that failed or had its result dropped, or none this launch, runs once the server answers")
     func aFailedCheckRunsAgain() {
         #expect(AppState.conflictCheckIsOwed(owed: true, pending: ["assignments"], checking: false, awaitingAnswer: false))
     }
 
-    @Test("A check that reached the server is not run again, so a dismissed dialog does not come back by itself")
-    func aCheckThatReachedTheServerWaitsForSettings() {
+    @Test("A check that gave a verdict is not run again, so a dismissed dialog does not come back by itself")
+    func aCheckWithAVerdictWaitsForSettings() {
         #expect(!AppState.conflictCheckIsOwed(owed: false, pending: ["assignments"], checking: false, awaitingAnswer: false))
     }
 
