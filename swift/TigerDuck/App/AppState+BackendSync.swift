@@ -117,14 +117,19 @@ extension AppState {
                 .union(inFlightOverrides)
 
             let pendingConflicts = Defaults[.pendingConflictCategories]
-            if let reason = Self.reasonToLeaveMarks(
+            let marksLeftFor = Self.reasonToLeaveMarks(
                 // Again after the await: the switch may have gone off while it waited.
                 syncsMarks: syncsMarks && Defaults[.syncAssignments],
                 conflictCheckPending: pendingConflicts.contains("assignments"),
                 uploadedLocalMarks: isMigrating,
                 editedDuringFetch: overrideEditGeneration != editGenerationAtFetch
-            ) {
-                AppLogger.sync.info("[syncOverrides] skipping assignment overrides — \(reason, privacy: .public)")
+            )
+            // Read once, for the steps below and for what this sync records as synced.
+            let taken = Self.categoriesTaken(
+                switchedOn: Self.switchedOnCategories(), pendingChecks: pendingConflicts, marksLeftFor: marksLeftFor
+            )
+            if let reason = marksLeftFor {
+                AppLogger.sync.info("[syncOverrides] skipping assignment overrides — \(reason.rawValue, privacy: .public)")
             } else {
                 var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
                 let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
@@ -193,10 +198,14 @@ extension AppState {
                 }
             }
 
-            if pendingConflicts.contains("course_colors") || pendingConflicts.contains("course_names") {
-                AppLogger.sync.info("[syncOverrides] skipping course overrides — conflict check pending")
+            let takesColors = taken.contains("course_colors")
+            let takesNames = taken.contains("course_names")
+            if !takesColors && !takesNames {
+                AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             } else if !courseOverrides.isEmpty {
-                changed = applyCourseOverrides(courseOverrides, coursesArray: coursesArray) || changed
+                changed = applyCourseOverrides(
+                    courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames
+                ) || changed
             }
 
             // Holiday exceptions are a notification setting, not course or assignment data,
@@ -227,13 +236,13 @@ extension AppState {
                 changed = true
                 AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: coursesResetAt), privacy: .public) > lastSeen=\(String(describing: lastSeenReset), privacy: .public)), wiped local state")
             }
-            Self.recordFullSync(coursesReset: reset.remember, tookMarks: syncsMarks && Defaults[.syncAssignments])
+            Self.recordFullSync(coursesReset: reset.remember, taken: taken)
 
-            if pendingConflicts.contains("courses") {
-                AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
-            } else if Defaults[.syncCourses] {
+            if taken.contains("courses") {
                 changed = reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray, fetchedAt: fetchedAt)
                     || changed
+            } else if pendingConflicts.contains("courses") {
+                AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             }
 
             // Advance the revision watermark so the poller does not re-trigger after a full
@@ -300,12 +309,38 @@ extension AppState {
         conflictCheckPending: Bool,
         uploadedLocalMarks: Bool,
         editedDuringFetch: Bool
-    ) -> String? {
-        if !syncsMarks { return "Assignments sync is off" }
-        if conflictCheckPending { return "conflict check pending" }
-        if uploadedLocalMarks { return "local marks just uploaded" }
-        if editedDuringFetch { return "local edit during fetch" }
+    ) -> MarksLeftReason? {
+        if !syncsMarks { return .switchedOff }
+        if conflictCheckPending { return .conflictCheckPending }
+        if uploadedLocalMarks { return .uploadedLocalMarks }
+        if editedDuringFetch { return .editedDuringFetch }
         return nil
+    }
+
+    nonisolated enum MarksLeftReason: String, Sendable {
+        case switchedOff = "Assignments sync is off"
+        case conflictCheckPending = "conflict check pending"
+        case uploadedLocalMarks = "local marks just uploaded"
+        case editedDuringFetch = "local edit during fetch"
+    }
+
+    /// The categories a full sync takes the server's data of, which it applies and records as
+    /// synced: those switched on, less the ones it leaves alone. A pending re-enable check holds
+    /// back its category, and one on colours or names holds back both, which one step applies.
+    /// Marks left unapplied count only when the sync uploaded this device's to a server with none.
+    nonisolated static func categoriesTaken(
+        switchedOn: Set<String>,
+        pendingChecks: Set<String>,
+        marksLeftFor reason: MarksLeftReason?
+    ) -> Set<String> {
+        let holdsCourseOverrides = pendingChecks.contains("course_colors") || pendingChecks.contains("course_names")
+        return switchedOn.filter { category in
+            switch category {
+            case "assignments": reason == nil || reason == .uploadedLocalMarks
+            case "course_colors", "course_names": !holdsCourseOverrides
+            default: !pendingChecks.contains(category)
+            }
+        }
     }
 
     /// Whether a pull uploads this device's marks instead of applying the server's. Only the
@@ -548,11 +583,9 @@ extension AppState {
     }
 
     /// What every full sync keeps: the course reset it read, for the next one to compare, and the
-    /// categories whose server data it took, the ones switched on (`hasSynced`). The marks count
-    /// only with `tookMarks`, as the sync reads their switch before its last await.
-    static func recordFullSync(coursesReset: Date, tookMarks: Bool) {
+    /// categories whose server data it took (`categoriesTaken`, `hasSynced`).
+    static func recordFullSync(coursesReset: Date, taken: Set<String>) {
         Defaults[.lastSeenCoursesResetAt] = coursesReset
-        let taken = switchedOnCategories().filter { $0 != "assignments" || tookMarks }
         Defaults[.categoriesSyncedOnce].formUnion(taken)
     }
 
@@ -580,8 +613,10 @@ extension AppState {
         )
     }
 
-    /// Returns whether a colour or name changed.
-    private func applyCourseOverrides(_ overrides: [[String: Any]], coursesArray: [[String: Any]]) -> Bool {
+    /// Takes the server's colours when `colors`, its names when `names`. Returns whether one changed.
+    private func applyCourseOverrides(
+        _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool
+    ) -> Bool {
         // Build moodleId → courseNo from courses array
         var moodleIdToNo: [String: String] = [:]
         for c in coursesArray {
@@ -596,7 +631,7 @@ extension AppState {
         }
         AppLogger.sync.info("moodleIdToNo: \(moodleIdToNo.count, privacy: .public) entries, overrides: \(overrides.count, privacy: .public)")
 
-        let colorsChanged = Defaults[.syncCourseColors]
+        let colorsChanged = colors
             && TigerDuckTheme.applyColors(Self.serverCourseColors(overrides, courseNos: moodleIdToNo))
         let namesBefore = DataCache.shared.loadCourseCustomNames()
         var customNames = namesBefore
@@ -604,7 +639,7 @@ extension AppState {
         for o in overrides {
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
             guard let courseNo = moodleIdToNo[mId] else { continue }
-            if Defaults[.syncCourseNames], let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
+            if names, let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
                 var existing = customNames[courseNo] ?? [:]
                 for (locale, name) in serverNames {
                     if name.isEmpty {

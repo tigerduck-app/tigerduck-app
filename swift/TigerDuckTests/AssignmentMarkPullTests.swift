@@ -57,7 +57,7 @@ struct MarkPullGateTests {
             syncsMarks: false, conflictCheckPending: conflictCheckPending,
             uploadedLocalMarks: false, editedDuringFetch: editedDuringFetch
         )
-        #expect(reason == "Assignments sync is off")
+        #expect(reason == .switchedOff)
     }
 
     @Test("With the switch on and nothing in the way, the server's marks are applied")
