@@ -20,14 +20,23 @@ struct EmptyClassroomViewModelTests {
     }
 
     @MainActor
+    private final class Now {
+        var date: Date
+        init(_ date: Date) { self.date = date }
+    }
+
+    @MainActor
     private struct Harness {
         let url = URL(string: "https://cour01.stub.invalid/\(UUID().uuidString)/classroom_usecondition.aspx")!
         let signIn = SignIn()
         let classTable = ClassTable()
+        let now: Now
         let service: ClassroomUsageService
         let model: EmptyClassroomViewModel
 
-        init(at now: Date, holiday: Holiday? = nil) {
+        init(at time: Date, holiday: Holiday? = nil) {
+            let now = Now(time)
+            self.now = now
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [SettingsAPIStub.self]
             service = ClassroomUsageService(
@@ -39,7 +48,7 @@ struct EmptyClassroomViewModelTests {
             let classTable = classTable
             model = EmptyClassroomViewModel(
                 service: service,
-                clock: { now },
+                clock: { now.date },
                 holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
                 isClassDay: { _ in true },
                 courses: { classTable.courses },
@@ -251,6 +260,31 @@ struct EmptyClassroomViewModelTests {
         try await waitUntil { harness.model.usage != nil }
         #expect(harness.model.usage?.rooms.map(\.room) == ["TR-209"])
         #expect(harness.model.selectedDay == Self.day(15))
+    }
+
+    @Test("a return to the app reads the screen on view again, on today once the day shown has passed")
+    func returnToTheApp() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+
+        // Off screen, a return to the app reads nothing.
+        harness.model.disappear()
+        harness.now.date = Self.time(15, 8, 30)
+        harness.model.returnToApp()
+        #expect(harness.model.selectedDay == Self.day(14))
+        #expect(harness.requestCount == 3)
+
+        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]))
+        harness.model.appear()
+        try await waitUntil { harness.model.usage?.rooms.map(\.room) == ["TR-209"] }
+
+        harness.serve(Pages.page(rows: [Pages.row("TR-301", "..............")]))
+        harness.now.date = Self.time(16, 8, 30)
+        harness.model.returnToApp()
+        try await waitUntil { harness.model.usage?.rooms.map(\.room) == ["TR-301"] }
+        #expect(harness.model.selectedDay == Self.day(16))
     }
 
     @Test("today and tomorrow are named before the date")

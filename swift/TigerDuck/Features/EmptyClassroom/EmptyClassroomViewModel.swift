@@ -43,6 +43,7 @@ final class EmptyClassroomViewModel {
     @ObservationIgnored private let rawRoom: @MainActor (String) -> String
     @ObservationIgnored private var courses: [SDCourse] = []
     @ObservationIgnored private var hasOpened = false
+    @ObservationIgnored private var isOnScreen = false
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     /// The day the load in flight reads, and which load it is.
     @ObservationIgnored private var running: (day: Date, id: Int)?
@@ -158,6 +159,7 @@ final class EmptyClassroomViewModel {
     /// Opens on the current period, or the next teaching day's first, the first time and after
     /// the day shown has passed; then loads the day.
     func appear() {
+        isOnScreen = true
         if !hasOpened || selectedDay < today {
             let opening = EmptyClassroomSchedule.opening(
                 at: now, horizon: Self.dayCount - 1, isTeachingDay: isTeachingDay
@@ -170,9 +172,17 @@ final class EmptyClassroomViewModel {
         load(force: false)
     }
 
+    /// iOS sends no `onAppear` when the app comes back to the foreground, while today's rooms
+    /// have aged and the day shown may have passed, so the screen on view reads again.
+    func returnToApp() {
+        guard isOnScreen else { return }
+        appear()
+    }
+
     /// The screen went away: a read it started would otherwise go on, and queue behind it the
     /// reads of the next visits.
     func disappear() {
+        isOnScreen = false
         stopLoading()
     }
 

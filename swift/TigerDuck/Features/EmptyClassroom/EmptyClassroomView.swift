@@ -6,6 +6,7 @@ struct EmptyClassroomView: View {
     var embedded = false
 
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = EmptyClassroomViewModel()
     @State private var openRoom: RoomUsage?
 
@@ -60,6 +61,9 @@ struct EmptyClassroomView: View {
             viewModel.appear()
         }
         .onDisappear { viewModel.disappear() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { viewModel.returnToApp() }
+        }
         // A sign-out moves the generation; a sign-in on this screen only stores credentials.
         .onChange(of: appState.authService.loginGeneration) { accountChanged() }
         .onChange(of: appState.authService.hasStoredCredentials) { accountChanged() }
