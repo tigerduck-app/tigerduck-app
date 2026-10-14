@@ -52,7 +52,8 @@ actor AuthTokenManager {
     static let refreshTokenKey = "v3_refresh_token"
     static let expiresAtKey = "v3_token_expires_at"
 
-    /// Well under the backend's 60 s reuse grace, so the retry after a timeout still falls in it.
+    /// A refresh with no reply by then goes once more, which the backend answers with a fresh pair
+    /// while the pair it sent is unused, for up to 24 hours.
     static let refreshTimeout: TimeInterval = 20
 
     /// Set around the sign-out's device unregister, which goes out as the departing account after
@@ -268,8 +269,9 @@ actor AuthTokenManager {
             let expires_in: Int
         }
 
-        // A request with no reply may still have rotated the token. For 60 s the backend answers
-        // the old token once more with a fresh pair; a second reuse is taken for theft.
+        // A request with no reply may still have rotated the token. While the pair it sent is unused,
+        // for up to 24 hours, the backend answers the old token once more with a fresh pair; a
+        // second reuse is taken for theft.
         var reply = await postRefresh(refreshToken)
         var sends = 1
         if reply == nil, signInGeneration == generation {
