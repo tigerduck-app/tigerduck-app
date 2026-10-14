@@ -78,11 +78,10 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.invertSliderDirection,
         default: false
     )
-    /// Default ON: the first-trigger prompt gives users an explicit choice on
-    /// their first accidental flip.
+    /// Default off: a prompt offers it once a library account is signed in.
     static let flipToLibraryEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.flipToLibraryEnabled,
-        default: true
+        default: false
     )
     static let homeSectionLayoutData = Key<Data?>(
         AppConstants.UserDefaultsKeys.homeSectionLayout
