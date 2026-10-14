@@ -13,7 +13,7 @@ final class EmptyClassroomViewModel {
     enum Content: Equatable {
         case loading
         case rooms(CampusUsage)
-        /// A weekend, or a weekday the site answers with no rooms.
+        /// A weekend, a weekday outside the term, or a weekday the site answers with no rooms.
         case noData
         /// The site shows the weekly timetable on a holiday, so its rooms are not shown.
         case holiday(name: String)
@@ -38,6 +38,7 @@ final class EmptyClassroomViewModel {
     @ObservationIgnored private let service: ClassroomUsageService
     @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private let holidays: @MainActor (Date) -> [Holiday]
+    @ObservationIgnored private let isInSession: @MainActor (Date) -> Bool
     @ObservationIgnored private let isClassDay: @MainActor (Date) -> Bool
     @ObservationIgnored private let loadCourses: @MainActor () -> [SDCourse]
     @ObservationIgnored private let rawRoom: @MainActor (String) -> String
@@ -54,6 +55,7 @@ final class EmptyClassroomViewModel {
         service: ClassroomUsageService? = nil,
         clock: @escaping () -> Date = { AppClock.now() },
         holidays: (@MainActor (Date) -> [Holiday])? = nil,
+        isInSession: (@MainActor (Date) -> Bool)? = nil,
         isClassDay: (@MainActor (Date) -> Bool)? = nil,
         courses: (@MainActor () -> [SDCourse])? = nil,
         rawRoom: (@MainActor (String) -> String)? = nil
@@ -61,6 +63,7 @@ final class EmptyClassroomViewModel {
         self.service = service ?? .shared
         self.clock = clock
         self.holidays = holidays ?? { AcademicCalendarStore.shared.calendar.holidays(on: $0) }
+        self.isInSession = isInSession ?? { AcademicCalendarStore.shared.calendar.isInSession(on: $0) }
         self.isClassDay = isClassDay ?? { AcademicCalendarStore.shared.isClassDay($0) }
         loadCourses = courses ?? { CanonicalCourseProvider().currentCourses() }
         self.rawRoom = rawRoom ?? { NameAbbrService.shared.rawClassroom($0) }
@@ -124,8 +127,12 @@ final class EmptyClassroomViewModel {
         return EmptyClassroomSchedule.nextTeachingDay(after: selectedDay, horizon: remaining, isTeachingDay: isTeachingDay)
     }
 
+    private func dayOff(_ day: Date) -> EmptyClassroomSchedule.DayOff? {
+        EmptyClassroomSchedule.dayOff(day, holidays: holidays, isInSession: isInSession)
+    }
+
     private func isTeachingDay(_ day: Date) -> Bool {
-        EmptyClassroomSchedule.isTeachingDay(day, holidays: holidays)
+        dayOff(day) == nil
     }
 
     // MARK: - Derived from the day's rooms
@@ -248,13 +255,15 @@ final class EmptyClassroomViewModel {
         // already stopped it, so coming back after a disappear() always starts a new read.
         if !force, running?.day == day { return }
         stopLoading()
-        if EmptyClassroomSchedule.isWeekend(day) {
+        switch dayOff(day) {
+        case .weekend, .outOfTerm:
             content = .noData
             return
-        }
-        if let holiday = holidays(day).first {
+        case .holiday(let holiday):
             content = .holiday(name: holiday.name())
             return
+        case nil:
+            break
         }
         guard let reader = reader() else { return }
         if let kept = service.keptUsage(on: day) {

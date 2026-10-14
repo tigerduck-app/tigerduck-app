@@ -34,7 +34,7 @@ struct EmptyClassroomViewModelTests {
         let service: ClassroomUsageService
         let model: EmptyClassroomViewModel
 
-        init(at time: Date, holiday: Holiday? = nil) {
+        init(at time: Date, holiday: Holiday? = nil, isInSession: @escaping @MainActor (Date) -> Bool = { _ in true }) {
             let now = Now(time)
             self.now = now
             let config = URLSessionConfiguration.ephemeral
@@ -51,6 +51,7 @@ struct EmptyClassroomViewModelTests {
                 service: service,
                 clock: { now.date },
                 holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
+                isInSession: isInSession,
                 isClassDay: { _ in true },
                 courses: { classTable.courses },
                 rawRoom: { $0 }
@@ -120,6 +121,20 @@ struct EmptyClassroomViewModelTests {
         harness.model.select(day: Self.day(15))
 
         #expect(harness.model.content == .holiday(name: holiday.name()))
+        #expect(harness.requestCount == 0)
+    }
+
+    @Test("a weekday outside the term shows no data without asking the site, and is passed over")
+    func outsideTheTerm() {
+        // The term ends on Thursday 10/15 and the next one starts on Monday 10/26.
+        let harness = Harness(at: Self.time(15, 22, 30), isInSession: { $0 < Self.day(16) || $0 >= Self.day(26) })
+        harness.model.appear()
+        #expect(harness.model.selectedDay == Self.day(26))
+
+        harness.model.select(day: Self.day(19))
+
+        #expect(harness.model.content == .noData)
+        #expect(harness.model.nextTeachingDay == Self.day(26))
         #expect(harness.requestCount == 0)
     }
 
