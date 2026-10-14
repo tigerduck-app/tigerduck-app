@@ -98,26 +98,10 @@ private struct InAppPage: Identifiable {
 }
 #endif
 
-/// The status dot of a course's Moodle screens: one source, Moodle.
-struct MoodleStatusDot: View {
-    let status: ServerStatus
-    let isLoading: Bool
-
-    var body: some View {
-        SyncStatusDot(
-            status: status,
-            label: String(localized: "calendar_source_moodle"),
-            icon: "graduationcap.fill",
-            text: SyncStatusDot.statusText(status),
-            isLoading: isLoading
-        )
-    }
-}
-
 extension View {
-    /// The bar of a pushed Moodle list: the title and "Open in Moodle". The course detail's Moodle
-    /// section keeps the status dot. On the Mac the course detail is an overlay in the window, so
-    /// the bar is drawn in it, not left to the window's toolbar, and ⌘R runs `refresh`.
+    /// The bar of a pushed Moodle list: the title and "Open in Moodle". On the Mac the course detail
+    /// is an overlay in the window, so the bar is drawn in it, not left to the window's toolbar,
+    /// and ⌘R runs `refresh`.
     func moodleListChrome(
         title: String,
         page: MoodlePage?,

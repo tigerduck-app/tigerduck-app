@@ -1,11 +1,11 @@
 import MarkdownUI
 import SwiftUI
 
-/// The course detail's Moodle section, under its incomplete assignments: a header with the
-/// status dot, one card with a row for each kind of data the course has on Moodle, then the
-/// course's summary. A row shows only once its data has something in it, and the section only
-/// once it has a row or a summary. The section brings the gap above it and the course detail
-/// adds no spacing of its own, so with neither the section adds nothing to the sheet.
+/// The course detail's Moodle section, under its incomplete assignments: a header, one card with
+/// a row for each kind of data the course has on Moodle, then the course's summary. A row shows
+/// only once its data has something in it, and the section only once it has a row or a summary.
+/// The section brings the gap above it and the course detail adds no spacing of its own, so with
+/// neither the section adds nothing to the sheet.
 struct MoodleCourseSection: View {
     let store: MoodleCourseStore
     let policy: VisualStylePolicy
@@ -52,14 +52,10 @@ struct MoodleCourseSection: View {
     }
 
     private var header: some View {
-        HStack {
-            Text(String(localized: "calendar_source_moodle"))
-                .font(TigerDuckTheme.Typography.headline)
-                .foregroundStyle(Color.textPrimary)
-                .accessibilityAddTraits(.isHeader)
-            Spacer()
-            MoodleStatusDot(status: store.sectionStatus, isLoading: store.isSectionRefreshing)
-        }
+        Text(String(localized: "calendar_source_moodle"))
+            .font(TigerDuckTheme.Typography.headline)
+            .foregroundStyle(Color.textPrimary)
+            .accessibilityAddTraits(.isHeader)
     }
 
     static func route(for kind: MoodleSectionRow.Kind, in store: MoodleCourseStore) -> MoodleCourseRoute {

@@ -388,18 +388,6 @@ final class MoodleCourseStore {
         return rows
     }
 
-    var isSectionRefreshing: Bool {
-        forums.isRefreshing || materials.isRefreshing || grades.isRefreshing || members.isRefreshing || summary.isRefreshing
-    }
-
-    /// Failed when one of the section's feeds failed, else OK once one reads OK: a feed still
-    /// unknown has its first fetch on the way, as the section fetches every feed it shows.
-    var sectionStatus: ServerStatus {
-        let statuses = [forums.status, materials.status, grades.status, members.status, summary.status]
-        if statuses.contains(.failed) { return .failed }
-        return statuses.contains(.ok) ? .ok : .unknown
-    }
-
     // MARK: Forums
 
     /// When this course's forums were fetched; nil while the cache does not cover the course.
