@@ -9,13 +9,12 @@ struct CourseColorPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let course: SDCourse
-    let onSelect: (UInt32) -> Void
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
 
     @State private var customColor: Color
     /// Set by the preset-button path so the next `.onChange(of: customColor)`
-    /// tick is skipped — preset taps already call `onSelect` directly, and
+    /// tick is skipped: preset taps already apply their colour, and
     /// the change observer would otherwise double-apply on macOS (where the
     /// sheet stays open) because `currentHex` can still be stale for that
     /// render pass.
@@ -24,9 +23,10 @@ struct CourseColorPickerSheet: View {
 
     /// `isCurrent` says whether the account that opened the sheet is still signed in. A sheet in
     /// another window can stay open across a sign-out, and a pick from it then saves nothing.
+    /// Every pick goes through `customPicks`, whose state keeps the first init's closures: the
+    /// sign-out re-renders the presenter, and its new check would pass for the next account.
     init(course: SDCourse, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
-        self.onSelect = { hex in if isCurrent() { onSelect(hex) } }
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
         let courseNo = course.courseNo
         _customPicks = State(initialValue: CustomColorPickDebouncer(
@@ -97,10 +97,9 @@ struct CourseColorPickerSheet: View {
             ForEach(Array(TigerDuckTheme.courseColors.enumerated()), id: \.offset) { index, color in
                 Button {
                     let hex = TigerDuckTheme.coursePaletteHexes[index]
-                    customPicks.cancel()
                     suppressNextColorChange = true
                     customColor = Color(hex: UInt(hex))
-                    onSelect(hex)
+                    customPicks.select(hex)
                     // A preset tap is a one-shot pick, so close the sheet now. The
                     // custom ColorPicker does not dismiss: its `.onChange` fires on
                     // every drag tick.
@@ -271,7 +270,14 @@ final class CustomColorPickDebouncer {
         apply(hex)
     }
 
-    /// Drops the pick still waiting, for a preset that replaces it.
+    /// Applies a preset now, in place of the pick still waiting.
+    func select(_ hex: UInt32) {
+        cancel()
+        guard isCurrent() else { return }
+        apply(hex)
+    }
+
+    /// Drops the pick still waiting.
     func cancel() {
         pendingTask?.cancel()
         pendingTask = nil

@@ -1,0 +1,76 @@
+#if os(iOS)
+import SwiftUI
+import Testing
+import UIKit
+@testable import TigerDuck
+
+/// A sign-out in another window re-renders the view presenting the colour sheet, which builds the
+/// sheet again with a sign-in check made under the next account. A preset tapped after that still
+/// saves nothing (https://github.com/tigerduck-app/tigerduck-app/issues/482).
+@MainActor
+@Suite(.serialized)
+struct CourseColorPickerSheetTests {
+    @Observable final class Login {
+        var generation = 0
+    }
+
+    private final class Picks {
+        var hexes: [UInt32] = []
+    }
+
+    /// Reads the generation in `body`, as the class table's sheet closure does.
+    private struct Presenter: View {
+        let login: Login
+        let course: SDCourse
+        let picks: Picks
+
+        var body: some View {
+            let generation = login.generation
+            CourseColorPickerSheet(
+                course: course,
+                isCurrent: { login.generation == generation },
+                onSelect: { picks.hexes.append($0) }
+            )
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func aPresetSavesOnlyForTheAccountThatOpenedTheSheet(signsOut: Bool) async throws {
+        let login = Login()
+        let picks = Picks()
+        let course = SDCourse(courseNo: "CS1010001", courseName: "A", schedule: [2: ["3"]])
+        let host = UIHostingController(rootView: Presenter(login: login, course: course, picks: picks))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+
+        let label = String(format: String(localized: "a11y_course_color_swatch"), 1)
+        try await waitUntil { Self.element(labeled: label, in: host.view) != nil }
+        if signsOut {
+            login.generation += 1
+            host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let swatch = try #require(Self.element(labeled: label, in: host.view))
+        _ = swatch.accessibilityActivate()
+
+        #expect(picks.hexes == (signsOut ? [] : [TigerDuckTheme.coursePaletteHexes[0]]))
+    }
+
+    private static func element(labeled label: String, in node: NSObject) -> NSObject? {
+        if node.accessibilityLabel == label { return node }
+        var children = node.accessibilityElements ?? []
+        let count = node.accessibilityElementCount()
+        if children.isEmpty, count != NSNotFound, count > 0 {
+            children = (0..<count).compactMap { node.accessibilityElement(at: $0) }
+        }
+        if let view = node as? UIView { children += view.subviews }
+        for case let child as NSObject in children {
+            if let found = element(labeled: label, in: child) { return found }
+        }
+        return nil
+    }
+}
+#endif
