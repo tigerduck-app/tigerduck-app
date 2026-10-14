@@ -130,8 +130,12 @@ enum SSOLoginService {
             // OIDC bridge forms
             var (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
 
-            // Step 3: Check if we're on the SSO login page
-            if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+            // Step 3: Check if we're on the SSO login page. A live session would let a password the
+            // user typed through unchecked, so that sign-in drops the service's cookies and goes on to
+            // step 4, which ends the SSO session: the visit after it reaches the form.
+            if interactive, !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+                NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
+            } else if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if try await isSignedIn(html: currentHTML, url: currentURL, session: session) { return true }
                 // A service whose own session lapsed sends the visit to the campus portal, not to
                 // the sign-in form; without its cookies the next visit goes through SSO.

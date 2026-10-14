@@ -82,7 +82,8 @@ enum LibraryService {
     /// or a different account signing in. The generation only stops work that
     /// is still in flight; a code that already landed stays on whatever screen
     /// shows it until that screen next refreshes, so a screen that is up when
-    /// the account changes listens for this and drops it at once.
+    /// the account changes listens for this and drops it at once. A school sign-out that leaves no
+    /// library account posts it too, for the sign-in form that offers the school account's ID.
     static let accountDidChange = Notification.Name("TigerDuck.libraryAccountDidChange")
 
     /// Posted on the main actor when a sign-in with the stored credentials stores a new token, or
@@ -162,12 +163,15 @@ enum LibraryService {
 
     /// Signs out of the library when its account is the school account signing out, so whoever
     /// signs in next does not keep it. A library account of another ID stays. Returns whether it
-    /// signed out.
+    /// signed out. With no library account, the sign-in form offers the school account's ID, so
+    /// ``accountDidChange`` goes out for it to fill in again.
     @MainActor
     static func clearCredentials(ifSchoolAccount studentId: String) -> Bool {
-        guard let username = storedUsername, username.caseInsensitiveCompare(studentId) == .orderedSame else {
+        guard let username = storedUsername else {
+            if !hasAccount { NotificationCenter.default.post(name: accountDidChange, object: nil) }
             return false
         }
+        guard username.caseInsensitiveCompare(studentId) == .orderedSame else { return false }
         clearCredentials()
         return true
     }
@@ -293,6 +297,13 @@ enum LibraryService {
     /// it: its token is live, or its stored credentials sign in again behind the code.
     @MainActor static var hasAccount: Bool {
         isTokenValid || canSignInWithStoredCredentials
+    }
+
+    /// Whether ``hasAccount`` holds for a library account of another student ID than `studentId`.
+    /// A school sign-in keeps such an account, as ``clearCredentials(ifSchoolAccount:)`` does.
+    @MainActor static func hasAccount(otherThan studentId: String) -> Bool {
+        guard hasAccount, let username = storedUsername else { return false }
+        return username.caseInsensitiveCompare(studentId) != .orderedSame
     }
 
     /// Signs in with the stored credentials when there is no live token, so the Library page
