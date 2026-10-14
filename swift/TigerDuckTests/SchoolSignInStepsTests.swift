@@ -151,4 +151,112 @@ struct SchoolSignInStepsTests {
         }
         #expect(calls.harvests == 1)
     }
+
+    // MARK: - Cancelling the sign-in sheet (https://github.com/tigerduck-app/tigerduck-app/issues/589)
+
+    /// The sign-in the sheet started, which the test cancels as the sheet's Cancel does.
+    @MainActor
+    private final class SheetSignIn {
+        var task: Task<Bool, Never>?
+        var signOutCallsEnded = false
+        var schoolStepStarted = false
+    }
+
+    private static func storedAccountIsUntouched(_ keychain: MemoryKeychain) -> Bool {
+        (try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == Data(Self.anotherStudent.utf8)
+    }
+
+    /// A sign-in first waits for a sign-out's calls, a minute and more on a stalled network.
+    @Test func aSignInCancelledWhileItWaitsSignsNothingOutOrIn() async throws {
+        let calls = Calls()
+        try await Self.withKeychain(libraryAccount: nil) { keychain in
+            try keychain.setObject(Data(Self.anotherStudent.utf8), forKey: AppConstants.KeychainKeys.studentId)
+            try keychain.setObject(Data("other".utf8), forKey: AppConstants.KeychainKeys.password)
+            let auth = Self.auth(recording: calls)
+            let sheet = SheetSignIn()
+            auth.signOutStoredAccount = { Issue.record("the stored account was signed out") }
+            calls.onSchoolAnswer = { Issue.record("the school sign-in went out") }
+            _ = auth.startSignOutCalls {
+                while !sheet.signOutCallsEnded { try? await Task.sleep(for: .milliseconds(5)) }
+            }
+
+            sheet.task = Task { await auth.login(studentId: Self.student, password: "school") }
+            sheet.task?.cancel()
+            sheet.signOutCallsEnded = true
+
+            #expect(await sheet.task?.value == false)
+            #expect(Self.storedAccountIsUntouched(keychain))
+            #expect(calls.librarySignIns.isEmpty)
+            #expect(auth.loginError == nil)
+            #expect(!auth.isLoggingIn)
+        }
+        #expect(calls.harvests == 0)
+    }
+
+    @Test func aSignInCancelledWhileTheStoredAccountSignsOutGoesNoFurther() async throws {
+        let calls = Calls()
+        try await Self.withKeychain(libraryAccount: nil) { keychain in
+            try keychain.setObject(Data(Self.anotherStudent.utf8), forKey: AppConstants.KeychainKeys.studentId)
+            try keychain.setObject(Data("other".utf8), forKey: AppConstants.KeychainKeys.password)
+            let auth = Self.auth(recording: calls)
+            let sheet = SheetSignIn()
+            auth.signOutStoredAccount = {
+                sheet.task?.cancel()
+                try? keychain.removeObject(forKey: AppConstants.KeychainKeys.studentId)
+                try? keychain.removeObject(forKey: AppConstants.KeychainKeys.password)
+            }
+            calls.onSchoolAnswer = { Issue.record("the school sign-in went out") }
+
+            sheet.task = Task { await auth.login(studentId: Self.student, password: "school") }
+
+            #expect(await sheet.task?.value == false)
+            #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
+            #expect(calls.librarySignIns.isEmpty)
+            #expect(auth.loginError == nil)
+        }
+        #expect(calls.harvests == 0)
+    }
+
+    @Test func aSignInCancelledAsTheSchoolAnswersSavesNothing() async throws {
+        let calls = Calls()
+        try await Self.withKeychain(libraryAccount: nil) { keychain in
+            let auth = Self.auth(recording: calls)
+            let sheet = SheetSignIn()
+            calls.onSchoolAnswer = { sheet.task?.cancel() }
+
+            sheet.task = Task { await auth.login(studentId: Self.student, password: "school") }
+
+            #expect(await sheet.task?.value == false)
+            #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
+            #expect(calls.librarySignIns.isEmpty)
+            #expect(!auth.isLoggingIn)
+        }
+        #expect(calls.harvests == 0)
+    }
+
+    /// The school's requests end with the task, as `URLSession`'s do.
+    @Test func aSignInCancelledDuringTheSchoolStepShowsNoError() async throws {
+        try await Self.withKeychain(libraryAccount: nil) { keychain in
+            let sheet = SheetSignIn()
+            let auth = AuthService(
+                keychainHasCredentials: { false },
+                notificationCenter: NotificationCenter(),
+                schoolSignIn: { _, _ in
+                    await MainActor.run { sheet.schoolStepStarted = true }
+                    try await Task.sleep(for: .seconds(60))
+                    return true
+                },
+                endSchoolSession: { _ in }
+            )
+
+            sheet.task = Task { await auth.login(studentId: Self.student, password: "school") }
+            try await waitUntil { sheet.schoolStepStarted }
+            sheet.task?.cancel()
+
+            #expect(await sheet.task?.value == false)
+            #expect(auth.loginError == nil)
+            #expect(!auth.isLoggingIn)
+            #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
+        }
+    }
 }

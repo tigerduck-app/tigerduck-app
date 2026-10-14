@@ -418,6 +418,60 @@ struct PushRegistrationServiceTests {
         }
     }
 
+    /// `cloud_sync_enabled` as the server keeps it: the value the last request carrying it set.
+    private static func serverCloudSyncEnabled(_ baseURL: URL) throws -> Bool? {
+        try SettingsAPIStub.requests(under: baseURL).compactMap { request -> Bool? in
+            guard let body = SettingsAPIStub.bodyData(from: request) else { return nil }
+            let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+            return json?["cloud_sync_enabled"] as? Bool
+        }.last
+    }
+
+    /// A registration sends one request per token, each with the value read at its start, and the
+    /// switch's PATCH could land between them (https://github.com/tigerduck-app/tigerduck-app/issues/597).
+    @Test("turning TigerSync off while a registration is out leaves the server off")
+    func switchTurnedOffDuringARegistrationEndsOff() async throws {
+        try await Self.withSyncPreferences {
+            let savedSync = Defaults[.cloudSyncEnabled]
+            defer { Defaults[.cloudSyncEnabled] = savedSync }
+            Defaults[.syncPreferencesPushPending] = false
+            Defaults[.cloudSyncEnabled] = true
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            Self.expectAttempt(baseURL, registrations: 1)
+            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+            await service.awaitPendingRegistration()
+
+            // A push-to-start token arrives, and the attempt registers both tokens; the first
+            // registration's reply is held.
+            let gate = SettingsAPIStub.ReplyGate()
+            defer { gate.open() }
+            let registered = Data(#"{"device_id":"server-device","push_token_id":1}"#.utf8)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: Self.announceURL(baseURL))
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: registered, gate: gate), for: Self.registerURL(baseURL))
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: registered), for: Self.registerURL(baseURL))
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: true)),
+                for: Self.preferencesURL(baseURL)
+            )
+            await service.update(ptsTokenHex: "a1b2")
+            try await waitUntil { SettingsAPIStub.requests(for: Self.registerURL(baseURL)).count == 2 }
+
+            Defaults[.cloudSyncEnabled] = false
+            let patch = Task { await service.updateCloudSyncEnabled(false) }
+            // Time for a PATCH that does not wait for the registration to go out first.
+            for _ in 0..<60 where SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).isEmpty {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            gate.open()
+            await patch.value
+            await service.awaitPendingRegistration()
+
+            #expect(try Self.serverCloudSyncEnabled(baseURL) == false)
+            #expect(SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count == 1)
+        }
+    }
+
     @Test("a registration already running when the session comes back is not started a second time")
     func runningRegistrationIsNotStartedAgain() async throws {
         try await Self.withSyncPreferences {

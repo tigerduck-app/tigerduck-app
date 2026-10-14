@@ -26,20 +26,145 @@ struct BackendTokenRefreshTests {
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 2)
     }
 
-    @Test("a retry whose reply is lost too is not sent again, and the old pair stays")
+    /// Both sends may have reached the backend, the second rotating the token once more, and a
+    /// third use is taken for theft (https://github.com/tigerduck-app/tigerduck-app/issues/594).
+    @Test("a token whose two sends got no reply goes out no more, and the next refresh signs in again")
     func secondLostReplyGivesUp() async throws {
         let backend = BackendFixture()
+        let manager = backend.manager
+        let relogins = CallCount()
+        await manager.setRefreshFailedHandler {
+            relogins.increment()
+            return (try? await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token",
+                moodlePrivateToken: nil, platform: "ios"
+            )) != nil
+        }
         SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
         SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A3", refresh: "R3"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
 
-        #expect(await backend.manager.validAccessToken() == nil)
+        #expect(await manager.validAccessToken() == nil)
 
         #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
-        #expect(await backend.manager.isLoggedIn)
-        #expect(await backend.manager.validAccessToken() == "A3")
+        #expect(await manager.isLoggedIn)
+        #expect(relogins.value == 0)
+        #expect(await manager.validAccessToken() == "A9")
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+        #expect(relogins.value == 1)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+    }
+
+    @Test("a token's two sends span refreshes: after a server error, a lost reply is not sent again")
+    func sendsAddUpAcrossRefreshes() async throws {
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data()), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    /// The backend's per-IP limit answers before it looks at the token, and a campus network puts
+    /// many students behind one IP.
+    @Test("a refresh turned away by the rate limit uses none of the token's sends")
+    func rateLimitedRefreshesUseNothing() async throws {
+        let backend = BackendFixture()
+        for _ in 0..<3 {
+            SettingsAPIStub.enqueue(.init(statusCode: 429, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+        }
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        for _ in 0..<3 { #expect(await backend.manager.validAccessToken() == nil) }
+
+        #expect(await backend.manager.validAccessToken() == "A1")
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R0", "R0"])
+    }
+
+    private static var offline: SettingsAPIStub.StubResponse {
+        .init(statusCode: 0, body: Data(), failure: .notConnectedToInternet)
+    }
+
+    /// Offline, the request never leaves the device, so the backend cannot have used the token.
+    @Test("a refresh that never leaves the device uses none of the token's sends")
+    func offlineRefreshesUseNothing() async throws {
+        let backend = BackendFixture()
+        for _ in 0..<4 { SettingsAPIStub.enqueue(Self.offline, for: backend.refreshURL) }
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(await backend.manager.validAccessToken() == "A1")
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R0", "R0", "R0"])
+    }
+
+    /// Behind a captive portal's sign-in page, as on campus or public Wi-Fi, the TLS handshake
+    /// fails before the request carrying the token goes out; so does a request iOS refuses to send.
+    @Test("a refresh that fails before its request goes out keeps the token for the next one", arguments: [
+        URLError.Code.secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+        .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid, .clientCertificateRejected,
+        .clientCertificateRequired, .appTransportSecurityRequiresSecureConnection, .badURL, .unsupportedURL,
+    ])
+    func refreshFailingBeforeItGoesOutKeepsTheToken(code: URLError.Code) async throws {
+        let backend = BackendFixture()
+        let failure = SettingsAPIStub.StubResponse(statusCode: 0, body: Data(), failure: code)
+        SettingsAPIStub.enqueue(failure, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(failure, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
+        #expect(await backend.manager.validAccessToken() == "A1")
         #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R0"])
+    }
+
+    @Test("a refresh that may have reached the backend still counts", arguments: [
+        URLError.Code.timedOut, .networkConnectionLost, .cancelled,
+    ])
+    func refreshThatMayHaveGoneOutCounts(code: URLError.Code) async throws {
+        let backend = BackendFixture()
+        let failure = SettingsAPIStub.StubResponse(statusCode: 0, body: Data(), failure: code)
+        SettingsAPIStub.enqueue(failure, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(failure, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    @Test("a sign-out after a refresh that never left the device still gets a token for its unregister")
+    func signOutAfterAnOfflineRefreshSendsTheToken() async throws {
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(Self.offline, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(Self.offline, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(await backend.manager.endSession() == "A1")
+    }
+
+    @Test("a new pair gets two sends of its own")
+    func aNewPairStartsTheCountOver() async throws {
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        // Expired at once, so the next call refreshes it.
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", expiresIn: 0), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == "A1")
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R1", "R1"])
     }
 
     @Test("a refresh request gives up well inside the backend's 60 s reuse grace")
@@ -425,6 +550,42 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0"])
     }
 
+    @Test("a sign-out sends no third use of a token an earlier refresh sent twice")
+    func signOutAfterARefreshThatSentTwiceSendsNothing() async throws {
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(await backend.manager.endSession() == nil)
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    /// The 401 came before the sign-out, so no reply was overtaken, and the sign-out sent the
+    /// refused token once more.
+    @Test("a sign-out during the relogin after a 401 sends the refused token no more")
+    func signOutDuringTheReloginSendsTheRefusedTokenNoMore() async throws {
+        let backend = BackendFixture()
+        let manager = backend.manager
+        let ending = OSAllocatedUnfairLock<Task<String?, Never>?>(initialState: nil)
+        await manager.setRefreshFailedHandler {
+            // The account signs out while the relogin runs, which then fails.
+            ending.withLock { $0 = Task { await manager.endSession() } }
+            while await manager.isLoggedIn { try? await Task.sleep(for: .milliseconds(5)) }
+            return false
+        }
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await manager.validAccessToken() == nil)
+
+        let signOut = try #require(ending.withLock { $0 })
+        #expect(await signOut.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+    }
+
     @Test("a refresh turned down after a sign-out signs nothing in again and leaves the next session alone")
     func refreshTurnedDownAfterASignOut() async throws {
         let gate = SettingsAPIStub.ReplyGate()
@@ -567,6 +728,54 @@ struct BackendSignInTests {
 
         #expect(harvests.value == 0)
         #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+    }
+
+    /// Once the school has signed the account in and its credentials are stored, a cancel from the
+    /// sign-in sheet lets the rest finish, so Moodle and the backend are not left half signed in
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/589).
+    @Test("a sign-in cancelled after the school step still signs in to the backend")
+    func signInCancelledAfterTheSchoolStepFinishes() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.ntustCredentialsPresent]
+            defer { Defaults[.ntustCredentialsPresent] = saved }
+            let backend = BackendFixture(signedIn: false)
+            SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+            let sheet = SheetSignIn()
+            let stored = OSAllocatedUnfairLock<String?>(initialState: nil)
+            let auth = AuthService(
+                keychainHasCredentials: { false },
+                notificationCenter: NotificationCenter(),
+                moodleTokens: MoodleTokenService(
+                    storedCredentials: { nil },
+                    tokens: .init(
+                        load: { stored.withLock { $0 } },
+                        save: { triple in stored.withLock { $0 = triple.wstoken } },
+                        drop: { stored.withLock { $0 = nil } }
+                    ),
+                    harvest: { _, _ in
+                        // The user cancels the sheet while the Moodle token is fetched.
+                        await MainActor.run { sheet.task?.cancel() }
+                        return .init(signature: "", wstoken: "harvested", privatetoken: nil)
+                    }
+                ),
+                schoolSignIn: { _, _ in true },
+                endSchoolSession: { _ in }
+            )
+            auth.authTokenManager = backend.manager
+            let keychain = MemoryKeychain.locked()
+            // A live library token skips the library sign-in, which would reach the library's server.
+            let expiry = Int64(Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000)
+            try keychain.setObject(Data("library-token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
+            try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
+
+            let signedIn = await SecureStore.$sharedForTesting.withValue(keychain) {
+                sheet.task = Task { await auth.login(studentId: "B11000000", password: "password") }
+                return await sheet.task?.value
+            }
+
+            #expect(signedIn == true)
+            #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        }
     }
 
     @Test("an unlock signs a signed-out backend back in")
@@ -1000,10 +1209,10 @@ private struct BackendFixture {
     }
 
     static func refreshReply(
-        access: String, refresh: String, heldBy gate: SettingsAPIStub.ReplyGate? = nil
+        access: String, refresh: String, expiresIn: Int = 900, heldBy gate: SettingsAPIStub.ReplyGate? = nil
     ) -> SettingsAPIStub.StubResponse {
         .init(statusCode: 200, body: Data("""
-            {"access_token":"\(access)","refresh_token":"\(refresh)","token_type":"Bearer","expires_in":900}
+            {"access_token":"\(access)","refresh_token":"\(refresh)","token_type":"Bearer","expires_in":\(expiresIn)}
             """.utf8), gate: gate)
     }
 
@@ -1112,6 +1321,12 @@ private nonisolated final class Recorder: @unchecked Sendable {
     func stored(_ key: String) -> String? { lock.withLock { values[key] } }
     var backgroundTasks: BackgroundTasks { lock.withLock { tasks } }
     var writesOutsideABackgroundTask: Int { lock.withLock { outsideWrites } }
+}
+
+/// The sign-in a sign-in sheet started, which a test cancels as the sheet's Cancel does.
+@MainActor
+private final class SheetSignIn {
+    var task: Task<Bool, Never>?
 }
 
 private nonisolated final class CallCount: @unchecked Sendable {

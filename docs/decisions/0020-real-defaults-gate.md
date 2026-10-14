@@ -12,6 +12,7 @@ under test reads and writes directly, not through a seam:
   `serverPushUserOptOut`, and the register body and bulletin PATCH of `PushRegistrationService`.
 - `PushRegistrationService.updateSyncPreferences()`, with the six sync switches and
   `syncPreferencesPushPending`, and `LiveActivityPreferencesStore`, with its notification settings.
+- `cloudSyncEnabled`, which every registration of `PushRegistrationService` sends.
 - `DefaultTabsPinMigration`, and `UpdateNotifyCoordinator.checkManually()`, which stamps
   `lastUpdateCheckAt` and, for an unreadable store version, `lastReportedUnparseableStoreVersion`.
 - `AppState.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories`,

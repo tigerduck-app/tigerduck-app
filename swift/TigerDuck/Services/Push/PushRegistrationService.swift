@@ -146,6 +146,8 @@ actor PushRegistrationService {
     /// `performRegister` runs that have started and not ended. A count, as a cancelled run can
     /// still be finishing when the next one starts.
     private var registrationsInFlight = 0
+    /// Cloud-sync PATCHes waiting for the registrations out to end.
+    private var cloudSyncPatchesWaiting: [CheckedContinuation<Void, Never>] = []
     /// Set by a `registerAgain()` that found a registration running. That one may have gone out
     /// without the session just restored, so its failure is no reason to wait out the backoff.
     private var registerAgainIfRunningFails = false
@@ -222,7 +224,10 @@ actor PushRegistrationService {
     #if os(macOS)
     func registerPassiveDevice() async {
         passiveRegistrationRunning = true
-        defer { passiveRegistrationRunning = false }
+        defer {
+            passiveRegistrationRunning = false
+            releaseCloudSyncPatchesIfIdle()
+        }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let request = PushAPI.DeviceRegisterRequest(
             client_device_id: identity.uuid,
@@ -364,6 +369,11 @@ actor PushRegistrationService {
     }
 
     func updateCloudSyncEnabled(_ enabled: Bool) async {
+        // A registration out sends the value it read when it began, one request per token, and
+        // one landing after this PATCH would leave the server on the value just left.
+        if isRegistering {
+            await withCheckedContinuation { cloudSyncPatchesWaiting.append($0) }
+        }
         do {
             _ = try await apiClient.updateDevicePreferences(
                 deviceId: identity.uuid,
@@ -518,6 +528,23 @@ actor PushRegistrationService {
         deviceTokenHex != nil || ptsTokenHex != nil
     }
 
+    /// Whether a registration is out, carrying the cloud-sync value it read.
+    private var isRegistering: Bool {
+        #if os(macOS)
+        registrationsInFlight > 0 || passiveRegistrationRunning
+        #else
+        registrationsInFlight > 0
+        #endif
+    }
+
+    /// Lets the waiting cloud-sync PATCHes go once no registration is out.
+    private func releaseCloudSyncPatchesIfIdle() {
+        guard !isRegistering else { return }
+        let waiting = cloudSyncPatchesWaiting
+        cloudSyncPatchesWaiting = []
+        for patch in waiting { patch.resume() }
+    }
+
     /// Registers again with the give-up counter reset, so a registration that
     /// exhausted its retries gets a fresh chance: after a sign-in or relogin,
     /// once a v3 JWT is available, and when TigerSync turns on after a failed
@@ -613,7 +640,10 @@ actor PushRegistrationService {
         }
         guard !tokens.isEmpty else { return }
         registrationsInFlight += 1
-        defer { registrationsInFlight -= 1 }
+        defer {
+            registrationsInFlight -= 1
+            releaseCloudSyncPatchesIfIdle()
+        }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
         // Announce every launch, signed in or not: signed out, operator push
