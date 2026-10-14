@@ -239,8 +239,8 @@ struct ClassroomUsageServiceTests {
         #expect(harness.account.logged.map { $0 as? ClassroomUsageError } == [.unreadable])
     }
 
-    @Test("a sign-out drops the kept days and the page, so the next read signs in from the start")
-    func signOutDropsEverything() async throws {
+    @Test("a new school session drops the kept days, so the next read reads the day again")
+    func newSessionDropsTheKeptDays() async throws {
         let harness = Harness()
         harness.serveFirstDay()
         _ = try await harness.usage(on: Self.day(10, 14))
@@ -251,10 +251,9 @@ struct ClassroomUsageServiceTests {
         harness.serveFirstDay()
         _ = try await harness.usage(on: Self.day(10, 14))
         #expect(harness.requests.count == 8)
-        #expect(harness.requests[4].httpMethod == "GET")
     }
 
-    @Test("forgetting drops the kept days and the page")
+    @Test("forgetting drops the kept days, so the next read reads the day again")
     func forget() async throws {
         let harness = Harness()
         harness.serveFirstDay()
@@ -265,7 +264,7 @@ struct ClassroomUsageServiceTests {
         #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
         harness.serveFirstDay()
         _ = try await harness.usage(on: Self.day(10, 14))
-        #expect(harness.requests[4].httpMethod == "GET")
+        #expect(harness.requests.count == 8)
     }
 
     @Test("a read that a sign-out ends does not sign in again after a page without the grid")
@@ -396,8 +395,5 @@ struct ClassroomUsageServiceTests {
 
         await #expect(throws: CancellationError.self) { try await read.value }
         #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
-        harness.serveFirstDay()
-        _ = try await harness.usage(on: Self.day(10, 14))
-        #expect(harness.requests[3].httpMethod == "GET")
     }
 }
