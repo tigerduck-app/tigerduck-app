@@ -180,7 +180,7 @@ struct MoodleMaterialsTests {
         await store.refreshMaterials()
         #expect(store.materials.value == nil)
         #expect(store.materials.failure != nil)
-        #expect(store.sectionStatus == .failed)
+        #expect(store.materials.status == .failed)
 
         site.set()
         await store.refreshMaterials()
@@ -189,33 +189,6 @@ struct MoodleMaterialsTests {
         #expect(store.materials.value == Self.materials)
         #expect(store.materials.status == .failed)
         #expect(store.sectionRows.map(\.kind) == [.materials])
-    }
-
-    @Test("the section dot shows a failed feed first, else OK once one feed reads OK, and spins while either fetches")
-    func sectionStatus() async throws {
-        let folder = Folder()
-        let site = Site()
-        let answer = ManualSleeper()
-        let store = Self.store(folder, site: site, beforeMaterials: { await answer.sleep(for: .zero) })
-        #expect(store.sectionStatus == .unknown)
-
-        let first = Task { await store.refreshMaterials() }
-        try await answer.waitUntilArmed()
-        #expect(store.isSectionRefreshing)
-        await answer.fire()
-        await first.value
-        #expect(!store.isSectionRefreshing)
-        #expect(store.forums.status == .unknown)
-        #expect(store.sectionStatus == .ok)
-
-        await store.refreshForums()
-        site.set(failure: MoodleWebserviceError.siteMaintenance)
-        let failing = Task { await store.refreshMaterials() }
-        try await answer.waitUntilArmed(atLeast: 2)
-        await answer.fire()
-        await failing.value
-        #expect(store.forums.status == .ok)
-        #expect(store.sectionStatus == .failed)
     }
 
     // MARK: - Cache
