@@ -58,6 +58,20 @@ struct LibrarySignInTests {
         }
     }
 
+    /// A sign-in the app makes by itself, for the Library page's code or the Watch's, reaches the
+    /// screens that show the library account, as one from the sign-in form does (#438).
+    @Test func aSignInWithTheStoredCredentialsIsAnnounced() async throws {
+        let calls = Calls()
+        try await Self.withStoredAccount { _ in
+            let observer = NotificationCenter.default.addObserver(
+                forName: LibraryService.signInDidChange, object: nil, queue: nil
+            ) { _ in MainActor.assumeIsolated { calls.count += 1 } }
+            defer { NotificationCenter.default.removeObserver(observer) }
+            _ = try await LibraryService.ensureToken { _, _ in Self.answer() }
+            #expect(calls.count > 0)
+        }
+    }
+
     @Test func credentialsTheLibraryRefusedAreNotSentAgain() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in

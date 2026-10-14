@@ -85,6 +85,10 @@ enum LibraryService {
     /// the account changes listens for this and drops it at once.
     static let accountDidChange = Notification.Name("TigerDuck.libraryAccountDidChange")
 
+    /// Posted on the main actor when a sign-in with the stored credentials stores a new token. No
+    /// screen asked for it, so `AppState.isLibraryLoggedIn` re-reads the token on this.
+    static let signInDidChange = Notification.Name("TigerDuck.librarySignInDidChange")
+
     /// `@MainActor`-isolated so the broadcaster call below is an in-actor
     /// sync call (no deferred Task). This preserves serialization — a
     /// save followed by a clear runs broadcastSet → broadcastWipe in
@@ -342,6 +346,7 @@ enum LibraryService {
             guard loginGeneration == generation else { throw LibraryServiceError.credentialsNotFound }
             saveToken(answer.token, expirationMs: answer.expirationTimeStamp)
             storedSignInFailedAt = nil
+            NotificationCenter.default.post(name: signInDidChange, object: nil)
             return answer.token
         }
         pendingSignIns[username] = attempt
