@@ -103,7 +103,7 @@ struct CourseIgnoredAssignmentsTests {
             courses: [], assignments: loaded, accentHex: 0x4A90E2,
             classPreparingLeadTime: 15 * 60, assignmentLeadTime: 3 * 3600,
             showClassPreparing: true, showInClass: true, showAssignmentScenario: true,
-            liveActivityAvailable: true
+            liveActivityAvailable: true, term: Self.term
         )
 
         let events = ScheduleSyncService.buildEvents(
