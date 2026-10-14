@@ -4,25 +4,43 @@ import Foundation
 /// https://github.com/tigerduck-app/tigerduck-app/issues/444, closed while the device is locked.
 /// Copies from before kept the default class, readable behind the lock, and stay in use until
 /// Moodle lists a newer version, the user signs out or clears the downloads
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/503).
+/// (https://github.com/tigerduck-app/tigerduck-app/issues/503). Keep until no supported update
+/// can start from 2.4.x, whose downloads it mends.
 enum MoodleDownloadProtectMigration {
     private static let doneKey = "MoodleDownloadProtectMigration.v1.done"
+    /// Launches with the phone unlocked that still left a file without the class.
+    private static let failedLaunchesKey = "MoodleDownloadProtectMigration.v1.failedLaunches"
+    /// A file that fails with the phone unlocked is unlikely to take the class at a later launch,
+    /// and each launch walks the whole folder again.
+    private static let maxFailedLaunches = 3
 
     /// `protect` is replaced in tests, as a simulator keeps no protection class on a file.
     static func runIfNeeded(
         root: URL,
+        isProtectedDataAvailable: Bool,
         protect: @escaping @Sendable (URL) throws -> Void = MoodleDownloadProtectMigration.protect(_:)
     ) async {
         guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
-        let done = await Task.detached(priority: .utility) { protectFiles(in: root, protect: protect) }.value
-        if done { UserDefaults.standard.set(true, forKey: doneKey) }
+        let failures = await Task.detached(priority: .utility) { failureCount(in: root, protect: protect) }.value
+        guard failures > 0 else {
+            UserDefaults.standard.set(true, forKey: doneKey)
+            return
+        }
+        AppLogger.breadcrumb("moodle download protection failed for \(failures) files", category: "moodle")
+        // Behind the lock a file cannot take the class, which says nothing about the next launch.
+        guard isProtectedDataAvailable else { return }
+        let failedLaunches = UserDefaults.standard.integer(forKey: failedLaunchesKey) + 1
+        UserDefaults.standard.set(failedLaunches, forKey: failedLaunchesKey)
+        if failedLaunches >= maxFailedLaunches {
+            AppLogger.breadcrumb("moodle download protection gave up after \(failedLaunches) launches", category: "moodle")
+            UserDefaults.standard.set(true, forKey: doneKey)
+        }
     }
 
-    /// Whether every file has the class now. A file or folder that cannot be reached, as before
-    /// the first unlock after a restart, leaves the pass to the next launch; one deleted meanwhile
-    /// needs nothing.
-    private nonisolated static func protectFiles(in root: URL, protect: (URL) throws -> Void) -> Bool {
-        guard FileManager.default.fileExists(atPath: root.path) else { return true }
+    /// The files and folders left without the class. One that cannot be reached, as before the
+    /// first unlock after a restart, counts; one deleted meanwhile needs nothing.
+    private nonisolated static func failureCount(in root: URL, protect: (URL) throws -> Void) -> Int {
+        guard FileManager.default.fileExists(atPath: root.path) else { return 0 }
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileProtectionKey]
         let failures = Failures()
         guard let files = FileManager.default.enumerator(
@@ -31,7 +49,7 @@ enum MoodleDownloadProtectMigration {
                 if !isMissing(error) { failures.record() }
                 return true
             }
-        ) else { return false }
+        ) else { return 1 }
         for case let file as URL in files {
             do {
                 let values = try file.resourceValues(forKeys: keys)
@@ -44,15 +62,19 @@ enum MoodleDownloadProtectMigration {
                 failures.record()
             }
         }
-        return !failures.any
+        return failures.count
     }
 
-    /// The modification date stays: `MoodleFileDownloads` reads it as the version Moodle listed.
     nonisolated static func protect(_ file: URL) throws {
-        let files = FileManager.default
+        try FileManager.default.setAttributes(protectedAttributes(of: file), ofItemAtPath: file.path)
+    }
+
+    /// The class, with the file's own modification date written back: `MoodleFileDownloads`
+    /// reads the date as the version Moodle listed.
+    nonisolated static func protectedAttributes(of file: URL) throws -> [FileAttributeKey: Any] {
         var attributes: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUnlessOpen]
-        attributes[.modificationDate] = try files.attributesOfItem(atPath: file.path)[.modificationDate]
-        try files.setAttributes(attributes, ofItemAtPath: file.path)
+        attributes[.modificationDate] = try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]
+        return attributes
     }
 
     private nonisolated static func isMissing(_ error: any Error) -> Bool {
@@ -63,7 +85,7 @@ enum MoodleDownloadProtectMigration {
 
     /// Set from the enumerator's error handler, which it keeps.
     private nonisolated final class Failures {
-        private(set) var any = false
-        func record() { any = true }
+        private(set) var count = 0
+        func record() { count += 1 }
     }
 }
