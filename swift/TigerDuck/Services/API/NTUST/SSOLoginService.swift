@@ -67,6 +67,11 @@ enum SSOLoginService {
 
     private nonisolated static let storedPasswordPosts = AsyncSerialLock()
 
+    /// How many automatic posts of the stored password wait for the one under way.
+    nonisolated static func storedPasswordPostsWaiting() async -> Int {
+        await storedPasswordPosts.waiterCount
+    }
+
     /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
     /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
     /// refused before either latched it, and the school counts both toward the lockout. `body`

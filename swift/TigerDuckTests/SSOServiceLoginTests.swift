@@ -509,6 +509,12 @@ struct SSOServiceLoginTests {
         }
     }
 
+    private static func waitForAQueuedPost() async {
+        while await SSOLoginService.storedPasswordPostsWaiting() == 0 {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
     private func automaticSignIn(_ serviceURL: URL) async -> Result<Bool, Error> {
         await Self.result {
             try await SSOLoginService.ensureServiceLogin(
@@ -562,8 +568,8 @@ struct SSOServiceLoginTests {
             // The test holds the lock as an automatic sign-in does while the school answers its post.
             let renewing = await SSOLoginService.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
-                // Long enough for the renewal to pass its first check of the latch and queue.
-                try? await Task.sleep(for: .milliseconds(200))
+                // Queued for the lock, so past its first check of the latch.
+                await Self.waitForAQueuedPost()
                 SSOLoginService.storedPasswordRejected = true
                 return renewing
             }
@@ -584,8 +590,7 @@ struct SSOServiceLoginTests {
         let (outcome, harvests) = await withLatch(false) { () async -> (Result<String, Error>, Int) in
             let renewing = await SSOLoginService.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
-                // Long enough for the renewal to queue for the lock.
-                try? await Task.sleep(for: .milliseconds(200))
+                await Self.waitForAQueuedPost()
                 await renewal.signOut()
                 return renewing
             }
