@@ -74,13 +74,20 @@ struct LibrarySignInTests {
 
     @Test func credentialsTheLibraryRefusedAreNotSentAgain() async throws {
         let calls = Calls()
+        let announcements = Calls()
         try await Self.withStoredAccount { _ in
             #expect(LibraryService.canSignInWithStoredCredentials)
             let epoch = Self.watchEpoch
+            // The refusal signs the account out, which Settings and the flip have to hear.
+            let observer = NotificationCenter.default.addObserver(
+                forName: LibraryService.signInDidChange, object: nil, queue: nil
+            ) { _ in MainActor.assumeIsolated { announcements.count += 1 } }
+            defer { NotificationCenter.default.removeObserver(observer) }
             _ = try? await LibraryService.ensureToken { _, _ in
                 calls.count += 1
                 throw LibraryServiceError.loginFailed("wrong password")
             }
+            #expect(announcements.count == 1)
             // Kept in the defaults, so the next launch does not send it either.
             #expect(Defaults[.libraryStoredPasswordRejected])
             #expect(!LibraryService.canSignInWithStoredCredentials)
@@ -258,6 +265,82 @@ struct LibrarySignInTests {
 
             #expect(LibraryService.clearCredentials(ifSchoolAccount: username.lowercased()))
             #expect(LibraryService.storedUsername == nil)
+        }
+    }
+
+    /// The token lasts a day, and the Library page signs in again behind its code, so an account
+    /// whose token ran out still counts as signed in for Settings and the flip
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/528).
+    @Test func storedCredentialsCountAsSignedInOnceTheTokenRunsOut() async throws {
+        try await Self.withStoredAccount { _ in
+            #expect(!LibraryService.isTokenValid)
+            #expect(LibraryService.hasAccount)
+            LibraryService.storedPasswordRejected = true
+            #expect(!LibraryService.hasAccount)
+        }
+        try await withExclusiveRealDefaults {
+            try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
+                #expect(!LibraryService.hasAccount)
+            }
+        }
+    }
+
+    /// A code request that fails short of a refusal, as on a weak signal at the gate, keeps the
+    /// page signed in to try again: the stored credentials can still sign in.
+    @Test func aFailedCodeRequestKeepsAStoredAccountSignedIn() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = { throw URLError(.timedOut) }
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.errorMessage != nil }
+            #expect(model.isLoggedIn)
+        }
+    }
+
+    @Test func aRefusedCodeRequestSignsThePageOut() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = {
+                LibraryService.storedPasswordRejected = true
+                throw LibraryServiceError.loginFailed("wrong password")
+            }
+            model.load()
+            model.onAppear()
+            try await waitUntil { !model.isLoggedIn }
+        }
+    }
+
+    /// A retry that works after a failed code request fetches a fresh code every cycle after it,
+    /// rather than leaving the one it fetched to run out on screen.
+    @Test func aRetryAfterAFailureKeepsRefreshingTheCode() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let calls = Calls()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.backoffSchedule = [0.05]
+            model.refreshInterval = 0.1
+            model.fetchCode = {
+                calls.count += 1
+                if calls.count == 1 { throw URLError(.timedOut) }
+                return "code-\(calls.count)"
+            }
+            model.load()
+            model.onAppear()
+            try await waitUntil { calls.count >= 4 }
+        }
+    }
+
+    @Test func anAccountChangeKeepsAStoredAccountSignedIn() async throws {
+        try await Self.withStoredAccount { _ in
+            let model = LibraryViewModel()
+            NotificationCenter.default.post(name: LibraryService.accountDidChange, object: nil)
+            #expect(model.isLoggedIn)
         }
     }
 

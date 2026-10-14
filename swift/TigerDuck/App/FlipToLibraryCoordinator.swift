@@ -27,6 +27,9 @@ private struct FlipToLibraryModifier: ViewModifier {
             .onChange(of: appState.updateNotifyCoordinator.activeNotifySheet == nil) { _, isClear in
                 if isClear { Self.offerGesture(appState: appState) }
             }
+            .onChange(of: LibraryPagePresence.shared.isShown) { _, shown in
+                if !shown { Self.offerGesture(appState: appState) }
+            }
             .onChange(of: scenePhase) { _, new in
                 // Tear down only on .background. .inactive comes with transient
                 // interruptions (Control Center, a banner), and tearing down then would
@@ -78,9 +81,6 @@ private struct FlipToLibraryModifier: ViewModifier {
         // centrally, so ask UIKit's presentation chain; each one is a UIKit modal.
         guard !Self.isAnyModalPresented() else { return }
 
-        // Navigate even without a library session: the `openFromWidget(.library)`
-        // drain shows the login flow inside the Library tab. Android no-ops here,
-        // but the iOS Library view handles the signed-out case.
         appState.openFromWidget(.library)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
@@ -94,7 +94,8 @@ private struct FlipToLibraryModifier: ViewModifier {
               FlipToLibraryGate.offersGesture(
                   signedInToLibrary: appState.isLibraryLoggedIn,
                   enabled: appState.flipToLibraryEnabled,
-                  asked: FirstTriggerPromptCenter.shared.hasSeen(.flipToLibrary)
+                  asked: FirstTriggerPromptCenter.shared.hasSeen(.flipToLibrary),
+                  onLibraryPage: LibraryPagePresence.shared.isShown
               )
         else { return }
         let waits = FlipToLibraryGate.offerWaits(
@@ -135,9 +136,10 @@ enum FlipToLibraryGate {
     }
 
     /// Whether to ask to turn the gesture on: signed in to the library, with the switch off and
-    /// the question never answered.
-    static func offersGesture(signedInToLibrary: Bool, enabled: Bool, asked: Bool) -> Bool {
-        signedInToLibrary && !enabled && !asked
+    /// the question never answered. Not over the Library page, where the sheet would cover the
+    /// code someone just signed in to show; leaving the page asks.
+    static func offersGesture(signedInToLibrary: Bool, enabled: Bool, asked: Bool, onLibraryPage: Bool) -> Bool {
+        signedInToLibrary && !enabled && !asked && !onLibraryPage
     }
 
     /// Whether the offer waits: behind a sheet already up, and behind What's New or the update

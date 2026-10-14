@@ -85,8 +85,9 @@ enum LibraryService {
     /// the account changes listens for this and drops it at once.
     static let accountDidChange = Notification.Name("TigerDuck.libraryAccountDidChange")
 
-    /// Posted on the main actor when a sign-in with the stored credentials stores a new token. No
-    /// screen asked for it, so `AppState.isLibraryLoggedIn` re-reads the token on this.
+    /// Posted on the main actor when a sign-in with the stored credentials stores a new token, or
+    /// the library refuses them, which signs the account out. No screen asked for either, so
+    /// `AppState.isLibraryLoggedIn` reads the state again on this.
     static let signInDidChange = Notification.Name("TigerDuck.librarySignInDidChange")
 
     /// `@MainActor`-isolated so the broadcaster call below is an in-actor
@@ -288,6 +289,12 @@ enum LibraryService {
         storedUsername != nil && storedPassword != nil && !storedPasswordRejected
     }
 
+    /// Whether a library account is signed in, as the Library page, Settings and the flip count
+    /// it: its token is live, or its stored credentials sign in again behind the code.
+    @MainActor static var hasAccount: Bool {
+        isTokenValid || canSignInWithStoredCredentials
+    }
+
     /// Signs in with the stored credentials when there is no live token, so the Library page
     /// shows its code at once. Called at launch and on each return to the app. Returns whether
     /// it signed in.
@@ -336,6 +343,7 @@ enum LibraryService {
                         // The Watch would sign in with its own copy; a working sign-in sends it again.
                         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
                         #endif
+                        NotificationCenter.default.post(name: signInDidChange, object: nil)
                     } else {
                         storedSignInFailedAt = Date()
                     }

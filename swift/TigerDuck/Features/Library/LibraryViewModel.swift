@@ -23,6 +23,9 @@ final class LibraryViewModel {
     /// finds a dead token runs off a timer and has no view to hand one in.
     var onLibraryStateChanged: (() -> Void)?
 
+    /// The code request, replaced in tests so nothing leaves the process.
+    @ObservationIgnored var fetchCode: @MainActor () async throws -> String = { try await LibraryService.generateQRCode() }
+
     // Manual login fields
     var libUsername = ""
     var libPassword = ""
@@ -38,8 +41,9 @@ final class LibraryViewModel {
     private var consecutiveErrors = 0
     /// Backoff cadence after N transient failures (seconds). After the
     /// final entry the cadence holds at the last value until a refresh
-    /// succeeds.
-    private static let backoffSchedule: [TimeInterval] = [60, 120, 300]
+    /// succeeds. Tests shorten it and the refresh interval.
+    @ObservationIgnored var backoffSchedule: [TimeInterval] = [60, 120, 300]
+    @ObservationIgnored var refreshInterval: TimeInterval = 30
 
     @ObservationIgnored nonisolated(unsafe) private var accountObserver: (any NSObjectProtocol)?
 
@@ -60,7 +64,7 @@ final class LibraryViewModel {
         guard !hasLoaded else { return }
         hasLoaded = true
         // Stored credentials count: the code's fetch signs in again with them.
-        isLoggedIn = LibraryService.isTokenValid || LibraryService.canSignInWithStoredCredentials
+        isLoggedIn = LibraryService.hasAccount
         signedInUsername = LibraryService.storedUsername
 
         libUsername = Self.prefilledUsername
@@ -69,7 +73,7 @@ final class LibraryViewModel {
     func onAppear() {
         // Re-check in case user logged in via Settings, or the stored credentials can sign in
         // again after a failed attempt (a sign-in at the return to the app may be under way).
-        if !isLoggedIn && (LibraryService.isTokenValid || LibraryService.canSignInWithStoredCredentials) {
+        if !isLoggedIn && LibraryService.hasAccount {
             isLoggedIn = true
             startQRRefreshCycle()
             return
@@ -150,7 +154,7 @@ final class LibraryViewModel {
             errorMessage = nil
             let generation = LibraryService.loginGeneration
             do {
-                let payload = try await LibraryService.generateQRCode()
+                let payload = try await fetchCode()
                 // Rasterise off the main actor: a cold CIContext plus the
                 // CGImage render was a visible hitch on older phones.
                 let image = await Task.detached(priority: .userInitiated) {
@@ -174,7 +178,9 @@ final class LibraryViewModel {
                 guard LibraryService.loginGeneration == generation else { return }
                 errorMessage = error.localizedDescription
                 isLoadingQR = false
-                if !LibraryService.isTokenValid {
+                // A lapsed token whose stored credentials did not answer, as on a weak signal at the
+                // gate, backs off and tries again; only a signed-out account gets the sign-in form.
+                if !LibraryService.hasAccount {
                     isLoggedIn = false
                     consecutiveErrors = 0
                     LibraryQRCache.shared.clear()
@@ -195,11 +201,13 @@ final class LibraryViewModel {
     /// at the last value of `backoffSchedule` for additional failures so
     /// retries never exceed 5 minutes.
     private func rescheduleAfterError() {
-        let idx = min(consecutiveErrors - 1, Self.backoffSchedule.count - 1)
-        let interval = Self.backoffSchedule[max(0, idx)]
+        let idx = min(consecutiveErrors - 1, backoffSchedule.count - 1)
+        let interval = backoffSchedule[max(0, idx)]
         refreshTimer?.invalidate()
+        // The retry starts the cycle again, so a retry that works goes back to a fresh code every
+        // interval instead of leaving the one it fetched to run out on screen.
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
-            self?.fetchAndDisplayQR()
+            self?.startQRRefreshCycle()
         }
     }
 
@@ -253,7 +261,7 @@ final class LibraryViewModel {
         }
 
         fetchAndDisplayQR()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
             self?.fetchAndDisplayQR()
         }
     }
@@ -283,7 +291,7 @@ final class LibraryViewModel {
         qrPayload = nil
         isLoadingQR = false
         consecutiveErrors = 0
-        isLoggedIn = LibraryService.isTokenValid
+        isLoggedIn = LibraryService.hasAccount
         signedInUsername = LibraryService.storedUsername
         libUsername = Self.prefilledUsername
         libPassword = ""
