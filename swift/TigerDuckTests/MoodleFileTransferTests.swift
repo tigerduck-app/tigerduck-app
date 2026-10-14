@@ -76,6 +76,31 @@ struct MoodleFileTransferTests {
         }
     }
 
+    /// Moodle sends a file it lists as `document/unknown` as `application/octet-stream`
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/576).
+    @Test("a file of a type Moodle does not know passes as any type but a page or a web service error")
+    func unknownType() throws {
+        let file = try Self.body("Rar!")
+        let page = try Self.body("<html>Sign in</html>")
+        let error = try Self.body(#"{"error": "Invalid token", "errorcode": "invalidtoken"}"#)
+        defer {
+            for url in [file, page, error] { try? FileManager.default.removeItem(at: url) }
+        }
+
+        #expect(throws: Never.self) {
+            try MoodleFileTransfer.check(Self.response(type: "application/octet-stream"), at: file, mimeType: "document/unknown")
+        }
+        #expect(throws: Never.self) {
+            try MoodleFileTransfer.check(Self.response(type: "application/x-rar-compressed"), at: file, mimeType: "Document/Unknown")
+        }
+        #expect(throws: MoodleWebserviceError.malformedResponse(detail: "text/html")) {
+            try MoodleFileTransfer.check(Self.response(type: "text/html; charset=utf-8"), at: page, mimeType: "document/unknown")
+        }
+        #expect(throws: MoodleWebserviceError.invalidToken) {
+            try MoodleFileTransfer.check(Self.response(type: "application/json"), at: error, mimeType: "document/unknown")
+        }
+    }
+
     @Test("a web service error in place of the file throws its own case, so a stale token renews")
     func webServiceError() throws {
         let file = try Self.body(#"{"error": "Invalid token", "errorcode": "invalidtoken"}"#)
