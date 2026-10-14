@@ -16,7 +16,6 @@ struct BuildingSection: View {
     let onRoom: (RoomUsage) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .headline) private var roomWidth: CGFloat = 80
     @ScaledMetric(relativeTo: .largeTitle) private var glyphSize: CGFloat = 34
     @ScaledMetric(relativeTo: .body) private var nextButtonSize: CGFloat = 36
 
@@ -107,28 +106,11 @@ struct BuildingSection: View {
                     if index > 0 {
                         Divider().padding(.leading, TigerDuckTheme.Spacing.lg)
                     }
-                    roomRow(room)
+                    RoomRow(room: room, period: period, ended: ended, policy: policy, onRoom: onRoom)
                 }
             }
             .presetCard(policy: policy)
         }
-    }
-
-    private func roomRow(_ room: RoomUsage) -> some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            Text(room.room)
-                .font(.headline)
-                .monospacedDigit()
-                .foregroundStyle(policy.primaryTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(width: roomWidth, alignment: .leading)
-            RoomAvailability(room: room, period: period, ended: ended)
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .padding(.vertical, TigerDuckTheme.Spacing.md)
-        .frame(minHeight: 50)
-        .scrollSafeTapAction { onRoom(room) }
     }
 
     private var noFreeRoom: some View {

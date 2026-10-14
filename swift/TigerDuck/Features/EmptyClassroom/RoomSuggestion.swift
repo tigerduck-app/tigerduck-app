@@ -87,12 +87,4 @@ nonisolated struct RoomSuggestion: Equatable, Sendable {
         let end = next.map { min(candidate.freeUntil, $0.firstPeriod - 1) } ?? candidate.freeUntil
         return period...max(period, end)
     }
-
-    /// The move a row shows: from the class before, or to the class after when there is none.
-    func move(to candidate: Candidate) -> RoomMove? {
-        if let previous, previous.place != nil {
-            return RoomMove.between(previous.place, candidate.place)
-        }
-        return RoomMove.between(candidate.place, next?.place)
-    }
 }

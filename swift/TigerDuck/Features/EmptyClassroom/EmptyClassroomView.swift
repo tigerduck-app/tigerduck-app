@@ -151,7 +151,6 @@ struct EmptyClassroomContent: View {
                 suggestion: suggestion,
                 ended: viewModel.endedPeriods,
                 policy: policy,
-                place: place,
                 onRoom: onRoom
             )
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -178,10 +177,6 @@ struct EmptyClassroomContent: View {
     }
 
     /// The building's name as the site gives it, and the room's floor.
-    private func place(_ room: RoomUsage) -> String {
-        Self.place(of: room, viewModel: viewModel)
-    }
-
     private static func place(of room: RoomUsage, viewModel: EmptyClassroomViewModel) -> String {
         guard let place = RoomPlace(room: room.room) else { return room.room }
         return "\(viewModel.buildingName(place.building)) \(place.floorLabel)"

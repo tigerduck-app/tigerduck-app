@@ -56,7 +56,6 @@ struct RoomSuggestionTests {
         #expect(RoomMove.between(best.place, suggestion.next?.place) == .sameRoom)
         #expect(best.fits)
         #expect(suggestion.freeSpan(of: best) == 2...3)
-        #expect(suggestion.move(to: suggestion.candidates[2]) == nil)
     }
 
     @Test("a room free until the next class ranks before a closer one taken sooner")
@@ -95,12 +94,12 @@ struct RoomSuggestionTests {
         #expect(suggestion.previous?.course == "資料庫系統")
         #expect(suggestion.next == nil)
         #expect(best.room.room == "IB-503")
-        #expect(suggestion.move(to: best) == .sameRoom)
+        #expect(RoomMove.between(suggestion.previous?.place, best.place) == .sameRoom)
         #expect(!best.fits)
         #expect(suggestion.freeSpan(of: best) == 9...13)
     }
 
-    @Test("before the first class the move shows to it")
+    @Test("before the first class the route leads to it")
     func onlyANextClass() throws {
         let classes = [Self.stop("作業系統", "TR-309", 4...5)]
         let suggestion = try #require(
@@ -111,8 +110,8 @@ struct RoomSuggestionTests {
 
         #expect(suggestion.previous == nil)
         #expect(best.room.room == "TR-309")
-        #expect(suggestion.move(to: best) == .sameRoom)
-        #expect(suggestion.move(to: below) == .floors(1))
+        #expect(RoomMove.between(best.place, suggestion.next?.place) == .sameRoom)
+        #expect(RoomMove.between(below.place, suggestion.next?.place) == .floors(1))
     }
 
     @Test("no class that day, or none with a known room, gives no suggestion")

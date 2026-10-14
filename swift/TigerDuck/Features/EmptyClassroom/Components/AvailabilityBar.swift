@@ -84,55 +84,30 @@ struct RoomAvailability: View {
     }
 }
 
-/// How to get from one room to the next: a pin for staying, stairs with the floors, or a walk
-/// with its minutes.
-struct MovementBadge: View {
-    let move: RoomMove
+/// A free room in a list: its name, then its day as a bar with the end of its free run.
+struct RoomRow: View {
+    let room: RoomUsage
+    let period: Int
+    let ended: Int
+    let policy: VisualStylePolicy
+    let onRoom: (RoomUsage) -> Void
+
+    @ScaledMetric(relativeTo: .headline) private var roomWidth: CGFloat = 80
 
     var body: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.xs) {
-            Image(systemName: symbol)
-                .imageScale(.small)
-            if let text {
-                Text(text)
-                    .monospacedDigit()
-            }
+        HStack(spacing: TigerDuckTheme.Spacing.md) {
+            Text(room.room)
+                .font(.headline)
+                .monospacedDigit()
+                .foregroundStyle(policy.primaryTextColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: roomWidth, alignment: .leading)
+            RoomAvailability(room: room, period: period, ended: ended)
         }
-        .font(.caption.weight(.bold))
-        .foregroundStyle(Color.textPrimary.opacity(0.85))
-        .padding(.horizontal, TigerDuckTheme.Spacing.sm)
-        .padding(.vertical, 2)
-        .background(Capsule().fill(Color.textPrimary.opacity(0.1)))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-    }
-
-    private var symbol: String {
-        switch move {
-        case .sameRoom: "mappin"
-        case .floors: "figure.stairs"
-        case .walk: "figure.walk"
-        }
-    }
-
-    private var text: String? {
-        switch move {
-        case .sameRoom: nil
-        case .floors(let floors): "\(floors > 0 ? "↑" : "↓")\(abs(floors))"
-        case .walk(let minutes): String(format: String(localized: "empty_classroom_walk_minutes"), minutes)
-        }
-    }
-
-    private var label: String {
-        switch move {
-        case .sameRoom:
-            String(localized: "a11y_empty_classroom_same_room")
-        case .floors(let floors) where floors > 0:
-            String(format: String(localized: "a11y_empty_classroom_floors_up"), floors)
-        case .floors(let floors):
-            String(format: String(localized: "a11y_empty_classroom_floors_down"), -floors)
-        case .walk(let minutes):
-            String(format: String(localized: "a11y_empty_classroom_walk_minutes"), minutes)
-        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.vertical, TigerDuckTheme.Spacing.md)
+        .frame(minHeight: 50)
+        .scrollSafeTapAction { onRoom(room) }
     }
 }
