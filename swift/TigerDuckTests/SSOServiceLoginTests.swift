@@ -299,6 +299,44 @@ struct SSOServiceLoginTests {
         #expect(!outcome.rejected)
     }
 
+    @MainActor
+    private final class FailureLog {
+        var errors: [any Error] = []
+    }
+
+    /// Leaving a screen or signing out ends a sign-in's request; the device log keeps real
+    /// failures only (https://github.com/tigerduck-app/tigerduck-app/issues/584).
+    @Test("a sign-in a cancelled request ends leaves nothing in the log, and a failed one is logged")
+    func cancelledSignInIsNotLogged() async {
+        let cancelled = Self.serviceURL()
+        let failed = Self.serviceURL()
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.failure(.cancelled), for: cancelled)
+        SSOServerStub.enqueue(.failure(.timedOut), for: failed)
+        let log = FailureLog()
+        func loggedSignIn(_ service: URL) async -> Result<Bool, Error> {
+            await Self.result {
+                try await SSOLoginService.ensureServiceLogin(
+                    session: SSOServerStub.session(), serviceURL: service, studentId: "B00000000",
+                    password: "unused", generation: NTUSTSessionManager.shared.generation,
+                    logFailure: { log.errors.append($0) }
+                )
+            }
+        }
+
+        let ended = await withLatch(false) { await loggedSignIn(cancelled) }
+        #expect(log.errors.isEmpty)
+        let timedOut = await withLatch(false) { await loggedSignIn(failed) }
+
+        guard case .failure(let endedError) = ended, case .failure = timedOut else {
+            Issue.record("expected two failures, got \(ended) and \(timedOut)")
+            return
+        }
+        #expect(AppLogger.isCancellation(endedError))
+        #expect(log.errors.map { ($0 as? URLError)?.code } == [.timedOut])
+        #expect(AppLogger.isCancellation(CancellationError()))
+    }
+
     // MARK: - Moodle token renewal
 
     private actor HarvestLog {

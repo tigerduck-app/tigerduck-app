@@ -115,25 +115,28 @@ enum SSOLoginService {
     /// a sign-out moves it, the login throws `CancellationError` before its next request.
     /// `interactive` marks a sign-in the user started; any other posts no password once the
     /// school has rejected it (``storedPasswordRejected``), and runs under
-    /// ``postingStoredPassword(_:)``.
+    /// ``postingStoredPassword(_:)``. `logFailure` gets each failure but a cancellation.
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
         studentId: String,
         password: String,
         generation: Int,
-        interactive: Bool = false
+        interactive: Bool = false,
+        logFailure: @escaping @MainActor (any Error) -> Void = {
+            AppLogger.captureError($0, context: ["service": "ssoEnsureServiceLogin"])
+        }
     ) async throws -> Bool {
         guard !interactive else {
             return try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: true
+                generation: generation, interactive: true, logFailure: logFailure
             )
         }
         return try await postingStoredPassword {
             try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: false
+                generation: generation, interactive: false, logFailure: logFailure
             )
         }
     }
@@ -144,13 +147,14 @@ enum SSOLoginService {
         studentId: String,
         password: String,
         generation: Int,
-        interactive: Bool
+        interactive: Bool,
+        logFailure: @escaping @MainActor (any Error) -> Void
     ) async throws -> Bool {
         try await oneAtATime {
             try checkSignedIn(generation)
             let signedIn = try await performServiceLogin(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: interactive
+                generation: generation, interactive: interactive, logFailure: logFailure
             )
             if interactive, signedIn { storedPasswordRejected = false }
             return signedIn
@@ -167,7 +171,8 @@ enum SSOLoginService {
         studentId: String,
         password: String,
         generation: Int,
-        interactive: Bool
+        interactive: Bool,
+        logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
             // Steps 1 and 2: Visit service URL (follows redirects automatically) and resolve any
@@ -276,7 +281,7 @@ enum SSOLoginService {
         } catch SSOLoginError.loginFailed(let reason) {
             throw SSOLoginError.loginFailed(reason: reason)
         } catch {
-            AppLogger.captureError(error, context: ["service": "ssoEnsureServiceLogin"])
+            if !AppLogger.isCancellation(error) { logFailure(error) }
             throw error
         }
     }

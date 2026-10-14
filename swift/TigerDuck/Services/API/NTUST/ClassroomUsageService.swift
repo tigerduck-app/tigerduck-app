@@ -178,7 +178,7 @@ final class ClassroomUsageService {
 
     /// A read the user ended, by leaving or signing out, is no failure.
     nonisolated static func isWorthLogging(_ error: any Error) -> Bool {
-        !(error is CancellationError) && (error as? URLError)?.code != .cancelled
+        !AppLogger.isCancellation(error)
     }
 
     private func read(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
