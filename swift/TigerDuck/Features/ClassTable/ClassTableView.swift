@@ -147,6 +147,7 @@ struct ClassTableView: View {
                     assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
                     timeRange: viewModel.selectedCourseTimeRange,
                     weekday: viewModel.selectedWeekday,
+                    periods: viewModel.selectedCoursePeriods,
                     showsMoodle: viewModel.shownPerson == nil
                 )
             }
@@ -519,8 +520,8 @@ struct ClassTableView: View {
                 onSelect: { course in
                     // The carousel shows only today's courses: pin the weekday to today
                     // or the time card shows a dash, set it before the course for the
-                    // sheet's first read, and clear any block range a Current-class tap left.
-                    viewModel.selectedCourseBlockTimeRange = nil
+                    // sheet's first read, and clear any block a Current-class tap left.
+                    viewModel.selectedCoursePeriods = nil
                     viewModel.selectedPeriodId = nil
                     viewModel.selectedWeekday = AppClock.now().scheduleWeekday
                     viewModel.selectedCourse = course

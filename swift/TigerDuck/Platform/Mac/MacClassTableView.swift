@@ -59,7 +59,9 @@ struct MacClassTableView: View {
     struct SelectedSlot: Identifiable {
         let course: SDCourse
         let weekday: Int
-        var id: String { "\(course.courseNo)-\(weekday)" }
+        /// The clicked cell's first period, which picks the block's time and room.
+        let periodId: String
+        var id: String { "\(course.courseNo)-\(weekday)-\(periodId)" }
     }
     /// Bumps whenever an async fetch lands new cache; the body's
     /// `courses` computed read includes this to trigger re-render
@@ -410,6 +412,7 @@ struct MacClassTableView: View {
 
     @ViewBuilder
     private func courseDetailOverlay(slot: SelectedSlot) -> some View {
+        let block = slot.course.block(weekday: slot.weekday, at: slot.periodId)
         ZStack {
             Rectangle()
                 .fill(Color.black.opacity(0.35))
@@ -422,8 +425,9 @@ struct MacClassTableView: View {
                 assignments: shownPerson == nil
                     ? DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo)
                     : [],
-                timeRange: slot.course.timeRange(for: slot.weekday),
+                timeRange: block.flatMap(SDCourse.timeRange(periods:)) ?? slot.course.timeRange(for: slot.weekday),
                 weekday: slot.weekday,
+                periods: block,
                 moodlePath: $detailMoodlePath,
                 showsMoodle: shownPerson == nil
             )

@@ -82,19 +82,16 @@ extension ClassTableViewModel {
     func selectCourse(_ course: SDCourse, weekday: Int, periodId: String) {
         selectedWeekday = weekday
         selectedPeriodId = periodId
-        selectedCourseBlockTimeRange = nil
+        selectedCoursePeriods = course.block(weekday: weekday, at: periodId)
         selectedCourse = course
     }
 
-    /// Carousel "Current class" card tap. Carries the block's exact
-    /// start/end so the detail sheet shows the tapped block's time
-    /// (e.g. periods 3-4 → "10:20 - 12:10") instead of falling back
-    /// to `course.timeRange(for:)`, which lumps split same-day blocks
-    /// into one whole-day span.
+    /// Carousel "Current class" card tap, which opens the running block: periods 3-4 show
+    /// "10:20 - 12:10" and their room, where `course.timeRange(for:)` spans the whole day.
     func selectOngoing(_ info: OngoingCourseInfo) {
         selectedWeekday = info.weekday
         selectedPeriodId = info.firstPeriodId
-        selectedCourseBlockTimeRange = info.formattedTimeRange
+        selectedCoursePeriods = info.periods
         selectedCourse = info.course
     }
 

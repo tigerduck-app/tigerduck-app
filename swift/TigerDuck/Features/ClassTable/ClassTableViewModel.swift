@@ -16,14 +16,10 @@ final class ClassTableViewModel {
 
     var selectedWeekday: Int? = nil
     var selectedPeriodId: String? = nil
-    /// Explicit time-range string for the detail sheet, set when the
-    /// caller knows the precise block (e.g. an `OngoingCourseInfo`
-    /// carousel card whose period block is a strict subset of the
-    /// day's schedule). Takes precedence over `course.timeRange(for:)`
-    /// in `selectedCourseTimeRange` so split same-day periods don't
-    /// collapse into a single whole-day span. Cleared by every other
+    /// The periods of the block the user opened, when the entry point knows it, so the detail
+    /// sheet shows that block's time and room rather than the whole day's. Cleared by every other
     /// selection entry point.
-    var selectedCourseBlockTimeRange: String? = nil
+    var selectedCoursePeriods: [String]? = nil
 
     var currentSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
@@ -493,7 +489,7 @@ final class ClassTableViewModel {
     }
 
     var selectedCourseTimeRange: String? {
-        if let override = selectedCourseBlockTimeRange { return override }
+        if let periods = selectedCoursePeriods { return SDCourse.timeRange(periods: periods) }
         guard let course = selectedCourse, let weekday = selectedWeekday else { return nil }
         return course.timeRange(for: weekday)
     }

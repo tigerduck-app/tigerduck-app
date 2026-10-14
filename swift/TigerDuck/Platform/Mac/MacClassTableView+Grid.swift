@@ -121,14 +121,14 @@ extension MacClassTableView {
             // the cell into columns with no room left for a third line.
             courseCell(course, roomHint: roomHint(course, weekday: weekday, periodId: periodId))
                 .frame(height: blockHeight(spanCount))
-                .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
+                .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday, periodId: periodId) }
         case let .conflictStart(a, spanA, offsetA, b, spanB, offsetB, combinedSpan):
             // A two-course conflict splits into two columns, each sized to its course's span
             // and placed at its offset in the cluster. A full-height column would draw a shorter
             // course, and make it clickable, in rows where the two courses do not meet.
             HStack(spacing: rowSpacing) {
-                conflictColumn(course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan, weekday: weekday)
-                conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan, weekday: weekday)
+                conflictColumn(course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan, weekday: weekday, periodId: periodId)
+                conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan, weekday: weekday, periodId: periodId)
             }
             .frame(height: blockHeight(combinedSpan))
         case let .conflictMany(segments, combinedSpan, laneCount):
@@ -144,7 +144,8 @@ extension MacClassTableView {
                                 span: segment.span,
                                 offset: segment.offset,
                                 combinedSpan: combinedSpan,
-                                weekday: weekday
+                                weekday: weekday,
+                                periodId: periodId
                             )
                         }
                     }
@@ -171,7 +172,9 @@ extension MacClassTableView {
     /// course block reserve the rows the course isn't scheduled in, so an
     /// overlap that meets in only part of the cluster doesn't extend to the rest.
     @ViewBuilder
-    private func conflictColumn(course: SDCourse, span: Int, offset: Int, combinedSpan: Int, weekday: Int) -> some View {
+    private func conflictColumn(
+        course: SDCourse, span: Int, offset: Int, combinedSpan: Int, weekday: Int, periodId: String
+    ) -> some View {
         let bottom = max(combinedSpan - offset - span, 0)
         VStack(spacing: rowSpacing) {
             if offset > 0 {
@@ -179,7 +182,7 @@ extension MacClassTableView {
             }
             courseCell(course)
                 .frame(height: blockHeight(span))
-                .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
+                .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday, periodId: periodId) }
                 .accessibilityLabel(Text(spokenName(course)))
             if bottom > 0 {
                 Color.clear.frame(height: blockHeight(bottom))

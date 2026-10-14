@@ -260,12 +260,26 @@ final class SDCourse: Identifiable {
     /// Returns the formatted time range string for this course on the given weekday, e.g. "08:10 - 12:10"
     func timeRange(for weekday: Int) -> String? {
         guard let periods = schedule[weekday], !periods.isEmpty else { return nil }
+        return Self.timeRange(periods: periods)
+    }
+
+    static func timeRange(periods: [String]) -> String? {
         let sorted = periods.sortedByPeriodOrder()
         guard let first = sorted.first,
               let last = sorted.last,
               let firstTime = AppConstants.PeriodTimes.mapping[first],
               let lastTime = AppConstants.PeriodTimes.mapping[last] else { return nil }
         return "\(firstTime.start) - \(lastTime.end)"
+    }
+
+    /// The block of consecutive periods on `weekday` that `period` falls in, or else the first
+    /// after it: a conflict cluster is picked by its first period, where a course may start later.
+    func block(weekday: Int, at period: String) -> [String]? {
+        let blocks = CourseTimeSlot.buildSlots(from: [self], weekday: weekday).map(\.periods)
+        let order = AppConstants.Periods.chronologicalOrder
+        let start = order.firstIndex(of: period) ?? 0
+        return blocks.first { $0.contains(period) }
+            ?? blocks.first { ($0.first.flatMap(order.firstIndex(of:)) ?? 0) > start }
     }
 }
 

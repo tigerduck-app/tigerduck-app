@@ -9,12 +9,18 @@ struct OngoingCourseInfo: Identifiable {
     let course: SDCourse
     let weekday: Int
     let firstPeriodId: String
+    /// The block's periods, for its own room where a day's rooms differ between blocks.
+    let periods: [String]
     /// Block start in minutes-of-day (Taipei).
     let startMinute: Int
     /// Block end in minutes-of-day (Taipei).
     let endMinute: Int
 
     var id: String { "\(course.courseNo)-\(weekday)-\(firstPeriodId)" }
+
+    var classroom: String {
+        course.classroom(weekday: weekday, periods: periods)
+    }
 
     /// "HH:mm - HH:mm" of this contiguous block. Matches the format
     /// produced by `SDCourse.timeRange(for:)` so the detail sheet can
@@ -59,6 +65,7 @@ extension Array where Element == SDCourse {
                             course: course,
                             weekday: weekday,
                             firstPeriodId: firstId,
+                            periods: [String](periods[blockStart...blockEnd]),
                             startMinute: startMin,
                             endMinute: endMin
                         )
