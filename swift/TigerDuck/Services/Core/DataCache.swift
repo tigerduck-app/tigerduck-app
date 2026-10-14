@@ -468,6 +468,14 @@ final class DataCache {
         save(map, to: "course_color_map.json", in: persistentDir)
     }
 
+    /// The per-course color map, or nil while its file exists but cannot be read, as behind the
+    /// lock screen (`completeFileProtectionUnlessOpen`). A missing file is an empty map.
+    func loadCourseColorMapIfReadable() -> [String: UInt32]? {
+        let url = persistentDir.appendingPathComponent("course_color_map.json")
+        if FileManager.default.fileExists(atPath: url.path), (try? Data(contentsOf: url)) == nil { return nil }
+        return loadCourseColorMap()
+    }
+
     /// Returns the per-course color map. On first read after upgrading from
     /// the legacy palette-index format (`course_custom_colors.json`), migrates
     /// the indices into the new hex map and persists the result.

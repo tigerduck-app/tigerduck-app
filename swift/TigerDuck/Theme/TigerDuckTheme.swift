@@ -72,7 +72,7 @@ enum TigerDuckTheme {
     /// `ensureAssignments` runs from background sync while `setColor` runs on
     /// MainActor (settings UI); without synchronization the concurrent
     /// mutations race against SDCourse-driven reads on the render thread.
-    private static let state = ColorState()
+    private static let state = ColorState.shared()
 
     /// Snapshot of the current courseNo → assigned hex map. Read by the
     /// widget snapshot writer / watch payload encoder; the snapshot stays
@@ -160,22 +160,43 @@ enum TigerDuckTheme {
 /// generic `OSAllocatedUnfairLock<T>` is not visible at the use sites (the
 /// prior generic-in-static-let arrangement triggered the Swift type-checker's
 /// complexity budget on the surrounding palette literal).
-private final class ColorState: @unchecked Sendable {
-    private nonisolated(unsafe) var map: [String: UInt32]
+final class ColorState: @unchecked Sendable {
+    /// nil until the map file is read. Behind the lock screen the file exists but cannot be opened
+    /// (`completeFileProtectionUnlessOpen`), and an empty map then would hand out fresh colours and
+    /// write them over the user's, so nothing is written until a later use reads it.
+    private nonisolated(unsafe) var map: [String: UInt32]?
     private let lock = OSAllocatedUnfairLock()
+    private let load: @Sendable () -> [String: UInt32]?
+    private let save: @Sendable ([String: UInt32]) -> Void
 
     private static let hashMigrationKey = "color_hash_v2_migrated"
 
-    init() {
-        if !UserDefaults.standard.bool(forKey: Self.hashMigrationKey) {
+    /// The map of `DataCache.shared`, after the one-time drop of maps from before hashed colours.
+    static func shared() -> ColorState {
+        if !UserDefaults.standard.bool(forKey: hashMigrationKey) {
             DataCache.shared.saveCourseColorMap([:])
-            UserDefaults.standard.set(true, forKey: Self.hashMigrationKey)
+            UserDefaults.standard.set(true, forKey: hashMigrationKey)
         }
-        self.map = DataCache.shared.loadCourseColorMap()
+        return ColorState()
+    }
+
+    init(
+        load: @escaping @Sendable () -> [String: UInt32]? = { DataCache.shared.loadCourseColorMapIfReadable() },
+        save: @escaping @Sendable ([String: UInt32]) -> Void = { DataCache.shared.saveCourseColorMap($0) }
+    ) {
+        self.load = load
+        self.save = save
+        self.map = load()
+    }
+
+    /// The map, read now if it has not been read yet. Called under `lock`.
+    private func loadedMap() -> [String: UInt32]? {
+        if map == nil { map = load() }
+        return map
     }
 
     func snapshot() -> [String: UInt32] {
-        lock.withLock { map }
+        lock.withLock { loadedMap() ?? [:] }
     }
 
     /// Returns the assigned hex if one exists; otherwise falls back to the
@@ -183,13 +204,14 @@ private final class ColorState: @unchecked Sendable {
     /// `ensureAssignments` yet still renders a sensible color.
     func hex(for courseNo: String, palette: [UInt32]) -> UInt32 {
         lock.withLock {
-            if let h = map[courseNo] { return h }
+            if let h = loadedMap()?[courseNo] { return h }
             return palette[Self.hashIndex(for: courseNo, paletteCount: palette.count)]
         }
     }
 
     func ensureAssignments(courseNos: [String], palette: [UInt32]) {
         let didMutate: Bool = lock.withLock {
+            guard var map = loadedMap() else { return false }
             var mutated = false
             // A map persisted before colors were unique can hold duplicate hexes.
             // Keep the first course in sorted order, so the keeper is deterministic,
@@ -211,6 +233,7 @@ private final class ColorState: @unchecked Sendable {
                 used.insert(assigned)
                 mutated = true
             }
+            self.map = map
             return mutated
         }
         if didMutate { persist() }
@@ -218,8 +241,9 @@ private final class ColorState: @unchecked Sendable {
 
     func setColor(hex newHex: UInt32, for courseNo: String, palette: [UInt32]) -> [String: UInt32] {
         let changed: [String: UInt32] = lock.withLock {
+            guard let map = loadedMap() else { return [:] }
             let result = Self.assigning(newHex, to: courseNo, in: map, palette: palette)
-            map = result.map
+            self.map = result.map
             return result.changed
         }
         if !changed.isEmpty { persist() }
@@ -228,11 +252,12 @@ private final class ColorState: @unchecked Sendable {
 
     func applyColors(_ colors: [(courseNo: String, hex: UInt32)], palette: [UInt32]) -> Bool {
         let didMutate: Bool = lock.withLock {
-            var updated = map
+            guard let current = loadedMap() else { return false }
+            var updated = current
             for (courseNo, hex) in colors {
                 updated = Self.assigning(hex & 0xFFFFFF, to: courseNo, in: updated, palette: palette).map
             }
-            guard updated != map else { return false }
+            guard updated != current else { return false }
             map = updated
             return true
         }
@@ -266,7 +291,7 @@ private final class ColorState: @unchecked Sendable {
     }
 
     func reload() {
-        let fresh = DataCache.shared.loadCourseColorMap()
+        let fresh = load()
         lock.withLock { map = fresh }
     }
 
@@ -277,21 +302,23 @@ private final class ColorState: @unchecked Sendable {
     /// deterministic for an unchanged roster.
     func reassignAll(courseNos: [String], palette: [UInt32]) {
         lock.withLock {
-            map.removeAll(keepingCapacity: true)
+            guard loadedMap() != nil else { return }
             let shuffled = palette.shuffled()
+            var fresh: [String: UInt32] = [:]
             var used: Set<UInt32> = []
             for courseNo in courseNos.sorted() {
                 let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: shuffled)
-                map[courseNo] = assigned
+                fresh[courseNo] = assigned
                 used.insert(assigned)
             }
+            map = fresh
         }
         persist()
     }
 
     private func persist() {
-        let snapshot = lock.withLock { map }
-        DataCache.shared.saveCourseColorMap(snapshot)
+        guard let snapshot = lock.withLock({ map }) else { return }
+        save(snapshot)
         // Drives the widget snapshot rewrite. NotificationCenter post is
         // thread-safe, so we don't need to hop back to MainActor for it.
         NotificationCenter.default.post(name: AppConstants.courseColorMapDidChange, object: nil)
