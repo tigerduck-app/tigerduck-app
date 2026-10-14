@@ -3,7 +3,7 @@ import Testing
 @testable import TigerDuck
 
 /// Where the finder opens: the period in progress, the next one in a break, and the next
-/// teaching day after the last period, at a weekend or on a holiday.
+/// teaching day after the last period, at a weekend, on a holiday or between terms.
 struct EmptyClassroomScheduleTests {
     private static let calendar = AppConstants.taipeiCalendar
 
@@ -74,13 +74,44 @@ struct EmptyClassroomScheduleTests {
         #expect(EmptyClassroomSchedule.upcomingPeriod(at: Self.time(10, 14, 22, 30)) == nil)
     }
 
-    @Test("a weekday without a holiday is a teaching day")
-    func teachingDays() {
-        let holiday = Holiday(id: 1, nameZh: "假日", nameEn: "Holiday", start: Self.day(10, 26), end: Self.day(10, 26))
-        let holidays: (Date) -> [Holiday] = { holiday.contains($0) ? [holiday] : [] }
-        #expect(EmptyClassroomSchedule.isTeachingDay(Self.day(10, 14), holidays: holidays))
-        #expect(!EmptyClassroomSchedule.isTeachingDay(Self.day(10, 17), holidays: holidays))
-        #expect(!EmptyClassroomSchedule.isTeachingDay(Self.day(10, 18), holidays: holidays))
-        #expect(!EmptyClassroomSchedule.isTeachingDay(Self.day(10, 26), holidays: holidays))
+    private static func date(_ year: Int, _ month: Int, _ day: Int, hour: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour)) ?? .distantPast
+    }
+
+    /// The fall term, 2026-09-14 to 2027-01-15, with 2026-10-26 a holiday.
+    private static let fall = AcademicCalendar(
+        revision: 1,
+        terms: [SemesterTerm(code: "1151", start: day(9, 14), end: date(2027, 1, 15))],
+        holidays: [Holiday(id: 1, nameZh: "假日", nameEn: "Holiday", start: day(10, 26), end: day(10, 26))]
+    )
+
+    private static func dayOff(_ day: Date, in calendar: AcademicCalendar) -> EmptyClassroomSchedule.DayOff? {
+        EmptyClassroomSchedule.dayOff(day, holidays: calendar.holidays(on:), isInSession: { calendar.isInSession(on: $0) })
+    }
+
+    @Test("a weekday in the term without a holiday is a teaching day, and any other day says why not")
+    func daysOff() {
+        #expect(Self.dayOff(Self.day(10, 14), in: Self.fall) == nil)
+        #expect(Self.dayOff(Self.date(2027, 1, 15), in: Self.fall) == nil)
+        #expect(Self.dayOff(Self.day(10, 17), in: Self.fall) == .weekend)
+        #expect(Self.dayOff(Self.day(10, 18), in: Self.fall) == .weekend)
+        #expect(Self.dayOff(Self.day(10, 26), in: Self.fall) == .holiday(Self.fall.holidays[0]))
+        #expect(Self.dayOff(Self.day(9, 11), in: Self.fall) == .outOfTerm)
+        #expect(Self.dayOff(Self.date(2027, 1, 18), in: Self.fall) == .outOfTerm)
+        // Before the calendar first loads every weekday counts, as everywhere else in the app.
+        #expect(Self.dayOff(Self.date(2027, 1, 18), in: .empty) == nil)
+    }
+
+    @Test("the next teaching day passes over the weeks between terms")
+    func betweenTerms() {
+        let spring = SemesterTerm(code: "1152", start: Self.date(2027, 2, 22), end: Self.date(2027, 6, 18))
+        let year = AcademicCalendar(revision: 1, terms: Self.fall.terms + [spring], holidays: [])
+        let isTeachingDay: (Date) -> Bool = { Self.dayOff($0, in: year) == nil }
+
+        #expect(EmptyClassroomSchedule.nextTeachingDay(after: Self.date(2027, 1, 15), horizon: 13, isTeachingDay: isTeachingDay) == nil)
+        #expect(EmptyClassroomSchedule.nextTeachingDay(after: Self.date(2027, 2, 12), horizon: 13, isTeachingDay: isTeachingDay) == Self.date(2027, 2, 22))
+        let opening = EmptyClassroomSchedule.opening(at: Self.date(2027, 2, 17, hour: 10), horizon: 13, isTeachingDay: isTeachingDay)
+        #expect(opening.day == Self.date(2027, 2, 22))
+        #expect(opening.period == 0)
     }
 }

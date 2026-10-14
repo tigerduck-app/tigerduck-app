@@ -13,7 +13,7 @@ final class EmptyClassroomViewModel {
     enum Content: Equatable {
         case loading
         case rooms(CampusUsage)
-        /// A weekend, or a weekday the site answers with no rooms.
+        /// A weekend, a weekday outside the term, or a weekday the site answers with no rooms.
         case noData
         /// The site shows the weekly timetable on a holiday, so its rooms are not shown.
         case holiday(name: String)
@@ -26,11 +26,18 @@ final class EmptyClassroomViewModel {
         let isCurrent: @MainActor () -> Bool
     }
 
-    private(set) var selectedDay: Date
+    private(set) var selectedDay: Date {
+        didSet { if selectedDay != oldValue { openRoomName = nil } }
+    }
     private(set) var selectedPeriod = 0
-    private(set) var content = Content.loading
+    private(set) var content = Content.loading {
+        didSet { if openRoomName != nil, openRoom == nil { openRoomName = nil } }
+    }
     private(set) var classes: [ClassStop] = []
     private(set) var pickedBuilding: String?
+    /// The room whose sheet is open. Only its name is kept, so the sheet shows the room as the
+    /// latest read has it; another day, or rooms without it, close the sheet.
+    private(set) var openRoomName: String?
 
     /// Nil while no one is signed in. ``connect(_:)`` sets it from the app's account.
     @ObservationIgnored var reader: @MainActor () -> Reader? = { nil }
@@ -38,6 +45,7 @@ final class EmptyClassroomViewModel {
     @ObservationIgnored private let service: ClassroomUsageService
     @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private let holidays: @MainActor (Date) -> [Holiday]
+    @ObservationIgnored private let isInSession: @MainActor (Date) -> Bool
     @ObservationIgnored private let isClassDay: @MainActor (Date) -> Bool
     @ObservationIgnored private let loadCourses: @MainActor () -> [SDCourse]
     @ObservationIgnored private let rawRoom: @MainActor (String) -> String
@@ -54,6 +62,7 @@ final class EmptyClassroomViewModel {
         service: ClassroomUsageService? = nil,
         clock: @escaping () -> Date = { AppClock.now() },
         holidays: (@MainActor (Date) -> [Holiday])? = nil,
+        isInSession: (@MainActor (Date) -> Bool)? = nil,
         isClassDay: (@MainActor (Date) -> Bool)? = nil,
         courses: (@MainActor () -> [SDCourse])? = nil,
         rawRoom: (@MainActor (String) -> String)? = nil
@@ -61,6 +70,7 @@ final class EmptyClassroomViewModel {
         self.service = service ?? .shared
         self.clock = clock
         self.holidays = holidays ?? { AcademicCalendarStore.shared.calendar.holidays(on: $0) }
+        self.isInSession = isInSession ?? { AcademicCalendarStore.shared.calendar.isInSession(on: $0) }
         self.isClassDay = isClassDay ?? { AcademicCalendarStore.shared.isClassDay($0) }
         loadCourses = courses ?? { CanonicalCourseProvider().currentCourses() }
         self.rawRoom = rawRoom ?? { NameAbbrService.shared.rawClassroom($0) }
@@ -124,8 +134,12 @@ final class EmptyClassroomViewModel {
         return EmptyClassroomSchedule.nextTeachingDay(after: selectedDay, horizon: remaining, isTeachingDay: isTeachingDay)
     }
 
+    private func dayOff(_ day: Date) -> EmptyClassroomSchedule.DayOff? {
+        EmptyClassroomSchedule.dayOff(day, holidays: holidays, isInSession: isInSession)
+    }
+
     private func isTeachingDay(_ day: Date) -> Bool {
-        EmptyClassroomSchedule.isTeachingDay(day, holidays: holidays)
+        dayOff(day) == nil
     }
 
     // MARK: - Derived from the day's rooms
@@ -143,6 +157,11 @@ final class EmptyClassroomViewModel {
         usage.map { BuildingDirectory(rooms: $0.rooms, period: selectedPeriod) }
     }
 
+    var openRoom: RoomUsage? {
+        guard let openRoomName else { return nil }
+        return usage?.rooms.first { $0.room == openRoomName }
+    }
+
     func shownBuilding(in directory: BuildingDirectory, suggestion: RoomSuggestion?) -> String? {
         directory.defaultBuilding(
             picked: pickedBuilding,
@@ -156,11 +175,12 @@ final class EmptyClassroomViewModel {
 
     // MARK: - Actions
 
-    /// Opens on the current period, or the next teaching day's first, the first time and after
-    /// the day shown has passed; then loads the day.
+    /// Opens on the current period, or the next teaching day's first, the first time, after the
+    /// day shown has passed and once the period chosen today has ended; then loads the day. A
+    /// pinned tab keeps this model, so a morning's period would otherwise stay into the afternoon.
     func appear() {
         isOnScreen = true
-        if !hasOpened || selectedDay < today {
+        if !hasOpened || selectedDay < today || selectedPeriod < endedPeriods {
             let opening = EmptyClassroomSchedule.opening(
                 at: now, horizon: Self.dayCount - 1, isTeachingDay: isTeachingDay
             )
@@ -186,12 +206,14 @@ final class EmptyClassroomViewModel {
         stopLoading()
     }
 
-    /// The signed-in account changed: what the screen holds belonged to the one before.
+    /// The signed-in account changed: what the screen holds belonged to the one before. Off
+    /// screen the site is not read until the next ``appear()``.
     func accountChanged() {
         stopLoading()
         content = .loading
         pickedBuilding = Defaults[.emptyClassroomBuilding]
         reloadCourses()
+        guard isOnScreen else { return }
         load(force: false)
     }
 
@@ -200,6 +222,15 @@ final class EmptyClassroomViewModel {
     func reloadCourses() {
         courses = loadCourses()
         refreshClasses()
+    }
+
+    /// A sync or the academic calendar changed the app's data. The calendar can arrive after the
+    /// day was read, as on a first launch, so a day it takes off stops showing rooms.
+    func dataDidUpdate() {
+        reloadCourses()
+        guard let off = dayOff(selectedDay) else { return }
+        stopLoading()
+        content = Self.content(for: off)
     }
 
     func select(day: Date) {
@@ -218,6 +249,14 @@ final class EmptyClassroomViewModel {
     func pick(building: String) {
         pickedBuilding = building
         Defaults[.emptyClassroomBuilding] = building
+    }
+
+    func open(room: RoomUsage) {
+        openRoomName = room.room
+    }
+
+    func closeRoom() {
+        openRoomName = nil
     }
 
     /// A pull: reads the day again even when it was read moments ago.
@@ -248,12 +287,8 @@ final class EmptyClassroomViewModel {
         // already stopped it, so coming back after a disappear() always starts a new read.
         if !force, running?.day == day { return }
         stopLoading()
-        if EmptyClassroomSchedule.isWeekend(day) {
-            content = .noData
-            return
-        }
-        if let holiday = holidays(day).first {
-            content = .holiday(name: holiday.name())
+        if let off = dayOff(day) {
+            content = Self.content(for: off)
             return
         }
         guard let reader = reader() else { return }
@@ -286,6 +321,13 @@ final class EmptyClassroomViewModel {
                 guard !(error is CancellationError), content == .loading else { return }
                 content = .failed(offline: Self.isOffline(error))
             }
+        }
+    }
+
+    private static func content(for off: EmptyClassroomSchedule.DayOff) -> Content {
+        switch off {
+        case .weekend, .outOfTerm: .noData
+        case .holiday(let holiday): .holiday(name: holiday.name())
         }
     }
 

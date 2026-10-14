@@ -11,21 +11,34 @@ nonisolated struct ClassStop: Equatable, Sendable {
 }
 
 extension ClassStop {
-    /// One stop per block of the user's periods. `rawRoom` gives the school's name for a room
-    /// the class table shows in another form, which is what the floor rule and the site read.
+    /// One stop per run of the user's periods in one room: a block can change rooms halfway, and
+    /// the walk to a room starts where the class before it ends. `rawRoom` gives the school's name
+    /// for a room the class table shows in another form, which is what the floor rule and the site read.
     static func stops(from slots: [CourseTimeSlot], rawRoom: (String) -> String) -> [ClassStop] {
-        slots.compactMap { slot in
-            let periods = slot.periods.compactMap { EmptyClassroomSchedule.periodIDs.firstIndex(of: $0) }
-            guard let first = periods.min(), let last = periods.max() else { return nil }
-            let shown = slot.course.classroom(weekday: slot.date.scheduleWeekday, periods: slot.periods)
-            let room = CourseBlockRoom.split(shown).first ?? shown
-            return ClassStop(
-                course: slot.course.displayName,
-                room: room,
-                place: RoomPlace(room: rawRoom(room)),
-                firstPeriod: first,
-                lastPeriod: last
-            )
+        slots.flatMap { slot in
+            let weekday = slot.date.scheduleWeekday
+            var runs: [(room: String, periods: [String])] = []
+            for period in slot.periods {
+                let room = slot.course.classroom(weekday: weekday, period: period)
+                if let last = runs.last, last.room == room {
+                    runs[runs.count - 1].periods.append(period)
+                } else {
+                    runs.append((room, [period]))
+                }
+            }
+            return runs.compactMap { run -> ClassStop? in
+                let periods = run.periods.compactMap { EmptyClassroomSchedule.periodIDs.firstIndex(of: $0) }
+                guard let first = periods.min(), let last = periods.max() else { return nil }
+                let shown = slot.course.classroom(weekday: weekday, periods: run.periods)
+                let room = CourseBlockRoom.split(shown).first ?? shown
+                return ClassStop(
+                    course: slot.course.displayName,
+                    room: room,
+                    place: RoomPlace(room: rawRoom(room)),
+                    firstPeriod: first,
+                    lastPeriod: last
+                )
+            }
         }
     }
 }
