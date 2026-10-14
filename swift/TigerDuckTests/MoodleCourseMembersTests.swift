@@ -359,6 +359,27 @@ struct MoodleCourseMembersTests {
         #expect(site.pictureCalls.count == 1)
     }
 
+    /// The decode draws the whole picture (`kCGImageSourceShouldCacheImmediately`).
+    @Test("a downloaded picture is decoded off the main actor")
+    func downloadedPictureIsDecodedOffTheMainActor() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let store = Self.store(folder, site: site)
+        let decodes = OSAllocatedUnfairLock<[Bool]>(initialState: [])
+        let decode = store.decodePicture
+        store.decodePicture = { data in
+            decodes.withLock { $0.append(Thread.isMainThread) }
+            return decode(data)
+        }
+
+        await store.loadPicture(of: member)
+
+        #expect(site.pictureCalls == [member.pictureURL])
+        #expect(decodes.withLock { $0 } == [false])
+        #expect(store.pictures[try #require(member.pictureURL)] != nil)
+    }
+
     @Test("a picture kept on the device whose read ends after a sign-out is not shown")
     func cachedPictureReadAfterASignOut() async throws {
         let folder = Folder()
