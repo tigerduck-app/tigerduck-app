@@ -484,6 +484,16 @@ struct SSOServiceLoginTests {
         #expect(await log.calls == 1)
     }
 
+    /// A harvest holds the stored-password lock, so a server that trickles its answer would hold
+    /// every automatic SSO sign-in behind it for the default week.
+    @Test("a harvest gives up on a server that trickles its answer after a minute")
+    func harvestTimesOut() {
+        let config = MoodleTokenService.harvestConfiguration()
+        #expect(config.timeoutIntervalForResource == 60)
+        #expect(config.timeoutIntervalForRequest == 20)
+        #expect(config.httpCookieStorage === HTTPCookieStorage.shared)
+    }
+
     @Test("a failed renewal leaves no rejected token behind")
     func failedRenewalDropsTheRejectedToken() async {
         let log = HarvestLog()

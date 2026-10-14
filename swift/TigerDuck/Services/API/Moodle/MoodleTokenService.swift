@@ -268,15 +268,15 @@ actor MoodleTokenService {
         let privatetoken: String?
     }
 
-    private nonisolated static func performOidcLogin(
-        studentId: String,
-        password: String
-    ) async throws -> TokenTriple {
-        // The shared cookie store keeps SSO anti-forgery and correlation cookies across the
-        // launch.php -> login -> authorize redirects. A private jar on Apple's URLSession stack
-        // drops them, and the credential POST bounces to /account/login as a false rejection.
+    /// The harvest's session. The shared cookie store keeps SSO anti-forgery and correlation
+    /// cookies across the launch.php -> login -> authorize redirects; a private jar on Apple's
+    /// URLSession stack drops them, and the credential POST bounces to /account/login as a false
+    /// rejection. A harvest holds the stored-password lock, so a server that trickles its answer
+    /// stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default week.
+    nonisolated static func harvestConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 60
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
         config.httpCookieStorage = HTTPCookieStorage.shared
@@ -286,6 +286,14 @@ actor MoodleTokenService {
                 "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         ]
+        return config
+    }
+
+    private nonisolated static func performOidcLogin(
+        studentId: String,
+        password: String
+    ) async throws -> TokenTriple {
+        let config = harvestConfiguration()
         // SPKI pinning: this session POSTs the raw NTUST password and gets the moodlemobile
         // token triple back, so a MITM here is the worst case. `invalidateAndCancel()` in the
         // defer below releases the session's strong reference to the delegate.
