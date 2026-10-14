@@ -137,6 +137,36 @@ extension ClassTableShareModel {
         }
     }
 
+    /// What the answer of `canShare` comes from. The cache files behind it change only through
+    /// `DataCache`, which moves its revision with each write.
+    struct Availability: Equatable {
+        let studentId: String?
+        let semester: String
+        let courseNos: [String]
+        let semesters: [String]
+        let cacheRevision: Int
+    }
+
+    typealias AvailabilityMemo = ViewMemo<Availability, Bool>
+
+    /// `canShare` for the class table's actions menu and the Mac toolbar, which ask on every redraw:
+    /// kept in `memo` until the term on screen or a cache write changes it.
+    static func canShare(
+        studentId: String?,
+        shownTerm: Term,
+        semesters: [String],
+        cache: DataCache = .shared,
+        memo: AvailabilityMemo
+    ) -> Bool {
+        let key = Availability(
+            studentId: studentId, semester: shownTerm.semester, courseNos: shownTerm.courses.map(\.courseNo),
+            semesters: semesters, cacheRevision: cache.revision
+        )
+        return memo.value(for: key) {
+            canShare(studentId: studentId, shownTerm: shownTerm, semesters: semesters, cache: cache)
+        }
+    }
+
     private static func courses(
         in semester: String, hidden: Set<String>, cache: DataCache, shownTerm: Term?
     ) -> [SDCourse] {

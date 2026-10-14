@@ -13,6 +13,7 @@ struct ClassTableView: View {
     @State private var showExportFailed = false
     @State private var isExporting = false
     @State private var shareModel: ClassTableShareModel?
+    @State private var shareAvailability = ClassTableShareModel.AvailabilityMemo()
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var scroll = ScrollState()
     @State private var tableSwitches = 0
@@ -382,7 +383,8 @@ struct ClassTableView: View {
             .disabled(isExporting || !ClassTableShareModel.canShare(
                 studentId: appState.authService.storedStudentId,
                 shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
-                semesters: viewModel.availableSemesters
+                semesters: viewModel.availableSemesters,
+                memo: shareAvailability
             ))
             exportButton
         }
