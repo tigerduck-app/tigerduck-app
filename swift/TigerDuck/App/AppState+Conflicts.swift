@@ -266,7 +266,10 @@ extension AppState {
                     let completedMatch = localCompletedIds == serverCompletedIds
                     let coursesDiffer = Self.ignoredCoursesDiffer(
                         server: serverIgnoredCourses.map { Set($0.map(\.key)) },
-                        decided: Self.serverDecidedCourses(json["course_overrides"] as? [[String: Any]] ?? []),
+                        decided: Self.serverDecidedCourses(json["course_overrides"] as? [[String: Any]] ?? [])
+                            .union(Self.recreatedCourses(
+                                listed: Self.listedCourseRows(coursesArray), seen: Defaults[.courseRowIdsSeen]
+                            )),
                         listed: Self.listedCourses(coursesArray),
                         local: DataCache.shared.loadIgnoredAssignmentCourses(),
                         snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })
@@ -279,33 +282,30 @@ extension AppState {
 
                 AppLogger.sync.info("[reenable] result: \(diffs.count, privacy: .public) diffs → \(diffs.isEmpty ? "no conflict" : "SHOW POPUP", privacy: .public)")
                 await MainActor.run {
-                    // After a sign-out the diffs compare the previous account's server state
-                    // with cleared caches, and with sync off there is nothing to reconcile.
-                    guard fullSyncMayWrite(since: generation) else {
-                        AppLogger.sync.info("[reenable] result discarded — signed out or sync off while in flight")
-                        return
-                    }
-                    // Report only categories still pending: a resolve that landed mid-check
-                    // cleared its own and changed the server state behind these diffs. Showing
-                    // them again repeats a dialog the user has answered.
-                    let stillPending = Defaults[.pendingConflictCategories]
-                    let checked = pending.intersection(stillPending)
-                    guard !checked.isEmpty else {
+                    let outcome = Self.conflictCheckOutcome(
+                        mayWrite: fullSyncMayWrite(since: generation), checked: pending,
+                        stillPending: Defaults[.pendingConflictCategories], foundDifference: !diffs.isEmpty
+                    )
+                    conflictCheckRetry.note(outcome, at: Date())
+                    switch outcome {
+                    case .dropped:
+                        AppLogger.sync.info("[reenable] result discarded — signed out, sync off or locked while in flight")
+                    case .resolvedMeanwhile:
                         AppLogger.sync.info("[reenable] result discarded — resolved while in flight")
-                        return
-                    }
-                    if !diffs.isEmpty {
+                    case .conflict(let checked):
                         reenableConflict = ReenableConflict(
                             categories: Array(checked),
                             description: diffs.joined(separator: "\n"),
                             serverIgnoredCourses: serverIgnoredCourses,
                             serverMarkedAssignments: serverMarkedAssignments
                         )
-                    } else {
+                    case .clear(let checked):
                         Defaults[.pendingConflictCategories].subtract(checked)
+                        cloudSyncCoordinator.scheduleTick()
                     }
                 }
             } catch {
+                conflictCheckRetry.noteFailure(at: Date())
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
                 if case PushAPIError.httpStatus(401, _) = error, retriesLeft > 0 {
                     let reloginOk = await attemptBackendRelogin()
@@ -334,6 +334,83 @@ extension AppState {
         if reenableConflict == nil, !unchecked.isEmpty {
             checkPendingConflicts()
         }
+    }
+
+    /// Runs the pending re-enable check once a full sync or a revision poll has reached the server,
+    /// when `conflictCheckRetry` says one is due. Until a check runs, the outbox holds the edits
+    /// of its categories.
+    func retryOwedConflictCheck() {
+        guard conflictCheckRetry.isDue(
+            pending: Defaults[.pendingConflictCategories], checking: isCheckingConflicts,
+            awaitingAnswer: reenableConflict != nil, now: Date()
+        ) else { return }
+        checkPendingConflicts()
+    }
+
+    /// When the pending re-enable check is due to run again by itself. One is owed from launch
+    /// until a check gives a verdict, and each failure or dropped result doubles the wait before
+    /// the next, from `firstDelay` to `maxDelay`: a weak link can answer the revision poll every
+    /// few seconds while `/sync/full` times out, and each snapshot costs the server a log row and
+    /// pushes its own sync back. A check run from the Settings screens does not wait.
+    nonisolated struct ConflictCheckRetry: Equatable, Sendable {
+        static let firstDelay: TimeInterval = 30
+        static let maxDelay: TimeInterval = 30 * 60
+
+        private(set) var owed = true
+        private(set) var failures = 0
+        private(set) var notBefore: Date?
+
+        func isDue(pending: Set<String>, checking: Bool, awaitingAnswer: Bool, now: Date) -> Bool {
+            owed && !pending.isEmpty && !checking && !awaitingAnswer && (notBefore.map { now >= $0 } ?? true)
+        }
+
+        mutating func noteFailure(at now: Date) {
+            owed = true
+            failures += 1
+            notBefore = now.addingTimeInterval(min(Self.firstDelay * pow(2, Double(failures - 1)), Self.maxDelay))
+        }
+
+        mutating func noteVerdict() {
+            owed = false
+            failures = 0
+            notBefore = nil
+        }
+
+        /// A verdict settles what is owed and a dropped result is owed again; a check whose
+        /// categories were answered while it ran changes nothing.
+        mutating func note(_ outcome: ConflictCheckOutcome, at now: Date) {
+            switch outcome {
+            case .dropped: noteFailure(at: now)
+            case .conflict, .clear: noteVerdict()
+            case .resolvedMeanwhile: break
+            }
+        }
+    }
+
+    /// What a finished re-enable check does with its result.
+    nonisolated enum ConflictCheckOutcome: Equatable, Sendable {
+        /// A sign-out, Sync course information turned off or the lock screen overtook it.
+        case dropped
+        /// Every category it compared was answered while it ran.
+        case resolvedMeanwhile
+        /// The categories to ask about.
+        case conflict(Set<String>)
+        /// The categories to clear, with an outbox tick for the edits they held.
+        case clear(Set<String>)
+    }
+
+    /// The outcome of a re-enable check that compared `checked`. After a sign-out its diffs compare
+    /// the previous account's server state with emptied caches, with sync off there is nothing to
+    /// reconcile, and behind the lock screen the caches read as empty. Only categories still pending
+    /// count: a resolve that landed mid-check cleared its own and changed the server state behind
+    /// these diffs, so asking again repeats a dialog the user has answered.
+    nonisolated static func conflictCheckOutcome(
+        mayWrite: Bool, checked: Set<String>, stillPending: Set<String>, foundDifference: Bool
+    ) -> ConflictCheckOutcome {
+        guard mayWrite else { return .dropped }
+        let stillChecked = checked.intersection(stillPending)
+        guard !stillChecked.isEmpty else { return .resolvedMeanwhile }
+        return foundDifference ? .conflict(stillChecked) : .clear(stillChecked)
     }
 
     /// The categories a finished re-enable check leaves to another: those marked while it ran, which

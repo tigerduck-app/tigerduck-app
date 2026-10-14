@@ -757,15 +757,17 @@ final class DataCache {
 struct AssignmentMarks {
     let archivedIds: Set<String>
     let locallyCompletedIds: Set<String>
-    /// `CourseTombstone.key(semester:courseNo:)` keys; only `semester`'s apply.
+    /// `CourseTombstone.key(semester:courseNo:)` keys, each applying in its own term.
     let ignoredCourses: Set<String>
-    /// The term the assignments are fetched for.
+    /// The term the assignments are fetched for, which stands in for the term of one cached
+    /// before assignments recorded theirs (`SDAssignment.semester`).
     let semester: String
 
     func apply(to assignment: SDAssignment) -> SDAssignment {
         if archivedIds.contains(assignment.assignmentId) { assignment.isArchived = true }
         if locallyCompletedIds.contains(assignment.assignmentId) { assignment.isLocallyCompleted = true }
-        if ignoredCourses.contains(CourseTombstone.key(semester: semester, courseNo: assignment.courseNo)) {
+        let term = assignment.semester ?? semester
+        if ignoredCourses.contains(CourseTombstone.key(semester: term, courseNo: assignment.courseNo)) {
             // Shown as ignored even when marked done; the mark returns with the course setting off.
             assignment.isArchived = true
             assignment.isLocallyCompleted = false
@@ -876,6 +878,8 @@ private struct CachedAssignment: Codable {
     let cutoffDate: Date?
     /// Optional for the same back-compat reason as `cutoffDate`.
     let submittedAt: Date?
+    /// Optional for the same reason; see `SDAssignment.semester`.
+    let semester: String?
 
     init(from assignment: SDAssignment) {
         assignmentId = assignment.assignmentId
@@ -887,6 +891,7 @@ private struct CachedAssignment: Codable {
         moodleUrl = assignment.moodleUrl
         cutoffDate = assignment.cutoffDate
         submittedAt = assignment.submittedAt
+        semester = assignment.semester
     }
 
     func toSDAssignment() -> SDAssignment {
@@ -899,7 +904,8 @@ private struct CachedAssignment: Codable {
             isCompleted: isCompleted,
             moodleUrl: moodleUrl,
             cutoffDate: cutoffDate,
-            submittedAt: submittedAt
+            submittedAt: submittedAt,
+            semester: semester
         )
     }
 }

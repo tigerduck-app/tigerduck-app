@@ -180,4 +180,48 @@ struct SyncOutboxTests {
         #expect(await relaunched.snapshot().map(\.op.dedupKey) == [Self.mark.dedupKey, Self.colour.dedupKey])
         #expect(await Self.makeOutbox(directory: directory).snapshot().count == 2)
     }
+
+    private static func onDisk(_ directory: URL) async -> [String] {
+        await makeOutbox(directory: directory).snapshot().map(\.op.dedupKey)
+    }
+
+    /// Unlocked, a queue file that still cannot be read is damaged or has the wrong permissions, not
+    /// waiting for an unlock. Kept unloaded, the outbox held what was queued since in memory only,
+    /// for a relaunch to lose.
+    @Test func aQueueUnreadableWhileUnlockedIsGivenUpOnAndReplaced() async {
+        let directory = Self.freshDirectory()
+        await Self.makeOutbox(directory: directory).enqueue(Self.mark)
+        let relaunched = SyncOutbox(directory: directory) { _ in throw CocoaError(.fileReadNoPermission) }
+        await relaunched.enqueue(Self.colour)
+
+        for _ in 0...SyncOutbox.unreadableLoadLimit {
+            await relaunched.loadOrGiveUp(protectedDataAvailable: false)
+        }
+        #expect(await Self.onDisk(directory) == [Self.mark.dedupKey])
+
+        for _ in 1..<SyncOutbox.unreadableLoadLimit {
+            await relaunched.loadOrGiveUp(protectedDataAvailable: true)
+        }
+        #expect(await Self.onDisk(directory) == [Self.mark.dedupKey])
+
+        await relaunched.loadOrGiveUp(protectedDataAvailable: true)
+        #expect(await Self.onDisk(directory) == [Self.colour.dedupKey])
+        #expect(await relaunched.snapshot().map(\.op.dedupKey) == [Self.colour.dedupKey])
+    }
+
+    @Test func givingUpKeepsTheQueueFileThatCanBeRead() async {
+        let directory = Self.freshDirectory()
+        await Self.makeOutbox(directory: directory).enqueue(Self.mark)
+        let relaunched = SyncOutbox(directory: directory) { url in
+            guard url.lastPathComponent != "outbox-parked.json" else { throw CocoaError(.fileReadNoPermission) }
+            return try Data(contentsOf: url)
+        }
+        await relaunched.enqueue(Self.colour)
+
+        for _ in 0..<SyncOutbox.unreadableLoadLimit {
+            await relaunched.loadOrGiveUp(protectedDataAvailable: true)
+        }
+
+        #expect(await Self.onDisk(directory) == [Self.mark.dedupKey, Self.colour.dedupKey])
+    }
 }
