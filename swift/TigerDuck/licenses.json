@@ -81,8 +81,8 @@
     {
       "identity": "swift-cmark",
       "name": "swift-cmark",
-      "version": "0.8.0",
-      "revision": "924936d0427cb25a61169739a7660230bffa6ea6",
+      "version": "0.9.0",
+      "revision": "08ddb528923cc1a6527e02b7a1aee9e516ca749a",
       "url": "https://github.com/swiftlang/swift-cmark",
       "license": "BSD-2-Clause AND MIT",
       "copyright": [
@@ -104,8 +104,8 @@
     {
       "identity": "swift-collections",
       "name": "swift-collections",
-      "version": "1.6.0",
-      "revision": "a0cb0954ecb21e4e31b0070e6ed5674e8556685a",
+      "version": "1.7.2",
+      "revision": "3b69cedbaa49957e97c092ae400bb57602ef941f",
       "url": "https://github.com/apple/swift-collections",
       "license": "Apache-2.0",
       "copyright": [],
@@ -121,8 +121,8 @@
     {
       "identity": "swift-log",
       "name": "swift-log",
-      "version": "1.15.1",
-      "revision": "9c6fb14227f55d8f711ce3847dc2f419fb0ecacb",
+      "version": "1.16.1",
+      "revision": "4038b6a4f74a1426f47eb1dd5b4bb5628a15d597",
       "url": "https://github.com/apple/swift-log",
       "license": "Apache-2.0",
       "copyright": [],
@@ -161,8 +161,8 @@
     {
       "identity": "swift-nio",
       "name": "swift-nio",
-      "version": "2.102.0",
-      "revision": "a931f2c1de8dd49381ce3bf2e279d033f68d8865",
+      "version": "2.104.0",
+      "revision": "6db9d9abd92ad7399b8a564cafbb87d3507245fa",
       "url": "https://github.com/apple/swift-nio",
       "license": "Apache-2.0",
       "copyright": [],
@@ -203,8 +203,8 @@
     {
       "identity": "swift-nio-ssl",
       "name": "swift-nio-ssl",
-      "version": "2.37.4",
-      "revision": "03827c1a9fdb2b6b00a4e93ede8861520263af8c",
+      "version": "2.37.5",
+      "revision": "322f3c2a4a21df31c84ca416bf65ee5e9059e440",
       "url": "https://github.com/apple/swift-nio-ssl",
       "license": "Apache-2.0",
       "copyright": [],
@@ -296,8 +296,8 @@
     {
       "identity": "swiftsoup",
       "name": "SwiftSoup",
-      "version": "2.13.7",
-      "revision": "8d6ad267714cac3ae747cefdd21f7a6665006e1f",
+      "version": "2.14.1",
+      "revision": "9598b4f4e5a0a18f8d96e664f209e9022cddd30a",
       "url": "https://github.com/scinfu/SwiftSoup",
       "license": "MIT",
       "copyright": [
@@ -316,8 +316,8 @@
     {
       "identity": "valet",
       "name": "Valet",
-      "version": "5.1.0",
-      "revision": "246baf6be3f9e3ff116dc05251a08f69dd7c7b9d",
+      "version": "5.1.1",
+      "revision": "43f517941ced37752c0cd5e2b53a3c9d021c848b",
       "url": "https://github.com/square/Valet",
       "license": "Apache-2.0",
       "copyright": [

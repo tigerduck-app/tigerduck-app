@@ -30,7 +30,7 @@ struct SharedAssignmentRoundTests {
         _ name: String, _ rounds: Rounds, generation: Int = 1, rechecks: Bool
     ) -> Task<Void, Never> {
         Task {
-            _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks) {
+            _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks, isCurrent: { true }) {
                 await rounds.run(name)
             }
         }
@@ -76,6 +76,74 @@ struct SharedAssignmentRoundTests {
         rounds.open()
         _ = await (pull.value, foreground.value)
         #expect(rounds.started == ["pull"])
+    }
+
+    @MainActor
+    private final class SignIn {
+        var isCurrent = true
+    }
+
+    /// A Home pull asks Moodle about every submission, long enough to sign out meanwhile.
+    @Test("a round its account signed out of hands back the cache, not that account's list")
+    func aRoundOutlivedBySignOutHandsBackTheCache() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let signIn = SignIn()
+        let departing = "departing-" + UUID().uuidString
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let shown = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+            signIn.isCurrent = false
+            return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
+        }
+
+        #expect(!shown.contains { $0.assignmentId == departing })
+    }
+
+    @Test("a caller that joined a round its account signed out of gets the cache too")
+    func aJoinerOfARoundOutlivedBySignOutGetsTheCache() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let rounds = Rounds()
+        let signIn = SignIn()
+        let departing = "departing-" + UUID().uuidString
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        let pull = Task {
+            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+                _ = await rounds.run("pull")
+                return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
+            }
+        }
+        try await waitUntil { rounds.started == ["pull"] }
+        let joined = Task {
+            await AppServiceBridge.sharedRound(generation: 1, rechecks: false, isCurrent: { signIn.isCurrent }) { [] }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        signIn.isCurrent = false
+        rounds.open()
+
+        #expect(await !joined.value.contains { $0.assignmentId == departing })
+        await pull.value
+    }
+
+    /// A pull waits out a round that skips submissions, then runs its own; not once its account
+    /// has signed out, when the next account's round may already be running.
+    @Test("a pull whose account signed out while it waited starts no round")
+    func aWaiterOutlivedBySignOutStartsNoRound() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let rounds = Rounds()
+        let signIn = SignIn()
+        let launch = start("launch", rounds, rechecks: false)
+        try await waitUntil { rounds.started == ["launch"] }
+        let pull = Task {
+            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+                await rounds.run("pull")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        signIn.isCurrent = false
+        rounds.open()
+        _ = await (launch.value, pull.value)
+
+        #expect(rounds.started == ["launch"])
     }
 
     @Test("the next account never joins the departing account's round")

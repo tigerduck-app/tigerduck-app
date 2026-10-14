@@ -152,5 +152,32 @@ struct SyncOutboxTests {
         #expect(await outbox.parkedSnapshot().map(\.op.dedupKey) == [Self.mark.dedupKey])
         #expect(await outbox.snapshot().isEmpty)
     }
-}
 
+    nonisolated private final class ReadGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var locked = true
+        var isLocked: Bool {
+            get { lock.withLock { locked } }
+            set { lock.withLock { locked = newValue } }
+        }
+    }
+
+    /// A launch behind the lock screen cannot read the queue (`completeFileProtectionUnlessOpen`).
+    /// An edit made then must not be written over it, and joins it once it can be read.
+    @Test func aQueueThatCannotBeReadYetIsKeptAndJoined() async throws {
+        let directory = Self.freshDirectory()
+        await Self.makeOutbox(directory: directory).enqueue(Self.mark)
+
+        let gate = ReadGate()
+        let relaunched = SyncOutbox(directory: directory) { url in
+            guard !gate.isLocked else { throw CocoaError(.fileReadNoPermission) }
+            return try Data(contentsOf: url)
+        }
+        await relaunched.enqueue(Self.colour)
+        #expect(await Self.makeOutbox(directory: directory).snapshot().map(\.op.dedupKey) == [Self.mark.dedupKey])
+
+        gate.isLocked = false
+        #expect(await relaunched.snapshot().map(\.op.dedupKey) == [Self.mark.dedupKey, Self.colour.dedupKey])
+        #expect(await Self.makeOutbox(directory: directory).snapshot().count == 2)
+    }
+}

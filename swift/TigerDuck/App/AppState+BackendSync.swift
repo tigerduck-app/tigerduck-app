@@ -17,6 +17,12 @@ extension AppState {
     /// a pull waits for one more, since that pull may predate the change it announces.
     func syncOverridesFromBackend(followUpIfBusy: Bool = false) async {
         guard Defaults[.cloudSyncEnabled] else { return }
+        #if os(iOS)
+        // A sync trigger can launch the app behind the lock screen, where the local marks,
+        // courses and colours cannot be opened and read as empty, and a sync would write the
+        // server's view over them. Revision polling syncs at the next return to the app.
+        guard UIApplication.shared.isProtectedDataAvailable else { return }
+        #endif
         if fullSyncGate.isRunning {
             AppLogger.sync.info("[syncOverrides] already in flight, follow-up: \(followUpIfBusy, privacy: .public)")
         }
@@ -551,17 +557,26 @@ extension AppState {
     }
 
     /// Whether a full sync begun under login `generation` may still write. A sign-out moves the
-    /// generation and clears the caches the sync writes, and turning Sync course information off
-    /// stops the sync from applying the server's state.
-    nonisolated static func fullSyncMayWrite(startedIn generation: Int, current: Int, cloudSyncEnabled: Bool) -> Bool {
-        generation == current && cloudSyncEnabled
+    /// generation and clears the caches the sync writes, turning Sync course information off
+    /// stops the sync from applying the server's state, and a sync that the phone locked under
+    /// can resume behind the lock screen, where those caches cannot be opened and read as empty.
+    nonisolated static func fullSyncMayWrite(
+        startedIn generation: Int, current: Int, cloudSyncEnabled: Bool, protectedDataAvailable: Bool
+    ) -> Bool {
+        generation == current && cloudSyncEnabled && protectedDataAvailable
     }
 
     func fullSyncMayWrite(since generation: Int) -> Bool {
-        Self.fullSyncMayWrite(
+        #if os(iOS)
+        let protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable
+        #else
+        let protectedDataAvailable = true
+        #endif
+        return Self.fullSyncMayWrite(
             startedIn: generation,
             current: authService.loginGeneration,
-            cloudSyncEnabled: Defaults[.cloudSyncEnabled]
+            cloudSyncEnabled: Defaults[.cloudSyncEnabled],
+            protectedDataAvailable: protectedDataAvailable
         )
     }
 
