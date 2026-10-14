@@ -61,9 +61,8 @@ nonisolated struct RoomSuggestion: Equatable, Sendable {
             guard let freeUntil = room.freeUntil(from: period) else { return nil }
             let place = RoomPlace(room: room.room)
             let seconds = place.map { place in
-                let before = previous?.place.flatMap { CampusWalk.seconds(from: $0, to: place) } ?? 0
-                let after = next?.place.flatMap { CampusWalk.seconds(from: place, to: $0) } ?? 0
-                return before + after
+                walk(previous?.place) { CampusWalk.seconds(from: $0, to: place) }
+                    + walk(next?.place) { CampusWalk.seconds(from: place, to: $0) }
             } ?? .infinity
             let fits = next.map { freeUntil >= $0.firstPeriod - 1 } ?? false
             return Candidate(room: room, place: place, freeUntil: freeUntil, fits: fits, seconds: seconds)
@@ -73,6 +72,13 @@ nonisolated struct RoomSuggestion: Equatable, Sendable {
         return RoomSuggestion(
             period: period, previous: previous, next: next, candidates: Array(ranked.prefix(limit))
         )
+    }
+
+    /// No walk without a class or from one the model cannot place; a class it places but whose
+    /// walk to the room it cannot measure ranks the room last, not first.
+    private static func walk(_ stop: RoomPlace?, _ seconds: (RoomPlace) -> Double?) -> Double {
+        guard let stop, CampusWalk.hasLocation(stop) else { return 0 }
+        return seconds(stop) ?? .infinity
     }
 
     private static func ranksBefore(_ lhs: Candidate, _ rhs: Candidate) -> Bool {

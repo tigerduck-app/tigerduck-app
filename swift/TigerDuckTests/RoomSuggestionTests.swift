@@ -44,6 +44,25 @@ struct RoomSuggestionTests {
         stop("資料庫系統", "IB-503", 7...8),
     ]
 
+    @Test("a free room in a building the walking model cannot place ranks after the ones it can")
+    func unplacedBuildingRanksLast() throws {
+        let unplaced = RoomUsage(room: "ME1-261", slots: Array(repeating: .free, count: 14))
+        let suggestion = try #require(
+            RoomSuggestion.make(rooms: Self.rooms + [unplaced], period: 2, classes: Self.classes, limit: 40)
+        )
+
+        #expect(suggestion.candidates.first?.room.room == "TR-309")
+        #expect(suggestion.candidates.filter(\.fits).last?.room.room == "ME1-261")
+    }
+
+    @Test("a class in a building the walking model cannot place adds no walk, so the other class ranks the rooms")
+    func unplacedClassAddsNoWalk() throws {
+        let classes = [Self.stop("計算機網路", "ME1-201", 0...1), Self.stop("作業系統", "TR-309", 4...5)]
+        let suggestion = try #require(RoomSuggestion.make(rooms: Self.rooms, period: 2, classes: classes))
+
+        #expect(suggestion.candidates.first?.room.room == "TR-309")
+    }
+
     @Test("between TR-214 and TR-309 the next class's own room comes first, one floor up and staying put")
     func betweenTwoClasses() throws {
         let suggestion = try #require(RoomSuggestion.make(rooms: Self.rooms, period: 2, classes: Self.classes))
