@@ -323,6 +323,77 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
+    // MARK: - Skipped classes
+
+    @Test func skippedClassesEndTheirActivities() {
+        // Skipping a class during its lead time, or during it, ends its activity rather than
+        // leaving it to its countdown (https://github.com/tigerduck-app/tigerduck-app/issues/276).
+        // Only class activities are looked up; an assignment's source id names no class.
+        let preparing = Self.facts(
+            instanceId: "i1",
+            activityId: "classPreparing::TEST100_20260925_3",
+            countdownTarget: Self.now.addingTimeInterval(2 * 3600),
+            scenario: .classPreparing
+        )
+        let inClass = Self.facts(
+            instanceId: "i2",
+            activityId: "inClass::TEST200_20260925_6",
+            countdownTarget: Self.now.addingTimeInterval(30 * 60),
+            sourceId: "TEST200_20260925_6"
+        )
+        let assignment = Self.assignmentFacts(instanceId: "i3", assignmentId: "904")
+        let all = [preparing, inClass, assignment]
+
+        #expect(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
+        #expect(
+            LiveActivityCoordinator.instanceIdsToEnd(
+                all, now: Self.now, isAvailable: true, isSkipped: { $0 == "TEST100_20260925_3" }
+            ) == ["i1"]
+        )
+        #expect(
+            Set(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true, isSkipped: { _ in true }))
+                == ["i1", "i2"]
+        )
+    }
+
+    @Test func skippedClassIsEndedNotKept() {
+        // The server pre-starts the activity of a class skipped since; it is ended on arrival.
+        let reason = LiveActivityCoordinator.endReason(
+            for: Self.facts(
+                instanceId: "i1",
+                activityId: "classPreparing::TEST100_20260925_3",
+                countdownTarget: Self.now.addingTimeInterval(3600),
+                scenario: .classPreparing
+            ),
+            now: Self.now,
+            isAvailable: true,
+            isQuietDay: { _ in false },
+            isAssignmentOutstanding: { _ in nil },
+            isSkipped: { _ in true }
+        )
+
+        #expect(reason == .skippedClass)
+    }
+
+    @Test func skippedClassStopsTheStart() {
+        // The resolver leaves skipped classes out, but a skip between its resolve and the start,
+        // across the prune's await, has to stop the start too.
+        func canStart(_ scenario: LiveActivityScenarioKind, sourceId: String, isSkipped: (String) -> Bool) -> Bool {
+            LiveActivityCoordinator.canStart(
+                Self.snapshot(scenario, countdownTarget: Self.now.addingTimeInterval(1800), sourceId: sourceId),
+                isAvailable: true,
+                isQuietDay: { _ in false },
+                isAssignmentOutstanding: { _ in nil },
+                isSkipped: isSkipped
+            )
+        }
+
+        #expect(!canStart(.inClass, sourceId: "TEST100_20260925_3") { _ in true })
+        #expect(!canStart(.classPreparing, sourceId: "TEST100_20260925_3") { _ in true })
+        #expect(canStart(.inClass, sourceId: "TEST100_20260925_3") { _ in false })
+        #expect(canStart(.assignmentUrgent, sourceId: "904") { _ in true })
+    }
+
     // MARK: - Handling one activity (shared by prune and newly appearing activities)
 
     @Test("新出現的不上課日子課堂活動會被結束，不會留下來註冊 token")
@@ -337,7 +408,8 @@ struct LiveActivityCoordinatorTests {
                 now: Self.now,
                 isAvailable: true,
                 isQuietDay: { $0 < holidayEnds },
-                isAssignmentOutstanding: { _ in nil }
+                isAssignmentOutstanding: { _ in nil },
+                isSkipped: { _ in false }
             )
         }
 
@@ -374,7 +446,8 @@ struct LiveActivityCoordinatorTests {
                 now: Self.now,
                 isAvailable: true,
                 isQuietDay: { _ in false },
-                isAssignmentOutstanding: { _ in false }
+                isAssignmentOutstanding: { _ in false },
+                isSkipped: { _ in false }
             )
         }
         let preparing = Self.facts(
@@ -402,7 +475,8 @@ struct LiveActivityCoordinatorTests {
                 now: Self.now,
                 isAvailable: available,
                 isQuietDay: { _ in true },
-                isAssignmentOutstanding: { _ in nil }
+                isAssignmentOutstanding: { _ in nil },
+                isSkipped: { _ in true }
             )
         }
 
@@ -448,7 +522,8 @@ struct LiveActivityCoordinatorTests {
                 Self.snapshot(scenario, countdownTarget: target),
                 isAvailable: available,
                 isQuietDay: isQuietDay,
-                isAssignmentOutstanding: { _ in nil }
+                isAssignmentOutstanding: { _ in nil },
+                isSkipped: { _ in false }
             )
         }
 
@@ -471,7 +546,8 @@ struct LiveActivityCoordinatorTests {
                 ),
                 isAvailable: true,
                 isQuietDay: { _ in false },
-                isAssignmentOutstanding: Self.isOutstanding
+                isAssignmentOutstanding: Self.isOutstanding,
+                isSkipped: { _ in false }
             )
         }
 

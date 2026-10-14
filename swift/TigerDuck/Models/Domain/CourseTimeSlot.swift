@@ -86,6 +86,17 @@ struct CourseTimeSlot: Identifiable, Equatable {
             .filter { !$0.course.isSkipped(on: $0.date) }
     }
 
+    /// Whether the slot `id` names, as `buildSlots` writes it, is of a course skipped that day. A
+    /// class Live Activity carries only that id (`LiveActivitySnapshot.sourceId`).
+    static func isSkipped(slotId id: String, in courses: [SDCourse]) -> Bool {
+        let parts = id.split(separator: "_", omittingEmptySubsequences: false)
+        guard parts.count >= 3, let day = dayKeyFormatter.date(from: String(parts[parts.count - 2])) else {
+            return false
+        }
+        let courseNo = parts.dropLast(2).joined(separator: "_")
+        return courses.contains { $0.courseNo == courseNo && $0.isSkipped(on: day) }
+    }
+
     private static func periodOrder(_ periodId: String) -> Int {
         AppConstants.Periods.chronologicalOrder.firstIndex(of: periodId) ?? Int.max
     }

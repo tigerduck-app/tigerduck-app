@@ -1,4 +1,4 @@
-# 0010. End Live Activities only for expiry, duplicates, quiet days, done assignments or unavailability
+# 0010. End Live Activities only for expiry, duplicates, quiet days, skipped classes, done assignments or unavailability
 
 Status: accepted
 
@@ -14,7 +14,9 @@ resolver returns one snapshot at a time. ActivityKit does not end an activity wh
 (`server/push/pipeline.py`), so a holiday published later, or "still have class" switched off
 after an activity appeared, never reaches one already running. An assignment activity's end
 job is filed for its due date, so it stays until then after its assignment is submitted,
-ignored or marked done (https://github.com/tigerduck-app/tigerduck-app/issues/329). While Live
+ignored or marked done (https://github.com/tigerduck-app/tigerduck-app/issues/329). A class
+skipped for the day after its activity appeared stays until its countdown ends
+(https://github.com/tigerduck-app/tigerduck-app/issues/276). While Live
 Activity is unavailable (`effectiveLiveActivityEnabled` is false), the backend can still start
 activities from a schedule uploaded earlier.
 
@@ -29,6 +31,8 @@ activities from a schedule uploaded earlier.
     lowest `Activity.id`;
   - class activities on a day classes do not meet, by the academic calendar and the user's
     "still have class" choices; assignment activities stay;
+  - class activities of a class the user skipped that day, by the course and day their
+    `snapshot.sourceId` names (`CourseTimeSlot.isSkipped(slotId:in:)`);
   - assignment activities whose assignment is in the assignment cache and no longer outstanding
     by `LiveActivityScenarioResolver.isOutstanding` (submitted, ignored or marked done), looked
     up by `snapshot.sourceId`; one missing from the cache stays;
