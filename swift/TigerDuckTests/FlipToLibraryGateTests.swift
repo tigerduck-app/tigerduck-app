@@ -1,4 +1,5 @@
 #if os(iOS)
+import Defaults
 import SwiftUI
 import Testing
 @testable import TigerDuck
@@ -19,6 +20,26 @@ struct FlipToLibraryGateTests {
         #expect(!FlipToLibraryGate.isArmed(enabled: true, signedInToLibrary: false, inBackground: false))
         #expect(!FlipToLibraryGate.isArmed(enabled: false, signedInToLibrary: true, inBackground: false))
         #expect(!FlipToLibraryGate.isArmed(enabled: true, signedInToLibrary: true, inBackground: true))
+    }
+
+    /// The switch is off by default, and a library sign-in asks once whether to turn it on
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/434).
+    @Test("the gesture is offered once, to a library account with the switch off")
+    func theGestureIsOfferedOnceAfterALibrarySignIn() {
+        #expect(!Defaults.Key<Bool>.flipToLibraryEnabled.defaultValue)
+        #expect(FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: false))
+        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: false, enabled: false, asked: false))
+        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: true, asked: false))
+        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: true))
+    }
+
+    /// What's New and the update prompt share the root with the offer, and two sheets set there in
+    /// one render leave one unshown, so the offer waits for them as for any sheet already up.
+    @Test("the offer waits behind a sheet already up and behind What's New or the update prompt")
+    func theOfferWaitsForOtherSheets() {
+        #expect(!FlipToLibraryGate.offerWaits(sheetPresented: false, notifySheetPending: false))
+        #expect(FlipToLibraryGate.offerWaits(sheetPresented: true, notifySheetPending: false))
+        #expect(FlipToLibraryGate.offerWaits(sheetPresented: false, notifySheetPending: true))
     }
 }
 #endif

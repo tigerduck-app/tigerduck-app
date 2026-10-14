@@ -257,6 +257,12 @@ DefaultTabsPinMigration.swift
 # the same `#if os(iOS)` block.
 LibraryTabAddMigration.swift
 
+# FlipToLibraryDefaultOffMigration.swift — stores the flip-to-library switch for
+# users who kept it at the first flip, when 2.5.0 turns its default off; run in
+# the `#if os(iOS)` block in `runPendingMigrations()`. iOS-only like the gesture
+# and the prompt it marks answered.
+FlipToLibraryDefaultOffMigration.swift
+
 # Services/Sync — the `notification` settings-document model and its client.
 # Both sections `NotificationSettingsDocument` carries (`assignments`,
 # `live_activity`) describe local reminder scheduling and Live Activity

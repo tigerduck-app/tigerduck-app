@@ -58,7 +58,7 @@ struct TriggersDebugView: View {
 
             // MARK: - Flip-to-Library first trigger
             Section {
-                Button("First library flip after 3 sec") {
+                Button("Flip offer after 3 sec") {
                     triggerFirstLibraryFlip()
                 }
                 .disabled(!canTriggerFlip || TriggersDebugArming.shared.isFlipArmed)
@@ -71,9 +71,9 @@ struct TriggersDebugView: View {
                 Text("Flip to Library")
             } footer: {
                 if !canTriggerFlip {
-                    Text("Requires Flip-to-Library to be enabled. Turn it on in Settings → Other settings first.")
+                    Text("Requires Flip-to-Library to be off. Turn it off in Settings → Library first.")
                 } else {
-                    Text("Resets the first-trigger seen flag, waits 3 seconds, then replays the same prompt a real face-down gesture would surface.")
+                    Text("Resets the answered flag, waits 3 seconds, then replays the prompt a library sign-in shows.")
                 }
             }
 
@@ -98,7 +98,7 @@ struct TriggersDebugView: View {
     }
 
     private var canTriggerFlip: Bool {
-        appState.flipToLibraryEnabled
+        !appState.flipToLibraryEnabled
     }
 
     private func triggerFirstLibraryFlip() {
@@ -139,7 +139,7 @@ final class TriggersDebugArming {
         flipTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(3))
             if !Task.isCancelled {
-                FlipToLibraryPromptPresenter.requestFirstTriggerPrompt(appState: appState)
+                FlipToLibraryPromptPresenter.requestPrompt(appState: appState)
             }
             self?.flipTask = nil
             completion()
