@@ -260,12 +260,37 @@ final class SDCourse: Identifiable {
     /// Returns the formatted time range string for this course on the given weekday, e.g. "08:10 - 12:10"
     func timeRange(for weekday: Int) -> String? {
         guard let periods = schedule[weekday], !periods.isEmpty else { return nil }
+        return Self.timeRange(periods: periods)
+    }
+
+    static func timeRange(periods: [String]) -> String? {
         let sorted = periods.sortedByPeriodOrder()
         guard let first = sorted.first,
               let last = sorted.last,
               let firstTime = AppConstants.PeriodTimes.mapping[first],
               let lastTime = AppConstants.PeriodTimes.mapping[last] else { return nil }
         return "\(firstTime.start) - \(lastTime.end)"
+    }
+
+    /// The run of this course's periods on `weekday`, consecutive in `order`, that `period` falls
+    /// in, or else the first after it: a conflict cluster is picked by its first period, where a
+    /// course may start later. A grid passes the rows it draws, which leave out a period no course
+    /// uses, so two blocks around it are one cell.
+    func block(
+        weekday: Int, at period: String, in order: [String] = AppConstants.Periods.chronologicalOrder
+    ) -> [String]? {
+        let own = Set(schedule[weekday] ?? [])
+        var runs: [[String]] = []
+        for (index, row) in order.enumerated() where own.contains(row) {
+            if index > 0, own.contains(order[index - 1]), !runs.isEmpty {
+                runs[runs.count - 1].append(row)
+            } else {
+                runs.append([row])
+            }
+        }
+        let start = order.firstIndex(of: period) ?? 0
+        return runs.first { $0.contains(period) }
+            ?? runs.first { (order.firstIndex(of: $0[0]) ?? 0) > start }
     }
 }
 

@@ -16,14 +16,10 @@ final class ClassTableViewModel {
 
     var selectedWeekday: Int? = nil
     var selectedPeriodId: String? = nil
-    /// Explicit time-range string for the detail sheet, set when the
-    /// caller knows the precise block (e.g. an `OngoingCourseInfo`
-    /// carousel card whose period block is a strict subset of the
-    /// day's schedule). Takes precedence over `course.timeRange(for:)`
-    /// in `selectedCourseTimeRange` so split same-day periods don't
-    /// collapse into a single whole-day span. Cleared by every other
+    /// The periods of the block the user opened, when the entry point knows it, so the detail
+    /// sheet shows that block's time and room rather than the whole day's. Cleared by every other
     /// selection entry point.
-    var selectedCourseBlockTimeRange: String? = nil
+    var selectedCoursePeriods: [String]? = nil
 
     var currentSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
@@ -140,14 +136,51 @@ final class ClassTableViewModel {
             let merged = self.buildCourseList(fresh, userAdded)
             // Silent overwrite: only swap in-memory list when content actually
             // changed, so SwiftUI doesn't churn on identical data.
-            if self.shownPerson == nil,
-               merged.map(\.courseNo).sorted() != self.courses.map(\.courseNo).sorted() {
+            if self.shownPerson == nil, Self.showsChange(merged, over: self.courses) {
                 self.courses = merged
             }
             if target == CourseSelectionService.currentSemesterCode() {
                 self.currentSemesterCourses = merged
                 self.refreshCourseColors()
             }
+        }
+    }
+
+    /// Whether a fetched list draws anything the shown one does not. A term fetched again can
+    /// bring the same courses back with a new room, time or name.
+    static func showsChange(_ fresh: [SDCourse], over shown: [SDCourse]) -> Bool {
+        func drawn(_ courses: [SDCourse]) -> [DrawnCourse] {
+            courses.sorted { $0.courseNo < $1.courseNo }.map(DrawnCourse.init)
+        }
+        return drawn(fresh) != drawn(shown)
+    }
+
+    /// The fields the grid and the detail sheet show. The schedule and the room map are compared
+    /// decoded, since their JSON does not keep a key order.
+    private struct DrawnCourse: Equatable {
+        let courseNo, name, customName, instructor, classroom: String
+        let credits: Double
+        let enrolledCount, maxCount: Int
+        let schedule: [Int: [String]]
+        let classroomMap: [String: String]
+        let moodleIdNumber: String?
+        let dimension, allYear, requireOption: String
+
+        init(_ course: SDCourse) {
+            courseNo = course.courseNo
+            name = course.courseName
+            customName = course.customName ?? ""
+            instructor = course.instructor
+            classroom = course.classroom
+            credits = course.credits
+            enrolledCount = course.enrolledCount
+            maxCount = course.maxCount
+            schedule = course.schedule
+            classroomMap = course.classroomMap
+            moodleIdNumber = course.moodleIdNumber
+            dimension = course.dimension
+            allYear = course.allYear
+            requireOption = course.requireOption
         }
     }
 
@@ -493,7 +526,7 @@ final class ClassTableViewModel {
     }
 
     var selectedCourseTimeRange: String? {
-        if let override = selectedCourseBlockTimeRange { return override }
+        if let periods = selectedCoursePeriods { return SDCourse.timeRange(periods: periods) }
         guard let course = selectedCourse, let weekday = selectedWeekday else { return nil }
         return course.timeRange(for: weekday)
     }

@@ -9,6 +9,8 @@ struct OngoingCourseInfo: Identifiable {
     let course: SDCourse
     let weekday: Int
     let firstPeriodId: String
+    /// The block's periods, for its own room where a day's rooms differ between blocks.
+    let periods: [String]
     /// Block start in minutes-of-day (Taipei).
     let startMinute: Int
     /// Block end in minutes-of-day (Taipei).
@@ -16,12 +18,11 @@ struct OngoingCourseInfo: Identifiable {
 
     var id: String { "\(course.courseNo)-\(weekday)-\(firstPeriodId)" }
 
-    /// "HH:mm - HH:mm" of this contiguous block. Matches the format
-    /// produced by `SDCourse.timeRange(for:)` so the detail sheet can
-    /// drop this in as-is when the user taps a Current-class card —
-    /// otherwise the sheet falls back to the whole-day span, which
-    /// merges split same-day blocks (e.g. P3-4 + P7-8 collapses to
-    /// 10:20-17:20 instead of just 10:20-12:10).
+    var classroom: String {
+        course.classroom(weekday: weekday, periods: periods)
+    }
+
+    /// "HH:mm - HH:mm" of this contiguous block, which the Current class card shows.
     var formattedTimeRange: String {
         func hm(_ m: Int) -> String { String(format: "%02d:%02d", m / 60, m % 60) }
         return "\(hm(startMinute)) - \(hm(endMinute))"
@@ -59,6 +60,7 @@ extension Array where Element == SDCourse {
                             course: course,
                             weekday: weekday,
                             firstPeriodId: firstId,
+                            periods: [String](periods[blockStart...blockEnd]),
                             startMinute: startMin,
                             endMinute: endMin
                         )
