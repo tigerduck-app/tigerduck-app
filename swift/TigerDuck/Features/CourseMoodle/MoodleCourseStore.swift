@@ -619,6 +619,9 @@ final class MoodleCourseStore {
     /// Decoded once per course detail, so a row that comes back shows its picture at once.
     private(set) var pictures: [URL: CGImage] = [:]
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
+    @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
+    /// Reads a picture kept on the device, replaced in tests to see where it runs.
+    @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
 
     /// A member's own picture, from the device, else from Moodle once and then kept with the
     /// account's other Moodle files. One who keeps Moodle's default picture, or whose download
@@ -626,13 +629,26 @@ final class MoodleCourseStore {
     func loadPicture(of member: MoodleMember) async {
         guard let url = member.pictureURL, pictures[url] == nil else { return }
         let file = pictureFile(of: member.id, url: url)
-        if let image = (try? Data(contentsOf: file)).flatMap(Self.image(from:)) {
-            pictures[url] = image
+        if let image = await readInTurn(file) {
+            if context.isCurrent() { pictures[url] = image }
             return
         }
         guard let data = await downloadInTurn(url), let image = Self.image(from: data), context.isCurrent() else { return }
         savePicture(data, to: file)
         pictures[url] = image
+    }
+
+    /// Off the main actor, as a course of hundreds asks for every member's picture at once. One
+    /// read at a time, in the order rows ask, so the downloads that follow keep that order.
+    private func readInTurn(_ file: URL) async -> CGImage? {
+        let previous = lastPictureRead
+        let read = readPictureFile
+        let turn = Task.detached(priority: .userInitiated) { () -> CGImage? in
+            _ = await previous?.value
+            return read(file).flatMap(Self.image(from:))
+        }
+        lastPictureRead = turn
+        return await turn.value
     }
 
     /// One download at a time, in the order rows ask, so the pictures on screen come first. A
@@ -681,9 +697,11 @@ final class MoodleCourseStore {
         try? data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
     }
 
+    /// Decoded at once rather than at the first draw, which runs on the main actor; a kept
+    /// picture's read calls this off it.
     private nonisolated static func image(from data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
     }
 
     // MARK: Summary
