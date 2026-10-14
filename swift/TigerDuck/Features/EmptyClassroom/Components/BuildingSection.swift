@@ -118,6 +118,7 @@ struct BuildingSection: View {
             Image(systemName: "building.2")
                 .font(.system(size: glyphSize))
                 .foregroundStyle(policy.secondaryTextColor)
+                .accessibilityHidden(true)
             Text(String(localized: "empty_classroom_no_free_rooms"))
                 .font(.headline)
                 .foregroundStyle(policy.primaryTextColor)

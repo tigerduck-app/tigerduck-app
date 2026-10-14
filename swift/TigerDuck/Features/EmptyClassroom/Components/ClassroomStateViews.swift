@@ -42,6 +42,7 @@ struct NextTeachingDayButton: View {
                 Text(EmptyClassroomViewModel.dateText(day))
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.bold))
+                    .accessibilityHidden(true)
             }
             .font(.subheadline.weight(.semibold))
         }
