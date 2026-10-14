@@ -102,7 +102,7 @@ struct RouteLine: View {
                     classStop
                 }
             }
-            .frame(height: 20)
+            .frame(minHeight: 20)
             HStack(spacing: TigerDuckTheme.Spacing.md) {
                 Text(previous?.room ?? "")
                 Spacer(minLength: 0)
@@ -113,6 +113,7 @@ struct RouteLine: View {
             .foregroundStyle(policy.secondaryTextColor)
             .lineLimit(1)
         }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }

@@ -92,22 +92,27 @@ struct RoomRow: View {
     let policy: VisualStylePolicy
     let onRoom: (RoomUsage) -> Void
 
-    @ScaledMetric(relativeTo: .headline) private var roomWidth: CGFloat = 80
-
     var body: some View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
-            Text(room.room)
+            // The column fits the usual form, such as TR-214; a longer name shrinks into it.
+            Text(verbatim: "TR-000")
+                .fixedSize()
+                .hidden()
+                .overlay(alignment: .leading) {
+                    Text(room.room)
+                        .foregroundStyle(policy.primaryTextColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
                 .font(.headline)
                 .monospacedDigit()
-                .foregroundStyle(policy.primaryTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(width: roomWidth, alignment: .leading)
             RoomAvailability(room: room, period: period, ended: ended)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.vertical, TigerDuckTheme.Spacing.md)
         .frame(minHeight: 50)
+        // Past this size a name, a bar and a time no longer fit one row on an iPhone.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .scrollSafeTapAction { onRoom(room) }
     }
 }

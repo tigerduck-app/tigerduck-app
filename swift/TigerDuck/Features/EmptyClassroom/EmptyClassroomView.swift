@@ -54,7 +54,9 @@ struct EmptyClassroomView: View {
         .navigationTitle(String(localized: "feature_empty_classroom"))
         .refreshable { await viewModel.refresh() }
         .sheet(item: $openRoom) { room in
+            // Applied here so the sheet's scaled column widths stop growing with its text.
             EmptyClassroomContent.sheet(for: room, viewModel: viewModel, policy: appState.visualStylePolicy)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
         .onAppear {
             viewModel.connect(appState.authService)
