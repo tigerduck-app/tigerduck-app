@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -5,9 +6,10 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct BulletinListSessionTests {
-    private static func page(_ ids: [Int], next: Int? = nil) -> Data {
+    private static func page(_ ids: [Int], next: Int? = nil, orgs: [Int: String] = [:]) -> Data {
         let items = ids.map { id in
-            #"{"id":\#(id),"external_id":"x\#(id)","title":"T","title_clean":null,"canonical_org":null,"content_tags":[],"importance":null,"summary":null,"source_url":"https://example.invalid/\#(id)","posted_at":null,"is_deleted":false}"#
+            let org = orgs[id].map { #""\#($0)""# } ?? "null"
+            return #"{"id":\#(id),"external_id":"x\#(id)","title":"T","title_clean":null,"canonical_org":\#(org),"content_tags":[],"importance":null,"summary":null,"source_url":"https://example.invalid/\#(id)","posted_at":null,"is_deleted":false}"#
         }
         let cursor = next.map(String.init) ?? "null"
         return Data(#"{"items":[\#(items.joined(separator: ","))],"next_cursor":\#(cursor)}"#.utf8)
@@ -76,5 +78,29 @@ struct BulletinListSessionTests {
         await secondVisit.loadIfNeeded()
 
         try await waitUntil { secondVisit.items.contains { $0.id == gap } }
+    }
+}
+
+extension BulletinListSessionTests {
+    /// "Mark all read" covers the bulletins the filters leave on screen, not every loaded one
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/522).
+    @Test("mark all read covers only the filtered bulletins")
+    func markAllReadCoversOnlyTheFilteredBulletins() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.savedAnnouncementDepartmentsData]
+            defer { Defaults[.savedAnnouncementDepartmentsData] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (shown, hidden) = (stub.id, stub.id + 1)
+            stub.serve(Self.page([shown, hidden], orgs: [shown: "TEST-A", hidden: "TEST-B"]))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            await model.loadIfNeeded()
+            try await waitUntil { model.items.contains { $0.id == hidden } }
+            model.selectedOrgs = ["TEST-A"]
+            let unread = model.unreadShown { _ in false }
+            #expect(unread.contains(shown))
+            #expect(!unread.contains(hidden))
+        }
     }
 }

@@ -382,6 +382,11 @@ final class BulletinsViewModel {
         filteredItems = result
     }
 
+    /// The unread bulletins the filters leave on screen, which "Mark all read" marks.
+    func unreadShown(isRead: (Int) -> Bool) -> [Int] {
+        filteredItems.filter { !isRead($0.id) }.map(\.id)
+    }
+
     /// Expose a helper so views can quickly toggle single filters.
     func toggleOrg(_ id: String) {
         if selectedOrgs.contains(id) {
