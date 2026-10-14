@@ -21,14 +21,14 @@ nonisolated enum DebugEndpointStore {
     /// included, so the Keychain is read once and again only after a change or an unlock.
     #if os(iOS)
     private static let stored = KeychainReadCache(
-        load: { KeychainManager.loadString(key: keychainKey) },
+        load: { try KeychainManager.loadStringIfReadable(key: keychainKey) },
         forgetOn: [
             UIApplication.protectedDataDidBecomeAvailableNotification,
             UIApplication.didBecomeActiveNotification,
         ]
     )
     #else
-    private static let stored = KeychainReadCache(load: { KeychainManager.loadString(key: keychainKey) })
+    private static let stored = KeychainReadCache(load: { try KeychainManager.loadStringIfReadable(key: keychainKey) })
     #endif
 
     enum SetOverrideResult: Equatable {
@@ -115,9 +115,10 @@ nonisolated enum DebugEndpointStore {
     }
 }
 
-/// A Keychain string kept in memory after its first read. A read behind a locked screen finds
-/// nothing, so the value is dropped on the notifications given (an unlock, a return to the app)
-/// as well as by ``forget()``, which the value's writers call after each change.
+/// A Keychain string kept in memory after its first read, which the notifications given (an
+/// unlock, a return to the app) and ``forget()``, called by the value's writers after each change,
+/// drop. A read that cannot reach the Keychain, as before the first unlock after a restart, is not
+/// kept: a suspended app may get neither notification before its next background request.
 nonisolated final class KeychainReadCache: Sendable {
     private struct State {
         /// `nil` until read; `.some(nil)` is a read that found nothing.
@@ -126,11 +127,11 @@ nonisolated final class KeychainReadCache: Sendable {
         var generation = 0
     }
 
-    private let load: @Sendable () -> String?
+    private let load: @Sendable () throws -> String?
     private let state = OSAllocatedUnfairLock(initialState: State())
 
     init(
-        load: @escaping @Sendable () -> String?,
+        load: @escaping @Sendable () throws -> String?,
         forgetOn names: [Notification.Name] = [],
         center: NotificationCenter = .default
     ) {
@@ -147,7 +148,8 @@ nonisolated final class KeychainReadCache: Sendable {
     func value() -> String? {
         let (cached, generation) = state.withLock { ($0.value, $0.generation) }
         if let cached { return cached }
-        let loaded = load()
+        let loaded: String?
+        do { loaded = try load() } catch { return nil }
         state.withLock { state in
             if state.generation == generation { state.value = .some(loaded) }
         }

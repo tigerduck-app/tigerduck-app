@@ -26,6 +26,12 @@ nonisolated enum KeychainManager {
         return String(data: data, encoding: .utf8)
     }
 
+    /// ``loadString(key:)``, but a throw when the Keychain cannot be read now; see
+    /// ``SecureStore/loadIfReadable(key:)``.
+    static func loadStringIfReadable(key: String) throws -> String? {
+        try SecureStore.loadIfReadable(key: key).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     static func saveString(key: String, value: String) {
         guard let data = value.data(using: .utf8) else { return }
         save(key: key, data: data)

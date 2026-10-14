@@ -111,6 +111,17 @@ nonisolated enum SecureStore {
         }
     }
 
+    /// ``load(key:)``, but a throw where it answers nil because the Keychain cannot be read now,
+    /// as before the first unlock after a restart, rather than because nothing is stored.
+    static func loadIfReadable(key: String) throws -> Data? {
+        if let value = load(key: key) { return value }
+        do {
+            return try home(forKey: key).object(forKey: key)
+        } catch KeychainError.itemNotFound {
+            return nil
+        }
+    }
+
     static func load(key: String) -> Data? {
         let home = home(forKey: key)
         if let value = try? home.object(forKey: key) {
