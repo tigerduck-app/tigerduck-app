@@ -9,8 +9,8 @@ extension AppFeature {
     /// `LibraryService` still compiles so a Mac port can flip the switch without code changes.
     ///
     /// School Mail is iOS and iPadOS only: its code is `#if os(iOS)`, SwiftMail is not
-    /// linked on macOS, and `isImplemented` is false there too.
-    static let macHiddenFeatures: Set<AppFeature> = libraryRelatedFeatures.union([.schoolMail])
+    /// linked on macOS, and `isImplemented` is false there too. The empty-classroom screen is iOS only.
+    static let macHiddenFeatures: Set<AppFeature> = libraryRelatedFeatures.union([.schoolMail, .emptyClassroom])
 
     /// True iff this feature should be visible anywhere in the macOS UI
     /// (sidebar, More page, future Settings tab pickers).

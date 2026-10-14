@@ -155,6 +155,8 @@ nonisolated extension Defaults.Keys {
     static let classTableSelectedSemester = Key<String?>(
         AppConstants.UserDefaultsKeys.classTableSelectedSemester
     )
+    /// The building the user last picked in the empty-classroom finder, by code.
+    static let emptyClassroomBuilding = Key<String?>("emptyClassroomBuilding")
     static let homeAssignmentFilter = Key<String>(
         AppConstants.UserDefaultsKeys.homeAssignmentFilter,
         default: AssignmentFilter.incomplete.rawValue
