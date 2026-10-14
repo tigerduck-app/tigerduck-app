@@ -150,7 +150,7 @@ nonisolated enum ClassroomUsageParser {
     }
 
     /// A cell's text, split where the site writes `</br>`, which the parser reads as `<br>`, and
-    /// read through any `<font>` or `<span>` but not the small table every cell starts with.
+    /// read through every other element but the tables a cell holds, such as its small one.
     /// A booking is told by its marker line, not by the cell colour, which the site puts on the
     /// wrong cells of a second page.
     private static func slotUse(_ cell: Element) -> RoomSlotUse {

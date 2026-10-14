@@ -74,8 +74,9 @@ nonisolated struct RoomSuggestion: Equatable, Sendable {
         )
     }
 
-    /// No walk without a class or from one the model cannot place; a class it places but whose
-    /// walk to the room it cannot measure ranks the room last, not first.
+    /// No walk without a class or from one the model cannot place. A class it places but whose
+    /// walk to the room it cannot measure puts the room after every room of the same fit whose
+    /// walk it can.
     private static func walk(_ stop: RoomPlace?, _ seconds: (RoomPlace) -> Double?) -> Double {
         guard let stop, CampusWalk.hasLocation(stop) else { return 0 }
         return seconds(stop) ?? .infinity

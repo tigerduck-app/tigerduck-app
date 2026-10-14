@@ -40,6 +40,7 @@ struct ClassroomTimeBar: View {
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.bold))
+                    .accessibilityHidden(true)
             }
             .foregroundStyle(policy.primaryTextColor)
             .padding(.horizontal, TigerDuckTheme.Spacing.md)
