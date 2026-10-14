@@ -456,14 +456,19 @@ extension AppState {
     }
 
     /// The listed courses some device deleted and added back since this device recorded `seen`
-    /// (`courseRowIdsSeen`): each is a new server row while another row kept its id. The delete
-    /// took the course's setting, so a pull does not send this device's again. Only a server that
-    /// dropped every course row, as while no device synced courses, leaves no row with its id; a
-    /// pull then sends again what that drop lost.
+    /// (`courseRowIdsSeen`): each is a new server row while another row of its term kept its id.
+    /// The delete took the course's setting, so a pull does not send this device's again. A term
+    /// whose rows are all new was reset: by a device, by Keep Local, which resets each term it
+    /// uploads and keeps this device's settings, or by the server dropping every course row while
+    /// no device synced courses. A pull sends again what such a reset lost.
     nonisolated static func recreatedCourses(listed: [String: Int], seen: [String: Int]) -> Set<String> {
-        guard listed.contains(where: { seen[$0.key] == $0.value }) else { return [] }
+        let survivingTerms = Set(listed.compactMap { key, id in
+            seen[key] == id ? CourseTombstone.parts(of: key)?.semester : nil
+        })
         return Set(listed.compactMap { key, id in
-            guard let old = seen[key], old != id else { return nil }
+            guard let old = seen[key], old != id,
+                  let semester = CourseTombstone.parts(of: key)?.semester, survivingTerms.contains(semester)
+            else { return nil }
             return key
         })
     }

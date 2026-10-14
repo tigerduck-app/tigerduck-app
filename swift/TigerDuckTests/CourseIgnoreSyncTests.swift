@@ -430,16 +430,16 @@ struct CourseIgnorePullTests {
         #expect(rows == ["1151:CS1": 7])
     }
 
-    /// Re-adding a course makes a new server row. A row that kept its id proves the server did not
-    /// drop every course row, which it does while no device syncs courses and which makes them all new.
-    @Test("A course that came back as a new row while another row kept its id was deleted and added back")
+    /// Re-adding a course makes a new server row. A row of its term that kept its id proves the term
+    /// was not reset, nor every row dropped as while no device syncs courses: both make them all new.
+    @Test("A course that came back as a new row while another row of its term kept its id was deleted and added back")
     func recreatedCoursesAreTheNewRowsBesideSurvivors() {
         let seen = ["1151:CS1": 1, "1151:EE2": 2, "1142:GE3": 3]
 
         #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 2, "1142:GE3": 3], seen: seen) == ["1151:CS1"])
-        // A term another device reset, while a row of another term kept its id.
-        #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 3], seen: seen)
-            == ["1151:CS1", "1151:EE2"])
+        // A term whose rows are all new was reset, by Keep Local among others, which keeps the
+        // settings it wiped; a row of another term keeping its id says nothing about that.
+        #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 3], seen: seen).isEmpty)
         // Every row new: the server may have dropped them all, so nothing counts as re-added.
         #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 11], seen: seen).isEmpty)
         // A course this device has not seen listed may be one the drop lost.
@@ -462,6 +462,21 @@ struct CourseIgnorePullTests {
             server: [], decided: recreated, listed: ["1151:CS1", "1151:EE2"], local: ["1151:CS1", "1151:EE2"],
             snapshotSemesters: ["1151"]
         ))
+    }
+
+    /// Keep Local for courses resets every term this device caches courses for, which takes the
+    /// settings of that term's courses with their rows, and keeps this device's ignores.
+    @Test("After Keep Local resets a term, the next pull keeps this device's ignores there and sends them again")
+    func keepLocalsTermResetKeepsTheIgnores() {
+        let seen = ["1142:GE3": 3, "1151:CS1": 1, "1151:EE2": 2]
+        let listed = ["1142:GE3": 3, "1151:CS1": 9, "1151:EE2": 10]
+        let pull = AppState.ignoredCoursesAfterPull(
+            server: [], decided: AppState.recreatedCourses(listed: listed, seen: seen), listed: Set(listed.keys),
+            local: ["1151:CS1"], protected: [], snapshotSemesters: ["1142", "1151"]
+        )
+
+        #expect(pull.ignored == ["1151:CS1"])
+        #expect(pull.resend == ["1151:CS1"])
     }
 
     @Test("A setting the server lost with its course rows stays and goes up again; one it holds does not")
