@@ -40,6 +40,27 @@ struct FlipToLibraryGateTests {
         #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: false, onLibraryPage: true))
     }
 
+    /// A tab switch can show one Library page before it hides the other, and a page can appear
+    /// twice in a row, so the page counts as shown until every one has gone.
+    @Test("each Library page counts once, until it goes")
+    func eachLibraryPageCountsOnce() {
+        let presence = LibraryPagePresence()
+        let first = UUID(), second = UUID()
+        presence.appear(first)
+        presence.appear(second)
+        presence.disappear(first)
+        #expect(presence.isShown)
+        presence.disappear(second)
+        #expect(!presence.isShown)
+        presence.appear(first)
+        presence.appear(first)
+        presence.disappear(first)
+        #expect(!presence.isShown)
+        presence.disappear(first)
+        presence.appear(second)
+        #expect(presence.isShown)
+    }
+
     /// What's New and the update prompt share the root with the offer, and two sheets set there in
     /// one render leave one unshown, so the offer waits for them as for any sheet already up.
     @Test("the offer waits behind a sheet already up and behind What's New or the update prompt")

@@ -23,6 +23,9 @@ final class LibraryViewModel {
     /// finds a dead token runs off a timer and has no view to hand one in.
     var onLibraryStateChanged: (() -> Void)?
 
+    /// The code request, replaced in tests so nothing leaves the process.
+    @ObservationIgnored var fetchCode: @MainActor () async throws -> String = { try await LibraryService.generateQRCode() }
+
     // Manual login fields
     var libUsername = ""
     var libPassword = ""
@@ -150,7 +153,7 @@ final class LibraryViewModel {
             errorMessage = nil
             let generation = LibraryService.loginGeneration
             do {
-                let payload = try await LibraryService.generateQRCode()
+                let payload = try await fetchCode()
                 // Rasterise off the main actor: a cold CIContext plus the
                 // CGImage render was a visible hitch on older phones.
                 let image = await Task.detached(priority: .userInitiated) {
@@ -174,7 +177,9 @@ final class LibraryViewModel {
                 guard LibraryService.loginGeneration == generation else { return }
                 errorMessage = error.localizedDescription
                 isLoadingQR = false
-                if !LibraryService.isTokenValid {
+                // A lapsed token whose stored credentials did not answer, as on a weak signal at the
+                // gate, backs off and tries again; only a signed-out account gets the sign-in form.
+                if !LibraryService.hasAccount {
                     isLoggedIn = false
                     consecutiveErrors = 0
                     LibraryQRCache.shared.clear()
@@ -283,7 +288,7 @@ final class LibraryViewModel {
         qrPayload = nil
         isLoadingQR = false
         consecutiveErrors = 0
-        isLoggedIn = LibraryService.isTokenValid
+        isLoggedIn = LibraryService.hasAccount
         signedInUsername = LibraryService.storedUsername
         libUsername = Self.prefilledUsername
         libPassword = ""

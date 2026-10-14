@@ -305,8 +305,6 @@ final class AppState {
     var resettingSemesters: Set<String> = []
 
     var _libraryRevision = 0
-    /// Library pages on screen, counted because a tab switch can show one before hiding another.
-    var visibleLibraryPages = 0
     private var librarySignInObserver: Any?
     var syncTask: Task<Void, Never>?
     var relabelTask: Task<Void, Never>?

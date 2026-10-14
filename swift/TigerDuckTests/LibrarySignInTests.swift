@@ -285,6 +285,29 @@ struct LibrarySignInTests {
         }
     }
 
+    /// A code request that fails short of a refusal, as on a weak signal at the gate, keeps the
+    /// page signed in to try again, where a lapsed token used to drop it to the sign-in form.
+    @Test func aFailedCodeRequestKeepsAStoredAccountSignedIn() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = { throw URLError(.timedOut) }
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.errorMessage != nil }
+            #expect(model.isLoggedIn)
+        }
+    }
+
+    @Test func anAccountChangeKeepsAStoredAccountSignedIn() async throws {
+        try await Self.withStoredAccount { _ in
+            let model = LibraryViewModel()
+            NotificationCenter.default.post(name: LibraryService.accountDidChange, object: nil)
+            #expect(model.isLoggedIn)
+        }
+    }
+
     @Test func thePauseRunsFromTheFailure() {
         let failure = Date(timeIntervalSince1970: 1_000_000)
         #expect(LibraryService.signInIsDue(lastFailure: nil, now: failure))

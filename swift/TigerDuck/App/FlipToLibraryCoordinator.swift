@@ -27,8 +27,8 @@ private struct FlipToLibraryModifier: ViewModifier {
             .onChange(of: appState.updateNotifyCoordinator.activeNotifySheet == nil) { _, isClear in
                 if isClear { Self.offerGesture(appState: appState) }
             }
-            .onChange(of: appState.visibleLibraryPages == 0) { _, leftLibrary in
-                if leftLibrary { Self.offerGesture(appState: appState) }
+            .onChange(of: LibraryPagePresence.shared.isShown) { _, shown in
+                if !shown { Self.offerGesture(appState: appState) }
             }
             .onChange(of: scenePhase) { _, new in
                 // Tear down only on .background. .inactive comes with transient
@@ -95,7 +95,7 @@ private struct FlipToLibraryModifier: ViewModifier {
                   signedInToLibrary: appState.isLibraryLoggedIn,
                   enabled: appState.flipToLibraryEnabled,
                   asked: FirstTriggerPromptCenter.shared.hasSeen(.flipToLibrary),
-                  onLibraryPage: appState.visibleLibraryPages > 0
+                  onLibraryPage: LibraryPagePresence.shared.isShown
               )
         else { return }
         let waits = FlipToLibraryGate.offerWaits(
