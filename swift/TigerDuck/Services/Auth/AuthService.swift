@@ -36,6 +36,13 @@ final class AuthService {
     /// The interactive SSO sign-in. Tests pass a stand-in, so no request reaches the school.
     private let schoolSignIn: (_ studentId: String, _ password: String) async throws -> Bool
 
+    /// The library's sign-in request after the school's. Tests pass a stand-in, so no request
+    /// reaches the library.
+    private let librarySignIn: @MainActor (_ username: String, _ password: String) async throws -> LibraryLoginData
+
+    /// The part of ``logout()`` that is process-wide; tests pass a stand-in.
+    private let endSchoolSession: @MainActor (_ departingStudentId: String?) -> Void
+
     private var credentialObservers: [any NSObjectProtocol] = []
 
     /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``), so keychain reads
@@ -51,11 +58,17 @@ final class AuthService {
         notificationCenter center: NotificationCenter = .default,
         moodleTokens: MoodleTokenService = .shared,
         schoolSignIn: @escaping (_ studentId: String, _ password: String) async throws -> Bool
-            = AuthService.signInToSchool
+            = AuthService.signInToSchool,
+        librarySignIn: @escaping @MainActor (_ username: String, _ password: String) async throws -> LibraryLoginData
+            = LibraryService.requestToken(username:password:),
+        endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
+            = AuthService.endSchoolSession(departing:)
     ) {
         self.keychainHasCredentials = keychainHasCredentials
         self.moodleTokens = moodleTokens
         self.schoolSignIn = schoolSignIn
+        self.librarySignIn = librarySignIn
+        self.endSchoolSession = endSchoolSession
         let present = keychainHasCredentials()
         lastKnownHasCredentials = present
         // Only ever raised here. A false read at this point may just mean the
@@ -512,7 +525,8 @@ final class AuthService {
             _ = try await LibraryService.login(
                 username: studentId,
                 password: password,
-                stillCurrent: { self.loginGeneration == generation }
+                stillCurrent: { self.loginGeneration == generation },
+                request: librarySignIn
             )
         } catch {
             AppLogger.captureError(error, context: ["flow": "libraryAutoLogin"])
@@ -524,13 +538,7 @@ final class AuthService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
         Task { [moodleTokens] in await moodleTokens.signOut() }
-        MoodleEnrolledCoursesService.dropSharedAnswer()
-        ClassroomUsageService.shared.forget()
-        NTUSTSessionManager.shared.invalidateSession()
-        // Drop the enrolled-courses cache so the next user does not see
-        // the previous account's course list while their own data is
-        // still in flight.
-        CourseSelectionService.invalidateEnrolledCoursesCache(for: loggingOutStudentId)
+        endSchoolSession(loggingOutStudentId)
         loginError = nil
         reauthErrorMessage = nil
         isReauthenticating = false
@@ -539,6 +547,17 @@ final class AuthService {
         backendSignIn = nil
         backendSignInFailedAt = nil
         markCredentialsChanged()
+    }
+
+    /// Ends the school session and forgets what was read through it.
+    static func endSchoolSession(departing studentId: String?) {
+        MoodleEnrolledCoursesService.dropSharedAnswer()
+        ClassroomUsageService.shared.forget()
+        NTUSTSessionManager.shared.invalidateSession()
+        // Drop the enrolled-courses cache so the next user does not see
+        // the previous account's course list while their own data is
+        // still in flight.
+        CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId)
     }
 
     func clearReauthError() {
