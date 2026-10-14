@@ -15,6 +15,7 @@ struct ClassroomUsageServiceTests {
         var signIns = 0
         var signInAttempts = 0
         var now = Date()
+        var logged: [any Error] = []
     }
 
     @MainActor
@@ -39,7 +40,8 @@ struct ClassroomUsageServiceTests {
                     return true
                 },
                 timeouts: (600, 600),
-                now: { account.now }
+                now: { account.now },
+                logFailure: { account.logged.append($0) }
             )
         }
 
@@ -170,12 +172,22 @@ struct ClassroomUsageServiceTests {
 
     /// Leaving the screen or signing out ends a read; the device log keeps real failures only
     /// (https://github.com/tigerduck-app/tigerduck-app/issues/514).
-    @Test("a cancelled read is not logged as a failure")
-    func cancellationsAreNotLogged() {
-        #expect(!ClassroomUsageService.isWorthLogging(CancellationError()))
+    @Test("a read that a sign-out ends while it starts over leaves nothing in the log")
+    func cancelledRetryIsNotLogged() async throws {
+        let harness = Harness()
+        let gate = SettingsAPIStub.ReplyGate()
+        harness.serve(Pages.errorPage)
+        harness.serve(Pages.errorPage)
+        harness.serve(Pages.errorPage, gate: gate)
+
+        let read = Task { try await harness.usage(on: Self.day(10, 14)) }
+        try await waitUntil { harness.requests.count == 3 }
+        harness.account.generation += 1
+        gate.open()
+
+        await #expect(throws: CancellationError.self) { try await read.value }
+        #expect(harness.account.logged.isEmpty)
         #expect(!ClassroomUsageService.isWorthLogging(URLError(.cancelled)))
-        #expect(ClassroomUsageService.isWorthLogging(URLError(.timedOut)))
-        #expect(ClassroomUsageService.isWorthLogging(ClassroomUsageError.unreadable))
     }
 
     @Test("a date past the calendar's month steps to the next month first")
@@ -224,6 +236,7 @@ struct ClassroomUsageServiceTests {
             try await harness.usage(on: Self.day(10, 14))
         }
         #expect(harness.account.signIns == 2)
+        #expect(harness.account.logged.map { $0 as? ClassroomUsageError } == [.unreadable])
     }
 
     @Test("a sign-out drops the kept days and the page, so the next read signs in from the start")

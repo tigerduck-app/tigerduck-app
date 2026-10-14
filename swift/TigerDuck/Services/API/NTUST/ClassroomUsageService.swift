@@ -63,6 +63,7 @@ final class ClassroomUsageService {
     }
 
     typealias SignIn = @MainActor (_ serviceURL: URL, _ credentials: Credentials, _ generation: Int) async throws -> Bool
+    typealias LogFailure = @MainActor (any Error) -> Void
 
     private let session: URLSession
     private let queryURL: URL
@@ -72,6 +73,7 @@ final class ClassroomUsageService {
     /// is 60 s. Tests that hold a reply pass more, as a busy runner can stall them past either.
     private let timeouts: (load: TimeInterval, post: TimeInterval)
     private let now: @MainActor () -> Date
+    private let logFailure: LogFailure
 
     private var kept: [Int: (usage: CampusUsage, fetchedAt: Date)] = [:]
     /// The school session `kept` came from.
@@ -87,7 +89,8 @@ final class ClassroomUsageService {
         sessionGeneration: @escaping @MainActor () -> Int,
         signIn: @escaping SignIn,
         timeouts: (load: TimeInterval, post: TimeInterval) = (60, 15),
-        now: @escaping @MainActor () -> Date = { Date() }
+        now: @escaping @MainActor () -> Date = { Date() },
+        logFailure: @escaping LogFailure = { AppLogger.captureError($0, context: ["service": "classroomUsage"]) }
     ) {
         self.session = session
         self.queryURL = queryURL
@@ -95,6 +98,7 @@ final class ClassroomUsageService {
         self.signIn = signIn
         self.timeouts = timeouts
         self.now = now
+        self.logFailure = logFailure
     }
 
     /// The day as last read in this school session, to show while it refreshes; nil once it is
@@ -166,9 +170,7 @@ final class ClassroomUsageService {
             do {
                 return try await read(day, credentials: credentials, ticket: ticket)
             } catch {
-                if Self.isWorthLogging(error) {
-                    AppLogger.captureError(error, context: ["service": "classroomUsage"])
-                }
+                if Self.isWorthLogging(error) { logFailure(error) }
                 throw error
             }
         }
