@@ -81,7 +81,7 @@ struct StoredAccountSignInTests {
         let keychain = MemoryKeychain.locked()
         let auth = Self.auth(recording: calls, keychain: keychain)
         let unregister = Held()
-        auth.signOutCalls = Task { @MainActor in
+        _ = auth.startSignOutCalls {
             while !unregister.isDone { try? await Task.sleep(for: .milliseconds(5)) }
         }
 
@@ -94,6 +94,32 @@ struct StoredAccountSignInTests {
         #expect(calls.schoolSignIns.isEmpty)
 
         unregister.isDone = true
+        await signingIn.value
+        #expect(calls.schoolSignIns.map(\.studentId) == ["B11000000"])
+    }
+
+    /// Two windows signing out at once each start calls. The first one's unregister, landing after
+    /// a sign-in that waited only for the second's, would revoke that sign-in's session.
+    @Test("a sign-in waits for the calls of every sign-out still out, not only the last one's")
+    func signInWaitsForEverySignOutsCalls() async throws {
+        let calls = Calls()
+        let keychain = MemoryKeychain.locked()
+        let auth = Self.auth(recording: calls, keychain: keychain)
+        let firstUnregister = Held()
+        _ = auth.startSignOutCalls {
+            while !firstUnregister.isDone { try? await Task.sleep(for: .milliseconds(5)) }
+        }
+        _ = auth.startSignOutCalls {}
+
+        let signingIn = Task { @MainActor in
+            await SecureStore.$sharedForTesting.withValue(keychain) {
+                _ = await auth.login(studentId: "B11000000", password: "password")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(calls.schoolSignIns.isEmpty)
+
+        firstUnregister.isDone = true
         await signingIn.value
         #expect(calls.schoolSignIns.map(\.studentId) == ["B11000000"])
     }

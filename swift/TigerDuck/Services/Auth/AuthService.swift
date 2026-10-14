@@ -188,10 +188,22 @@ final class AuthService {
     /// stored account's data. It also empties the school session, which the SSO sign-in would
     /// otherwise accept as signed in without checking the new password.
     var signOutStoredAccount: (() async -> Void)?
-    /// The calls a sign-out still sends as the departing account, the device's unregister among
-    /// them, which `AppState.logoutNTUST()` hands over. Landing after a sign-in, the unregister
-    /// would revoke the session and push tokens that sign-in registers.
-    var signOutCalls: Task<Void, Never>?
+    /// The calls the sign-outs still send as the departing account, the device's unregister among
+    /// them. Landing after a sign-in, the unregister would revoke the session and push tokens
+    /// that sign-in registers, so ``login(studentId:password:)`` waits for them.
+    private(set) var signOutCalls: Task<Void, Never>?
+
+    /// Starts the calls of a sign-out, `AppState.logoutNTUST()`, behind those of the sign-outs
+    /// before it, as two windows can sign out at once, and keeps them for the next sign-in.
+    func startSignOutCalls(_ calls: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let previous = signOutCalls
+        let task = Task { @MainActor in
+            await previous?.value
+            await calls()
+        }
+        signOutCalls = task
+        return task
+    }
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
     /// When an automatic backend sign-in that had credentials to send last failed. The backend
     /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
