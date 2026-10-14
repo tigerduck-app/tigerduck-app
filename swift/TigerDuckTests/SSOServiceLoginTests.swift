@@ -535,4 +535,64 @@ struct SSOServiceLoginTests {
         }
         #expect(token == "new")
     }
+
+    // MARK: - What a renewal latches (https://github.com/tigerduck-app/tigerduck-app/issues/575)
+
+    /// A renewal whose harvest walks the school's pages from `page` at `url`, against `SSOServerStub`.
+    private func pageWalk(log: HarvestLog, from page: String, at url: URL) -> MoodleTokenService {
+        MoodleTokenService(
+            storedCredentials: { (studentId: "b00000000", password: "unused") },
+            tokens: .init(load: { nil }, save: { _ in }, drop: {}),
+            harvest: { studentId, password in
+                await log.record()
+                return try await MoodleTokenService.resolveTokenTriple(
+                    session: SSOServerStub.session(),
+                    data: Data(page.utf8),
+                    responseURL: url,
+                    studentId: studentId,
+                    password: password,
+                    remainingSteps: 6
+                )
+            }
+        )
+    }
+
+    /// A maintenance or error page served at the sign-in path has no form, so no password went out.
+    @Test("a sign-in page without its form pauses the renewal and sets no latch")
+    func signInPageWithoutItsFormSetsNoLatch() async {
+        SSOServerStub.reset()
+        let log = HarvestLog()
+        let renewal = pageWalk(log: log, from: Pages.maintenance, at: Self.loginURL)
+        let (first, rejected) = await withLatch(false) { () async -> (Result<String, Error>, Bool) in
+            let first = await Self.result { try await renewal.refreshTokenIfNeeded() }
+            _ = try? await renewal.refreshTokenIfNeeded()
+            return (first, SSOLoginService.storedPasswordRejected)
+        }
+        guard case .failure(MoodleWebserviceError.malformedResponse) = first else {
+            Issue.record("expected malformedResponse, got \(first)")
+            return
+        }
+        #expect(!rejected)
+        #expect(posts.isEmpty)
+        // Paused as other failures are: the second renewal sent nothing.
+        #expect(await log.calls == 1)
+    }
+
+    @Test("the school's refusal of a password the renewal posted still latches")
+    func refusalOfAPostedPasswordLatches() async {
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.page(Pages.ssoam2LoginRejected), for: Self.postURL)
+        let log = HarvestLog()
+        let renewal = pageWalk(log: log, from: Pages.ssoam2Login, at: Self.loginURL)
+        let (outcome, rejected) = await withLatch(false) { () async -> (Result<String, Error>, Bool) in
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRejected)
+        }
+        guard case .failure(MoodleWebserviceError.ssoLoginRejected(let reason)) = outcome else {
+            Issue.record("expected ssoLoginRejected, got \(outcome)")
+            return
+        }
+        #expect(reason == "帳號或密碼錯誤")
+        #expect(rejected)
+        #expect(posts.map(\.url) == [Self.postURL])
+    }
 }

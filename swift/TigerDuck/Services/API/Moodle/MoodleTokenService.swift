@@ -391,7 +391,7 @@ actor MoodleTokenService {
         let payload: [String: String]
     }
 
-    private nonisolated static func resolveTokenTriple(
+    nonisolated static func resolveTokenTriple(
         session: URLSession,
         data: Data,
         responseURL: URL,
@@ -441,12 +441,9 @@ actor MoodleTokenService {
 
         if responseURL.host == "ssoam2.ntust.edu.tw" {
             let fields = parseSSOLoginFields(from: html)
+            // Without the form no password goes out, so a page at the sign-in path without one,
+            // such as a maintenance page, is no refusal: it pauses the renewal as other failures do.
             if fields.antiforgery.isEmpty {
-                if responseURL.path.contains("/account/login") {
-                    throw MoodleWebserviceError.ssoLoginRejected(
-                        reason: HTMLParser.loginErrorMessage(in: html),
-                    )
-                }
                 throw MoodleWebserviceError.malformedResponse(
                     detail: "SSO login form missing anti-forgery token",
                 )
