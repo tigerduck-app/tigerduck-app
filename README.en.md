@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.4.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.4.0)
+[![Version](https://img.shields.io/badge/Version-v2.5.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.5.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -115,6 +115,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| `v2.5.0` | 2026-10-14 | Free classroom finder, TAT style, team assignment status fix, flip-to-library off by default and offered after a library sign-in, no status dot in a course's Moodle section, fixes and package updates |
 | `v2.4.0` | 2026-10-13 | Share, import and switch class tables by QR code, Moodle announcements, materials, forums, members and grades in course details, class reminder settings, ignore a course's assignments, next-class Apple Watch complication |
 | `v2.3.0` | 2026-10-04 | Redesigned What's New, class table export as an image, notifications stacked by type, light mode for HTML mail, update prompt fix |
 | `v2.2.0` | 2026-09-30 | School Mail on iOS: read and send NTUST Mail2000 mail, with new-mail notifications |
@@ -176,7 +177,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 - [x] **School Mail** — Read and send NTUST Mail2000 mail in the app, with new-mail notifications (iOS) `v2.2.0`
 - [ ] **Scholarships** — Filterable by eligibility (low-income, indigenous, etc.)
 - [ ] **Daily Club Activities** — Curated daily club event listings
-- [ ] **Empty Classroom Finder** — Quickly find currently available classrooms
+- [x] **Empty Classroom Finder** — Quickly find currently available classrooms `v2.5.0`
 
 ### 🍱 Campus Life
 - [ ] **Free Lunch Notifications** — Anyone can register (real-name); aggregates info from NTUST and NTU with push notifications
