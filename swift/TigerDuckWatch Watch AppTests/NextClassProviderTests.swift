@@ -175,6 +175,20 @@ final class NextClassProviderTests: XCTestCase {
         XCTAssertEqual(AppClock.now(), fake.instant)
     }
 
+    /// A newer Watch build can leave a preset this one does not know in the cache.
+    func test_loadSnapshot_unknownVisualPreset_keepsTheClasses() throws {
+        let encoded = try JSONEncoder().encode(snapshot([course("A", weekday: 1, start: "10:20", end: "12:10")]))
+        var cached = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        cached["visualPreset"] = "someFuturePreset"
+        let file = tempDir.appendingPathComponent("schedule.json")
+        try JSONSerialization.data(withJSONObject: cached).write(to: file)
+
+        let loaded = NextClassProvider(snapshotFileURL: file).loadSnapshot()
+
+        XCTAssertEqual(loaded?.courses.map(\.id), ["A"])
+        XCTAssertEqual(loaded?.visualPreset, .default)
+    }
+
     func test_loadSnapshot_withoutAnOverride_returnsToTheRealClock() throws {
         AppClock.setOverride(ClockOverride(instant: mondayAt("10:45"), frozen: true, savedAtReal: Date()))
         let file = try writeSnapshot(snapshot([]))
