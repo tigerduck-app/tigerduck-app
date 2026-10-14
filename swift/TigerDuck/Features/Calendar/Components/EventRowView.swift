@@ -26,9 +26,7 @@ struct EventRowView: View {
                 .fill(event.source.color)
                 .frame(width: 10, height: 10)
 
-            // A holiday is an all-day thing, so "00:00" was never telling
-            // the user anything.
-            if holidayID == nil {
+            if Self.showsTime(of: event) {
                 Text(event.date.timeString)
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(Color.textSecondary)
@@ -83,5 +81,11 @@ struct EventRowView: View {
 
     private var holidayID: Int? {
         AcademicCalendar.holidayID(for: event)
+    }
+
+    /// A whole day's row, a holiday, a term boundary or a school event with no time, has no time
+    /// to show but "00:00", as the Mac calendar already treats it.
+    static func showsTime(of event: SDCalendarEvent) -> Bool {
+        !event.isAllDay
     }
 }

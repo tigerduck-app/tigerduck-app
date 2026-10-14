@@ -79,6 +79,16 @@ struct MailMessageViewModelTests {
         #expect(original.replyTo == nil)
     }
 
+    /// A mail with no HTML part shows only its plain text, whose links have to be tappable there
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/520).
+    @Test func plainTextMailKeepsItsLinks() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "See https://www.ntust.edu.tw/ now", html: nil))
+        await h.model.load()
+        #expect(h.model.availableModes == [.plain, .source])
+        let links = h.model.linkedPlainText.runs.compactMap(\.link)
+        #expect(links == [URL(string: "https://www.ntust.edu.tw/")!])
+    }
+
     @Test func htmlOnlyMailGetsAPlainTextView() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: "<p>a</p><p>b</p>"))
         await h.model.load()
