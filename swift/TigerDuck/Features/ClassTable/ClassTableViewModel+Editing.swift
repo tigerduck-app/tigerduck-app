@@ -245,7 +245,8 @@ extension ClassTableViewModel {
     }
 
     func revertRename(_ course: SDCourse) {
-        guard shownPerson == nil else { return }
+        // A sign-out closes the rename, and a revert tapped as the alert goes saves nothing.
+        guard shownPerson == nil, courseToRename === course else { return }
         let locale = currentLocale
         courseCustomNames[course.courseNo]?[locale] = nil
         // Remove the outer entry entirely when no locale overrides remain
