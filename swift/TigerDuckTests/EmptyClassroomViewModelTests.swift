@@ -214,6 +214,51 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.pickedBuilding == nil)
     }
 
+    @Test("an open room's sheet follows each read of the day and closes once a read lacks the room")
+    func openRoomFollowsTheReads() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("TR-214", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        harness.model.open(room: try #require(harness.model.usage?.rooms.first))
+        #expect(harness.model.openRoom?.isFree(at: 2) == true)
+
+        harness.serveDay([Pages.row("TR-214", "..b...........")])
+        await harness.model.refresh()
+        #expect(harness.model.openRoom?.isFree(at: 2) == false)
+
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        await harness.model.refresh()
+        #expect(harness.model.openRoom == nil)
+
+        // The room back in a later read does not open the sheet again.
+        harness.serveDay([Pages.row("TR-214", "..............")])
+        await harness.model.refresh()
+        #expect(harness.model.openRoom == nil)
+    }
+
+    @Test("an open room's sheet closes on another day, even one with the room, and on an account change")
+    func openRoomCloses() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("TR-214", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        harness.serveDay([Pages.row("TR-214", "..............")])
+        harness.model.select(day: Self.day(15))
+        try await waitUntil { harness.model.usage != nil }
+        harness.model.select(day: Self.day(14))
+        let room = try #require(harness.model.usage?.rooms.first)
+
+        harness.model.open(room: room)
+        harness.model.select(day: Self.day(15))
+        #expect(harness.model.usage?.rooms.map(\.room) == ["TR-214"])
+        #expect(harness.model.openRoom == nil)
+
+        harness.model.open(room: room)
+        harness.model.accountChanged()
+        #expect(harness.model.openRoom == nil)
+    }
+
     /// Wednesday's sign-in and campus pages, and its one page of rooms held until `gate` opens.
     private static func serveHeldWednesday(_ harness: Harness, gate: SettingsAPIStub.ReplyGate) {
         harness.serve(Pages.page(campus: ""))

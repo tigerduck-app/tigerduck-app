@@ -26,11 +26,18 @@ final class EmptyClassroomViewModel {
         let isCurrent: @MainActor () -> Bool
     }
 
-    private(set) var selectedDay: Date
+    private(set) var selectedDay: Date {
+        didSet { if selectedDay != oldValue { openRoomName = nil } }
+    }
     private(set) var selectedPeriod = 0
-    private(set) var content = Content.loading
+    private(set) var content = Content.loading {
+        didSet { if openRoomName != nil, openRoom == nil { openRoomName = nil } }
+    }
     private(set) var classes: [ClassStop] = []
     private(set) var pickedBuilding: String?
+    /// The room whose sheet is open. Only its name is kept, so the sheet shows the room as the
+    /// latest read has it; another day, or rooms without it, close the sheet.
+    private(set) var openRoomName: String?
 
     /// Nil while no one is signed in. ``connect(_:)`` sets it from the app's account.
     @ObservationIgnored var reader: @MainActor () -> Reader? = { nil }
@@ -150,6 +157,11 @@ final class EmptyClassroomViewModel {
         usage.map { BuildingDirectory(rooms: $0.rooms, period: selectedPeriod) }
     }
 
+    var openRoom: RoomUsage? {
+        guard let openRoomName else { return nil }
+        return usage?.rooms.first { $0.room == openRoomName }
+    }
+
     func shownBuilding(in directory: BuildingDirectory, suggestion: RoomSuggestion?) -> String? {
         directory.defaultBuilding(
             picked: pickedBuilding,
@@ -225,6 +237,14 @@ final class EmptyClassroomViewModel {
     func pick(building: String) {
         pickedBuilding = building
         Defaults[.emptyClassroomBuilding] = building
+    }
+
+    func open(room: RoomUsage) {
+        openRoomName = room.room
+    }
+
+    func closeRoom() {
+        openRoomName = nil
     }
 
     /// A pull: reads the day again even when it was read moments ago.
