@@ -107,17 +107,7 @@ struct CloudSyncSettingsView: View {
                 }
             }
 
-            Section {
-                Link(destination: AppURLs.learnMoreTigerSync) {
-                    Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
-                }
-                Link(destination: AppURLs.privacyPolicy) {
-                    Label(String(localized: "onboarding_privacy_policy_label"), systemImage: "hand.raised.fill")
-                }
-                Link(destination: AppURLs.deleteAccount) {
-                    Label(String(localized: "onboarding_privacy_delete_account_label"), systemImage: "trash")
-                }
-            }
+            TigerSyncLinksSection(browserPreference: appState.browserPreference)
         }
         .navigationTitle(String(localized: "cloud_sync_title"))
         .task { await refreshStatusSnapshot() }
@@ -209,6 +199,48 @@ struct CloudSyncSettingsView: View {
     private func stopStatusRefreshTimer() {
         statusRefreshTimer?.invalidate()
         statusRefreshTimer = nil
+    }
+}
+
+/// TigerSync's pages on the web, opened as "Open links with" asks, like Settings' other links: in
+/// the app's browser, else by the system through `Link`, which keeps its long-press menu.
+struct TigerSyncLinksSection: View {
+    let browserPreference: BrowserPreference
+
+    @State private var inAppPage: InAppPage?
+
+    var body: some View {
+        Section {
+            link(to: AppURLs.learnMoreTigerSync) {
+                Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
+            }
+            link(to: AppURLs.privacyPolicy) {
+                Label(String(localized: "onboarding_privacy_policy_label"), systemImage: "hand.raised.fill")
+            }
+            link(to: AppURLs.deleteAccount) {
+                Label(String(localized: "onboarding_privacy_delete_account_label"), systemImage: "trash")
+            }
+        }
+        .sheet(item: $inAppPage) { page in
+            InAppBrowserView(url: page.url)
+                .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private func link<Content: View>(to url: URL, @ViewBuilder label: () -> Content) -> some View {
+        if browserPreference == .inApp {
+            Button { inAppPage = InAppPage(url: url) } label: { label() }
+                .accessibilityRemoveTraits(.isButton)
+                .accessibilityAddTraits(.isLink)
+        } else {
+            Link(destination: url, label: label)
+        }
+    }
+
+    private struct InAppPage: Identifiable {
+        let url: URL
+        var id: URL { url }
     }
 }
 
