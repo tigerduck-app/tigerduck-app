@@ -18,10 +18,10 @@ enum ClassroomUsageError: LocalizedError, Equatable {
 /// The main campus's room use for a date, from the room booking system (cour01), an ASP.NET
 /// WebForms site: every postback sends back the form state of the page before it, so requests
 /// run one at a time. Each read starts from a new campus page and keeps no page after it: a page
-/// left over would post the date it already shows, which the site's calendar answers from that
-/// state (https://github.com/tigerduck-app/tigerduck-app/issues/513), and its state holds the
-/// grid, bookers' names included. Days are kept in memory only, fresh for 15 minutes today and
-/// 3 hours later on and shown while they reload for up to 12 hours, while the school session
+/// left over would post the date it already shows, which the site's calendar may answer from
+/// that state (https://github.com/tigerduck-app/tigerduck-app/issues/513), and its state holds
+/// the grid, bookers' names included. Days are kept in memory only, fresh for 15 minutes today
+/// and 3 hours later on and shown while they reload for up to 12 hours, while the school session
 /// they came from lasts; sign-out drops them.
 @MainActor
 final class ClassroomUsageService {
@@ -117,7 +117,7 @@ final class ClassroomUsageService {
             // may also find the day the one before it read.
             try check(ticket)
             if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
-            let usage = try await fetch(number, isToday: isToday, credentials: credentials, ticket: ticket)
+            let usage = try await fetch(number, credentials: credentials, ticket: ticket)
             try check(ticket)
             kept[number] = (usage, now())
             return usage
@@ -157,14 +157,14 @@ final class ClassroomUsageService {
 
     /// A page without the grid means the cour01 session lapsed, so the read starts over once from
     /// a new sign-in.
-    private func fetch(_ day: Int, isToday: Bool, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
+    private func fetch(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
         do {
-            return try await read(day, isToday: isToday, credentials: credentials, ticket: ticket)
+            return try await read(day, credentials: credentials, ticket: ticket)
         } catch ClassroomUsageError.unreadable {
             try check(ticket)
             NTUSTSessionManager.shared.dropServiceCookies(for: queryURL)
             do {
-                return try await read(day, isToday: isToday, credentials: credentials, ticket: ticket)
+                return try await read(day, credentials: credentials, ticket: ticket)
             } catch {
                 if Self.isWorthLogging(error) {
                     AppLogger.captureError(error, context: ["service": "classroomUsage"])
@@ -179,21 +179,20 @@ final class ClassroomUsageService {
         !(error is CancellationError) && (error as? URLError)?.code != .cancelled
     }
 
-    private func read(_ day: Int, isToday: Bool, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
+    private func read(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
         var page = try await campusPage(credentials: credentials, ticket: ticket)
-        // The campus page already holds today's grid, so it is read as it is instead of posting
-        // today with its whole form state (https://github.com/tigerduck-app/tigerduck-app/issues/475).
-        if !(isToday && page.grid?.rooms.isEmpty == false) {
-            var monthSteps = 0
-            while true {
-                guard let step = ClassroomUsageParser.calendarStep(
-                    toward: day, days: page.calendarDays, monthSteps: page.monthSteps
-                ) else { throw ClassroomUsageError.dateUnavailable }
-                page = try await post(step, from: page, ticket: ticket)
-                guard step.argument.hasPrefix("V") else { break }
-                monthSteps += 1
-                if monthSteps >= Self.maxMonthSteps { throw ClassroomUsageError.dateUnavailable }
-            }
+        // The campus page shows a grid as well, but nothing on it is known to name that grid's
+        // day, which the site may keep from an earlier read, so today's date is posted too
+        // (https://github.com/tigerduck-app/tigerduck-app/issues/475).
+        var monthSteps = 0
+        while true {
+            guard let step = ClassroomUsageParser.calendarStep(
+                toward: day, days: page.calendarDays, monthSteps: page.monthSteps
+            ) else { throw ClassroomUsageError.dateUnavailable }
+            page = try await post(step, from: page, ticket: ticket)
+            guard step.argument.hasPrefix("V") else { break }
+            monthSteps += 1
+            if monthSteps >= Self.maxMonthSteps { throw ClassroomUsageError.dateUnavailable }
         }
 
         // A postback can answer with a later page first, so pages are read by number. A page
