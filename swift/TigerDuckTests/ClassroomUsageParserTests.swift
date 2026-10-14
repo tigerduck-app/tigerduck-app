@@ -138,6 +138,28 @@ struct ClassroomUsageParserTests {
         #expect(!String(describing: grid).contains("林小美"))
     }
 
+    @Test("a booking whose status is wrapped or worded otherwise still keeps no name")
+    func otherBookings() throws {
+        let row = "<tr nowrap=\"nowrap\"><td nowrap=\"nowrap\">TR-214   </td>"
+            + Pages.cell("林小美</br><font color=\"red\">已借用</font>")
+            + Pages.cell("<span>林小美</span></br><span>審核中</span>")
+            + Pages.cell("林小美</br> 申請中")
+            + Pages.cell("<font>微積分</font></br>王大明")
+            + String(repeating: Pages.cell(Pages.free), count: 10)
+            + "</tr>"
+        let grid = try #require(ClassroomUsageParser.page(Pages.page(rows: [row])).grid)
+
+        let room = try #require(grid.rooms.first)
+        #expect(Array(room.slots.prefix(5)) == [
+            .booked,
+            .booked,
+            .booked,
+            .course(name: "微積分", teacher: "王大明"),
+            .free,
+        ])
+        #expect(!String(describing: grid).contains("林小美"))
+    }
+
     @Test("the rows between the header and the pager are rooms, in the page's order")
     func rooms() throws {
         let html = Pages.page(rows: [

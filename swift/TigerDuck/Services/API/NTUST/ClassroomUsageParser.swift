@@ -146,18 +146,26 @@ nonisolated enum ClassroomUsageParser {
         }
     }
 
-    /// A cell's own text, split where the site writes `</br>`, which the parser reads as `<br>`.
+    /// A cell's text, split where the site writes `</br>`, which the parser reads as `<br>`, and
+    /// read through any `<font>` or `<span>` but not the small table every cell starts with.
     /// A booking is told by its marker line, not by the cell colour, which the site puts on the
     /// wrong cells of a second page.
     private static func slotUse(_ cell: Element) -> RoomSlotUse {
         var parts = [""]
-        for node in cell.getChildNodes() {
-            if let text = node as? TextNode {
-                parts[parts.count - 1] += text.getWholeText()
-            } else if let element = node as? Element, element.tagName() == "br" {
-                parts.append("")
+        func read(_ node: Node) {
+            for child in node.getChildNodes() {
+                if let text = child as? TextNode {
+                    parts[parts.count - 1] += text.getWholeText()
+                } else if let element = child as? Element {
+                    switch element.tagName() {
+                    case "br": parts.append("")
+                    case "table": break
+                    default: read(element)
+                    }
+                }
             }
         }
+        read(cell)
         let lines = parts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -168,8 +176,9 @@ nonisolated enum ClassroomUsageParser {
         return .course(name: first, teacher: lines.dropFirst().joined(separator: " "))
     }
 
-    /// Parts of the words the site writes for a confirmed booking and a pending one.
-    private static let bookingMarks = ["借用", "預約"]
+    /// Parts of the words for a booking: confirmed, pending, applied for, under review or held.
+    /// A course whose name holds one shows as booked, which still keeps the room taken.
+    private static let bookingMarks = ["借用", "預約", "申請", "審核", "核准", "保留"]
 
     private static func pager(in row: Element?) -> (page: Int, links: [Int: Postback]) {
         guard let row else { return (1, [:]) }
