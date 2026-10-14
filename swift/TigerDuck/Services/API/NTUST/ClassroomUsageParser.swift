@@ -124,12 +124,15 @@ nonisolated enum ClassroomUsageParser {
     private static func grid(in doc: Document) -> Grid? {
         guard let table = try? doc.getElementById("showinfo_grd") else { return nil }
         let rows = directRows(of: table)
-        // The first row heads the columns; the pager row has one cell, so the count skips it.
-        let rooms = rows.dropFirst().compactMap { row -> RoomUsage? in
+        var rooms: [RoomUsage] = []
+        // The first row heads the columns. A row of one cell is the pager or a no-data line; any
+        // other count means the grid changed shape, which must not read as rooms all free or none.
+        for row in rows.dropFirst() {
             let cells = row.children().array().filter { $0.tagName() == "td" }
-            guard cells.count == periodCount + 1,
-                  let name = try? cells[0].text(), !name.isEmpty else { return nil }
-            return RoomUsage(room: name, slots: cells.dropFirst().map(slotUse))
+            if cells.count <= 1 { continue }
+            guard cells.count == periodCount + 1 else { return nil }
+            guard let name = try? cells[0].text(), !name.isEmpty else { continue }
+            rooms.append(RoomUsage(room: name, slots: cells.dropFirst().map(slotUse)))
         }
         let pager = pager(in: rows.last)
         return Grid(rooms: rooms, page: pager.page, pageLinks: pager.links)

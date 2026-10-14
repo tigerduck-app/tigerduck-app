@@ -160,6 +160,18 @@ struct ClassroomUsageParserTests {
         #expect(!String(describing: grid).contains("林小美"))
     }
 
+    @Test("a grid whose rows changed shape is unreadable, not a day without rooms")
+    func changedRows() throws {
+        let wider = "<tr nowrap=\"nowrap\"><td nowrap=\"nowrap\">TR-214   </td><td>60</td>"
+            + String(repeating: Pages.cell(Pages.free), count: 14)
+            + "</tr>"
+        #expect(ClassroomUsageParser.page(Pages.page(rows: [wider])).grid == nil)
+
+        let message = "<tr><td colspan=\"15\">查無資料</td></tr>"
+        let empty = try #require(ClassroomUsageParser.page(Pages.page(rows: [message])).grid)
+        #expect(empty.rooms.isEmpty)
+    }
+
     @Test("the rows between the header and the pager are rooms, in the page's order")
     func rooms() throws {
         let html = Pages.page(rows: [
