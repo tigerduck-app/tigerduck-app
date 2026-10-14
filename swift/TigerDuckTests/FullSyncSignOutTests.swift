@@ -59,13 +59,14 @@ struct ReenableCheckSignOutTests {
         await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.pendingConflictCategories], Defaults[.assignmentMarksSyncedOnce],
-                Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce]
+                Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce], Defaults[.courseRowIdsSeen]
             )
             defer {
                 Defaults[.pendingConflictCategories] = saved.0
                 Defaults[.assignmentMarksSyncedOnce] = saved.1
                 Defaults[.lastSeenCoursesResetAt] = saved.2
                 Defaults[.categoriesSyncedOnce] = saved.3
+                Defaults[.courseRowIdsSeen] = saved.4
             }
             // The check compares assignments, and courses is switched back on before the sign-out.
             Defaults[.pendingConflictCategories] = ["assignments", "courses"]
