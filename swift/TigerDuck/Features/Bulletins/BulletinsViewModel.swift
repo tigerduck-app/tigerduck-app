@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Observation
 import os
@@ -25,8 +26,13 @@ final class BulletinsViewModel {
     private(set) var isPaginating: Bool = false
     private(set) var hasMore: Bool = true
 
+    /// Saved on every change and restored at the next visit while "Remember bulletin filter" is
+    /// on, which clears it when turned off. See ``restoreRememberedOrgs(known:)``.
     var selectedOrgs: Set<String> = [] {
-        didSet { refilter() }
+        didSet {
+            refilter()
+            Self.savedOrgs = selectedOrgs
+        }
     }
     var selectedTags: Set<String> = [] {
         didSet { refilter() }
@@ -48,6 +54,7 @@ final class BulletinsViewModel {
     /// Set while the list is off screen, so a first page that lands after the screen left does
     /// not start the walk behind it.
     private var isPrefetchPaused = false
+    private var hasRestoredOrgs = false
 
     init(apiClient: BulletinAPIClient? = nil) {
         // The default URL provider re-resolves PushServerConfig on every request, as
@@ -60,6 +67,31 @@ final class BulletinsViewModel {
         if !cached.isEmpty {
             items = Self.sortedUnique(cached)
             filteredItems = items
+        }
+    }
+
+    /// Brings back the remembered department filter once the department chips can show it:
+    /// only departments the taxonomy still lists, and not over a choice made on this visit.
+    /// Without the taxonomy, as offline, the list stays unfiltered rather than filtered unseen.
+    func restoreRememberedOrgs(known: Set<String>) {
+        guard Defaults[.rememberAnnouncementFilter], !hasRestoredOrgs, selectedOrgs.isEmpty else { return }
+        hasRestoredOrgs = true
+        let orgs = Self.savedOrgs.intersection(known)
+        if !orgs.isEmpty { selectedOrgs = orgs }
+    }
+
+    static var savedOrgs: Set<String> {
+        get {
+            guard let data = Defaults[.savedAnnouncementDepartmentsData],
+                  let orgs = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+            return Set(orgs)
+        }
+        set {
+            do {
+                Defaults[.savedAnnouncementDepartmentsData] = try JSONEncoder().encode(newValue.sorted())
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "savedAnnouncementDepartments.encode"])
+            }
         }
     }
 
@@ -380,6 +412,11 @@ final class BulletinsViewModel {
             }
         }
         filteredItems = result
+    }
+
+    /// The unread bulletins the filters leave on screen, which "Mark all read" marks.
+    func unreadShown(isRead: (Int) -> Bool) -> [Int] {
+        filteredItems.filter { !isRead($0.id) }.map(\.id)
     }
 
     /// Expose a helper so views can quickly toggle single filters.
