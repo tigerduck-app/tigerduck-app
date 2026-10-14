@@ -128,6 +128,42 @@ struct SSOServiceLoginTests {
         #expect(posts.isEmpty)
     }
 
+    /// The session may be the stored account's, but the password is the one just typed, which the
+    /// school checks only on the form (https://github.com/tigerduck-app/tigerduck-app/issues/412).
+    @Test("a sign-in the user starts on a live session still posts the typed password")
+    func interactiveSignInOnALiveSessionPostsThePassword() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, interactive: true) {
+            SSOServerStub.enqueue(.page(Self.servicePage), for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
+        }
+        guard case .success(true) = outcome.result else {
+            Issue.record("expected a sign-in, got \(outcome.result)")
+            return
+        }
+        #expect(posts.map(\.url) == [Self.postURL])
+        #expect(posts.first?.body.contains("Password=unused") == true)
+    }
+
+    @Test("a mistyped password in a sign-in the user starts on a live session is refused")
+    func interactiveSignInOnALiveSessionRefusesAMistypedPassword() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, interactive: true) {
+            SSOServerStub.enqueue(.page(Self.servicePage), for: service)
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Pages.ssoam2LoginRejected), for: Self.postURL)
+        }
+        guard case .failure(SSOLoginError.loginFailed) = outcome.result else {
+            Issue.record("expected loginFailed, got \(outcome.result)")
+            return
+        }
+        #expect(posts.count == 1)
+        #expect(!outcome.rejected)
+    }
+
     @Test("a visit sent to the campus portal reaches the sign-in form once the service's cookies are gone")
     func portalVisitSignsInThroughTheForm() async {
         let service = Self.serviceURL()
