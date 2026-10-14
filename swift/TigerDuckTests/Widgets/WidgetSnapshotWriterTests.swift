@@ -16,6 +16,11 @@ struct WidgetSnapshotWriterTests {
         var hex = 0x007AFF
     }
 
+    @MainActor
+    private final class Screen {
+        var isUnlocked = true
+    }
+
     @Test func anAccentChangeRewritesTheSnapshot() async throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
@@ -263,5 +268,32 @@ struct WidgetSnapshotWriterTests {
         writer.regenerate()
 
         #expect(store.readSnapshot() == nil)
+    }
+
+    /// A language change behind the lock screen asks for a forced reload the lock drops. The
+    /// regenerate after the unlock is not forced and finds the snapshot unchanged, so it owes the
+    /// widgets that reload (https://github.com/tigerduck-app/tigerduck-app/issues/458).
+    @Test func aForcedReloadAskedForBehindTheLockScreenComesAtTheUnlock() throws {
+        let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let store = WidgetSnapshotStore(appGroupIdentifier: suite)
+        let coordinator = WidgetReloadCoordinator(reloader: NoReload())
+        let screen = Screen()
+        let writer = WidgetSnapshotWriter(
+            isLoggedIn: { true },
+            accentColorHex: { 0x007AFF },
+            store: store,
+            coordinator: coordinator,
+            isProtectedDataAvailable: { screen.isUnlocked }
+        )
+        writer.regenerate()
+        let reload = try #require(coordinator.pendingTask)
+
+        screen.isUnlocked = false
+        writer.regenerate(forceReload: true)
+        screen.isUnlocked = true
+        writer.regenerate()
+
+        #expect(coordinator.pendingTask != reload)
     }
 }

@@ -20,6 +20,7 @@ final class WidgetSnapshotWriter {
     private let courseProvider: CanonicalCourseProvider
     private let cache: DataCache
     private let isProtectedDataAvailable: @MainActor () -> Bool
+    private var owesForcedReload = false
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "WidgetWriter")
 
     private var observers: [NSObjectProtocol] = []
@@ -123,8 +124,14 @@ final class WidgetSnapshotWriter {
     /// app and every data change, and each reload spends the widgets' budget.
     func regenerate(forceReload: Bool = false) {
         // Behind the lock screen the caches cannot be opened and read as empty; the widgets keep
-        // the last snapshot, and the next return to the app writes a new one.
-        guard isProtectedDataAvailable() else { return }
+        // the last snapshot, and the next return to the app writes a new one. A forced reload is
+        // owed to that one, as the regenerates after an unlock are not forced.
+        guard isProtectedDataAvailable() else {
+            owesForcedReload = owesForcedReload || forceReload
+            return
+        }
+        let forceReload = forceReload || owesForcedReload
+        owesForcedReload = false
         let courses = courseProvider.currentCourses()
         let customNames = cache.loadCourseCustomNamesFlat()
         let colorMap = cache.loadCourseColorMap()
