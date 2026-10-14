@@ -90,6 +90,14 @@ final class AppState {
         self.cloudSyncCoordinator = CloudSyncCoordinator(pushCoordinator: self.pushCoordinator)
         CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
 
+        librarySignInObserver = NotificationCenter.default.addObserver(
+            forName: LibraryService.signInDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.notifyLibraryStateChanged()
+        }
+
         #if os(iOS)
         if isFreshInstall {
             // Mark this version's What's New as shown: a fresh install has no upgrade
@@ -223,6 +231,9 @@ final class AppState {
     }
 
     deinit {
+        if let observer = librarySignInObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         #if os(iOS)
         pendingRefreshTask?.cancel()
         boundaryRefreshTask?.cancel()
@@ -294,6 +305,7 @@ final class AppState {
     var resettingSemesters: Set<String> = []
 
     var _libraryRevision = 0
+    private var librarySignInObserver: Any?
     var syncTask: Task<Void, Never>?
     var relabelTask: Task<Void, Never>?
 
