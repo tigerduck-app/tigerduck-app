@@ -22,10 +22,11 @@ struct CourseColorPickerSheet: View {
     @State private var suppressNextColorChange = false
     @State private var customPicks: CustomColorPickDebouncer
 
-    /// `isCurrent` says whether the account that opened the sheet is still signed in.
+    /// `isCurrent` says whether the account that opened the sheet is still signed in. A sheet in
+    /// another window can stay open across a sign-out, and a pick from it then saves nothing.
     init(course: SDCourse, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
-        self.onSelect = onSelect
+        self.onSelect = { hex in if isCurrent() { onSelect(hex) } }
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
         let courseNo = course.courseNo
         _customPicks = State(initialValue: CustomColorPickDebouncer(

@@ -15,6 +15,25 @@ struct CustomColorPickDebouncerTests {
     /// The course's colour before the drag.
     private static let appliedHex: UInt32 = 0xAAAAAA
 
+    /// A preset tap goes to `onSelect` at once, past the debouncer, so the sheet itself drops a
+    /// pick made after the account that opened it signed out
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/482).
+    @Test func aPresetTapAfterASignOutSavesNothing() {
+        let applied = Applied()
+        var signedIn = true
+        let sheet = CourseColorPickerSheet(
+            course: SDCourse(courseNo: "CS1010001", courseName: "A", schedule: [2: ["3"]]),
+            isCurrent: { signedIn },
+            onSelect: { applied.hexes.append($0) }
+        )
+
+        sheet.onSelect(0x111111)
+        signedIn = false
+        sheet.onSelect(0x222222)
+
+        #expect(applied.hexes == [0x111111])
+    }
+
     @Test func aDragAppliesOnlyTheColourItPausesOn() async throws {
         let applied = Applied()
         let timer = ManualSleeper()
