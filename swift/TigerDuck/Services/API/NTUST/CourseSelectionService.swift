@@ -185,9 +185,9 @@ enum CourseSelectionService {
     /// The month-based guess, used only until the published calendar has
     /// been fetched once.
     nonisolated static func heuristicSemesterCode(on day: Date) -> String {
-        // Pin to gregorian — Calendar.current returns ROC/Buddhist-era
-        // years on a TW device and would shift the rocYear math.
-        let cal = Calendar(identifier: .gregorian)
+        // Gregorian in Taipei: Calendar.current returns ROC or Buddhist-era years on a TW device,
+        // which would shift the rocYear math, and the days this is asked about are Taipei days.
+        let cal = AcademicCalendar.calendar
         let year = cal.component(.year, from: day)
         let month = cal.component(.month, from: day)
         let rocYear = year - 1911
