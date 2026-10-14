@@ -171,21 +171,25 @@ enum CourseSelectionService {
     /// During those windows callers may briefly see the previous term's
     /// data; if precision is required, prefer a server-driven term code.
     nonisolated static func currentSemesterCode() -> String {
+        semesterCode(on: Date())
+    }
+
+    /// The term the app takes as current on `day`.
+    nonisolated static func semesterCode(on day: Date, calendar: AcademicCalendar = .cached) -> String {
         // The school's published calendar comes first, not a guess or a pinned constant. The
         // month heuristic mislabels a term the school opens early, so it is only the last
         // resort for a device that has never reached the backend.
-        AcademicCalendar.cached.currentTerm()?.code ?? heuristicSemesterCode()
+        calendar.currentTerm(on: day)?.code ?? heuristicSemesterCode(on: day)
     }
 
     /// The month-based guess, used only until the published calendar has
     /// been fetched once.
-    nonisolated static func heuristicSemesterCode() -> String {
-        // Pin to gregorian — Calendar.current returns ROC/Buddhist-era
-        // years on a TW device and would shift the rocYear math.
-        let cal = Calendar(identifier: .gregorian)
-        let now = Date()
-        let year = cal.component(.year, from: now)
-        let month = cal.component(.month, from: now)
+    nonisolated static func heuristicSemesterCode(on day: Date) -> String {
+        // Gregorian in Taipei: Calendar.current returns ROC or Buddhist-era years on a TW device,
+        // which would shift the rocYear math, and the days this is asked about are Taipei days.
+        let cal = AcademicCalendar.calendar
+        let year = cal.component(.year, from: day)
+        let month = cal.component(.month, from: day)
         let rocYear = year - 1911
 
         if month >= 2 && month <= 7 {

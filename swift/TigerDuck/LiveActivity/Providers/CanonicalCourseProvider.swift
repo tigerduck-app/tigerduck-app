@@ -15,10 +15,9 @@ struct CanonicalCourseProvider {
         self.cache = cache
     }
 
-    /// Returns the canonical course list from the current cache.
-    func currentCourses() -> [SDCourse] {
-        let semester = CourseSelectionService.currentSemesterCode()
-        return Self.merge(
+    /// Returns the canonical course list of `semester` from the current cache.
+    func currentCourses(semester: String = CourseSelectionService.currentSemesterCode()) -> [SDCourse] {
+        Self.merge(
             primary: cache.loadCourses(semester: semester),
             userAdded: cache.loadUserAddedCourses(semester: semester),
             semester: semester,
