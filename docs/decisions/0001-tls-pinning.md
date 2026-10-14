@@ -22,7 +22,10 @@ The Android app pins the same hosts in `app/src/main/res/xml/network_security_co
 - Each pin set holds the leaf and the intermediate, so a leaf rotation that keeps the
   intermediate does not break the app. The `ntust.edu.tw` set also holds TWCA SSL
   Certification Authority (TWCA CYBER Root CA), which NTUST's newer certificates come from, so
-  a renewal through either TWCA intermediate keeps working.
+  a renewal through either TWCA intermediate keeps working. The `api.lib.ntust.edu.tw` set also
+  holds Sectigo Public Server Authentication Root E46 and Root R46: every renewal of that host
+  since 2022 changed both its key and its issuer, and Sectigo issues new certificates only under
+  these two roots (https://github.com/tigerduck-app/tigerduck-app/issues/537).
 - Each pin set has its own expiration date, six months after the leaf it pins expires. The
   intermediate pins carry the set through that leaf's renewal, and a build that is never
   updated stops pinning within months if the chain moves to an intermediate it does not pin.
