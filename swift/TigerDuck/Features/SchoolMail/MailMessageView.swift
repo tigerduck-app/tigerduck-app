@@ -305,7 +305,7 @@ struct MailMessageView: View {
     /// Plain text with its links tappable. A mail with no HTML part shows only this, and the link
     /// sheet takes its taps through the `openURL` action set on this view.
     private var plainBody: some View {
-        Text(MailTextLinkifier.attributed(viewModel.plainText))
+        Text(viewModel.linkedPlainText)
             .font(TigerDuckTheme.Typography.body)
             .foregroundStyle(Color.textPrimary)
             .textSelection(.enabled)
