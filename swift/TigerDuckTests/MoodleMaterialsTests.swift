@@ -292,6 +292,15 @@ struct MoodleMaterialsTests {
         #expect(site.downloads.count == 1)
     }
 
+    /// The other Moodle files on disk are closed behind the lock screen, and an attachment such as
+    /// a grade list should be too (https://github.com/tigerduck-app/tigerduck-app/issues/444).
+    @Test("a downloaded file is closed to reads while the device is locked")
+    func downloadedFileProtection() {
+        // A simulator keeps no protection class on a file, so this reads what a copy is given.
+        let attributes = MoodleFileDownloads.placedAttributes(modified: nil)
+        #expect(attributes[.protectionKey] as? FileProtectionType == .completeUnlessOpen)
+    }
+
     @Test("a cancelled download leaves no file and shows as not downloaded")
     func cancelDownload() async throws {
         let folder = Folder()
