@@ -502,6 +502,28 @@ struct SSOServiceLoginTests {
         #expect(harvests == 0)
     }
 
+    /// The stored account may be the next student's by the time the lock comes free.
+    @Test("a renewal that a sign-out overtook while it waited for the lock harvests nothing")
+    func renewalASignOutOvertookHarvestsNothing() async {
+        let log = HarvestLog()
+        let renewal = tokenService(log: log, failure: nil)
+        let (outcome, harvests) = await withLatch(false) { () async -> (Result<String, Error>, Int) in
+            let renewing = await SSOLoginService.postingStoredPassword {
+                let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
+                // Long enough for the renewal to queue for the lock.
+                try? await Task.sleep(for: .milliseconds(200))
+                await renewal.signOut()
+                return renewing
+            }
+            return (await renewing.value, await log.calls)
+        }
+        guard case .failure = outcome else {
+            Issue.record("expected a failure, got \(outcome)")
+            return
+        }
+        #expect(harvests == 0)
+    }
+
     /// A sign-in the user typed posts what was typed, so it goes ahead while an automatic post of
     /// the stored password holds the lock. Waiting would hang, hence the time limit.
     @Test("a sign-in the user typed does not wait for an automatic post of the stored password", .timeLimit(.minutes(1)))

@@ -193,6 +193,8 @@ actor MoodleTokenService {
     /// The harvest with the stored password, run under `SSOLoginService.postingStoredPassword`, so
     /// the latch is checked again here: an SSO sign-in that held it first may have latched a refusal.
     private func harvestWithStoredCredentials(generation: Int) async throws -> TokenTriple {
+        // Signed out while this waited for the lock: the stored account may be the next one's.
+        guard signInGeneration == generation else { throw CancellationError() }
         guard !SSOLoginService.storedPasswordRejected else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
         }
