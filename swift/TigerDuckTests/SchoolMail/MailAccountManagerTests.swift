@@ -45,6 +45,22 @@ struct MailAccountManagerTests {
         return Harness(manager: manager, prefs: prefs, secrets: secrets, cache: cache, fake: fake, hooks: hooks)
     }
 
+    /// A school sign-out takes the mail account with it only when it is the same student's, as
+    /// the library account goes (https://github.com/tigerduck-app/tigerduck-app/issues/454).
+    @Test func aSchoolSignOutSignsOutOnlyTheSameStudentsMail() async {
+        let h = Self.harness()
+        await h.manager.login(studentID: "B10000000", password: "pw")
+
+        #expect(!h.manager.logout(ifSchoolAccount: "B10000001"))
+        #expect(h.manager.isLoggedIn)
+        #expect(h.hooks.signedOut == 0)
+
+        #expect(h.manager.logout(ifSchoolAccount: "b10000000"))
+        #expect(!h.manager.isLoggedIn)
+        #expect(h.secrets.load(forKey: MailCredentialStore.passwordKey) == nil)
+        #expect(h.hooks.signedOut == 1)
+    }
+
     @Test func aSuccessfulLoginStoresEverythingAndSetsTheBaseline() async {
         let h = Self.harness()
         await h.manager.login(studentID: " b10000000 ", password: "pw")

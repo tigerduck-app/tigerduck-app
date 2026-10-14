@@ -281,6 +281,15 @@ final class MailAccountManager {
         onSignedOut?()
     }
 
+    /// Signs out when the mail account is `studentId`'s, as a school sign-out takes the library
+    /// account; another student's mail account stays signed in.
+    @discardableResult
+    func logout(ifSchoolAccount studentId: String) -> Bool {
+        guard let studentID, studentID.caseInsensitiveCompare(studentId) == .orderedSame else { return false }
+        logout()
+        return true
+    }
+
     /// Starts the sign-out cache wipe and records that it is owed, so it can be finished by a
     /// later launch if this process does not survive it. The flag is set *after* `prefs.reset()`
     /// (which deliberately leaves it alone) and cleared only once the wipe has actually returned.
