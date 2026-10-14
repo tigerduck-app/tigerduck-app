@@ -464,9 +464,10 @@ struct CourseIgnorePullTests {
         ))
     }
 
-    /// Keep Local for courses resets every term this device caches courses for, which takes the
-    /// settings of that term's courses with their rows, and keeps this device's ignores.
-    @Test("After Keep Local resets a term, the next pull keeps this device's ignores there and sends them again")
+    /// Keep Local for courses resets every term a device caches courses for, which takes the
+    /// settings of that term's courses with their rows. Whether it ran here or on a device that
+    /// lacked this ignore, the term's rows are all new while 1142's kept their ids.
+    @Test("After Keep Local resets a term, here or on another device, the next pull keeps the ignores there and sends them again")
     func keepLocalsTermResetKeepsTheIgnores() {
         let seen = ["1142:GE3": 3, "1151:CS1": 1, "1151:EE2": 2]
         let listed = ["1142:GE3": 3, "1151:CS1": 9, "1151:EE2": 10]
@@ -477,6 +478,22 @@ struct CourseIgnorePullTests {
 
         #expect(pull.ignored == ["1151:CS1"])
         #expect(pull.resend == ["1151:CS1"])
+    }
+
+    /// The class table's reset of a term clears this device's ignores there before the term's rows
+    /// come back new (`resetLocalCourses`).
+    @Test("After the class table resets a term here, the next pull keeps and sends nothing there, and another term's ignore stays")
+    func classTableResetLeavesNothingThere() {
+        let seen = ["1142:GE3": 3, "1151:CS1": 1, "1151:EE2": 2]
+        let listed = ["1142:GE3": 3, "1151:CS1": 9, "1151:EE2": 10]
+        let pull = AppState.ignoredCoursesAfterPull(
+            server: ["1142:GE3"],
+            decided: AppState.recreatedCourses(listed: listed, seen: seen).union(["1142:GE3"]),
+            listed: Set(listed.keys), local: ["1142:GE3"], protected: [], snapshotSemesters: ["1142", "1151"]
+        )
+
+        #expect(pull.ignored == ["1142:GE3"])
+        #expect(pull.resend.isEmpty)
     }
 
     @Test("A setting the server lost with its course rows stays and goes up again; one it holds does not")
