@@ -14,6 +14,7 @@ struct GPATrendChart: View {
     let scope: ScoreViewModel.RankingScope
 
     @State private var selectedTerm: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The theme tint; `Color.accentColor` ignores `.tint(...)`, this doesn't.
     private let lineColor = TintShapeStyle()
@@ -201,8 +202,14 @@ struct GPATrendChart: View {
             Spacer()
         }
         .contentTransition(.numericText())
-        .animation(.smoothSpring, value: selectedTerm)
-        .animation(.smoothSpring, value: scope)
+        .animation(Self.summaryAnimation(reduceMotion: reduceMotion), value: selectedTerm)
+        .animation(Self.summaryAnimation(reduceMotion: reduceMotion), value: scope)
+    }
+
+    /// Animates the summary's change of term or scope, except with Reduce Motion on, as the rest
+    /// of Score does.
+    static func summaryAnimation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .smoothSpring
     }
 
     private func gpaTitle(for point: GPATrendPoint?) -> String {
