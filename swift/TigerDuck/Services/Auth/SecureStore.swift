@@ -112,11 +112,14 @@ nonisolated enum SecureStore {
     }
 
     /// ``load(key:)``, but a throw where it answers nil because the Keychain cannot be read now,
-    /// as before the first unlock after a restart, rather than because nothing is stored.
+    /// as before the first unlock after a restart, rather than because nothing is stored. An
+    /// earlier build's copy in ``shared``, which a locked launch cannot read or move, counts too.
     static func loadIfReadable(key: String) throws -> Data? {
         if let value = load(key: key) { return value }
+        let home = home(forKey: key)
+        if home !== shared { try requireNoUnreadableCopyInShared(forKey: key) }
         do {
-            return try home(forKey: key).object(forKey: key)
+            return try home.object(forKey: key)
         } catch KeychainError.itemNotFound {
             return nil
         }
