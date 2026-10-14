@@ -170,6 +170,9 @@ final class AppState {
                 in: DataCache.shared.loadAssignments()
             )
         }
+        liveActivityCoordinator.setSkippedClassProvider { slotId in
+            CourseTimeSlot.isSkipped(slotId: slotId, in: CanonicalCourseProvider().currentCourses())
+        }
         #endif
 
         // Install before enabling push, so the first registration can relogin after a refused
