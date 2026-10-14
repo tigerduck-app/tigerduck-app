@@ -86,9 +86,10 @@ nonisolated private struct RawAssignmentsResponse: Decodable, Sendable {
     }
 }
 
-nonisolated private struct RawSubmissionStatusResponse: Decodable, Sendable {
+nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
     struct LastAttempt: Decodable {
         let submission: Submission?
+        let teamsubmission: Submission?
         let gradingstatus: String?
 
         struct Submission: Decodable {
@@ -100,13 +101,18 @@ nonisolated private struct RawSubmissionStatusResponse: Decodable, Sendable {
     let lastattempt: LastAttempt?
 
     func toMoodleSubmissionStatus(assignId: Int) -> MoodleSubmissionStatus {
-        let rawTime = lastattempt?.submission?.timemodified ?? 0
+        // A team assignment reports the group's status in `teamsubmission`, so a teammate's
+        // submission leaves the student's own `submission` unsubmitted or without a status.
+        let own = lastattempt?.submission
+        let team = lastattempt?.teamsubmission
+        let attempt = team?.status == "submitted" || own?.status == nil ? team ?? own : own
+        let rawTime = attempt?.timemodified ?? 0
         let submittedAt: Date? = rawTime > 0
             ? Date(timeIntervalSince1970: TimeInterval(rawTime))
             : nil
         return MoodleSubmissionStatus(
             assignId: assignId,
-            submissionStatus: lastattempt?.submission?.status,
+            submissionStatus: attempt?.status,
             gradingStatus: lastattempt?.gradingstatus,
             submittedAt: submittedAt
         )
