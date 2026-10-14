@@ -90,8 +90,9 @@ enum SSOLoginService {
     private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
 
     /// Runs `body` once every login started before it has finished. A login that meets the
-    /// SSO page clears the ssoam2 cookies, so two at once break each other; the one that
-    /// waited then finds the session signed in and needs no credentials.
+    /// SSO page clears the ssoam2 cookies, so two at once break each other. An automatic login
+    /// that waited then finds the session signed in and posts no password; one the user typed
+    /// still posts what was typed.
     static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
         if isLoginRunning {
             await withCheckedContinuation { waitingLogins.append($0) }
