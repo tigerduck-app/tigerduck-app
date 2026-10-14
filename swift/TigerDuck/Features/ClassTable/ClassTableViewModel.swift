@@ -323,6 +323,9 @@ final class ClassTableViewModel {
         // Someone else's courses stay as shared: the user's tombstones and custom names are keyed
         // by course number alone and would hide or rename theirs.
         if let shownPerson {
+            // The user's own term list, which the colours below are kept for, can have changed:
+            // a sign-out empties it while this table is still on screen.
+            reloadCurrentSemesterCourses()
             courses = shownPerson.courses(in: currentSemester)
             return
         }

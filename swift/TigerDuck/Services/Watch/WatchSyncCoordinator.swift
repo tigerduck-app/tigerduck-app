@@ -48,6 +48,8 @@ final class WatchSyncCoordinator: NSObject {
     /// A sync request arrived while the keychain could not be read, so its credentials are
     /// still owed to the Watch, which does not ask again for them.
     private var owesCredentials = false
+    /// A push asked for behind the lock screen, sent at the unlock.
+    private var owesStatePush = false
     private let notificationCenter: NotificationCenter
     private var observers: [NSObjectProtocol] = []
 
@@ -72,7 +74,7 @@ final class WatchSyncCoordinator: NSObject {
             UIApplication.didBecomeActiveNotification,
         ].map { name in
             notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.sendOwedCredentials() }
+                MainActor.assumeIsolated { self?.sendOwed() }
             }
         }
     }
@@ -99,6 +101,12 @@ final class WatchSyncCoordinator: NSObject {
 
     func pushCurrentState(force: Bool = false) {
         guard let payloadSource else { return }
+        // The caches the payload reads cannot be opened behind the lock screen, and an empty
+        // payload would clear the Watch's classes.
+        guard isProtectedDataAvailable() else {
+            owesStatePush = true
+            return
+        }
         scheduleDebouncedPush(payloadSource(), force: force)
     }
 
@@ -107,15 +115,21 @@ final class WatchSyncCoordinator: NSObject {
     func answerSyncRequest() {
         pushCurrentState(force: true)
         owesCredentials = true
-        sendOwedCredentials()
+        sendOwed()
     }
 
-    /// The library password is readable only while the phone is unlocked, and a Watch message
-    /// can launch the app behind the lock screen.
-    private func sendOwedCredentials() {
-        guard owesCredentials, isProtectedDataAvailable() else { return }
-        owesCredentials = false
-        republishCredentials()
+    /// Sends what waited for the unlock: a Watch message can launch the app behind the lock
+    /// screen, where neither the caches nor the library password can be read.
+    private func sendOwed() {
+        guard isProtectedDataAvailable() else { return }
+        if owesStatePush {
+            owesStatePush = false
+            pushCurrentState(force: true)
+        }
+        if owesCredentials {
+            owesCredentials = false
+            republishCredentials()
+        }
     }
 
     /// Push immediately (used in tests). Production code uses

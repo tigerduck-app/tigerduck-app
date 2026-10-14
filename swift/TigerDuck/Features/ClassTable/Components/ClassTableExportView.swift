@@ -6,8 +6,8 @@ import UIKit
 /// term above, then the same grid the page draws.
 ///
 /// The grid is the live `TimetableGridView`, not a copy, so the image keeps
-/// whatever the page shows: colours, custom and abbreviated names, the
-/// start / period / end column, the room hint when it is switched on.
+/// whatever the page shows: the interface style's grid, colours, custom and
+/// abbreviated names, the room hint when it is switched on.
 /// Only the assignment badge stays out; see
 /// ``TimetableGridView/showsAssignmentBadges``.
 struct ClassTableExportView: View {

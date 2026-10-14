@@ -245,4 +245,23 @@ struct WidgetSnapshotWriterTests {
         let last = NextClassResolver.resolve(courses: payload.courses, now: evening, quietDays: payload.quietDays)
         #expect(last.next == nil)
     }
+
+    /// Behind the lock screen the caches cannot be opened and read as empty, so a write then would
+    /// leave the widgets showing no classes until the next one.
+    @Test func aLockedPhoneKeepsTheLastSnapshot() {
+        let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let store = WidgetSnapshotStore(appGroupIdentifier: suite)
+        let writer = WidgetSnapshotWriter(
+            isLoggedIn: { true },
+            accentColorHex: { 0x007AFF },
+            store: store,
+            coordinator: WidgetReloadCoordinator(reloader: NoReload()),
+            isProtectedDataAvailable: { false }
+        )
+
+        writer.regenerate()
+
+        #expect(store.readSnapshot() == nil)
+    }
 }

@@ -14,7 +14,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var materials: @Sendable (_ courseId: Int) async throws -> MoodleCourseMaterials = { _ in
         MoodleCourseMaterials(sections: [])
     }
-    var markMaterialViewed: @Sendable (_ material: MoodleMaterial) async throws -> Void = { _ in }
+    var markMaterialViewed: @Sendable (_ material: MoodleMaterial, _ isCurrent: @escaping @MainActor @Sendable () -> Bool) async throws -> Void = { _, _ in }
     /// Downloads a file to a temporary location the caller moves; `progress` gets the share
     /// received so far.
     var download: @Sendable (_ file: MoodleFile, _ progress: @escaping @Sendable (Double) -> Void) async throws -> URL = { _, _ in
@@ -52,10 +52,8 @@ nonisolated struct MoodleCourseAPI: Sendable {
                 try await MoodleCourseContentsService.materials(courseId: courseId, token: $0)
             }
         },
-        markMaterialViewed: { material in
-            try await MoodleWebserviceClient.withToken {
-                try await MoodleCourseContentsService.markViewed(material, token: $0)
-            }
+        markMaterialViewed: { material, isCurrent in
+            try await logMaterialView(material, isCurrent: isCurrent)
         },
         download: { file, progress in
             try await MoodleWebserviceClient.withToken { token in
@@ -107,6 +105,20 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await MoodleForumService.markViewed(
                 discussionId: discussionId, token: token, session: session, siteURL: siteURL
             )
+        }
+    }
+
+    static func logMaterialView(
+        _ material: MoodleMaterial,
+        isCurrent: @escaping @MainActor @Sendable () -> Bool,
+        tokens: MoodleWebserviceClient.TokenSource = .keychain,
+        session: URLSession = MoodleWebserviceClient.session,
+        siteURL: URL = AppConstants.moodleBaseURL
+    ) async throws {
+        try await MoodleWebserviceClient.withToken(tokens) { token in
+            // Token acquisition and renewal can suspend across an account change.
+            guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
+            try await MoodleCourseContentsService.markViewed(material, token: token, session: session, siteURL: siteURL)
         }
     }
 }
@@ -376,18 +388,6 @@ final class MoodleCourseStore {
         return rows
     }
 
-    var isSectionRefreshing: Bool {
-        forums.isRefreshing || materials.isRefreshing || grades.isRefreshing || members.isRefreshing || summary.isRefreshing
-    }
-
-    /// Failed when one of the section's feeds failed, else OK once one reads OK: a feed still
-    /// unknown has its first fetch on the way, as the section fetches every feed it shows.
-    var sectionStatus: ServerStatus {
-        let statuses = [forums.status, materials.status, grades.status, members.status, summary.status]
-        if statuses.contains(.failed) { return .failed }
-        return statuses.contains(.ok) ? .ok : .unknown
-    }
-
     // MARK: Forums
 
     /// When this course's forums were fetched; nil while the cache does not cover the course.
@@ -444,11 +444,15 @@ final class MoodleCourseStore {
     /// allows the call. A failed call is not retried and shows nothing.
     @discardableResult
     func open(_ material: MoodleMaterial) -> Task<Void, Never> {
-        Task { [api] in
+        Task { [api, context] in
             guard let call = MoodleCourseContentsService.viewCalls[material.module],
                   (try? await api.functions())?.contains(call.function) == true else { return }
             do {
-                try await api.markMaterialViewed(material)
+                // A screen in another window can outlive a sign-out, and the next account's token
+                // would log the view as theirs.
+                try await api.markMaterialViewed(material) { @MainActor in context.isCurrent() }
+            } catch is CancellationError {
+                return
             } catch {
                 AppLogger.breadcrumb("moodle material view not logged: \(error)", category: "moodle")
             }

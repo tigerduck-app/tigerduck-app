@@ -68,7 +68,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 ### 💻 **macOS**
 - A native Mac app (not Catalyst) with sidebar navigation and Mac-specific layouts throughout
 - Sidebar pins are stored separately from the iOS tab configuration
-- Push notifications and cloud sync, sharing one account with the iPhone
+- Cloud sync, sharing one account with the iPhone
 
 ### 🌏 **Multilingual**
 - Built-in support for **67 locales** — follows the system language or set per-app

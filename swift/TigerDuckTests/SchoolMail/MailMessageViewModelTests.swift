@@ -674,7 +674,7 @@ struct MailMessageViewModelTests {
     // See docs/decisions/0003-mail-webview-lockdown.md.
 
     @Test func theWebViewIsLockedDown() {
-        let configuration = MailWebViewFactory.makeConfiguration(inlineImages: [:])
+        let configuration = MailWebViewFactory.makeConfiguration(cidHandler: MailCIDSchemeHandler(images: [:]))
         #expect(configuration.defaultWebpagePreferences.allowsContentJavaScript == false)
         #expect(!configuration.websiteDataStore.isPersistent)
         #expect(configuration.urlSchemeHandler(forURLScheme: MailHTMLSanitizer.cidScheme) != nil)
@@ -725,10 +725,10 @@ struct MailMessageViewModelTests {
     /// CI picks it by name to run after the other tests: see `webkit_tests` in
     /// `.github/workflows/tests.yaml`.
     @Test func aLightModeSwitchReusesTheInstalledRules() async {
-        let webView = WKWebView(frame: .zero, configuration: MailWebViewFactory.makeConfiguration(inlineImages: [:]))
         var view = MailHTMLView(html: "<p>x</p>", linkCount: 0, inlineImages: [:], allowRemoteImages: false,
                                 contentHeight: .constant(1), onLinkTap: { _ in })
         let coordinator = view.makeCoordinator()
+        let webView = WKWebView(frame: .zero, configuration: MailWebViewFactory.makeConfiguration(cidHandler: coordinator.cidHandler))
         coordinator.load(into: webView)
         await coordinator.loadTask?.value
         #expect(coordinator.installedRulesAllowRemoteImages == false)
@@ -747,6 +747,29 @@ struct MailMessageViewModelTests {
         #expect(coordinator.loadTask != nil)
         await coordinator.loadTask?.value
         #expect(coordinator.installedRulesAllowRemoteImages == true)
+    }
+
+    /// A new mail fetched in the background is kept without its inline images, so the detail that
+    /// replaces it on screen is the first to bring them, to the page the cached body opened.
+    /// CI picks it by name to run after the other tests: see `webkit_tests` in
+    /// `.github/workflows/tests.yaml`.
+    @Test func inlineImagesThatArriveLaterReachThePage() async {
+        let html = #"<p><img src="tdcid:logo"></p>"#
+        let cached = MailHTMLView(html: html, linkCount: 0, inlineImages: [:], allowRemoteImages: false,
+                                  contentHeight: .constant(1), onLinkTap: { _ in })
+        let coordinator = cached.makeCoordinator()
+        let webView = WKWebView(frame: .zero, configuration: MailWebViewFactory.makeConfiguration(cidHandler: coordinator.cidHandler))
+        coordinator.load(into: webView)
+        await coordinator.loadTask?.value
+        let cachedLoad = coordinator.loadedKey
+
+        let logo = MailInlineImage(mimeType: "image/png", data: Data([0x89, 0x50, 0x4E, 0x47]))
+        coordinator.parent = MailHTMLView(html: html, linkCount: 0, inlineImages: ["logo": logo], allowRemoteImages: false,
+                                          contentHeight: .constant(1), onLinkTap: { _ in })
+        coordinator.load(into: webView)
+
+        #expect(coordinator.cidHandler.images["logo"] == logo)
+        #expect(coordinator.loadedKey != cachedLoad)
     }
 
     /// Only the page is themed: a sender's own colours reach the document untouched.

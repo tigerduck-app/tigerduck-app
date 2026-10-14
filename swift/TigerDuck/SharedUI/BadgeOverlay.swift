@@ -1,14 +1,19 @@
 import SwiftUI
 
 extension View {
-    func assignmentBadge(show: Bool, iconSize: CGFloat = 14, padding: CGFloat = 7) -> some View {
+    func assignmentBadge(
+        show: Bool,
+        iconSize: CGFloat = 14,
+        padding: CGFloat = 7,
+        color: Color = Color.textSecondary.opacity(0.5)
+    ) -> some View {
         overlay(alignment: .bottomTrailing) {
             if show {
                 // Read with the course card it sits on. The class table cells set a label
                 // of their own, which names the mark instead.
                 Image(systemName: "book.fill")
                     .font(.system(size: iconSize))
-                    .foregroundStyle(Color.textSecondary.opacity(0.5))
+                    .foregroundStyle(color)
                     .padding([.bottom, .trailing], padding)
                     .accessibilityLabel(Text(String(localized: "a11y_class_table_cell_assignment_indicator")))
             }
@@ -17,11 +22,16 @@ extension View {
 
     /// The class table's mark for a course whose assignments are all ignored. It takes the
     /// assignment badge's place, which such a course never shows.
-    func ignoredAssignmentsBadge(show: Bool, iconSize: CGFloat, padding: CGFloat) -> some View {
+    func ignoredAssignmentsBadge(
+        show: Bool,
+        iconSize: CGFloat,
+        padding: CGFloat,
+        color: Color = Color.textSecondary.opacity(0.5)
+    ) -> some View {
         overlay(alignment: .bottomTrailing) {
             if show {
                 IgnoredAssignmentsIcon(size: iconSize)
-                    .foregroundStyle(Color.textSecondary.opacity(0.5))
+                    .foregroundStyle(color)
                     .padding([.bottom, .trailing], padding)
                     .accessibilityLabel(Text(String(localized: "a11y_class_table_cell_assignments_ignored")))
             }

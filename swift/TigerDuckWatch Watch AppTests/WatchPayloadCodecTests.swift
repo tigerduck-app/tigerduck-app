@@ -57,17 +57,19 @@ final class WatchPayloadCodecTests: XCTestCase {
     }
 
     func test_visualPreset_roundTrips() throws {
-        let snapshot = WatchSnapshot(
-            courses: [sampleCourse()],
-            accentHex: "#FF8800",
-            syncedAtMs: 1,
-            loggedIn: true,
-            languageTag: nil,
-            visualPreset: .iosInspired
-        )
-        let dict = try WatchPayloadCodec.encode(snapshot)
-        let decoded = try WatchPayloadCodec.decode(dict)
-        XCTAssertEqual(decoded.visualPreset, .iosInspired)
+        for preset in VisualPreset.allCases {
+            let snapshot = WatchSnapshot(
+                courses: [sampleCourse()],
+                accentHex: "#FF8800",
+                syncedAtMs: 1,
+                loggedIn: true,
+                languageTag: nil,
+                visualPreset: preset
+            )
+            let dict = try WatchPayloadCodec.encode(snapshot)
+            let decoded = try WatchPayloadCodec.decode(dict)
+            XCTAssertEqual(decoded.visualPreset, preset)
+        }
     }
 
     func test_decode_missingVisualPreset_defaultsToTigerDuck() throws {
@@ -78,6 +80,15 @@ final class WatchPayloadCodecTests: XCTestCase {
         // default TigerDuck look rather than drifting to an Apple-style
         // surface unintentionally.
         XCTAssertEqual(decoded.visualPreset, .default)
+    }
+
+    /// A newer phone can send a preset this Watch build does not know.
+    func test_decode_unknownVisualPreset_defaultsToTigerDuck() throws {
+        var dict = try WatchPayloadCodec.encode(sampleSnapshot())
+        dict[WatchWireFormat.Key.visualPreset] = "someFuturePreset"
+        let decoded = try WatchPayloadCodec.decode(dict)
+        XCTAssertEqual(decoded.visualPreset, .default)
+        XCTAssertEqual(decoded.courses, sampleSnapshot().courses)
     }
 
     func test_jsonDecode_legacyDiskCacheWithoutVisualPreset_succeeds() throws {

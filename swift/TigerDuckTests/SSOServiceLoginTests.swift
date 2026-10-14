@@ -289,6 +289,7 @@ struct SSOServiceLoginTests {
         failure: MoodleWebserviceError?,
         stored: StoredPassword = StoredPassword("unused"),
         token: OSAllocatedUnfairLock<String?> = OSAllocatedUnfairLock(initialState: nil),
+        now: @escaping @Sendable () -> Date = { Date() },
         duringHarvest: @escaping @Sendable () async -> Void = {}
     ) -> MoodleTokenService {
         MoodleTokenService(
@@ -303,7 +304,8 @@ struct SSOServiceLoginTests {
                 await duringHarvest()
                 if let failure { throw failure }
                 return MoodleTokenService.TokenTriple(signature: "", wstoken: "new", privatetoken: nil)
-            }
+            },
+            now: now
         )
     }
 
@@ -340,19 +342,47 @@ struct SSOServiceLoginTests {
         #expect(!rejected)
     }
 
-    @Test("a renewal that fails for another reason does not stop the next one")
-    func otherRenewalFailuresDoNotLatch() async {
+    /// Each Moodle page that appears without a token asks for one, and each harvest sends the
+    /// password.
+    @Test("a renewal that fails for another reason sets no latch, and the next waits out a pause")
+    func otherRenewalFailuresPause() async {
         let log = HarvestLog()
-        let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"))
+        let clock = OSAllocatedUnfairLock(initialState: Date(timeIntervalSince1970: 1_000_000))
+        let service = tokenService(log: log, failure: .httpStatus(code: 503), now: { clock.withLock { $0 } })
         let rejected = await withLatch(false) {
             for _ in 0..<2 {
-                await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: "offline")) {
+                await #expect(throws: MoodleWebserviceError.httpStatus(code: 503)) {
                     try await service.refreshTokenIfNeeded()
                 }
             }
+            #expect(await log.calls == 1)
+            clock.withLock { $0 += MoodleTokenService.harvestPause }
+            _ = try? await service.refreshTokenIfNeeded()
             return SSOLoginService.storedPasswordRejected
         }
         #expect(!rejected)
+        #expect(await log.calls == 2)
+    }
+
+    @Test("a renewal that failed on the network starts no pause")
+    func networkFailureStartsNoPause() async {
+        let log = HarvestLog()
+        let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"))
+        _ = await withLatch(false) {
+            for _ in 0..<2 { _ = try? await service.refreshTokenIfNeeded() }
+        }
+        #expect(await log.calls == 2)
+    }
+
+    @Test("a sign-out ends the pause a failed renewal started")
+    func signOutEndsThePause() async {
+        let log = HarvestLog()
+        let service = tokenService(log: log, failure: .httpStatus(code: 503))
+        _ = await withLatch(false) {
+            _ = try? await service.refreshTokenIfNeeded()
+            await service.signOut()
+            _ = try? await service.refreshTokenIfNeeded()
+        }
         #expect(await log.calls == 2)
     }
 

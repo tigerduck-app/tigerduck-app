@@ -36,7 +36,9 @@ struct MailHTMLView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: MailWebViewFactory.makeConfiguration(inlineImages: inlineImages))
+        let webView = WKWebView(
+            frame: .zero, configuration: MailWebViewFactory.makeConfiguration(cidHandler: context.coordinator.cidHandler)
+        )
         webView.navigationDelegate = context.coordinator
         webView.allowsLinkPreview = false
         webView.scrollView.isScrollEnabled = false
@@ -62,7 +64,8 @@ struct MailHTMLView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var parent: MailHTMLView
-        private var loadedKey: String?
+        let cidHandler: MailCIDSchemeHandler
+        private(set) var loadedKey: String?
         /// Bumped by every load; a load whose compile finishes after a newer one started drops
         /// itself instead of installing its rules and document over the newer ones.
         private var loadGeneration = 0
@@ -74,7 +77,10 @@ struct MailHTMLView: UIViewRepresentable {
         private(set) var installedRulesAllowRemoteImages: Bool?
         private var heightObservation: NSKeyValueObservation?
 
-        init(parent: MailHTMLView) { self.parent = parent }
+        init(parent: MailHTMLView) {
+            self.parent = parent
+            cidHandler = MailCIDSchemeHandler(images: parent.inlineImages)
+        }
 
         /// `[weak self]` keeps the observation from retaining the coordinator (the coordinator
         /// owns the observation, so a strong capture would be a cycle). The weak binding is
@@ -99,7 +105,11 @@ struct MailHTMLView: UIViewRepresentable {
         /// load under the installed rules' allowance has nothing to compile, so it paints and loads
         /// at once. It still cancels any compile in flight, which was for another allowance.
         func load(into webView: WKWebView) {
-            let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)"
+            // A cached body can come without its inline images, which the detail replacing it
+            // brings; the handler serves the newest, and their arrival loads the page again.
+            cidHandler.images = parent.inlineImages
+            let images = parent.inlineImages.keys.sorted()
+            let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)|\(images)"
             guard key != loadedKey else { return }
             loadedKey = key
             let theme = parent.theme
