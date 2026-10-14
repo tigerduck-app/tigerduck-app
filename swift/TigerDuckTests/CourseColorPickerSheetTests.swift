@@ -44,6 +44,8 @@ struct CourseColorPickerSheetTests {
 
     @Test(arguments: [false, true])
     func aPresetSavesOnlyForTheAccountThatOpenedTheSheet(signsOut: Bool) async throws {
+        try Self.setAccessibilityAutomation(true)
+        defer { try? Self.setAccessibilityAutomation(false) }
         let login = Login()
         let picks = Picks()
         let built = Built()
@@ -65,6 +67,17 @@ struct CourseColorPickerSheetTests {
         _ = swatch.accessibilityActivate()
 
         #expect(picks.hexes == (signsOut ? [] : [TigerDuckTheme.coursePaletteHexes[0]]))
+    }
+
+    /// SwiftUI builds its accessibility tree only for a client such as VoiceOver or UI testing,
+    /// and a simulator without one, as in CI, leaves the swatch out; this turns it on as UI
+    /// testing does.
+    private static func setAccessibilityAutomation(_ on: Bool) throws {
+        let root = ProcessInfo.processInfo.environment["IPHONE_SIMULATOR_ROOT"] ?? ""
+        let library = try #require(dlopen(root + "/usr/lib/libAccessibility.dylib", RTLD_NOW))
+        let symbol = try #require(dlsym(library, "_AXSSetAutomationEnabled"))
+        typealias SetEnabled = @convention(c) (Bool) -> Void
+        unsafeBitCast(symbol, to: SetEnabled.self)(on)
     }
 
     private static func element(labeled label: String, in node: NSObject) -> NSObject? {
