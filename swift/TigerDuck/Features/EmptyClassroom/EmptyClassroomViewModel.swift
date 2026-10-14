@@ -205,12 +205,14 @@ final class EmptyClassroomViewModel {
         stopLoading()
     }
 
-    /// The signed-in account changed: what the screen holds belonged to the one before.
+    /// The signed-in account changed: what the screen holds belonged to the one before. Off
+    /// screen the site is not read until the next ``appear()``.
     func accountChanged() {
         stopLoading()
         content = .loading
         pickedBuilding = Defaults[.emptyClassroomBuilding]
         reloadCourses()
+        guard isOnScreen else { return }
         load(force: false)
     }
 

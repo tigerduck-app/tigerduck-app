@@ -12,6 +12,8 @@ struct EmptyClassroomViewModelTests {
     @MainActor
     private final class SignIn {
         var isCurrent = true
+        /// Each read of the site first asks whom it reads for.
+        var reads = 0
     }
 
     @MainActor
@@ -58,7 +60,8 @@ struct EmptyClassroomViewModelTests {
             )
             let signIn = signIn
             model.reader = {
-                .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
+                signIn.reads += 1
+                return .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
             }
         }
 
@@ -212,6 +215,27 @@ struct EmptyClassroomViewModelTests {
         Defaults[.emptyClassroomBuilding] = nil
         harness.model.accountChanged()
         #expect(harness.model.pickedBuilding == nil)
+    }
+
+    @Test("an account change off screen reads nothing until the screen shows again")
+    func accountChangeOffScreen() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        harness.model.disappear()
+
+        // A sign-out drops the kept days, then a sign-in from Settings reaches a hidden tab.
+        harness.service.forget()
+        harness.model.accountChanged()
+        #expect(harness.model.content == .loading)
+        #expect(harness.signIn.reads == 1)
+
+        harness.serveDay([Pages.row("TR-209", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage?.rooms.map(\.room) == ["TR-209"] }
+        #expect(harness.signIn.reads == 2)
+        #expect(harness.requestCount == 6)
     }
 
     @Test("an open room's sheet follows each read of the day and closes once a read lacks the room")
