@@ -45,6 +45,21 @@ struct MailAccountManagerTests {
         return Harness(manager: manager, prefs: prefs, secrets: secrets, cache: cache, fake: fake, hooks: hooks)
     }
 
+    /// The banner's ✕ hides it until the next failure, as on the other screens
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/521).
+    @Test func theAuthFailedBannerStaysClosedUntilTheNextFailure() async {
+        let h = Self.harness()
+        await h.manager.login(studentID: "B10000000", password: "pw")
+        h.manager.handleAuthFailure()
+        #expect(h.manager.showsAuthFailedBanner)
+        h.manager.authBannerDismissed = true
+        #expect(!h.manager.showsAuthFailedBanner)
+        await h.manager.login(studentID: "B10000000", password: "pw")
+        #expect(!h.manager.showsAuthFailedBanner)
+        h.manager.handleAuthFailure()
+        #expect(h.manager.showsAuthFailedBanner)
+    }
+
     /// A school sign-out takes the mail account with it only when it is the same student's, as
     /// the library account goes (https://github.com/tigerduck-app/tigerduck-app/issues/454).
     @Test func aSchoolSignOutSignsOutOnlyTheSameStudentsMail() async {
