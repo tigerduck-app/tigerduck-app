@@ -370,6 +370,13 @@ final class TimeSliderViewModel {
         return Int(floor(time.timeIntervalSinceReferenceDate / interval))
     }
 
+    /// VoiceOver's swipe up or down on the track, which moves the time as a drag does.
+    func step(byMinutes minutes: Int) {
+        if !isUserDragging { onDragStarted() }
+        selectedTime = selectedTime.addingTimeInterval(TimeInterval(minutes * 60))
+        checkTimelineRebuildNeeded()
+    }
+
     func returnToNow() {
         withAnimation(prefersReducedMotion ? nil : .bouncy(duration: 0.6)) {
             isUserDragging = false

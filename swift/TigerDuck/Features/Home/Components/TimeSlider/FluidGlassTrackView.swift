@@ -4,6 +4,8 @@ struct FluidGlassTrackView: View {
     var viewModel: TimeSliderViewModel
     var invertDirection: Bool = false
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
+    /// The time the label above shows, which VoiceOver reads as the track's value.
+    var timeText: String = ""
     @State private var lastDragX: CGFloat = 0
     @Environment(\.layoutDirection) private var layoutDirection
 
@@ -95,7 +97,23 @@ struct FluidGlassTrackView: View {
             )
         }
         .frame(height: trackHeight)
+        // The drag has no VoiceOver equivalent, so the track is one adjustable element.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(String(localized: "home_time_slider_title")))
+        .accessibilityValue(Text(timeText))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: viewModel.step(byMinutes: Self.accessibilityStepMinutes)
+            case .decrement: viewModel.step(byMinutes: -Self.accessibilityStepMinutes)
+            @unknown default: break
+            }
+        }
+        .accessibilityAction(named: Text(String(localized: "home_time_slider_now"))) {
+            viewModel.returnToNow()
+        }
     }
+
+    static let accessibilityStepMinutes = 15
 
     // MARK: - Tick Marks
 

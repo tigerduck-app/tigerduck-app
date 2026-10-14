@@ -85,10 +85,12 @@ struct TimeSliderSection: View {
                 // Time label + track
                 VStack(spacing: 6) {
                     timeLabel
+                        .accessibilityHidden(true)
                     FluidGlassTrackView(
                         viewModel: viewModel,
                         invertDirection: appState.invertSliderDirection,
-                        policy: policy
+                        policy: policy,
+                        timeText: timeLabelString
                     )
                 }
             }
