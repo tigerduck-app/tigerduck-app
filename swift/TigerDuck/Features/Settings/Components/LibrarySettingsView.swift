@@ -14,14 +14,21 @@ struct LibrarySettingsView: View {
             Section {
                 Toggle(
                     String(localized: "settings_flip_to_library_title"),
-                    isOn: $appState.flipToLibraryEnabled
+                    isOn: Self.flipSwitch($appState.flipToLibraryEnabled, signedIn: appState.isLibraryLoggedIn)
                 )
+                .disabled(!appState.isLibraryLoggedIn)
             } footer: {
                 Text(String(localized: "settings_flip_to_library_summary"))
             }
         }
         .navigationTitle(String(localized: "settings_library_related_features"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// The flip opens the library's QR code, which needs a signed-in library account, so until one
+    /// is the switch reads off and takes no input; the choice it holds waits for the sign-in.
+    static func flipSwitch(_ enabled: Binding<Bool>, signedIn: Bool) -> Binding<Bool> {
+        signedIn ? enabled : .constant(false)
     }
 
     /// Flip-to-Library is iPhone only (the iPad use case is unclear) and needs the motion sensor,
