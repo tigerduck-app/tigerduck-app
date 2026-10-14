@@ -65,6 +65,27 @@ enum SSOLoginService {
         set { Defaults[.ntustStoredPasswordRejected] = newValue }
     }
 
+    private nonisolated static let storedPasswordPosts = AsyncSerialLock()
+
+    /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
+    /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
+    /// refused before either latched it, and the school counts both toward the lockout. `body`
+    /// checks ``storedPasswordRejected``, posts, reads the answer and latches a refusal before it
+    /// returns. A sign-in the user typed posts what was typed, so it does not wait.
+    nonisolated(nonsending) static func postingStoredPassword<T>(
+        _ body: nonisolated(nonsending) () async throws -> T
+    ) async rethrows -> T {
+        await storedPasswordPosts.acquire()
+        do {
+            let result = try await body()
+            await storedPasswordPosts.release()
+            return result
+        } catch {
+            await storedPasswordPosts.release()
+            throw error
+        }
+    }
+
     private static var isLoginRunning = false
     private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
 
@@ -93,7 +114,8 @@ enum SSOLoginService {
     /// `generation` is ``NTUSTSessionManager/generation`` when the credentials were read. Once
     /// a sign-out moves it, the login throws `CancellationError` before its next request.
     /// `interactive` marks a sign-in the user started; any other posts no password once the
-    /// school has rejected it (``storedPasswordRejected``).
+    /// school has rejected it (``storedPasswordRejected``), and runs under
+    /// ``postingStoredPassword(_:)``.
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
@@ -101,6 +123,28 @@ enum SSOLoginService {
         password: String,
         generation: Int,
         interactive: Bool = false
+    ) async throws -> Bool {
+        guard !interactive else {
+            return try await signIn(
+                session: session, serviceURL: serviceURL, studentId: studentId, password: password,
+                generation: generation, interactive: true
+            )
+        }
+        return try await postingStoredPassword {
+            try await signIn(
+                session: session, serviceURL: serviceURL, studentId: studentId, password: password,
+                generation: generation, interactive: false
+            )
+        }
+    }
+
+    private static func signIn(
+        session: URLSession,
+        serviceURL: URL,
+        studentId: String,
+        password: String,
+        generation: Int,
+        interactive: Bool
     ) async throws -> Bool {
         try await oneAtATime {
             try checkSignedIn(generation)
@@ -130,8 +174,12 @@ enum SSOLoginService {
             // OIDC bridge forms
             var (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
 
-            // Step 3: Check if we're on the SSO login page
-            if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+            // Step 3: Check if we're on the SSO login page. A live session would let a password the
+            // user typed through unchecked, so that sign-in drops the service's cookies and goes on to
+            // step 4, which ends the SSO session: the visit after it reaches the form.
+            if interactive, !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+                NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
+            } else if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if try await isSignedIn(html: currentHTML, url: currentURL, session: session) { return true }
                 // A service whose own session lapsed sends the visit to the campus portal, not to
                 // the sign-in form; without its cookies the next visit goes through SSO.

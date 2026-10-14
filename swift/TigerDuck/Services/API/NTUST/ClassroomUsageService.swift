@@ -17,9 +17,12 @@ enum ClassroomUsageError: LocalizedError, Equatable {
 
 /// The main campus's room use for a date, from the room booking system (cour01), an ASP.NET
 /// WebForms site: every postback sends back the form state of the page before it, so requests
-/// run one at a time and the last page is kept for the next date. Days are kept in memory only,
-/// today's for 15 minutes and later ones for 3 hours, while the school session they came from
-/// lasts; sign-out drops them with the page.
+/// run one at a time. Each read starts from a new campus page and keeps no page after it: a page
+/// left over would post the date it already shows, which the site's calendar may answer from
+/// that state (https://github.com/tigerduck-app/tigerduck-app/issues/513), and its state holds
+/// the grid, bookers' names included. Days are kept in memory only, fresh for 15 minutes today
+/// and 3 hours later on and shown while they reload for up to 12 hours, while the school session
+/// they came from lasts; sign-out drops them.
 @MainActor
 final class ClassroomUsageService {
     static let queryURL = URL.knownGood(
@@ -44,6 +47,9 @@ final class ClassroomUsageService {
     /// Bookings change during the day; the timetable under them does not.
     static let todayLifetime: TimeInterval = 15 * 60
     static let laterLifetime: TimeInterval = 3 * 60 * 60
+    /// Past this a kept day is too old to stand in for the day, so a failed reload shows the
+    /// failure rather than it (https://github.com/tigerduck-app/tigerduck-app/issues/477).
+    static let staleLimit: TimeInterval = 12 * 60 * 60
     private static let campus = "HQ"
     private static let maxPages = 20
     private static let maxMonthSteps = 3
@@ -57,6 +63,7 @@ final class ClassroomUsageService {
     }
 
     typealias SignIn = @MainActor (_ serviceURL: URL, _ credentials: Credentials, _ generation: Int) async throws -> Bool
+    typealias LogFailure = @MainActor (any Error) -> Void
 
     private let session: URLSession
     private let queryURL: URL
@@ -65,10 +72,11 @@ final class ClassroomUsageService {
     /// The posts wait 15 s, as the SSO posts do; `URLRequest`'s default, kept for the page loads,
     /// is 60 s. Tests that hold a reply pass more, as a busy runner can stall them past either.
     private let timeouts: (load: TimeInterval, post: TimeInterval)
+    private let now: @MainActor () -> Date
+    private let logFailure: LogFailure
 
     private var kept: [Int: (usage: CampusUsage, fetchedAt: Date)] = [:]
-    private var lastPage: ClassroomUsageParser.Page?
-    /// The school session `kept` and `lastPage` came from.
+    /// The school session `kept` came from.
     private var stateGeneration: Int?
     /// Moved by ``forget()``, so a fetch running across it writes nothing back.
     private var epoch = 0
@@ -80,19 +88,26 @@ final class ClassroomUsageService {
         queryURL: URL,
         sessionGeneration: @escaping @MainActor () -> Int,
         signIn: @escaping SignIn,
-        timeouts: (load: TimeInterval, post: TimeInterval) = (60, 15)
+        timeouts: (load: TimeInterval, post: TimeInterval) = (60, 15),
+        now: @escaping @MainActor () -> Date = { Date() },
+        logFailure: @escaping LogFailure = { AppLogger.captureError($0, context: ["service": "classroomUsage"]) }
     ) {
         self.session = session
         self.queryURL = queryURL
         self.sessionGeneration = sessionGeneration
         self.signIn = signIn
         self.timeouts = timeouts
+        self.now = now
+        self.logFailure = logFailure
     }
 
-    /// The day as last read in this school session, however old, to show while it refreshes.
+    /// The day as last read in this school session, to show while it refreshes; nil once it is
+    /// older than ``staleLimit``.
     func keptUsage(on day: Date) -> CampusUsage? {
         adoptSession()
-        return kept[ClassroomUsageParser.dayNumber(of: day)]?.usage
+        guard let entry = kept[ClassroomUsageParser.dayNumber(of: day)],
+              now().timeIntervalSince(entry.fetchedAt) < Self.staleLimit else { return nil }
+        return entry.usage
     }
 
     func usage(on day: Date, isToday: Bool, force: Bool, credentials: Credentials) async throws -> CampusUsage {
@@ -108,7 +123,7 @@ final class ClassroomUsageService {
             if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
             let usage = try await fetch(number, credentials: credentials, ticket: ticket)
             try check(ticket)
-            kept[number] = (usage, Date())
+            kept[number] = (usage, now())
             return usage
         }
     }
@@ -117,7 +132,6 @@ final class ClassroomUsageService {
     /// the sign-out empties the session's cookie jar.
     func forget() {
         kept = [:]
-        lastPage = nil
         epoch &+= 1
     }
 
@@ -132,7 +146,6 @@ final class ClassroomUsageService {
         let generation = sessionGeneration()
         guard stateGeneration != generation else { return }
         kept = [:]
-        lastPage = nil
         stateGeneration = generation
     }
 
@@ -143,29 +156,36 @@ final class ClassroomUsageService {
     private func freshUsage(_ day: Int, isToday: Bool) -> CampusUsage? {
         guard let entry = kept[day] else { return nil }
         let lifetime = isToday ? Self.todayLifetime : Self.laterLifetime
-        return Date().timeIntervalSince(entry.fetchedAt) < lifetime ? entry.usage : nil
+        return now().timeIntervalSince(entry.fetchedAt) < lifetime ? entry.usage : nil
     }
 
-    /// A page without the grid means the cour01 session lapsed or the kept form went stale, so
-    /// the read starts over once from a new sign-in.
+    /// A page without the grid means the cour01 session lapsed, so the read starts over once from
+    /// a new sign-in.
     private func fetch(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
         do {
             return try await read(day, credentials: credentials, ticket: ticket)
         } catch ClassroomUsageError.unreadable {
             try check(ticket)
-            lastPage = nil
             NTUSTSessionManager.shared.dropServiceCookies(for: queryURL)
             do {
                 return try await read(day, credentials: credentials, ticket: ticket)
             } catch {
-                AppLogger.captureError(error, context: ["service": "classroomUsage"])
+                if Self.isWorthLogging(error) { logFailure(error) }
                 throw error
             }
         }
     }
 
+    /// A read the user ended, by leaving or signing out, is no failure.
+    nonisolated static func isWorthLogging(_ error: any Error) -> Bool {
+        !(error is CancellationError) && (error as? URLError)?.code != .cancelled
+    }
+
     private func read(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
         var page = try await campusPage(credentials: credentials, ticket: ticket)
+        // The campus page shows a grid as well, but nothing on it is known to name that grid's
+        // day, which the site may keep from an earlier read, so today's date is posted too
+        // (https://github.com/tigerduck-app/tigerduck-app/issues/475).
         var monthSteps = 0
         while true {
             guard let step = ClassroomUsageParser.calendarStep(
@@ -192,9 +212,8 @@ final class ClassroomUsageService {
         return CampusUsage(rooms: rooms.keys.sorted().flatMap { rooms[$0] ?? [] }, buildingNames: page.buildingNames)
     }
 
-    /// The query page with the main campus chosen: the kept one, or one reached by signing in.
+    /// The query page with the main campus chosen, reached by signing in when the session lapsed.
     private func campusPage(credentials: Credentials, ticket: Ticket) async throws -> ClassroomUsageParser.Page {
-        if let lastPage { return lastPage }
         var html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))
         if html.map(ClassroomUsageParser.isQueryPage) != true {
             try check(ticket)
@@ -240,7 +259,6 @@ final class ClassroomUsageService {
         }
         let next = await Self.parse(html)
         try check(ticket)
-        lastPage = next
         return next
     }
 
