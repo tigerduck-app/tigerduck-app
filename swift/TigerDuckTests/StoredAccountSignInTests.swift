@@ -15,6 +15,11 @@ struct StoredAccountSignInTests {
         var schoolSignIns: [(studentId: String, signOutsBefore: Int)] = []
     }
 
+    @MainActor
+    private final class Held {
+        var isDone = false
+    }
+
     /// Its sign-out drops the stored account from `keychain`, as `AppState.logoutNTUST()` does.
     private static func auth(recording calls: Calls, keychain: MemoryKeychain) -> AuthService {
         let auth = AuthService(
@@ -65,6 +70,32 @@ struct StoredAccountSignInTests {
         #expect(calls.schoolSignIns.map(\.studentId) == ["B11000000"])
         #expect(stored.0 == "B11000000")
         #expect(stored.1 == "password")
+    }
+
+    /// The sign-out's unregister goes out as the departing account after its session ended, and
+    /// landing after this sign-in it would revoke the session and push tokens this one registers
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/469).
+    @Test("a sign-in right after a sign-out waits for the calls the sign-out still has out")
+    func signInWaitsForTheSignOutsCalls() async throws {
+        let calls = Calls()
+        let keychain = MemoryKeychain.locked()
+        let auth = Self.auth(recording: calls, keychain: keychain)
+        let unregister = Held()
+        auth.signOutCalls = Task { @MainActor in
+            while !unregister.isDone { try? await Task.sleep(for: .milliseconds(5)) }
+        }
+
+        let signingIn = Task { @MainActor in
+            await SecureStore.$sharedForTesting.withValue(keychain) {
+                _ = await auth.login(studentId: "B11000000", password: "password")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(calls.schoolSignIns.isEmpty)
+
+        unregister.isDone = true
+        await signingIn.value
+        #expect(calls.schoolSignIns.map(\.studentId) == ["B11000000"])
     }
 
     @Test("a retry after another student ID's sign-in failed signs nothing out a second time")
