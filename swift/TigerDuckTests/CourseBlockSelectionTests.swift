@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -49,6 +50,29 @@ struct CourseBlockSelectionTests {
         viewModel.selectOngoing(info)
         #expect(viewModel.selectedCourseTimeRange == "10:20 - 12:10")
         #expect(CourseDetailSheet.classroom(of: course, weekday: 1, periods: viewModel.selectedCoursePeriods) == "TR-313")
+    }
+
+    /// The grid leaves out period 5 when no course uses it, so blocks at 3-4 and 6-7 draw as one
+    /// cell, which opens with both.
+    @Test("a cell that joins two blocks across an undrawn period opens both")
+    func aCellAcrossAnUndrawnPeriodOpensBothBlocks() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.alwaysShowAllPeriods]
+            defer { Defaults[.alwaysShowAllPeriods] = saved }
+            Defaults[.alwaysShowAllPeriods] = false
+            let course = SDCourse(
+                courseNo: "TEST0517B",
+                courseName: "Test",
+                classroom: "TR-313, IB-503",
+                schedule: [1: ["3", "4", "6", "7"]],
+                classroomMap: ["1-3": "TR-313", "1-4": "TR-313", "1-6": "IB-503", "1-7": "IB-503"]
+            )
+            let viewModel = ClassTableViewModel()
+            viewModel.courses = [course]
+            viewModel.selectCourse(course, weekday: 1, periodId: "6")
+            #expect(viewModel.selectedCoursePeriods == ["3", "4", "6", "7"])
+            #expect(viewModel.selectedCourseTimeRange == "10:20 - 15:10")
+        }
     }
 
     @Test("without a block the sheet lists the day's rooms")

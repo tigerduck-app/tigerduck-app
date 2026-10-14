@@ -272,14 +272,25 @@ final class SDCourse: Identifiable {
         return "\(firstTime.start) - \(lastTime.end)"
     }
 
-    /// The block of consecutive periods on `weekday` that `period` falls in, or else the first
-    /// after it: a conflict cluster is picked by its first period, where a course may start later.
-    func block(weekday: Int, at period: String) -> [String]? {
-        let blocks = CourseTimeSlot.buildSlots(from: [self], weekday: weekday).map(\.periods)
-        let order = AppConstants.Periods.chronologicalOrder
+    /// The run of this course's periods on `weekday`, consecutive in `order`, that `period` falls
+    /// in, or else the first after it: a conflict cluster is picked by its first period, where a
+    /// course may start later. A grid passes the rows it draws, which leave out a period no course
+    /// uses, so two blocks around it are one cell.
+    func block(
+        weekday: Int, at period: String, in order: [String] = AppConstants.Periods.chronologicalOrder
+    ) -> [String]? {
+        let own = Set(schedule[weekday] ?? [])
+        var runs: [[String]] = []
+        for (index, row) in order.enumerated() where own.contains(row) {
+            if index > 0, own.contains(order[index - 1]), !runs.isEmpty {
+                runs[runs.count - 1].append(row)
+            } else {
+                runs.append([row])
+            }
+        }
         let start = order.firstIndex(of: period) ?? 0
-        return blocks.first { $0.contains(period) }
-            ?? blocks.first { ($0.first.flatMap(order.firstIndex(of:)) ?? 0) > start }
+        return runs.first { $0.contains(period) }
+            ?? runs.first { (order.firstIndex(of: $0[0]) ?? 0) > start }
     }
 }
 

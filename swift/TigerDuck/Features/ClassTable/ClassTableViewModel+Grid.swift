@@ -82,7 +82,7 @@ extension ClassTableViewModel {
     func selectCourse(_ course: SDCourse, weekday: Int, periodId: String) {
         selectedWeekday = weekday
         selectedPeriodId = periodId
-        selectedCoursePeriods = course.block(weekday: weekday, at: periodId)
+        selectedCoursePeriods = course.block(weekday: weekday, at: periodId, in: activePeriods.map(\.id))
         selectedCourse = course
     }
 

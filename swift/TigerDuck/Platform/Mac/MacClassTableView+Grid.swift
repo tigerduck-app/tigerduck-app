@@ -106,13 +106,14 @@ extension MacClassTableView {
                     keyOf: { $0.courseNo },
                     scheduleOf: { $0.schedule }
                 )
-                cellView(role: role, weekday: weekday, periodId: periods[index])
+                cellView(role: role, weekday: weekday, periods: periods, index: index)
             }
         }
     }
 
     @ViewBuilder
-    private func cellView(role: ClassTableCellRole<SDCourse>, weekday: Int, periodId: String) -> some View {
+    private func cellView(role: ClassTableCellRole<SDCourse>, weekday: Int, periods: [String], index: Int) -> some View {
+        let periodId = periods[index]
         switch role {
         case .empty:
             emptyCell.frame(height: cellHeight)
@@ -127,8 +128,14 @@ extension MacClassTableView {
             // and placed at its offset in the cluster. A full-height column would draw a shorter
             // course, and make it clickable, in rows where the two courses do not meet.
             HStack(spacing: rowSpacing) {
-                conflictColumn(course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan, weekday: weekday, periodId: periodId)
-                conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan, weekday: weekday, periodId: periodId)
+                conflictColumn(
+                    course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan,
+                    weekday: weekday, periodId: periods[index + offsetA]
+                )
+                conflictColumn(
+                    course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan,
+                    weekday: weekday, periodId: periods[index + offsetB]
+                )
             }
             .frame(height: blockHeight(combinedSpan))
         case let .conflictMany(segments, combinedSpan, laneCount):
@@ -145,7 +152,7 @@ extension MacClassTableView {
                                 offset: segment.offset,
                                 combinedSpan: combinedSpan,
                                 weekday: weekday,
-                                periodId: periodId
+                                periodId: periods[index + segment.offset]
                             )
                         }
                     }

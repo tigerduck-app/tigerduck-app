@@ -412,7 +412,7 @@ struct MacClassTableView: View {
 
     @ViewBuilder
     private func courseDetailOverlay(slot: SelectedSlot) -> some View {
-        let block = slot.course.block(weekday: slot.weekday, at: slot.periodId)
+        let block = slot.course.block(weekday: slot.weekday, at: slot.periodId, in: visiblePeriods)
         ZStack {
             Rectangle()
                 .fill(Color.black.opacity(0.35))
