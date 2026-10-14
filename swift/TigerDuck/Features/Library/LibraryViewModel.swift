@@ -60,7 +60,7 @@ final class LibraryViewModel {
         guard !hasLoaded else { return }
         hasLoaded = true
         // Stored credentials count: the code's fetch signs in again with them.
-        isLoggedIn = LibraryService.isTokenValid || LibraryService.canSignInWithStoredCredentials
+        isLoggedIn = LibraryService.hasAccount
         signedInUsername = LibraryService.storedUsername
 
         libUsername = Self.prefilledUsername
@@ -69,7 +69,7 @@ final class LibraryViewModel {
     func onAppear() {
         // Re-check in case user logged in via Settings, or the stored credentials can sign in
         // again after a failed attempt (a sign-in at the return to the app may be under way).
-        if !isLoggedIn && (LibraryService.isTokenValid || LibraryService.canSignInWithStoredCredentials) {
+        if !isLoggedIn && LibraryService.hasAccount {
             isLoggedIn = true
             startQRRefreshCycle()
             return

@@ -54,7 +54,7 @@ extension AppState {
 
     var isLibraryLoggedIn: Bool {
         _ = _libraryRevision
-        return LibraryService.isTokenValid
+        return LibraryService.hasAccount
     }
 
     var libraryUsername: String? {
