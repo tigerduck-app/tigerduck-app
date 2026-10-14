@@ -55,11 +55,7 @@ struct AddSectionSheet: View {
                     } else {
                         ForEach(addable) { feature in
                             Button {
-                                if let target = viewModel.sections.first(where: {
-                                    $0.type == .quickWidgets || $0.type == .custom
-                                }) {
-                                    viewModel.addWidget(to: target.id, feature: feature)
-                                }
+                                viewModel.addQuickFeature(feature)
                                 dismiss()
                             } label: {
                                 Label(feature.displayName, systemImage: feature.iconName)

@@ -129,16 +129,10 @@ private struct WidgetDragPreview: View {
                 .foregroundStyle(.tint)
                 .frame(width: 28, height: 28)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(widget.feature.displayName)
-                    .font(TigerDuckTheme.Typography.headline)
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
-
-                Text(widget.size.rawValue.capitalized)
-                    .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.textSecondary)
-            }
+            Text(widget.feature.displayName)
+                .font(TigerDuckTheme.Typography.headline)
+                .foregroundStyle(Color.textPrimary)
+                .lineLimit(1)
 
             Spacer(minLength: 0)
         }

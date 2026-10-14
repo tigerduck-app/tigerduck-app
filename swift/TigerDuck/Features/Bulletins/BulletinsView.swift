@@ -54,9 +54,12 @@ struct BulletinsView: View {
             // Kick both loads off concurrently — taxonomy and bulletin
             // list are independent, and the list's cache-seed already
             // paints before either resolves.
-            async let tax: Void = taxonomy.loadIfNeeded()
             async let bulletins: Void = viewModel.loadIfNeeded()
-            _ = await (tax, bulletins)
+            await taxonomy.loadIfNeeded()
+            if let orgs = taxonomy.state.taxonomy?.orgs {
+                viewModel.restoreRememberedOrgs(known: Set(orgs.map(\.id)))
+            }
+            await bulletins
         }
         .onDisappear { viewModel.pausePrefetch() }
         .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -135,8 +138,8 @@ struct BulletinsView: View {
     }
     #endif
 
-    private var hasUnreadBulletins: Bool {
-        viewModel.items.contains { !readState.isRead($0.id) }
+    private var unreadShown: [Int] {
+        viewModel.unreadShown(isRead: readState.isRead)
     }
 
     // MARK: - Content
@@ -171,10 +174,10 @@ struct BulletinsView: View {
         .toolbar {
             // Shown only while filtering to unread with something unread. That gate
             // is why marking all read needs no confirmation step.
-            if unreadOnly, hasUnreadBulletins {
+            if unreadOnly, !unreadShown.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(String(localized: "bulletin_mark_all_read_action")) {
-                        readState.markAllRead(viewModel.items.map(\.id))
+                        readState.markAllRead(unreadShown)
                     }
                 }
             }

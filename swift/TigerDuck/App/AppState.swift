@@ -414,7 +414,10 @@ final class AppState {
 
     /// Whether to persist announcement filter selection across sessions
     var rememberAnnouncementFilter: Bool = Defaults[.rememberAnnouncementFilter] {
-        didSet { Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter }
+        didSet {
+            Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter
+            if !rememberAnnouncementFilter { Defaults[.savedAnnouncementDepartmentsData] = nil }
+        }
     }
 
     /// Cross-device sync toggle (Sync course information). When off, every

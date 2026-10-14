@@ -300,6 +300,17 @@ final class HomeViewModel {
         saveSectionLayout()
     }
 
+    /// Puts `feature` in the first section that holds shortcuts, adding a Quick widgets section
+    /// when Home has none, so the Add sheet's list always does something.
+    func addQuickFeature(_ feature: AppFeature) {
+        let holdsShortcuts: (HomeSection) -> Bool = { $0.type == .quickWidgets || $0.type == .custom }
+        if !sections.contains(where: holdsShortcuts) {
+            addSection(type: .quickWidgets, title: HomeSection.HomeSectionType.quickWidgets.defaultTitle)
+        }
+        guard let target = sections.first(where: holdsShortcuts) else { return }
+        addWidget(to: target.id, feature: feature)
+    }
+
     func addWidget(to sectionId: String, feature: AppFeature) {
         guard let idx = sections.firstIndex(where: { $0.id == sectionId }) else { return }
         sections[idx].widgets.append(
