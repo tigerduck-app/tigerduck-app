@@ -570,7 +570,7 @@ struct SSOServiceLoginTests {
         #expect(rejected)
     }
 
-    @Test("a renewal waits while an automatic sign-in posts the stored password, and harvests nothing once it is refused")
+    @Test("a renewal waits while an automatic sign-in posts the stored password, and harvests nothing once it is refused", .timeLimit(.minutes(1)))
     func renewalWaitsForAnAutomaticSignInsPost() async {
         let log = HarvestLog()
         let renewal = tokenService(log: log, failure: nil)
@@ -593,7 +593,7 @@ struct SSOServiceLoginTests {
     }
 
     /// The stored account may be the next student's by the time the lock comes free.
-    @Test("a renewal that a sign-out overtook while it waited for the lock harvests nothing")
+    @Test("a renewal that a sign-out overtook while it waited for the lock harvests nothing", .timeLimit(.minutes(1)))
     func renewalASignOutOvertookHarvestsNothing() async {
         let log = HarvestLog()
         let renewal = tokenService(log: log, failure: nil)
