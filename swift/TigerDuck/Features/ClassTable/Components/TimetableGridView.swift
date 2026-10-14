@@ -330,8 +330,8 @@ struct TimetableGridView: View {
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
             conflictCluster(
                 segments: [
-                    ClassTableConflictSegment(course: courseA, span: spanA, offset: offsetA, lane: 0),
-                    ClassTableConflictSegment(course: courseB, span: spanB, offset: offsetB, lane: 1),
+                    ClassTableConflictSegment(course: courseA, key: courseA.courseNo, span: spanA, offset: offsetA, lane: 0),
+                    ClassTableConflictSegment(course: courseB, key: courseB.courseNo, span: spanB, offset: offsetB, lane: 1),
                 ],
                 combinedSpan: combinedSpan,
                 laneCount: 2,
@@ -441,7 +441,7 @@ struct TimetableGridView: View {
     }
 }
 
-/// Renders a conflict cluster. For two courses we draw the interlocking
+/// Renders a conflict cluster. For two blocks we draw the interlocking
 /// L-shapes (Γ + mirror-L) that follow the Android `ConflictCourseCell`
 /// geometry; for three or more, lanes, with a course across the whole
 /// width in the rows where it meets no other: the L-shape geometry only
@@ -609,7 +609,7 @@ private struct ConflictClusterView: View {
                 rowSpacing: rowSpacing
             )
             ZStack(alignment: .topLeading) {
-                ForEach(segments, id: \.course.courseNo) { segment in
+                ForEach(segments) { segment in
                     laneMember(segment, geometry: geometry)
                 }
             }
@@ -694,7 +694,7 @@ private struct ConflictClusterView: View {
 
     @ViewBuilder
     private func conflictContextMenu() -> some View {
-        ForEach(segments, id: \.course.courseNo) { segment in
+        ForEach(segments) { segment in
             // One menu section per course. Names may not tell them apart, since two
             // sections of one course clashing is the usual reason to open this menu, so
             // the "Pick color" row carries its cell's fill colour; `colorDot` says why there.
