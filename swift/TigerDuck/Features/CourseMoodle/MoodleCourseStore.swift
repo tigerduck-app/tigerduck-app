@@ -622,6 +622,8 @@ final class MoodleCourseStore {
     @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
     /// Reads a picture kept on the device, replaced in tests to see where it runs.
     @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
+    /// Decodes a picture, replaced in tests to see where it runs.
+    @ObservationIgnored var decodePicture: @Sendable (Data) -> CGImage? = { MoodleCourseStore.image(from: $0) }
 
     /// A member's own picture, from the device, else from Moodle once and then kept with the
     /// account's other Moodle files. One who keeps Moodle's default picture, or whose download
@@ -633,7 +635,7 @@ final class MoodleCourseStore {
             if context.isCurrent() { pictures[url] = image }
             return
         }
-        guard let data = await downloadInTurn(url), let image = Self.image(from: data), context.isCurrent() else { return }
+        guard let data = await downloadInTurn(url), let image = await decodeOffMain(data), context.isCurrent() else { return }
         savePicture(data, to: file)
         pictures[url] = image
     }
@@ -643,12 +645,19 @@ final class MoodleCourseStore {
     private func readInTurn(_ file: URL) async -> CGImage? {
         let previous = lastPictureRead
         let read = readPictureFile
+        let decode = decodePicture
         let turn = Task.detached(priority: .userInitiated) { () -> CGImage? in
             _ = await previous?.value
-            return read(file).flatMap(Self.image(from:))
+            return read(file).flatMap(decode)
         }
         lastPictureRead = turn
         return await turn.value
+    }
+
+    /// The decode draws the whole picture, which on the main actor would hold up the page.
+    private func decodeOffMain(_ data: Data) async -> CGImage? {
+        let decode = decodePicture
+        return await Task.detached(priority: .userInitiated) { decode(data) }.value
     }
 
     /// One download at a time, in the order rows ask, so the pictures on screen come first. A
@@ -697,8 +706,8 @@ final class MoodleCourseStore {
         try? data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
     }
 
-    /// Decoded at once rather than at the first draw, which runs on the main actor; a kept
-    /// picture's read calls this off it.
+    /// Decoded at once rather than at the first draw, which runs on the main actor; the store
+    /// calls this only off it.
     private nonisolated static func image(from data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)

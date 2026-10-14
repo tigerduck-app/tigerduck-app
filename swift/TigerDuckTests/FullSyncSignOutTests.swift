@@ -90,11 +90,12 @@ struct ConflictCheckRetryTests {
 
     private static func isDue(
         _ retry: AppState.ConflictCheckRetry, after seconds: TimeInterval = 0,
-        pending: Set<String> = ["assignments"], checking: Bool = false, awaitingAnswer: Bool = false
+        pending: Set<String> = ["assignments"], checking: Bool = false, awaitingAnswer: Bool = false,
+        generation: Int = 0
     ) -> Bool {
         retry.isDue(
             pending: pending, checking: checking, awaitingAnswer: awaitingAnswer,
-            now: start.addingTimeInterval(seconds)
+            now: start.addingTimeInterval(seconds), generation: generation
         )
     }
 
@@ -114,15 +115,15 @@ struct ConflictCheckRetryTests {
     func failuresBackOff() {
         var retry = AppState.ConflictCheckRetry()
 
-        retry.noteFailure(at: Self.start)
+        retry.noteFailure(at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay - 1))
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
 
-        retry.noteFailure(at: Self.start)
+        retry.noteFailure(at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, after: 2 * AppState.ConflictCheckRetry.firstDelay - 1))
         #expect(Self.isDue(retry, after: 2 * AppState.ConflictCheckRetry.firstDelay))
 
-        for _ in 0..<20 { retry.noteFailure(at: Self.start) }
+        for _ in 0..<20 { retry.noteFailure(at: Self.start, generation: 0) }
         #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.maxDelay - 1))
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.maxDelay))
     }
@@ -131,20 +132,76 @@ struct ConflictCheckRetryTests {
     func outcomesMoveWhatIsOwed() {
         var retry = AppState.ConflictCheckRetry()
 
-        retry.note(.clear(["assignments"]), at: Self.start)
+        retry.note(.clear(["assignments"]), at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, after: 3600))
-        retry.note(.resolvedMeanwhile, at: Self.start)
+        retry.note(.resolvedMeanwhile, at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, after: 3600))
 
-        retry.note(.dropped, at: Self.start)
+        retry.note(.dropped, at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, after: 1))
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
 
-        retry.note(.conflict(["assignments"]), at: Self.start)
+        retry.note(.conflict(["assignments"]), at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, after: 3600))
         // The wait starts over after a verdict.
-        retry.noteFailure(at: Self.start)
+        retry.noteFailure(at: Self.start, generation: 0)
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
+    }
+
+    /// The one-at-a-time guard turns away the check of a category switched back on while another
+    /// runs. When the running check asked, nothing checked the later category after the answer,
+    /// and its course settings and marks waited in the outbox.
+    @Test("Once the dialog is answered, a category switched back on while its check ran is checked")
+    func anAnswerOwesTheCategoriesMarkedDuringTheCheck() {
+        var retry = AppState.ConflictCheckRetry()
+
+        // The courses check finds a difference; Assignments was switched back on while it ran.
+        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
+        #expect(!Self.isDue(retry, pending: ["assignments", "courses"], awaitingAnswer: true))
+
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, generation: 0)
+        #expect(Self.isDue(retry, pending: ["assignments"]))
+    }
+
+    @Test("An answer that leaves nothing pending owes no check")
+    func anAnswerThatLeavesNothingOwesNothing() {
+        var retry = AppState.ConflictCheckRetry()
+        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
+
+        retry.noteAnswered(leaving: [], awaitingAnswer: false, generation: 0)
+
+        // A category switched back on later is checked by the Settings screen that marks it.
+        #expect(!Self.isDue(retry, pending: ["assignments"]))
+    }
+
+    /// A second check can raise its dialog while the answer's own requests are still out. Closed
+    /// without an answer, that dialog is not raised again by itself.
+    @Test("An answer that finds another dialog up owes no check of its own")
+    func anAnswerWithAnotherDialogUpOwesNothing() {
+        var retry = AppState.ConflictCheckRetry()
+        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
+        retry.note(.conflict(["assignments"]), at: Self.start, generation: 0)
+
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: true, generation: 0)
+
+        // That dialog is closed without an answer.
+        #expect(!Self.isDue(retry, pending: ["assignments"]))
+    }
+
+    /// A sign-out moves the login generation. The departing account's failures used to stay, so
+    /// after five of them the next account's first failed check waited 16 minutes, not 30 seconds.
+    @Test("The next account starts as at launch, even after the departing account's check ends late")
+    func aSignOutStartsTheRetriesOver() {
+        var retry = AppState.ConflictCheckRetry()
+        for _ in 0..<5 { retry.noteFailure(at: Self.start, generation: 4) }
+        // The departing account's check ends after the sign-out.
+        retry.note(.dropped, at: Self.start, generation: 4)
+        #expect(!Self.isDue(retry, generation: 4))
+
+        #expect(Self.isDue(retry, generation: 5))
+        retry.noteFailure(at: Self.start, generation: 5)
+        #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay - 1, generation: 5))
+        #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay, generation: 5))
     }
 }
 

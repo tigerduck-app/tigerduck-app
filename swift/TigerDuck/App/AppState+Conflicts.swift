@@ -286,7 +286,7 @@ extension AppState {
                         mayWrite: fullSyncMayWrite(since: generation), checked: pending,
                         stillPending: Defaults[.pendingConflictCategories], foundDifference: !diffs.isEmpty
                     )
-                    conflictCheckRetry.note(outcome, at: Date())
+                    conflictCheckRetry.note(outcome, at: Date(), generation: generation)
                     switch outcome {
                     case .dropped:
                         AppLogger.sync.info("[reenable] result discarded — signed out, sync off or locked while in flight")
@@ -305,7 +305,7 @@ extension AppState {
                     }
                 }
             } catch {
-                conflictCheckRetry.noteFailure(at: Date())
+                conflictCheckRetry.noteFailure(at: Date(), generation: generation)
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
                 if case PushAPIError.httpStatus(401, _) = error, retriesLeft > 0 {
                     let reloginOk = await attemptBackendRelogin()
@@ -342,7 +342,7 @@ extension AppState {
     func retryOwedConflictCheck() {
         guard conflictCheckRetry.isDue(
             pending: Defaults[.pendingConflictCategories], checking: isCheckingConflicts,
-            awaitingAnswer: reenableConflict != nil, now: Date()
+            awaitingAnswer: reenableConflict != nil, now: Date(), generation: authService.loginGeneration
         ) else { return }
         checkPendingConflicts()
     }
@@ -351,39 +351,69 @@ extension AppState {
     /// until a check gives a verdict, and each failure or dropped result doubles the wait before
     /// the next, from `firstDelay` to `maxDelay`: a weak link can answer the revision poll every
     /// few seconds while `/sync/full` times out, and each snapshot costs the server a log row and
-    /// pushes its own sync back. A check run from the Settings screens does not wait.
+    /// pushes its own sync back. A check run from the Settings screens does not wait. The state
+    /// is for one sign-in, `generation`: after a sign-out the next account starts as at launch.
     nonisolated struct ConflictCheckRetry: Equatable, Sendable {
         static let firstDelay: TimeInterval = 30
         static let maxDelay: TimeInterval = 30 * 60
 
+        private(set) var generation: Int
         private(set) var owed = true
         private(set) var failures = 0
         private(set) var notBefore: Date?
 
-        func isDue(pending: Set<String>, checking: Bool, awaitingAnswer: Bool, now: Date) -> Bool {
-            owed && !pending.isEmpty && !checking && !awaitingAnswer && (notBefore.map { now >= $0 } ?? true)
+        init(generation: Int = 0) {
+            self.generation = generation
         }
 
-        mutating func noteFailure(at now: Date) {
+        /// - Parameter generation: `AuthService.loginGeneration` now.
+        func isDue(pending: Set<String>, checking: Bool, awaitingAnswer: Bool, now: Date, generation: Int) -> Bool {
+            let state = generation == self.generation ? self : Self(generation: generation)
+            return state.owed && !pending.isEmpty && !checking && !awaitingAnswer
+                && (state.notBefore.map { now >= $0 } ?? true)
+        }
+
+        /// - Parameter generation: the login generation the failed check started in.
+        mutating func noteFailure(at now: Date, generation: Int) {
+            adopt(generation)
+            recordFailure(at: now)
+        }
+
+        /// A verdict settles what is owed and a dropped result is owed again; a check whose
+        /// categories were answered while it ran changes nothing.
+        mutating func note(_ outcome: ConflictCheckOutcome, at now: Date, generation: Int) {
+            adopt(generation)
+            switch outcome {
+            case .dropped:
+                recordFailure(at: now)
+            case .conflict, .clear:
+                owed = false
+                failures = 0
+                notBefore = nil
+            case .resolvedMeanwhile:
+                break
+            }
+        }
+
+        /// The dialog was answered, and `pending` is what is left. A category switched back on
+        /// while the answered check ran was turned away by the one-at-a-time guard, and the
+        /// verdict covered only the categories the check compared, so it is owed a check. With
+        /// another dialog up by then, that dialog covers it, and its own answer notes the rest.
+        mutating func noteAnswered(leaving pending: Set<String>, awaitingAnswer: Bool, generation: Int) {
+            adopt(generation)
+            if !pending.isEmpty, !awaitingAnswer { owed = true }
+        }
+
+        private mutating func recordFailure(at now: Date) {
             owed = true
             failures += 1
             notBefore = now.addingTimeInterval(min(Self.firstDelay * pow(2, Double(failures - 1)), Self.maxDelay))
         }
 
-        mutating func noteVerdict() {
-            owed = false
-            failures = 0
-            notBefore = nil
-        }
-
-        /// A verdict settles what is owed and a dropped result is owed again; a check whose
-        /// categories were answered while it ran changes nothing.
-        mutating func note(_ outcome: ConflictCheckOutcome, at now: Date) {
-            switch outcome {
-            case .dropped: noteFailure(at: now)
-            case .conflict, .clear: noteVerdict()
-            case .resolvedMeanwhile: break
-            }
+        /// A sign-out moves the generation, and the next account starts as at launch: the
+        /// departing account's failures would stretch its waits.
+        private mutating func adopt(_ generation: Int) {
+            if generation != self.generation { self = Self(generation: generation) }
         }
     }
 
@@ -560,6 +590,13 @@ extension AppState {
                 }
                 await syncOverridesFromBackend()
             }
+            // After the answer's own requests, which the next check would otherwise read halfway.
+            guard isCurrent() else { return }
+            conflictCheckRetry.noteAnswered(
+                leaving: Defaults[.pendingConflictCategories], awaitingAnswer: reenableConflict != nil,
+                generation: generation
+            )
+            retryOwedConflictCheck()
         }
     }
 

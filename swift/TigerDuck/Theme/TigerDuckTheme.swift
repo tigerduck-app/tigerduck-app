@@ -165,9 +165,18 @@ final class ColorState: @unchecked Sendable {
     /// (`completeFileProtectionUnlessOpen`), and an empty map then would hand out fresh colours and
     /// write them over the user's, so nothing is written until a later use reads it.
     private nonisolated(unsafe) var map: [String: UInt32]?
+    /// Reads `read()` counted toward giving up on the file, and when it counted the last one.
+    private nonisolated(unsafe) var unreadableReads = 0
+    private nonisolated(unsafe) var lastCountedRead: Date?
     private let lock = OSAllocatedUnfairLock()
     private let load: @Sendable () -> [String: UInt32]?
     private let save: @Sendable ([String: UInt32]) -> Void
+    private let protectedDataAvailable: @Sendable () -> Bool
+    private let now: @Sendable () -> Date
+
+    nonisolated static let unreadableReadLimit = 3
+    /// One screen reads the map once per course, and those reads count as one.
+    nonisolated static let unreadableReadSpacing: TimeInterval = 10
 
     private static let hashMigrationKey = "color_hash_v2_migrated"
 
@@ -182,17 +191,54 @@ final class ColorState: @unchecked Sendable {
 
     init(
         load: @escaping @Sendable () -> [String: UInt32]? = { DataCache.shared.loadCourseColorMapIfReadable() },
-        save: @escaping @Sendable ([String: UInt32]) -> Void = { DataCache.shared.saveCourseColorMap($0) }
+        save: @escaping @Sendable ([String: UInt32]) -> Void = { DataCache.shared.saveCourseColorMap($0) },
+        protectedDataAvailable: @escaping @Sendable () -> Bool = ColorState.isProtectedDataAvailable,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.load = load
         self.save = save
-        self.map = load()
+        self.protectedDataAvailable = protectedDataAvailable
+        self.now = now
+        self.map = read()
+    }
+
+    /// Every colour read runs on the main actor, where `UIApplication` answers. A read from
+    /// anywhere else answers false, which counts nothing toward giving up on the file.
+    nonisolated static func isProtectedDataAvailable() -> Bool {
+        #if os(iOS)
+        guard Thread.isMainThread else { return false }
+        return MainActor.assumeIsolated { UIApplication.shared.isProtectedDataAvailable }
+        #else
+        return true
+        #endif
     }
 
     /// The map, read now if it has not been read yet. Called under `lock`.
     private func loadedMap() -> [String: UInt32]? {
-        if map == nil { map = load() }
+        if map == nil { map = read() }
         return map
+    }
+
+    /// Reads the file. One still unreadable with protected data available is damaged or has the
+    /// wrong permissions rather than waiting for an unlock, and while the map stays unread no
+    /// colour is saved. After `unreadableReadLimit` such reads, `unreadableReadSpacing` apart, the
+    /// map starts empty, so the next save replaces the file; behind the lock screen nothing counts.
+    /// A read that works starts the count over. Called under `lock`, or from `init`.
+    private nonisolated func read() -> [String: UInt32]? {
+        if let stored = load() {
+            unreadableReads = 0
+            return stored
+        }
+        guard protectedDataAvailable() else { return nil }
+        let now = now()
+        if lastCountedRead.map({ now.timeIntervalSince($0) >= Self.unreadableReadSpacing }) ?? true {
+            lastCountedRead = now
+            unreadableReads += 1
+            if unreadableReads == Self.unreadableReadLimit {
+                AppLogger.persistence.error("Course colour map unreadable with protected data available, starting from an empty map")
+            }
+        }
+        return unreadableReads >= Self.unreadableReadLimit ? [:] : nil
     }
 
     func snapshot() -> [String: UInt32] {
@@ -291,8 +337,7 @@ final class ColorState: @unchecked Sendable {
     }
 
     func reload() {
-        let fresh = load()
-        lock.withLock { map = fresh }
+        lock.withLock { map = read() }
     }
 
     /// Drop every assignment, then walk `courseNos` and pick fresh unique
@@ -319,6 +364,8 @@ final class ColorState: @unchecked Sendable {
     private func persist() {
         guard let snapshot = lock.withLock({ map }) else { return }
         save(snapshot)
+        // The file is this map now, not the one that never became readable.
+        lock.withLock { unreadableReads = 0 }
         // Drives the widget snapshot rewrite. NotificationCenter post is
         // thread-safe, so we don't need to hop back to MainActor for it.
         NotificationCenter.default.post(name: AppConstants.courseColorMapDidChange, object: nil)
