@@ -12,6 +12,8 @@ struct EmptyClassroomViewModelTests {
     @MainActor
     private final class SignIn {
         var isCurrent = true
+        /// Each read of the site first asks whom it reads for.
+        var reads = 0
     }
 
     @MainActor
@@ -26,6 +28,11 @@ struct EmptyClassroomViewModelTests {
     }
 
     @MainActor
+    private final class Term {
+        var isInSession = true
+    }
+
+    @MainActor
     private struct Harness {
         let url = URL(string: "https://cour01.stub.invalid/\(UUID().uuidString)/classroom_usecondition.aspx")!
         let signIn = SignIn()
@@ -34,7 +41,7 @@ struct EmptyClassroomViewModelTests {
         let service: ClassroomUsageService
         let model: EmptyClassroomViewModel
 
-        init(at time: Date, holiday: Holiday? = nil) {
+        init(at time: Date, holiday: Holiday? = nil, isInSession: @escaping @MainActor (Date) -> Bool = { _ in true }) {
             let now = Now(time)
             self.now = now
             let config = URLSessionConfiguration.ephemeral
@@ -51,13 +58,15 @@ struct EmptyClassroomViewModelTests {
                 service: service,
                 clock: { now.date },
                 holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
+                isInSession: isInSession,
                 isClassDay: { _ in true },
                 courses: { classTable.courses },
                 rawRoom: { $0 }
             )
             let signIn = signIn
             model.reader = {
-                .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
+                signIn.reads += 1
+                return .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
             }
         }
 
@@ -123,6 +132,36 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.requestCount == 0)
     }
 
+    @Test("a weekday outside the term shows no data without asking the site, and is passed over")
+    func outsideTheTerm() {
+        // The term ends on Thursday 10/15 and the next one starts on Monday 10/26.
+        let harness = Harness(at: Self.time(15, 22, 30), isInSession: { $0 < Self.day(16) || $0 >= Self.day(26) })
+        harness.model.appear()
+        #expect(harness.model.selectedDay == Self.day(26))
+
+        harness.model.select(day: Self.day(19))
+
+        #expect(harness.model.content == .noData)
+        #expect(harness.model.nextTeachingDay == Self.day(26))
+        #expect(harness.requestCount == 0)
+    }
+
+    @Test("a term's dates that arrive after the day was read take its rooms off the screen")
+    func lateCalendar() async throws {
+        let term = Term()
+        let harness = Harness(at: Self.time(14, 10, 5), isInSession: { _ in term.isInSession })
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+
+        harness.model.dataDidUpdate()
+        #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
+
+        term.isInSession = false
+        harness.model.dataDidUpdate()
+        #expect(harness.model.content == .noData)
+    }
+
     @Test("the day's rooms show once read, and a day the site has no rooms for is no data")
     func rooms() async throws {
         let harness = Harness(at: Self.time(14, 10, 5))
@@ -132,10 +171,10 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.usage?.rooms.map(\.room) == ["TR-210", "IB-508"])
         #expect(harness.model.directory?.buildings.map(\.code) == ["IB", "TR"])
 
-        harness.serve(Pages.page())
+        harness.serveDay([])
         harness.model.select(day: Self.day(15))
         try await waitUntil { harness.model.content == .noData }
-        #expect(harness.requestCount == 4)
+        #expect(harness.requestCount == 6)
     }
 
     @Test("a failed read shows the error, and a later pull that fails keeps the rooms on screen")
@@ -199,6 +238,103 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.pickedBuilding == nil)
     }
 
+    @Test("an account change off screen reads nothing until the screen shows again")
+    func accountChangeOffScreen() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        harness.model.disappear()
+
+        // A sign-out drops the kept days, then a sign-in from Settings reaches a hidden tab.
+        harness.service.forget()
+        harness.model.accountChanged()
+        #expect(harness.model.content == .loading)
+        #expect(harness.signIn.reads == 1)
+
+        harness.serveDay([Pages.row("TR-209", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage?.rooms.map(\.room) == ["TR-209"] }
+        #expect(harness.signIn.reads == 2)
+        #expect(harness.requestCount == 6)
+    }
+
+    @Test("an open room's sheet follows each read of the day and closes once a read lacks the room")
+    func openRoomFollowsTheReads() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("TR-214", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        harness.model.open(room: try #require(harness.model.usage?.rooms.first))
+        #expect(harness.model.openRoom?.isFree(at: 2) == true)
+
+        harness.serveDay([Pages.row("TR-214", "..b...........")])
+        await harness.model.refresh()
+        #expect(harness.model.openRoom?.isFree(at: 2) == false)
+
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        await harness.model.refresh()
+        #expect(harness.model.openRoom == nil)
+
+        // The room back in a later read does not open the sheet again.
+        harness.serveDay([Pages.row("TR-214", "..............")])
+        await harness.model.refresh()
+        #expect(harness.model.openRoom == nil)
+    }
+
+    @Test("an open room's sheet closes on another day, even one with the room, and on an account change")
+    func openRoomCloses() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("TR-214", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        harness.serveDay([Pages.row("TR-214", "..............")])
+        harness.model.select(day: Self.day(15))
+        try await waitUntil { harness.model.usage != nil }
+        harness.model.select(day: Self.day(14))
+        let room = try #require(harness.model.usage?.rooms.first)
+
+        harness.model.open(room: room)
+        harness.model.select(day: Self.day(15))
+        #expect(harness.model.usage?.rooms.map(\.room) == ["TR-214"])
+        #expect(harness.model.openRoom == nil)
+
+        harness.model.open(room: room)
+        harness.model.accountChanged()
+        #expect(harness.model.openRoom == nil)
+    }
+
+    @Test("a period chosen today moves to the current one at a later visit once it has ended")
+    func endedPeriod() {
+        let harness = Harness(at: Self.time(14, 8, 30))
+        harness.model.appear()
+        #expect(harness.model.selectedPeriod == 0)
+
+        // A pinned tab tapped again in the afternoon.
+        harness.model.disappear()
+        harness.now.date = Self.time(14, 13, 40)
+        harness.model.appear()
+        #expect(harness.model.selectedDay == Self.day(14))
+        #expect(harness.model.selectedPeriod == 5)
+
+        // A period still to come stays, and so does one on a later day.
+        harness.model.select(period: 9)
+        harness.model.appear()
+        #expect(harness.model.selectedPeriod == 9)
+        harness.model.select(day: Self.day(15))
+        harness.model.select(period: 0)
+        harness.model.appear()
+        #expect(harness.model.selectedDay == Self.day(15))
+        #expect(harness.model.selectedPeriod == 0)
+
+        // After the last period it moves to the next teaching day.
+        harness.model.select(day: Self.day(14))
+        harness.now.date = Self.time(14, 22, 30)
+        harness.model.appear()
+        #expect(harness.model.selectedDay == Self.day(15))
+        #expect(harness.model.selectedPeriod == 0)
+    }
+
     /// Wednesday's sign-in and campus pages, and its one page of rooms held until `gate` opens.
     private static func serveHeldWednesday(_ harness: Harness, gate: SettingsAPIStub.ReplyGate) {
         harness.serve(Pages.page(campus: ""))
@@ -216,7 +352,7 @@ struct EmptyClassroomViewModelTests {
 
         harness.model.disappear()
         gate.open()
-        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]))
+        harness.serveDay([Pages.row("TR-209", "..............")])
         let usage = try await harness.service.usage(
             on: Self.day(14), isToday: true, force: false, credentials: Harness.credentials
         )
@@ -250,10 +386,12 @@ struct EmptyClassroomViewModelTests {
         harness.model.appear()
         try await waitUntil { harness.requestCount == 3 }
 
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus"))
         harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]), gate: thursday)
         harness.model.select(day: Self.day(15))
         // Thursday's read starts only once Wednesday's has ended, so its handling has run.
-        try await waitUntil { harness.requestCount == 4 }
+        try await waitUntil { harness.requestCount == 6 }
         #expect(harness.model.content == .loading)
 
         thursday.open()
@@ -277,11 +415,11 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.selectedDay == Self.day(14))
         #expect(harness.requestCount == 3)
 
-        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]))
+        harness.serveDay([Pages.row("TR-209", "..............")])
         harness.model.appear()
         try await waitUntil { harness.model.usage?.rooms.map(\.room) == ["TR-209"] }
 
-        harness.serve(Pages.page(rows: [Pages.row("TR-301", "..............")]))
+        harness.serveDay([Pages.row("TR-301", "..............")])
         harness.now.date = Self.time(16, 8, 30)
         harness.model.returnToApp()
         try await waitUntil { harness.model.usage?.rooms.map(\.room) == ["TR-301"] }

@@ -36,6 +36,25 @@ struct LibraryViewModelAccountTests {
         }
     }
 
+    /// With no library account stored, the sign-in form offers the school account's student ID,
+    /// so a school sign-out takes it out of the form as well
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/499).
+    @Test func aSchoolSignOutWithNoLibraryAccountEmptiesTheSignInForm() {
+        let keychain = MemoryKeychain.signedIn()
+        SecureStore.$sharedForTesting.withValue(keychain) {
+            let model = LibraryViewModel()
+            model.load()
+            #expect(model.libUsername == "B11000000")
+            // `AuthService.logout()` has deleted the school account by the time the library hears of it.
+            try? keychain.removeObject(forKey: AppConstants.KeychainKeys.studentId)
+            try? keychain.removeObject(forKey: AppConstants.KeychainKeys.password)
+
+            #expect(!LibraryService.clearCredentials(ifSchoolAccount: "B11000000"))
+
+            #expect(model.libUsername.isEmpty)
+        }
+    }
+
     @Test func otherNotificationsLeaveTheCodeAlone() {
         let model = LibraryViewModel()
         model.qrPayload = "code"
