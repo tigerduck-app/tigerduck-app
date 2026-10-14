@@ -25,6 +25,10 @@ final class SDAssignment {
     /// (`AssignmentMarks`). Not stored: the course setting is applied on each load, so the
     /// assignment's own marks come back once the course is no longer ignored.
     @Transient var isIgnoredByCourse = false
+    /// The term the assignment was fetched for, which decides the course setting it falls under:
+    /// the cache keeps an earlier term's assignments while Moodle has no course for the new one.
+    /// Nil in a cache written before it was kept, which stands for the term in session.
+    @Transient var semester: String? = nil
 
     init(
         assignmentId: String,
@@ -37,7 +41,8 @@ final class SDAssignment {
         isLocallyCompleted: Bool = false,
         moodleUrl: String? = nil,
         cutoffDate: Date? = nil,
-        submittedAt: Date? = nil
+        submittedAt: Date? = nil,
+        semester: String? = nil
     ) {
         self.assignmentId = assignmentId
         self.courseNo = courseNo
@@ -50,6 +55,7 @@ final class SDAssignment {
         self.moodleUrl = moodleUrl
         self.cutoffDate = cutoffDate
         self.submittedAt = submittedAt
+        self.semester = semester
     }
 
     var isOverdue: Bool {
