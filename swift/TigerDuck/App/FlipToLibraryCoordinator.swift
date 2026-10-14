@@ -16,12 +16,16 @@ private struct FlipToLibraryModifier: ViewModifier {
         content
             .onAppear {
                 reconcile()
-                Self.offerGesture(appState: appState)
+                // Not in this pass: the launch sets What's New in the same one.
+                Self.offerGesture(appState: appState, waitFirst: true)
             }
             .onChange(of: appState.flipToLibraryEnabled) { _, _ in reconcile() }
             .onChange(of: appState.isLibraryLoggedIn) { _, _ in
                 reconcile()
                 Self.offerGesture(appState: appState)
+            }
+            .onChange(of: appState.updateNotifyCoordinator.activeNotifySheet == nil) { _, isClear in
+                if isClear { Self.offerGesture(appState: appState) }
             }
             .onChange(of: scenePhase) { _, new in
                 // Tear down only on .background. .inactive comes with transient
@@ -84,7 +88,8 @@ private struct FlipToLibraryModifier: ViewModifier {
     /// Asks once whether to turn the gesture on, after a library sign-in or at a launch already
     /// signed in. A sheet already up, such as the sign-in's own, is waited out for a few seconds,
     /// since SwiftUI rejects the root-level prompt sheet over it; past that the next return asks.
-    private static func offerGesture(appState: AppState, attemptsLeft: Int = 10) {
+    /// What's New and the update prompt are waited out to their end, which asks again.
+    private static func offerGesture(appState: AppState, attemptsLeft: Int = 10, waitFirst: Bool = false) {
         guard FlipDetector.isSupported,
               FlipToLibraryGate.offersGesture(
                   signedInToLibrary: appState.isLibraryLoggedIn,
@@ -92,7 +97,11 @@ private struct FlipToLibraryModifier: ViewModifier {
                   asked: FirstTriggerPromptCenter.shared.hasSeen(.flipToLibrary)
               )
         else { return }
-        guard !isAnyModalPresented() else {
+        let waits = FlipToLibraryGate.offerWaits(
+            sheetPresented: isAnyModalPresented(),
+            notifySheetPending: appState.updateNotifyCoordinator.activeNotifySheet != nil
+        )
+        guard !waitFirst, !waits else {
             guard attemptsLeft > 0 else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(500))
@@ -130,6 +139,12 @@ enum FlipToLibraryGate {
     static func offersGesture(signedInToLibrary: Bool, enabled: Bool, asked: Bool) -> Bool {
         signedInToLibrary && !enabled && !asked
     }
+
+    /// Whether the offer waits: behind a sheet already up, and behind What's New or the update
+    /// prompt, which share the root with it, where two sheets set in one render leave one unshown.
+    static func offerWaits(sheetPresented: Bool, notifySheetPending: Bool) -> Bool {
+        sheetPresented || notifySheetPending
+    }
 }
 
 extension View {
@@ -163,7 +178,8 @@ enum FlipToLibraryPromptPresenter {
                 acceptLabel: String(localized: "first_trigger_flip_to_library_turn_on"),
                 declineLabel: String(localized: "permission_warning_action_later"),
                 onAccept: { appState.flipToLibraryEnabled = true },
-                onDecline: {}
+                // Stored, so Maybe later is not read as 2.4's Keep on, which left the switch unset.
+                onDecline: { appState.flipToLibraryEnabled = false }
             )
         }
     }

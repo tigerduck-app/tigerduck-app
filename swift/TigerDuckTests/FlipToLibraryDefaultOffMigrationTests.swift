@@ -3,6 +3,7 @@
 #if os(iOS)
 import Defaults
 import Foundation
+import SwiftUI
 import Testing
 @testable import TigerDuck
 
@@ -21,7 +22,7 @@ struct FlipToLibraryDefaultOffMigrationTests {
         await withExclusiveRealDefaults {
             // The done and seen flags are in the standard suite; the switch is in its key's suite.
             let stores = [(UserDefaults.standard, doneKey), (UserDefaults.standard, seenKey), (switchKey.suite, switchKey.name)]
-            let saved = stores.map { store, key in (store, key, store.object(forKey: key)) }
+            let saved = stores.map { store, key in (store, key, Self.storedValue(store, key)) }
             defer {
                 for (store, key, value) in saved {
                     if let value { store.set(value, forKey: key) } else { store.removeObject(forKey: key) }
@@ -29,6 +30,25 @@ struct FlipToLibraryDefaultOffMigrationTests {
             }
             for (store, key) in stores { store.removeObject(forKey: key) }
             body()
+        }
+    }
+
+    /// What a key holds in its suite's own domain. `object(forKey:)` would also return the default
+    /// `Defaults` registers for the switch, which the restore would then write as a stored value.
+    private static func storedValue(_ store: UserDefaults, _ key: String) -> Any? {
+        guard let domain = Bundle.main.bundleIdentifier else { return nil }
+        return store.persistentDomain(forName: domain)?[key]
+    }
+
+    @Test func aSwitchSetInSettingsAnswersTheQuestion() async {
+        await Self.withRealKeys {
+            var enabled = false
+            let toggle = LibrarySettingsView.flipSwitch(Binding(get: { enabled }, set: { enabled = $0 }), signedIn: true)
+
+            toggle.wrappedValue = true
+            toggle.wrappedValue = false
+
+            #expect(FirstTriggerPromptCenter.shared.hasSeen(.flipToLibrary))
         }
     }
 

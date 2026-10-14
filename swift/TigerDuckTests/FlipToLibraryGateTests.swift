@@ -32,5 +32,14 @@ struct FlipToLibraryGateTests {
         #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: true, asked: false))
         #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: true))
     }
+
+    /// What's New and the update prompt share the root with the offer, and two sheets set there in
+    /// one render leave one unshown, so the offer waits for them as for any sheet already up.
+    @Test("the offer waits behind a sheet already up and behind What's New or the update prompt")
+    func theOfferWaitsForOtherSheets() {
+        #expect(!FlipToLibraryGate.offerWaits(sheetPresented: false, notifySheetPending: false))
+        #expect(FlipToLibraryGate.offerWaits(sheetPresented: true, notifySheetPending: false))
+        #expect(FlipToLibraryGate.offerWaits(sheetPresented: false, notifySheetPending: true))
+    }
 }
 #endif
