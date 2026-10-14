@@ -569,13 +569,17 @@ final class MoodleCourseStore {
 
     /// Every opening fetches the posts, as the list may not know of a reply yet, and keeps which
     /// were unread for the dots. Moodle marks the whole discussion read on the view event, so it
-    /// goes only once the posts load: an opening whose fetch fails sends nothing and returns nil,
-    /// leaving the replies unread for the next opening.
-    func openThread(of discussion: MoodleDiscussion, in forum: MoodleForum) async -> Set<Int>? {
+    /// goes only once the posts load on a page still on screen (`isShown`): an opening whose fetch
+    /// fails, or whose page has left by then, sends nothing and returns nil, leaving the replies
+    /// unread for the next opening.
+    func openThread(
+        of discussion: MoodleDiscussion, in forum: MoodleForum, isShown: () -> Bool = { true }
+    ) async -> Set<Int>? {
         guard context.isCurrent(), !Task.isCancelled else { return nil }
         let feed = thread(of: discussion)
         await refreshThread(of: discussion)
-        guard context.isCurrent(), !Task.isCancelled, feed.status == .ok, let posts = feed.value?.posts else {
+        guard context.isCurrent(), !Task.isCancelled, isShown(),
+              feed.status == .ok, let posts = feed.value?.posts else {
             return nil
         }
         let unread = Set(posts.filter(\.isUnread).map(\.id))

@@ -530,6 +530,40 @@ struct MoodleCourseForumsTests {
         #expect(await opening.value == nil)
     }
 
+    /// Retry and ⌘R open in a task that leaving the page does not cancel
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/427).
+    @Test("an opening whose page has left when its posts arrive tells Moodle nothing and reads nothing as read")
+    func openingAfterThePageLeft() async throws {
+        let folder = Folder()
+        let site = Site()
+        let discussion = Self.discussion(801, unread: 1, replies: 1)
+        site.set(pages: [[discussion]])
+        let store = Self.store(folder, site: site)
+        await store.refreshForums()
+        let pages = store.discussions(of: Self.qanda)
+        await pages.refresh()
+        let isShown = OSAllocatedUnfairLock(initialState: true)
+        let gate = ManualSleeper()
+        var api = site.api
+        api.posts = { _ in
+            await gate.sleep(for: .seconds(1))
+            return [Self.post(1801), Self.post(1802, parent: 1801, unread: true)]
+        }
+        let opening = Self.store(folder, site: site, api: api)
+
+        let unreadAtOpening = Task {
+            await opening.openThread(of: discussion, in: Self.qanda, isShown: { isShown.withLock { $0 } })
+        }
+        try await gate.waitUntilArmed()
+        isShown.withLock { $0 = false }
+        await gate.fire()
+
+        #expect(await unreadAtOpening.value == nil)
+        #expect(opening.thread(of: discussion).value?.posts.filter(\.isUnread).map(\.id) == [1802])
+        #expect(opening.discussions(of: Self.qanda).list?.discussions.first?.unreadCount == 1)
+        #expect(!site.calls.contains { $0.hasPrefix("viewed") })
+    }
+
     @Test("a view event invalidated while checking functions is not sent", arguments: Invalidation.allCases)
     func invalidatedViewFunctions(invalidation: Invalidation) async throws {
         let folder = Folder()

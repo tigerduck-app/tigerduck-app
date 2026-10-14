@@ -12,6 +12,7 @@ struct MoodleDiscussionView: View {
     @State private var unreadAtOpening: Set<Int>?
     @State private var isOpening = false
     @State private var files = MoodleFileOpener()
+    @State private var presence = PagePresence()
 
     var body: some View {
         let thread = store.thread(of: discussion)
@@ -53,6 +54,8 @@ struct MoodleDiscussionView: View {
             guard unreadAtOpening == nil else { return }
             await refresh()
         }
+        .onAppear { presence.isShown = true }
+        .onDisappear { presence.isShown = false }
         .moodleFilePresentation(files)
     }
 
@@ -65,7 +68,7 @@ struct MoodleDiscussionView: View {
         }
         isOpening = true
         defer { isOpening = false }
-        unreadAtOpening = await store.openThread(of: discussion, in: forum)
+        unreadAtOpening = await store.openThread(of: discussion, in: forum, isShown: { presence.isShown })
     }
 
     @ViewBuilder
@@ -89,6 +92,12 @@ struct MoodleDiscussionView: View {
                 .padding(.vertical, TigerDuckTheme.Spacing.md)
         }
     }
+}
+
+/// Read by an opening once its posts arrive. Retry and ⌘R open in a task that leaving the page
+/// does not cancel, and a page gone by then must not tell Moodle the discussion was read.
+private final class PagePresence {
+    var isShown = false
 }
 
 nonisolated struct MoodleThreadEntry: Equatable, Identifiable {
