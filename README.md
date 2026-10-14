@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.4.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.4.0)
+[![Version](https://img.shields.io/badge/Version-v2.5.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.5.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -116,6 +116,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| `v2.5.0` | 2026-10-14 | 空教室查詢、TAT 介面風格、修正團隊作業的繳交狀態、翻面開啟圖書館改為預設關閉並在登入圖書館後詢問、課程資訊的 Moodle 區塊不再顯示狀態點、多項修正與套件更新 |
 | `v2.4.0` | 2026-10-13 | 課表可用 QR Code 分享、匯入並切換、課程詳情顯示 Moodle 公告／教材／討論區／成員／成績、上課提醒設定、可忽略整門課的作業、Apple Watch 錶面顯示下一堂課 |
 | `v2.3.0` | 2026-10-04 | 改版「新功能」介紹、課表可匯出成圖片、通知依類型分開堆疊、HTML 信件可用淺色模式檢視、修正新版本未提醒 |
 | `v2.2.0` | 2026-09-30 | iOS 新增校園信箱，可收發 Mail2000 信件並通知新信 |
@@ -177,7 +178,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 - [x] **校園信箱** – 在 App 內收發臺科大 Mail2000 信件，新信通知（iOS）`v2.2.0`
 - [ ] **獎學金資訊** – 支援 Filter，可依低收、中低收、原住民等條件過濾
 - [ ] **當日社團活動** – 整理每日社團活動資訊
-- [ ] **空教室查詢** – 快速查詢目前可使用的教室
+- [x] **空教室查詢** – 快速查詢目前可使用的教室 `v2.5.0`
 
 ### 🍱 校園生活
 - [ ] **免費便當通知** – 任何人可實名登記，並整合台科大、台大相關資訊，主動推播通知

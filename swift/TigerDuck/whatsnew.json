@@ -284,5 +284,25 @@
         { "symbol": "applewatch", "title": "Apple Watch complication", "body": "See your next class right on the watch face." }
       ]
     }
+  },
+  "2.5.0": {
+    "zh-TW": {
+      "title": "2.5.0 更新內容",
+      "items": [
+        { "symbol": "door.left.hand.open", "title": "空教室", "body": "查詢今天起兩週內的空教室，兩堂課之間也會建議可以待的教室。" },
+        { "symbol": "tablecells", "title": "TAT 介面風格", "body": "在設定的介面風格選 TAT，課表會改成格狀樣式。" },
+        { "symbol": "person.2", "title": "團隊作業的繳交狀態", "body": "組員繳交團隊作業後，也會顯示為已繳交。" },
+        { "symbol": "wrench.and.screwdriver", "title": "問題修正", "body": "修正多項問題，使用起來更穩定。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.5.0",
+      "items": [
+        { "symbol": "door.left.hand.open", "title": "Free classrooms", "body": "Find free classrooms for the next two weeks, with a room to wait in between your classes." },
+        { "symbol": "tablecells", "title": "TAT style", "body": "Choose TAT under Interface style in Settings for a grid class table." },
+        { "symbol": "person.2", "title": "Team assignments", "body": "A team assignment shows as submitted once a teammate submits it." },
+        { "symbol": "wrench.and.screwdriver", "title": "Fixes", "body": "Several fixes for a steadier app." }
+      ]
+    }
   }
 }
