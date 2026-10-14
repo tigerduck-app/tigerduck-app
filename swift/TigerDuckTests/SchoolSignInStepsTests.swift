@@ -115,4 +115,40 @@ struct SchoolSignInStepsTests {
             #expect(LibraryService.storedPasswordIfAvailable() == "school")
         }
     }
+
+    // MARK: - A sign-out as the school step ends (https://github.com/tigerduck-app/tigerduck-app/issues/500)
+
+    /// A sign-out from another window that lands after the school's answer came back, but before
+    /// the sign-in took it in, leaves the departed account's credentials unsaved and signs it in
+    /// to nothing else.
+    @Test func aSignOutAsTheSchoolStepEndsKeepsNothing() async throws {
+        let calls = Calls()
+        try await Self.withKeychain(libraryAccount: nil) { keychain in
+            let auth = Self.auth(recording: calls)
+            calls.onSchoolAnswer = { auth.logout() }
+
+            let signedIn = await auth.login(studentId: Self.student, password: "school")
+
+            #expect(!signedIn)
+            #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
+            #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.password)) == nil)
+            #expect(calls.librarySignIns.isEmpty)
+            #expect(!auth.isLoggingIn)
+        }
+        #expect(calls.harvests == 0)
+    }
+
+    @Test func aSignInWithNoSignOutSavesTheAccount() async throws {
+        let calls = Calls()
+        try await Self.withKeychain(libraryAccount: nil) { keychain in
+            let auth = Self.auth(recording: calls)
+
+            let signedIn = await auth.login(studentId: Self.student, password: "school")
+
+            #expect(signedIn)
+            #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == Data(Self.student.utf8))
+            #expect(calls.librarySignIns == [Self.student])
+        }
+        #expect(calls.harvests == 1)
+    }
 }

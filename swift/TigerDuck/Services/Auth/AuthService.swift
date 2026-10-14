@@ -275,8 +275,16 @@ final class AuthService {
             if let stored = storedStudentId, stored != normalizedId {
                 await signOutStoredAccount?()
             }
+            // Read after that sign-out, which moves it, and before the school step.
+            let generation = loginGeneration
 
             let success = try await schoolSignIn(normalizedId, password)
+            // A sign-out from another window that landed as the school's answer came back: the
+            // account left, so none of it is saved and no later step signs it in.
+            guard loginGeneration == generation else {
+                isLoggingIn = false
+                return false
+            }
 
             if success {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
@@ -289,7 +297,7 @@ final class AuthService {
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 
-                await signInToServices(studentId: normalizedId, password: password, generation: loginGeneration)
+                await signInToServices(studentId: normalizedId, password: password, generation: generation)
             }
 
             isLoggingIn = false
