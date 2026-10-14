@@ -350,6 +350,81 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
     }
 
+    /// Sent once, the token may go once more: the backend rotates it again while nothing has used
+    /// the pair a lost reply carried, and a server error may not have rotated it at all.
+    @Test("a sign-out whose refresh got no reply or a server error sends the token once more", arguments: [
+        SettingsAPIStub.StubResponse.noReply,
+        SettingsAPIStub.StubResponse(statusCode: 503, body: Data()),
+    ])
+    func signOutResendsARefreshThatGotNoToken(firstReply: SettingsAPIStub.StubResponse) async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        var held = firstReply
+        held.gate = gate
+        SettingsAPIStub.enqueue(held, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == "A1")
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+    }
+
+    @Test("a sign-out sends no third use of a refresh token its refresh already sent twice")
+    func signOutSendsNoThirdUse() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        var lostAgain = SettingsAPIStub.StubResponse.noReply
+        lostAgain.gate = gate
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(lostAgain, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 2 }
+
+        let ending = Task { await manager.endSession() }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == nil)
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    /// Turned down, the token is dead, and one more use of it is taken for theft, which revokes
+    /// every session of the device, a sign-in's after this one included.
+    @Test("a sign-out sends nothing more for a refresh the backend turned down")
+    func signOutSendsNothingAfterARefusal() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        var turnedDown = BackendFixture.reuseDetected
+        turnedDown.gate = gate
+        SettingsAPIStub.enqueue(turnedDown, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == nil)
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+    }
+
     @Test("a refresh turned down after a sign-out signs nothing in again and leaves the next session alone")
     func refreshTurnedDownAfterASignOut() async throws {
         let gate = SettingsAPIStub.ReplyGate()
