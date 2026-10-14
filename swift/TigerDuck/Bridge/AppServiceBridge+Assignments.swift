@@ -263,15 +263,12 @@ extension AppServiceBridge {
                 }
                 #endif
             }
-            // Sign-out reset the tracker, and the departing account's answer is not the next one's.
-            if authService.loginGeneration == startGeneration {
-                await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .moodle) }
-            }
+            await MainActor.run { record(.ok, for: .moodle, round: startGeneration, authService: authService) }
             return assignmentsToPersist
         } catch {
             await MainActor.run {
                 let note = (error as? MoodleWebserviceError) == .siteMaintenance ? error.localizedDescription : nil
-                ServerStatusTracker.shared.set(.failed, for: .moodle, note: note)
+                record(.failed, for: .moodle, note: note, round: startGeneration, authService: authService)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()
