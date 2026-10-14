@@ -185,8 +185,9 @@ final class AuthService {
     var onV3SignedIn: (() -> Void)?
     /// The full sign-out, `AppState.logoutNTUST()`. ``login(studentId:password:)`` waits for it
     /// when another student ID signs in over the stored one, so that student inherits none of the
-    /// stored account's data. It also empties the school session, which the SSO sign-in would
-    /// otherwise accept as signed in without checking the new password.
+    /// stored account's data. It also empties the school session: a typed sign-in posts its
+    /// password whatever it finds, but an automatic one that finds a live session posts none and
+    /// would go on in the stored account's.
     var signOutStoredAccount: (() async -> Void)?
     /// The calls the sign-outs still send as the departing account, the device's unregister among
     /// them. Landing after a sign-in, the unregister would revoke the session and push tokens

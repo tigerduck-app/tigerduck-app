@@ -299,6 +299,44 @@ struct SSOServiceLoginTests {
         #expect(!outcome.rejected)
     }
 
+    @MainActor
+    private final class FailureLog {
+        var errors: [any Error] = []
+    }
+
+    /// Leaving a screen or signing out ends a sign-in's request; the device log keeps real
+    /// failures only (https://github.com/tigerduck-app/tigerduck-app/issues/584).
+    @Test("a sign-in a cancelled request ends leaves nothing in the log, and a failed one is logged")
+    func cancelledSignInIsNotLogged() async {
+        let cancelled = Self.serviceURL()
+        let failed = Self.serviceURL()
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.failure(.cancelled), for: cancelled)
+        SSOServerStub.enqueue(.failure(.timedOut), for: failed)
+        let log = FailureLog()
+        func loggedSignIn(_ service: URL) async -> Result<Bool, Error> {
+            await Self.result {
+                try await SSOLoginService.ensureServiceLogin(
+                    session: SSOServerStub.session(), serviceURL: service, studentId: "B00000000",
+                    password: "unused", generation: NTUSTSessionManager.shared.generation,
+                    logFailure: { log.errors.append($0) }
+                )
+            }
+        }
+
+        let ended = await withLatch(false) { await loggedSignIn(cancelled) }
+        #expect(log.errors.isEmpty)
+        let timedOut = await withLatch(false) { await loggedSignIn(failed) }
+
+        guard case .failure(let endedError) = ended, case .failure = timedOut else {
+            Issue.record("expected two failures, got \(ended) and \(timedOut)")
+            return
+        }
+        #expect(AppLogger.isCancellation(endedError))
+        #expect(log.errors.map { ($0 as? URLError)?.code } == [.timedOut])
+        #expect(AppLogger.isCancellation(CancellationError()))
+    }
+
     // MARK: - Moodle token renewal
 
     private actor HarvestLog {
@@ -446,6 +484,16 @@ struct SSOServiceLoginTests {
         #expect(await log.calls == 1)
     }
 
+    /// A harvest holds the stored-password lock, so a server that trickles its answer would hold
+    /// every automatic SSO sign-in behind it for the default week.
+    @Test("a harvest gives up on a server that trickles its answer after a minute")
+    func harvestTimesOut() {
+        let config = MoodleTokenService.harvestConfiguration()
+        #expect(config.timeoutIntervalForResource == 60)
+        #expect(config.timeoutIntervalForRequest == 20)
+        #expect(config.httpCookieStorage === HTTPCookieStorage.shared)
+    }
+
     @Test("a failed renewal leaves no rejected token behind")
     func failedRenewalDropsTheRejectedToken() async {
         let log = HarvestLog()
@@ -468,6 +516,12 @@ struct SSOServiceLoginTests {
             return .success(try await body())
         } catch {
             return .failure(error)
+        }
+    }
+
+    private static func waitForAQueuedPost() async {
+        while await SSOLoginService.storedPasswordPostsWaiting() == 0 {
+            try? await Task.sleep(for: .milliseconds(5))
         }
     }
 
@@ -516,7 +570,7 @@ struct SSOServiceLoginTests {
         #expect(rejected)
     }
 
-    @Test("a renewal waits while an automatic sign-in posts the stored password, and harvests nothing once it is refused")
+    @Test("a renewal waits while an automatic sign-in posts the stored password, and harvests nothing once it is refused", .timeLimit(.minutes(1)))
     func renewalWaitsForAnAutomaticSignInsPost() async {
         let log = HarvestLog()
         let renewal = tokenService(log: log, failure: nil)
@@ -524,8 +578,8 @@ struct SSOServiceLoginTests {
             // The test holds the lock as an automatic sign-in does while the school answers its post.
             let renewing = await SSOLoginService.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
-                // Long enough for the renewal to pass its first check of the latch and queue.
-                try? await Task.sleep(for: .milliseconds(200))
+                // Queued for the lock, so past its first check of the latch.
+                await Self.waitForAQueuedPost()
                 SSOLoginService.storedPasswordRejected = true
                 return renewing
             }
@@ -539,15 +593,14 @@ struct SSOServiceLoginTests {
     }
 
     /// The stored account may be the next student's by the time the lock comes free.
-    @Test("a renewal that a sign-out overtook while it waited for the lock harvests nothing")
+    @Test("a renewal that a sign-out overtook while it waited for the lock harvests nothing", .timeLimit(.minutes(1)))
     func renewalASignOutOvertookHarvestsNothing() async {
         let log = HarvestLog()
         let renewal = tokenService(log: log, failure: nil)
         let (outcome, harvests) = await withLatch(false) { () async -> (Result<String, Error>, Int) in
             let renewing = await SSOLoginService.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
-                // Long enough for the renewal to queue for the lock.
-                try? await Task.sleep(for: .milliseconds(200))
+                await Self.waitForAQueuedPost()
                 await renewal.signOut()
                 return renewing
             }
