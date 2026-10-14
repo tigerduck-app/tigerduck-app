@@ -54,8 +54,9 @@ struct ClassroomTimeBar: View {
     }
 }
 
-/// The 14 periods as chips, each its label over its start time. The current period carries a
-/// dot, and the periods already over are dimmed but can still be chosen.
+/// The 14 periods as chips, each its label over its start time. The current period's label is in
+/// the tint, as a calendar marks today, and the periods already over are dimmed but can still be
+/// chosen. The row opens on the current period, since the ones before it rarely matter.
 struct PeriodChipRow: View {
     let selected: Int
     let current: Int?
@@ -64,7 +65,7 @@ struct PeriodChipRow: View {
     let onSelect: (Int) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .title3) private var labelWidth: CGFloat = 30
+    @ScaledMetric(relativeTo: .headline) private var labelWidth: CGFloat = 30
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -80,12 +81,12 @@ struct PeriodChipRow: View {
                         .id(index)
                     }
                 }
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
-            .onAppear { proxy.scrollTo(selected, anchor: .center) }
+            .contentMargins(.horizontal, TigerDuckTheme.Spacing.lg, for: .scrollContent)
+            .onAppear { proxy.scrollTo(current ?? selected, anchor: .leading) }
             .onChange(of: selected) { _, period in
                 withAnimation(reduceMotion ? nil : .smoothSpring) {
-                    proxy.scrollTo(period, anchor: .center)
+                    proxy.scrollTo(period)
                 }
             }
         }
@@ -94,19 +95,16 @@ struct PeriodChipRow: View {
     private func chip(_ index: Int) -> some View {
         let isSelected = index == selected
         let id = EmptyClassroomSchedule.periodIDs[index]
-        return VStack(spacing: TigerDuckTheme.Spacing.xs) {
+        return VStack(spacing: 0) {
             Text(id)
-                .font(.title3.weight(.semibold))
+                .font(.headline)
+                .foregroundStyle(labelStyle(index, isSelected: isSelected))
             Text(EmptyClassroomSchedule.timeRange(of: index)?.start ?? "")
                 .font(.caption2.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(isSelected ? Color.white.opacity(0.9) : policy.secondaryTextColor)
-            Circle()
-                .fill(dotStyle(index, isSelected: isSelected))
-                .frame(width: 5, height: 5)
         }
         .lineLimit(1)
-        .foregroundStyle(isSelected ? Color.white : policy.primaryTextColor)
         .frame(minWidth: labelWidth)
         .opacity(index < ended && !isSelected ? 0.4 : 1)
         .presetChip(policy: policy, isSelected: isSelected)
@@ -116,15 +114,15 @@ struct PeriodChipRow: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    /// The times, and for the period the dot marks, that it is now.
+    /// The times, and for the current period, that it is now.
     private func accessibilityValue(_ index: Int) -> String {
         let times = EmptyClassroomViewModel.timeRange(of: index)
         guard index == current else { return times }
         return "\(times), \(String(localized: "home_time_slider_now"))"
     }
 
-    private func dotStyle(_ index: Int, isSelected: Bool) -> AnyShapeStyle {
-        guard index == current else { return AnyShapeStyle(Color.clear) }
-        return isSelected ? AnyShapeStyle(Color.white) : AnyShapeStyle(.tint)
+    private func labelStyle(_ index: Int, isSelected: Bool) -> AnyShapeStyle {
+        if isSelected { return AnyShapeStyle(Color.white) }
+        return index == current ? AnyShapeStyle(.tint) : AnyShapeStyle(policy.primaryTextColor)
     }
 }
