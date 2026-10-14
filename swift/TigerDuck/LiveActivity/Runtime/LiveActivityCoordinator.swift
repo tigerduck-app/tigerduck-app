@@ -199,7 +199,7 @@ final class LiveActivityCoordinator {
                 // A push-to-start twin of an activity this app already
                 // started is ended inside the prune; nothing below is for it.
                 if endedActivityIds.contains(activity.id) { continue }
-                // The server may start one from a schedule uploaded before Live Activity turned off,
+                // The server may start one from a schedule uploaded before Live Activity turned unavailable,
                 // its class day turned quiet, its class was skipped or its assignment was done. End it
                 // on arrival and never register its token; the prune may not have listed it yet.
                 if let reason = Self.endReason(
