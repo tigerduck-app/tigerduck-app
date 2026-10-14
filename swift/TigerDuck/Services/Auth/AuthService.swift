@@ -276,16 +276,7 @@ final class AuthService {
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 
-                await loginToLibraryIfNeeded(studentId: normalizedId, password: password)
-
-                // Obtain Moodle webservice token — non-fatal, never blocks NTUST login result
-                do {
-                    _ = try await moodleTokens.obtainToken(studentId: normalizedId, password: password)
-                } catch {
-                    AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
-                }
-
-                await performV3Login(studentId: normalizedId)
+                await signInToServices(studentId: normalizedId, password: password, generation: loginGeneration)
             }
 
             isLoggingIn = false
@@ -301,6 +292,22 @@ final class AuthService {
             isLoggingIn = false
             return false
         }
+    }
+
+    /// The sign-ins after the school's: the library, the Moodle token and the backend. A sign-out
+    /// while one waits on the network moves `loginGeneration` off `generation`, and the later
+    /// steps then store nothing for the account that left.
+    func signInToServices(studentId: String, password: String, generation: Int) async {
+        await loginToLibraryIfNeeded(studentId: studentId, password: password)
+        guard loginGeneration == generation else { return }
+        // Non-fatal: the school sign-in has already succeeded.
+        do {
+            _ = try await moodleTokens.obtainToken(studentId: studentId, password: password)
+        } catch {
+            AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
+        }
+        guard loginGeneration == generation else { return }
+        await performV3Login(studentId: studentId)
     }
 
     /// Signs in to the backend with the stored Moodle token and returns whether it did. With
