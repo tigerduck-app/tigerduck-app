@@ -286,7 +286,7 @@ struct LibrarySignInTests {
     }
 
     /// A code request that fails short of a refusal, as on a weak signal at the gate, keeps the
-    /// page signed in to try again, where a lapsed token used to drop it to the sign-in form.
+    /// page signed in to try again: the stored credentials can still sign in.
     @Test func aFailedCodeRequestKeepsAStoredAccountSignedIn() async throws {
         try await Self.withStoredAccount { _ in
             LibraryQRCache.shared.clear()
@@ -297,6 +297,42 @@ struct LibrarySignInTests {
             model.onAppear()
             try await waitUntil { model.errorMessage != nil }
             #expect(model.isLoggedIn)
+        }
+    }
+
+    @Test func aRefusedCodeRequestSignsThePageOut() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = {
+                LibraryService.storedPasswordRejected = true
+                throw LibraryServiceError.loginFailed("wrong password")
+            }
+            model.load()
+            model.onAppear()
+            try await waitUntil { !model.isLoggedIn }
+        }
+    }
+
+    /// A retry that works after a failed code request fetches a fresh code every cycle after it,
+    /// rather than leaving the one it fetched to run out on screen.
+    @Test func aRetryAfterAFailureKeepsRefreshingTheCode() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let calls = Calls()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.backoffSchedule = [0.05]
+            model.refreshInterval = 0.1
+            model.fetchCode = {
+                calls.count += 1
+                if calls.count == 1 { throw URLError(.timedOut) }
+                return "code-\(calls.count)"
+            }
+            model.load()
+            model.onAppear()
+            try await waitUntil { calls.count >= 4 }
         }
     }
 

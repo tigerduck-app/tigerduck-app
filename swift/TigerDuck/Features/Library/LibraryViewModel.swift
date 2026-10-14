@@ -41,8 +41,9 @@ final class LibraryViewModel {
     private var consecutiveErrors = 0
     /// Backoff cadence after N transient failures (seconds). After the
     /// final entry the cadence holds at the last value until a refresh
-    /// succeeds.
-    private static let backoffSchedule: [TimeInterval] = [60, 120, 300]
+    /// succeeds. Tests shorten it and the refresh interval.
+    @ObservationIgnored var backoffSchedule: [TimeInterval] = [60, 120, 300]
+    @ObservationIgnored var refreshInterval: TimeInterval = 30
 
     @ObservationIgnored nonisolated(unsafe) private var accountObserver: (any NSObjectProtocol)?
 
@@ -200,11 +201,13 @@ final class LibraryViewModel {
     /// at the last value of `backoffSchedule` for additional failures so
     /// retries never exceed 5 minutes.
     private func rescheduleAfterError() {
-        let idx = min(consecutiveErrors - 1, Self.backoffSchedule.count - 1)
-        let interval = Self.backoffSchedule[max(0, idx)]
+        let idx = min(consecutiveErrors - 1, backoffSchedule.count - 1)
+        let interval = backoffSchedule[max(0, idx)]
         refreshTimer?.invalidate()
+        // The retry starts the cycle again, so a retry that works goes back to a fresh code every
+        // interval instead of leaving the one it fetched to run out on screen.
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
-            self?.fetchAndDisplayQR()
+            self?.startQRRefreshCycle()
         }
     }
 
@@ -258,7 +261,7 @@ final class LibraryViewModel {
         }
 
         fetchAndDisplayQR()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
             self?.fetchAndDisplayQR()
         }
     }
