@@ -258,6 +258,7 @@ extension AppState {
             }
             ServerStatusTracker.shared.noteSyncResult(true)
             recordSyncSource(.backend)
+            retryOwedConflictCheck()
             #if os(iOS)
             // The fetch landed, so there is a network and a session: settle the notification
             // settings document too, so changes from other devices show up. This runs after the

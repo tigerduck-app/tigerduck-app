@@ -80,6 +80,29 @@ struct ReenableCheckSignOutTests {
     }
 }
 
+/// `AppState.conflictCheckIsOwed`: when a full sync or a revision poll that reached the server runs
+/// the pending re-enable check again. The outbox holds a course setting while the Assignments check
+/// is pending, and the check used to run only from the Settings screens, so one that failed offline
+/// kept the setting from the server until the next visit there.
+struct OwedConflictCheckTests {
+    @Test("A check that failed, or none this launch, runs again once the server answers")
+    func aFailedCheckRunsAgain() {
+        #expect(AppState.conflictCheckIsOwed(owed: true, pending: ["assignments"], checking: false, awaitingAnswer: false))
+    }
+
+    @Test("A check that reached the server is not run again, so a dismissed dialog does not come back by itself")
+    func aCheckThatReachedTheServerWaitsForSettings() {
+        #expect(!AppState.conflictCheckIsOwed(owed: false, pending: ["assignments"], checking: false, awaitingAnswer: false))
+    }
+
+    @Test("Nothing pending, a check running, or a verdict waiting for the user starts none")
+    func nothingToRunOrAlreadyRunning() {
+        #expect(!AppState.conflictCheckIsOwed(owed: true, pending: [], checking: false, awaitingAnswer: false))
+        #expect(!AppState.conflictCheckIsOwed(owed: true, pending: ["assignments"], checking: true, awaitingAnswer: false))
+        #expect(!AppState.conflictCheckIsOwed(owed: true, pending: ["assignments"], checking: false, awaitingAnswer: true))
+    }
+}
+
 /// `AppState.markForReenableCheck`: which categories switched back on wait for the re-enable check.
 /// A device that has not taken a category's data holds no copy of it, so the check has nothing to
 /// compare there, and Use Local would send this device's own over the server's.

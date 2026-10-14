@@ -287,6 +287,10 @@ final class AppState {
     /// In-flight guard for ``checkPendingConflicts``. See the comment there.
     var isCheckingConflicts = false
 
+    /// Whether no re-enable check has reached the server since this launch or the last one failed.
+    /// See ``retryOwedConflictCheck()``.
+    var conflictCheckOwed = true
+
     /// courseNo → local delete timestamp. The sync reconcile skips
     /// "un-deleting" a course still listed by the server if the user deleted it
     /// within the grace window — its backend DELETE may not have propagated

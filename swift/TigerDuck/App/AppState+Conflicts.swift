@@ -143,6 +143,7 @@ extension AppState {
             }
             do {
                 let json = try await pushCoordinator.fetchFullSync()
+                conflictCheckOwed = false
                 var diffs: [String] = []
                 var serverMarkedAssignments = Set<String>()
 
@@ -303,9 +304,12 @@ extension AppState {
                         )
                     } else {
                         Defaults[.pendingConflictCategories].subtract(checked)
+                        // The edits the check held can go now rather than at the next tick.
+                        cloudSyncCoordinator.scheduleTick()
                     }
                 }
             } catch {
+                conflictCheckOwed = true
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
                 if case PushAPIError.httpStatus(401, _) = error, retriesLeft > 0 {
                     let reloginOk = await attemptBackendRelogin()
@@ -334,6 +338,24 @@ extension AppState {
         if reenableConflict == nil, !unchecked.isEmpty {
             checkPendingConflicts()
         }
+    }
+
+    /// Runs the pending re-enable check once a full sync or a revision poll has reached the server,
+    /// if it is owed one. Until a check runs, the outbox holds the edits of its categories.
+    func retryOwedConflictCheck() {
+        guard Self.conflictCheckIsOwed(
+            owed: conflictCheckOwed, pending: Defaults[.pendingConflictCategories],
+            checking: isCheckingConflicts, awaitingAnswer: reenableConflict != nil
+        ) else { return }
+        checkPendingConflicts()
+    }
+
+    /// Whether the pending categories are owed a check: none has reached the server since this
+    /// launch or since the last one failed, none is running, and no verdict waits for the user.
+    nonisolated static func conflictCheckIsOwed(
+        owed: Bool, pending: Set<String>, checking: Bool, awaitingAnswer: Bool
+    ) -> Bool {
+        owed && !pending.isEmpty && !checking && !awaitingAnswer
     }
 
     /// The categories a finished re-enable check leaves to another: those marked while it ran, which
