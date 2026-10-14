@@ -287,9 +287,9 @@ final class AppState {
     /// In-flight guard for ``checkPendingConflicts``. See the comment there.
     var isCheckingConflicts = false
 
-    /// Whether no re-enable check has given a verdict since this launch, or the last one failed or
-    /// had its result dropped. See ``retryOwedConflictCheck()``.
-    var conflictCheckOwed = true
+    /// When a full sync or a revision poll runs the pending re-enable check again by itself.
+    /// See ``retryOwedConflictCheck()``.
+    var conflictCheckRetry = ConflictCheckRetry()
 
     /// courseNo → local delete timestamp. The sync reconcile skips
     /// "un-deleting" a course still listed by the server if the user deleted it

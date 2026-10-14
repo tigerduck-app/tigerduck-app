@@ -80,26 +80,97 @@ struct ReenableCheckSignOutTests {
     }
 }
 
-/// `AppState.conflictCheckIsOwed`: when a full sync or a revision poll that reached the server runs
+/// `AppState.ConflictCheckRetry`: when a full sync or a revision poll that reached the server runs
 /// the pending re-enable check again. The outbox holds a course setting while the Assignments check
 /// is pending, and the check used to run only from the Settings screens, so one that failed offline
 /// kept the setting from the server until the next visit there.
-struct OwedConflictCheckTests {
-    @Test("A check that failed or had its result dropped, or none this launch, runs once the server answers")
-    func aFailedCheckRunsAgain() {
-        #expect(AppState.conflictCheckIsOwed(owed: true, pending: ["assignments"], checking: false, awaitingAnswer: false))
+struct ConflictCheckRetryTests {
+    private static let start = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private static func isDue(
+        _ retry: AppState.ConflictCheckRetry, after seconds: TimeInterval = 0,
+        pending: Set<String> = ["assignments"], checking: Bool = false, awaitingAnswer: Bool = false
+    ) -> Bool {
+        retry.isDue(
+            pending: pending, checking: checking, awaitingAnswer: awaitingAnswer,
+            now: start.addingTimeInterval(seconds)
+        )
     }
 
-    @Test("A check that gave a verdict is not run again, so a dismissed dialog does not come back by itself")
-    func aCheckWithAVerdictWaitsForSettings() {
-        #expect(!AppState.conflictCheckIsOwed(owed: false, pending: ["assignments"], checking: false, awaitingAnswer: false))
+    @Test("A check is owed from launch, but none starts with nothing pending, one running or a dialog up")
+    func owedFromLaunch() {
+        let retry = AppState.ConflictCheckRetry()
+
+        #expect(Self.isDue(retry))
+        #expect(!Self.isDue(retry, pending: []))
+        #expect(!Self.isDue(retry, checking: true))
+        #expect(!Self.isDue(retry, awaitingAnswer: true))
     }
 
-    @Test("Nothing pending, a check running, or a verdict waiting for the user starts none")
-    func nothingToRunOrAlreadyRunning() {
-        #expect(!AppState.conflictCheckIsOwed(owed: true, pending: [], checking: false, awaitingAnswer: false))
-        #expect(!AppState.conflictCheckIsOwed(owed: true, pending: ["assignments"], checking: true, awaitingAnswer: false))
-        #expect(!AppState.conflictCheckIsOwed(owed: true, pending: ["assignments"], checking: false, awaitingAnswer: true))
+    /// A weak link can answer the small revision poll every ten seconds while the snapshot keeps
+    /// timing out, and each `/sync/full` costs the server a log row and pushes its own sync back.
+    @Test("A failed check runs again only after a wait that doubles with each failure, up to half an hour")
+    func failuresBackOff() {
+        var retry = AppState.ConflictCheckRetry()
+
+        retry.noteFailure(at: Self.start)
+        #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay - 1))
+        #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
+
+        retry.noteFailure(at: Self.start)
+        #expect(!Self.isDue(retry, after: 2 * AppState.ConflictCheckRetry.firstDelay - 1))
+        #expect(Self.isDue(retry, after: 2 * AppState.ConflictCheckRetry.firstDelay))
+
+        for _ in 0..<20 { retry.noteFailure(at: Self.start) }
+        #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.maxDelay - 1))
+        #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.maxDelay))
+    }
+
+    @Test("A verdict settles the check, a dropped result is owed again after the wait, and one answered meanwhile changes nothing")
+    func outcomesMoveWhatIsOwed() {
+        var retry = AppState.ConflictCheckRetry()
+
+        retry.note(.clear(["assignments"]), at: Self.start)
+        #expect(!Self.isDue(retry, after: 3600))
+        retry.note(.resolvedMeanwhile, at: Self.start)
+        #expect(!Self.isDue(retry, after: 3600))
+
+        retry.note(.dropped, at: Self.start)
+        #expect(!Self.isDue(retry, after: 1))
+        #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
+
+        retry.note(.conflict(["assignments"]), at: Self.start)
+        #expect(!Self.isDue(retry, after: 3600))
+        // The wait starts over after a verdict.
+        retry.noteFailure(at: Self.start)
+        #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
+    }
+}
+
+/// `AppState.conflictCheckOutcome`: what a finished re-enable check does with its result.
+struct ConflictCheckOutcomeTests {
+    @Test("A sign-out, sync turned off or the lock screen since the check started drops its result")
+    func overtakenResultsAreDropped() {
+        #expect(AppState.conflictCheckOutcome(
+            mayWrite: false, checked: ["assignments"], stillPending: ["assignments"], foundDifference: true
+        ) == .dropped)
+    }
+
+    @Test("A check whose categories were all answered while it ran reports nothing")
+    func answeredMeanwhileReportsNothing() {
+        #expect(AppState.conflictCheckOutcome(
+            mayWrite: true, checked: ["assignments"], stillPending: ["courses"], foundDifference: true
+        ) == .resolvedMeanwhile)
+    }
+
+    @Test("A difference asks about the categories still pending, and none clears them, which drains the outbox")
+    func verdictsCoverTheCategoriesStillPending() {
+        #expect(AppState.conflictCheckOutcome(
+            mayWrite: true, checked: ["assignments", "courses"], stillPending: ["assignments"], foundDifference: true
+        ) == .conflict(["assignments"]))
+        #expect(AppState.conflictCheckOutcome(
+            mayWrite: true, checked: ["assignments"], stillPending: ["assignments", "courses"], foundDifference: false
+        ) == .clear(["assignments"]))
     }
 }
 
