@@ -16,6 +16,7 @@ private struct FlipToLibraryModifier: ViewModifier {
         content
             .onAppear { reconcile() }
             .onChange(of: appState.flipToLibraryEnabled) { _, _ in reconcile() }
+            .onChange(of: appState.isLibraryLoggedIn) { _, _ in reconcile() }
             .onChange(of: scenePhase) { _, new in
                 // Tear down only on .background. .inactive comes with transient
                 // interruptions (Control Center, a banner), and tearing down then would
@@ -33,8 +34,11 @@ private struct FlipToLibraryModifier: ViewModifier {
     private var shouldBeActive: Bool {
         UIDevice.current.userInterfaceIdiom == .phone
             && FlipDetector.isSupported
-            && appState.flipToLibraryEnabled
-            && scenePhase != .background
+            && FlipToLibraryGate.isArmed(
+                enabled: appState.flipToLibraryEnabled,
+                signedInToLibrary: appState.isLibraryLoggedIn,
+                inBackground: scenePhase == .background
+            )
     }
 
     private func reconcile() {
@@ -57,7 +61,7 @@ private struct FlipToLibraryModifier: ViewModifier {
         // Fire-time guards: settings can flip while a sensor event was in
         // flight, and the library session can come and go independently of
         // the registration gate.
-        guard appState.flipToLibraryEnabled else { return }
+        guard appState.flipToLibraryEnabled, appState.isLibraryLoggedIn else { return }
 
         // Skip while a modal is up: SwiftUI may reject or defer the root-level prompt sheet
         // over it, leaving `pending` set, and a tab switch would land behind it. Sheets are
@@ -91,6 +95,14 @@ private struct FlipToLibraryModifier: ViewModifier {
               let root = window.rootViewController
         else { return false }
         return root.presentedViewController != nil
+    }
+}
+
+/// Whether the flip listens: with the switch on and a library account signed in, as the switch in
+/// Settings shows it, and the app not in the background.
+enum FlipToLibraryGate {
+    static func isArmed(enabled: Bool, signedInToLibrary: Bool, inBackground: Bool) -> Bool {
+        enabled && signedInToLibrary && !inBackground
     }
 }
 
