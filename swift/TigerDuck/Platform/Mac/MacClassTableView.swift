@@ -30,6 +30,7 @@ struct MacClassTableView: View {
     @State private var detailMoodlePath: [MoodleCourseRoute] = []
     @State private var showAddCourse: Bool = false
     @State private var shareModel: ClassTableShareModel?
+    @State private var shareAvailability = ClassTableShareModel.AvailabilityMemo()
     @State private var showImportPicker = false
     @State private var importModel: ClassTableImportModel?
     /// Non-nil while the macOS color picker sheet is presented. Set from the
@@ -220,7 +221,8 @@ struct MacClassTableView: View {
                     .disabled(!ClassTableShareModel.canShare(
                         studentId: appState.authService.storedStudentId,
                         shownTerm: .init(semester: selectedSemester, courses: courses),
-                        semesters: availableSemesters
+                        semesters: availableSemesters,
+                        memo: shareAvailability
                     ))
                 }
             }

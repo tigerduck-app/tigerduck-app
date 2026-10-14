@@ -67,6 +67,11 @@ enum SSOLoginService {
 
     private nonisolated static let storedPasswordPosts = AsyncSerialLock()
 
+    /// How many automatic posts of the stored password wait for the one under way.
+    nonisolated static func storedPasswordPostsWaiting() async -> Int {
+        await storedPasswordPosts.waiterCount
+    }
+
     /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
     /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
     /// refused before either latched it, and the school counts both toward the lockout. `body`
@@ -90,8 +95,9 @@ enum SSOLoginService {
     private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
 
     /// Runs `body` once every login started before it has finished. A login that meets the
-    /// SSO page clears the ssoam2 cookies, so two at once break each other; the one that
-    /// waited then finds the session signed in and needs no credentials.
+    /// SSO page clears the ssoam2 cookies, so two at once break each other. An automatic login
+    /// that waited then finds the session signed in and posts no password; one the user typed
+    /// still posts what was typed.
     static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
         if isLoginRunning {
             await withCheckedContinuation { waitingLogins.append($0) }
@@ -115,25 +121,28 @@ enum SSOLoginService {
     /// a sign-out moves it, the login throws `CancellationError` before its next request.
     /// `interactive` marks a sign-in the user started; any other posts no password once the
     /// school has rejected it (``storedPasswordRejected``), and runs under
-    /// ``postingStoredPassword(_:)``.
+    /// ``postingStoredPassword(_:)``. `logFailure` gets each failure but a cancellation.
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
         studentId: String,
         password: String,
         generation: Int,
-        interactive: Bool = false
+        interactive: Bool = false,
+        logFailure: @escaping @MainActor (any Error) -> Void = {
+            AppLogger.captureError($0, context: ["service": "ssoEnsureServiceLogin"])
+        }
     ) async throws -> Bool {
         guard !interactive else {
             return try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: true
+                generation: generation, interactive: true, logFailure: logFailure
             )
         }
         return try await postingStoredPassword {
             try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: false
+                generation: generation, interactive: false, logFailure: logFailure
             )
         }
     }
@@ -144,13 +153,14 @@ enum SSOLoginService {
         studentId: String,
         password: String,
         generation: Int,
-        interactive: Bool
+        interactive: Bool,
+        logFailure: @escaping @MainActor (any Error) -> Void
     ) async throws -> Bool {
         try await oneAtATime {
             try checkSignedIn(generation)
             let signedIn = try await performServiceLogin(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: interactive
+                generation: generation, interactive: interactive, logFailure: logFailure
             )
             if interactive, signedIn { storedPasswordRejected = false }
             return signedIn
@@ -167,7 +177,8 @@ enum SSOLoginService {
         studentId: String,
         password: String,
         generation: Int,
-        interactive: Bool
+        interactive: Bool,
+        logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
             // Steps 1 and 2: Visit service URL (follows redirects automatically) and resolve any
@@ -276,7 +287,7 @@ enum SSOLoginService {
         } catch SSOLoginError.loginFailed(let reason) {
             throw SSOLoginError.loginFailed(reason: reason)
         } catch {
-            AppLogger.captureError(error, context: ["service": "ssoEnsureServiceLogin"])
+            if !AppLogger.isCancellation(error) { logFailure(error) }
             throw error
         }
     }

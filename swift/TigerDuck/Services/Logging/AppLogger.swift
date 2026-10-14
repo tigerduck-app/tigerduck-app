@@ -18,6 +18,11 @@ nonisolated enum AppLogger {
         diagnostics.error("\(errorLine(error, context: context), privacy: .private)")
     }
 
+    /// A task the user ended, by leaving a screen or signing out, which is no failure to log.
+    static func isCancellation(_ error: any Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
+    }
+
     static func breadcrumb(_ message: String, category: String) {
         diagnostics.info("\(category, privacy: .public): \(scrubSensitive(message), privacy: .private)")
     }

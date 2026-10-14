@@ -9,6 +9,7 @@ nonisolated final class SSOServerStub: URLProtocol {
         let headers: [String: String]
         let body: String
         var followTo: URL?
+        var failure: URLError.Code?
 
         static func page(_ html: String, status: Int = 200) -> Answer {
             Answer(status: status, headers: [:], body: html)
@@ -22,6 +23,11 @@ nonisolated final class SSOServerStub: URLProtocol {
         /// A redirect the session follows to `url`, which the stub then answers.
         static func follow(to url: URL) -> Answer {
             Answer(status: 302, headers: ["Location": url.absoluteString], body: "", followTo: url)
+        }
+
+        /// A request that ends with `code` instead of an answer, such as one its caller cancelled.
+        static func failure(_ code: URLError.Code) -> Answer {
+            Answer(status: 0, headers: [:], body: "", failure: code)
         }
     }
 
@@ -74,6 +80,10 @@ nonisolated final class SSOServerStub: URLProtocol {
 
         guard let answer else {
             client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
+            return
+        }
+        if let failure = answer.failure {
+            client?.urlProtocol(self, didFailWithError: URLError(failure))
             return
         }
         var headers = answer.headers

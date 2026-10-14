@@ -44,17 +44,20 @@ final class TimeSliderViewModel {
     init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
         self.isQuietDay = isQuietDay
         hapticGenerator.prepare()
-        // Quiet days can change while the courses do not: a "still have class"
-        // toggle, or a holiday published (the calendar store then posts
-        // `dataDidUpdate`). Rebuild then, rather than wait for the slider to reappear.
-        quietDayObservers = [AppConstants.holidayNotifyDidChange, AppConstants.dataDidUpdate]
-            .map { name in
-                NotificationCenter.default.addObserver(
-                    forName: name, object: nil, queue: .main
-                ) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.reloadQuietDays() }
-                }
+        // Which classes meet can change while the courses do not: a "still have class"
+        // toggle, a holiday published (the calendar store then posts `dataDidUpdate`) or a
+        // class skipped. Rebuild then, rather than wait for the slider to reappear.
+        quietDayObservers = [
+            AppConstants.holidayNotifyDidChange,
+            AppConstants.dataDidUpdate,
+            AppConstants.courseSkipStateDidChange,
+        ].map { name in
+            NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reloadQuietDays() }
             }
+        }
     }
 
     /// Home's slider. Its window spans weeks, so near either end of the term it reaches days
@@ -80,9 +83,9 @@ final class TimeSliderViewModel {
         }
     }
 
-    /// Rebuild around the same center when which days are quiet may have
-    /// changed. Unlike `configure`, it leaves the selected time where the
-    /// user put it.
+    /// Rebuild around the same center when which days are quiet, or which
+    /// classes are skipped, may have changed. Unlike `configure`, it leaves the
+    /// selected time where the user put it.
     func reloadQuietDays() {
         rebuildTimeline(around: timelineCenterDate)
     }
@@ -93,7 +96,7 @@ final class TimeSliderViewModel {
             from: allCourses,
             centerDate: center,
             dayRadius: TimeSliderMetrics.timelineDayRadius
-        ).filter { !isQuietDay($0.date) }
+        ).filter { !isQuietDay($0.date) && !$0.course.isSkipped(on: $0.date) }
         rebuildAnchors()
     }
 

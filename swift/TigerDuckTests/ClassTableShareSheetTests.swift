@@ -219,6 +219,30 @@ struct ClassTableShareTermsTests {
         ), "the term on screen answers without the caches")
     }
 
+    /// The actions menu and the Mac toolbar ask on every redraw, and the answer can decode every term's
+    /// files (https://github.com/tigerduck-app/tigerduck-app/issues/422).
+    @Test("the menu item's answer is worked out again only once the term on screen or the caches change")
+    func menuItemKeepsItsAnswer() throws {
+        let store = Cache()
+        let memo = ClassTableShareModel.AvailabilityMemo()
+        let empty = ClassTableShareModel.Term(semester: "1151", courses: [])
+        let canShare = { (shown: ClassTableShareModel.Term) in
+            ClassTableShareModel.canShare(
+                studentId: "B11300000", shownTerm: shown, semesters: ["1151", "1142"], cache: store.cache, memo: memo
+            )
+        }
+        store.cache.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142")
+        #expect(canShare(empty))
+
+        // Removed behind the cache's back, so only a fresh read could tell.
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("cache", isDirectory: true))
+        #expect(canShare(empty))
+
+        store.cache.saveDeletedCourseNos([])
+        #expect(!canShare(empty))
+        #expect(canShare(.init(semester: "1151", courses: [SDCourse(courseNo: "CS1010001", courseName: "Programming")])))
+    }
+
     @Test("an empty displayed term does not resurrect cached courses or enable sharing")
     func emptyDisplayedTerm() {
         let store = Cache()
