@@ -18,14 +18,22 @@ struct CourseColorPickerSheetTests {
         var hexes: [UInt32] = []
     }
 
+    /// The generation `Presenter` last built the sheet under.
+    private final class Built {
+        var generation: Int?
+        func record(_ generation: Int) { self.generation = generation }
+    }
+
     /// Reads the generation in `body`, as the class table's sheet closure does.
     private struct Presenter: View {
         let login: Login
         let course: SDCourse
         let picks: Picks
+        let built: Built
 
         var body: some View {
             let generation = login.generation
+            let _ = built.record(generation)
             CourseColorPickerSheet(
                 course: course,
                 isCurrent: { login.generation == generation },
@@ -38,8 +46,9 @@ struct CourseColorPickerSheetTests {
     func aPresetSavesOnlyForTheAccountThatOpenedTheSheet(signsOut: Bool) async throws {
         let login = Login()
         let picks = Picks()
+        let built = Built()
         let course = SDCourse(courseNo: "CS1010001", courseName: "A", schedule: [2: ["3"]])
-        let host = UIHostingController(rootView: Presenter(login: login, course: course, picks: picks))
+        let host = UIHostingController(rootView: Presenter(login: login, course: course, picks: picks, built: built))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
         window.makeKeyAndVisible()
@@ -50,8 +59,7 @@ struct CourseColorPickerSheetTests {
         try await waitUntil { Self.element(labeled: label, in: host.view) != nil }
         if signsOut {
             login.generation += 1
-            host.view.layoutIfNeeded()
-            try await Task.sleep(for: .milliseconds(100))
+            try await waitUntil { built.generation == login.generation }
         }
         let swatch = try #require(Self.element(labeled: label, in: host.view))
         _ = swatch.accessibilityActivate()
