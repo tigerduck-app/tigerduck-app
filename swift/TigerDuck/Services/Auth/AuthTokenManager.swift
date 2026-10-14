@@ -23,8 +23,14 @@ actor AuthTokenManager {
     private var signInGeneration = 0
     /// What a refresh that the sign-out of `generation` overtook got, for that sign-out's
     /// ``endSession()``: the access token of a reply, or whether the refresh token may go once
-    /// more, which it may after one send the backend did not turn down.
+    /// more, which it may below ``refreshTokenUseLimit`` uses if the backend did not turn it down.
     private var lateRefresh: (generation: Int, accessToken: String?, mayResend: Bool)?
+    /// How many times the backend may have used the stored refresh token without this device
+    /// keeping the pair: sends that got no reply, a server error or a 200 it could not keep. The
+    /// backend rotates a token sent again while its successor is unused and takes a third use for
+    /// theft, which revokes every session of the device. A new pair starts it over.
+    private var refreshTokenUses = 0
+    static let refreshTokenUseLimit = 2
 
     /// Re-evaluated on every request, like ``PushAPIClient``, so an endpoint
     /// override applied at runtime moves login/refresh together with the
@@ -223,13 +229,13 @@ actor AuthTokenManager {
     /// for instead.
     func endSession() async -> String? {
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
-        let refreshOut = refreshTask, generation = signInGeneration
+        let refreshOut = refreshTask, generation = signInGeneration, uses = refreshTokenUses
         logout()
         guard let refresh else { return nil }
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
         // That refresh sent this token once, or twice after a lost reply, and the backend takes a
-        // third use for theft, which revokes every session of the device. So it goes once more
-        // only after one send the backend did not turn down.
+        // third use for theft, which revokes every session of the device. So it goes once more only
+        // below the use limit, earlier refreshes included, and if the backend did not turn it down.
         if let refreshOut {
             _ = await refreshOut.value
             let late = lateRefresh?.generation == generation ? lateRefresh : nil
@@ -237,6 +243,7 @@ actor AuthTokenManager {
             if let token = late?.accessToken { return token }
             if let late, !late.mayResend { return nil }
         }
+        guard uses < Self.refreshTokenUseLimit else { return nil }
         struct RefreshResponse: Decodable { let access_token: String }
         guard let (data, http) = await postRefresh(refresh), http.statusCode == 200 else { return nil }
         return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
@@ -252,40 +259,48 @@ actor AuthTokenManager {
     }
 
     private func refresh() async -> String? {
-        guard let refreshToken else { return nil }
+        guard refreshToken != nil else { return nil }
         let generation = signInGeneration
         // Suspended before the reply is stored, the app loses the pair the server rotated to, and
         // the old token it sends later revokes every session of the device.
         let endBackgroundTask = await beginBackgroundTask()
-        let token = await refresh(sending: refreshToken, generation: generation)
+        let token = await refreshStoredToken(generation: generation)
         await endBackgroundTask()
         return token
     }
 
-    private func refresh(sending refreshToken: String, generation: Int) async -> String? {
+    private func refreshStoredToken(generation: Int) async -> String? {
         struct RefreshResponse: Decodable {
             let access_token: String
             let refresh_token: String
             let expires_in: Int
         }
 
+        // Read after the await above, together with its uses.
+        guard signInGeneration == generation, let refreshToken else { return nil }
         // A request with no reply may still have rotated the token. While the pair it sent is unused,
         // for up to 24 hours, the backend answers the old token once more with a fresh pair; a
-        // second reuse is taken for theft.
-        var reply = await postRefresh(refreshToken)
-        var sends = 1
-        if reply == nil, signInGeneration == generation {
-            reply = await postRefresh(refreshToken)
-            sends = 2
+        // second reuse is taken for theft, so past the limit only a sign-in brings a session.
+        var uses = refreshTokenUses
+        guard uses < Self.refreshTokenUseLimit else {
+            return await signedInAgain(since: generation) ? accessToken : nil
         }
+        var reply = await postRefresh(refreshToken)
+        if Self.mayHaveUsed(reply) { uses += 1 }
+        if reply == nil, signInGeneration == generation, uses < Self.refreshTokenUseLimit {
+            reply = await postRefresh(refreshToken)
+            if Self.mayHaveUsed(reply) { uses += 1 }
+        }
+        if self.refreshToken == refreshToken { refreshTokenUses = uses }
+        let mayResend = uses < Self.refreshTokenUseLimit
         guard let (data, http) = reply else {
-            noteOvertaken(generation, accessToken: nil, mayResend: sends == 1)
+            noteOvertaken(generation, accessToken: nil, mayResend: mayResend)
             return nil
         }
 
         if http.statusCode == 200 {
             guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else {
-                noteOvertaken(generation, accessToken: nil, mayResend: sends == 1)
+                noteOvertaken(generation, accessToken: nil, mayResend: mayResend)
                 return nil
             }
             guard signInGeneration == generation else {
@@ -302,14 +317,14 @@ actor AuthTokenManager {
         let turnedDown = (400...499).contains(http.statusCode) && ![410, 429].contains(http.statusCode)
         // Answered after a sign-out: the session it turned down is the departing account's.
         guard signInGeneration == generation else {
-            noteOvertaken(generation, accessToken: nil, mayResend: sends == 1 && !turnedDown)
+            noteOvertaken(generation, accessToken: nil, mayResend: mayResend && !turnedDown)
             return nil
         }
         guard turnedDown else { return nil }
 
-        if let relogin = onRefreshFailed, await relogin(), signInGeneration == generation {
-            return accessToken
-        }
+        if await signedInAgain(since: generation) { return accessToken }
+        // If a sign-out overtook the relogin, its `endSession()` sends no token the backend turned down.
+        noteOvertaken(generation, accessToken: nil, mayResend: false)
         // Only a 401 says the token is dead. Another 4xx keeps it, so a relogin that cannot run
         // behind a locked screen does not sign the device out. A sign-out during the relogin
         // leaves the next account's session alone.
@@ -324,6 +339,19 @@ actor AuthTokenManager {
     private func noteOvertaken(_ generation: Int, accessToken: String?, mayResend: Bool) {
         guard signInGeneration != generation else { return }
         lateRefresh = (generation, accessToken, mayResend)
+    }
+
+    /// Whether the relogin that stands in for a refresh worked, with no sign-out meanwhile.
+    private func signedInAgain(since generation: Int) async -> Bool {
+        guard let relogin = onRefreshFailed else { return false }
+        return await relogin() && signInGeneration == generation
+    }
+
+    /// Whether the backend may have used the token a refresh sent: it answers a 4xx before it
+    /// touches the token, while no reply or a server error leaves that open.
+    private static func mayHaveUsed(_ reply: (Data, HTTPURLResponse)?) -> Bool {
+        guard let (_, http) = reply else { return true }
+        return !(400...499).contains(http.statusCode)
     }
 
     /// Sends one refresh request. Nil when no HTTP reply came back, as on a timeout.
@@ -348,6 +376,7 @@ actor AuthTokenManager {
     private func store(access: String, refresh: String, expiresIn: Int) {
         self.accessToken = access
         self.refreshToken = refresh
+        refreshTokenUses = 0
         self.expiresAt = Date.now.addingTimeInterval(TimeInterval(expiresIn))
         tokens.save(Self.accessTokenKey, access)
         tokens.save(Self.refreshTokenKey, refresh)
