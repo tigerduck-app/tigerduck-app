@@ -92,24 +92,7 @@ build number.
 
 ### 3. Synthesize highlights
 
-Read `git log <prev-tag>..HEAD --oneline` and group commits. Pick 2–4 user/product-meaningful items, **skip pure refactors and internal cleanups**. Phrase as one comma-separated line with a leading theme emoji.
-
-**Theme emoji conventions** (be consistent with existing rows):
-
-| Emoji | Theme |
-|:---:|---|
-| 🌏 | i18n / locale / RTL |
-| 📣 | bulletins / announcements |
-| 📊 | scores / GPA / charts |
-| 🚀 | backend / infrastructure launch |
-| 🤖 | Android / FCM / cross-platform |
-| 🎨 | theme / customization |
-| 📚 | assignments / Moodle |
-| 📋 | class table |
-| 🏛️ | library |
-| 🔔 | push / Live Activity / notifications |
-
-If the version is a fix-only release (no headline feature), drop the emoji and lead with a plain summary.
+Read `git log <prev-tag>..HEAD --oneline` and group commits. Pick the user/product-meaningful items, **skip pure refactors and internal cleanups**. Phrase them as one line, separated by `、` in `README.md` and by commas in `README.en.md`, as the existing rows are. **No emoji**: no row has one.
 
 ### 4. Update README.md (繁中) + README.en.md (English) in lockstep
 
@@ -131,8 +114,8 @@ Color is **`00BB00`**. Do not change.
 ```markdown
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
-| **`v<NEW>`** | YYYY-MM-DD | <emoji> <highlight in zh-Hant> |
-| **`v<PREV>`** | ... | (existing row) |
+| `v<NEW>` | YYYY-MM-DD | <highlights in zh-Hant> |
+| `v<PREV>` | ... | (existing row) |
 ```
 
 `README.en.md` (English — section `## Release History`):
@@ -140,11 +123,11 @@ Color is **`00BB00`**. Do not change.
 ```markdown
 | Version | Date | Highlights |
 |:---:|:---:|---|
-| **`v<NEW>`** | YYYY-MM-DD | <emoji> <highlight in English> |
-| **`v<PREV>`** | ... | (existing row) |
+| `v<NEW>` | YYYY-MM-DD | <highlights in English> |
+| `v<PREV>` | ... | (existing row) |
 ```
 
-Date is the bump date in `YYYY-MM-DD` (today, unless user specifies). Always use the literal version cell format **``` **`vX.Y.Z`** ```** — bold + backticks.
+Date is the bump date in `YYYY-MM-DD` (today, unless user specifies). The version cell is the version in backticks, `` `vX.Y.Z` ``, not bold, as in every existing row.
 
 If the version unlocks new product capability, also tick the matching item in the **Roadmap / 開發規劃** section and append `` `vX.Y.Z` `` after the description, in place of a "下一版推出" / "coming in the next release" note. Don't invent roadmap entries; only check off ones that already exist.
 
@@ -271,7 +254,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 - **Two READMEs always move together.** Never update one without the other.
 - **`whatsnew.json` moves with them.** Every marketing bump gets an entry, both locales, fix-only releases included.
 - **Badge color is `00BB00`** (green). Don't switch palette.
-- **Version cell format:** `` **`vX.Y.Z`** ``
+- **Version cell format:** `` `vX.Y.Z` `` (backticks, not bold). **No emoji** in the row.
 - **Date:** `YYYY-MM-DD` in the table.
 - **Commit type:** `chore(release):` for version bumps, `docs(README):` for follow-up doc-only fixes.
 - **No `Co-Authored-By`** trailer.
@@ -288,7 +271,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 - [ ] `whatsnew.json` has a `<NEW>` key with both `zh-TW` and `en`, and still parses
 - [ ] Both READMEs have the new badge URL and link target
 - [ ] Both version-history tables have the new row at the **top** (right under the header divider)
-- [ ] Date is `YYYY-MM-DD`, version cell is `` **`vX.Y.Z`** ``
+- [ ] Date is `YYYY-MM-DD`, version cell is `` `vX.Y.Z` ``, and the row has no emoji
 - [ ] Commit body is in English, no `Co-Authored-By`
 - [ ] `git status` after commit shows only unrelated untracked/dirty files (submodule pointer, ad-hoc docs)
 
