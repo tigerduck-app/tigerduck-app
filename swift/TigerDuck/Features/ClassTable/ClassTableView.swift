@@ -138,6 +138,9 @@ struct ClassTableView: View {
                 tableSwitches += 1
                 viewModel.showShownTable()
             }
+            .onChange(of: appState.authService.loginGeneration) { _, _ in
+                viewModel.closeOwnEdits()
+            }
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
                     course: course,

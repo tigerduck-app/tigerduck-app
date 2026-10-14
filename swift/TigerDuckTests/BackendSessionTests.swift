@@ -369,6 +369,32 @@ struct BackendTokenRefreshTests {
 @Suite("Backend sign-in")
 @MainActor
 struct BackendSignInTests {
+    @Test("the sign-ins after the school's store nothing once the account has signed out")
+    func servicesAfterASignOutStoreNothing() async throws {
+        let backend = BackendFixture(signedIn: false)
+        let harvests = CallCount()
+        let auth = AuthService(
+            keychainHasCredentials: { false },
+            notificationCenter: NotificationCenter(),
+            moodleTokens: .standIn(harvests: harvests)
+        )
+        auth.authTokenManager = backend.manager
+        let keychain = MemoryKeychain.signedIn()
+        // A live library token skips the library sign-in, which would reach the library's server.
+        let expiry = Int64(Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000)
+        try keychain.setObject(Data("library-token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
+        try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
+
+        await SecureStore.$sharedForTesting.withValue(keychain) {
+            await auth.signInToServices(
+                studentId: "B11000000", password: "password", generation: auth.loginGeneration &- 1
+            )
+        }
+
+        #expect(harvests.value == 0)
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+    }
+
     @Test("an unlock signs a signed-out backend back in")
     func unlockSignsTheBackendIn() async throws {
         let backend = BackendFixture(signedIn: false)

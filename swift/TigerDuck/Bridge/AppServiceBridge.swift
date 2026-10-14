@@ -119,10 +119,12 @@ enum AppServiceBridge {
                             authService?.loginGeneration == startGeneration
                         }
                     )
-                    await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .courseSelection) }
+                    await MainActor.run {
+                        record(.ok, for: .courseSelection, round: startGeneration, authService: authService)
+                    }
                 } catch {
                     await MainActor.run {
-                        ServerStatusTracker.shared.set(.failed, for: .courseSelection)
+                        record(.failed, for: .courseSelection, round: startGeneration, authService: authService)
                         AppLogger.captureError(error, context: [
                             "service": "fetchEnrolledCourseNos",
                             "semester": semester,
@@ -222,11 +224,25 @@ enum AppServiceBridge {
             return courses
         } catch {
             await MainActor.run {
-                ServerStatusTracker.shared.set(.failed, for: .courseSelection)
+                record(.failed, for: .courseSelection, round: startGeneration, authService: authService)
                 AppLogger.captureError(error, context: ["bridge": "fetchCourses", "semester": semester])
             }
             return DataCache.shared.loadCourses(semester: semester)
         }
+    }
+
+    /// Records a round's answer from `server`, unless the account signed out while the round ran:
+    /// sign-out reset the tracker, and the departing account's answer is not the next one's.
+    static func record(
+        _ status: ServerStatus,
+        for server: ServerKind,
+        note: String? = nil,
+        round startGeneration: Int,
+        authService: AuthService,
+        tracker: ServerStatusTracker = .shared
+    ) {
+        guard authService.loginGeneration == startGeneration else { return }
+        tracker.set(status, for: server, note: note)
     }
 
     /// The course numbers a term renders, in source priority order, deduped.
