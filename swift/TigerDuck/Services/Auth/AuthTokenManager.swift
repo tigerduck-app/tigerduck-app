@@ -357,10 +357,16 @@ actor AuthTokenManager {
         let mayHaveUsed: Bool
     }
 
-    /// `URLError`s of a request that never left the device: no network, or no host to reach.
+    /// `URLError`s of a request that never left the device: no network or no host to reach, a TLS
+    /// handshake that failed, as behind a captive portal's sign-in page, or a request iOS refuses
+    /// to send. A timeout, a dropped connection or a cancel may come after the token went out.
     private static let unsentErrors: Set<URLError.Code> = [
         .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff, .callIsActive,
         .cannotFindHost, .dnsLookupFailed, .cannotConnectToHost,
+        .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+        .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid,
+        .clientCertificateRejected, .clientCertificateRequired,
+        .appTransportSecurityRequiresSecureConnection, .badURL, .unsupportedURL,
     ]
 
     private func postRefresh(_ refreshToken: String) async -> RefreshSend {

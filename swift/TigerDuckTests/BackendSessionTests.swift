@@ -104,6 +104,43 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R0", "R0", "R0"])
     }
 
+    /// Behind a captive portal's sign-in page, as on campus or public Wi-Fi, the TLS handshake
+    /// fails before the request carrying the token goes out; so does a request iOS refuses to send.
+    @Test("a refresh that fails before its request goes out keeps the token for the next one", arguments: [
+        URLError.Code.secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+        .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid, .clientCertificateRejected,
+        .clientCertificateRequired, .appTransportSecurityRequiresSecureConnection, .badURL, .unsupportedURL,
+    ])
+    func refreshFailingBeforeItGoesOutKeepsTheToken(code: URLError.Code) async throws {
+        let backend = BackendFixture()
+        let failure = SettingsAPIStub.StubResponse(statusCode: 0, body: Data(), failure: code)
+        SettingsAPIStub.enqueue(failure, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(failure, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
+        #expect(await backend.manager.validAccessToken() == "A1")
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R0"])
+    }
+
+    @Test("a refresh that may have reached the backend still counts", arguments: [
+        URLError.Code.timedOut, .networkConnectionLost, .cancelled,
+    ])
+    func refreshThatMayHaveGoneOutCounts(code: URLError.Code) async throws {
+        let backend = BackendFixture()
+        let failure = SettingsAPIStub.StubResponse(statusCode: 0, body: Data(), failure: code)
+        SettingsAPIStub.enqueue(failure, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(failure, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
     @Test("a sign-out after a refresh that never left the device still gets a token for its unregister")
     func signOutAfterAnOfflineRefreshSendsTheToken() async throws {
         let backend = BackendFixture()
