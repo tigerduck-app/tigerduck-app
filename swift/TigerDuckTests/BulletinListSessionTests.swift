@@ -115,11 +115,18 @@ extension BulletinListSessionTests {
                 Defaults[.savedAnnouncementDepartmentsData] = saved
             }
             let client = Stub().client
+            @MainActor func nextVisit(known: Set<String>) -> Set<String> {
+                let model = BulletinsViewModel(apiClient: client)
+                model.restoreRememberedOrgs(known: known)
+                return model.selectedOrgs
+            }
             Defaults[.rememberAnnouncementFilter] = true
             BulletinsViewModel(apiClient: client).selectedOrgs = ["TEST-A"]
-            #expect(BulletinsViewModel(apiClient: client).selectedOrgs == ["TEST-A"])
+            #expect(nextVisit(known: ["TEST-A", "TEST-B"]) == ["TEST-A"])
+            // A department the chips no longer list would filter the list with nothing to show it.
+            #expect(nextVisit(known: ["TEST-B"]).isEmpty)
             Defaults[.rememberAnnouncementFilter] = false
-            #expect(BulletinsViewModel(apiClient: client).selectedOrgs.isEmpty)
+            #expect(nextVisit(known: ["TEST-A", "TEST-B"]).isEmpty)
         }
     }
 }

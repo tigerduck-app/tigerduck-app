@@ -54,9 +54,12 @@ struct BulletinsView: View {
             // Kick both loads off concurrently — taxonomy and bulletin
             // list are independent, and the list's cache-seed already
             // paints before either resolves.
-            async let tax: Void = taxonomy.loadIfNeeded()
             async let bulletins: Void = viewModel.loadIfNeeded()
-            _ = await (tax, bulletins)
+            await taxonomy.loadIfNeeded()
+            if let orgs = taxonomy.state.taxonomy?.orgs {
+                viewModel.restoreRememberedOrgs(known: Set(orgs.map(\.id)))
+            }
+            await bulletins
         }
         .onDisappear { viewModel.pausePrefetch() }
         .onChange(of: scenePhase) { oldPhase, newPhase in

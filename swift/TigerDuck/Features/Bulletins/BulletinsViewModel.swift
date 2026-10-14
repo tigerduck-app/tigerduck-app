@@ -27,7 +27,7 @@ final class BulletinsViewModel {
     private(set) var hasMore: Bool = true
 
     /// Saved on every change and restored at the next visit while "Remember bulletin filter" is
-    /// on, which clears it when turned off.
+    /// on, which clears it when turned off. See ``restoreRememberedOrgs(known:)``.
     var selectedOrgs: Set<String> = [] {
         didSet {
             refilter()
@@ -54,6 +54,7 @@ final class BulletinsViewModel {
     /// Set while the list is off screen, so a first page that lands after the screen left does
     /// not start the walk behind it.
     private var isPrefetchPaused = false
+    private var hasRestoredOrgs = false
 
     init(apiClient: BulletinAPIClient? = nil) {
         // The default URL provider re-resolves PushServerConfig on every request, as
@@ -67,10 +68,16 @@ final class BulletinsViewModel {
             items = Self.sortedUnique(cached)
             filteredItems = items
         }
-        if Defaults[.rememberAnnouncementFilter] {
-            selectedOrgs = Self.savedOrgs
-            refilter()
-        }
+    }
+
+    /// Brings back the remembered department filter once the department chips can show it:
+    /// only departments the taxonomy still lists, and not over a choice made on this visit.
+    /// Without the taxonomy, as offline, the list stays unfiltered rather than filtered unseen.
+    func restoreRememberedOrgs(known: Set<String>) {
+        guard Defaults[.rememberAnnouncementFilter], !hasRestoredOrgs, selectedOrgs.isEmpty else { return }
+        hasRestoredOrgs = true
+        let orgs = Self.savedOrgs.intersection(known)
+        if !orgs.isEmpty { selectedOrgs = orgs }
     }
 
     static var savedOrgs: Set<String> {
