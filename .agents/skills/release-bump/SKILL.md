@@ -51,6 +51,24 @@ extensions or watch app disagree with the host app on `CFBundleShortVersionStrin
 `CURRENT_PROJECT_VERSION` (the build number) is a **separate 18-line set** with
 no placeholders: all 18, test targets included, always move together.
 
+### 1a. Review the release locally until nothing High is left
+
+Every bump, a patch or a build-number-only one too, waits for a local code review of everything
+the release ships, `git diff origin/main...origin/dev`, and the bump commit comes only once a
+review finds nothing of High severity or above. High is what a reviewer may call Important: a
+real user-facing bug, data loss, a privacy or security problem, or a likely crash.
+
+- Split a large diff by area into slices of about 5k changed lines (core and services, Moodle,
+  class table and extensions, mail, the rest) and review one slice at a time.
+- One reviewer agent per round, read-only, whose prompt says to work alone and start no other
+  agents. It reports Critical / High / Minor findings, each with file:line, a concrete failure
+  scenario and its confidence, and skips what an open issue already tracks.
+- Fix each Critical and High finding in its own pull request to `dev`, with a test that fails
+  without the fix. A fix that touches security, data loss, an account switch or a migration is
+  reviewed again; repeat until that review finds nothing High or above.
+- Each Minor finding becomes an issue; it does not hold the release.
+- The release pull request lists the review's fixes and closes their issues.
+
 ### 2. Bump pbxproj — marketing version *and* build number (skip if already staged)
 
 **Every marketing bump also increments the build number by 1.** The repo's
@@ -264,6 +282,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 
 ## Verification before commit
 
+- [ ] The local review of `origin/main...origin/dev` (step 1a) ended with nothing High or above
 - [ ] `grep -c "MARKETING_VERSION = <NEW>;" swift/TigerDuck.xcodeproj/project.pbxproj` → exactly **10**
 - [ ] `grep -c "CURRENT_PROJECT_VERSION = <NEW_BUILD>;" swift/TigerDuck.xcodeproj/project.pbxproj` → exactly **18**
 - [ ] `whatsnew.json` has a `<NEW>` key with both `zh-TW` and `en`, and still parses
