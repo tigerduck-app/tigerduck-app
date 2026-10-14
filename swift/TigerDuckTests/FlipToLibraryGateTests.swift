@@ -27,10 +27,17 @@ struct FlipToLibraryGateTests {
     @Test("the gesture is offered once, to a library account with the switch off")
     func theGestureIsOfferedOnceAfterALibrarySignIn() {
         #expect(!Defaults.Key<Bool>.flipToLibraryEnabled.defaultValue)
-        #expect(FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: false))
-        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: false, enabled: false, asked: false))
-        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: true, asked: false))
-        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: true))
+        #expect(FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: false, onLibraryPage: false))
+        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: false, enabled: false, asked: false, onLibraryPage: false))
+        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: true, asked: false, onLibraryPage: false))
+        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: true, onLibraryPage: false))
+    }
+
+    /// Someone who signs in on the Library page is there to show the code, which the offer's sheet
+    /// would cover (https://github.com/tigerduck-app/tigerduck-app/issues/529).
+    @Test("the gesture is not offered over the Library page")
+    func theOfferWaitsUntilTheLibraryPageIsLeft() {
+        #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: false, onLibraryPage: true))
     }
 
     /// What's New and the update prompt share the root with the offer, and two sheets set there in

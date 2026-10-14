@@ -53,6 +53,7 @@ struct LibraryView: View {
         }
         .background(Color.backgroundPrimary)
         .onAppear {
+            appState.visibleLibraryPages += 1
             // Wired before `load()`/`onAppear()`, both of which can already
             // discover an expired token and flip the stored state.
             viewModel.onLibraryStateChanged = { appState.notifyLibraryStateChanged() }
@@ -64,6 +65,7 @@ struct LibraryView: View {
             }
         }
         .onDisappear {
+            appState.visibleLibraryPages -= 1
             viewModel.onDisappear()
             releaseExpressTransit()
             restoreBrightness()
