@@ -46,6 +46,7 @@ final class LibraryViewModel {
     @ObservationIgnored var refreshInterval: TimeInterval = 30
 
     @ObservationIgnored nonisolated(unsafe) private var accountObserver: (any NSObjectProtocol)?
+    @ObservationIgnored nonisolated(unsafe) private var signInObserver: (any NSObjectProtocol)?
 
     init() {
         // `queue: nil` delivers synchronously on the posting thread, and
@@ -55,6 +56,11 @@ final class LibraryViewModel {
             forName: LibraryService.accountDidChange, object: nil, queue: nil
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.dropCodeForAccountChange() }
+        }
+        signInObserver = NotificationCenter.default.addObserver(
+            forName: LibraryService.signInDidChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.signOutIfRefusedElsewhere() }
         }
     }
 
@@ -181,12 +187,7 @@ final class LibraryViewModel {
                 // A lapsed token whose stored credentials did not answer, as on a weak signal at the
                 // gate, backs off and tries again; only a signed-out account gets the sign-in form.
                 if !LibraryService.hasAccount {
-                    isLoggedIn = false
-                    consecutiveErrors = 0
-                    LibraryQRCache.shared.clear()
-                    LibraryQRImageCache.shared.clear()
-                    stopTimers()
-                    onLibraryStateChanged?()
+                    showSignInForm()
                 } else {
                     // Transient (5xx etc.) — back off so a flapping
                     // server can't keep the 30s timer hammering it.
@@ -195,6 +196,24 @@ final class LibraryViewModel {
                 }
             }
         }
+    }
+
+    private func showSignInForm() {
+        isLoggedIn = false
+        consecutiveErrors = 0
+        LibraryQRCache.shared.clear()
+        LibraryQRImageCache.shared.clear()
+        stopTimers()
+        onLibraryStateChanged?()
+    }
+
+    /// A refusal of the stored password found by another caller, such as the sign-in at launch or
+    /// the Watch's, signs the account out everywhere else at once. A page backing off after a failed
+    /// request would show itself signed in, with that request's error, until its retry.
+    private func signOutIfRefusedElsewhere() {
+        guard isLoggedIn, !LibraryService.hasAccount else { return }
+        errorMessage = nil
+        showSignInForm()
     }
 
     /// Restart the refresh timer with the current backoff interval. Holds
@@ -314,5 +333,6 @@ final class LibraryViewModel {
     deinit {
         stopTimers()
         if let accountObserver { NotificationCenter.default.removeObserver(accountObserver) }
+        if let signInObserver { NotificationCenter.default.removeObserver(signInObserver) }
     }
 }
