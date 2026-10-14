@@ -228,8 +228,8 @@ struct ScheduleSyncServiceTests {
     }
 
     /// Seen from the Monday evening before a term that begins on Tuesday, the window reaches the
-    /// new term's first day. The timetable on hand is the old term's, so its Tuesday class is not
-    /// the new term's and goes up for neither; the new term's own list files that day.
+    /// new term's first day. The timetable on hand is the old term's, so its Tuesday class does not
+    /// go up; a list of the new term's courses files that day.
     @Test func theNewTermsFirstDay_getsNoneOfTheOldTermsClasses() {
         let ctx = Self.context()
         let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
