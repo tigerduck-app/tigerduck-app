@@ -132,10 +132,10 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.usage?.rooms.map(\.room) == ["TR-210", "IB-508"])
         #expect(harness.model.directory?.buildings.map(\.code) == ["IB", "TR"])
 
-        harness.serve(Pages.page())
+        harness.serveDay([])
         harness.model.select(day: Self.day(15))
         try await waitUntil { harness.model.content == .noData }
-        #expect(harness.requestCount == 4)
+        #expect(harness.requestCount == 6)
     }
 
     @Test("a failed read shows the error, and a later pull that fails keeps the rooms on screen")
@@ -216,7 +216,7 @@ struct EmptyClassroomViewModelTests {
 
         harness.model.disappear()
         gate.open()
-        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]))
+        harness.serveDay([Pages.row("TR-209", "..............")])
         let usage = try await harness.service.usage(
             on: Self.day(14), isToday: true, force: false, credentials: Harness.credentials
         )
@@ -250,10 +250,12 @@ struct EmptyClassroomViewModelTests {
         harness.model.appear()
         try await waitUntil { harness.requestCount == 3 }
 
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus"))
         harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]), gate: thursday)
         harness.model.select(day: Self.day(15))
         // Thursday's read starts only once Wednesday's has ended, so its handling has run.
-        try await waitUntil { harness.requestCount == 4 }
+        try await waitUntil { harness.requestCount == 6 }
         #expect(harness.model.content == .loading)
 
         thursday.open()
@@ -277,11 +279,11 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.selectedDay == Self.day(14))
         #expect(harness.requestCount == 3)
 
-        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]))
+        harness.serveDay([Pages.row("TR-209", "..............")])
         harness.model.appear()
         try await waitUntil { harness.model.usage?.rooms.map(\.room) == ["TR-209"] }
 
-        harness.serve(Pages.page(rows: [Pages.row("TR-301", "..............")]))
+        harness.serveDay([Pages.row("TR-301", "..............")])
         harness.now.date = Self.time(16, 8, 30)
         harness.model.returnToApp()
         try await waitUntil { harness.model.usage?.rooms.map(\.room) == ["TR-301"] }

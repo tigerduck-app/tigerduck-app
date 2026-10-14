@@ -14,6 +14,7 @@ struct ClassroomUsageServiceTests {
         var generation = 1
         var signIns = 0
         var signInAttempts = 0
+        var now = Date()
     }
 
     @MainActor
@@ -37,7 +38,8 @@ struct ClassroomUsageServiceTests {
                     account.signIns += 1
                     return true
                 },
-                timeouts: (600, 600)
+                timeouts: (600, 600),
+                now: { account.now }
             )
         }
 
@@ -72,9 +74,9 @@ struct ClassroomUsageServiceTests {
         }
 
         /// `generation` is the session the credentials were read in, the current one unless given.
-        func usage(on day: Date, force: Bool = false, generation: Int? = nil) async throws -> CampusUsage {
+        func usage(on day: Date, isToday: Bool = false, force: Bool = false, generation: Int? = nil) async throws -> CampusUsage {
             try await service.usage(
-                on: day, isToday: true, force: force,
+                on: day, isToday: isToday, force: force,
                 credentials: .init(
                     studentId: "B00000000", password: "not-a-password",
                     generation: generation ?? account.generation
@@ -114,19 +116,63 @@ struct ClassroomUsageServiceTests {
         #expect(harness.service.keptUsage(on: Self.day(10, 14)) == usage)
     }
 
-    @Test("a pull reads the day again from the kept page, without signing in")
-    func forcedReadUsesTheKeptPage() async throws {
+    /// A page left over would post the date it already shows, which the site answers from that
+    /// page's own state (https://github.com/tigerduck-app/tigerduck-app/issues/513).
+    @Test("a pull reads the day again from a new campus page, without signing in")
+    func forcedReadStartsFromANewCampusPage() async throws {
         let harness = Harness()
         harness.serveFirstDay()
         _ = try await harness.usage(on: Self.day(10, 14))
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus again"))
         harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")], viewState: "again"))
 
         let usage = try await harness.usage(on: Self.day(10, 14), force: true)
 
         #expect(usage.rooms.map(\.room) == ["TR-209"])
-        #expect(harness.requests.count == 5)
-        #expect(harness.form(4)["__EVENTARGUMENT"] == "9783")
-        #expect(harness.form(4)["__VIEWSTATE"] == "second")
+        #expect(harness.requests.count == 7)
+        #expect(harness.requests[4].httpMethod == "GET")
+        #expect(harness.form(6)["__EVENTARGUMENT"] == "9783")
+        #expect(harness.form(6)["__VIEWSTATE"] == "campus again")
+        #expect(harness.account.signIns == 0)
+    }
+
+    /// The campus page already holds today's grid
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/475).
+    @Test("today is read off the campus page without posting the date")
+    func todayIsReadOffTheCampusPage() async throws {
+        let harness = Harness()
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(rows: [Pages.row("TR-212", "cc....cc..b...")], viewState: "campus"))
+
+        let usage = try await harness.usage(on: Self.day(10, 14), isToday: true)
+
+        #expect(usage.rooms.map(\.room) == ["TR-212"])
+        #expect(harness.requests.map(\.httpMethod) == ["GET", "POST"])
+    }
+
+    /// Past 12 hours a kept day is too old to show while it reloads, so a failed reload shows the
+    /// failure (https://github.com/tigerduck-app/tigerduck-app/issues/477).
+    @Test("a kept day is shown while it reloads for up to 12 hours")
+    func aKeptDayAgesOut() async throws {
+        let harness = Harness()
+        harness.serveFirstDay()
+        let usage = try await harness.usage(on: Self.day(10, 14))
+
+        harness.account.now = harness.account.now.addingTimeInterval(11 * 60 * 60)
+        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == usage)
+        harness.account.now = harness.account.now.addingTimeInterval(2 * 60 * 60)
+        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
+    }
+
+    /// Leaving the screen or signing out ends a read; the device log keeps real failures only
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/514).
+    @Test("a cancelled read is not logged as a failure")
+    func cancellationsAreNotLogged() {
+        #expect(!ClassroomUsageService.isWorthLogging(CancellationError()))
+        #expect(!ClassroomUsageService.isWorthLogging(URLError(.cancelled)))
+        #expect(ClassroomUsageService.isWorthLogging(URLError(.timedOut)))
+        #expect(ClassroomUsageService.isWorthLogging(ClassroomUsageError.unreadable))
     }
 
     @Test("a date past the calendar's month steps to the next month first")
@@ -160,7 +206,7 @@ struct ClassroomUsageServiceTests {
 
         #expect(usage.rooms.map(\.room) == ["TR-209"])
         #expect(harness.account.signIns == 1)
-        #expect(harness.requests.dropFirst(4).map(\.httpMethod) == ["POST", "GET", "GET", "POST", "POST"])
+        #expect(harness.requests.dropFirst(4).map(\.httpMethod) == ["GET", "GET", "GET", "POST", "POST"])
     }
 
     @Test("a second page without the grid is an error")
