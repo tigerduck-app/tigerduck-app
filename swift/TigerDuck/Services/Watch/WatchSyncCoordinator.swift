@@ -251,25 +251,36 @@ extension WatchSyncCoordinator: WCSessionDelegate {
             replyHandler([:])
             return
         }
-        Task { @MainActor in
-            let cache = LibraryQRCache.shared
-            if let payload = cache.reusable() {
-                replyHandler([
-                    WatchWireFormat.LibraryQRKey.payload: payload,
-                    WatchWireFormat.LibraryQRKey.remaining: cache.remaining(),
-                ])
-                return
+        Task { @MainActor in replyHandler(await Self.libraryQRReply()) }
+    }
+
+    /// The answer to the Watch's library code request. A code fetched while the library account
+    /// signed out or changed is the departing account's, so it reaches neither the cache nor the
+    /// Watch.
+    static func libraryQRReply(
+        cache: LibraryQRCache = .shared,
+        generation: @MainActor () -> Int = { LibraryService.loginGeneration },
+        generate: () async throws -> String = { try await LibraryService.generateQRCode() }
+    ) async -> [String: Any] {
+        if let payload = cache.reusable() {
+            return [
+                WatchWireFormat.LibraryQRKey.payload: payload,
+                WatchWireFormat.LibraryQRKey.remaining: cache.remaining(),
+            ]
+        }
+        let started = generation()
+        do {
+            let payload = try await generate()
+            guard generation() == started else {
+                return [WatchWireFormat.LibraryQRKey.error: LibraryServiceError.credentialsNotFound.localizedDescription]
             }
-            do {
-                let payload = try await LibraryService.generateQRCode()
-                cache.store(payload)
-                replyHandler([
-                    WatchWireFormat.LibraryQRKey.payload: payload,
-                    WatchWireFormat.LibraryQRKey.remaining: LibraryQRCache.lifetime,
-                ])
-            } catch {
-                replyHandler([WatchWireFormat.LibraryQRKey.error: error.localizedDescription])
-            }
+            cache.store(payload)
+            return [
+                WatchWireFormat.LibraryQRKey.payload: payload,
+                WatchWireFormat.LibraryQRKey.remaining: LibraryQRCache.lifetime,
+            ]
+        } catch {
+            return [WatchWireFormat.LibraryQRKey.error: error.localizedDescription]
         }
     }
 }
