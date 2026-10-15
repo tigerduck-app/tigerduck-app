@@ -30,6 +30,9 @@ final class ScheduleSyncService {
         /// (`CourseSelectionService.semesterCode(on:calendar:)`): the day before a term begins,
         /// the window reaches the new term's first day, whose classes this list does not hold.
         let term: String
+        /// The term the window reaches after `term`, with its cached courses: the night before a
+        /// term begins, its first day is planned from its own timetable.
+        var nextTerm: (code: String, courses: [SDCourse])?
         /// The school calendar and the holidays this user still has class on.
         /// A class event on a day classes do not meet is left out, the rule
         /// the on-device resolver applies, since the server would start an
@@ -47,10 +50,13 @@ final class ScheduleSyncService {
 
     private var inflight: Task<Void, Never>?
 
+    /// How far ahead the uploaded events reach.
+    static let horizon: TimeInterval = 48 * 3600
+
     init(
         identity: PushIdentity,
         apiClient: PushAPIClient,
-        horizonHours: Double = 48
+        horizonHours: Double = ScheduleSyncService.horizon / 3600
     ) {
         self.identity = identity
         self.apiClient = apiClient
@@ -103,11 +109,14 @@ final class ScheduleSyncService {
         var events: [PushAPI.ScheduleEvent] = []
 
         let resolver = timelineResolver ?? CourseTimelineResolver()
-        let timeline = resolver.timeline(for: inputs.courses, around: now)
-        let futureSlots = timeline
+        let terms = [(code: inputs.term, courses: inputs.courses)] + (inputs.nextTerm.map { [$0] } ?? [])
+        let futureSlots = terms
+            .flatMap { term in
+                resolver.timeline(for: term.courses, around: now)
+                    .filter { CourseSelectionService.semesterCode(on: $0.date, calendar: inputs.calendar) == term.code }
+            }
             .filter { !$0.course.isSkipped(on: $0.date) }
             .filter { inputs.calendar.isClassDay($0.date, optedIn: inputs.optedInHolidayIDs) }
-            .filter { CourseSelectionService.semesterCode(on: $0.date, calendar: inputs.calendar) == inputs.term }
             .filter { $0.start >= now && $0.start <= horizonEnd }
 
         for slot in futureSlots {
@@ -214,10 +223,11 @@ extension ScheduleSyncService.Inputs {
     /// This device's upload, read off the same preferences the on-device
     /// resolver uses, with `liveActivityAvailable` taken from
     /// `effectiveLiveActivityEnabled`: with course sync off, or the user's own
-    /// Live Activity switch off, the server has nothing to start.
+    /// Live Activity switch off, the server has nothing to start. The terms are
+    /// read off `now`, the app's clock the window of `sync(inputs:now:)` is on.
     init(
-        courses: [SDCourse],
-        term: String,
+        now: Date,
+        courses: (_ term: String) -> [SDCourse],
         assignments: [SDAssignment],
         preferences: LiveActivityPreferencesStore,
         cloudSyncEnabled: Bool,
@@ -225,8 +235,9 @@ extension ScheduleSyncService.Inputs {
         calendar: AcademicCalendar,
         optedInHolidayIDs: Set<Int>
     ) {
+        let term = CourseSelectionService.semesterCode(on: now, calendar: calendar)
         self.init(
-            courses: courses,
+            courses: courses(term),
             assignments: assignments,
             accentHex: accentHex,
             classPreparingLeadTime: preferences.classPreparingLeadTime,
@@ -242,6 +253,8 @@ extension ScheduleSyncService.Inputs {
             calendar: calendar,
             optedInHolidayIDs: optedInHolidayIDs
         )
+        let later = CourseSelectionService.semesterCode(on: now.addingTimeInterval(ScheduleSyncService.horizon), calendar: calendar)
+        if later != term { nextTerm = (later, courses(later)) }
     }
 }
 #endif

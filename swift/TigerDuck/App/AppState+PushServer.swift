@@ -44,10 +44,9 @@ extension AppState {
                 )
             }
             #if os(iOS)
-            let term = CourseSelectionService.currentSemesterCode()
             return ScheduleSyncService.Inputs(
-                courses: courseProvider.currentCourses(semester: term),
-                term: term,
+                now: AppClock.now(),
+                courses: { self.courseProvider.currentCourses(semester: $0) },
                 assignments: DataCache.shared.loadAssignments(),
                 preferences: liveActivityPreferences,
                 cloudSyncEnabled: cloudSyncEnabled,
