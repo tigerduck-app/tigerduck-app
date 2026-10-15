@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `CredentialPost`'s rules on their own: which redirects of the sign-in form's POST it follows,
-/// and as what.
+/// `CredentialPost`'s rules on their own: where the sign-in form may post the password, and which
+/// redirects of that POST it follows, and as what.
 struct CredentialPostTests {
     /// The sign-in form's POST, as URLSession would propose it again for a redirect.
     private static func post(to string: String) throws -> URLRequest {
@@ -18,6 +18,25 @@ struct CredentialPostTests {
     private static func redirect(_ status: Int) throws -> HTTPURLResponse {
         let url = try #require(URL(string: "https://ssoam2.ntust.edu.tw/account/login"))
         return try #require(HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil))
+    }
+
+    @Test("the form posts only to ssoam2 over HTTPS")
+    func signInTarget() throws {
+        for string in ["https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2F", "HTTPS://ssoam2.ntust.edu.tw/"] {
+            let url = try #require(URL(string: string))
+            #expect(CredentialPost.isSignInTarget(url), "\(string)")
+        }
+        let elsewhere = [
+            "http://ssoam2.ntust.edu.tw/account/login",
+            "https://elsewhere.stub.invalid/account/login",
+            "https://ssoam2.ntust.edu.tw.elsewhere.stub.invalid/account/login",
+            "https://ssoam2.ntust.edu.tw@elsewhere.stub.invalid/account/login",
+            "https://ssoam.ntust.edu.tw/nidp/app/login",
+        ]
+        for string in elsewhere {
+            let url = try #require(URL(string: string))
+            #expect(!CredentialPost.isSignInTarget(url), "\(string)")
+        }
     }
 
     @Test("a 301, 302 or 303 is followed over HTTPS as a GET without the form", arguments: [301, 302, 303])

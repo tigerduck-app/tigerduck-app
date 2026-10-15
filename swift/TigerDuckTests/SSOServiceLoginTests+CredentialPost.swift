@@ -14,10 +14,23 @@ extension SSOServiceLoginTests {
         (302, "http://ssoam2.ntust.edu.tw/connect/authorize/callback?client_id=stub"),
     ]
 
+    /// Form actions the password may not go to.
+    nonisolated static let refusedActions = [
+        "https://elsewhere.stub.invalid/account/login",
+        "http://ssoam2.ntust.edu.tw/account/login",
+    ]
+
     /// Where ssoam2 sends a browser once the password is accepted.
     nonisolated static let authorizeCallback = URL(
         string: "https://ssoam2.ntust.edu.tw/connect/authorize/callback?client_id=stub"
     )!
+
+    /// The fixture sign-in form, posting to `action`.
+    static func signInForm(postingTo action: String) throws -> String {
+        let fixture = #"action="/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback""#
+        try #require(Pages.ssoam2Login.contains(fixture))
+        return Pages.ssoam2Login.replacingOccurrences(of: fixture, with: "action=\"\(action)\"")
+    }
 
     private func requests(to url: URL) -> [SSOServerStub.Request] {
         SSOServerStub.requests.filter { $0.url == url }
@@ -66,6 +79,24 @@ extension SSOServiceLoginTests {
         #expect(requests(to: Self.authorizeCallback).map(\.body) == [""])
     }
 
+    @Test("a sign-in posts no password to a form action off ssoam2 or over plain HTTP", arguments: refusedActions)
+    func signInPostsNoPasswordOffTheSignInHost(action: String) async throws {
+        let service = Self.serviceURL()
+        let page = try Self.signInForm(postingTo: action)
+        let outcome = await signIn(service) {
+            for _ in 0..<2 {
+                SSOServerStub.enqueue(.follow(to: Self.loginURL), for: service)
+                SSOServerStub.enqueue(.page(page), for: Self.loginURL)
+            }
+        }
+        #expect(posts.isEmpty)
+        guard case .failure(SSOLoginError.loginFailed(reason: nil)) = outcome.result else {
+            Issue.record("expected loginFailed, got \(outcome.result)")
+            return
+        }
+        #expect(!outcome.rejected)
+    }
+
     // MARK: - Moodle token renewal
 
     private func renewal(from page: String) async -> (Result<String, Error>, Bool) {
@@ -110,5 +141,18 @@ extension SSOServiceLoginTests {
         #expect(posts.map(\.url) == [Self.postURL])
         #expect(requests(to: Self.authorizeCallback).map(\.method) == ["GET"])
         #expect(requests(to: Self.authorizeCallback).map(\.body) == [""])
+    }
+
+    @Test("a renewal posts no password to a form action off ssoam2 or over plain HTTP", arguments: refusedActions)
+    func renewalPostsNoPasswordOffTheSignInHost(action: String) async throws {
+        let page = try Self.signInForm(postingTo: action)
+        SSOServerStub.reset()
+        let (outcome, rejected) = await renewal(from: page)
+        #expect(SSOServerStub.requests.isEmpty)
+        guard case .failure(MoodleWebserviceError.malformedResponse) = outcome else {
+            Issue.record("expected malformedResponse, got \(outcome)")
+            return
+        }
+        #expect(!rejected)
     }
 }

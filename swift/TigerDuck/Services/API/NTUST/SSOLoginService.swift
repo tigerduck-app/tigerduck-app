@@ -49,14 +49,6 @@ enum SSOLoginService {
         return String(data: data, encoding: big5)
     }
 
-    /// Hosts the SSO credential POST is allowed to target. A redirected /
-    /// compromised upstream returning a `<form action="https://attacker/">`
-    /// must never receive `Username=...&Password=...`, so we hard-fail any
-    /// resolved action whose host is not in this set.
-    private static let ssoActionHostAllowlist: Set<String> = [
-        "ssoam2.ntust.edu.tw",
-    ]
-
     /// The school rejected the stored password in a sign-in the user did not start. Each
     /// rejection counts toward the account's lockout, so those sign-ins stop posting it until
     /// the user signs in again.
@@ -246,13 +238,13 @@ enum SSOLoginService {
             }
 
             let actionURL = resolveURL(form.action, base: currentURL)
-            guard let actionHost = actionURL.host,
-                  ssoActionHostAllowlist.contains(actionHost) else {
+            guard CredentialPost.isSignInTarget(actionURL) else {
                 AppLogger.captureError(
                     SSOLoginError.loginFailed(reason: nil),
                     context: [
                         "service": "ssoEnsureServiceLogin",
                         "rejectedActionHost": actionURL.host ?? "<nil>",
+                        "rejectedActionScheme": actionURL.scheme ?? "<nil>",
                     ]
                 )
                 throw SSOLoginError.loginFailed(reason: nil)

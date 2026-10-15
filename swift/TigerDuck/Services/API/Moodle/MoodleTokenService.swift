@@ -462,6 +462,12 @@ actor MoodleTokenService {
 
             let postURL = URL(string: fields.action, relativeTo: responseURL)?
                 .absoluteURL ?? ssoBaseURL
+            // Nothing is posted, so this is no refusal: it pauses the renewal as other failures do.
+            guard CredentialPost.isSignInTarget(postURL) else {
+                throw MoodleWebserviceError.malformedResponse(
+                    detail: "SSO login form posts outside ssoam2",
+                )
+            }
             var postReq = URLRequest(url: postURL)
             postReq.httpMethod = "POST"
             postReq.setValue(

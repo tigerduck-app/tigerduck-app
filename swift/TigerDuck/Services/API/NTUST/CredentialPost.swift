@@ -4,6 +4,14 @@ import os
 /// The POST of the school's sign-in form, which carries the password: the SSO sign-in's in
 /// `SSOLoginService` and the Moodle token harvest's in `MoodleTokenService`.
 nonisolated enum CredentialPost {
+    private static let signInHost = "ssoam2.ntust.edu.tw"
+
+    /// Whether the form may post the credentials to `url`: the sign-in host over HTTPS, whatever
+    /// the page names as the form's action.
+    static func isSignInTarget(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "https" && url.host == signInHost
+    }
+
     /// The request a redirect of the POST is followed with, or nil to stop at the redirect, which
     /// is then the POST's answer. URLSession sends the form again to the `Location` of a 307 or a
     /// 308, so only a 301, 302 or 303 is followed, as a GET without the form and over HTTPS.
