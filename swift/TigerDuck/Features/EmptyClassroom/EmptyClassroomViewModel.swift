@@ -307,7 +307,8 @@ final class EmptyClassroomViewModel {
             return
         }
         guard let reader = reader() else { return }
-        if let kept = service.keptUsage(on: day) {
+        let kept = service.keptUsage(on: day)
+        if let kept {
             show(Self.content(for: kept.usage), readAt: kept.fetchedAt)
         } else {
             show(.loading)
@@ -334,8 +335,10 @@ final class EmptyClassroomViewModel {
             guard !Task.isCancelled, selectedDay == day, reader.isCurrent() else { return }
             switch outcome {
             case .success(let read):
+                // The kept day answers without the site being asked, which then says nothing
+                // about how the site answers now.
+                if read.fetchedAt != kept?.fetchedAt { siteStatus = .ok }
                 show(Self.content(for: read.usage), readAt: read.fetchedAt)
-                siteStatus = .ok
             case .failure(let error):
                 guard !(error is CancellationError) else { return }
                 siteStatus = .failed

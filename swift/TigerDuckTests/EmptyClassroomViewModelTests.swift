@@ -214,6 +214,28 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.siteStatus == .unknown)
     }
 
+    @Test("rooms kept from an earlier read leave the dot as the site last answered")
+    func keptRoomsLeaveTheStatus() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        #expect(harness.model.siteStatus == .ok)
+
+        for _ in 0..<4 { harness.serve(Pages.errorPage) }
+        harness.model.select(day: Self.day(15))
+        try await waitUntil { harness.model.content == .failed(offline: false) }
+        #expect(harness.model.siteStatus == .failed)
+
+        // Wednesday is kept and still fresh, so the site is not asked again.
+        let requests = harness.requestCount
+        harness.model.select(day: Self.day(14))
+        try await waitUntil { !harness.model.isReading }
+        #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
+        #expect(harness.requestCount == requests)
+        #expect(harness.model.siteStatus == .failed)
+    }
+
     @Test("the last sync is when the day on screen was read, which a failed pull leaves as it was")
     func lastSync() async throws {
         let harness = Harness(at: Self.time(14, 10, 5))
