@@ -33,6 +33,13 @@ final class EmptyClassroomViewModel {
     private(set) var content = Content.loading {
         didSet { if openRoomName != nil, openRoom == nil { openRoomName = nil } }
     }
+    /// `ClassroomUsageService.siteStatus`, copied here so the dot redraws: a new screen shows how
+    /// the site last answered, and a read that fails keeps the day on screen while the dot says so.
+    private(set) var siteStatus = ServerStatus.unknown
+    /// When the day on screen was read, for the dot's last sync; nil for a day nothing was read for.
+    private(set) var syncedAt: Date?
+    /// A read of the day shown is under way.
+    private(set) var isReading = false
     private(set) var classes: [ClassStop] = []
     private(set) var pickedBuilding: String?
     /// The room whose sheet is open. Only its name is kept, so the sheet shows the room as the
@@ -211,7 +218,8 @@ final class EmptyClassroomViewModel {
     /// screen the site is not read until the next ``appear()``.
     func accountChanged() {
         stopLoading()
-        content = .loading
+        show(.loading)
+        siteStatus = service.siteStatus
         pickedBuilding = Defaults[.emptyClassroomBuilding]
         reloadCourses()
         guard isOnScreen else { return }
@@ -231,7 +239,7 @@ final class EmptyClassroomViewModel {
         reloadCourses()
         guard let off = dayOff(selectedDay) else { return }
         stopLoading()
-        content = Self.content(for: off)
+        show(Self.content(for: off))
     }
 
     func select(day: Date) {
@@ -267,7 +275,7 @@ final class EmptyClassroomViewModel {
     }
 
     func retry() {
-        content = .loading
+        show(.loading)
         load(force: true)
     }
 
@@ -280,6 +288,13 @@ final class EmptyClassroomViewModel {
         loadTask?.cancel()
         loadTask = nil
         running = nil
+        isReading = false
+    }
+
+    /// Puts `content` on screen with the time it was read, nil for content read from nowhere.
+    private func show(_ content: Content, readAt: Date? = nil) {
+        self.content = content
+        syncedAt = readAt
     }
 
     private func load(force: Bool) {
@@ -289,21 +304,24 @@ final class EmptyClassroomViewModel {
         if !force, running?.day == day { return }
         stopLoading()
         if let off = dayOff(day) {
-            content = Self.content(for: off)
+            show(Self.content(for: off))
             return
         }
         guard let reader = reader() else { return }
-        if let kept = service.keptUsage(on: day) {
-            content = kept.rooms.isEmpty ? .noData : .rooms(kept)
+        let kept = service.keptUsage(on: day)
+        siteStatus = service.siteStatus
+        if let kept {
+            show(Self.content(for: kept.usage), readAt: kept.fetchedAt)
         } else {
-            content = .loading
+            show(.loading)
         }
         let isToday = AppConstants.taipeiCalendar.isDate(day, inSameDayAs: now)
         loads &+= 1
         let id = loads
         running = (day, id)
+        isReading = true
         loadTask = Task { [weak self, service] in
-            let outcome: Result<CampusUsage, any Error>
+            let outcome: Result<ClassroomUsageService.KeptUsage, any Error>
             do {
                 outcome = .success(try await service.usage(
                     on: day, isToday: isToday, force: force, credentials: reader.credentials
@@ -312,17 +330,26 @@ final class EmptyClassroomViewModel {
                 outcome = .failure(error)
             }
             guard let self else { return }
-            if running?.id == id { running = nil }
+            if running?.id == id {
+                running = nil
+                isReading = false
+            }
+            siteStatus = service.siteStatus
             guard !Task.isCancelled, selectedDay == day, reader.isCurrent() else { return }
             switch outcome {
-            case .success(let usage):
-                content = usage.rooms.isEmpty ? .noData : .rooms(usage)
+            case .success(let read):
+                show(Self.content(for: read.usage), readAt: read.fetchedAt)
             case .failure(let error):
+                guard !(error is CancellationError) else { return }
                 // A day already on screen stays when reading it again fails.
-                guard !(error is CancellationError), content == .loading else { return }
+                guard content == .loading else { return }
                 content = .failed(offline: Self.isOffline(error))
             }
         }
+    }
+
+    private static func content(for usage: CampusUsage) -> Content {
+        usage.rooms.isEmpty ? .noData : .rooms(usage)
     }
 
     private static func content(for off: EmptyClassroomSchedule.DayOff) -> Content {

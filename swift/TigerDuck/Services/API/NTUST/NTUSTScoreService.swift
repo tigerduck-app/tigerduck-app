@@ -32,24 +32,25 @@ enum NTUSTScoreService {
     /// updates are a weeks-to-months cadence, so stale-hit dominates.
     static let scoreReportCacheTTL: TimeInterval = 86_400
 
-    /// Load the student's score report. Honors a 24h disk cache unless
-    /// `forceRefresh` is set (e.g. pull-to-refresh, which shares the same
-    /// semantics as ``CourseSelectionService.fetchEnrolledCourseNos``).
+    /// Load the student's score report and when it was read from the school. Honors a 24h disk
+    /// cache unless `forceRefresh` is set (e.g. pull-to-refresh, which shares the same semantics
+    /// as ``CourseSelectionService.fetchEnrolledCourseNos``).
     static func fetchScoreReport(
         session: URLSession,
         studentId: String,
         password: String,
         forceRefresh: Bool = false,
         persistGuard: (@Sendable () -> Bool)? = nil
-    ) async throws -> ScoreReport {
+    ) async throws -> (report: ScoreReport, cachedAt: Date) {
         if !forceRefresh,
            let cached = DataCache.shared.loadScoreReport(studentId: studentId),
            Date().timeIntervalSince(cached.cachedAt) < scoreReportCacheTTL {
-            return cached.report
+            return cached
         }
 
         let generation = NTUSTSessionManager.shared.generation
-        if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
+        // Through the session handed in, so no request of this fetch goes out another way.
+        if !(await NTUSTSessionManager.shared.probeCookiesValid(using: session)) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: scoreRootURL,
@@ -82,7 +83,7 @@ enum NTUSTScoreService {
         if persistGuard?() ?? true {
             DataCache.shared.saveScoreReport(report, studentId: studentId)
         }
-        return report
+        return (report, Date())
     }
 
     /// Cached snapshot without the network call. Used by the view model to

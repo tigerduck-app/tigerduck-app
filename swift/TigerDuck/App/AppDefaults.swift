@@ -142,6 +142,9 @@ nonisolated extension Defaults.Keys {
     static let ssoLoginTimestamp = Key<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
     /// When Moodle last answered a whole assignment round for the signed-in account.
     static let schoolDataSyncedAt = Key<Date?>("schoolDataSyncedAt")
+    /// When the bulletin feed last gave its newest page; `BulletinsViewModel.forgetListSession()`
+    /// clears it at sign-out with the cached list.
+    static let bulletinsSyncedAt = Key<Date?>("bulletinsSyncedAt")
     /// The last `courses_reset_at` a full sync read, in server time, or `distantPast` once one has
     /// read none, for the signed-in account; see `AppState.coursesReset(server:lastSeen:)`. Only a
     /// full sync sets it: any other value can make the next sync apply an old reset, which drops the

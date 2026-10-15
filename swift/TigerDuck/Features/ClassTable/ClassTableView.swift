@@ -308,7 +308,7 @@ struct ClassTableView: View {
             Spacer()
             if pageAccessState != .loginRequired {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    SyncStatusDot(servers: [.moodle, .courseSelection, .backend])
+                    SyncStatusDot(servers: [.moodle, .courseSelection, .backend], lastSynced: .schoolData)
                     headerActions
                 }
             }

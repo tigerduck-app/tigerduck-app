@@ -196,7 +196,7 @@ struct MacFeatureDetail: View {
                 if feature != .gpa && feature != .announcements {
                     ToolbarItem(placement: .primaryAction) {
                         HStack(spacing: 8) {
-                            SyncStatusDot(servers: serversForFeature)
+                            SyncStatusDot(servers: serversForFeature, lastSynced: .schoolData)
                             MacGlobalRefreshButton(takesShortcut: !refreshShortcutClaimed)
                         }
                     }
