@@ -108,9 +108,9 @@ struct SecureStoreLockedReadTests {
         }
     }
 
-    /// The first launch after this update is often a locked one, with a session and no count of
-    /// its refresh token's sends. A refresh then counts each send, or a relaunch could send a token
-    /// two lost replies used a third time
+    /// A launch behind a locked screen can find a stored session with no count of its refresh
+    /// token's sends. A refresh then counts each send, or a relaunch could send a token two lost
+    /// replies used a third time
     /// (https://github.com/tigerduck-app/tigerduck-app/issues/604).
     @Test(arguments: absentReadsFailWhileLocked)
     func aLockedLaunchAfterTheUpdateCountsTheRefreshTokensSends(absentReadsFail: Bool) async throws {
