@@ -222,7 +222,8 @@ nonisolated struct MailFolderPage: Codable, Sendable {
     /// The UIDs a fetched window spans, the `\Deleted` mail `summaries` leaves out included, so a
     /// merge knows which listed rows the window answered for. Nil in a page merged from several.
     var windowUIDs: ClosedRange<UInt32>? = nil
-    /// When the folder's newest page was fetched. Nil in pages cached before it was recorded.
+    /// When the folder's newest page was fetched, or a later poll found it current. Nil in pages
+    /// cached before it was recorded.
     var fetchedAt: Date? = nil
 
     static func span(of uids: [UInt32]) -> ClosedRange<UInt32>? {
