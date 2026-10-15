@@ -37,6 +37,7 @@ struct CredentialPostTests {
             "https://ssoam2.ntust.edu.tw.elsewhere.stub.invalid/account/login",
             "https://ssoam2.ntust.edu.tw@elsewhere.stub.invalid/account/login",
             "https://ssoam.ntust.edu.tw/nidp/app/login",
+            "https://ssoam2.ntust.edu.tw./",
         ]
         for string in elsewhere {
             let url = try #require(URL(string: string))
