@@ -29,7 +29,7 @@ actor AuthTokenManager {
     /// keeping the pair: sends that may have reached it and got no reply, a server error or a 200
     /// it could not keep. The backend rotates a token sent again while its successor is unused and
     /// takes a third use for theft, which revokes every session of the device. A new pair starts
-    /// it over.
+    /// it over. Kept with the tokens, as the app can end before the next refresh signs in again.
     private var refreshTokenUses = 0
     static let refreshTokenUseLimit = 2
 
@@ -58,6 +58,7 @@ actor AuthTokenManager {
     static let accessTokenKey = "v3_access_token"
     static let refreshTokenKey = "v3_refresh_token"
     static let expiresAtKey = "v3_token_expires_at"
+    static let refreshTokenUsesKey = "v3_refresh_token_uses"
 
     /// A refresh with no reply by then goes once more, which the backend answers with a fresh pair
     /// while the pair it sent is unused, for up to 24 hours.
@@ -108,6 +109,7 @@ actor AuthTokenManager {
            let interval = TimeInterval(raw) {
             self.expiresAt = Date(timeIntervalSince1970: interval)
         }
+        self.refreshTokenUses = tokens.load(Self.refreshTokenUsesKey).flatMap(Int.init) ?? 0
     }
 
     var isLoggedIn: Bool { refreshToken != nil }
@@ -257,6 +259,7 @@ actor AuthTokenManager {
         tokens.delete(Self.accessTokenKey)
         tokens.delete(Self.refreshTokenKey)
         tokens.delete(Self.expiresAtKey)
+        tokens.delete(Self.refreshTokenUsesKey)
     }
 
     private func refresh() async -> String? {
@@ -282,16 +285,14 @@ actor AuthTokenManager {
         // A request with no reply may still have rotated the token. While the pair it sent is unused,
         // for up to 24 hours, the backend answers the old token once more with a fresh pair; a
         // second reuse is taken for theft, so past the limit only a sign-in brings a session.
-        var uses = refreshTokenUses
-        guard uses < Self.refreshTokenUseLimit else {
+        guard refreshTokenUses < Self.refreshTokenUseLimit else {
             return await signedInAgain(since: generation) ? accessToken : nil
         }
-        var send = await postRefresh(refreshToken)
-        if send.mayHaveUsed { uses += 1 }
-        if send.reply == nil, signInGeneration == generation, uses < Self.refreshTokenUseLimit {
-            send = await postRefresh(refreshToken)
-            if send.mayHaveUsed { uses += 1 }
+        var send = await postCounted(refreshToken, usedBefore: refreshTokenUses)
+        if send.reply == nil, signInGeneration == generation, send.uses < Self.refreshTokenUseLimit {
+            send = await postCounted(refreshToken, usedBefore: send.uses)
         }
+        let uses = send.uses
         if self.refreshToken == refreshToken { refreshTokenUses = uses }
         let reply = send.reply
         let mayResend = uses < Self.refreshTokenUseLimit
@@ -369,6 +370,24 @@ actor AuthTokenManager {
         .appTransportSecurityRequiresSecureConnection, .badURL, .unsupportedURL,
     ]
 
+    /// Sends `refreshToken` with its count on disk raised first, since the app can end before the
+    /// reply, and set after to what the send may have cost. Returns the reply and that count.
+    private func postCounted(
+        _ refreshToken: String, usedBefore uses: Int
+    ) async -> (reply: (Data, HTTPURLResponse)?, uses: Int) {
+        saveUses(uses + 1, of: refreshToken)
+        let send = await postRefresh(refreshToken)
+        let total = send.mayHaveUsed ? uses + 1 : uses
+        saveUses(total, of: refreshToken)
+        return (send.reply, total)
+    }
+
+    /// Only while `token` is the stored one: a sign-out or a sign-in may have replaced it meanwhile.
+    private func saveUses(_ uses: Int, of token: String) {
+        guard refreshToken == token else { return }
+        tokens.save(Self.refreshTokenUsesKey, String(uses))
+    }
+
     private func postRefresh(_ refreshToken: String) async -> RefreshSend {
         struct RefreshRequest: Encodable { let refresh_token: String }
         var request = URLRequest(
@@ -397,6 +416,9 @@ actor AuthTokenManager {
         tokens.save(Self.accessTokenKey, access)
         tokens.save(Self.refreshTokenKey, refresh)
         tokens.save(Self.expiresAtKey, String(expiresAt.timeIntervalSince1970))
+        // After the new token: ending in between keeps the old count on the new token, which only
+        // signs in again early, while the reverse would send the old token uncounted.
+        tokens.delete(Self.refreshTokenUsesKey)
     }
 
     /// The default for `beginBackgroundTask`. A Mac app is not suspended in the background, so
