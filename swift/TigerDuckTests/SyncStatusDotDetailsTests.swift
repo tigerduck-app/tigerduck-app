@@ -55,28 +55,28 @@ struct SyncStatusDotDetailsTests {
     }
 
     /// Five hours back reads the same for the next hour, however long the main thread stalls.
-    @Test("a page's own last sync shows its age")
+    @Test("a page's own last update shows its age")
     func aPageGivesItsOwnTime() async throws {
         let labels = try await Self.popoverLabels(.at(Date().addingTimeInterval(-5 * 3600)))
 
-        #expect(labels.contains(String(localized: "sync_status_last_synced")))
+        #expect(labels.contains(String(localized: "sync_status_last_updated")))
         #expect(labels.contains(String(format: String(localized: "sync_status_hours_ago_short"), 5)))
     }
 
     @Test("a page whose data never arrived says so")
-    func aPageThatNeverSyncedSaysSo() async throws {
+    func aPageThatNeverUpdatedSaysSo() async throws {
         let labels = try await Self.popoverLabels(.at(nil))
 
-        #expect(labels.contains(String(localized: "sync_status_last_synced")))
-        #expect(labels.contains(String(localized: "sync_status_never_synced")))
+        #expect(labels.contains(String(localized: "sync_status_last_updated")))
+        #expect(labels.contains(String(localized: "sync_status_never_updated")))
     }
 
-    @Test("a page showing nothing it read has no last sync")
+    @Test("a page showing nothing it read has no last update")
     func aPageThatReadNothingHasNoRow() async throws {
         let labels = try await Self.popoverLabels(.hidden)
 
         #expect(labels.contains(Self.name))
-        #expect(!labels.contains(String(localized: "sync_status_last_synced")))
+        #expect(!labels.contains(String(localized: "sync_status_last_updated")))
     }
 }
 #endif
