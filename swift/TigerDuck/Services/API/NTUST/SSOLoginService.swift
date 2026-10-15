@@ -342,6 +342,9 @@ enum SSOLoginService {
                   let resp = response as? HTTPURLResponse else {
                 return (currentHTML, currentURL)
             }
+            // Stopped at a redirect it may not follow: the service got nothing, though a live SSO
+            // session would let the sign-in pass for done.
+            guard !(300..<400).contains(resp.statusCode) else { throw SSOLoginError.invalidResponse }
             currentURL = resp.url ?? actionURL
             currentHTML = newHTML
         }

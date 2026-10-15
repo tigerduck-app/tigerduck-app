@@ -211,6 +211,8 @@ extension SSOServiceLoginTests {
             SSOServerStub.enqueue(.redirect(302, to: Self.authorizeCallback), for: Self.postURL)
             SSOServerStub.enqueue(.page(Self.bridgeForm(postingTo: target.absoluteString)), for: Self.authorizeCallback)
             SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: target)
+            // The SSO session is live, so only the stopped redirect says the service got nothing.
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
         }
         #expect(requests(to: target).map(\.method) == ["POST"])
         #expect(requests(to: elsewhere).isEmpty)
