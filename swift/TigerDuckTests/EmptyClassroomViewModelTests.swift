@@ -40,6 +40,8 @@ struct EmptyClassroomViewModelTests {
         let now: Now
         let service: ClassroomUsageService
         let model: EmptyClassroomViewModel
+        /// Another screen on the same service, as each visit from More or Home builds one.
+        let newScreen: @MainActor () -> EmptyClassroomViewModel
 
         init(at time: Date, holiday: Holiday? = nil, isInSession: @escaping @MainActor (Date) -> Bool = { _ in true }) {
             let now = Now(time)
@@ -54,20 +56,25 @@ struct EmptyClassroomViewModelTests {
                 timeouts: (600, 600)
             )
             let classTable = classTable
-            model = EmptyClassroomViewModel(
-                service: service,
-                clock: { now.date },
-                holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
-                isInSession: isInSession,
-                isClassDay: { _ in true },
-                courses: { classTable.courses },
-                rawRoom: { $0 }
-            )
             let signIn = signIn
-            model.reader = {
-                signIn.reads += 1
-                return .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
+            let service = service
+            newScreen = {
+                let model = EmptyClassroomViewModel(
+                    service: service,
+                    clock: { now.date },
+                    holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
+                    isInSession: isInSession,
+                    isClassDay: { _ in true },
+                    courses: { classTable.courses },
+                    rawRoom: { $0 }
+                )
+                model.reader = {
+                    signIn.reads += 1
+                    return .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
+                }
+                return model
             }
+            model = newScreen()
         }
 
         static let credentials = ClassroomUsageService.Credentials(
@@ -209,9 +216,63 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
         #expect(harness.model.siteStatus == .failed)
 
-        // The answer was the account before's.
+        // The answer was the account before's: a sign-out drops it, then the screen hears.
+        harness.service.forget()
         harness.model.accountChanged()
         #expect(harness.model.siteStatus == .unknown)
+        #expect(harness.newScreen().siteStatus == .unknown)
+    }
+
+    @Test("an account change on a day the site is not asked about greys the dot as well")
+    func accountChangeOnAWeekend() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        harness.model.select(day: Self.day(17))
+        #expect(harness.model.siteStatus == .ok)
+
+        harness.service.forget()
+        harness.model.accountChanged()
+
+        #expect(harness.model.siteStatus == .unknown)
+    }
+
+    @Test("a new screen shows how the site last answered, though it reads a kept day without asking")
+    func aNewScreenKeepsTheStatus() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        harness.model.disappear()
+        let requests = harness.requestCount
+
+        let again = harness.newScreen()
+        again.appear()
+        // At once, before the screen's own read has ended.
+        #expect(again.siteStatus == .ok)
+        try await waitUntil { !again.isReading }
+        #expect(again.usage?.rooms.map(\.room) == ["IB-508"])
+        #expect(harness.requestCount == requests)
+        #expect(again.siteStatus == .ok)
+    }
+
+    @Test("a new screen after a failed read shows the failure")
+    func aNewScreenKeepsTheFailure() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        for _ in 0..<4 { harness.serve(Pages.errorPage) }
+        await harness.model.refresh()
+        #expect(harness.model.siteStatus == .failed)
+        harness.model.disappear()
+
+        let again = harness.newScreen()
+        again.appear()
+        try await waitUntil { !again.isReading }
+        #expect(again.usage?.rooms.map(\.room) == ["IB-508"])
+        #expect(again.siteStatus == .failed)
     }
 
     @Test("rooms kept from an earlier read leave the dot as the site last answered")

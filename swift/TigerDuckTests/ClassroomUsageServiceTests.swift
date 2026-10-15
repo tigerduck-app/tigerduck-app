@@ -91,6 +91,30 @@ struct ClassroomUsageServiceTests {
         AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 9)) ?? .distantPast
     }
 
+    /// The finder's dot on any screen reads this, so it follows the reads that asked the site.
+    @Test("the site's last answer is kept for every screen until a new school session")
+    func siteStatus() async throws {
+        let harness = Harness()
+        #expect(harness.service.siteStatus == .unknown)
+        harness.serveFirstDay()
+        _ = try await harness.usage(on: Self.day(10, 14))
+        #expect(harness.service.siteStatus == .ok)
+
+        for _ in 0..<4 { harness.serve(Pages.errorPage) }
+        await #expect(throws: ClassroomUsageError.unreadable) {
+            try await harness.usage(on: Self.day(10, 14), force: true)
+        }
+        #expect(harness.service.siteStatus == .failed)
+
+        // The kept day answers without asking, and leaves the failure.
+        _ = try await harness.usage(on: Self.day(10, 14))
+        #expect(harness.service.siteStatus == .failed)
+
+        harness.account.generation += 1
+        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
+        #expect(harness.service.siteStatus == .unknown)
+    }
+
     @Test("a day is read from the campus page through every page of the grid, then kept")
     func readsEveryPage() async throws {
         let harness = Harness()

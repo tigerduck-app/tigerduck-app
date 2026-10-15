@@ -33,8 +33,8 @@ final class EmptyClassroomViewModel {
     private(set) var content = Content.loading {
         didSet { if openRoomName != nil, openRoom == nil { openRoomName = nil } }
     }
-    /// How the booking site answered the last read, for the header's dot: a read that fails
-    /// keeps the day already on screen, and only the dot then says so.
+    /// `ClassroomUsageService.siteStatus`, copied here so the dot redraws: a new screen shows how
+    /// the site last answered, and a read that fails keeps the day on screen while the dot says so.
     private(set) var siteStatus = ServerStatus.unknown
     /// When the day on screen was read, for the dot's last sync; nil for a day nothing was read for.
     private(set) var syncedAt: Date?
@@ -218,7 +218,7 @@ final class EmptyClassroomViewModel {
     func accountChanged() {
         stopLoading()
         show(.loading)
-        siteStatus = .unknown
+        siteStatus = service.siteStatus
         pickedBuilding = Defaults[.emptyClassroomBuilding]
         reloadCourses()
         guard isOnScreen else { return }
@@ -308,6 +308,7 @@ final class EmptyClassroomViewModel {
         }
         guard let reader = reader() else { return }
         let kept = service.keptUsage(on: day)
+        siteStatus = service.siteStatus
         if let kept {
             show(Self.content(for: kept.usage), readAt: kept.fetchedAt)
         } else {
@@ -332,16 +333,13 @@ final class EmptyClassroomViewModel {
                 running = nil
                 isReading = false
             }
+            siteStatus = service.siteStatus
             guard !Task.isCancelled, selectedDay == day, reader.isCurrent() else { return }
             switch outcome {
             case .success(let read):
-                // The kept day answers without the site being asked, which then says nothing
-                // about how the site answers now.
-                if read.fetchedAt != kept?.fetchedAt { siteStatus = .ok }
                 show(Self.content(for: read.usage), readAt: read.fetchedAt)
             case .failure(let error):
                 guard !(error is CancellationError) else { return }
-                siteStatus = .failed
                 // A day already on screen stays when reading it again fails.
                 guard content == .loading else { return }
                 content = .failed(offline: Self.isOffline(error))

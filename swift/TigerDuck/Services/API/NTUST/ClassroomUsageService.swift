@@ -82,6 +82,9 @@ final class ClassroomUsageService {
     private let logFailure: LogFailure
 
     private var kept: [Int: KeptUsage] = [:]
+    /// How the site answered the last read that asked it, for the finder's dot on any screen. A
+    /// kept day answers without asking and leaves it; a new school session and ``forget()`` reset it.
+    private(set) var siteStatus = ServerStatus.unknown
     /// The school session `kept` came from.
     private var stateGeneration: Int?
     /// Moved by ``forget()``, so a fetch running across it writes nothing back.
@@ -127,8 +130,15 @@ final class ClassroomUsageService {
             // may also find the day the one before it read.
             try check(ticket)
             if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
-            let usage = try await fetch(number, credentials: credentials, ticket: ticket)
-            try check(ticket)
+            let usage: CampusUsage
+            do {
+                usage = try await fetch(number, credentials: credentials, ticket: ticket)
+                try check(ticket)
+            } catch {
+                noteFailure(error, for: ticket)
+                throw error
+            }
+            siteStatus = .ok
             let read = KeptUsage(usage: usage, fetchedAt: now())
             kept[number] = read
             return read
@@ -139,6 +149,7 @@ final class ClassroomUsageService {
     /// the sign-out empties the session's cookie jar.
     func forget() {
         kept = [:]
+        siteStatus = .unknown
         epoch &+= 1
     }
 
@@ -153,7 +164,14 @@ final class ClassroomUsageService {
         let generation = sessionGeneration()
         guard stateGeneration != generation else { return }
         kept = [:]
+        siteStatus = .unknown
         stateGeneration = generation
+    }
+
+    /// A read the user ended, or one for a session since ended, says nothing about the site.
+    private func noteFailure(_ error: any Error, for ticket: Ticket) {
+        guard Self.isWorthLogging(error), (try? check(ticket)) != nil else { return }
+        siteStatus = .failed
     }
 
     private func check(_ ticket: Ticket) throws {
