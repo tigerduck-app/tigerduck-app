@@ -176,8 +176,9 @@ final class EmptyClassroomViewModel {
         )
     }
 
+    /// The app's name for the building, else the one the site gives it, else its code.
     func buildingName(_ code: String) -> String {
-        usage?.buildingNames[code] ?? code
+        CampusBuildingName.of(code) ?? usage?.buildingNames[code] ?? code
     }
 
     // MARK: - Actions
