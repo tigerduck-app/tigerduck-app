@@ -20,6 +20,7 @@ struct SecureStoreLockedReadTests {
         AuthTokenManager.accessTokenKey,
         AuthTokenManager.refreshTokenKey,
         AuthTokenManager.expiresAtKey,
+        AuthTokenManager.refreshTokenUsesKey,
         AppConstants.KeychainKeys.pushDeviceId,
         DebugEndpointStore.keychainKey,
     ]

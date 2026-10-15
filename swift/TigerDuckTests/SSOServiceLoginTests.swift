@@ -508,13 +508,13 @@ struct SSOServiceLoginTests {
             },
             harvestDeadline: .milliseconds(100)
         )
-        let started = ContinuousClock.now
         _ = await withLatch(false) {
+            let started = ContinuousClock.now
             await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: URLError(.timedOut).localizedDescription)) {
                 try await service.refreshTokenIfNeeded()
             }
+            #expect(ContinuousClock.now - started < .seconds(3))
         }
-        #expect(ContinuousClock.now - started < .seconds(3))
     }
 
     @Test("a failed renewal leaves no rejected token behind")
