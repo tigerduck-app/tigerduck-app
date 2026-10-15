@@ -101,9 +101,15 @@ nonisolated final class SSOServerStub: URLProtocol {
         )!
         if let target = answer.followTo {
             let proposed = Self.proposal(after: answer.status, of: request, body: bodyData, to: target)
-            if let next = Self.followed(response, proposing: proposed, in: task) {
+            switch Self.decision(on: response, proposing: proposed, in: task) {
+            case .follow(let next):
                 client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: response)
                 return
+            case .undecided:
+                client?.urlProtocol(self, didFailWithError: Self.undecidedRedirect)
+                return
+            case .refuse:
+                break
             }
         }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -122,40 +128,54 @@ nonisolated final class SSOServerStub: URLProtocol {
         return resent
     }
 
-    /// The request `task` follows the redirect with, or nil when its delegate refuses it. URLSession
-    /// asks the delegate too, but leaves a task whose protocol redirect was refused waiting for its
-    /// timeout, so the stub asks first and then answers with the redirect, as a server does.
-    private static func followed(
-        _ response: HTTPURLResponse, proposing proposed: URLRequest, in task: URLSessionTask?
-    ) -> URLRequest? {
+    private enum RedirectDecision {
+        case follow(URLRequest)
+        case refuse
+        /// The delegate's call returned before it decided.
+        case undecided
+    }
+
+    /// What `task`'s delegate does with the redirect. URLSession asks the delegate too, but leaves a
+    /// task whose protocol redirect was refused waiting for its timeout, so the stub asks first and
+    /// answers with a refused redirect itself, as a server does. Only a decision made before the
+    /// delegate's call returns counts: waiting would hold up the one thread that runs every
+    /// `URLProtocol` in the process, and with it every suite's requests.
+    private static func decision(
+        on response: HTTPURLResponse, proposing proposed: URLRequest, in task: URLSessionTask?
+    ) -> RedirectDecision {
         let decides = #selector(
             URLSessionTaskDelegate.urlSession(_:task:willPerformHTTPRedirection:newRequest:completionHandler:)
         )
-        guard let task, let delegate = task.delegate, delegate.responds(to: decides) else { return proposed }
+        guard let task, let delegate = task.delegate, delegate.responds(to: decides) else { return .follow(proposed) }
         let decision = Decision()
         // The delegates under test ignore the session they are given.
         delegate.urlSession?(
             URLSession.shared, task: task, willPerformHTTPRedirection: response, newRequest: proposed
         ) { decision.settle($0) }
-        return decision.request()
+        return decision.current
     }
 
-    /// A delegate's redirect decision, which its completion handler may hand over on another thread.
-    /// No decision within 5 seconds stops the run instead of passing for a refusal.
+    /// The error of a request whose redirect the task's delegate left undecided, which fails the
+    /// test that made it rather than pass for a refusal.
+    private static let undecidedRedirect = URLError(.unknown, userInfo: [
+        NSLocalizedDescriptionKey:
+            "SSOServerStub: the task's delegate returned without deciding the redirect; the stub takes only a decision made during the call",
+    ])
+
+    /// A delegate's redirect decision. A completion handler called later, on another thread, finds
+    /// the request already failed.
     private final class Decision: @unchecked Sendable {
-        private let settled = DispatchSemaphore(value: 0)
-        private var answer: URLRequest?
+        private let lock = NSLock()
+        private var settled = RedirectDecision.undecided
 
         func settle(_ request: URLRequest?) {
-            answer = request
-            settled.signal()
+            lock.lock(); defer { lock.unlock() }
+            settled = request.map(RedirectDecision.follow) ?? .refuse
         }
 
-        func request() -> URLRequest? {
-            guard settled.wait(timeout: .now() + 5) == .success else {
-                preconditionFailure("The task's delegate gave no redirect decision within 5 seconds")
-            }
-            return answer
+        var current: RedirectDecision {
+            lock.lock(); defer { lock.unlock() }
+            return settled
         }
     }
 
