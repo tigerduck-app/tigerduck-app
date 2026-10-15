@@ -256,8 +256,8 @@ actor AuthTokenManager {
             if let late, !late.mayResend { return nil }
         }
         guard uses < Self.refreshTokenUseLimit else { return nil }
-        // The sign-out may not have deleted the token, so it is counted spent before its last send,
-        // unless a sign-in since has stored its own token over it, whose count this is then.
+        // The sign-out may not have deleted the token, so it is counted spent before its last send.
+        // Not when a sign-in since has stored its own token over it: the count on disk is that token's.
         if refreshToken == nil || !refreshTokenIsStored {
             guard saveConfirmed(Self.refreshTokenUsesKey, String(Self.refreshTokenUseLimit)) else { return nil }
         }
