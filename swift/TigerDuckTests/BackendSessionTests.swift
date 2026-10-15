@@ -490,6 +490,56 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
     }
 
+    @Test("a sign-out's last send counts nothing against a token a sign-in stored meanwhile")
+    func theSignOutsLastSendSparesTheNextToken() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data(), gate: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        try await waitUntil { backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil }
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+        _ = await refresh.value
+
+        #expect(await ending.value == "A1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
+    }
+
+    @Test("a sign-out's last send still counts against its token when a sign-in meanwhile stored none")
+    func theSignOutsLastSendCountsWhileTheNextTokenIsUnstored() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.refusingRefreshToken(while: OSAllocatedUnfairLock(initialState: true))
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data(), gate: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        try await waitUntil { backend.recorder.stored(AuthTokenManager.accessTokenKey) == nil }
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+        _ = await refresh.value
+
+        #expect(await ending.value == "A1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == "2")
+    }
+
     @Test("a sign-in while a sign-out's calls are out keeps its session, and they keep the departing token")
     func signInDuringTheSignOutCalls() async throws {
         let backend = BackendFixture()

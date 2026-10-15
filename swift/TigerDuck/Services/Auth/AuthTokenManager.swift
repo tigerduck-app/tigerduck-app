@@ -256,8 +256,11 @@ actor AuthTokenManager {
             if let late, !late.mayResend { return nil }
         }
         guard uses < Self.refreshTokenUseLimit else { return nil }
-        // The sign-out may not have deleted the token, so it is counted spent before its last send.
-        guard saveConfirmed(Self.refreshTokenUsesKey, String(Self.refreshTokenUseLimit)) else { return nil }
+        // The sign-out may not have deleted the token, so it is counted spent before its last send,
+        // unless a sign-in since has stored its own token over it, whose count this is then.
+        if refreshToken == nil || !refreshTokenIsStored {
+            guard saveConfirmed(Self.refreshTokenUsesKey, String(Self.refreshTokenUseLimit)) else { return nil }
+        }
         struct RefreshResponse: Decodable { let access_token: String }
         guard let (data, http) = await postRefresh(refresh).reply, http.statusCode == 200 else { return nil }
         return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
