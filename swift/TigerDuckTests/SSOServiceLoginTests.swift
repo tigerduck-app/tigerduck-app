@@ -494,6 +494,29 @@ struct SSOServiceLoginTests {
         #expect(config.httpCookieStorage === HTTPCookieStorage.shared)
     }
 
+    /// Each request stops after a minute, but a harvest makes up to seven in turn while every
+    /// automatic sign-in waits for the lock it holds
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/607).
+    @Test("a harvest past its deadline fails as a request timeout does")
+    func aHarvestPastItsDeadlineFails() async {
+        let service = MoodleTokenService(
+            storedCredentials: { (studentId: "b00000000", password: "unused") },
+            tokens: MoodleTokenService.TokenStore(load: { nil }, save: { _ in }, drop: {}),
+            harvest: { _, _ in
+                try await Task.sleep(for: .seconds(5))
+                return MoodleTokenService.TokenTriple(signature: "", wstoken: "late", privatetoken: nil)
+            },
+            harvestDeadline: .milliseconds(100)
+        )
+        let started = ContinuousClock.now
+        _ = await withLatch(false) {
+            await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: URLError(.timedOut).localizedDescription)) {
+                try await service.refreshTokenIfNeeded()
+            }
+        }
+        #expect(ContinuousClock.now - started < .seconds(3))
+    }
+
     @Test("a failed renewal leaves no rejected token behind")
     func failedRenewalDropsTheRejectedToken() async {
         let log = HarvestLog()

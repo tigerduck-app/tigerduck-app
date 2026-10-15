@@ -111,12 +111,35 @@ actor MoodleTokenService {
         storedCredentials: @escaping @Sendable () -> (studentId: String, password: String)?,
         tokens: TokenStore,
         harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        harvestDeadline: Duration = MoodleTokenService.harvestDeadline
     ) {
         self.storedCredentials = storedCredentials
         self.tokens = tokens
-        self.harvest = harvest
+        self.harvest = { studentId, password in
+            try await Self.withinDeadline(harvestDeadline) { try await harvest(studentId, password) }
+        }
         self.now = now
+    }
+
+    /// How long one harvest may run. Each request stops after a minute, but a harvest makes up to
+    /// seven in turn while it holds the stored-password lock every automatic sign-in waits for.
+    nonisolated static let harvestDeadline: Duration = .seconds(60)
+
+    /// Runs `work` for at most `deadline`, then cancels it and fails as a request timeout does.
+    private nonisolated static func withinDeadline<T: Sendable>(
+        _ deadline: Duration, _ work: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await work() }
+            group.addTask {
+                try await Task.sleep(for: deadline)
+                throw MoodleWebserviceError.transientNetwork(underlying: URLError(.timedOut).localizedDescription)
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw CancellationError() }
+            return first
+        }
     }
 
     // MARK: - Public API
@@ -271,8 +294,9 @@ actor MoodleTokenService {
     /// The harvest's session. The shared cookie store keeps SSO anti-forgery and correlation
     /// cookies across the launch.php -> login -> authorize redirects; a private jar on Apple's
     /// URLSession stack drops them, and the credential POST bounces to /account/login as a false
-    /// rejection. A harvest holds the stored-password lock, so a server that trickles its answer
-    /// stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default week.
+    /// rejection. A harvest holds the stored-password lock, so a request whose server trickles its
+    /// answer stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default
+    /// week, and the harvest as a whole after ``harvestDeadline``.
     nonisolated static func harvestConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
