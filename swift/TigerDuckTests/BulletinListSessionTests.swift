@@ -82,30 +82,153 @@ struct BulletinListSessionTests {
 }
 
 extension BulletinListSessionTests {
-    /// The status dot's last sync is when the feed last gave its newest page. A refresh that
-    /// fails leaves it, and the next visit starts from it.
+    /// The status dot's last sync is when the feed last gave its newest page, and a refresh that
+    /// fails leaves it.
     @Test("the last sync is when the newest page arrived, and a failed refresh keeps it")
     func lastSyncIsTheNewestPage() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
             defer { Defaults[.bulletinsSyncedAt] = saved }
-            Defaults[.bulletinsSyncedAt] = nil
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
             stub.serve(Self.page([stub.id]))
             let model = BulletinsViewModel(apiClient: stub.client)
-            #expect(model.syncedAt == nil)
+            #expect(Defaults[.bulletinsSyncedAt] == nil)
 
             let before = Date()
             await model.refresh()
-            let syncedAt = try #require(model.syncedAt)
+            let syncedAt = try #require(Defaults[.bulletinsSyncedAt])
             #expect(syncedAt >= before)
 
             // Nothing is served for the second refresh, so it fails.
             await model.refresh()
-            #expect(model.syncedAt == syncedAt)
-            #expect(BulletinsViewModel(apiClient: stub.client).syncedAt == syncedAt)
+            #expect(Defaults[.bulletinsSyncedAt] == syncedAt)
+        }
+    }
+
+    @Test("a sign-out forgets the feed's last sync with the list")
+    func aSignOutForgetsTheLastSync() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            stub.serve(Self.page([stub.id]))
+            await BulletinsViewModel(apiClient: stub.client).refresh()
+            #expect(Defaults[.bulletinsSyncedAt] != nil)
+
+            BulletinsViewModel.forgetListSession()
+
+            #expect(Defaults[.bulletinsSyncedAt] == nil)
+        }
+    }
+
+    private static func serveHeld(_ body: Data, for url: URL) -> SettingsAPIStub.ReplyGate {
+        let gate = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: body, gate: gate), for: url)
+        return gate
+    }
+
+    /// A sign-out empties the cached list and its time; a request out when it came writes neither
+    /// back for the next student.
+    @Test("a refresh that lands after a sign-out writes neither the last sync nor the list")
+    func aRefreshAcrossASignOutWritesNothing() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let gate = Self.serveHeld(Self.page([stub.id]), for: stub.listURL())
+            let model = BulletinsViewModel(apiClient: stub.client)
+            let refresh = Task { await model.refresh() }
+            try await waitUntil { SettingsAPIStub.requests(for: stub.listURL()).count == 1 }
+
+            BulletinsViewModel.forgetListSession()
+            let signedOut = Defaults[.bulletinsSyncedAt]
+            gate.open()
+            await refresh.value
+
+            #expect(Defaults[.bulletinsSyncedAt] == signedOut)
+            #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == stub.id })
+        }
+    }
+
+    @Test("a later visit's first page that lands after a sign-out writes neither the last sync nor the list")
+    func aFirstPageAcrossASignOutWritesNothing() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (kept, newest) = (stub.id, stub.id + 1)
+            stub.serve(Self.page([kept]))
+            await BulletinsViewModel(apiClient: stub.client).loadIfNeeded()
+            let gate = Self.serveHeld(Self.page([newest, kept]), for: stub.listURL())
+            let secondVisit = BulletinsViewModel(apiClient: stub.client)
+            let visit = Task { await secondVisit.loadIfNeeded() }
+            try await waitUntil { SettingsAPIStub.requests(for: stub.listURL()).count == 2 }
+
+            BulletinsViewModel.forgetListSession()
+            let signedOut = Defaults[.bulletinsSyncedAt]
+            gate.open()
+            await visit.value
+
+            #expect(Defaults[.bulletinsSyncedAt] == signedOut)
+            #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == newest })
+        }
+    }
+
+    @Test("an older page the walk gets after a sign-out is not written")
+    func aWalkAcrossASignOutWritesNothing() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (older, newer) = (stub.id, stub.id + 1)
+            stub.serve(Self.page([newer], next: older))
+            let gate = Self.serveHeld(Self.page([older]), for: stub.listURL(cursor: older))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            await model.refresh()
+            try await waitUntil { SettingsAPIStub.requests(for: stub.listURL(cursor: older)).count == 1 }
+
+            BulletinsViewModel.forgetListSession()
+            gate.open()
+            await model.waitForPrefetch()
+
+            #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == older })
+        }
+    }
+
+    @Test("an older page a scroll asks for that lands after a sign-out is not written")
+    func aPageAcrossASignOutWritesNothing() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (older, newer) = (stub.id, stub.id + 1)
+            stub.serve(Self.page([newer], next: older))
+            let gate = Self.serveHeld(Self.page([older]), for: stub.listURL(cursor: older))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            // Paused, the walk does not start, so only the scroll asks for the older page.
+            model.pausePrefetch()
+            await model.refresh()
+            // The disk cache holds rows from earlier runs, so the end of the list is whatever is last.
+            let last = try #require(model.items.last)
+            let scroll = Task { await model.loadMoreIfNeeded(triggeredBy: last) }
+            try await waitUntil { SettingsAPIStub.requests(for: stub.listURL(cursor: older)).count == 1 }
+
+            BulletinsViewModel.forgetListSession()
+            gate.open()
+            await scroll.value
+
+            #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == older })
         }
     }
 
