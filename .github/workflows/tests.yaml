@@ -44,12 +44,13 @@ jobs:
             device: iPhone
             only_testing: TigerDuckTests
             # The tests that make a window key or bring up the keyboard, a view service, accessibility
-            # or a WKWebView, which run in a step of their own. A Swift Testing function's identifier
+            # or WebKit, which run in a step of their own. A Swift Testing function's identifier
             # carries its argument labels.
             on_screen_tests: >-
               TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
+              TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
               TigerDuckTests/ClassTableShareSheetTests
               TigerDuckTests/ClassTableSwitcherTests
               TigerDuckTests/CourseColorPickerSheetTests
