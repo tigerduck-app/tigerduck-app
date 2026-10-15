@@ -247,7 +247,8 @@ struct LibraryView: View {
                 text: viewModel.isLoggedIn
                     ? String(localized: "library_status_signed_in")
                     : String(localized: "common_not_signed_in"),
-                isLoading: viewModel.isLoadingQR
+                isLoading: viewModel.isLoadingQR,
+                lastSynced: .at(viewModel.codeFetchedAt)
             )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)

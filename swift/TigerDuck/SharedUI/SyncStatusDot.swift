@@ -6,9 +6,9 @@ import SwiftUI
 /// Colour is the worst known state of the sources the page depends on
 /// (red > green); grey means nothing has reported yet or the source is
 /// switched off, and never wins. While a fetch runs the dot becomes a
-/// spinning ring. Tapping it lists every source with its own state. After
-/// a second with no change, no tap and no open popover the dot fades so it
-/// stops competing with the page title.
+/// spinning ring. Tapping it lists every source with its own state and when
+/// the page's data last arrived. After a second with no change, no tap and
+/// no open popover the dot fades so it stops competing with the page title.
 struct SyncStatusDot: View {
     struct Source: Identifiable {
         let id: String
@@ -18,25 +18,41 @@ struct SyncStatusDot: View {
         let text: String
     }
 
+    /// The time the details' "Last synced" row gives.
+    enum LastSynced: Equatable {
+        /// `schoolDataSyncedAt`, for the pages built from the school data.
+        case schoolData
+        /// When the page's own data last arrived from its server, nil if it never has.
+        case at(Date?)
+        /// No row, for a page showing nothing it read, as the finder on a day it does not ask about.
+        case hidden
+    }
+
     private enum Mode {
         case servers([ServerKind])
         case single(Source, isLoading: Bool)
     }
 
     private let mode: Mode
+    private let lastSynced: LastSynced
 
     /// App-wide sync sources, read live from the trackers.
-    init(servers: [ServerKind]) {
+    init(servers: [ServerKind], lastSynced: LastSynced) {
         mode = .servers(servers)
+        self.lastSynced = lastSynced
     }
 
     /// One page-local source (the library session, say) the page tracks
     /// itself.
-    init(status: ServerStatus, label: String, icon: String, text: String, isLoading: Bool = false) {
+    init(
+        status: ServerStatus, label: String, icon: String, text: String, isLoading: Bool = false,
+        lastSynced: LastSynced
+    ) {
         mode = .single(
             Source(id: label, icon: icon, name: label, status: status, text: text),
             isLoading: isLoading
         )
+        self.lastSynced = lastSynced
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -244,10 +260,10 @@ struct SyncStatusDot: View {
             ForEach(sources) { source in
                 row(color: Self.color(source.status), icon: source.icon, name: source.name, text: source.text)
             }
-            if case .servers(let servers) = mode, servers.contains(.moodle) {
+            if lastSynced != .hidden {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     row(color: .clear, icon: "clock", name: String(localized: "sync_status_last_synced"),
-                        text: Self.schoolDataAgeText(schoolDataSyncedAt, now: context.date))
+                        text: Self.ageText(lastSyncedDate, now: context.date))
                 }
             }
             if let errorMessage {
@@ -276,8 +292,16 @@ struct SyncStatusDot: View {
         }
     }
 
+    private var lastSyncedDate: Date? {
+        switch lastSynced {
+        case .schoolData: schoolDataSyncedAt
+        case .at(let date): date
+        case .hidden: nil
+        }
+    }
+
     /// Short forms, so the age fits the row's trailing column.
-    static func schoolDataAgeText(_ syncedAt: Date?, now: Date) -> String {
+    static func ageText(_ syncedAt: Date?, now: Date) -> String {
         guard let syncedAt else { return String(localized: "sync_status_never_synced") }
         let seconds = max(0, now.timeIntervalSince(syncedAt))
         switch seconds {

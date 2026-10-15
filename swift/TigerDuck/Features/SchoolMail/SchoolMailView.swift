@@ -359,7 +359,8 @@ struct SchoolMailView: View {
             label: String(localized: "feature_school_mail"),
             icon: "envelope.fill",
             text: SyncStatusDot.statusText(viewModel.serverStatus),
-            isLoading: viewModel.isRefreshing
+            isLoading: viewModel.isRefreshing,
+            lastSynced: .at(viewModel.syncedAt)
         )
     }
 

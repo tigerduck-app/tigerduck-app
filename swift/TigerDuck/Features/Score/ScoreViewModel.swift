@@ -25,6 +25,7 @@ final class ScoreViewModel {
     /// Whose report `report` is. Sign-out deletes the cached report but not this copy, which the
     /// next account would otherwise see until its own fetch landed.
     private var reportStudentId: String?
+    /// When the report on screen was read from the school, which a cached report keeps.
     private(set) var cachedAt: Date?
     /// Derived once per report change instead of on every body pass —
     /// each semester header used to rebuild the whole GPA trend.
@@ -158,7 +159,7 @@ final class ScoreViewModel {
         generation: Int,
         isCurrent: () -> Bool,
         isReachable: () async -> Bool,
-        fetch: () async throws -> ScoreReport
+        fetch: () async throws -> (report: ScoreReport, cachedAt: Date)
     ) async {
         switchAccount(to: studentId)
         let owner = RefreshOwner(studentId: studentId, generation: generation)
@@ -183,7 +184,7 @@ final class ScoreViewModel {
         manager.loadingState = .loading
         let starts = manager.loadingStarts
 
-        let outcome: Result<ScoreReport, any Error>
+        let outcome: Result<(report: ScoreReport, cachedAt: Date), any Error>
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.courseSelection)
@@ -203,7 +204,7 @@ final class ScoreViewModel {
         }
         switch outcome {
         case .success(let fresh):
-            apply(fresh, cachedAt: Date())
+            apply(fresh.report, cachedAt: fresh.cachedAt)
             ServerStatusTracker.shared.set(.ok, for: .courseSelection)
             manager.loadingState = .loaded
         case .failure(let error):
