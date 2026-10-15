@@ -390,9 +390,12 @@ actor AuthTokenManager {
     /// may have replaced it meanwhile.
     private func saveUses(_ uses: Int, of token: String) -> Bool {
         guard refreshToken == token else { return false }
-        let value = String(uses)
-        if let confirmedSave = tokens.confirmedSave { return confirmedSave(Self.refreshTokenUsesKey, value) }
-        tokens.save(Self.refreshTokenUsesKey, value)
+        return saveConfirmed(Self.refreshTokenUsesKey, String(uses))
+    }
+
+    private func saveConfirmed(_ key: String, _ value: String) -> Bool {
+        if let confirmedSave = tokens.confirmedSave { return confirmedSave(key, value) }
+        tokens.save(key, value)
         return true
     }
 
@@ -422,8 +425,13 @@ actor AuthTokenManager {
         refreshTokenUses = 0
         self.expiresAt = Date.now.addingTimeInterval(TimeInterval(expiresIn))
         tokens.save(Self.accessTokenKey, access)
-        tokens.save(Self.refreshTokenKey, refresh)
         tokens.save(Self.expiresAtKey, String(expiresAt.timeIntervalSince1970))
+        // Kept, the old token, maybe spent, would meet the next launch under a count this one's
+        // sends overwrite; with none stored, that launch signs in again.
+        guard saveConfirmed(Self.refreshTokenKey, refresh) else {
+            tokens.delete(Self.refreshTokenKey)
+            return
+        }
         // After the new token: ending in between keeps the old count on the new token, which only
         // signs in again early, while the reverse would send the old token uncounted.
         tokens.delete(Self.refreshTokenUsesKey)

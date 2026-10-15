@@ -109,6 +109,40 @@ struct BackendTokenRefreshTests {
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
     }
 
+    /// The spent token would stay on disk under a count the new token's sends overwrite.
+    @Test("after the Keychain refused the new token, a relaunch sends no token again")
+    func aRefusedNewTokenLeavesNoSpentOne() async throws {
+        let backend = BackendFixture()
+        let keychain = backend.recorder.tokenStore
+        let refusing = AuthTokenManager.TokenStore(
+            load: keychain.load,
+            save: { key, value in if key != AuthTokenManager.refreshTokenKey { keychain.save(key, value) } },
+            delete: keychain.delete,
+            confirmedSave: { key, value in
+                guard key != AuthTokenManager.refreshTokenKey else { return false }
+                keychain.save(key, value)
+                return true
+            }
+        )
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let manager = AuthTokenManager(
+            baseURLProvider: { backend.refreshURL.deletingLastPathComponent().deletingLastPathComponent() },
+            deviceUUID: "test-device", session: URLSession(configuration: config), tokens: refusing,
+            beginBackgroundTask: { {} }
+        )
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", expiresIn: 0), for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == "A1")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2", expiresIn: 0), for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == "A2")
+
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A3", refresh: "R3"), for: backend.refreshURL)
+        _ = await backend.relaunched().validAccessToken()
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R1"])
+    }
+
     @Test("a refresh the backend turned down takes its send off the count again")
     func aTurnedDownSendIsNotCounted() async throws {
         let backend = BackendFixture()
