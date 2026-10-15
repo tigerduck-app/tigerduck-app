@@ -89,6 +89,26 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
     }
 
+    /// A count the Keychain did not take would not outlive the app, so the token does not go out.
+    @Test("a refresh whose count could not be saved sends nothing")
+    func anUnsavedCountSendsNothing() async throws {
+        let backend = BackendFixture()
+        var tokens = backend.recorder.tokenStore
+        tokens.confirmedSave = { _, _ in false }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let manager = AuthTokenManager(
+            baseURLProvider: { backend.refreshURL.deletingLastPathComponent().deletingLastPathComponent() },
+            deviceUUID: "test-device", session: URLSession(configuration: config), tokens: tokens,
+            beginBackgroundTask: { {} }
+        )
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await manager.validAccessToken() == nil)
+
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
+    }
+
     @Test("a refresh the backend turned down takes its send off the count again")
     func aTurnedDownSendIsNotCounted() async throws {
         let backend = BackendFixture()

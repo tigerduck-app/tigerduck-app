@@ -82,11 +82,14 @@ actor AuthTokenManager {
         let load: @Sendable (_ key: String) -> String?
         let save: @Sendable (_ key: String, _ value: String) -> Void
         let delete: @Sendable (_ key: String) -> Void
+        /// `save` that answers whether the value is stored. A store without it is taken at its word.
+        var confirmedSave: (@Sendable (_ key: String, _ value: String) -> Bool)?
 
         static let keychain = TokenStore(
             load: { KeychainManager.loadString(key: $0) },
             save: { KeychainManager.saveString(key: $0, value: $1) },
-            delete: { KeychainManager.delete(key: $0) }
+            delete: { KeychainManager.delete(key: $0) },
+            confirmedSave: { KeychainManager.saveStringReportingSuccess(key: $0, value: $1) }
         )
     }
 
@@ -371,21 +374,26 @@ actor AuthTokenManager {
     ]
 
     /// Sends `refreshToken` with its count on disk raised first, since the app can end before the
-    /// reply, and set after to what the send may have cost. Returns the reply and that count.
+    /// reply, and set after to what the send may have cost. Returns the reply and that count. A
+    /// count that could not be raised sends nothing, as a request that never left does.
     private func postCounted(
         _ refreshToken: String, usedBefore uses: Int
     ) async -> (reply: (Data, HTTPURLResponse)?, uses: Int) {
-        saveUses(uses + 1, of: refreshToken)
+        guard saveUses(uses + 1, of: refreshToken) else { return (nil, uses) }
         let send = await postRefresh(refreshToken)
         let total = send.mayHaveUsed ? uses + 1 : uses
-        saveUses(total, of: refreshToken)
+        _ = saveUses(total, of: refreshToken)
         return (send.reply, total)
     }
 
-    /// Only while `token` is the stored one: a sign-out or a sign-in may have replaced it meanwhile.
-    private func saveUses(_ uses: Int, of token: String) {
-        guard refreshToken == token else { return }
-        tokens.save(Self.refreshTokenUsesKey, String(uses))
+    /// Whether the count is stored, only while `token` is the stored one: a sign-out or a sign-in
+    /// may have replaced it meanwhile.
+    private func saveUses(_ uses: Int, of token: String) -> Bool {
+        guard refreshToken == token else { return false }
+        let value = String(uses)
+        if let confirmedSave = tokens.confirmedSave { return confirmedSave(Self.refreshTokenUsesKey, value) }
+        tokens.save(Self.refreshTokenUsesKey, value)
+        return true
     }
 
     private func postRefresh(_ refreshToken: String) async -> RefreshSend {
