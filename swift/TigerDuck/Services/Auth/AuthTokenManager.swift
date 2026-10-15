@@ -380,7 +380,7 @@ actor AuthTokenManager {
         request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request, delegate: CredentialPostDelegate())
             guard let http = response as? HTTPURLResponse else { return RefreshSend(reply: nil, mayHaveUsed: true) }
             return RefreshSend(reply: (data, http), mayHaveUsed: !(400...499).contains(http.statusCode))
         } catch {

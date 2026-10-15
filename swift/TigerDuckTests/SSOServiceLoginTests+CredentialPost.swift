@@ -299,4 +299,23 @@ extension SSOServiceLoginTests {
         }
         #expect(requests(to: elsewhere).isEmpty)
     }
+
+    @Test("a backend refresh stops at a 307 or a 308 rather than send the refresh token on", arguments: [307, 308])
+    func backendRefreshStopsAtARedirect(status: Int) async throws {
+        let base = try #require(URL(string: "https://backend.stub.invalid/v3"))
+        let refresh = base.appendingPathComponent("auth/refresh")
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/v3/auth/refresh"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: refresh)
+        let stored = [AuthTokenManager.refreshTokenKey: "R0", AuthTokenManager.expiresAtKey: "0"]
+        let manager = AuthTokenManager(
+            baseURLProvider: { base }, deviceUUID: "test-device", session: SSOServerStub.session(),
+            tokens: .init(load: { stored[$0] }, save: { _, _ in }, delete: { _ in }), beginBackgroundTask: { {} }
+        )
+
+        #expect(await manager.validAccessToken() == nil)
+
+        #expect(requests(to: refresh).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+    }
 }
