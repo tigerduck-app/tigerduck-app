@@ -186,12 +186,12 @@ struct BulletinsView: View {
             // empty pill. Bare also matches the pages that draw it in a plain header row.
             if #available(iOS 26, *) {
                 ToolbarItem(placement: .topBarTrailing) {
-                    SyncStatusDot(servers: [.backend])
+                    SyncStatusDot(servers: [.backend], lastSynced: .at(viewModel.syncedAt))
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
                 ToolbarItem(placement: .topBarTrailing) {
-                    SyncStatusDot(servers: [.backend])
+                    SyncStatusDot(servers: [.backend], lastSynced: .at(viewModel.syncedAt))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {

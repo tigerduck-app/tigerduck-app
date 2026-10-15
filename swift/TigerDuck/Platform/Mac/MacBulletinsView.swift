@@ -51,7 +51,7 @@ struct MacBulletinsView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 8) {
-                    SyncStatusDot(servers: [.backend])
+                    SyncStatusDot(servers: [.backend], lastSynced: .at(viewModel.syncedAt))
                     Button {
                         Task { await viewModel.refresh() }
                     } label: {

@@ -82,7 +82,7 @@ struct ScoreView: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            SyncStatusDot(servers: [.courseSelection])
+            SyncStatusDot(servers: [.courseSelection], lastSynced: .at(viewModel.cachedAt))
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)
