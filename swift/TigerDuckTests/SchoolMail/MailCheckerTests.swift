@@ -193,7 +193,7 @@ struct MailCheckerTests {
         #expect(first.userInfo["uid"] as? Int == 3)
         #expect(first.userInfo["uidValidity"] as? Int == 1)
         // No subject: the fallback text stands in as the title.
-        #expect(h.center.requests[1].content.title == "(No subject)")
+        #expect(h.center.requests[1].content.title == String(localized: "school_mail_no_subject"))
         #expect(h.center.requests[1].content.body == "office@mail.ntust.edu.tw")
     }
 
