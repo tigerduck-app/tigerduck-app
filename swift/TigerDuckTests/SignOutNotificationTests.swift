@@ -1,4 +1,5 @@
 #if os(iOS)
+import Foundation
 import Testing
 @testable import TigerDuck
 
@@ -32,10 +33,33 @@ struct SignOutNotificationTests {
             ("new-mail", MailConstants.notificationThread),
         ])
 
-        await AppState.removeAccountNotifications(from: center)
+        await AuthService.removeAccountNotifications(from: center)
 
         // The mail account may be another student's, which the sign-out keeps.
         #expect(center.delivered.map(\.identifier) == ["new-mail"])
+    }
+
+    /// The backend can push to the account until the device's unregister, one of the sign-out's
+    /// calls, lands.
+    @Test func aSignOutClearsAtOnceAndAgainAfterItsCalls() async throws {
+        let center = Center([("bulletin", "other")])
+        let auth = AuthService(
+            keychainHasCredentials: { false },
+            notificationCenter: NotificationCenter(),
+            moodleTokens: MoodleTokenService(
+                storedCredentials: { nil }, tokens: .init(load: { nil }, save: { _ in }, drop: {}),
+                harvest: { _, _ in throw CancellationError() }
+            ),
+            schoolSignIn: { _, _ in false },
+            endSchoolSession: { _ in }
+        )
+        auth.accountNotifications = center
+
+        auth.logout()
+        try await waitUntil { center.delivered.isEmpty }
+        await auth.startSignOutCalls { center.delivered.append(("class-reminder", "course")) }.value
+
+        #expect(center.delivered.isEmpty)
     }
 }
 #endif
