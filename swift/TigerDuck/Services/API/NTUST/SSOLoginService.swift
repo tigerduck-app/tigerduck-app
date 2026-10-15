@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 
 enum SSOLoginError: LocalizedError {
     case loginFormNotFound
@@ -48,14 +49,6 @@ enum SSOLoginService {
             CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue)))
         return String(data: data, encoding: big5)
     }
-
-    /// Hosts the SSO credential POST is allowed to target. A redirected /
-    /// compromised upstream returning a `<form action="https://attacker/">`
-    /// must never receive `Username=...&Password=...`, so we hard-fail any
-    /// resolved action whose host is not in this set.
-    private static let ssoActionHostAllowlist: Set<String> = [
-        "ssoam2.ntust.edu.tw",
-    ]
 
     /// The school rejected the stored password in a sign-in the user did not start. Each
     /// rejection counts toward the account's lockout, so those sign-ins stop posting it until
@@ -246,21 +239,21 @@ enum SSOLoginService {
             }
 
             let actionURL = resolveURL(form.action, base: currentURL)
-            guard let actionHost = actionURL.host,
-                  ssoActionHostAllowlist.contains(actionHost) else {
-                AppLogger.captureError(
-                    SSOLoginError.loginFailed(reason: nil),
-                    context: [
-                        "service": "ssoEnsureServiceLogin",
-                        "rejectedActionHost": actionURL.host ?? "<nil>",
-                    ]
+            // Nothing is posted, so the sign-in does not ask the user to check the password.
+            guard CredentialPost.isSignInTarget(actionURL) else {
+                AppLogger.auth.error(
+                    "Sign-in form action refused: \(CredentialPost.schemeLabel(of: actionURL), privacy: .public) \(actionURL.host ?? "", privacy: .private)"
                 )
-                throw SSOLoginError.loginFailed(reason: nil)
+                throw SSOLoginError.invalidResponse
             }
             let (loginData, loginResponse) = try await postForm(
-                session: session, url: actionURL, fields: payload, generation: generation
+                session: session, url: actionURL, fields: payload, generation: generation,
+                delegate: CredentialPostDelegate()
             )
+            // The POST stops at a redirect it may not follow (`CredentialPostDelegate`), which is no
+            // answer to the sign-in, and no refusal of the password either.
             guard let loginResp = loginResponse as? HTTPURLResponse,
+                  !(300..<400).contains(loginResp.statusCode),
                   let loginHTML = decodeHTML(loginData, response: loginResp) else {
                 throw SSOLoginError.invalidResponse
             }
@@ -350,12 +343,14 @@ enum SSOLoginService {
     }
 
     /// POST form-encoded data. Each POST signs in, with the credentials or an OIDC form, so it
-    /// stops once a sign-out moves the generation.
+    /// stops once a sign-out moves the generation. `delegate` is the task's, for the
+    /// credentials' POST a `CredentialPostDelegate`.
     private static func postForm(
         session: URLSession,
         url: URL,
         fields: [(name: String, value: String)],
-        generation: Int
+        generation: Int,
+        delegate: (any URLSessionTaskDelegate & Sendable)? = nil
     ) async throws -> (Data, URLResponse) {
         try checkSignedIn(generation)
         // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
@@ -366,7 +361,7 @@ enum SSOLoginService {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data(formBody(fields).utf8)
 
-        return try await session.data(for: request)
+        return try await session.data(for: request, delegate: delegate)
     }
 
     static func formBody(_ fields: [(name: String, value: String)]) -> String {
