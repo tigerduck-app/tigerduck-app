@@ -100,11 +100,17 @@ extension SSOServiceLoginTests {
 
     // MARK: - Moodle token renewal
 
-    private func renewal(from page: String) async -> (Result<String, Error>, Bool) {
-        let renewal = pageWalk(log: HarvestLog(), from: page, at: Self.loginURL)
-        return await withLatch(false) { () async -> (Result<String, Error>, Bool) in
-            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRejected)
+    /// A renewal from `page`, and after a failure one more, which the pause should keep from
+    /// harvesting. `harvests` counts both.
+    private func renewal(from page: String) async -> (Result<String, Error>, rejected: Bool, harvests: Int) {
+        let log = HarvestLog()
+        let renewal = pageWalk(log: log, from: page, at: Self.loginURL)
+        let (outcome, rejected) = await withLatch(false) { () async -> (Result<String, Error>, Bool) in
+            let outcome = await Self.result { try await renewal.refreshTokenIfNeeded() }
+            if case .failure = outcome { _ = try? await renewal.refreshTokenIfNeeded() }
+            return (outcome, SSOLoginService.storedPasswordRejected)
         }
+        return (outcome, rejected, await log.calls)
     }
 
     @Test(
@@ -115,7 +121,7 @@ extension SSOServiceLoginTests {
         let target = try #require(URL(string: location))
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: target), for: Self.postURL)
-        let (outcome, rejected) = await renewal(from: Pages.ssoam2Login)
+        let (outcome, rejected, harvests) = await renewal(from: Pages.ssoam2Login)
         #expect(requests(to: target).isEmpty)
         #expect(posts.map(\.url) == [Self.postURL])
         guard case .failure(MoodleWebserviceError.httpStatus(code: status)) = outcome else {
@@ -123,6 +129,8 @@ extension SSOServiceLoginTests {
             return
         }
         #expect(!rejected)
+        // Paused as other failures are: the second renewal sent nothing.
+        #expect(harvests == 1)
     }
 
     @Test("a renewal whose password POST is redirected as a GET over HTTPS gets the token", arguments: [301, 302, 303])
@@ -134,7 +142,7 @@ extension SSOServiceLoginTests {
             .page(#"<script>window.location = "moodlemobile://token=\#(triple)";</script>"#),
             for: Self.authorizeCallback
         )
-        let (outcome, _) = await renewal(from: Pages.ssoam2Login)
+        let (outcome, _, _) = await renewal(from: Pages.ssoam2Login)
         guard case .success("followed-token") = outcome else {
             Issue.record("expected the token, got \(outcome)")
             return
@@ -148,12 +156,13 @@ extension SSOServiceLoginTests {
     func renewalPostsNoPasswordOffTheSignInHost(action: String) async throws {
         let page = try Self.signInForm(postingTo: action)
         SSOServerStub.reset()
-        let (outcome, rejected) = await renewal(from: page)
+        let (outcome, rejected, harvests) = await renewal(from: page)
         #expect(SSOServerStub.requests.isEmpty)
         guard case .failure(MoodleWebserviceError.malformedResponse) = outcome else {
             Issue.record("expected malformedResponse, got \(outcome)")
             return
         }
         #expect(!rejected)
+        #expect(harvests == 1)
     }
 }

@@ -141,6 +141,7 @@ nonisolated final class SSOServerStub: URLProtocol {
     }
 
     /// A delegate's redirect decision, which its completion handler may hand over on another thread.
+    /// No decision within 5 seconds stops the run instead of passing for a refusal.
     private final class Decision: @unchecked Sendable {
         private let settled = DispatchSemaphore(value: 0)
         private var answer: URLRequest?
@@ -151,7 +152,10 @@ nonisolated final class SSOServerStub: URLProtocol {
         }
 
         func request() -> URLRequest? {
-            settled.wait(timeout: .now() + 5) == .success ? answer : nil
+            guard settled.wait(timeout: .now() + 5) == .success else {
+                preconditionFailure("The task's delegate gave no redirect decision within 5 seconds")
+            }
+            return answer
         }
     }
 
