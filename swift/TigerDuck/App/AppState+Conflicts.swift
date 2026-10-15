@@ -375,14 +375,14 @@ extension AppState {
 
         /// - Parameter generation: the login generation the failed check started in.
         mutating func noteFailure(at now: Date, generation: Int) {
-            adopt(generation)
+            guard adopt(generation) else { return }
             recordFailure(at: now)
         }
 
         /// A verdict settles what is owed and a dropped result is owed again; a check whose
         /// categories were answered while it ran changes nothing.
         mutating func note(_ outcome: ConflictCheckOutcome, at now: Date, generation: Int) {
-            adopt(generation)
+            guard adopt(generation) else { return }
             switch outcome {
             case .dropped:
                 recordFailure(at: now)
@@ -399,8 +399,13 @@ extension AppState {
         /// while the answered check ran was turned away by the one-at-a-time guard, and the
         /// verdict covered only the categories the check compared, so it is owed a check. With
         /// another dialog up by then, that dialog covers it, and its own answer notes the rest.
-        mutating func noteAnswered(leaving pending: Set<String>, awaitingAnswer: Bool, generation: Int) {
-            adopt(generation)
+        mutating func noteAnswered(
+            leaving pending: Set<String>, awaitingAnswer: Bool, saveFailed: Bool = false, at now: Date = Date(),
+            generation: Int
+        ) {
+            guard adopt(generation) else { return }
+            // At once, the server would still differ and the same question come back.
+            if saveFailed { return recordFailure(at: now) }
             if !pending.isEmpty, !awaitingAnswer { owed = true }
         }
 
@@ -411,9 +416,12 @@ extension AppState {
         }
 
         /// A sign-out moves the generation, and the next account starts as at launch: the
-        /// departing account's failures would stretch its waits.
-        private mutating func adopt(_ generation: Int) {
+        /// departing account's failures would stretch its waits. Returns false for an older
+        /// generation, whose result arrived after the next account's and is dropped.
+        private mutating func adopt(_ generation: Int) -> Bool {
+            guard generation >= self.generation else { return false }
             if generation != self.generation { self = Self(generation: generation) }
+            return true
         }
     }
 
@@ -467,8 +475,9 @@ extension AppState {
     }
 
     /// Applies the user's answer to `reenableConflict`. Keeping local courses awaits every
-    /// request and asks again on any failure: until a term's upload lands, the server holds
-    /// none of its courses and the reset's tombstones hide them on every other device.
+    /// request and asks again on any failure, after the wait a failed check gets: until a term's
+    /// upload lands, the server holds none of its courses and the reset's tombstones hide them on
+    /// every other device.
     func resolveReenableConflict(keepLocal: Bool) {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
@@ -492,6 +501,7 @@ extension AppState {
             // dialog, so clearing it would record a decision the user was never asked to make.
             // Left pending, the next check presents it on its own.
             Defaults[.pendingConflictCategories].subtract(conflict.categories)
+            var coursesSaveFailed = false
             if keepLocal {
                 if conflict.categories.contains("courses"), CourseUploadPolicy.uploadsCourses {
                     let terms = SemesterCatalog.availableSemesters().map { semester in
@@ -515,6 +525,7 @@ extension AppState {
                     } catch {
                         AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .private)")
                         await MainActor.run { if isCurrent() { markCategoryReenabled("courses") } }
+                        coursesSaveFailed = true
                     }
                 }
                 guard isCurrent() else { return }
@@ -594,7 +605,7 @@ extension AppState {
             guard isCurrent() else { return }
             conflictCheckRetry.noteAnswered(
                 leaving: Defaults[.pendingConflictCategories], awaitingAnswer: reenableConflict != nil,
-                generation: generation
+                saveFailed: coursesSaveFailed, generation: generation
             )
             retryOwedConflictCheck()
         }

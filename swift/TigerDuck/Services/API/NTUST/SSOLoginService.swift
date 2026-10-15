@@ -328,9 +328,21 @@ enum SSOLoginService {
             }
 
             let actionURL = resolveURL(form.action, base: currentURL)
+            guard CredentialPost.isSchoolTarget(actionURL) else {
+                AppLogger.auth.error(
+                    "Sign-in bridge form action refused: \(CredentialPost.schemeLabel(of: actionURL), privacy: .public) \(actionURL.host ?? "", privacy: .private)"
+                )
+                throw SSOLoginError.invalidResponse
+            }
             let (data, response) = try await postForm(
-                session: session, url: actionURL, fields: form.inputs, generation: generation
+                session: session, url: actionURL, fields: form.inputs, generation: generation,
+                delegate: CredentialPostDelegate()
             )
+            // Stopped at a redirect it may not follow: the service got nothing, though a live SSO
+            // session would let the sign-in pass for done. Checked before the body, whatever it is.
+            if let resp = response as? HTTPURLResponse, (300..<400).contains(resp.statusCode) {
+                throw SSOLoginError.invalidResponse
+            }
             guard let newHTML = String(data: data, encoding: .utf8),
                   let resp = response as? HTTPURLResponse else {
                 return (currentHTML, currentURL)

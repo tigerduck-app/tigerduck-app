@@ -45,6 +45,32 @@ struct CredentialPostTests {
         }
     }
 
+    @Test("a form passing the sign-in on posts only to the school's hosts over HTTPS")
+    func schoolTarget() throws {
+        let school = [
+            "https://courseselection.ntust.edu.tw/signin-oidc",
+            "https://stuinfosys.ntust.edu.tw/Shibboleth.sso/SAML2/POST",
+            "HTTPS://Moodle2.NTUST.EDU.TW/auth/oidc/",
+            "https://ntust.edu.tw/",
+        ]
+        for string in school {
+            let url = try #require(URL(string: string))
+            #expect(CredentialPost.isSchoolTarget(url), "\(string)")
+        }
+        let elsewhere = [
+            "http://courseselection.ntust.edu.tw/signin-oidc",
+            "https://elsewhere.stub.invalid/signin-oidc",
+            "https://courseselection.ntust.edu.tw.elsewhere.stub.invalid/signin-oidc",
+            "https://courseselection.ntust.edu.tw@elsewhere.stub.invalid/signin-oidc",
+            "https://elsewherentust.edu.tw/signin-oidc",
+            "https://courseselection.ntust.edu.tw./signin-oidc",
+        ]
+        for string in elsewhere {
+            let url = try #require(URL(string: string))
+            #expect(!CredentialPost.isSchoolTarget(url), "\(string)")
+        }
+    }
+
     @Test("a form action's scheme reaches the log as http, https or other")
     func schemeLabel() throws {
         let actions = ["https://elsewhere.stub.invalid/", "HTTP://elsewhere.stub.invalid/", "javascript:void(0)", "ftp://elsewhere.stub.invalid/"]

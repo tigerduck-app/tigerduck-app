@@ -422,7 +422,8 @@ actor MoodleTokenService {
     }
 
     private struct OIDCBridge {
-        let action: String
+        /// Resolved once, so the POST goes where the check looked.
+        let action: URL
         let payload: [String: String]
     }
 
@@ -447,19 +448,21 @@ actor MoodleTokenService {
         }
 
         if let bridge = parseOIDCBridge(from: html) {
-            guard let bridgeActionURL = URL(string: bridge.action, relativeTo: responseURL)?.absoluteURL else {
-                throw MoodleWebserviceError.malformedResponse(
-                    detail: "invalid bridge action URL",
-                )
+            // Found but not posted: Moodle's code would go out unencrypted. No refusal either, so
+            // the renewal pauses as other failures do.
+            guard CredentialPost.isSchoolTarget(bridge.action) else {
+                throw MoodleWebserviceError.malformedResponse(detail: "OIDC bridge posts over plain HTTP")
             }
-            var bridgeReq = URLRequest(url: bridgeActionURL)
+            var bridgeReq = URLRequest(url: bridge.action)
             bridgeReq.httpMethod = "POST"
             bridgeReq.setValue(
                 "application/x-www-form-urlencoded",
                 forHTTPHeaderField: "Content-Type",
             )
             bridgeReq.httpBody = urlEncodedForm(bridge.payload)
-            let (nextData, nextResp) = try await dataTask(session: session, request: bridgeReq)
+            let (nextData, nextResp) = try await dataTask(
+                session: session, request: bridgeReq, delegate: CredentialPostDelegate()
+            )
             try assertOK(response: nextResp, data: nextData)
             guard let nextURL = (nextResp as? HTTPURLResponse)?.url else {
                 throw MoodleWebserviceError.malformedResponse(detail: "missing bridge response URL")
@@ -622,14 +625,14 @@ actor MoodleTokenService {
             // Resolve the action against the SSO/Moodle base so substring
             // tricks like `https://attacker/auth/oidc` cannot pose as the
             // OIDC bridge; the resolved host must be Moodle's.
-            let resolvedActionURL = URL(string: action, relativeTo: ssoBaseURL)?.absoluteURL
-            let isOidcAction = (resolvedActionURL?.host == "moodle2.ntust.edu.tw")
-                && (resolvedActionURL?.path.hasPrefix("/auth/oidc") == true)
+            guard let resolvedActionURL = URL(string: action, relativeTo: ssoBaseURL)?.absoluteURL else { return }
+            let isOidcAction = resolvedActionURL.host == "moodle2.ntust.edu.tw"
+                && resolvedActionURL.path.hasPrefix("/auth/oidc")
             if isOidcAction,
                 payload["code"] != nil
                 && payload["state"] != nil
                 && payload["iss"] != nil {
-                result = OIDCBridge(action: action, payload: payload)
+                result = OIDCBridge(action: resolvedActionURL, payload: payload)
                 stop.pointee = true
             }
         }

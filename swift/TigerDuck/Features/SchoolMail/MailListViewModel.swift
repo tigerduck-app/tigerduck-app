@@ -647,13 +647,26 @@ final class MailListViewModel {
             }
         }
         guard isCurrent(selection, epoch), !Self.hasUnshownMail(status, page: pages[inbox]) else { return }
+        var movedUp: [String] = []
         for (folder, folderStatus) in statuses where !Self.hasUnshownMail(folderStatus, page: pages[folder]) {
             guard var page = pages[folder], page.fetchedAt.map({ $0 < checkedAt }) ?? true else { continue }
             page.fetchedAt = checkedAt
             pages[folder] = page
+            movedUp.append(folder)
         }
         syncedAt = Self.syncedAt(of: targets.map { pages[$0] })
         await noteSeenByPage(status)
+        // Cached too, or a relaunch that paints from the cache shows the older time. Queued all at
+        // once, so a drop a folder change queues meanwhile lands after them, not before one.
+        guard isCurrent(selection, epoch) else { return }
+        let cache = self.cache
+        let writes = movedUp.compactMap { folder in
+            pages[folder].map { page in
+                let stored = Self.cachedCopy(of: page)
+                return chainCacheWrite { cache.savePage(stored) }
+            }
+        }
+        for write in writes { await write.value }
     }
 
     /// Whether the folder holds mail `page` does not: UIDNEXT has moved past the value the page was
