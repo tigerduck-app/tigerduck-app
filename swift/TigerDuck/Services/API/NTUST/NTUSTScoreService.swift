@@ -49,7 +49,8 @@ enum NTUSTScoreService {
         }
 
         let generation = NTUSTSessionManager.shared.generation
-        if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
+        // Through the session handed in, so no request of this fetch goes out another way.
+        if !(await NTUSTSessionManager.shared.probeCookiesValid(using: session)) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: scoreRootURL,

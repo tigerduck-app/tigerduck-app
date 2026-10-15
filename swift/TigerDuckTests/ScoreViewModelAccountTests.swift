@@ -120,18 +120,22 @@ struct ScoreViewModelAccountTests {
         #expect(model.cachedAt == readAt)
     }
 
-    /// The cache answers with the time it read the report, which the session it is handed never
-    /// gets to use.
+    /// The cache answers with the time it read the report. The session is a stand-in with no
+    /// answers, so nothing leaves the process even if the cache stops answering.
     @Test func theDayLongCacheAnswersWithTheTimeItWasRead() async throws {
         try await Self.withCachedReport { studentId in
             let cached = try #require(DataCache.shared.loadScoreReport(studentId: studentId))
 
             let fetched = try await NTUSTScoreService.fetchScoreReport(
-                session: URLSession(configuration: .ephemeral), studentId: studentId, password: "unused"
+                session: SSOServerStub.session(), studentId: studentId, password: "unused"
             )
 
             #expect(fetched.report == cached.report)
             #expect(fetched.cachedAt == cached.cachedAt)
+            // The stub's log is shared with the SSO suite, so only this fetch's requests count.
+            #expect(!SSOServerStub.requests.contains {
+                $0.url.host == "stuinfosys.ntust.edu.tw" || $0.body.contains(studentId)
+            })
         }
     }
 
