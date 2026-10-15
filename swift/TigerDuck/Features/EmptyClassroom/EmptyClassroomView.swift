@@ -188,7 +188,7 @@ struct EmptyClassroomContent: View {
         }
     }
 
-    /// The building's name as the site gives it, and the room's floor.
+    /// The building's name and the room's floor.
     private static func place(of room: RoomUsage, viewModel: EmptyClassroomViewModel) -> String {
         guard let place = RoomPlace(room: room.room) else { return room.room }
         return "\(viewModel.buildingName(place.building)) \(place.floorLabel)"

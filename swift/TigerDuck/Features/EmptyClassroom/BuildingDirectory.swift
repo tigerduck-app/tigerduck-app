@@ -66,3 +66,28 @@ nonisolated struct BuildingDirectory: Equatable, Sendable {
         }.first?.code
     }
 }
+
+/// The main campus's buildings by the names the school publishes, in the user's language. A
+/// building has a Chinese and an English name only, so other languages show the English one
+/// (`app-translation/CONVENTIONS.md`). A code without an official English name is left out.
+nonisolated enum CampusBuildingName {
+    static func of(_ code: String) -> String? {
+        switch code {
+        case "AD": String(localized: "empty_classroom_building_ad")
+        case "AU": String(localized: "empty_classroom_building_au")
+        case "E1": String(localized: "empty_classroom_building_e1")
+        case "E2": String(localized: "empty_classroom_building_e2")
+        case "EE": String(localized: "empty_classroom_building_ee")
+        case "IB": String(localized: "empty_classroom_building_ib")
+        case "LB": String(localized: "empty_classroom_building_lb")
+        case "MA": String(localized: "empty_classroom_building_ma")
+        case "RB": String(localized: "empty_classroom_building_rb")
+        case "T1": String(localized: "empty_classroom_building_t1")
+        case "T2": String(localized: "empty_classroom_building_t2")
+        case "T3": String(localized: "empty_classroom_building_t3")
+        case "T4": String(localized: "empty_classroom_building_t4")
+        case "TR": String(localized: "empty_classroom_building_tr")
+        default: nil
+        }
+    }
+}
