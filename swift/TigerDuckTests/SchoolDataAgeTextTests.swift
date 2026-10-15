@@ -25,10 +25,10 @@ struct SchoolDataAgeTextTests {
         #expect(tracker.note(for: .moodle) == nil)
     }
 
-    @Test("the age reads never synced, just now, then minutes, hours and days")
+    @Test("the age reads never updated, just now, then minutes, hours and days")
     func ageSteps() {
         let now = Date()
-        #expect(SyncStatusDot.ageText(nil, now: now) == String(localized: "sync_status_never_synced"))
+        #expect(SyncStatusDot.ageText(nil, now: now) == String(localized: "sync_status_never_updated"))
         #expect(SyncStatusDot.ageText(now - 59, now: now) == String(localized: "sync_status_just_now"))
         #expect(SyncStatusDot.ageText(now - 5 * 60, now: now)
             == String(format: String(localized: "sync_status_minutes_ago_short"), 5))
