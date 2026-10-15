@@ -33,10 +33,11 @@ struct ScoreViewModelAccountTests {
             return isOnline
         }
 
-        func fetch(_ report: ScoreReport) async -> ScoreReport {
+        /// `cachedAt` is when the school gave the report: earlier for one the cache answers.
+        func fetch(_ report: ScoreReport, cachedAt: Date = Date()) async -> (report: ScoreReport, cachedAt: Date) {
             fetches += 1
             if holdsFetch { await withCheckedContinuation { held.append($0) } }
-            return report
+            return (report, cachedAt)
         }
 
         func release() {
@@ -90,6 +91,26 @@ struct ScoreViewModelAccountTests {
             isReachable: { await school.probe() },
             fetch: { await school.fetch(report(for: studentId)) }
         )
+    }
+
+    /// The status dot's last sync is when the school gave the report, which a refresh the
+    /// day-long cache answers does not move.
+    @Test func aReportTheCacheAnsweredKeepsTheTimeItWasRead() async {
+        let model = ScoreViewModel()
+        let studentId = Self.testStudentId()
+        let school = School()
+        let readAt = Date().addingTimeInterval(-3 * 3600)
+
+        await model.refresh(
+            for: studentId,
+            generation: 1,
+            isCurrent: { true },
+            isReachable: { await school.probe() },
+            fetch: { await school.fetch(Self.report(for: studentId), cachedAt: readAt) }
+        )
+
+        #expect(model.report.student == studentId)
+        #expect(model.cachedAt == readAt)
     }
 
     @Test func anotherAccountsReportComesOffTheScreen() {
