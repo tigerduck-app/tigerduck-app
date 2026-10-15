@@ -32,8 +32,9 @@ their own (the login form, the `form_post` bridge) and the final token page, wit
 number of steps. `MoodleOidcAuthClient` in `api-poc/api/moodle/auth.py` runs the same flow in
 Python for probing the endpoints.
 
-The POST with the credentials in step 3 goes only to ssoam2 over HTTPS, and follows only a 301,
-302 or 303, as a GET over HTTPS; a 307 or a 308 would send the form again to its `Location`
+The POST with the credentials in step 3 goes only to ssoam2 over HTTPS. At every redirect of that
+request, the GETs after the first one included, it follows only a 301, 302 or 303, as a GET over
+HTTPS, since a 307 or a 308 of the POST would send the form again to its `Location`
 (`swift/TigerDuck/Services/API/NTUST/CredentialPost.swift`, which the SSO sign-in uses too).
 
 ## Alternatives
