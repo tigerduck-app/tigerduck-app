@@ -20,9 +20,14 @@ struct CredentialPostTests {
         return try #require(HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil))
     }
 
-    @Test("the form posts only to ssoam2 over HTTPS")
+    @Test("the form posts only to ssoam2 over HTTPS, the host in any case")
     func signInTarget() throws {
-        for string in ["https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2F", "HTTPS://ssoam2.ntust.edu.tw/"] {
+        let signInHost = [
+            "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2F",
+            "HTTPS://ssoam2.ntust.edu.tw/",
+            "https://SSOAM2.NTUST.EDU.TW/account/login",
+        ]
+        for string in signInHost {
             let url = try #require(URL(string: string))
             #expect(CredentialPost.isSignInTarget(url), "\(string)")
         }

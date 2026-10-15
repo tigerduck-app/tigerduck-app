@@ -9,7 +9,7 @@ nonisolated enum CredentialPost {
     /// Whether the form may post the credentials to `url`: the sign-in host over HTTPS, whatever
     /// the page names as the form's action.
     static func isSignInTarget(_ url: URL) -> Bool {
-        url.scheme?.lowercased() == "https" && url.host == signInHost
+        url.scheme?.lowercased() == "https" && url.host?.lowercased() == signInHost
     }
 
     /// The request a redirect of the POST is followed with, or nil to stop at the redirect, which
