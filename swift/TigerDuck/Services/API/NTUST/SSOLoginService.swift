@@ -328,8 +328,15 @@ enum SSOLoginService {
             }
 
             let actionURL = resolveURL(form.action, base: currentURL)
+            guard CredentialPost.isSchoolTarget(actionURL) else {
+                AppLogger.auth.error(
+                    "Sign-in bridge form action refused: \(CredentialPost.schemeLabel(of: actionURL), privacy: .public) \(actionURL.host ?? "", privacy: .private)"
+                )
+                throw SSOLoginError.invalidResponse
+            }
             let (data, response) = try await postForm(
-                session: session, url: actionURL, fields: form.inputs, generation: generation
+                session: session, url: actionURL, fields: form.inputs, generation: generation,
+                delegate: CredentialPostDelegate()
             )
             guard let newHTML = String(data: data, encoding: .utf8),
                   let resp = response as? HTTPURLResponse else {

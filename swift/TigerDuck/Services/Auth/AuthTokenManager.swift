@@ -198,7 +198,7 @@ actor AuthTokenManager {
         request.httpBody = try JSONEncoder().encode(body)
 
         let generation = signInGeneration
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request, delegate: CredentialPostDelegate())
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             if let http = response as? HTTPURLResponse {
                 await APIVersionGate.shared.note(statusCode: http.statusCode)

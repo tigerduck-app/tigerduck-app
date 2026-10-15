@@ -236,6 +236,11 @@ enum LibraryService {
 
     /// Sends the credentials and returns the library's answer, storing nothing.
     static func requestToken(username: String, password: String) async throws -> LibraryLoginData {
+        try await requestToken(username: username, password: password, session: session)
+    }
+
+    /// ``requestToken(username:password:)`` on `session`, which tests replace.
+    static func requestToken(username: String, password: String, session: URLSession) async throws -> LibraryLoginData {
         do {
             let url = URL(string: "\(baseURL)/passport/login")!
             var request = URLRequest(url: url)
@@ -245,7 +250,7 @@ enum LibraryService {
                 LibraryLoginRequest(username: username, password: password)
             )
 
-            let (data, urlResponse) = try await session.data(for: request)
+            let (data, urlResponse) = try await session.data(for: request, delegate: CredentialPostDelegate())
             return try loginAnswer(urlResponse, data: data)
         } catch {
             AppLogger.captureError(error, context: ["service": "libraryLogin"])
