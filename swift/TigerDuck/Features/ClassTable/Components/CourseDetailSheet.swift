@@ -124,7 +124,7 @@ struct CourseDetailSheet: View {
         case .grades:
             MoodleGradesView(store: store)
         case .members:
-            MoodleMembersView(store: store) { routes.wrappedValue.append($0) }
+            MoodleMembersView(store: store, policy: appState.visualStylePolicy) { routes.wrappedValue.append($0) }
         case .member(let member):
             MoodleMemberView(store: store, member: member)
         case .forums:
