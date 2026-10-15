@@ -33,7 +33,7 @@ struct SyncStatusDotDetailsTests {
             let status = SyncStatusDot.statusText(.ok)
             try await waitUntil { accessibilityElement(labeled: status, in: host.view) != nil }
             _ = try #require(accessibilityElement(labeled: status, in: host.view)).accessibilityActivate()
-            try await waitUntil(timeout: .seconds(10)) { host.presentedViewController != nil }
+            try await waitUntil { host.presentedViewController != nil }
             let popover = try #require(host.presentedViewController?.view)
             try await waitUntil { accessibilityElement(labeled: name, in: popover) != nil }
             return labels(in: popover)
@@ -54,12 +54,13 @@ struct SyncStatusDotDetailsTests {
         return found
     }
 
+    /// Five hours back reads the same for the next hour, however long the main thread stalls.
     @Test("a page's own last sync shows its age")
     func aPageGivesItsOwnTime() async throws {
-        let labels = try await Self.popoverLabels(.at(Date().addingTimeInterval(-5 * 60)))
+        let labels = try await Self.popoverLabels(.at(Date().addingTimeInterval(-5 * 3600)))
 
         #expect(labels.contains(String(localized: "sync_status_last_synced")))
-        #expect(labels.contains(String(format: String(localized: "sync_status_minutes_ago_short"), 5)))
+        #expect(labels.contains(String(format: String(localized: "sync_status_hours_ago_short"), 5)))
     }
 
     @Test("a page whose data never arrived says so")

@@ -122,6 +122,20 @@ struct MailListViewModelTests {
         #expect(abs(syncedAt.timeIntervalSince(fetchedAt)) < 0.001)
     }
 
+    /// A page an earlier build cached carries no fetch time and still loads.
+    @Test func aPageCachedWithoutAFetchTimeStillLoads() throws {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let url = cache.pageURL(folder: "INBOX")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let json = #"{"version":1,"payload":{"folder":"INBOX","uidValidity":7,"messageCount":0,"summaries":[]}}"#
+        try Data(json.utf8).write(to: url)
+
+        let page = try #require(cache.loadPage(folder: "INBOX"))
+
+        #expect(page.uidValidity == 7)
+        #expect(page.fetchedAt == nil)
+    }
+
     @Test func failingWithNothingCachedShowsTheError() async {
         let h = Self.harness(open: { throw MailClientError.unreachable })
         await h.model.load()

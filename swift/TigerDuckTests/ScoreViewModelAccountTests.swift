@@ -77,6 +77,13 @@ struct ScoreViewModelAccountTests {
         body(studentId)
     }
 
+    private static func withCachedReport(_ body: (String) async throws -> Void) async rethrows {
+        let studentId = testStudentId()
+        DataCache.shared.saveScoreReport(report(for: studentId), studentId: studentId)
+        defer { DataCache.shared.invalidateScoreReport(studentId: studentId) }
+        try await body(studentId)
+    }
+
     private static func refresh(
         _ model: ScoreViewModel,
         for studentId: String,
@@ -111,6 +118,21 @@ struct ScoreViewModelAccountTests {
 
         #expect(model.report.student == studentId)
         #expect(model.cachedAt == readAt)
+    }
+
+    /// The cache answers with the time it read the report, which the session it is handed never
+    /// gets to use.
+    @Test func theDayLongCacheAnswersWithTheTimeItWasRead() async throws {
+        try await Self.withCachedReport { studentId in
+            let cached = try #require(DataCache.shared.loadScoreReport(studentId: studentId))
+
+            let fetched = try await NTUSTScoreService.fetchScoreReport(
+                session: URLSession(configuration: .ephemeral), studentId: studentId, password: "unused"
+            )
+
+            #expect(fetched.report == cached.report)
+            #expect(fetched.cachedAt == cached.cachedAt)
+        }
     }
 
     @Test func anotherAccountsReportComesOffTheScreen() {
