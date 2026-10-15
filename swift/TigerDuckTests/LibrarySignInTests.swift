@@ -349,6 +349,26 @@ struct LibrarySignInTests {
         }
     }
 
+    /// The status dot's last sync is when the code on screen was issued, and an account change
+    /// takes the time with the code.
+    @Test func theLastSyncIsWhenTheCodeOnScreenWasIssued() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = { "code-1" }
+            let before = Date()
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.qrPayload == "code-1" }
+            let issued = try #require(model.codeFetchedAt)
+            #expect(issued >= before && issued <= Date())
+
+            NotificationCenter.default.post(name: LibraryService.accountDidChange, object: nil)
+            #expect(model.codeFetchedAt == nil)
+        }
+    }
+
     @Test func anAccountChangeKeepsAStoredAccountSignedIn() async throws {
         try await Self.withStoredAccount { _ in
             let model = LibraryViewModel()

@@ -4,6 +4,8 @@ import SwiftUI
 final class LibraryViewModel {
     var qrCodeImage: UIImage?
     var qrPayload: String?
+    /// When the code on screen was issued, for the status dot's last sync; nil with no code.
+    private(set) var codeFetchedAt: Date?
     var countdown: Int = 30
     var isLoadingQR = false
     var errorMessage: String?
@@ -90,6 +92,7 @@ final class LibraryViewModel {
         if hasLoaded && isLoggedIn && !LibraryService.isTokenValid {
             qrCodeImage = nil
             qrPayload = nil
+            codeFetchedAt = nil
             // A request still in flight from the ended session is dropped
             // without touching this flag, so nothing else will clear it.
             isLoadingQR = false
@@ -173,6 +176,7 @@ final class LibraryViewModel {
                 LibraryQRCache.shared.store(payload)
                 if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                 qrPayload = payload
+                codeFetchedAt = LibraryQRCache.shared.fetchedAt
                 qrCodeImage = image
                 isLoadingQR = false
                 consecutiveErrors = 0
@@ -201,6 +205,7 @@ final class LibraryViewModel {
     private func showSignInForm() {
         isLoggedIn = false
         consecutiveErrors = 0
+        codeFetchedAt = nil
         LibraryQRCache.shared.clear()
         LibraryQRImageCache.shared.clear()
         stopTimers()
@@ -241,6 +246,7 @@ final class LibraryViewModel {
         let cache = LibraryQRCache.shared
         if let payload = cache.reusable() {
             let remaining = cache.remaining()
+            codeFetchedAt = cache.fetchedAt
             if qrPayload != payload || qrCodeImage == nil {
                 qrPayload = payload
                 // A payload rendered on an earlier visit is assigned synchronously, so the QR is on
@@ -308,6 +314,7 @@ final class LibraryViewModel {
         stopTimers()
         qrCodeImage = nil
         qrPayload = nil
+        codeFetchedAt = nil
         isLoadingQR = false
         consecutiveErrors = 0
         isLoggedIn = LibraryService.hasAccount
