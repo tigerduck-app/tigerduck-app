@@ -142,6 +142,9 @@ nonisolated extension Defaults.Keys {
     static let ssoLoginTimestamp = Key<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
     /// When Moodle last answered a whole assignment round for the signed-in account.
     static let schoolDataSyncedAt = Key<Date?>("schoolDataSyncedAt")
+    /// When the bulletin feed last gave its newest page; `BulletinsViewModel.forgetListSession()`
+    /// clears it at sign-out with the cached list.
+    static let bulletinsSyncedAt = Key<Date?>("bulletinsSyncedAt")
     /// The last `courses_reset_at` a full sync read, in server time, or `distantPast` once one has
     /// read none, for the signed-in account; see `AppState.coursesReset(server:lastSeen:)`. Only a
     /// full sync sets it: any other value can make the next sync apply an old reset, which drops the
@@ -227,6 +230,9 @@ nonisolated extension Defaults.Keys {
     /// every one when the device updated, signed in, from a version that kept no such record.
     /// Cleared at sign-out. See `AppState.hasSynced(_:)`.
     static let categoriesSyncedOnce = Key<Set<String>>("categoriesSyncedOnce", default: [])
+    /// The server row id of each course, by `CourseTombstone` key, that the last full sync taking
+    /// the course settings listed. Cleared at sign-out. See `AppState.recreatedCourses`.
+    static let courseRowIdsSeen = Key<[String: Int]>("courseRowIdsSeen", default: [:])
 
     // MARK: Academic calendar
     /// Decoded `AcademicCalendar` from the last successful fetch. Cached so

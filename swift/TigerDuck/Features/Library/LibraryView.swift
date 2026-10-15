@@ -32,6 +32,7 @@ struct LibraryView: View {
     #endif
 
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 56
+    @State private var presenceID = UUID()
 
     var body: some View {
         Group {
@@ -41,6 +42,10 @@ struct LibraryView: View {
                 NavigationStack { content }
             }
         }
+        // Here, not on `content`, whose layout branch can change at a sign-in and would leave
+        // and rejoin the count in between.
+        .onAppear { LibraryPagePresence.shared.appear(presenceID) }
+        .onDisappear { LibraryPagePresence.shared.disappear(presenceID) }
     }
 
     private var content: some View {
@@ -242,7 +247,8 @@ struct LibraryView: View {
                 text: viewModel.isLoggedIn
                     ? String(localized: "library_status_signed_in")
                     : String(localized: "common_not_signed_in"),
-                isLoading: viewModel.isLoadingQR
+                isLoading: viewModel.isLoadingQR,
+                lastSynced: .at(viewModel.codeFetchedAt)
             )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -371,4 +377,20 @@ struct LibraryView: View {
                 .font(TigerDuckTheme.Typography.headline)
         }
     }
+}
+
+/// The Library pages on screen. Flip-to-library holds its offer while one is up, since the sheet
+/// would cover the code someone just signed in to show. Each page counts once however often it
+/// appears, and a tab switch can show one page before it hides another.
+@Observable
+final class LibraryPagePresence {
+    static let shared = LibraryPagePresence()
+
+    private var pages: Set<UUID> = []
+
+    var isShown: Bool { !pages.isEmpty }
+
+    func appear(_ page: UUID) { pages.insert(page) }
+
+    func disappear(_ page: UUID) { pages.remove(page) }
 }

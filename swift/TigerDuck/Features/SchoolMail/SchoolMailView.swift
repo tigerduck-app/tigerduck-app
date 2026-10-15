@@ -261,11 +261,11 @@ struct SchoolMailView: View {
                         bottom: 0, trailing: 0
                     ))
             }
-            if account.authFailed {
+            if account.showsAuthFailedBanner {
                 NTUSTReauthErrorBanner(
                     message: String(localized: "school_mail_auth_failed_banner"),
                     onRetry: { showLoginSheet = true },
-                    onDismiss: {}
+                    onDismiss: { account.authBannerDismissed = true }
                 )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -359,7 +359,8 @@ struct SchoolMailView: View {
             label: String(localized: "feature_school_mail"),
             icon: "envelope.fill",
             text: SyncStatusDot.statusText(viewModel.serverStatus),
-            isLoading: viewModel.isRefreshing
+            isLoading: viewModel.isRefreshing,
+            lastSynced: .at(viewModel.syncedAt)
         )
     }
 

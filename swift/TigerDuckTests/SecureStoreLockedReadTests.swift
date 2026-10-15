@@ -178,6 +178,41 @@ struct SecureStoreLockedReadTests {
         }
     }
 
+    /// The endpoint override keeps a read that found nothing until an unlock or a return to the
+    /// app, which a launch behind the lock may not get before its next request. An earlier build's
+    /// copy it cannot read yet is unreadable, not absent (https://github.com/tigerduck-app/tigerduck-app/issues/502).
+    @Test(arguments: readWhileLocked, absentReadsFailWhileLocked)
+    func aSecretNotYetMovedIsUnreadableWhileLocked(key: String, absentReadsFail: Bool) throws {
+        SecureStore.delete(key: key)
+        defer { SecureStore.delete(key: key) }
+        let earlierBuilds = LockablePhoneKeychain(absentReadsFailWhileLocked: absentReadsFail)
+
+        try SecureStore.$sharedForTesting.withValue(earlierBuilds) {
+            try earlierBuilds.setObject(Data("real".utf8), forKey: key)
+            earlierBuilds.isLocked = true
+
+            #expect(throws: KeychainError.couldNotAccessKeychain) {
+                try SecureStore.loadIfReadable(key: key)
+            }
+
+            earlierBuilds.isLocked = false
+            #expect(try SecureStore.loadIfReadable(key: key) == Data("real".utf8))
+        }
+    }
+
+    @Test(arguments: readWhileLocked)
+    func aSecretNeverStoredReadsAbsentWhileLocked(key: String) throws {
+        SecureStore.delete(key: key)
+        defer { SecureStore.delete(key: key) }
+        let earlierBuilds = LockablePhoneKeychain()
+
+        try SecureStore.$sharedForTesting.withValue(earlierBuilds) {
+            earlierBuilds.isLocked = true
+            let value = try SecureStore.loadIfReadable(key: key)
+            #expect(value == nil)
+        }
+    }
+
     /// Where every earlier build wrote every secret.
     private let earlierBuildsValet = Valet.valet(
         with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,

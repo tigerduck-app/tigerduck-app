@@ -87,6 +87,8 @@ final class MailMessageViewModel {
     /// — what the web view actually loads. See `linkTarget(forIndex:)`.
     private(set) var linkedDocument: LinkedHTML?
     private(set) var plainText = ""
+    /// `plainText` with its links, found once per message rather than on every redraw.
+    private(set) var linkedPlainText = AttributedString()
     private(set) var warnings: [MailWarning] = []
     /// Nothing this screen can render: no text body, no HTML body, no attachments. Drives the
     /// "Couldn't read this mail's format. Showing its source instead." banner and the forced
@@ -607,6 +609,7 @@ final class MailMessageViewModel {
         sanitized = freshSanitized
         linkedDocument = freshLinked
         plainText = freshPlainText
+        linkedPlainText = MailTextLinkifier.attributed(freshPlainText)
         // The formatted view is about to stop being offered for a mail with no HTML part
         // (`availableModes`), so a selection resting on it has to move now rather than leave the
         // picker pointing at an entry that is no longer in the menu.

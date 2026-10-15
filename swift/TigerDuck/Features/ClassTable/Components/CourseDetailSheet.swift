@@ -22,6 +22,8 @@ struct CourseDetailSheet: View {
     let assignments: [SDAssignment]
     var timeRange: String? = nil
     var weekday: Int? = nil
+    /// The tapped block's periods. A course can meet twice a day in two rooms.
+    var periods: [String]? = nil
     /// The Mac overlay passes its own, so Escape can go back a screen before it closes.
     var moodlePath: Binding<[MoodleCourseRoute]>? = nil
     /// Off for a course on someone else's class table: the Moodle course is the user's.
@@ -222,13 +224,16 @@ struct CourseDetailSheet: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    /// Same resolution rule the previous flat layout used: per-weekday lookup
-    /// when we know which day this row represents, otherwise the deduped
-    /// aggregate string. Empty results render as an em-dash placeholder so
-    /// the card always has visible content.
     private var classroomValue: String {
-        let resolved = weekday.map { course.classroom(for: $0) } ?? SDCourse.dedup(course.classroom)
+        let resolved = Self.classroom(of: course, weekday: weekday, periods: periods)
         return resolved.isEmpty ? "—" : resolved
+    }
+
+    /// The block's room when the caller knows the block, else the day's rooms, else every room.
+    static func classroom(of course: SDCourse, weekday: Int?, periods: [String]?) -> String {
+        guard let weekday else { return SDCourse.dedup(course.classroom) }
+        guard let periods, !periods.isEmpty else { return course.classroom(for: weekday) }
+        return course.classroom(weekday: weekday, periods: periods)
     }
 
     /// Prefer the explicit time range supplied by the caller (ClassTable

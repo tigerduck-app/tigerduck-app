@@ -276,16 +276,10 @@ struct MailMessageView: View {
                     .frame(height: webHeight)
                     .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
                 } else {
-                    Text(MailTextLinkifier.attributed(viewModel.plainText))
-                        .font(TigerDuckTheme.Typography.body)
-                        .foregroundStyle(Color.textPrimary)
-                        .textSelection(.enabled)
+                    plainBody
                 }
             case .plain:
-                Text(viewModel.plainText)
-                    .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(Color.textPrimary)
-                    .textSelection(.enabled)
+                plainBody
             case .source:
                 if let source = viewModel.source {
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
@@ -306,6 +300,15 @@ struct MailMessageView: View {
                 }
             }
         }
+    }
+
+    /// Plain text with its links tappable. A mail with no HTML part shows only this, and the link
+    /// sheet takes its taps through the `openURL` action set on this view.
+    private var plainBody: some View {
+        Text(viewModel.linkedPlainText)
+            .font(TigerDuckTheme.Typography.body)
+            .foregroundStyle(Color.textPrimary)
+            .textSelection(.enabled)
     }
 
     @ToolbarContentBuilder

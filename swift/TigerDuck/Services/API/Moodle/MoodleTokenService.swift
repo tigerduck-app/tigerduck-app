@@ -175,25 +175,8 @@ actor MoodleTokenService {
         }
         let generation = signInGeneration
         let task = Task<String, Error> {
-            guard let creds = storedCredentials() else {
-                throw MoodleWebserviceError.missingStoredCredentials
-            }
-            let normalizedId = creds.studentId
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .uppercased()
-            let triple: TokenTriple
-            do {
-                triple = try await harvest(normalizedId, creds.password)
-            } catch {
-                if case MoodleWebserviceError.ssoLoginRejected = error {
-                    // A sign-in with a new password can finish while this harvest runs on the old one.
-                    if signInGeneration == generation, storedCredentials()?.password == creds.password {
-                        SSOLoginService.storedPasswordRejected = true
-                    }
-                } else if signInGeneration == generation, !Self.isNetworkFailure(error) {
-                    lastHarvestFailure = (now(), error)
-                }
-                throw error
+            let triple = try await SSOLoginService.postingStoredPassword {
+                try await harvestWithStoredCredentials(generation: generation)
             }
             guard signInGeneration == generation else { throw CancellationError() }
             tokens.save(triple)
@@ -205,6 +188,35 @@ actor MoodleTokenService {
             if inFlightRefreshTask == task { inFlightRefreshTask = nil }
         }
         return try await task.value
+    }
+
+    /// The harvest with the stored password, run under `SSOLoginService.postingStoredPassword`, so
+    /// the latch is checked again here: an SSO sign-in that held it first may have latched a refusal.
+    private func harvestWithStoredCredentials(generation: Int) async throws -> TokenTriple {
+        // Signed out while this waited for the lock: the stored account may be the next one's.
+        guard signInGeneration == generation else { throw CancellationError() }
+        guard !SSOLoginService.storedPasswordRejected else {
+            throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
+        }
+        guard let creds = storedCredentials() else {
+            throw MoodleWebserviceError.missingStoredCredentials
+        }
+        let normalizedId = creds.studentId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        do {
+            return try await harvest(normalizedId, creds.password)
+        } catch {
+            if case MoodleWebserviceError.ssoLoginRejected = error {
+                // A sign-in with a new password can finish while this harvest runs on the old one.
+                if signInGeneration == generation, storedCredentials()?.password == creds.password {
+                    SSOLoginService.storedPasswordRejected = true
+                }
+            } else if signInGeneration == generation, !Self.isNetworkFailure(error) {
+                lastHarvestFailure = (now(), error)
+            }
+            throw error
+        }
     }
 
     /// Offline the harvest mostly stops before the password goes out, and a pause would outlast
@@ -256,15 +268,15 @@ actor MoodleTokenService {
         let privatetoken: String?
     }
 
-    private nonisolated static func performOidcLogin(
-        studentId: String,
-        password: String
-    ) async throws -> TokenTriple {
-        // The shared cookie store keeps SSO anti-forgery and correlation cookies across the
-        // launch.php -> login -> authorize redirects. A private jar on Apple's URLSession stack
-        // drops them, and the credential POST bounces to /account/login as a false rejection.
+    /// The harvest's session. The shared cookie store keeps SSO anti-forgery and correlation
+    /// cookies across the launch.php -> login -> authorize redirects; a private jar on Apple's
+    /// URLSession stack drops them, and the credential POST bounces to /account/login as a false
+    /// rejection. A harvest holds the stored-password lock, so a server that trickles its answer
+    /// stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default week.
+    nonisolated static func harvestConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 60
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
         config.httpCookieStorage = HTTPCookieStorage.shared
@@ -274,6 +286,14 @@ actor MoodleTokenService {
                 "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         ]
+        return config
+    }
+
+    private nonisolated static func performOidcLogin(
+        studentId: String,
+        password: String
+    ) async throws -> TokenTriple {
+        let config = harvestConfiguration()
         // SPKI pinning: this session POSTs the raw NTUST password and gets the moodlemobile
         // token triple back, so a MITM here is the worst case. `invalidateAndCancel()` in the
         // defer below releases the session's strong reference to the delegate.
@@ -323,9 +343,10 @@ actor MoodleTokenService {
     private nonisolated static func dataTask(
         session: URLSession,
         request: URLRequest,
+        delegate: (any URLSessionTaskDelegate & Sendable)? = nil,
     ) async throws -> (Data, URLResponse) {
         do {
-            return try await session.data(for: request)
+            return try await session.data(for: request, delegate: delegate)
         } catch let urlError as URLError {
             throw MoodleWebserviceError.transientNetwork(
                 underlying: urlError.localizedDescription,
@@ -381,7 +402,7 @@ actor MoodleTokenService {
         let payload: [String: String]
     }
 
-    private nonisolated static func resolveTokenTriple(
+    nonisolated static func resolveTokenTriple(
         session: URLSession,
         data: Data,
         responseURL: URL,
@@ -431,12 +452,9 @@ actor MoodleTokenService {
 
         if responseURL.host == "ssoam2.ntust.edu.tw" {
             let fields = parseSSOLoginFields(from: html)
+            // Without the form no password goes out, so a page at the sign-in path without one,
+            // such as a maintenance page, is no refusal: it pauses the renewal as other failures do.
             if fields.antiforgery.isEmpty {
-                if responseURL.path.contains("/account/login") {
-                    throw MoodleWebserviceError.ssoLoginRejected(
-                        reason: HTMLParser.loginErrorMessage(in: html),
-                    )
-                }
                 throw MoodleWebserviceError.malformedResponse(
                     detail: "SSO login form missing anti-forgery token",
                 )
@@ -444,6 +462,12 @@ actor MoodleTokenService {
 
             let postURL = URL(string: fields.action, relativeTo: responseURL)?
                 .absoluteURL ?? ssoBaseURL
+            // Nothing is posted, so this is no refusal: it pauses the renewal as other failures do.
+            guard CredentialPost.isSignInTarget(postURL) else {
+                throw MoodleWebserviceError.malformedResponse(
+                    detail: "SSO login form posts outside ssoam2",
+                )
+            }
             var postReq = URLRequest(url: postURL)
             postReq.httpMethod = "POST"
             postReq.setValue(
@@ -467,7 +491,13 @@ actor MoodleTokenService {
                 ("ReturnUrl", fields.returnUrl),
                 ("Uri", fields.uri),
             ])
-            let (nextData, nextResp) = try await dataTask(session: session, request: postReq)
+            // A redirect the POST may not follow (`CredentialPostDelegate`) is its answer, which
+            // `assertOK` refuses.
+            let (nextData, nextResp) = try await dataTask(
+                session: session,
+                request: postReq,
+                delegate: CredentialPostDelegate(),
+            )
             try assertOK(response: nextResp, data: nextData)
             guard let nextURL = (nextResp as? HTTPURLResponse)?.url else {
                 throw MoodleWebserviceError.malformedResponse(detail: "missing login response URL")

@@ -66,9 +66,11 @@ enum ClassroomPageFixtures {
         pager: String = onlyPage,
         calendar: String = october,
         campus: String = "HQ",
-        viewState: String = "dGVzdA+/=="
+        viewState: String = "dGVzdA+/==",
+        buildings: [(code: String, name: String)] = [("TR", "研揚大樓"), ("IB", "國際大樓")]
     ) -> String {
         func selected(_ code: String) -> String { code == campus ? " selected=\"selected\"" : "" }
+        let buildingOptions = buildings.map { "<option value=\"\($0.code)\">\($0.name)</option>" }.joined()
         return """
         <html><head><title>教室使用狀況</title></head><body>
         <form name="Form2" method="post" action="./classroom_usecondition.aspx" id="Form2">
@@ -85,7 +87,7 @@ enum ClassroomPageFixtures {
         </select>
         <select name="DropDownBuildingListID" id="DropDownBuildingListID">
           <option selected="selected" value="">請選擇大樓</option>
-          <option value="TR">研揚大樓</option><option value="IB">國際大樓</option>
+          \(buildingOptions)
         </select>
         \(calendar)
         <table cellspacing="0" rules="all" border="1" id="showinfo_grd">

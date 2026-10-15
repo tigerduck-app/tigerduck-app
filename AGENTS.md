@@ -113,6 +113,10 @@ applies the rest. Before pushing, run `python3 tools/check_comments.py check --b
 ## Gotchas
 
 - CI runs the unit tests on a `macos-26` runner in the Asia/Taipei timezone.
+- A phone test that makes a window key or brings up the keyboard, a view service, accessibility
+  or WebKit goes in `on_screen_tests` in `.github/workflows/tests.yaml`. CI runs those
+  after the rest, one at a time: on its just-booted simulator such a call can hold the main
+  thread for a minute, and every test waiting on the main actor meanwhile times out.
 - Every pull request to `main` or `dev` fails while a submodule is behind its upstream branch;
   bump the submodule first.
 - Pull requests from `dev` to `main` must raise `MARKETING_VERSION` by one SemVer step, or keep

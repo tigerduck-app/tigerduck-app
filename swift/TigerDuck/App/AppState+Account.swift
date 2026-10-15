@@ -5,6 +5,7 @@
 import SwiftUI
 import SwiftData
 import Defaults
+import UserNotifications
 import os
 
 extension AppState {
@@ -54,7 +55,7 @@ extension AppState {
 
     var isLibraryLoggedIn: Bool {
         _ = _libraryRevision
-        return LibraryService.isTokenValid
+        return LibraryService.hasAccount
     }
 
     var libraryUsername: String? {
@@ -102,6 +103,8 @@ extension AppState {
         }
         #if os(iOS)
         if let departingStudentId { MailAccountManager.shared.logout(ifSchoolAccount: departingStudentId) }
+        // Its reminders and bulletins would wait in Notification Center for whoever signs in next.
+        Task { await Self.removeAccountNotifications() }
         #endif
         // The session ends now. Only the device's unregister below still goes out as the departing
         // account, with the token this hands back; without it the device keeps getting that
@@ -155,12 +158,14 @@ extension AppState {
         // Before the network calls below, which offline run until they time out: the widgets
         // show the departing account's timetable until this rewrites their snapshot.
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        // A sign-in as another account waits for this, so none of it lands on that account.
-        return Task { @MainActor in
+        // Every sign-in waits for this, so none of it lands on the session that sign-in starts.
+        return authService.startSignOutCalls { [self] in
             await cloudSyncCoordinator.settleForSignOut()
             let departing = AuthTokenManager.DepartingAccount(accessToken: await endingSession.value)
             await AuthTokenManager.$departing.withValue(departing) { await pushCoordinator.disable() }
             #if os(iOS)
+            // The backend can push to the account until the unregister above lands.
+            await Self.removeAccountNotifications()
             await liveActivityCoordinator.endAll()
             #endif
         }
@@ -177,9 +182,40 @@ extension AppState {
         Defaults[.assignmentMarksSyncedOnce] = false
         Defaults[.lastSeenCoursesResetAt] = nil
         Defaults[.categoriesSyncedOnce] = []
+        Defaults[.courseRowIdsSeen] = [:]
     }
 
     func notifyLibraryStateChanged() {
         _libraryRevision += 1
     }
+
+    #if os(iOS)
+    /// Takes the departing account's notifications out of Notification Center: the backend's
+    /// reminders and bulletin pushes. School Mail's leave with the mail account's own sign-out,
+    /// which keeps another student's mail account.
+    static func removeAccountNotifications(
+        from center: any DeliveredNotificationCenter = UNUserNotificationCenter.current()
+    ) async {
+        let identifiers = await center.deliveredNotificationThreads()
+            .filter { $0.thread != MailConstants.notificationThread }
+            .map(\.identifier)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+    }
+    #endif
 }
+
+#if os(iOS)
+/// The part of `UNUserNotificationCenter` a sign-out uses, so a test can hold notifications of its own.
+@MainActor
+protocol DeliveredNotificationCenter {
+    /// The identifier and thread of each notification in Notification Center.
+    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)]
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String])
+}
+
+extension UNUserNotificationCenter: DeliveredNotificationCenter {
+    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
+        await deliveredNotifications().map { ($0.request.identifier, $0.request.content.threadIdentifier) }
+    }
+}
+#endif

@@ -170,6 +170,9 @@ final class AppState {
                 in: DataCache.shared.loadAssignments()
             )
         }
+        liveActivityCoordinator.setSkippedClassProvider { slotId in
+            CourseTimeSlot.isSkipped(slotId: slotId, in: CanonicalCourseProvider().currentCourses())
+        }
         #endif
 
         // Install before enabling push, so the first registration can relogin after a refused
@@ -286,6 +289,10 @@ final class AppState {
 
     /// In-flight guard for ``checkPendingConflicts``. See the comment there.
     var isCheckingConflicts = false
+
+    /// When a full sync or a revision poll runs the pending re-enable check again by itself.
+    /// See ``retryOwedConflictCheck()``.
+    var conflictCheckRetry = ConflictCheckRetry()
 
     /// courseNo → local delete timestamp. The sync reconcile skips
     /// "un-deleting" a course still listed by the server if the user deleted it
@@ -414,7 +421,10 @@ final class AppState {
 
     /// Whether to persist announcement filter selection across sessions
     var rememberAnnouncementFilter: Bool = Defaults[.rememberAnnouncementFilter] {
-        didSet { Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter }
+        didSet {
+            Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter
+            if !rememberAnnouncementFilter { Defaults[.savedAnnouncementDepartmentsData] = nil }
+        }
     }
 
     /// Cross-device sync toggle (Sync course information). When off, every

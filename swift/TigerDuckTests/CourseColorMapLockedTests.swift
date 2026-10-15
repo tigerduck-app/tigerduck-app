@@ -15,16 +15,35 @@ struct CourseColorMapLockedTests {
 
         init(stored: [String: UInt32]) { self.stored = stored }
 
+        var contents: [String: UInt32] { lock.withLock { stored } }
         func read() -> [String: UInt32]? { lock.withLock { locked ? nil : stored } }
         func write(_ map: [String: UInt32]) { lock.withLock { stored = map; writes += 1 } }
         func unlock() { lock.withLock { locked = false } }
+        func relock() { lock.withLock { locked = true } }
+    }
+
+    /// The time `ColorState` reads, which a test moves on.
+    private final class TestClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var current = Date(timeIntervalSince1970: 1_790_000_000)
+
+        var now: Date { lock.withLock { current } }
+        func advance() { lock.withLock { current += ColorState.unreadableReadSpacing } }
     }
 
     private static let palette = TigerDuckTheme.coursePaletteHexes
 
+    /// A state whose map file is `disk`, with protected data available as `unlocked` says.
+    private static func makeState(_ disk: Disk, clock: TestClock, unlocked: Bool) -> ColorState {
+        ColorState(
+            load: { disk.read() }, save: { disk.write($0) },
+            protectedDataAvailable: { unlocked }, now: { clock.now }
+        )
+    }
+
     @Test func aMapThatCannotBeReadYetIsNotWrittenOver() {
         let disk = Disk(stored: ["CS1010001": 0x123456])
-        let state = ColorState(load: { disk.read() }, save: { disk.write($0) })
+        let state = Self.makeState(disk, clock: TestClock(), unlocked: false)
 
         state.ensureAssignments(courseNos: ["CS1010001", "CS1010002"], palette: Self.palette)
         _ = state.setColor(hex: 0x654321, for: "CS1010002", palette: Self.palette)
@@ -33,6 +52,97 @@ struct CourseColorMapLockedTests {
 
         disk.unlock()
         #expect(state.hex(for: "CS1010001", palette: Self.palette) == 0x123456)
+    }
+
+    @Test func readsBehindTheLockScreenNeverGiveUpOnTheMap() {
+        let disk = Disk(stored: ["CS1010001": 0x123456])
+        let clock = TestClock()
+        let state = Self.makeState(disk, clock: clock, unlocked: false)
+
+        for _ in 0..<(2 * ColorState.unreadableReadLimit) {
+            _ = state.setColor(hex: 0x654321, for: "CS1010002", palette: Self.palette)
+            clock.advance()
+        }
+
+        #expect(disk.writes == 0)
+    }
+
+    /// Unlocked, a map file that still cannot be read is damaged or has the wrong permissions, not
+    /// waiting for an unlock. Kept unread, the map saved no colour pick or assignment for the whole
+    /// process (https://github.com/tigerduck-app/tigerduck-app/issues/580).
+    @Test func aMapUnreadableWhileUnlockedIsGivenUpOnAndReplaced() {
+        let disk = Disk(stored: ["CS1010001": 0x123456])
+        let clock = TestClock()
+        let state = Self.makeState(disk, clock: clock, unlocked: true)
+
+        // The read at init and a screen's reads right after it count once.
+        for _ in 0..<10 { _ = state.hex(for: "CS1010001", palette: Self.palette) }
+        for _ in 2..<ColorState.unreadableReadLimit {
+            clock.advance()
+            _ = state.setColor(hex: 0x654321, for: "CS1010002", palette: Self.palette)
+        }
+        #expect(disk.writes == 0)
+
+        clock.advance()
+        _ = state.setColor(hex: 0x654321, for: "CS1010002", palette: Self.palette)
+        #expect(disk.contents == ["CS1010002": 0x654321])
+    }
+
+    /// `ClassTableViewModel.reloadFromCache` reloads the map before it assigns colours, on every
+    /// data update.
+    @Test func aReloadAfterGivingUpStaysGivenUp() {
+        let disk = Disk(stored: ["CS1010001": 0x123456])
+        let clock = TestClock()
+        let state = Self.makeState(disk, clock: clock, unlocked: true)
+        for _ in 0..<ColorState.unreadableReadLimit {
+            _ = state.snapshot()
+            clock.advance()
+        }
+
+        state.reload()
+        state.ensureAssignments(courseNos: ["CS1010002"], palette: Self.palette)
+
+        #expect(disk.contents.keys.sorted() == ["CS1010002"])
+    }
+
+    /// Reads that fail now and then over days, as at the edge of the lock screen, would add up to a
+    /// give-up and colours written over the user's.
+    @Test func aReadThatWorksStartsTheCountOver() {
+        let disk = Disk(stored: ["CS1010001": 0x123456])
+        let clock = TestClock()
+        let state = Self.makeState(disk, clock: clock, unlocked: true)
+        for _ in 1..<ColorState.unreadableReadLimit {
+            _ = state.snapshot()
+            clock.advance()
+        }
+        disk.unlock()
+        #expect(state.snapshot() == ["CS1010001": 0x123456])
+
+        disk.relock()
+        state.reload()
+        clock.advance()
+        _ = state.setColor(hex: 0x654321, for: "CS1010002", palette: Self.palette)
+
+        #expect(disk.writes == 0)
+    }
+
+    /// A give-up applies to the file that never became readable, not to the one written since.
+    @Test func aSaveAfterGivingUpStartsTheCountOver() {
+        let disk = Disk(stored: ["CS1010001": 0x123456])
+        let clock = TestClock()
+        let state = Self.makeState(disk, clock: clock, unlocked: true)
+        for _ in 0..<ColorState.unreadableReadLimit {
+            _ = state.snapshot()
+            clock.advance()
+        }
+        _ = state.setColor(hex: 0x654321, for: "CS1010002", palette: Self.palette)
+        #expect(disk.writes == 1)
+
+        state.reload()
+        clock.advance()
+        state.ensureAssignments(courseNos: ["CS1010003"], palette: Self.palette)
+
+        #expect(disk.writes == 1)
     }
 
     @Test func aFileThatExistsButCannotBeOpenedReadsAsNotReadYet() throws {

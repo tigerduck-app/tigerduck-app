@@ -57,8 +57,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                     "BxOmElsPeD54MBOb5h+TPNJnBlsAk6spRc/wLnko0cc=",
                 ]
             ),
-            // api.lib.ntust.edu.tw — distinct chain from the rest of
-            // the *.ntust.edu.tw zone, hence its own pin set.
+            // api.lib.ntust.edu.tw has its own pin set: the leaf, Sectigo DV E36, and Sectigo's roots
+            // E46 and R46. Each renewal since 2022 changed the key and the issuer, and Sectigo now
+            // issues only under these two roots, so the next certificate still matches.
             PinSet(
                 hostSuffix: "api.lib.ntust.edu.tw",
                 includeSubdomains: true,
@@ -66,6 +67,8 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                 pins: [
                     "m8Epf0KqJFv9abCXfipePZ79hfOMjddCKxz+RSZIDKY=",
                     "ZSagvDzjltLkewXEBuDxIzpW/dpVw1Juvvmd0hhkzdY=",
+                    "sLVjNUaFYfW7n6EtgBeEpjOlcnBdNPMrZDRF36iwBdE=",
+                    "Douxi77vs4G+Ib/BogbTFymEYq0QSFXwSgVCaZcI09Q=",
                 ]
             ),
         ]

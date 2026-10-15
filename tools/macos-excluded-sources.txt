@@ -278,6 +278,12 @@ LibraryTabAddMigration.swift
 # and the prompt it marks answered.
 FlipToLibraryDefaultOffMigration.swift
 
+# MoodleDownloadProtectMigration.swift — gives the Moodle files downloaded before
+# 2.5.0 the `completeUnlessOpen` protection later downloads get; run in the
+# `#if os(iOS)` block in `runPendingMigrations()`. iOS-only like the protection
+# class, which `MoodleFileDownloads` sets only there.
+MoodleDownloadProtectMigration.swift
+
 # Services/Sync — the `notification` settings-document model and its client.
 # Both sections `NotificationSettingsDocument` carries (`assignments`,
 # `live_activity`) describe local reminder scheduling and Live Activity
@@ -371,7 +377,6 @@ MailNotifier.swift
 
 # Services/Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see
 # Features/SchoolMail above
-AsyncSerialLock.swift
 LiveMailClient.swift
 MailMover.swift
 MailTLSVerifier.swift

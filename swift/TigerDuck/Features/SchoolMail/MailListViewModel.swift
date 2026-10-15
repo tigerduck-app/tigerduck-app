@@ -23,6 +23,9 @@ final class MailListViewModel {
     private(set) var rows: [MailListRow] = []
     private(set) var loadState: LoadState = .idle
     private(set) var serverStatus: ServerStatus = .unknown
+    /// When the folders on screen last had their newest page fetched, the least recent of them;
+    /// nil while one has none. A page from the cache brings its own.
+    private(set) var syncedAt: Date?
     private(set) var isRefreshing = false
     private(set) var isPaginating = false
     private(set) var searchResults: [MailListRow]?
@@ -198,7 +201,10 @@ final class MailListViewModel {
                 return result
             }
             guard isCurrent(selection, epoch) else { return }
-            for (folder, fresh) in fetched {
+            let fetchedAt = Date()
+            for (folder, page) in fetched {
+                var fresh = page
+                fresh.fetchedAt = fetchedAt
                 if let previous = pages[folder], previous.uidValidity != fresh.uidValidity {
                     await dropFolder(folder)
                     pages[folder] = nil
@@ -302,7 +308,7 @@ final class MailListViewModel {
         guard selection != self.selection else { return }
         self.selection = selection
         pages = [:]
-        rows = []
+        rebuildRows()
         searchResults = nil
         searchUsedLocalFallback = false
         cancelWarm()
@@ -599,6 +605,7 @@ final class MailListViewModel {
         loadingSelection = nil
         loadState = .idle
         serverStatus = .unknown
+        syncedAt = nil
         isRefreshing = false
         isPaginating = false
         sentCopyNotice = nil
@@ -707,9 +714,10 @@ final class MailListViewModel {
             for folder in queue {
                 guard !Task.isCancelled, let self, self.accountEpoch == epoch else { return }
                 do {
-                    let page = try await self.session.use { client in
+                    var page = try await self.session.use { client in
                         try await client.page(folder: folder, olderThanSequence: nil, pageSize: MailConstants.warmPageSize)
                     }
+                    page.fetchedAt = Date()
                     guard !Task.isCancelled, self.accountEpoch == epoch else { return }
                     // The screen owns a folder it has moved onto since, and its page in memory
                     // and the one on disk must not diverge.
@@ -796,6 +804,18 @@ final class MailListViewModel {
             collected += page.summaries.map { MailListRow(folder: folder, summary: $0) }
         }
         rows = selection == .allMail ? collected.sorted(by: Self.newestFirst) : collected
+        syncedAt = Self.syncedAt(of: targets.map { pages[$0] })
+    }
+
+    /// The least recent fetch among `pages`, or nil when one of them has none, as a folder not
+    /// loaded yet or a page cached by an earlier build.
+    nonisolated static func syncedAt(of pages: [MailFolderPage?]) -> Date? {
+        var oldest: Date?
+        for page in pages {
+            guard let fetchedAt = page?.fetchedAt else { return nil }
+            oldest = min(oldest ?? fetchedAt, fetchedAt)
+        }
+        return oldest
     }
 
     /// Search results, ordered the way the list they replace is: by date for All mail, by UID
@@ -850,7 +870,8 @@ final class MailListViewModel {
         }
         let mergedPage = MailFolderPage(
             folder: folder, uidValidity: fresh.uidValidity, messageCount: fresh.messageCount,
-            summaries: merged, oldestLoadedSequence: oldestLoadedSequence, uidNext: fresh.uidNext
+            summaries: merged, oldestLoadedSequence: oldestLoadedSequence, uidNext: fresh.uidNext,
+            fetchedAt: fresh.fetchedAt
         )
         pages[folder] = mergedPage
         return mergedPage
@@ -902,7 +923,8 @@ final class MailListViewModel {
             current = MailFolderPage(
                 folder: current.folder, uidValidity: current.uidValidity, messageCount: current.messageCount,
                 summaries: older.summaries.sorted { $0.uid > $1.uid },
-                oldestLoadedSequence: older.oldestLoadedSequence, uidNext: current.uidNext
+                oldestLoadedSequence: older.oldestLoadedSequence, uidNext: current.uidNext,
+                fetchedAt: current.fetchedAt
             )
             pages[folder] = current
             rebuildRows()

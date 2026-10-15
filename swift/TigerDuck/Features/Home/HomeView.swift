@@ -58,7 +58,7 @@ struct HomeView: View {
                         .font(TigerDuckTheme.Typography.title)
                         .foregroundStyle(Color.textPrimary)
                     Spacer()
-                    SyncStatusDot(servers: [.moodle, .backend])
+                    SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                 .padding(.top, TigerDuckTheme.Spacing.md)
@@ -158,7 +158,8 @@ struct HomeView: View {
                 course: course,
                 assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
                 timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
-                weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday
+                weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday,
+                periods: slot?.periods
             )
             .onDisappear { viewModel.selectedCourseSlot = nil }
         }

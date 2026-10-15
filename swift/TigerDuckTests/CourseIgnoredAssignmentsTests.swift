@@ -20,10 +20,12 @@ struct CourseIgnoredAssignmentsTests {
         )
     }
 
-    private static func assignment(_ id: String, course: String, dueIn hours: Double = 5) -> SDAssignment {
+    private static func assignment(
+        _ id: String, course: String, dueIn hours: Double = 5, semester: String? = nil
+    ) -> SDAssignment {
         SDAssignment(
             assignmentId: id, courseNo: course, courseName: course, title: "HW \(id)",
-            dueDate: now.addingTimeInterval(hours * 3600)
+            dueDate: now.addingTimeInterval(hours * 3600), semester: semester
         )
     }
 
@@ -55,6 +57,39 @@ struct CourseIgnoredAssignmentsTests {
         let cache = Self.cacheIgnoringCS1()
 
         #expect(cache.loadAssignments(semester: "1152").filter(\.isArchived).isEmpty)
+    }
+
+    /// The cache keeps last term's assignments while Moodle has no course for the new term yet, and
+    /// a retaken course has the same number in both terms.
+    @Test("An assignment kept from last term falls under last term's setting, not this term's")
+    func keptAssignmentsFollowTheTermTheyCameFrom() {
+        let cache = Self.makeCache()
+        cache.saveAssignments([Self.assignment("old", course: "CS1", semester: "1142")])
+
+        cache.setAssignmentsIgnored(true, semester: Self.term, courseNo: "CS1")
+        #expect(cache.loadAssignments(semester: Self.term).filter(\.isIgnoredByCourse).isEmpty)
+
+        cache.replaceIgnoredAssignmentCourses(["1142:CS1"])
+        #expect(Self.ids(cache.loadAssignments(semester: Self.term).filter(\.isIgnoredByCourse)) == ["old"])
+    }
+
+    @Test("A fetch's rows record the term they were fetched for")
+    func fetchedRowsRecordTheirTerm() {
+        let record = MoodleAssignmentRecord(
+            assignId: 1, cmId: 1, courseId: 10, name: "HW1", dueDate: Self.now.addingTimeInterval(3600),
+            cutoffDate: nil, allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
+        )
+        let rows = AppServiceBridge.assignments(
+            from: [record],
+            moodleCoursesById: [10: MoodleEnrolledCourse(id: 10, fullname: "1151CS1", shortname: "",
+                                                         idnumber: "1151CS1", startDate: nil, endDate: nil)],
+            courseNoByMoodleId: [10: "CS1"],
+            statuses: [:],
+            confirmed: [:],
+            marks: AssignmentMarks(archivedIds: [], locallyCompletedIds: [], ignoredCourses: [], semester: Self.term)
+        )
+
+        #expect(rows.map(\.semester) == [Self.term])
     }
 
     @Test("A mark of done shows as ignored, and each assignment's own mark returns with the setting off")
@@ -103,7 +138,7 @@ struct CourseIgnoredAssignmentsTests {
             courses: [], assignments: loaded, accentHex: 0x4A90E2,
             classPreparingLeadTime: 15 * 60, assignmentLeadTime: 3 * 3600,
             showClassPreparing: true, showInClass: true, showAssignmentScenario: true,
-            liveActivityAvailable: true
+            liveActivityAvailable: true, term: Self.term
         )
 
         let events = ScheduleSyncService.buildEvents(

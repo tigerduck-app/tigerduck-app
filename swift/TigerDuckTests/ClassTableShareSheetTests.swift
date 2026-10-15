@@ -219,6 +219,30 @@ struct ClassTableShareTermsTests {
         ), "the term on screen answers without the caches")
     }
 
+    /// The actions menu and the Mac toolbar ask on every redraw, and the answer can decode every term's
+    /// files (https://github.com/tigerduck-app/tigerduck-app/issues/422).
+    @Test("the menu item's answer is worked out again only once the term on screen or the caches change")
+    func menuItemKeepsItsAnswer() throws {
+        let store = Cache()
+        let memo = ClassTableShareModel.AvailabilityMemo()
+        let empty = ClassTableShareModel.Term(semester: "1151", courses: [])
+        let canShare = { (shown: ClassTableShareModel.Term) in
+            ClassTableShareModel.canShare(
+                studentId: "B11300000", shownTerm: shown, semesters: ["1151", "1142"], cache: store.cache, memo: memo
+            )
+        }
+        store.cache.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142")
+        #expect(canShare(empty))
+
+        // Removed behind the cache's back, so only a fresh read could tell.
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("cache", isDirectory: true))
+        #expect(canShare(empty))
+
+        store.cache.saveDeletedCourseNos([])
+        #expect(!canShare(empty))
+        #expect(canShare(.init(semester: "1151", courses: [SDCourse(courseNo: "CS1010001", courseName: "Programming")])))
+    }
+
     @Test("an empty displayed term does not resurrect cached courses or enable sharing")
     func emptyDisplayedTerm() {
         let store = Cache()
@@ -405,14 +429,56 @@ struct ClassTableShareSheetTests {
         }.cgImage
     }
 
-    private static func text(in image: CGImage, words: [String]) throws -> [VNRecognizedTextObservation] {
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.recognitionLanguages = ["en-US", "zh-Hant"]
-        request.usesLanguageCorrection = false
-        request.customWords = words
-        try VNImageRequestHandler(cgImage: image).perform([request])
-        return request.results ?? []
+    /// A line Vision read, with its box in the image: normalized, origin at the bottom left.
+    private struct RecognizedLine: Sendable {
+        let text: String
+        let boundingBox: CGRect
+    }
+
+    /// The lines Vision reads in `image`, recognized on a GCD thread while the caller awaits. One
+    /// recognition takes 15 seconds to over a minute on a CI runner, and every other test waits on
+    /// the main actor (https://github.com/tigerduck-app/tigerduck-app/issues/530). A detached task
+    /// would hold one of the cooperative pool's threads instead, a third of a CI runner's.
+    private nonisolated static func lines(in image: CGImage, words: [String]) async throws -> [RecognizedLine] {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let request = VNRecognizeTextRequest()
+                request.recognitionLevel = .accurate
+                request.recognitionLanguages = ["en-US", "zh-Hant"]
+                request.usesLanguageCorrection = false
+                request.customWords = words
+                do {
+                    try VNImageRequestHandler(cgImage: image).perform([request])
+                    continuation.resume(returning: (request.results ?? []).compactMap { observation in
+                        observation.topCandidates(1).first.map {
+                            RecognizedLine(text: $0.string, boundingBox: observation.boundingBox)
+                        }
+                    })
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Reads `window`'s screenshot until a line holds `text`, as `waitUntil` would if it could await.
+    private func lines(
+        in window: UIWindow,
+        words: [String],
+        showing text: String,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws -> [RecognizedLine] {
+        let deadline = ContinuousClock.now + .seconds(60)
+        var read: [RecognizedLine] = []
+        repeat {
+            if let screenshot = halvedScreenshot(window) {
+                read = (try? await Self.lines(in: screenshot, words: words)) ?? []
+                if read.contains(where: { $0.text.contains(text) }) { return read }
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        } while ContinuousClock.now < deadline
+        Issue.record("no line showed \(text) within 60 seconds: \(read.map(\.text))", sourceLocation: sourceLocation)
+        return read
     }
 
     private static func crowdedModel() -> ClassTableShareModel {
@@ -436,6 +502,34 @@ struct ClassTableShareSheetTests {
         )
     }
 
+    @MainActor
+    private final class Ticks {
+        var count = 0
+    }
+
+    @Test("text recognition runs off the main actor, which the tests running beside it wait on")
+    func recognitionLeavesTheMainActorFree() async throws {
+        let size = CGSize(width: 320, height: 80)
+        let image = try #require(UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            ("B11300000" as NSString).draw(at: CGPoint(x: 16, y: 16), withAttributes: [.font: UIFont.systemFont(ofSize: 32)])
+        }.cgImage)
+        let ticks = Ticks()
+        let ticker = Task { @MainActor in
+            while !Task.isCancelled {
+                ticks.count += 1
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        defer { ticker.cancel() }
+
+        let read = try await Self.lines(in: image, words: ["B11300000"])
+
+        #expect(ticks.count > 0, "the main actor ran nothing while Vision read the image")
+        #expect(read.contains { $0.text.contains("B11300000") })
+    }
+
     @Test("a payload too large for a QR shows a visible failure and a different term restores the code")
     func qrCapacityFailure() async throws {
         let model = Self.crowdedModel()
@@ -449,13 +543,8 @@ struct ClassTableShareSheetTests {
         defer { window.isHidden = true }
         let failure = String(localized: "library_qr_generate_failed")
         let words = [model.studentId, failure]
-        var lines: [String] = []
-        try await waitUntil {
-            guard let screenshot = halvedScreenshot(window) else { return false }
-            lines = (try? Self.text(in: screenshot, words: words))?.compactMap { $0.topCandidates(1).first?.string } ?? []
-            return lines.contains { $0.contains(model.studentId) }
-        }
-        #expect(lines.contains { $0.contains(failure) }, "a missing QR must explain its failure on screen: \(lines)")
+        let onScreen = try await lines(in: window, words: words, showing: model.studentId).map(\.text)
+        #expect(onScreen.contains { $0.contains(failure) }, "a missing QR must explain its failure on screen: \(onScreen)")
         #expect(halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) } == nil)
 
         model.selection = .semester("1151")
@@ -463,8 +552,7 @@ struct ClassTableShareSheetTests {
             halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) }?.messageString == model.code
         }
         #expect(try ClassTableShareCode.decode(try #require(model.code)).terms.map(\.semester) == ["1151"])
-        let restored = try Self.text(in: try #require(halvedScreenshot(window)), words: words)
-            .compactMap { $0.topCandidates(1).first?.string }
+        let restored = try await Self.lines(in: try #require(halvedScreenshot(window)), words: words).map(\.text)
         #expect(!restored.contains { $0.contains(failure) })
     }
 
@@ -503,16 +591,15 @@ struct ClassTableShareSheetTests {
             return read != nil
         }
         let feature = try #require(read)
+        // Measured before the recognition awaits, so the frames are the screenshot's.
+        let visible = presented.view.convert(presented.view.bounds, to: window).intersection(window.bounds)
+        let sheet = presented.view.bounds
         // Screenshot pixels verify visible text without relying on accessibility-tree initialization.
         let captured = try #require(screenshot)
-        let recognized = try Self.text(in: captured, words: [model.studentId, "115-1"])
-        let caption = try #require(recognized.first {
-            guard let line = $0.topCandidates(1).first?.string else { return false }
-            return line.contains("B11300000") && line.contains("115-1")
-        })
-        let visible = presented.view.convert(presented.view.bounds, to: window).intersection(window.bounds)
+        let recognized = try await Self.lines(in: captured, words: [model.studentId, "115-1"])
+        let caption = try #require(recognized.first { $0.text.contains("B11300000") && $0.text.contains("115-1") })
         #expect(window.bounds.size == CGSize(width: 375, height: 667))
-        #expect(abs(presented.view.bounds.height - 440) < 1, "the sheet must remain at its opening height: \(presented.view.bounds)")
+        #expect(abs(sheet.height - 440) < 1, "the sheet must remain at its opening height: \(sheet)")
         #expect(visible.width >= 350 && visible.width <= 375)
         let captionFrame = CGRect(
             x: caption.boundingBox.minX * window.bounds.width,

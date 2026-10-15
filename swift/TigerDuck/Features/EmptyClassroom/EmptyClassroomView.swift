@@ -8,7 +8,6 @@ struct EmptyClassroomView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = EmptyClassroomViewModel()
-    @State private var openRoom: RoomUsage?
     @State private var wasInBackground = false
 
     var body: some View {
@@ -20,8 +19,10 @@ struct EmptyClassroomView: View {
     }
 
     private var content: some View {
-        ScrollView {
+        let access = appState.ntustProtectedAccessState(isEmpty: false)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                EmptyClassroomTitleBar(viewModel: viewModel, showsStatus: access != .loginRequired)
                 if let reauthError = appState.ntustReauthErrorMessage {
                     NTUSTReauthErrorBanner(
                         message: reauthError,
@@ -32,7 +33,7 @@ struct EmptyClassroomView: View {
                         onDismiss: { appState.clearNTUSTReauthError() }
                     )
                 }
-                switch appState.ntustProtectedAccessState(isEmpty: false) {
+                switch access {
                 case .loginRequired:
                     LoginRequiredView(
                         layout: .page,
@@ -44,7 +45,7 @@ struct EmptyClassroomView: View {
                     EmptyClassroomContent(
                         viewModel: viewModel,
                         policy: appState.visualStylePolicy,
-                        onRoom: { openRoom = $0 }
+                        onRoom: { viewModel.open(room: $0) }
                     )
                 }
             }
@@ -52,9 +53,9 @@ struct EmptyClassroomView: View {
         }
         .scrollIndicators(.hidden)
         .background(Color.backgroundPrimary)
-        .navigationTitle(String(localized: "feature_empty_classroom"))
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .refreshable { await viewModel.refresh() }
-        .sheet(item: $openRoom) { room in
+        .sheet(item: openRoom) { room in
             // Applied here so the sheet's scaled column widths stop growing with its text.
             EmptyClassroomContent.sheet(for: room, viewModel: viewModel, policy: appState.visualStylePolicy)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility1)
@@ -72,20 +73,47 @@ struct EmptyClassroomView: View {
             wasInBackground = false
             viewModel.returnToApp()
         }
-        // A return to the app can move the day; an open sheet would show the new date over the
-        // room's old day.
-        .onChange(of: viewModel.selectedDay) { openRoom = nil }
         // A sign-out moves the generation; a sign-in on this screen only stores credentials.
-        .onChange(of: appState.authService.loginGeneration) { accountChanged() }
-        .onChange(of: appState.authService.hasStoredCredentials) { accountChanged() }
+        .onChange(of: appState.authService.loginGeneration) { viewModel.accountChanged() }
+        .onChange(of: appState.authService.hasStoredCredentials) { viewModel.accountChanged() }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
-            viewModel.reloadCourses()
+            viewModel.dataDidUpdate()
         }
     }
 
-    private func accountChanged() {
-        openRoom = nil
-        viewModel.accountChanged()
+    /// Looked up in the body, so rooms that arrive while the sheet is open reach it.
+    private var openRoom: Binding<RoomUsage?> {
+        let room = viewModel.openRoom
+        return Binding(get: { room }, set: { if $0 == nil { viewModel.closeRoom() } })
+    }
+}
+
+/// The finder's title where the other pages put theirs, in their type size, and the booking
+/// site's state beside it, which none of the shared dot's servers stand for.
+struct EmptyClassroomTitleBar: View {
+    let viewModel: EmptyClassroomViewModel
+    /// Signed out the site is not read, so there is no state to report.
+    let showsStatus: Bool
+
+    var body: some View {
+        HStack {
+            Text(String(localized: "feature_empty_classroom"))
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            if showsStatus {
+                SyncStatusDot(
+                    status: viewModel.siteStatus,
+                    label: String(localized: "feature_empty_classroom"),
+                    icon: AppFeature.emptyClassroom.iconName,
+                    text: SyncStatusDot.statusText(viewModel.siteStatus),
+                    isLoading: viewModel.isReading,
+                    lastSynced: viewModel.syncedAt.map { SyncStatusDot.LastSynced.at($0) } ?? .hidden
+                )
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.top, TigerDuckTheme.Spacing.md)
     }
 }
 
@@ -191,7 +219,7 @@ struct EmptyClassroomContent: View {
         }
     }
 
-    /// The building's name as the site gives it, and the room's floor.
+    /// The building's name and the room's floor.
     private static func place(of room: RoomUsage, viewModel: EmptyClassroomViewModel) -> String {
         guard let place = RoomPlace(room: room.room) else { return room.room }
         return "\(viewModel.buildingName(place.building)) \(place.floorLabel)"

@@ -82,11 +82,13 @@ enum LibraryService {
     /// or a different account signing in. The generation only stops work that
     /// is still in flight; a code that already landed stays on whatever screen
     /// shows it until that screen next refreshes, so a screen that is up when
-    /// the account changes listens for this and drops it at once.
+    /// the account changes listens for this and drops it at once. A school sign-out that leaves no
+    /// library account posts it too, for the sign-in form that offers the school account's ID.
     static let accountDidChange = Notification.Name("TigerDuck.libraryAccountDidChange")
 
-    /// Posted on the main actor when a sign-in with the stored credentials stores a new token. No
-    /// screen asked for it, so `AppState.isLibraryLoggedIn` re-reads the token on this.
+    /// Posted on the main actor when a sign-in with the stored credentials stores a new token, or
+    /// the library refuses them, which signs the account out. No screen asked for either, so
+    /// `AppState.isLibraryLoggedIn` reads the state again on this.
     static let signInDidChange = Notification.Name("TigerDuck.librarySignInDidChange")
 
     /// `@MainActor`-isolated so the broadcaster call below is an in-actor
@@ -161,14 +163,24 @@ enum LibraryService {
 
     /// Signs out of the library when its account is the school account signing out, so whoever
     /// signs in next does not keep it. A library account of another ID stays. Returns whether it
-    /// signed out.
+    /// signed out. With no library account, the sign-in form offers the school account's ID, so
+    /// ``accountDidChange`` goes out for it to fill in again.
     @MainActor
     static func clearCredentials(ifSchoolAccount studentId: String) -> Bool {
-        guard let username = storedUsername, username.caseInsensitiveCompare(studentId) == .orderedSame else {
+        guard let username = storedUsername else {
+            if !hasAccount { NotificationCenter.default.post(name: accountDidChange, object: nil) }
             return false
         }
+        guard isSameStudent(username, studentId) else { return false }
         clearCredentials()
         return true
+    }
+
+    /// Whether a library username and a school student ID name one student. The sign-in form
+    /// trims what it saves, but a username saved before it did can carry spaces.
+    nonisolated static func isSameStudent(_ username: String, _ studentId: String) -> Bool {
+        func normalized(_ id: String) -> String { id.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
+        return normalized(username) == normalized(studentId)
     }
 
     // MARK: - Token Management
@@ -288,6 +300,19 @@ enum LibraryService {
         storedUsername != nil && storedPassword != nil && !storedPasswordRejected
     }
 
+    /// Whether a library account is signed in, as the Library page, Settings and the flip count
+    /// it: its token is live, or its stored credentials sign in again behind the code.
+    @MainActor static var hasAccount: Bool {
+        isTokenValid || canSignInWithStoredCredentials
+    }
+
+    /// Whether ``hasAccount`` holds for a library account of another student ID than `studentId`.
+    /// A school sign-in keeps such an account, as ``clearCredentials(ifSchoolAccount:)`` does.
+    @MainActor static func hasAccount(otherThan studentId: String) -> Bool {
+        guard hasAccount, let username = storedUsername else { return false }
+        return !isSameStudent(username, studentId)
+    }
+
     /// Signs in with the stored credentials when there is no live token, so the Library page
     /// shows its code at once. Called at launch and on each return to the app. Returns whether
     /// it signed in.
@@ -336,6 +361,7 @@ enum LibraryService {
                         // The Watch would sign in with its own copy; a working sign-in sends it again.
                         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
                         #endif
+                        NotificationCenter.default.post(name: signInDidChange, object: nil)
                     } else {
                         storedSignInFailedAt = Date()
                     }

@@ -46,7 +46,13 @@ final class MailAccountManager {
     private(set) var studentID: String?
     private(set) var isLoggingIn = false
     private(set) var loginError: LoginError?
-    private(set) var authFailed: Bool
+    private(set) var authFailed: Bool {
+        didSet { if authFailed != oldValue { authBannerDismissed = false } }
+    }
+    /// The ✕ on the "automatic sign-in failed" banner, which hides it until the account signs in
+    /// again or fails anew, as the other screens' sign-in banners go.
+    var authBannerDismissed = false
+    var showsAuthFailedBanner: Bool { authFailed && !authBannerDismissed }
 
     /// The password the server most recently rejected for a manual sign-in. In memory for this
     /// process only: never persisted, logged or sent anywhere. The sign-in screens read it so

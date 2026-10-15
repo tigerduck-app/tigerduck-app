@@ -1,6 +1,6 @@
 // `URLProtocol` double and the only test seam into `SettingsDocumentClient`, a concrete actor
 // whose `init` takes a `URLSession`. Must stay `nonisolated`: `URLSession` calls `startLoading()`
-// synchronously on a background queue. `lock` guards the two `nonisolated(unsafe)` dictionaries.
+// synchronously on a background queue. `lock` guards the `nonisolated(unsafe)` queues and logs.
 import Foundation
 @testable import TigerDuck
 
@@ -28,6 +28,7 @@ nonisolated final class SettingsAPIStub: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var responses: [String: [StubResponse]] = [:]
     nonisolated(unsafe) private static var requestLog: [String: [URLRequest]] = [:]
+    nonisolated(unsafe) private static var arrivals: [URLRequest] = []
 
     /// A fresh, never-reused base URL so the queues below are namespaced
     /// per test even when Swift Testing runs tests concurrently.
@@ -57,6 +58,13 @@ nonisolated final class SettingsAPIStub: URLProtocol {
     static func requests(for url: URL) -> [URLRequest] {
         lock.lock(); defer { lock.unlock() }
         return requestLog[url.absoluteString] ?? []
+    }
+
+    /// Every request to any path under `baseURL`, in the order they arrived, as a server would
+    /// take them.
+    static func requests(under baseURL: URL) -> [URLRequest] {
+        lock.lock(); defer { lock.unlock() }
+        return arrivals.filter { $0.url?.absoluteString.hasPrefix(baseURL.absoluteString) == true }
     }
 
     /// `URLSession` may hand a `PUT`/`POST` body to a custom `URLProtocol`
@@ -92,6 +100,7 @@ nonisolated final class SettingsAPIStub: URLProtocol {
 
         Self.lock.lock()
         Self.requestLog[key, default: []].append(request)
+        Self.arrivals.append(request)
         let next = Self.responses[key]?.first
         if next != nil {
             Self.responses[key]?.removeFirst()

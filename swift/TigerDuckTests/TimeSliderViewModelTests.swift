@@ -62,6 +62,39 @@ struct TimeSliderViewModelTests {
         try await waitUntil { !viewModel.timeSlots.contains(where: onToday) }
     }
 
+    /// A class skipped for a day is left off that day, as the widgets and the Live Activity leave
+    /// it, while its other days and the day's other classes stay
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/372).
+    @Test func skippedClass_isLeftOffThatDay() {
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let skipped = SDCourse(courseNo: "TEST100", courseName: "Skipped", schedule: allDays)
+        let kept = SDCourse(courseNo: "TEST200", courseName: "Kept", schedule: allDays.mapValues { _ in ["6"] })
+        let today = AcademicCalendar.startOfDay(AppClock.now())
+        let onToday: (CourseTimeSlot) -> Bool = { AcademicCalendar.startOfDay($0.date) == today }
+        skipped.toggleSkip(on: AppClock.now())
+
+        let viewModel = TimeSliderViewModel()
+        viewModel.configure(courses: [skipped, kept])
+
+        #expect(viewModel.timeSlots.filter(onToday).map(\.course.courseNo) == ["TEST200"])
+        #expect(viewModel.timeSlots.contains { $0.course.courseNo == "TEST100" && !onToday($0) })
+    }
+
+    /// Skipping a class rebuilds the slider without waiting for it to reappear.
+    @Test func skipToggle_rebuildsTheTimeline() async throws {
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
+        let today = AcademicCalendar.startOfDay(AppClock.now())
+        let onToday: (CourseTimeSlot) -> Bool = { AcademicCalendar.startOfDay($0.date) == today }
+        let viewModel = TimeSliderViewModel()
+        viewModel.configure(courses: [course])
+        #expect(viewModel.timeSlots.contains(where: onToday))
+
+        course.toggleSkip(on: AppClock.now())
+
+        try await waitUntil { !viewModel.timeSlots.contains(where: onToday) }
+    }
+
     /// Home's slider spans weeks, so near the end of a term it reaches days after it, when no
     /// class meets. Those are left off, as a quiet holiday is.
     @Test func homeSlider_leavesOffDaysOutsideTheTerm() throws {

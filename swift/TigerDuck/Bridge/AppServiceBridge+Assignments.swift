@@ -276,7 +276,8 @@ extension AppServiceBridge {
     }
 
     /// A round's assignments, one per record with a due date and a submission, with the user's
-    /// marks applied as `DataCache.loadAssignments` applies them.
+    /// marks applied as `DataCache.loadAssignments` applies them. Each records the term
+    /// `marks` are for, the term the round fetches.
     static func assignments(
         from records: [MoodleAssignmentRecord],
         moodleCoursesById: [Int: MoodleEnrolledCourse],
@@ -302,7 +303,8 @@ extension AppServiceBridge {
                 isCompleted: status?.isSubmitted ?? (confirmedAt != nil),
                 moodleUrl: "\(AppConstants.moodleBaseURL.absoluteString)/mod/assign/view.php?id=\(record.cmId)",
                 cutoffDate: record.cutoffDate,
-                submittedAt: status?.submittedAt ?? confirmedAt
+                submittedAt: status?.submittedAt ?? confirmedAt,
+                semester: marks.semester
             ))
         }
     }

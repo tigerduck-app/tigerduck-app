@@ -63,6 +63,10 @@ final class LiveActivityCoordinator {
     /// `isQuietDay`, so a "due soon" activity ends once its assignment is
     /// submitted, ignored or marked done. `nil` until `AppState` installs it.
     private var isAssignmentOutstanding: (String) -> Bool? = { _ in nil }
+    /// Whether the class a class activity's `sourceId` names is skipped that day, by
+    /// `CourseTimeSlot.isSkipped(slotId:in:)`. Supplied by `AppState` and asked on the same passes,
+    /// so a skip ends the activity rather than leaving it to its countdown. `false` until installed.
+    private var isSkipped: (String) -> Bool = { _ in false }
 
     init() {
         startActivityObserver()
@@ -96,11 +100,14 @@ final class LiveActivityCoordinator {
         isAssignmentOutstanding = provider
     }
 
-    /// Apply the resolved snapshot. Starts or updates the single activity
-    /// matching the target id, and ends only activities that are expired,
-    /// duplicates, classes on a day classes do not meet, or assignments no
-    /// longer outstanding; an activity that is not the current target is left
-    /// running. While Live Activity is unavailable it ends every activity
+    func setSkippedClassProvider(_ provider: @escaping (String) -> Bool) {
+        isSkipped = provider
+    }
+
+    /// Apply the resolved snapshot. Starts or updates the single activity matching the target id,
+    /// and ends only activities that are expired, duplicates, classes on a day classes do not meet
+    /// or skipped that day, or assignments no longer outstanding; an activity that is not the
+    /// current target is left running. While Live Activity is unavailable it ends every activity
     /// instead, and starts none.
     func apply(snapshot: LiveActivitySnapshot?) async {
         let now = AppClock.now()
@@ -113,13 +120,14 @@ final class LiveActivityCoordinator {
 
         // The snapshot was resolved before the prune's await. Recheck, so one resolved just before
         // Live Activity turned unavailable, its class day turned quiet (a "still have class"
-        // toggle, a new holiday) or its assignment stopped being outstanding does not start.
+        // toggle, a new holiday), its class was skipped or its assignment was done does not start.
         guard let snapshot,
               Self.canStart(
                   snapshot,
                   isAvailable: isAvailable(),
                   isQuietDay: isQuietDay,
-                  isAssignmentOutstanding: isAssignmentOutstanding
+                  isAssignmentOutstanding: isAssignmentOutstanding,
+                  isSkipped: isSkipped
               )
         else {
             // No `cancelAutomaticEndTasks()` here: the prune already cancelled every timer but the
@@ -191,15 +199,16 @@ final class LiveActivityCoordinator {
                 // A push-to-start twin of an activity this app already
                 // started is ended inside the prune; nothing below is for it.
                 if endedActivityIds.contains(activity.id) { continue }
-                // The server may start one from a schedule uploaded before Live Activity turned
-                // unavailable, its class day turned quiet or its assignment was done. End it on
-                // arrival and never register its token; the prune may not have listed it yet.
+                // The server may start one from a schedule uploaded before Live Activity turned unavailable,
+                // its class day turned quiet, its class was skipped or its assignment was done. End it
+                // on arrival and never register its token; the prune may not have listed it yet.
                 if let reason = Self.endReason(
                     for: Self.makeFacts(activity),
                     now: now,
                     isAvailable: isAvailable(),
                     isQuietDay: isQuietDay,
-                    isAssignmentOutstanding: isAssignmentOutstanding
+                    isAssignmentOutstanding: isAssignmentOutstanding,
+                    isSkipped: isSkipped
                 ) {
                     await end(activity, reason: reason.rawValue)
                     continue
@@ -241,7 +250,8 @@ final class LiveActivityCoordinator {
                 now: now,
                 isAvailable: available,
                 isQuietDay: isQuietDay,
-                isAssignmentOutstanding: isAssignmentOutstanding
+                isAssignmentOutstanding: isAssignmentOutstanding,
+                isSkipped: isSkipped
             ) {
                 await end(activity, reason: reason.rawValue)
             } else {
@@ -285,9 +295,11 @@ final class LiveActivityCoordinator {
         let instanceId: String
         /// `attributes.activityId`, the scenario-scoped identity.
         let activityId: String
-        /// `snapshot.sourceId`; an assignment activity's is the assignment id.
+        /// `snapshot.sourceId`: a class activity's is its slot id, which names the course and the
+        /// day; an assignment activity's is the assignment id.
         let sourceId: String
-        /// Only class scenarios (classPreparing, inClass) end on a day classes do not meet.
+        /// Only class scenarios (classPreparing, inClass) end on a day classes do not meet, or when
+        /// their class is skipped that day.
         let scenario: LiveActivityScenarioKind
         let countdownTarget: Date?
         /// Whether APNs has minted an update token for this copy.
@@ -312,8 +324,8 @@ final class LiveActivityCoordinator {
 
     /// The `Activity.id`s the prune should end; the batch form of `endReason`.
     ///
-    /// While Live Activity is available: `expiredInstanceIds`, `quietClassInstanceIds` and the
-    /// `isDoneAssignment` ones, with `isQuietDay` and `isAssignmentOutstanding` from `AppState`.
+    /// While Live Activity is available: `expiredInstanceIds`, `quietClassInstanceIds`, the
+    /// `isSkippedClass` and the `isDoneAssignment` ones, with the providers from `AppState`.
     /// While it is unavailable (course sync off or the user's own switch off, see
     /// `effectiveLiveActivityEnabled`): all of them, even ones the server pre-started whose
     /// countdown is still ahead, because the server starts them from the schedule the device
@@ -323,7 +335,8 @@ final class LiveActivityCoordinator {
         now: Date,
         isAvailable: Bool,
         isQuietDay: (Date) -> Bool = { _ in false },
-        isAssignmentOutstanding: (String) -> Bool? = { _ in nil }
+        isAssignmentOutstanding: (String) -> Bool? = { _ in nil },
+        isSkipped: (String) -> Bool = { _ in false }
     ) -> [String] {
         facts
             .filter {
@@ -332,7 +345,8 @@ final class LiveActivityCoordinator {
                     now: now,
                     isAvailable: isAvailable,
                     isQuietDay: isQuietDay,
-                    isAssignmentOutstanding: isAssignmentOutstanding
+                    isAssignmentOutstanding: isAssignmentOutstanding,
+                    isSkipped: isSkipped
                 ) != nil
             }
             .map(\.instanceId)
@@ -343,6 +357,7 @@ final class LiveActivityCoordinator {
         case unavailable = "Live Activity unavailable"
         case expired = "countdown expired"
         case quietDay = "classes do not meet that day"
+        case skippedClass = "class skipped that day"
         case assignmentDone = "assignment submitted, ignored or marked done"
     }
 
@@ -351,18 +366,21 @@ final class LiveActivityCoordinator {
     /// The prune and the observer of new activities both act on this alone: an activity with a
     /// reason is ended, and only one without gets its update token registered and its countdown
     /// end scheduled. While unavailable every activity ends; while available, expired ones, class
-    /// activities on a day classes do not meet (`quietClassInstanceIds`) and assignment
-    /// activities whose assignment is no longer outstanding (`isDoneAssignment`).
+    /// activities on a day classes do not meet (`quietClassInstanceIds`) or of a class skipped that
+    /// day (`isSkippedClass`), and assignment activities whose assignment is no longer outstanding
+    /// (`isDoneAssignment`).
     nonisolated static func endReason(
         for fact: RunningActivityFacts,
         now: Date,
         isAvailable: Bool,
         isQuietDay: (Date) -> Bool,
-        isAssignmentOutstanding: (String) -> Bool?
+        isAssignmentOutstanding: (String) -> Bool?,
+        isSkipped: (String) -> Bool
     ) -> EndReason? {
         if !isAvailable { return .unavailable }
         if !expiredInstanceIds([fact], now: now).isEmpty { return .expired }
         if !quietClassInstanceIds([fact], isQuietDay: isQuietDay).isEmpty { return .quietDay }
+        if isSkippedClass(fact.scenario, sourceId: fact.sourceId, isSkipped: isSkipped) { return .skippedClass }
         if isDoneAssignment(
             fact.scenario,
             sourceId: fact.sourceId,
@@ -402,6 +420,17 @@ final class LiveActivityCoordinator {
             && (countdownTarget.map(isQuietDay) ?? false)
     }
 
+    /// A class activity (classPreparing, inClass) of a class the user skipped that day. The server
+    /// starts these from the schedule the device uploaded, which leaves skipped classes out only
+    /// once the next upload reaches it.
+    nonisolated static func isSkippedClass(
+        _ scenario: LiveActivityScenarioKind,
+        sourceId: String,
+        isSkipped: (String) -> Bool
+    ) -> Bool {
+        [.classPreparing, .inClass].contains(scenario) && isSkipped(sourceId)
+    }
+
     /// An assignment activity whose assignment the cache holds and no longer counts as
     /// outstanding: submitted, ignored or marked done. The backend's end job for it fires only at
     /// the due date. One the cache does not hold stays, since nothing says it is done.
@@ -414,15 +443,16 @@ final class LiveActivityCoordinator {
     }
 
     /// The last check before `apply` starts or updates `snapshot`: Live Activity is available, and
-    /// the snapshot is neither a class on a quiet day nor an assignment no longer outstanding.
-    /// Asked after the prune's await, because the snapshot was resolved before it; a "still have
-    /// class" toggle, a holiday published or an assignment marked done in between is caught here
-    /// instead of at the next prune.
+    /// the snapshot is neither a class on a quiet day or skipped that day nor an assignment no
+    /// longer outstanding. Asked after the prune's await, because the snapshot was resolved before
+    /// it; a "still have class" toggle, a holiday published, a skip or an assignment marked done
+    /// in between is caught here instead of at the next prune.
     nonisolated static func canStart(
         _ snapshot: LiveActivitySnapshot,
         isAvailable: Bool,
         isQuietDay: (Date) -> Bool,
-        isAssignmentOutstanding: (String) -> Bool?
+        isAssignmentOutstanding: (String) -> Bool?,
+        isSkipped: (String) -> Bool
     ) -> Bool {
         isAvailable
             && !isQuietClass(
@@ -430,6 +460,7 @@ final class LiveActivityCoordinator {
                 countdownTarget: snapshot.countdownTarget,
                 isQuietDay: isQuietDay
             )
+            && !isSkippedClass(snapshot.scenario, sourceId: snapshot.sourceId, isSkipped: isSkipped)
             && !isDoneAssignment(
                 snapshot.scenario,
                 sourceId: snapshot.sourceId,

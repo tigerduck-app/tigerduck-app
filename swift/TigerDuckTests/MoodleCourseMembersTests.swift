@@ -337,6 +337,67 @@ struct MoodleCourseMembersTests {
         #expect(site.pictureCalls.count == 1)
     }
 
+    /// A course of hundreds asks for every member's picture at once
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/443).
+    @Test("a picture kept on the device is read off the main actor")
+    func cachedPictureIsReadOffTheMainActor() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        await Self.store(folder, site: site).loadPicture(of: member)
+        let reads = OSAllocatedUnfairLock<[Bool]>(initialState: [])
+        let reopened = Self.store(folder, site: site)
+        reopened.readPictureFile = { file in
+            reads.withLock { $0.append(Thread.isMainThread) }
+            return try? Data(contentsOf: file)
+        }
+
+        await reopened.loadPicture(of: member)
+
+        #expect(reads.withLock { $0 } == [false])
+        #expect(reopened.pictures[try #require(member.pictureURL)] != nil)
+        #expect(site.pictureCalls.count == 1)
+    }
+
+    /// The decode draws the whole picture (`kCGImageSourceShouldCacheImmediately`).
+    @Test("a downloaded picture is decoded off the main actor")
+    func downloadedPictureIsDecodedOffTheMainActor() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let store = Self.store(folder, site: site)
+        let decodes = OSAllocatedUnfairLock<[Bool]>(initialState: [])
+        let decode = store.decodePicture
+        store.decodePicture = { data in
+            decodes.withLock { $0.append(Thread.isMainThread) }
+            return decode(data)
+        }
+
+        await store.loadPicture(of: member)
+
+        #expect(site.pictureCalls == [member.pictureURL])
+        #expect(decodes.withLock { $0 } == [false])
+        #expect(store.pictures[try #require(member.pictureURL)] != nil)
+    }
+
+    @Test("a picture kept on the device whose read ends after a sign-out is not shown")
+    func cachedPictureReadAfterASignOut() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        await Self.store(folder, site: site).loadPicture(of: member)
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let reopened = Self.store(folder, site: site, signedIn: signedIn)
+        reopened.readPictureFile = { file in
+            signedIn.withLock { $0 = false }
+            return try? Data(contentsOf: file)
+        }
+
+        await reopened.loadPicture(of: member)
+
+        #expect(reopened.pictures[try #require(member.pictureURL)] == nil)
+    }
+
     @Test("Moodle's default picture is never downloaded, and a new upload replaces the old file")
     func pictureVersions() async {
         let folder = Folder()

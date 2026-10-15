@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -39,6 +40,13 @@ extension TLSPinningDelegateTests {
     ]
     static let capturedDate = ISO8601DateFormatter().date(from: "2026-10-13T00:00:00Z")!
 
+    /// Sectigo Public Server Authentication Root R46 (public data, from the system trust store). No
+    /// pinned host serves it yet; the library's next certificate may come from it.
+    static let sectigoRootR46 = [UInt8](Data(base64Encoded: "MIIFijCCA3KgAwIBAgIQdY39i658BwD6qSWn4cetFDANBgkqhkiG9w0BAQwFADBfMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTYwNAYDVQQDEy1TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gUm9vdCBSNDYwHhcNMjEwMzIyMDAwMDAwWhcNNDYwMzIxMjM1OTU5WjBfMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTYwNAYDVQQDEy1TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gUm9vdCBSNDYwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCTvtU2UnXYASOgHEdCSe5jtrch/cSV1UgrJnwUUxDaef0rty2k1Cz66jLdScK5vQ9IPXtamFSvnl0xdE8H/FAh3aTPaE8bEmNtJZlMKpnzSDBh+oF8HqcIStw+KxwfGExxqjWMrfhu6DtK2eWUAtaJhBOqbchPM8xQljeSM9xfiOefVNlI8JhD1mb9nxc4Q8UBUQvX4yMPFF1bFOdLvt30yNoDN9HWOaEhUTCDsG3XME6WW5HwcCSrv0WBZEMNvSE6Lzzpng3LILVCJ8zab5vuZDCQOc2TZYEhMbUjUDM3IuM47fgxMMxF/mL50V0yeUKH32rMVhlATc6qu/m1dkmU8Sf4kaWD5QazYw6A3OASVYCmO2a0OYctyPDQ0RTp5A1NDvZdV3LFOxxHVp3i1fuBYYzMTYCQNFu31xR13NgESJ/AwSiItOkcyqex8Va3e0lMWeUgFaiEAin6OJRpmkkGj80feRQXEgyDet4fsZfu+Zd4KKTIRJLpfSYFplhym3kT2BFfrsU4YjRosoYwjviQYZ4ybPUHNs2iTG7sijbt8uaZFURww3y8nDnAtOFr94MlI1fZEoDlSfB1D++N6xybVCi0ITz8fAr/73trdf+LHaAZBav6+CuBQug4urv7qv094PPK306Xlynt8xhW6aWWrL3DkJiy4Pmi1KZHQ3xtzwIDAQABo0IwQDAdBgNVHQ4EFgQUVnNYZJX5khqwEioEYnmhQBWIIUkwDgYDVR0PAQH/BAQDAgGGMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEMBQADggIBAC9cmTz8Bl6MlC5w6tIyMY208FHVvArzZJ8HXtXBc2hkeqK5Duj5XYUtqDdFqij0lgVQYKlJfp/imTYpE0RHap1VIDzYm/EDMrraQKFz6oOht0SmDpkBm+S8f74TlH7Kph52gDY9hAaLMyZlbcp+nv4fjFg4exqDsQ+8FxG75gbMY/qB8oFM2gsQa6H61SilzwZAFv97fRheORKkU55+MkIQpiGRqRxOF3yEvJ+M0ejf5lG5Nkc/kLnHvALcWxxPDkjBJYOcCj+esQMzEhonrPcibCTRAUH4WAP+JWgiH5paPHxsnnVI84HxZmduTILA7rpXDhjvLpr3Etiga+kFpaHpaPi8TD8SHkXoUsCjvxInebnMMTzD9joiFgOgyY9mpFuiTdaBJQbpdqQACj7LzTWb4OE4y2BThihCQRxEV+ioratF4yUQvNs+ZUH7G6aXD+u5dHn5HrwdVw1Hr8Mvn4dGp+smWg9WY7ViYG4A++MnESLn/pmPNPW56MORcr3Ywx65LvKRRFHQV80MNNVIIb/bE/FmJUNS0nAiNs2fxBx1IK1jcmMGDw4nztJqDby1ORrp0XZ60Vzk50lJLVU3aPAaOpg+VBeHVOmmJ1CJeyAvP/+/oYtKR5j/K3tJPsMpRmAYQqszKbrAKbkTidOIijlBO8n9pu0f9GBj39ItVQGL")!)
+
+    /// Roots a pin set holds for a renewal, which none of its hosts serves yet.
+    static let renewalRoots: [String: [[UInt8]]] = ["api.lib.ntust.edu.tw": [sectigoRootR46]]
+
     /// Each chain with a host that served it and a date inside its validity.
     static let servedChains: [(host: String, date: Date, chain: [[UInt8]])] = [
         ("mail.ntust.edu.tw", MailTLSVerifierTests.pinnedDate, MailTLSVerifierTests.chain),
@@ -46,19 +54,53 @@ extension TLSPinningDelegateTests {
         ("api.lib.ntust.edu.tw", capturedDate, libraryChain),
     ]
 
-    @Test("Every pin is the SPKI hash, as the app computes it, of a certificate its own hosts serve")
+    @Test("Every pin is the SPKI hash, as the app computes it, of a certificate its own hosts serve or a renewal root")
     func pinsMatchTheirHostsChains() {
         for set in TLSPinningDelegate.pinSets {
-            let served = Set(Self.servedChains
+            let certificates = Self.servedChains
                 .filter { TLSPinningDelegate.pinPolicy(forHost: $0.host, now: $0.date) == .pinned(set.pins) }
                 .flatMap(\.chain)
-                .compactMap { der in
-                    SecCertificateCreateWithData(nil, Data(der) as CFData)
-                        .flatMap(TLSPinningDelegate.sha256SPKIBase64(of:))
-                })
+                + Self.renewalRoots[set.hostSuffix, default: []]
+            let served = Set(certificates.compactMap(Self.spkiHash))
             #expect(!set.pins.isEmpty, "\(set.hostSuffix) has no pins")
             #expect(set.pins.isSubset(of: served), "\(set.hostSuffix): \(set.pins.subtracting(served))")
         }
+    }
+
+    /// Every renewal of the library's certificate since 2022 changed its key and its issuer, so the
+    /// set pins both roots Sectigo issues under: E46, which the library serves cross-signed, and R46.
+    @Test("The library pins both Sectigo roots")
+    func libraryPinsBothSectigoRoots() {
+        // The SHA-256 fingerprint Sectigo publishes, since other roots share the R46 name.
+        let fingerprint = SHA256.hash(data: Data(Self.sectigoRootR46)).map { String(format: "%02X", $0) }.joined()
+        #expect(fingerprint == "7BB647A62AEEAC88BF257AA522D01FFEA395E0AB45C73F93F65654EC38F25A06")
+        let roots = [Self.libraryChain[2], Self.sectigoRootR46].compactMap(Self.spkiHash)
+        #expect(roots.count == 2)
+        let policy = TLSPinningDelegate.pinPolicy(forHost: "api.lib.ntust.edu.tw", now: Self.capturedDate)
+        guard case .pinned(let pins) = policy else {
+            Issue.record("api.lib.ntust.edu.tw is not pinned: \(policy)")
+            return
+        }
+        #expect(Set(roots).isSubset(of: pins), "\(Set(roots).subtracting(pins))")
+    }
+
+    /// A renewal may serve only its leaf and intermediate, so a root pin has to match the anchor
+    /// that trust evaluation adds from the system store.
+    @Test("A root pin matches a chain served without its root")
+    func aRootPinMatchesTheAnchorOfTheEvaluatedChain() throws {
+        let leafAndIntermediate = Array(Self.libraryChain.prefix(2))
+        let e46 = try #require(Self.spkiHash(Self.libraryChain[2]))
+        let r46 = try #require(Self.spkiHash(Self.sectigoRootR46))
+        #expect(MailTLSVerifier.verify(
+            derChain: leafAndIntermediate, host: "api.lib.ntust.edu.tw", now: Self.capturedDate, pinPolicy: .pinned([e46])
+        ))
+        #expect(!MailTLSVerifier.verify(
+            derChain: leafAndIntermediate, host: "api.lib.ntust.edu.tw", now: Self.capturedDate, pinPolicy: .pinned([r46])
+        ))
+    }
+
+    static func spkiHash(_ der: [UInt8]) -> String? {
+        SecCertificateCreateWithData(nil, Data(der) as CFData).flatMap(TLSPinningDelegate.sha256SPKIBase64(of:))
     }
 
     /// cardsystem's chain comes from TWCA's CYBER hierarchy, which NTUST's newer certificates use.

@@ -48,8 +48,8 @@ struct TodayProvider: TimelineProvider {
         if hasCourses {
             policy = .atEnd
         } else {
-            let startOfToday = Calendar.current.startOfDay(for: Date())
-            let midnight = Calendar.current.date(byAdding: .day, value: 1, to: startOfToday)
+            let startOfToday = WidgetTaipei.calendar.startOfDay(for: Date())
+            let midnight = WidgetTaipei.calendar.date(byAdding: .day, value: 1, to: startOfToday)
                 ?? startOfToday.addingTimeInterval(86400)
             policy = .after(midnight)
         }

@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Observation
 import os
@@ -25,8 +26,13 @@ final class BulletinsViewModel {
     private(set) var isPaginating: Bool = false
     private(set) var hasMore: Bool = true
 
+    /// Saved on every change and restored at the next visit while "Remember bulletin filter" is
+    /// on, which clears it when turned off. See ``restoreRememberedOrgs(known:)``.
     var selectedOrgs: Set<String> = [] {
-        didSet { refilter() }
+        didSet {
+            refilter()
+            Self.savedOrgs = selectedOrgs
+        }
     }
     var selectedTags: Set<String> = [] {
         didSet { refilter() }
@@ -48,6 +54,10 @@ final class BulletinsViewModel {
     /// Set while the list is off screen, so a first page that lands after the screen left does
     /// not start the walk behind it.
     private var isPrefetchPaused = false
+    private var hasRestoredOrgs = false
+    /// The `listEpoch` the list in `items` belongs to. A view model on screen outlives a
+    /// sign-out, and its list is the departing student's.
+    @ObservationIgnored private var itemsEpoch = BulletinsViewModel.listEpoch
 
     init(apiClient: BulletinAPIClient? = nil) {
         // The default URL provider re-resolves PushServerConfig on every request, as
@@ -63,6 +73,31 @@ final class BulletinsViewModel {
         }
     }
 
+    /// Brings back the remembered department filter once the department chips can show it:
+    /// only departments the taxonomy still lists, and not over a choice made on this visit.
+    /// Without the taxonomy, as offline, the list stays unfiltered rather than filtered unseen.
+    func restoreRememberedOrgs(known: Set<String>) {
+        guard Defaults[.rememberAnnouncementFilter], !hasRestoredOrgs, selectedOrgs.isEmpty else { return }
+        hasRestoredOrgs = true
+        let orgs = Self.savedOrgs.intersection(known)
+        if !orgs.isEmpty { selectedOrgs = orgs }
+    }
+
+    static var savedOrgs: Set<String> {
+        get {
+            guard let data = Defaults[.savedAnnouncementDepartmentsData],
+                  let orgs = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+            return Set(orgs)
+        }
+        set {
+            do {
+                Defaults[.savedAnnouncementDepartmentsData] = try JSONEncoder().encode(newValue.sorted())
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "savedAnnouncementDepartments.encode"])
+            }
+        }
+    }
+
     /// What the last list ended with. More and Home build a new view model on every visit, so
     /// the next one in this process shows it and resumes the cursor instead of walking every
     /// page again. It asks for the first page only. A pull refreshes it all.
@@ -74,9 +109,14 @@ final class BulletinsViewModel {
     }
 
     private static var listSession: ListSession?
+    /// Moved by every sign-out, so a page that arrives for a fetch started before it is dropped.
+    private static var listEpoch = 0
 
+    /// Sign-out: the kept list, its time and every fetch still out belong to the student leaving.
     static func forgetListSession() {
         listSession = nil
+        listEpoch &+= 1
+        Defaults[.bulletinsSyncedAt] = nil
     }
 
     // MARK: - Public surface
@@ -85,6 +125,7 @@ final class BulletinsViewModel {
     /// thrash the network — call `refresh()` to force.
     func loadIfNeeded() async {
         isPrefetchPaused = false
+        if isFromBeforeSignOut { restartAfterSignOut() }
         if case .loaded = loadState {
             resumePrefetchIfNeeded()
             return
@@ -106,9 +147,12 @@ final class BulletinsViewModel {
     /// means more was posted than a page holds, so the walk goes on behind that page.
     private func refreshFirstPage() async {
         let includeDeleted = showDeleted
+        let epoch = Self.listEpoch
         guard let page = try? await apiClient.listBulletins(
             limit: 30, cursor: nil, includeDeleted: includeDeleted
         ), includeDeleted == showDeleted else { return }
+        if dropsAfterSignOut(epoch) { return }
+        noteNewestPage()
         let knownIds = Set(items.map(\.id))
         let reachesKeptRows = page.items.contains { knownIds.contains($0.id) }
         items = Self.merge(existing: items, incoming: page.items)
@@ -119,6 +163,11 @@ final class BulletinsViewModel {
         }
         refilter()
         persistSummaries()
+    }
+
+    /// Test hook: returns once the walk through older pages, if any, has ended.
+    func waitForPrefetch() async {
+        await prefetchTask?.value
     }
 
     /// The list left the screen; its next appearance resumes from the cursor.
@@ -134,6 +183,7 @@ final class BulletinsViewModel {
     }
 
     func refresh() async {
+        if isFromBeforeSignOut { restartAfterSignOut() }
         inflight?.cancel()
         prefetchTask?.cancel()
         inflight = Task { [weak self] in
@@ -151,6 +201,7 @@ final class BulletinsViewModel {
     /// on a transient miss (network or decode failure) so the caller can keep
     /// the deep link and retry instead of dropping the tap.
     func summary(forId id: Int) async throws -> BulletinAPI.BulletinSummary? {
+        if isFromBeforeSignOut { restartAfterSignOut() }
         if let existing = items.first(where: { $0.id == id }) {
             // `items` is seeded from the disk cache at init, so it can hold a row
             // the server has since tombstoned. Honour the flag here too, as the
@@ -172,6 +223,7 @@ final class BulletinsViewModel {
             }
             return hit
         }
+        let epoch = Self.listEpoch
         let detail: BulletinAPI.BulletinDetail
         do {
             detail = try await apiClient.getBulletin(id: id)
@@ -199,6 +251,8 @@ final class BulletinsViewModel {
             postedAt: detail.postedAt,
             isDeleted: detail.isDeleted
         )
+        // Signed out while it was asked for: the tap still opens it, and the list keeps nothing.
+        if dropsAfterSignOut(epoch) { return synthesised }
         // Merge into the live list so a subsequent return to the list
         // shows the row without another network round trip.
         items = Self.merge(existing: items, incoming: [synthesised])
@@ -210,6 +264,8 @@ final class BulletinsViewModel {
     /// Request the next page. Safe to call on every scroll — guarded by
     /// `isPaginating` and `hasMore`.
     func loadMoreIfNeeded(triggeredBy item: BulletinAPI.BulletinSummary) async {
+        // The departing student's cursor pages back through their list; the next one starts over.
+        if isFromBeforeSignOut { return await refresh() }
         guard hasMore, !isPaginating else { return }
         // Paginate only near the tail of `items`, not `filteredItems`: heavy
         // filtering can leave a short filtered list, and keying the threshold
@@ -224,12 +280,14 @@ final class BulletinsViewModel {
     private func performRefresh() async {
         loadState = .loading
         nextCursor = nil
+        let epoch = Self.listEpoch
         do {
             let page = try await apiClient.listBulletins(
                 limit: 30,
                 cursor: nil,
                 includeDeleted: showDeleted
             )
+            if dropsAfterSignOut(epoch) { return }
             // Merge fresh items on top of the cache. The server is the
             // source of truth for everything it returns; cache supplies
             // older rows the server hasn't paged to yet.
@@ -237,6 +295,7 @@ final class BulletinsViewModel {
             nextCursor = page.nextCursor
             hasMore = page.nextCursor != nil
             loadState = .loaded
+            noteNewestPage()
             refilter()
             persistSummaries()
             startBackgroundPrefetch()
@@ -269,6 +328,7 @@ final class BulletinsViewModel {
 
     private func runBackgroundPrefetch() async {
         var consecutiveFailures = 0
+        let epoch = Self.listEpoch
         while !Task.isCancelled, hasMore, let cursor = nextCursor {
             do {
                 let page = try await apiClient.listBulletins(
@@ -276,6 +336,7 @@ final class BulletinsViewModel {
                     cursor: cursor,
                     includeDeleted: showDeleted
                 )
+                if dropsAfterSignOut(epoch) { return }
                 items = Self.merge(existing: items, incoming: page.items)
                 nextCursor = page.nextCursor
                 hasMore = page.nextCursor != nil
@@ -307,12 +368,14 @@ final class BulletinsViewModel {
         }
         isPaginating = true
         defer { isPaginating = false }
+        let epoch = Self.listEpoch
         do {
             let page = try await apiClient.listBulletins(
                 limit: 30,
                 cursor: cursor,
                 includeDeleted: showDeleted
             )
+            if dropsAfterSignOut(epoch) { return }
             items = Self.merge(existing: items, incoming: page.items)
             nextCursor = page.nextCursor
             hasMore = page.nextCursor != nil
@@ -324,6 +387,35 @@ final class BulletinsViewModel {
             // one network blip silently strand the user mid-history.
             logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .private)")
         }
+    }
+
+    /// Every way in to a write of the list starts here, so no list from before the last sign-out
+    /// is kept for the next student.
+    private var isFromBeforeSignOut: Bool { itemsEpoch != Self.listEpoch }
+
+    /// The list the sign-out left on disk, idle so the visit that follows reads it again.
+    private func restartAfterSignOut() {
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        items = Self.sortedUnique(DataCache.shared.loadBulletinSummaries())
+        nextCursor = nil
+        hasMore = true
+        loadState = .idle
+        itemsEpoch = Self.listEpoch
+        refilter()
+    }
+
+    /// A page for a fetch started before the last sign-out writes nothing, and a list still the
+    /// departing student's starts over.
+    private func dropsAfterSignOut(_ epoch: Int) -> Bool {
+        guard epoch != Self.listEpoch else { return false }
+        if isFromBeforeSignOut { restartAfterSignOut() }
+        return true
+    }
+
+    /// Only the newest page counts: an older one says nothing about what has been posted since.
+    private func noteNewestPage() {
+        Defaults[.bulletinsSyncedAt] = Date()
     }
 
     private func persistSummaries() {
@@ -380,6 +472,11 @@ final class BulletinsViewModel {
             }
         }
         filteredItems = result
+    }
+
+    /// The unread bulletins the filters leave on screen, which "Mark all read" marks.
+    func unreadShown(isRead: (Int) -> Bool) -> [Int] {
+        filteredItems.filter { !isRead($0.id) }.map(\.id)
     }
 
     /// Expose a helper so views can quickly toggle single filters.

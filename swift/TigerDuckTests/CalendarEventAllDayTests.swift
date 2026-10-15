@@ -33,4 +33,14 @@ struct CalendarEventAllDayTests {
     func moodleDeadlineAtMidnightKeepsItsTime() {
         #expect(!Self.event(.moodle, at: Self.midnight).isAllDay)
     }
+
+    /// The iPhone day list hid the time only for holidays, so term boundaries and school events
+    /// with no time showed "00:00" (https://github.com/tigerduck-app/tigerduck-app/issues/519).
+    @MainActor @Test("the iPhone day list shows no time on a whole day's row")
+    func theDayListShowsNoTimeOnAWholeDay() {
+        #expect(!EventRowView.showsTime(of: Self.event(.semester, at: Self.midnight)))
+        #expect(!EventRowView.showsTime(of: Self.event(.school, at: Self.midnight)))
+        #expect(EventRowView.showsTime(of: Self.event(.school, at: Self.afternoon)))
+        #expect(EventRowView.showsTime(of: Self.event(.moodle, at: Self.midnight)))
+    }
 }

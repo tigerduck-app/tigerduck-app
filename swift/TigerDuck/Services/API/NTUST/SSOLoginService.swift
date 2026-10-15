@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 
 enum SSOLoginError: LocalizedError {
     case loginFormNotFound
@@ -49,14 +50,6 @@ enum SSOLoginService {
         return String(data: data, encoding: big5)
     }
 
-    /// Hosts the SSO credential POST is allowed to target. A redirected /
-    /// compromised upstream returning a `<form action="https://attacker/">`
-    /// must never receive `Username=...&Password=...`, so we hard-fail any
-    /// resolved action whose host is not in this set.
-    private static let ssoActionHostAllowlist: Set<String> = [
-        "ssoam2.ntust.edu.tw",
-    ]
-
     /// The school rejected the stored password in a sign-in the user did not start. Each
     /// rejection counts toward the account's lockout, so those sign-ins stop posting it until
     /// the user signs in again.
@@ -65,12 +58,39 @@ enum SSOLoginService {
         set { Defaults[.ntustStoredPasswordRejected] = newValue }
     }
 
+    private nonisolated static let storedPasswordPosts = AsyncSerialLock()
+
+    /// How many automatic posts of the stored password wait for the one under way.
+    nonisolated static func storedPasswordPostsWaiting() async -> Int {
+        await storedPasswordPosts.waiterCount
+    }
+
+    /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
+    /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
+    /// refused before either latched it, and the school counts both toward the lockout. `body`
+    /// checks ``storedPasswordRejected``, posts, reads the answer and latches a refusal before it
+    /// returns. A sign-in the user typed posts what was typed, so it does not wait.
+    nonisolated(nonsending) static func postingStoredPassword<T>(
+        _ body: nonisolated(nonsending) () async throws -> T
+    ) async rethrows -> T {
+        await storedPasswordPosts.acquire()
+        do {
+            let result = try await body()
+            await storedPasswordPosts.release()
+            return result
+        } catch {
+            await storedPasswordPosts.release()
+            throw error
+        }
+    }
+
     private static var isLoginRunning = false
     private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
 
     /// Runs `body` once every login started before it has finished. A login that meets the
-    /// SSO page clears the ssoam2 cookies, so two at once break each other; the one that
-    /// waited then finds the session signed in and needs no credentials.
+    /// SSO page clears the ssoam2 cookies, so two at once break each other. An automatic login
+    /// that waited then finds the session signed in and posts no password; one the user typed
+    /// still posts what was typed.
     static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
         if isLoginRunning {
             await withCheckedContinuation { waitingLogins.append($0) }
@@ -93,20 +113,47 @@ enum SSOLoginService {
     /// `generation` is ``NTUSTSessionManager/generation`` when the credentials were read. Once
     /// a sign-out moves it, the login throws `CancellationError` before its next request.
     /// `interactive` marks a sign-in the user started; any other posts no password once the
-    /// school has rejected it (``storedPasswordRejected``).
+    /// school has rejected it (``storedPasswordRejected``), and runs under
+    /// ``postingStoredPassword(_:)``. `logFailure` gets each failure but a cancellation.
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
         studentId: String,
         password: String,
         generation: Int,
-        interactive: Bool = false
+        interactive: Bool = false,
+        logFailure: @escaping @MainActor (any Error) -> Void = {
+            AppLogger.captureError($0, context: ["service": "ssoEnsureServiceLogin"])
+        }
+    ) async throws -> Bool {
+        guard !interactive else {
+            return try await signIn(
+                session: session, serviceURL: serviceURL, studentId: studentId, password: password,
+                generation: generation, interactive: true, logFailure: logFailure
+            )
+        }
+        return try await postingStoredPassword {
+            try await signIn(
+                session: session, serviceURL: serviceURL, studentId: studentId, password: password,
+                generation: generation, interactive: false, logFailure: logFailure
+            )
+        }
+    }
+
+    private static func signIn(
+        session: URLSession,
+        serviceURL: URL,
+        studentId: String,
+        password: String,
+        generation: Int,
+        interactive: Bool,
+        logFailure: @escaping @MainActor (any Error) -> Void
     ) async throws -> Bool {
         try await oneAtATime {
             try checkSignedIn(generation)
             let signedIn = try await performServiceLogin(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: interactive
+                generation: generation, interactive: interactive, logFailure: logFailure
             )
             if interactive, signedIn { storedPasswordRejected = false }
             return signedIn
@@ -123,15 +170,20 @@ enum SSOLoginService {
         studentId: String,
         password: String,
         generation: Int,
-        interactive: Bool
+        interactive: Bool,
+        logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
             // Steps 1 and 2: Visit service URL (follows redirects automatically) and resolve any
             // OIDC bridge forms
             var (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
 
-            // Step 3: Check if we're on the SSO login page
-            if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+            // Step 3: Check if we're on the SSO login page. A live session would let a password the
+            // user typed through unchecked, so that sign-in drops the service's cookies and goes on to
+            // step 4, which ends the SSO session: the visit after it reaches the form.
+            if interactive, !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+                NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
+            } else if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if try await isSignedIn(html: currentHTML, url: currentURL, session: session) { return true }
                 // A service whose own session lapsed sends the visit to the campus portal, not to
                 // the sign-in form; without its cookies the next visit goes through SSO.
@@ -187,21 +239,21 @@ enum SSOLoginService {
             }
 
             let actionURL = resolveURL(form.action, base: currentURL)
-            guard let actionHost = actionURL.host,
-                  ssoActionHostAllowlist.contains(actionHost) else {
-                AppLogger.captureError(
-                    SSOLoginError.loginFailed(reason: nil),
-                    context: [
-                        "service": "ssoEnsureServiceLogin",
-                        "rejectedActionHost": actionURL.host ?? "<nil>",
-                    ]
+            // Nothing is posted, so the sign-in does not ask the user to check the password.
+            guard CredentialPost.isSignInTarget(actionURL) else {
+                AppLogger.auth.error(
+                    "Sign-in form action refused: \(CredentialPost.schemeLabel(of: actionURL), privacy: .public) \(actionURL.host ?? "", privacy: .private)"
                 )
-                throw SSOLoginError.loginFailed(reason: nil)
+                throw SSOLoginError.invalidResponse
             }
             let (loginData, loginResponse) = try await postForm(
-                session: session, url: actionURL, fields: payload, generation: generation
+                session: session, url: actionURL, fields: payload, generation: generation,
+                delegate: CredentialPostDelegate()
             )
+            // The POST stops at a redirect it may not follow (`CredentialPostDelegate`), which is no
+            // answer to the sign-in, and no refusal of the password either.
             guard let loginResp = loginResponse as? HTTPURLResponse,
+                  !(300..<400).contains(loginResp.statusCode),
                   let loginHTML = decodeHTML(loginData, response: loginResp) else {
                 throw SSOLoginError.invalidResponse
             }
@@ -228,7 +280,7 @@ enum SSOLoginService {
         } catch SSOLoginError.loginFailed(let reason) {
             throw SSOLoginError.loginFailed(reason: reason)
         } catch {
-            AppLogger.captureError(error, context: ["service": "ssoEnsureServiceLogin"])
+            if !AppLogger.isCancellation(error) { logFailure(error) }
             throw error
         }
     }
@@ -291,12 +343,14 @@ enum SSOLoginService {
     }
 
     /// POST form-encoded data. Each POST signs in, with the credentials or an OIDC form, so it
-    /// stops once a sign-out moves the generation.
+    /// stops once a sign-out moves the generation. `delegate` is the task's, for the
+    /// credentials' POST a `CredentialPostDelegate`.
     private static func postForm(
         session: URLSession,
         url: URL,
         fields: [(name: String, value: String)],
-        generation: Int
+        generation: Int,
+        delegate: (any URLSessionTaskDelegate & Sendable)? = nil
     ) async throws -> (Data, URLResponse) {
         try checkSignedIn(generation)
         // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
@@ -307,7 +361,7 @@ enum SSOLoginService {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data(formBody(fields).utf8)
 
-        return try await session.data(for: request)
+        return try await session.data(for: request, delegate: delegate)
     }
 
     static func formBody(_ fields: [(name: String, value: String)]) -> String {

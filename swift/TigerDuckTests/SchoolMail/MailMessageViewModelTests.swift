@@ -79,6 +79,16 @@ struct MailMessageViewModelTests {
         #expect(original.replyTo == nil)
     }
 
+    /// A mail with no HTML part shows only its plain text, whose links have to be tappable there
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/520).
+    @Test func plainTextMailKeepsItsLinks() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "See https://www.ntust.edu.tw/ now", html: nil))
+        await h.model.load()
+        #expect(h.model.availableModes == [.plain, .source])
+        let links = h.model.linkedPlainText.runs.compactMap(\.link)
+        #expect(links == [URL(string: "https://www.ntust.edu.tw/")!])
+    }
+
     @Test func htmlOnlyMailGetsAPlainTextView() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: "<p>a</p><p>b</p>"))
         await h.model.load()
@@ -722,7 +732,7 @@ struct MailMessageViewModelTests {
     /// The rule list depends only on the image allowance. A light mode switch keeps it, so there
     /// is nothing to compile: the new page goes on at once, with no compile to wait behind. A
     /// change of allowance still compiles and installs its own list.
-    /// CI picks it by name to run after the other tests: see `webkit_tests` in
+    /// CI picks it by name to run after the other tests: see `on_screen_tests` in
     /// `.github/workflows/tests.yaml`.
     @Test func aLightModeSwitchReusesTheInstalledRules() async {
         var view = MailHTMLView(html: "<p>x</p>", linkCount: 0, inlineImages: [:], allowRemoteImages: false,
@@ -751,7 +761,7 @@ struct MailMessageViewModelTests {
 
     /// A new mail fetched in the background is kept without its inline images, so the detail that
     /// replaces it on screen is the first to bring them, to the page the cached body opened.
-    /// CI picks it by name to run after the other tests: see `webkit_tests` in
+    /// CI picks it by name to run after the other tests: see `on_screen_tests` in
     /// `.github/workflows/tests.yaml`.
     @Test func inlineImagesThatArriveLaterReachThePage() async {
         let html = #"<p><img src="tdcid:logo"></p>"#

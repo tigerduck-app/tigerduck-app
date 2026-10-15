@@ -36,6 +36,7 @@ extension AppState {
         guard await authTokenManager.isLoggedIn else { return .unchanged }
         do {
             let serverRevision = try await pushCoordinator.fetchRevision()
+            retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self._lastKnownRevision)")
             guard serverRevision > _lastKnownRevision else { return .unchanged }
             let outcome = await syncChangesSinceLastRevision()

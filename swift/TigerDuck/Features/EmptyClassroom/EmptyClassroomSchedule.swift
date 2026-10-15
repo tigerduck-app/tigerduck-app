@@ -60,14 +60,25 @@ nonisolated enum EmptyClassroomSchedule {
             .first(where: isTeachingDay)
     }
 
-    /// A weekday with no holiday: the booking system shows the weekly timetable on a holiday as
-    /// if classes met, and nothing at all on a weekend.
-    static func isTeachingDay(
+    /// A day the finder shows no rooms for.
+    nonisolated enum DayOff: Equatable {
+        case weekend
+        case holiday(Holiday)
+        case outOfTerm
+    }
+
+    /// Why `day` has no rooms to show, or nil on a teaching day. The booking system shows the
+    /// weekly timetable on a holiday and between terms as if classes met, and nothing at all on a
+    /// weekend (https://github.com/tigerduck-app/tigerduck-app/issues/478).
+    static func dayOff(
         _ day: Date,
         holidays: (Date) -> [Holiday],
+        isInSession: (Date) -> Bool,
         calendar: Calendar = AppConstants.taipeiCalendar
-    ) -> Bool {
-        !isWeekend(day, calendar: calendar) && holidays(day).isEmpty
+    ) -> DayOff? {
+        if isWeekend(day, calendar: calendar) { return .weekend }
+        if let holiday = holidays(day).first { return .holiday(holiday) }
+        return isInSession(day) ? nil : .outOfTerm
     }
 
     static func isWeekend(_ day: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Bool {

@@ -35,7 +35,7 @@ struct RankingsTrendCard: View {
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            Picker("Scope", selection: $scope) {
+            Picker(String(localized: "score_gpa_trend_title"), selection: $scope) {
                 ForEach(ScoreViewModel.RankingScope.allCases) { option in
                     Text(option.displayName).tag(option)
                 }

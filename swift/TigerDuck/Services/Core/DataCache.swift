@@ -16,6 +16,9 @@ final class DataCache {
     private let persistentDir: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    /// Moved by each write and removal here, so what a view works out from these files on every
+    /// redraw can be kept until one changes (`ClassTableShareModel.AvailabilityMemo`).
+    private(set) var revision = 0
 
     private convenience init() {
         self.init(
@@ -83,6 +86,7 @@ final class DataCache {
         where url.lastPathComponent.hasPrefix(prefix) && url.pathExtension == "json" {
             try? FileManager.default.removeItem(at: url)
         }
+        revision &+= 1
     }
 
     private func coursesFilename(_ semester: String, _ language: String) -> String {
@@ -537,6 +541,7 @@ final class DataCache {
     func invalidateScoreReport(studentId: String) {
         let url = cacheDir.appendingPathComponent(scoreReportFilename(studentId))
         try? FileManager.default.removeItem(at: url)
+        revision &+= 1
     }
 
     private func scoreReportFilename(_ studentId: String) -> String {
@@ -596,6 +601,7 @@ final class DataCache {
         try? FileManager.default.removeItem(at: bulletinDetails)
         try? FileManager.default.removeItem(at: moodleDir)
         try? FileManager.default.removeItem(at: moodleFilesDir)
+        revision &+= 1
     }
 
     /// Removes every file in both cache directories, user-scoped or not.
@@ -616,6 +622,7 @@ final class DataCache {
             }
         }
         try? FileManager.default.removeItem(at: moodleFilesDir)
+        revision &+= 1
     }
 
     /// Remove every `courses_*.json` file, for a migration whose cached courses cannot be
@@ -630,6 +637,7 @@ final class DataCache {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+        revision &+= 1
     }
 
     // MARK: - Moodle course id map (idnumber → numeric id)
@@ -698,6 +706,7 @@ final class DataCache {
 
     private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {
         let url = (directory ?? cacheDir).appendingPathComponent(filename)
+        revision &+= 1
         do {
             let data = try encoder.encode(value)
             // `.completeFileProtectionUnlessOpen` keeps academic PII at rest unreadable from a
@@ -748,15 +757,17 @@ final class DataCache {
 struct AssignmentMarks {
     let archivedIds: Set<String>
     let locallyCompletedIds: Set<String>
-    /// `CourseTombstone.key(semester:courseNo:)` keys; only `semester`'s apply.
+    /// `CourseTombstone.key(semester:courseNo:)` keys, each applying in its own term.
     let ignoredCourses: Set<String>
-    /// The term the assignments are fetched for.
+    /// The term the assignments are fetched for, which stands in for the term of one cached
+    /// before assignments recorded theirs (`SDAssignment.semester`).
     let semester: String
 
     func apply(to assignment: SDAssignment) -> SDAssignment {
         if archivedIds.contains(assignment.assignmentId) { assignment.isArchived = true }
         if locallyCompletedIds.contains(assignment.assignmentId) { assignment.isLocallyCompleted = true }
-        if ignoredCourses.contains(CourseTombstone.key(semester: semester, courseNo: assignment.courseNo)) {
+        let term = assignment.semester ?? semester
+        if ignoredCourses.contains(CourseTombstone.key(semester: term, courseNo: assignment.courseNo)) {
             // Shown as ignored even when marked done; the mark returns with the course setting off.
             assignment.isArchived = true
             assignment.isLocallyCompleted = false
@@ -867,6 +878,8 @@ private struct CachedAssignment: Codable {
     let cutoffDate: Date?
     /// Optional for the same back-compat reason as `cutoffDate`.
     let submittedAt: Date?
+    /// Optional for the same reason; see `SDAssignment.semester`.
+    let semester: String?
 
     init(from assignment: SDAssignment) {
         assignmentId = assignment.assignmentId
@@ -878,6 +891,7 @@ private struct CachedAssignment: Codable {
         moodleUrl = assignment.moodleUrl
         cutoffDate = assignment.cutoffDate
         submittedAt = assignment.submittedAt
+        semester = assignment.semester
     }
 
     func toSDAssignment() -> SDAssignment {
@@ -890,7 +904,8 @@ private struct CachedAssignment: Codable {
             isCompleted: isCompleted,
             moodleUrl: moodleUrl,
             cutoffDate: cutoffDate,
-            submittedAt: submittedAt
+            submittedAt: submittedAt,
+            semester: semester
         )
     }
 }

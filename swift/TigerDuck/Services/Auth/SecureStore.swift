@@ -112,11 +112,14 @@ nonisolated enum SecureStore {
     }
 
     /// ``load(key:)``, but a throw where it answers nil because the Keychain cannot be read now,
-    /// as before the first unlock after a restart, rather than because nothing is stored.
+    /// as before the first unlock after a restart, rather than because nothing is stored. An
+    /// earlier build's copy in ``shared``, which a locked launch cannot read or move, counts too.
     static func loadIfReadable(key: String) throws -> Data? {
         if let value = load(key: key) { return value }
+        let home = home(forKey: key)
+        if home !== shared { try requireNoUnreadableCopyInShared(forKey: key) }
         do {
-            return try home(forKey: key).object(forKey: key)
+            return try home.object(forKey: key)
         } catch KeychainError.itemNotFound {
             return nil
         }
@@ -158,15 +161,14 @@ nonisolated enum SecureStore {
             return value
         }
 
-        guard let legacyValue = legacyLoad(key: key) else {
+        guard let legacy = legacyLoad(key: key) else {
             return nil
         }
 
-        let migrated = (try? home.setObject(legacyValue, forKey: key)) != nil
-        if migrated {
-            legacyDelete(key: key)
+        if (try? home.setObject(legacy.value, forKey: key)) != nil {
+            deleteLegacyItem(legacy.item)
         }
-        return legacyValue
+        return legacy.value
     }
 
     static func delete(key: String) {
@@ -214,30 +216,54 @@ nonisolated enum SecureStore {
         }
     }
 
-    private static func legacyLoad(key: String) -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess else {
-            return nil
+    /// The item a build before v1.3 wrote for `key`, with the reference that deletes just that one.
+    private static func legacyLoad(key: String) -> (value: Data, item: Data)? {
+        for item in legacyItems(key: key) {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecValuePersistentRef as String: item,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+            ]
+            var result: AnyObject?
+            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let value = result as? Data {
+                return (value, item)
+            }
         }
-
-        return result as? Data
+        return nil
     }
 
     private static func legacyDelete(key: String) {
+        legacyItems(key: key).forEach(deleteLegacyItem)
+    }
+
+    private static func deleteLegacyItem(_ item: Data) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecValuePersistentRef as String: item,
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    /// References to the items builds before v1.3 wrote for `key`: generic passwords with the key
+    /// as their account and no service. Every valet's items carry the account too, but name a
+    /// service, so a match on the account alone would also take the copy `load` has just moved.
+    private static func legacyItems(key: String) -> [Data] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
+            kSecReturnAttributes as String: true,
+            kSecReturnPersistentRef as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll,
         ]
-
-        SecItemDelete(query as CFDictionary)
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]]
+        else { return [] }
+        return items.compactMap { item in
+            guard ((item[kSecAttrService as String] as? String) ?? "").isEmpty else { return nil }
+            return item[kSecValuePersistentRef as String] as? Data
+        }
     }
 }
 

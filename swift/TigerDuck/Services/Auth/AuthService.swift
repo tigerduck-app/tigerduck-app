@@ -36,6 +36,13 @@ final class AuthService {
     /// The interactive SSO sign-in. Tests pass a stand-in, so no request reaches the school.
     private let schoolSignIn: (_ studentId: String, _ password: String) async throws -> Bool
 
+    /// The library's sign-in request after the school's. Tests pass a stand-in, so no request
+    /// reaches the library.
+    private let librarySignIn: @MainActor (_ username: String, _ password: String) async throws -> LibraryLoginData
+
+    /// The part of ``logout()`` that is process-wide; tests pass a stand-in.
+    private let endSchoolSession: @MainActor (_ departingStudentId: String?) -> Void
+
     private var credentialObservers: [any NSObjectProtocol] = []
 
     /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``), so keychain reads
@@ -51,11 +58,17 @@ final class AuthService {
         notificationCenter center: NotificationCenter = .default,
         moodleTokens: MoodleTokenService = .shared,
         schoolSignIn: @escaping (_ studentId: String, _ password: String) async throws -> Bool
-            = AuthService.signInToSchool
+            = AuthService.signInToSchool,
+        librarySignIn: @escaping @MainActor (_ username: String, _ password: String) async throws -> LibraryLoginData
+            = LibraryService.requestToken(username:password:),
+        endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
+            = AuthService.endSchoolSession(departing:)
     ) {
         self.keychainHasCredentials = keychainHasCredentials
         self.moodleTokens = moodleTokens
         self.schoolSignIn = schoolSignIn
+        self.librarySignIn = librarySignIn
+        self.endSchoolSession = endSchoolSession
         let present = keychainHasCredentials()
         lastKnownHasCredentials = present
         // Only ever raised here. A false read at this point may just mean the
@@ -172,9 +185,26 @@ final class AuthService {
     var onV3SignedIn: (() -> Void)?
     /// The full sign-out, `AppState.logoutNTUST()`. ``login(studentId:password:)`` waits for it
     /// when another student ID signs in over the stored one, so that student inherits none of the
-    /// stored account's data. It also empties the school session, which the SSO sign-in would
-    /// otherwise accept as signed in without checking the new password.
+    /// stored account's data. It also empties the school session: a typed sign-in posts its
+    /// password whatever it finds, but an automatic one that finds a live session posts none and
+    /// would go on in the stored account's.
     var signOutStoredAccount: (() async -> Void)?
+    /// The calls the sign-outs still send as the departing account, the device's unregister among
+    /// them. Landing after a sign-in, the unregister would revoke the session and push tokens
+    /// that sign-in registers, so ``login(studentId:password:)`` waits for them.
+    private(set) var signOutCalls: Task<Void, Never>?
+
+    /// Starts the calls of a sign-out, `AppState.logoutNTUST()`, behind those of the sign-outs
+    /// before it, as two windows can sign out at once, and keeps them for the next sign-in.
+    func startSignOutCalls(_ calls: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let previous = signOutCalls
+        let task = Task { @MainActor in
+            await previous?.value
+            await calls()
+        }
+        signOutCalls = task
+        return task
+    }
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
     /// When an automatic backend sign-in that had credentials to send last failed. The backend
     /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
@@ -259,11 +289,23 @@ final class AuthService {
 
         do {
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
+            await signOutCalls?.value
+            // Cancelled from the sign-in sheet meanwhile: nothing is signed out or in.
+            try Task.checkCancellation()
             if let stored = storedStudentId, stored != normalizedId {
                 await signOutStoredAccount?()
+                try Task.checkCancellation()
             }
+            // Read after that sign-out, which moves it, and before the school step.
+            let generation = loginGeneration
 
             let success = try await schoolSignIn(normalizedId, password)
+            // A sign-out from another window that landed as the school's answer came back, or the
+            // sheet cancelled: none of it is saved and no later step signs it in.
+            guard loginGeneration == generation, !Task.isCancelled else {
+                isLoggingIn = false
+                return false
+            }
 
             if success {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
@@ -276,11 +318,19 @@ final class AuthService {
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 
-                await signInToServices(studentId: normalizedId, password: password, generation: loginGeneration)
+                // In a task of its own, which the sheet's cancel does not reach: with the account
+                // saved, stopping here would leave the library, Moodle and the backend half signed in.
+                await Task {
+                    await signInToServices(studentId: normalizedId, password: password, generation: generation)
+                }.value
             }
 
             isLoggingIn = false
             return success
+        } catch where Task.isCancelled {
+            // Cancelled from the sign-in sheet, which shows no error for it.
+            isLoggingIn = false
+            return false
         } catch {
             // SSOLoginError.loginFailed is a user-facing outcome (wrong
             // credentials); logging it as an error would drown out real
@@ -502,17 +552,19 @@ final class AuthService {
         }
     }
 
-    /// Best-effort: the library account signs in with the same NTUST credentials. A school
-    /// sign-out while the request is out keeps nothing, as no library account of that ID is
-    /// stored yet for the sign-out to clear.
+    /// Best-effort: the library account signs in with the same NTUST credentials. A library
+    /// account of another student ID that can sign in by itself stays, as a school sign-out keeps
+    /// it. A school sign-out while the request is out keeps nothing, as no library account of
+    /// that ID may be stored yet for the sign-out to clear.
     private func loginToLibraryIfNeeded(studentId: String, password: String) async {
-        guard !LibraryService.isTokenValid else { return }
+        guard !LibraryService.isTokenValid, !LibraryService.hasAccount(otherThan: studentId) else { return }
         let generation = loginGeneration
         do {
             _ = try await LibraryService.login(
                 username: studentId,
                 password: password,
-                stillCurrent: { self.loginGeneration == generation }
+                stillCurrent: { self.loginGeneration == generation },
+                request: librarySignIn
             )
         } catch {
             AppLogger.captureError(error, context: ["flow": "libraryAutoLogin"])
@@ -524,13 +576,7 @@ final class AuthService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
         Task { [moodleTokens] in await moodleTokens.signOut() }
-        MoodleEnrolledCoursesService.dropSharedAnswer()
-        ClassroomUsageService.shared.forget()
-        NTUSTSessionManager.shared.invalidateSession()
-        // Drop the enrolled-courses cache so the next user does not see
-        // the previous account's course list while their own data is
-        // still in flight.
-        CourseSelectionService.invalidateEnrolledCoursesCache(for: loggingOutStudentId)
+        endSchoolSession(loggingOutStudentId)
         loginError = nil
         reauthErrorMessage = nil
         isReauthenticating = false
@@ -539,6 +585,17 @@ final class AuthService {
         backendSignIn = nil
         backendSignInFailedAt = nil
         markCredentialsChanged()
+    }
+
+    /// Ends the school session and forgets what was read through it.
+    static func endSchoolSession(departing studentId: String?) {
+        MoodleEnrolledCoursesService.dropSharedAnswer()
+        ClassroomUsageService.shared.forget()
+        NTUSTSessionManager.shared.invalidateSession()
+        // Drop the enrolled-courses cache so the next user does not see
+        // the previous account's course list while their own data is
+        // still in flight.
+        CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId)
     }
 
     func clearReauthError() {

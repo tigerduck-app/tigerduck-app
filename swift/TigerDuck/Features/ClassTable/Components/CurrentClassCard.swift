@@ -35,7 +35,7 @@ struct CurrentClassCard: View {
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(2)
 
-            let classroom = info.course.classroom(for: info.weekday)
+            let classroom = info.classroom
             if !classroom.isEmpty {
                 Text(classroom)
                     .font(TigerDuckTheme.Typography.caption)

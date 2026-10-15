@@ -13,6 +13,7 @@ struct ClassTableView: View {
     @State private var showExportFailed = false
     @State private var isExporting = false
     @State private var shareModel: ClassTableShareModel?
+    @State private var shareAvailability = ClassTableShareModel.AvailabilityMemo()
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var scroll = ScrollState()
     @State private var tableSwitches = 0
@@ -147,6 +148,7 @@ struct ClassTableView: View {
                     assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
                     timeRange: viewModel.selectedCourseTimeRange,
                     weekday: viewModel.selectedWeekday,
+                    periods: viewModel.selectedCoursePeriods,
                     showsMoodle: viewModel.shownPerson == nil
                 )
             }
@@ -306,7 +308,7 @@ struct ClassTableView: View {
             Spacer()
             if pageAccessState != .loginRequired {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    SyncStatusDot(servers: [.moodle, .courseSelection, .backend])
+                    SyncStatusDot(servers: [.moodle, .courseSelection, .backend], lastSynced: .schoolData)
                     headerActions
                 }
             }
@@ -381,7 +383,8 @@ struct ClassTableView: View {
             .disabled(isExporting || !ClassTableShareModel.canShare(
                 studentId: appState.authService.storedStudentId,
                 shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
-                semesters: viewModel.availableSemesters
+                semesters: viewModel.availableSemesters,
+                memo: shareAvailability
             ))
             exportButton
         }
@@ -519,8 +522,8 @@ struct ClassTableView: View {
                 onSelect: { course in
                     // The carousel shows only today's courses: pin the weekday to today
                     // or the time card shows a dash, set it before the course for the
-                    // sheet's first read, and clear any block range a Current-class tap left.
-                    viewModel.selectedCourseBlockTimeRange = nil
+                    // sheet's first read, and clear any block a Current-class tap left.
+                    viewModel.selectedCoursePeriods = nil
                     viewModel.selectedPeriodId = nil
                     viewModel.selectedWeekday = AppClock.now().scheduleWeekday
                     viewModel.selectedCourse = course
