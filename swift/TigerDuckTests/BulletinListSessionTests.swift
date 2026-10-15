@@ -147,6 +147,36 @@ extension BulletinListSessionTests {
         return gate
     }
 
+    /// A sign-out after a refresh started its task, but before the task read the list epoch, leaves
+    /// the fetch's epoch current and the list the departing student's
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/620).
+    @Test("a refresh a sign-out overtook before its fetch began keeps nothing of the departing list")
+    func aSignOutBeforeTheFetchBeganKeepsNothing() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let departed = stub.id, next = stub.id + 1
+            stub.serve(Self.page([departed]))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            await model.refresh()
+            #expect(Self.cachedIds.contains(departed))
+
+            stub.serve(Self.page([next]))
+            let refresh = Task { await model.refresh() }
+            // The refresh runs up to its fetch task, which waits for the main actor behind this.
+            await Task.yield()
+            Self.wipeCached([departed])
+            BulletinsViewModel.forgetListSession()
+            await refresh.value
+
+            #expect(!Self.cachedIds.contains(departed))
+            #expect(!model.items.contains { $0.id == departed })
+        }
+    }
+
     /// A sign-out empties the cached list and its time; a request out when it came writes neither
     /// back for the next student.
     @Test("a refresh that lands after a sign-out writes neither the last sync nor the list")
