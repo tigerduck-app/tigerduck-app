@@ -343,9 +343,10 @@ actor MoodleTokenService {
     private nonisolated static func dataTask(
         session: URLSession,
         request: URLRequest,
+        delegate: (any URLSessionTaskDelegate & Sendable)? = nil,
     ) async throws -> (Data, URLResponse) {
         do {
-            return try await session.data(for: request)
+            return try await session.data(for: request, delegate: delegate)
         } catch let urlError as URLError {
             throw MoodleWebserviceError.transientNetwork(
                 underlying: urlError.localizedDescription,
@@ -484,7 +485,13 @@ actor MoodleTokenService {
                 ("ReturnUrl", fields.returnUrl),
                 ("Uri", fields.uri),
             ])
-            let (nextData, nextResp) = try await dataTask(session: session, request: postReq)
+            // A redirect the POST may not follow (`CredentialPostDelegate`) is its answer, which
+            // `assertOK` refuses.
+            let (nextData, nextResp) = try await dataTask(
+                session: session,
+                request: postReq,
+                delegate: CredentialPostDelegate(),
+            )
             try assertOK(response: nextResp, data: nextData)
             guard let nextURL = (nextResp as? HTTPURLResponse)?.url else {
                 throw MoodleWebserviceError.malformedResponse(detail: "missing login response URL")

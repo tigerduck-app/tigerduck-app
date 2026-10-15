@@ -22,7 +22,14 @@ nonisolated final class SSOServerStub: URLProtocol {
 
         /// A redirect the session follows to `url`, which the stub then answers.
         static func follow(to url: URL) -> Answer {
-            Answer(status: 302, headers: ["Location": url.absoluteString], body: "", followTo: url)
+            redirect(302, to: url)
+        }
+
+        /// A `status` redirect to `url`, proposed as URLSession proposes a server's: a 307 or a
+        /// 308 sends the request again with its method and body, any other a GET without a body.
+        /// A session that refuses it gets the redirect and `body` as the answer.
+        static func redirect(_ status: Int, to url: URL, body: String = "") -> Answer {
+            Answer(status: status, headers: ["Location": url.absoluteString], body: body, followTo: url)
         }
 
         /// A request that ends with `code` instead of an answer, such as one its caller cancelled.
@@ -71,7 +78,8 @@ nonisolated final class SSOServerStub: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
-        let body = Self.bodyData(of: request).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        let bodyData = Self.bodyData(of: request)
+        let body = bodyData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         Self.lock.lock()
         Self.log.append(Request(method: request.httpMethod ?? "GET", url: url, body: body))
         let answer = Self.answers[url.absoluteString]?.first
@@ -92,8 +100,11 @@ nonisolated final class SSOServerStub: URLProtocol {
             url: url, statusCode: answer.status, httpVersion: "HTTP/1.1", headerFields: headers
         )!
         if let target = answer.followTo {
-            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: target), redirectResponse: response)
-            return
+            let proposed = Self.proposal(after: answer.status, of: request, body: bodyData, to: target)
+            if let next = Self.followed(response, proposing: proposed, in: task) {
+                client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: response)
+                return
+            }
         }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(answer.body.utf8))
@@ -101,6 +112,48 @@ nonisolated final class SSOServerStub: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    /// The request URLSession proposes for a `status` redirect of `request` to `target`.
+    private static func proposal(after status: Int, of request: URLRequest, body: Data?, to target: URL) -> URLRequest {
+        guard [307, 308].contains(status) else { return URLRequest(url: target) }
+        var resent = request
+        resent.url = target
+        resent.httpBody = body
+        return resent
+    }
+
+    /// The request `task` follows the redirect with, or nil when its delegate refuses it. URLSession
+    /// asks the delegate too, but leaves a task whose protocol redirect was refused waiting for its
+    /// timeout, so the stub asks first and then answers with the redirect, as a server does.
+    private static func followed(
+        _ response: HTTPURLResponse, proposing proposed: URLRequest, in task: URLSessionTask?
+    ) -> URLRequest? {
+        let decides = #selector(
+            URLSessionTaskDelegate.urlSession(_:task:willPerformHTTPRedirection:newRequest:completionHandler:)
+        )
+        guard let task, let delegate = task.delegate, delegate.responds(to: decides) else { return proposed }
+        let decision = Decision()
+        // The delegates under test ignore the session they are given.
+        delegate.urlSession?(
+            URLSession.shared, task: task, willPerformHTTPRedirection: response, newRequest: proposed
+        ) { decision.settle($0) }
+        return decision.request()
+    }
+
+    /// A delegate's redirect decision, which its completion handler may hand over on another thread.
+    private final class Decision: @unchecked Sendable {
+        private let settled = DispatchSemaphore(value: 0)
+        private var answer: URLRequest?
+
+        func settle(_ request: URLRequest?) {
+            answer = request
+            settled.signal()
+        }
+
+        func request() -> URLRequest? {
+            settled.wait(timeout: .now() + 5) == .success ? answer : nil
+        }
+    }
 
     /// A POST body can arrive as `httpBodyStream` rather than `httpBody`.
     private static func bodyData(of request: URLRequest) -> Data? {

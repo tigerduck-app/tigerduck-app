@@ -10,30 +10,30 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct SSOServiceLoginTests {
-    private typealias Pages = SSOPageFixtures
+    typealias Pages = SSOPageFixtures
 
-    private static let probeURL = URL(string: "https://ssoam2.ntust.edu.tw/")!
-    private static let loginURL = URL(
+    static let probeURL = URL(string: "https://ssoam2.ntust.edu.tw/")!
+    static let loginURL = URL(
         string: "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%3Fclient_id%3Dstub"
     )!
     /// Where the fixture form posts, resolved against ``loginURL``.
-    private static let postURL = URL(
+    static let postURL = URL(
         string: "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback"
     )!
-    private static let servicePage = "<html><body><table><tr><td>CS1001301</td></tr></table></body></html>"
+    static let servicePage = "<html><body><table><tr><td>CS1001301</td></tr></table></body></html>"
     private static let notSignedIn = SSOServerStub.Answer.redirect(to: "/account/login?ReturnUrl=%2F")
 
-    private static func serviceURL() -> URL {
+    static func serviceURL() -> URL {
         URL(string: "https://service.stub.invalid/\(UUID().uuidString)/")!
     }
 
     /// The service sends this visit to the ssoam2 sign-in form.
-    private static func enqueueSignInForm(for service: URL) {
+    static func enqueueSignInForm(for service: URL) {
         SSOServerStub.enqueue(.follow(to: loginURL), for: service)
         SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: loginURL)
     }
 
-    private struct Outcome {
+    struct Outcome {
         let result: Result<Bool, Error>
         /// `SSOLoginService.storedPasswordRejected` when the sign-in ended.
         let rejected: Bool
@@ -41,7 +41,7 @@ struct SSOServiceLoginTests {
 
     /// Runs `body` with the latch set to `rejected`, then puts the latch and the login stamp back.
     /// Both are real `Defaults` keys, which `BackendSessionTests` reads too.
-    private func withLatch<T>(_ rejected: Bool, _ body: () async -> T) async -> T {
+    func withLatch<T>(_ rejected: Bool, _ body: () async -> T) async -> T {
         await withExclusiveRealDefaults {
             let saved = (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp])
             SSOLoginService.storedPasswordRejected = rejected
@@ -50,7 +50,7 @@ struct SSOServiceLoginTests {
         }
     }
 
-    private func signIn(
+    func signIn(
         _ serviceURL: URL,
         interactive: Bool = false,
         rejectedBefore: Bool = false,
@@ -76,7 +76,7 @@ struct SSOServiceLoginTests {
         }
     }
 
-    private var posts: [SSOServerStub.Request] {
+    var posts: [SSOServerStub.Request] {
         SSOServerStub.requests.filter { $0.method == "POST" }
     }
 
@@ -339,7 +339,7 @@ struct SSOServiceLoginTests {
 
     // MARK: - Moodle token renewal
 
-    private actor HarvestLog {
+    actor HarvestLog {
         private(set) var calls = 0
         func record() { calls += 1 }
     }
@@ -511,7 +511,7 @@ struct SSOServiceLoginTests {
     // MARK: - One automatic post of the stored password at a time
     // https://github.com/tigerduck-app/tigerduck-app/issues/574
 
-    private static func result<T>(_ body: () async throws -> T) async -> Result<T, Error> {
+    static func result<T>(_ body: () async throws -> T) async -> Result<T, Error> {
         do {
             return .success(try await body())
         } catch {
@@ -650,7 +650,7 @@ struct SSOServiceLoginTests {
     // MARK: - What a renewal latches (https://github.com/tigerduck-app/tigerduck-app/issues/575)
 
     /// A renewal whose harvest walks the school's pages from `page` at `url`, against `SSOServerStub`.
-    private func pageWalk(log: HarvestLog, from page: String, at url: URL) -> MoodleTokenService {
+    func pageWalk(log: HarvestLog, from page: String, at url: URL) -> MoodleTokenService {
         MoodleTokenService(
             storedCredentials: { (studentId: "b00000000", password: "unused") },
             tokens: .init(load: { nil }, save: { _ in }, drop: {}),

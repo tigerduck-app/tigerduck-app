@@ -258,9 +258,13 @@ enum SSOLoginService {
                 throw SSOLoginError.loginFailed(reason: nil)
             }
             let (loginData, loginResponse) = try await postForm(
-                session: session, url: actionURL, fields: payload, generation: generation
+                session: session, url: actionURL, fields: payload, generation: generation,
+                delegate: CredentialPostDelegate()
             )
+            // The POST stops at a redirect it may not follow (`CredentialPostDelegate`), which is no
+            // answer to the sign-in, and no refusal of the password either.
             guard let loginResp = loginResponse as? HTTPURLResponse,
+                  !(300..<400).contains(loginResp.statusCode),
                   let loginHTML = decodeHTML(loginData, response: loginResp) else {
                 throw SSOLoginError.invalidResponse
             }
@@ -350,12 +354,14 @@ enum SSOLoginService {
     }
 
     /// POST form-encoded data. Each POST signs in, with the credentials or an OIDC form, so it
-    /// stops once a sign-out moves the generation.
+    /// stops once a sign-out moves the generation. `delegate` is the task's, for the
+    /// credentials' POST a `CredentialPostDelegate`.
     private static func postForm(
         session: URLSession,
         url: URL,
         fields: [(name: String, value: String)],
-        generation: Int
+        generation: Int,
+        delegate: (any URLSessionTaskDelegate & Sendable)? = nil
     ) async throws -> (Data, URLResponse) {
         try checkSignedIn(generation)
         // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
@@ -366,7 +372,7 @@ enum SSOLoginService {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data(formBody(fields).utf8)
 
-        return try await session.data(for: request)
+        return try await session.data(for: request, delegate: delegate)
     }
 
     static func formBody(_ fields: [(name: String, value: String)]) -> String {
