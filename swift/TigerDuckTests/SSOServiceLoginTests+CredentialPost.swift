@@ -1,6 +1,6 @@
-// Where the sign-in form's password POST may go, in an SSO sign-in and a Moodle token renewal. An
-// extension of `SSOServiceLoginTests`, so these run in its serialized order: they share the stub's
-// queues, the SSO probe's URL and the stored-password latch.
+// Where a POST carrying a password or a token may go: sign-in forms, forms passing a sign-in on,
+// and the library's and backend's sign-ins. An extension of `SSOServiceLoginTests`, so these run
+// in its serialized order: they share the stub's queues, the SSO probe's URL and the latch.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -164,5 +164,190 @@ extension SSOServiceLoginTests {
         }
         #expect(!rejected)
         #expect(harvests == 1)
+    }
+
+    // MARK: - Forms that pass the sign-in on
+
+    /// An OIDC or SAML form that passes the sign-in on to `action`, with its token.
+    static func bridgeForm(postingTo action: String) -> String {
+        """
+        <html><body><form method="post" action="\(action)">
+        <input type="hidden" name="id_token" value="stub-token"><input type="hidden" name="state" value="stub">
+        </form></body></html>
+        """
+    }
+
+    nonisolated static let refusedBridgeActions = [
+        "https://elsewhere.stub.invalid/signin-oidc",
+        "http://courseselection.ntust.edu.tw/signin-oidc",
+    ]
+
+    @Test("a sign-in posts no token to a form off the school's hosts or over plain HTTP", arguments: refusedBridgeActions)
+    func signInPostsNoTokenOffTheSchool(action: String) async throws {
+        let service = Self.serviceURL()
+        let target = try #require(URL(string: action))
+        let outcome = await signIn(service) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.redirect(302, to: Self.authorizeCallback), for: Self.postURL)
+            SSOServerStub.enqueue(.page(Self.bridgeForm(postingTo: action)), for: Self.authorizeCallback)
+        }
+        #expect(requests(to: target).isEmpty)
+        guard case .failure(SSOLoginError.invalidResponse) = outcome.result else {
+            Issue.record("expected invalidResponse, got \(outcome.result)")
+            return
+        }
+        #expect(!outcome.rejected)
+    }
+
+    @Test("a sign-in whose form passing it on meets a 307 or a 308 ends there", arguments: [307, 308])
+    func signInStopsAtABridgeRedirect(status: Int) async throws {
+        let service = Self.serviceURL()
+        let target = try #require(URL(string: "https://courseselection.ntust.edu.tw/signin-oidc"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/signin-oidc"))
+        // A body that is not UTF-8, as a Big5 page is, must not hide the redirect.
+        var stopped = SSOServerStub.Answer.redirect(status, to: elsewhere)
+        stopped.rawBody = Data([0xA4, 0xA4, 0xFF])
+        let outcome = await signIn(service) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.redirect(302, to: Self.authorizeCallback), for: Self.postURL)
+            SSOServerStub.enqueue(.page(Self.bridgeForm(postingTo: target.absoluteString)), for: Self.authorizeCallback)
+            SSOServerStub.enqueue(stopped, for: target)
+            // The SSO session is live, so only the stopped redirect says the service got nothing.
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
+        }
+        #expect(requests(to: target).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+        guard case .failure(SSOLoginError.invalidResponse) = outcome.result else {
+            Issue.record("expected invalidResponse, got \(outcome.result)")
+            return
+        }
+    }
+
+    @Test("a renewal posts no Moodle code over plain HTTP, and pauses without a refusal")
+    func renewalPostsNoCodeOverPlainHTTP() async throws {
+        let target = try #require(URL(string: "http://moodle2.ntust.edu.tw/auth/oidc/"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.page("""
+            <html><body><form method="post" action="\(target.absoluteString)">
+            <input type="hidden" name="code" value="stub-code"><input type="hidden" name="state" value="stub">
+            <input type="hidden" name="iss" value="https://ssoam2.ntust.edu.tw">
+            </form></body></html>
+            """), for: Self.postURL)
+        let (outcome, rejected, harvests) = await renewal(from: Pages.ssoam2Login)
+        #expect(requests(to: target).isEmpty)
+        guard case .failure(MoodleWebserviceError.malformedResponse) = outcome else {
+            Issue.record("expected malformedResponse, got \(outcome)")
+            return
+        }
+        #expect(!rejected)
+        #expect(harvests == 1)
+    }
+
+    @Test("a renewal whose Moodle code POST meets a 307 or a 308 ends there", arguments: [307, 308])
+    func renewalStopsAtABridgeRedirect(status: Int) async throws {
+        let target = try #require(URL(string: "https://moodle2.ntust.edu.tw/auth/oidc/"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/auth/oidc/"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.page("""
+            <html><body><form method="post" action="\(target.absoluteString)">
+            <input type="hidden" name="code" value="stub-code"><input type="hidden" name="state" value="stub">
+            <input type="hidden" name="iss" value="https://ssoam2.ntust.edu.tw">
+            </form></body></html>
+            """), for: Self.postURL)
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: target)
+        let (outcome, rejected, _) = await renewal(from: Pages.ssoam2Login)
+        #expect(requests(to: target).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+        guard case .failure(MoodleWebserviceError.httpStatus(code: status)) = outcome else {
+            Issue.record("expected httpStatus(\(status)), got \(outcome)")
+            return
+        }
+        #expect(!rejected)
+    }
+
+    // MARK: - The library's and the backend's sign-in
+
+    @Test("the library sign-in stops at a 307 or a 308 rather than send the password on", arguments: [307, 308])
+    func librarySignInStopsAtARedirect(status: Int) async throws {
+        let login = try #require(URL(string: "https://api.lib.ntust.edu.tw/v1/passport/login"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/passport/login"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: login)
+        await #expect(throws: (any Error).self) {
+            try await LibraryService.requestToken(username: "B00000000", password: "unused", session: SSOServerStub.session())
+        }
+        #expect(requests(to: login).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+    }
+
+    @Test("the backend sign-in stops at a 307 or a 308 rather than send the Moodle token on", arguments: [307, 308])
+    func backendSignInStopsAtARedirect(status: Int) async throws {
+        let base = try #require(URL(string: "https://backend.stub.invalid/v3"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/v3/auth/login"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: base.appendingPathComponent("auth/login"))
+        let manager = AuthTokenManager(
+            baseURLProvider: { base }, deviceUUID: "test-device", session: SSOServerStub.session(),
+            tokens: .init(load: { _ in nil }, save: { _, _ in }, delete: { _ in }), beginBackgroundTask: { {} }
+        )
+        await #expect(throws: AuthTokenManager.AuthError.loginFailed) {
+            _ = try await manager.login(
+                studentId: "B00000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+        }
+        #expect(requests(to: elsewhere).isEmpty)
+    }
+
+    @Test("a library QR code request stops at a 307 or a 308 rather than send the library token on", arguments: [307, 308])
+    func libraryCodeRequestStopsAtARedirect(status: Int) async throws {
+        let generate = try #require(URL(string: "https://api.lib.ntust.edu.tw/v1/virtual-code/generate"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/virtual-code/generate"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: generate)
+        await #expect(throws: (any Error).self) {
+            try await LibraryService.requestQRCode(token: "library-token", session: SSOServerStub.session())
+        }
+        #expect(requests(to: generate).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+    }
+
+    @Test("a Moodle web service call stops at a 307 or a 308 rather than send its parameters on", arguments: [307, 308])
+    func moodleCallStopsAtARedirect(status: Int) async throws {
+        struct Answer: Decodable, Sendable {}
+        let site = try #require(URL(string: "https://moodle.stub.invalid"))
+        let endpoint = try #require(URL(string: "https://moodle.stub.invalid/webservice/rest/server.php"
+            + "?moodlewsrestformat=json&wsfunction=tool_mobile_get_autologin_key&wstoken=stub-token"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/webservice/rest/server.php"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: endpoint)
+        await #expect(throws: (any Error).self) {
+            _ = try await MoodleWebserviceClient.call(
+                "tool_mobile_get_autologin_key", params: [("privatetoken", "stub-private-token")],
+                token: "stub-token", as: Answer.self, session: SSOServerStub.session(), siteURL: site
+            )
+        }
+        #expect(requests(to: endpoint).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+    }
+
+    @Test("a backend refresh stops at a 307 or a 308 rather than send the refresh token on", arguments: [307, 308])
+    func backendRefreshStopsAtARedirect(status: Int) async throws {
+        let base = try #require(URL(string: "https://backend.stub.invalid/v3"))
+        let refresh = base.appendingPathComponent("auth/refresh")
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/v3/auth/refresh"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: refresh)
+        let stored = [AuthTokenManager.refreshTokenKey: "R0", AuthTokenManager.expiresAtKey: "0"]
+        let manager = AuthTokenManager(
+            baseURLProvider: { base }, deviceUUID: "test-device", session: SSOServerStub.session(),
+            tokens: .init(load: { stored[$0] }, save: { _, _ in }, delete: { _ in }), beginBackgroundTask: { {} }
+        )
+
+        #expect(await manager.validAccessToken() == nil)
+
+        #expect(requests(to: refresh).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
     }
 }

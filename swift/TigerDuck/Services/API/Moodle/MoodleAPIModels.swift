@@ -92,7 +92,8 @@ nonisolated enum MoodleWebserviceClient {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            // The body can hold a secret, as the autologin key request's private token.
+            (data, response) = try await session.data(for: request, delegate: CredentialPostDelegate())
         } catch let urlError as URLError {
             throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
         }
