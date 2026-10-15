@@ -18,7 +18,7 @@ struct SyncStatusDot: View {
         let text: String
     }
 
-    /// The time the details' "Last synced" row gives.
+    /// The time the details' "Last updated" row gives.
     enum LastSynced: Equatable {
         /// `schoolDataSyncedAt`, for the pages built from the school data.
         case schoolData
@@ -262,7 +262,7 @@ struct SyncStatusDot: View {
             }
             if lastSynced != .hidden {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
-                    row(color: .clear, icon: "clock", name: String(localized: "sync_status_last_synced"),
+                    row(color: .clear, icon: "clock", name: String(localized: "sync_status_last_updated"),
                         text: Self.ageText(lastSyncedDate, now: context.date))
                 }
             }
@@ -302,7 +302,7 @@ struct SyncStatusDot: View {
 
     /// Short forms, so the age fits the row's trailing column.
     static func ageText(_ syncedAt: Date?, now: Date) -> String {
-        guard let syncedAt else { return String(localized: "sync_status_never_synced") }
+        guard let syncedAt else { return String(localized: "sync_status_never_updated") }
         let seconds = max(0, now.timeIntervalSince(syncedAt))
         switch seconds {
         case ..<60:
