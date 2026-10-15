@@ -280,6 +280,19 @@ struct MailListViewModelTests {
         #expect(try #require(h.model.syncedAt) > loadedAt)
     }
 
+    /// The cache keeps the moved-up time, so a relaunch that paints from it offline shows it too.
+    @Test func aPollsMovedUpTimeIsCached() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        await h.model.pollOnce()
+
+        let polledAt = try #require(h.model.syncedAt)
+        for folder in ["INBOX", Self.sent] {
+            let cached = try #require(h.cache.loadPage(folder: folder)?.fetchedAt)
+            #expect(abs(cached.timeIntervalSince(polledAt)) < 0.001)
+        }
+    }
+
     /// All mail shows Sent too, so mail sent from webmail reloads it like new inbox mail.
     @Test func thePollReloadsAllMailForMailSentElsewhere() async {
         let h = Self.harness(inboxCount: 3)
