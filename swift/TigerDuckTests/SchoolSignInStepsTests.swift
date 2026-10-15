@@ -21,7 +21,7 @@ struct SchoolSignInStepsTests {
     private static let anotherStudent = "B10900001"
 
     private static func auth(recording calls: Calls) -> AuthService {
-        AuthService(
+        let auth = AuthService(
             keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(),
             moodleTokens: MoodleTokenService(
@@ -43,6 +43,10 @@ struct SchoolSignInStepsTests {
             },
             endSchoolSession: { _ in }
         )
+        #if os(iOS)
+        auth.accountNotifications = DeliveredNotificationsStub()
+        #endif
+        return auth
     }
 
     /// Runs `body` with a keychain of its own, holding the library account of `libraryAccount`

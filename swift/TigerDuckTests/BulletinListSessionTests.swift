@@ -165,11 +165,14 @@ extension BulletinListSessionTests {
             #expect(Self.cachedIds.contains(departed))
 
             stub.serve(Self.page([next]))
+            // Main-actor jobs run in the order they are queued: the refresh queues its fetch task
+            // when it runs, behind the sign-out.
             let refresh = Task { await model.refresh() }
-            // The refresh runs up to its fetch task, which waits for the main actor behind this.
-            await Task.yield()
-            Self.wipeCached([departed])
-            BulletinsViewModel.forgetListSession()
+            let signOut = Task {
+                Self.wipeCached([departed])
+                BulletinsViewModel.forgetListSession()
+            }
+            await signOut.value
             await refresh.value
 
             #expect(!Self.cachedIds.contains(departed))

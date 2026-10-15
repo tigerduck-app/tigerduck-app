@@ -5,7 +5,6 @@
 import SwiftUI
 import SwiftData
 import Defaults
-import UserNotifications
 import os
 
 extension AppState {

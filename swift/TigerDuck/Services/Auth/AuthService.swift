@@ -200,14 +200,15 @@ final class AuthService {
     private(set) var signOutCalls: Task<Void, Never>?
 
     /// Starts the calls of a sign-out, `AppState.logoutNTUST()`, behind those of the sign-outs
-    /// before it, as two windows can sign out at once, and keeps them for the next sign-in.
+    /// before it, as two windows can sign out at once, and keeps them for the next sign-in. On iOS
+    /// the account's notifications are cleared again once they end: the backend can push to the
+    /// account until the device's unregister among them lands.
     func startSignOutCalls(_ calls: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let previous = signOutCalls
         let task = Task { @MainActor in
             await previous?.value
             await calls()
             #if os(iOS)
-            // The backend can push to the account until the device's unregister among them lands.
             await Self.removeAccountNotifications(from: accountNotifications)
             #endif
         }

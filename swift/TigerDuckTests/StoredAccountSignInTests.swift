@@ -37,6 +37,9 @@ struct StoredAccountSignInTests {
             try? keychain.removeObject(forKey: AppConstants.KeychainKeys.password)
             calls.signOuts += 1
         }
+        #if os(iOS)
+        auth.accountNotifications = DeliveredNotificationsStub()
+        #endif
         return auth
     }
 

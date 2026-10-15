@@ -1,4 +1,5 @@
 #if os(iOS)
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -8,25 +9,8 @@ import Testing
 /// test host's own notifications are left alone.
 @MainActor
 struct SignOutNotificationTests {
-    @MainActor
-    private final class Center: DeliveredNotificationCenter {
-        var delivered: [(identifier: String, thread: String)]
-
-        init(_ delivered: [(identifier: String, thread: String)]) {
-            self.delivered = delivered
-        }
-
-        func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
-            delivered
-        }
-
-        func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
-            delivered.removeAll { identifiers.contains($0.identifier) }
-        }
-    }
-
     @Test func aSignOutTakesTheAccountsRemindersAndBulletins() async {
-        let center = Center([
+        let center = DeliveredNotificationsStub([
             ("class-reminder", "course"),
             ("homework-reminder", "assignment"),
             ("bulletin", "other"),
@@ -42,7 +26,7 @@ struct SignOutNotificationTests {
     /// The backend can push to the account until the device's unregister, one of the sign-out's
     /// calls, lands.
     @Test func aSignOutClearsAtOnceAndAgainAfterItsCalls() async throws {
-        let center = Center([("bulletin", "other")])
+        let center = DeliveredNotificationsStub([("bulletin", "other")])
         let auth = AuthService(
             keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(),
@@ -55,11 +39,37 @@ struct SignOutNotificationTests {
         )
         auth.accountNotifications = center
 
-        auth.logout()
-        try await waitUntil { center.delivered.isEmpty }
-        await auth.startSignOutCalls { center.delivered.append(("class-reminder", "course")) }.value
+        // The sign-out deletes the stored account and lowers the credentials mirror, here in a
+        // keychain of the test's own, with the mirror put back.
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.ntustCredentialsPresent]
+            defer { Defaults[.ntustCredentialsPresent] = saved }
+            try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
+                auth.logout()
+                try await waitUntil { center.delivered.isEmpty }
+                await auth.startSignOutCalls { center.delivered.append(("class-reminder", "course")) }.value
+            }
+        }
 
         #expect(center.delivered.isEmpty)
+    }
+}
+
+/// Notification Center for a test: notifications of its own, so the test host's are left alone.
+@MainActor
+final class DeliveredNotificationsStub: DeliveredNotificationCenter {
+    var delivered: [(identifier: String, thread: String)]
+
+    init(_ delivered: [(identifier: String, thread: String)] = []) {
+        self.delivered = delivered
+    }
+
+    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
+        delivered
+    }
+
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
+        delivered.removeAll { identifiers.contains($0.identifier) }
     }
 }
 #endif
