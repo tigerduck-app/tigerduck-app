@@ -406,9 +406,10 @@ final class BulletinsViewModel {
     }
 
     /// A page for a fetch started before the last sign-out writes nothing, and a list still the
-    /// departing student's starts over.
+    /// departing student's starts over. A sign-out between a refresh's start and its task's first
+    /// turn leaves the fetch's epoch current but the list the departing student's.
     private func dropsAfterSignOut(_ epoch: Int) -> Bool {
-        guard epoch != Self.listEpoch else { return false }
+        guard epoch != Self.listEpoch || isFromBeforeSignOut else { return false }
         if isFromBeforeSignOut { restartAfterSignOut() }
         return true
     }

@@ -43,6 +43,9 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
   invalidated session ends the app with an exception. Sign-out cancels its tasks and moves
   `generation`, which `SSOLoginService` checks before each POST.
 - Do not store secrets in `UserDefaults`; credentials live in the Keychain.
+- Do not POST a password or a token with URLSession's default redirect handling, which sends
+  the body again to a 307's or a 308's `Location`. Use `API/NTUST/CredentialPost.swift`: its
+  delegate for redirects, and its target check for a form a page names.
 - Do not route School Mail through the TigerDuck backend. The phone talks to the school's mail
   server directly, and the mail password stays on the device (`Mail/Store/MailCredentialStore.swift`).
 - Do not add a way around a failed TLS pin check (`TLSPinningDelegate`,

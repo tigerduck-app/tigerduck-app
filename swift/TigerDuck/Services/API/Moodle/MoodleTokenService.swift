@@ -111,12 +111,35 @@ actor MoodleTokenService {
         storedCredentials: @escaping @Sendable () -> (studentId: String, password: String)?,
         tokens: TokenStore,
         harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        harvestDeadline: Duration = MoodleTokenService.harvestDeadline
     ) {
         self.storedCredentials = storedCredentials
         self.tokens = tokens
-        self.harvest = harvest
+        self.harvest = { studentId, password in
+            try await Self.withinDeadline(harvestDeadline) { try await harvest(studentId, password) }
+        }
         self.now = now
+    }
+
+    /// How long one harvest may run. Each request stops after a minute, but a harvest makes up to
+    /// seven in turn while it holds the stored-password lock every automatic sign-in waits for.
+    nonisolated static let harvestDeadline: Duration = .seconds(60)
+
+    /// Runs `work` for at most `deadline`, then cancels it and fails as a request timeout does.
+    private nonisolated static func withinDeadline<T: Sendable>(
+        _ deadline: Duration, _ work: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await work() }
+            group.addTask {
+                try await Task.sleep(for: deadline)
+                throw MoodleWebserviceError.transientNetwork(underlying: URLError(.timedOut).localizedDescription)
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw CancellationError() }
+            return first
+        }
     }
 
     // MARK: - Public API
@@ -271,8 +294,9 @@ actor MoodleTokenService {
     /// The harvest's session. The shared cookie store keeps SSO anti-forgery and correlation
     /// cookies across the launch.php -> login -> authorize redirects; a private jar on Apple's
     /// URLSession stack drops them, and the credential POST bounces to /account/login as a false
-    /// rejection. A harvest holds the stored-password lock, so a server that trickles its answer
-    /// stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default week.
+    /// rejection. A harvest holds the stored-password lock, so a request whose server trickles its
+    /// answer stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default
+    /// week, and the harvest as a whole after ``harvestDeadline``.
     nonisolated static func harvestConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
@@ -398,7 +422,8 @@ actor MoodleTokenService {
     }
 
     private struct OIDCBridge {
-        let action: String
+        /// Resolved once, so the POST goes where the check looked.
+        let action: URL
         let payload: [String: String]
     }
 
@@ -423,19 +448,21 @@ actor MoodleTokenService {
         }
 
         if let bridge = parseOIDCBridge(from: html) {
-            guard let bridgeActionURL = URL(string: bridge.action, relativeTo: responseURL)?.absoluteURL else {
-                throw MoodleWebserviceError.malformedResponse(
-                    detail: "invalid bridge action URL",
-                )
+            // Found but not posted: Moodle's code would go out unencrypted. No refusal either, so
+            // the renewal pauses as other failures do.
+            guard CredentialPost.isSchoolTarget(bridge.action) else {
+                throw MoodleWebserviceError.malformedResponse(detail: "OIDC bridge posts over plain HTTP")
             }
-            var bridgeReq = URLRequest(url: bridgeActionURL)
+            var bridgeReq = URLRequest(url: bridge.action)
             bridgeReq.httpMethod = "POST"
             bridgeReq.setValue(
                 "application/x-www-form-urlencoded",
                 forHTTPHeaderField: "Content-Type",
             )
             bridgeReq.httpBody = urlEncodedForm(bridge.payload)
-            let (nextData, nextResp) = try await dataTask(session: session, request: bridgeReq)
+            let (nextData, nextResp) = try await dataTask(
+                session: session, request: bridgeReq, delegate: CredentialPostDelegate()
+            )
             try assertOK(response: nextResp, data: nextData)
             guard let nextURL = (nextResp as? HTTPURLResponse)?.url else {
                 throw MoodleWebserviceError.malformedResponse(detail: "missing bridge response URL")
@@ -598,14 +625,14 @@ actor MoodleTokenService {
             // Resolve the action against the SSO/Moodle base so substring
             // tricks like `https://attacker/auth/oidc` cannot pose as the
             // OIDC bridge; the resolved host must be Moodle's.
-            let resolvedActionURL = URL(string: action, relativeTo: ssoBaseURL)?.absoluteURL
-            let isOidcAction = (resolvedActionURL?.host == "moodle2.ntust.edu.tw")
-                && (resolvedActionURL?.path.hasPrefix("/auth/oidc") == true)
+            guard let resolvedActionURL = URL(string: action, relativeTo: ssoBaseURL)?.absoluteURL else { return }
+            let isOidcAction = resolvedActionURL.host == "moodle2.ntust.edu.tw"
+                && resolvedActionURL.path.hasPrefix("/auth/oidc")
             if isOidcAction,
                 payload["code"] != nil
                 && payload["state"] != nil
                 && payload["iss"] != nil {
-                result = OIDCBridge(action: action, payload: payload)
+                result = OIDCBridge(action: resolvedActionURL, payload: payload)
                 stop.pointee = true
             }
         }

@@ -29,9 +29,12 @@ actor AuthTokenManager {
     /// keeping the pair: sends that may have reached it and got no reply, a server error or a 200
     /// it could not keep. The backend rotates a token sent again while its successor is unused and
     /// takes a third use for theft, which revokes every session of the device. A new pair starts
-    /// it over.
+    /// it over. Kept with the tokens, as the app can end before the next refresh signs in again.
     private var refreshTokenUses = 0
     static let refreshTokenUseLimit = 2
+    /// Whether the Keychain holds `refreshToken`. Until it does, the stored token keeps its count,
+    /// so this one goes out only once it is stored too.
+    private var refreshTokenIsStored = true
 
     /// Re-evaluated on every request, like ``PushAPIClient``, so an endpoint
     /// override applied at runtime moves login/refresh together with the
@@ -58,6 +61,7 @@ actor AuthTokenManager {
     static let accessTokenKey = "v3_access_token"
     static let refreshTokenKey = "v3_refresh_token"
     static let expiresAtKey = "v3_token_expires_at"
+    static let refreshTokenUsesKey = "v3_refresh_token_uses"
 
     /// A refresh with no reply by then goes once more, which the backend answers with a fresh pair
     /// while the pair it sent is unused, for up to 24 hours.
@@ -81,11 +85,17 @@ actor AuthTokenManager {
         let load: @Sendable (_ key: String) -> String?
         let save: @Sendable (_ key: String, _ value: String) -> Void
         let delete: @Sendable (_ key: String) -> Void
+        /// `save` that answers whether the value is stored. A store without it is taken at its word.
+        var confirmedSave: (@Sendable (_ key: String, _ value: String) -> Bool)?
+        /// `delete` that answers whether the key is gone, taken at its word the same way.
+        var confirmedDelete: (@Sendable (_ key: String) -> Bool)?
 
         static let keychain = TokenStore(
             load: { KeychainManager.loadString(key: $0) },
             save: { KeychainManager.saveString(key: $0, value: $1) },
-            delete: { KeychainManager.delete(key: $0) }
+            delete: { KeychainManager.delete(key: $0) },
+            confirmedSave: { KeychainManager.saveStringReportingSuccess(key: $0, value: $1) },
+            confirmedDelete: { KeychainManager.deleteReportingSuccess(key: $0) }
         )
     }
 
@@ -108,6 +118,7 @@ actor AuthTokenManager {
            let interval = TimeInterval(raw) {
             self.expiresAt = Date(timeIntervalSince1970: interval)
         }
+        self.refreshTokenUses = tokens.load(Self.refreshTokenUsesKey).flatMap(Int.init) ?? 0
     }
 
     var isLoggedIn: Bool { refreshToken != nil }
@@ -198,7 +209,7 @@ actor AuthTokenManager {
         request.httpBody = try JSONEncoder().encode(body)
 
         let generation = signInGeneration
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request, delegate: CredentialPostDelegate())
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             if let http = response as? HTTPURLResponse {
                 await APIVersionGate.shared.note(statusCode: http.statusCode)
@@ -245,6 +256,11 @@ actor AuthTokenManager {
             if let late, !late.mayResend { return nil }
         }
         guard uses < Self.refreshTokenUseLimit else { return nil }
+        // The sign-out may not have deleted the token, so it is counted spent before its last send.
+        // Not when a sign-in since has stored its own token over it: the count on disk is that token's.
+        if refreshToken == nil || !refreshTokenIsStored {
+            guard saveConfirmed(Self.refreshTokenUsesKey, String(Self.refreshTokenUseLimit)) else { return nil }
+        }
         struct RefreshResponse: Decodable { let access_token: String }
         guard let (data, http) = await postRefresh(refresh).reply, http.statusCode == 200 else { return nil }
         return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
@@ -255,8 +271,9 @@ actor AuthTokenManager {
         refreshToken = nil
         expiresAt = .distantPast
         tokens.delete(Self.accessTokenKey)
-        tokens.delete(Self.refreshTokenKey)
         tokens.delete(Self.expiresAtKey)
+        // A token whose delete did not take is there for the next launch, so its count stays too.
+        if deleteConfirmed(Self.refreshTokenKey) { tokens.delete(Self.refreshTokenUsesKey) }
     }
 
     private func refresh() async -> String? {
@@ -282,16 +299,14 @@ actor AuthTokenManager {
         // A request with no reply may still have rotated the token. While the pair it sent is unused,
         // for up to 24 hours, the backend answers the old token once more with a fresh pair; a
         // second reuse is taken for theft, so past the limit only a sign-in brings a session.
-        var uses = refreshTokenUses
-        guard uses < Self.refreshTokenUseLimit else {
+        guard refreshTokenUses < Self.refreshTokenUseLimit else {
             return await signedInAgain(since: generation) ? accessToken : nil
         }
-        var send = await postRefresh(refreshToken)
-        if send.mayHaveUsed { uses += 1 }
-        if send.reply == nil, signInGeneration == generation, uses < Self.refreshTokenUseLimit {
-            send = await postRefresh(refreshToken)
-            if send.mayHaveUsed { uses += 1 }
+        var send = await postCounted(refreshToken, usedBefore: refreshTokenUses)
+        if send.reply == nil, signInGeneration == generation, send.uses < Self.refreshTokenUseLimit {
+            send = await postCounted(refreshToken, usedBefore: send.uses)
         }
+        let uses = send.uses
         if self.refreshToken == refreshToken { refreshTokenUses = uses }
         let reply = send.reply
         let mayResend = uses < Self.refreshTokenUseLimit
@@ -369,6 +384,42 @@ actor AuthTokenManager {
         .appTransportSecurityRequiresSecureConnection, .badURL, .unsupportedURL,
     ]
 
+    /// Sends `refreshToken` with its count on disk raised first, since the app can end before the
+    /// reply, and set after to what the send may have cost. Returns the reply and that count. A
+    /// count that could not be raised sends nothing, as a request that never left does.
+    private func postCounted(
+        _ refreshToken: String, usedBefore uses: Int
+    ) async -> (reply: (Data, HTTPURLResponse)?, uses: Int) {
+        guard saveUses(uses + 1, of: refreshToken) else { return (nil, uses) }
+        let send = await postRefresh(refreshToken)
+        let total = send.mayHaveUsed ? uses + 1 : uses
+        _ = saveUses(total, of: refreshToken)
+        return (send.reply, total)
+    }
+
+    /// Whether the count is stored, only while `token` is the stored one: a sign-out or a sign-in
+    /// may have replaced it meanwhile.
+    private func saveUses(_ uses: Int, of token: String) -> Bool {
+        guard refreshToken == token else { return false }
+        if !refreshTokenIsStored {
+            guard saveConfirmed(Self.refreshTokenKey, token) else { return false }
+            refreshTokenIsStored = true
+        }
+        return saveConfirmed(Self.refreshTokenUsesKey, String(uses))
+    }
+
+    private func saveConfirmed(_ key: String, _ value: String) -> Bool {
+        if let confirmedSave = tokens.confirmedSave { return confirmedSave(key, value) }
+        tokens.save(key, value)
+        return true
+    }
+
+    private func deleteConfirmed(_ key: String) -> Bool {
+        if let confirmedDelete = tokens.confirmedDelete { return confirmedDelete(key) }
+        tokens.delete(key)
+        return true
+    }
+
     private func postRefresh(_ refreshToken: String) async -> RefreshSend {
         struct RefreshRequest: Encodable { let refresh_token: String }
         var request = URLRequest(
@@ -380,7 +431,7 @@ actor AuthTokenManager {
         request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request, delegate: CredentialPostDelegate())
             guard let http = response as? HTTPURLResponse else { return RefreshSend(reply: nil, mayHaveUsed: true) }
             return RefreshSend(reply: (data, http), mayHaveUsed: !(400...499).contains(http.statusCode))
         } catch {
@@ -395,8 +446,11 @@ actor AuthTokenManager {
         refreshTokenUses = 0
         self.expiresAt = Date.now.addingTimeInterval(TimeInterval(expiresIn))
         tokens.save(Self.accessTokenKey, access)
-        tokens.save(Self.refreshTokenKey, refresh)
         tokens.save(Self.expiresAtKey, String(expiresAt.timeIntervalSince1970))
+        refreshTokenIsStored = saveConfirmed(Self.refreshTokenKey, refresh)
+        // After the new token: ending in between keeps the old count on the new token, which only
+        // signs in again early, while the reverse would send the old token uncounted.
+        if refreshTokenIsStored { tokens.delete(Self.refreshTokenUsesKey) }
     }
 
     /// The default for `beginBackgroundTask`. A Mac app is not suspended in the background, so

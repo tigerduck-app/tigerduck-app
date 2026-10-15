@@ -444,7 +444,9 @@ struct ClassTableShareSheetTests {
             DispatchQueue.global(qos: .userInitiated).async {
                 let request = VNRecognizeTextRequest()
                 request.recognitionLevel = .accurate
-                request.recognitionLanguages = ["en-US", "zh-Hant"]
+                // Vision reads mostly its first language: English first misses a Chinese screen.
+                let chinese = Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
+                request.recognitionLanguages = chinese ? ["zh-Hant", "en-US"] : ["en-US", "zh-Hant"]
                 request.usesLanguageCorrection = false
                 request.customWords = words
                 do {
@@ -543,8 +545,10 @@ struct ClassTableShareSheetTests {
         defer { window.isHidden = true }
         let failure = String(localized: "library_qr_generate_failed")
         let words = [model.studentId, failure]
+        // Vision drops a space between Latin and Chinese text, which the Chinese failure text has.
+        let showsFailure = { (line: String) in line.filter { !$0.isWhitespace }.contains(failure.filter { !$0.isWhitespace }) }
         let onScreen = try await lines(in: window, words: words, showing: model.studentId).map(\.text)
-        #expect(onScreen.contains { $0.contains(failure) }, "a missing QR must explain its failure on screen: \(onScreen)")
+        #expect(onScreen.contains(where: showsFailure), "a missing QR must explain its failure on screen: \(onScreen)")
         #expect(halvedScreenshot(window).flatMap { ClassTableShareQRCodeTests.scan($0, enlargedBy: 1) } == nil)
 
         model.selection = .semester("1151")
@@ -553,7 +557,7 @@ struct ClassTableShareSheetTests {
         }
         #expect(try ClassTableShareCode.decode(try #require(model.code)).terms.map(\.semester) == ["1151"])
         let restored = try await Self.lines(in: try #require(halvedScreenshot(window)), words: words).map(\.text)
-        #expect(!restored.contains { $0.contains(failure) })
+        #expect(!restored.contains(where: showsFailure))
     }
 
     private static func switches(in view: UIView) -> [UISwitch] {

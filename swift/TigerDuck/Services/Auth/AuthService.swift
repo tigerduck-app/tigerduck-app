@@ -3,6 +3,7 @@ import Foundation
 import os
 #if os(iOS)
 import UIKit
+import UserNotifications
 #elseif os(macOS)
 import AppKit
 #endif
@@ -189,18 +190,27 @@ final class AuthService {
     /// password whatever it finds, but an automatic one that finds a live session posts none and
     /// would go on in the stored account's.
     var signOutStoredAccount: (() async -> Void)?
+    #if os(iOS)
+    /// Where the departing account's reminders and bulletins would wait for whoever signs in next.
+    @ObservationIgnored var accountNotifications: any DeliveredNotificationCenter = UNUserNotificationCenter.current()
+    #endif
     /// The calls the sign-outs still send as the departing account, the device's unregister among
     /// them. Landing after a sign-in, the unregister would revoke the session and push tokens
     /// that sign-in registers, so ``login(studentId:password:)`` waits for them.
     private(set) var signOutCalls: Task<Void, Never>?
 
     /// Starts the calls of a sign-out, `AppState.logoutNTUST()`, behind those of the sign-outs
-    /// before it, as two windows can sign out at once, and keeps them for the next sign-in.
+    /// before it, as two windows can sign out at once, and keeps them for the next sign-in. On iOS
+    /// the account's notifications are cleared again once they end: the backend can push to the
+    /// account until the device's unregister among them lands.
     func startSignOutCalls(_ calls: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let previous = signOutCalls
         let task = Task { @MainActor in
             await previous?.value
             await calls()
+            #if os(iOS)
+            await Self.removeAccountNotifications(from: accountNotifications)
+            #endif
         }
         signOutCalls = task
         return task
@@ -286,6 +296,7 @@ final class AuthService {
     func login(studentId: String, password: String) async -> Bool {
         isLoggingIn = true
         loginError = nil
+        var schoolStepGeneration: Int?
 
         do {
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
@@ -298,6 +309,7 @@ final class AuthService {
             }
             // Read after that sign-out, which moves it, and before the school step.
             let generation = loginGeneration
+            schoolStepGeneration = generation
 
             let success = try await schoolSignIn(normalizedId, password)
             // A sign-out from another window that landed as the school's answer came back, or the
@@ -327,8 +339,9 @@ final class AuthService {
 
             isLoggingIn = false
             return success
-        } catch where Task.isCancelled {
-            // Cancelled from the sign-in sheet, which shows no error for it.
+        } catch where Task.isCancelled || schoolStepGeneration.map({ $0 != loginGeneration }) == true {
+            // Cancelled from the sign-in sheet, or by a sign-out from another window, which cancels
+            // the school step's requests: neither is an error the user caused.
             isLoggingIn = false
             return false
         } catch {
@@ -585,6 +598,9 @@ final class AuthService {
         backendSignIn = nil
         backendSignInFailedAt = nil
         markCredentialsChanged()
+        #if os(iOS)
+        Task { [accountNotifications] in await Self.removeAccountNotifications(from: accountNotifications) }
+        #endif
     }
 
     /// Ends the school session and forgets what was read through it.
@@ -601,4 +617,32 @@ final class AuthService {
     func clearReauthError() {
         reauthErrorMessage = nil
     }
+
+    #if os(iOS)
+    /// Takes the departing account's notifications out of Notification Center: the backend's
+    /// reminders and bulletin pushes. School Mail's leave with the mail account's own sign-out,
+    /// which keeps another student's mail account.
+    static func removeAccountNotifications(from center: any DeliveredNotificationCenter) async {
+        let identifiers = await center.deliveredNotificationThreads()
+            .filter { $0.thread != MailConstants.notificationThread }
+            .map(\.identifier)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+    }
+    #endif
 }
+
+#if os(iOS)
+/// The part of `UNUserNotificationCenter` a sign-out uses, so a test can hold notifications of its own.
+@MainActor
+protocol DeliveredNotificationCenter {
+    /// The identifier and thread of each notification in Notification Center.
+    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)]
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String])
+}
+
+extension UNUserNotificationCenter: DeliveredNotificationCenter {
+    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
+        await deliveredNotifications().map { ($0.request.identifier, $0.request.content.threadIdentifier) }
+    }
+}
+#endif

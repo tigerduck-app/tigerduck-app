@@ -23,8 +23,9 @@ final class MailListViewModel {
     private(set) var rows: [MailListRow] = []
     private(set) var loadState: LoadState = .idle
     private(set) var serverStatus: ServerStatus = .unknown
-    /// When the folders on screen last had their newest page fetched, the least recent of them;
-    /// nil while one has none. A page from the cache brings its own.
+    /// When the folders on screen were last known current, the least recent of them: a newest page
+    /// fetched, or for the inbox a poll that found nothing new. Nil while one has none. A page from
+    /// the cache brings its own.
     private(set) var syncedAt: Date?
     private(set) var isRefreshing = false
     private(set) var isPaginating = false
@@ -611,10 +612,10 @@ final class MailListViewModel {
         sentCopyNotice = nil
     }
 
-    /// Reloads when the inbox is on screen, which includes All mail (it merges the inbox in and
-    /// is the screen the list opens on), and holds mail the list has not shown
-    /// (`inboxHasUnshownMail`). A merged reload costs one extra `page` round trip, Sent's, per
-    /// poll that finds new mail, not per poll.
+    /// Runs when the inbox is on screen, which includes All mail (it merges the inbox in and is
+    /// the screen the list opens on). Reads STATUS for every folder on screen and reloads when
+    /// one holds mail the list has not shown (`hasUnshownMail`). A folder found current gets the
+    /// STATUS time as its `fetchedAt`, so the status dot's time moves up without a reload.
     ///
     /// Once the list shows the inbox up to the STATUS it read, the notification marker moves up
     /// to it (`noteSeenByPage`). A reload that failed leaves the marker, so those mails are still
@@ -624,10 +625,19 @@ final class MailListViewModel {
         let selection = self.selection
         let epoch = accountEpoch
         let inbox = MailConstants.inbox
-        guard let status = try? await session.use({ client in try await client.status(folder: inbox) }),
-              isCurrent(selection, epoch), searchResults == nil else { return }
+        let folders = targets
+        // Only the inbox's STATUS is required: Sent's failing must not stop new mail being found.
+        guard let statuses = try? await session.use({ client -> [String: MailboxStatusInfo] in
+                  var result = [inbox: try await client.status(folder: inbox)]
+                  for folder in folders where folder != inbox {
+                      result[folder] = try? await client.status(folder: folder)
+                  }
+                  return result
+              }),
+              let status = statuses[inbox], isCurrent(selection, epoch), searchResults == nil else { return }
+        let checkedAt = Date()
         let before = pages[inbox]
-        if Self.inboxHasUnshownMail(status, page: before) {
+        if statuses.contains(where: { Self.hasUnshownMail($0.value, page: pages[$0.key]) }) {
             await load()
             guard isCurrent(selection, epoch) else { return }
             // Arrivals are judged against the inbox's own page: in All mail the rows also hold
@@ -636,16 +646,35 @@ final class MailListViewModel {
                 await prefetchArrivedBodies(after: before.summaries.map(\.uid).max() ?? 0)
             }
         }
-        guard isCurrent(selection, epoch), !Self.inboxHasUnshownMail(status, page: pages[inbox]) else { return }
+        guard isCurrent(selection, epoch), !Self.hasUnshownMail(status, page: pages[inbox]) else { return }
+        var movedUp: [String] = []
+        for (folder, folderStatus) in statuses where !Self.hasUnshownMail(folderStatus, page: pages[folder]) {
+            guard var page = pages[folder], page.fetchedAt.map({ $0 < checkedAt }) ?? true else { continue }
+            page.fetchedAt = checkedAt
+            pages[folder] = page
+            movedUp.append(folder)
+        }
+        syncedAt = Self.syncedAt(of: targets.map { pages[$0] })
         await noteSeenByPage(status)
+        // Cached too, or a relaunch that paints from the cache shows the older time. Queued all at
+        // once, so a drop a folder change queues meanwhile lands after them, not before one.
+        guard isCurrent(selection, epoch) else { return }
+        let cache = self.cache
+        let writes = movedUp.compactMap { folder in
+            pages[folder].map { page in
+                let stored = Self.cachedCopy(of: page)
+                return chainCacheWrite { cache.savePage(stored) }
+            }
+        }
+        for write in writes { await write.value }
     }
 
-    /// Whether the inbox holds mail `page` does not: UIDNEXT has moved past the value the page was
+    /// Whether the folder holds mail `page` does not: UIDNEXT has moved past the value the page was
     /// fetched at, or UIDVALIDITY changed and every UID on screen is from a discarded generation.
     /// Not judged by the notification marker, which the foreground and background checks advance
     /// as they notify, nor by the newest UID shown, which a deleted newest mail leaves below
     /// UIDNEXT for good. A page without a UIDNEXT, or no page at all, counts as behind.
-    nonisolated static func inboxHasUnshownMail(_ status: MailboxStatusInfo, page: MailFolderPage?) -> Bool {
+    nonisolated static func hasUnshownMail(_ status: MailboxStatusInfo, page: MailFolderPage?) -> Bool {
         guard let page, page.uidValidity == status.uidValidity, let shown = page.uidNext else { return true }
         return status.uidNext > shown
     }

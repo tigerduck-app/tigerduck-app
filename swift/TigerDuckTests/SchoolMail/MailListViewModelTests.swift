@@ -269,6 +269,78 @@ struct MailListViewModelTests {
         #expect(h.seen.noted.map(\.uidNext) == [4])
     }
 
+    /// A poll that finds no new mail shows the inbox was current when the server answered, so
+    /// the status dot's time moves up to it without a reload.
+    @Test func aPollWithNoNewMailMovesTheLastUpdateUp() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        let loadedAt = try #require(h.model.syncedAt)
+        await h.model.pollOnce()
+        #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
+        #expect(try #require(h.model.syncedAt) > loadedAt)
+    }
+
+    /// The cache keeps the moved-up time, so a relaunch that paints from it offline shows it too.
+    @Test func aPollsMovedUpTimeIsCached() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        await h.model.pollOnce()
+
+        let polledAt = try #require(h.model.syncedAt)
+        for folder in ["INBOX", Self.sent] {
+            let cached = try #require(h.cache.loadPage(folder: folder)?.fetchedAt)
+            #expect(abs(cached.timeIntervalSince(polledAt)) < 0.001)
+        }
+    }
+
+    /// All mail shows Sent too, so mail sent from webmail reloads it like new inbox mail.
+    @Test func thePollReloadsAllMailForMailSentElsewhere() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        #expect(h.model.selection == .allMail)
+        await h.fake.update { $0.folders[Self.sent]?.append(FakeMailClient.message(uid: 1, subject: "寄件 1")) }
+        await h.model.pollOnce()
+        #expect(h.model.rows.contains { $0.folder == Self.sent && $0.uid == 1 })
+    }
+
+    /// Sent mail the reload failed to fetch keeps All mail's time, though the inbox was current.
+    @Test func aPollWhoseSentReloadFailedKeepsTheLastUpdate() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        let loadedAt = try #require(h.model.syncedAt)
+        await h.fake.update {
+            $0.folders[Self.sent]?.append(FakeMailClient.message(uid: 1))
+            $0.pageErrors[Self.sent] = .serverBusy
+        }
+        await h.model.pollOnce()
+        #expect(h.model.syncedAt == loadedAt)
+    }
+
+    /// Sent's STATUS failing does not stop the poll finding new inbox mail.
+    @Test func aFailedSentStatusStillLetsThePollFindNewMail() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        await h.fake.update {
+            $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 4))
+            $0.statusErrors[Self.sent] = .serverBusy
+        }
+        await h.model.pollOnce()
+        #expect(h.model.rows.contains { $0.folder == "INBOX" && $0.uid == 4 })
+    }
+
+    /// New mail the reload failed to fetch is not shown, so the list was not current.
+    @Test func aPollWhoseReloadFailedKeepsTheLastUpdate() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        let loadedAt = try #require(h.model.syncedAt)
+        await h.fake.update {
+            $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 4))
+            $0.pageError = .serverBusy
+        }
+        await h.model.pollOnce()
+        #expect(h.model.syncedAt == loadedAt)
+    }
+
     /// A reload that failed has not shown the new mail, so the marker stays for the checks that
     /// notify.
     @Test func aFailedReloadLeavesTheMarker() async {

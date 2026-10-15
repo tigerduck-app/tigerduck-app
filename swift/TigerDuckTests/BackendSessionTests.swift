@@ -1,6 +1,6 @@
 // `AuthTokenManager` and `AuthService` through `SettingsAPIStub`. The backend rotates the refresh
-// token on every refresh, redeems the old one once more within 60 s, and takes any later reuse for
-// theft (https://github.com/tigerduck-app/tigerduck-app/issues/375).
+// token on every refresh, takes the old one again for 24 hours while its successor is unused, and
+// any other reuse for theft (https://github.com/tigerduck-app/tigerduck-app/issues/375).
 import Defaults
 import Foundation
 import Testing
@@ -55,6 +55,155 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
         #expect(relogins.value == 1)
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+    }
+
+    /// The count lives with the tokens, so the app ending between the second lost reply and the
+    /// next sign-in does not send the token a third time
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/604).
+    @Test("after a relaunch, a token whose two sends got no reply goes out no more")
+    func theUseCountOutlivesARelaunch() async throws {
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A3", refresh: "R3"), for: backend.refreshURL)
+        #expect(await backend.relaunched().validAccessToken() == nil)
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    /// A send can end with the app before its reply comes back.
+    @Test("a refresh counts its send on disk before the request goes out, and a new pair clears it")
+    func theCountIsSavedBeforeTheSend() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL)
+        let refresh = Task { await backend.manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == "1")
+        gate.open()
+        #expect(await refresh.value == "A1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
+    }
+
+    /// A count the Keychain did not take would not outlive the app, so the token does not go out.
+    @Test("a refresh whose count could not be saved sends nothing")
+    func anUnsavedCountSendsNothing() async throws {
+        let backend = BackendFixture()
+        var tokens = backend.recorder.tokenStore
+        tokens.confirmedSave = { _, _ in false }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let manager = AuthTokenManager(
+            baseURLProvider: { backend.refreshURL.deletingLastPathComponent().deletingLastPathComponent() },
+            deviceUUID: "test-device", session: URLSession(configuration: config), tokens: tokens,
+            beginBackgroundTask: { {} }
+        )
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await manager.validAccessToken() == nil)
+
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
+    }
+
+    /// Sent while the spent token stayed on disk, the new token would leave its count on that one.
+    @Test("a new token the Keychain refused goes out only once it is stored, and the old one never again")
+    func aRefusedNewTokenWaitsUntilStored() async throws {
+        let backend = BackendFixture()
+        let refused = OSAllocatedUnfairLock(initialState: true)
+        let manager = backend.refusingRefreshToken(while: refused)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", expiresIn: 0), for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == "A1")
+        #expect(await manager.validAccessToken() == nil)
+        #expect(await backend.relaunched().validAccessToken() == nil)
+
+        refused.withLock { $0 = false }
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2"), for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == "A2")
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R1"])
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R2")
+    }
+
+    @Test("a sign-out that could not delete the token keeps its count for the next launch")
+    func aTokenTheSignOutCouldNotDeleteKeepsItsCount() async throws {
+        let backend = BackendFixture()
+        let manager = backend.refusingRefreshToken(while: OSAllocatedUnfairLock(initialState: true))
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == nil)
+
+        await manager.logout()
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        _ = await backend.relaunched().validAccessToken()
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    @Test("the sign-out's last send of a token it could not delete leaves it spent for the next launch")
+    func theSignOutsLastSendLeavesTheTokenSpent() async throws {
+        let backend = BackendFixture()
+        let manager = backend.refusingRefreshToken(while: OSAllocatedUnfairLock(initialState: true))
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data()), for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == nil)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A9", refresh: "R9"), for: backend.refreshURL)
+
+        #expect(await manager.endSession() == "A9")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        _ = await backend.relaunched().validAccessToken()
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    @Test("a refresh the backend turned down takes its send off the count again")
+    func aTurnedDownSendIsNotCounted() async throws {
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(.init(statusCode: 403, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+
+        #expect(await backend.manager.validAccessToken() == nil)
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == "0")
+    }
+
+    @Test("a sign-out clears the count with the tokens")
+    func aSignOutClearsTheCount() async throws {
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        #expect(await backend.manager.validAccessToken() == nil)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == "2")
+
+        await backend.manager.logout()
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
+    }
+
+    /// The count belongs to the token the refresh sent, not to the next account's.
+    @Test("a refresh a sign-out overtook writes no count for the next account's token")
+    func anOvertakenRefreshWritesNoCount() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data(), gate: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        await manager.logout()
+        _ = try await manager.login(
+            studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+        _ = await refresh.value
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
     }
 
     @Test("a token's two sends span refreshes: after a server error, a lost reply is not sent again")
@@ -167,8 +316,8 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R1", "R1"])
     }
 
-    @Test("a refresh request gives up well inside the backend's 60 s reuse grace")
-    func refreshTimesOutInsideTheGrace() async throws {
+    @Test("a refresh request with no reply gives up after 20 seconds")
+    func refreshRequestTimesOut() async throws {
         let backend = BackendFixture()
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2"), for: backend.refreshURL)
 
@@ -339,6 +488,56 @@ struct BackendTokenRefreshTests {
         #expect(await ending.value == "A1")
         #expect(await manager.validAccessToken() == "B1")
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
+    }
+
+    @Test("a sign-out's last send counts nothing against a token a sign-in stored meanwhile")
+    func theSignOutsLastSendSparesTheNextToken() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data(), gate: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        try await waitUntil { backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil }
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+        _ = await refresh.value
+
+        #expect(await ending.value == "A1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "BR1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
+    }
+
+    @Test("a sign-out's last send still counts against its token when a sign-in meanwhile stored none")
+    func theSignOutsLastSendCountsWhileTheNextTokenIsUnstored() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.refusingRefreshToken(while: OSAllocatedUnfairLock(initialState: true))
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data(), gate: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        try await waitUntil { backend.recorder.stored(AuthTokenManager.accessTokenKey) == nil }
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+        _ = await refresh.value
+
+        #expect(await ending.value == "A1")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == "2")
     }
 
     @Test("a sign-in while a sign-out's calls are out keeps its session, and they keep the departing token")
@@ -1175,13 +1374,49 @@ private struct BackendFixture {
             refreshURL: refreshURL
         )
         self.recorder = recorder
+        manager = Self.manager(baseURL: baseURL, recorder: recorder)
+    }
+
+    /// A manager on the same Keychain, as after the app ends and starts again.
+    func relaunched() -> AuthTokenManager {
+        Self.manager(baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder)
+    }
+
+    /// A manager on the same Keychain, which refuses every write of the refresh token while
+    /// `refused` holds and reports it where the store can.
+    func refusingRefreshToken(while refused: OSAllocatedUnfairLock<Bool>) -> AuthTokenManager {
+        let keychain = recorder.tokenStore
+        let refuses = { @Sendable (key: String) in key == AuthTokenManager.refreshTokenKey && refused.withLock { $0 } }
+        let tokens = AuthTokenManager.TokenStore(
+            load: keychain.load,
+            save: { key, value in if !refuses(key) { keychain.save(key, value) } },
+            delete: { key in if !refuses(key) { keychain.delete(key) } },
+            confirmedSave: { key, value in
+                guard !refuses(key) else { return false }
+                keychain.save(key, value)
+                return true
+            },
+            confirmedDelete: { key in
+                guard !refuses(key) else { return false }
+                keychain.delete(key)
+                return true
+            }
+        )
+        return Self.manager(
+            baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder, tokens: tokens
+        )
+    }
+
+    private static func manager(
+        baseURL: URL, recorder: Recorder, tokens: AuthTokenManager.TokenStore? = nil
+    ) -> AuthTokenManager {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
-        manager = AuthTokenManager(
+        return AuthTokenManager(
             baseURLProvider: { baseURL },
             deviceUUID: "test-device",
             session: URLSession(configuration: config),
-            tokens: recorder.tokenStore,
+            tokens: tokens ?? recorder.tokenStore,
             beginBackgroundTask: { recorder.beginBackgroundTask() }
         )
     }

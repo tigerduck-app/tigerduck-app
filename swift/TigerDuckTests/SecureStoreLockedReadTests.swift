@@ -24,6 +24,9 @@ struct SecureStoreLockedReadTests {
         DebugEndpointStore.keychainKey,
     ]
 
+    /// Read with them, but never stored in ``shared``, so no copy there awaits a move.
+    static let readWhileLockedSinceTheMove = [AuthTokenManager.refreshTokenUsesKey]
+
     /// Nothing that runs in the background needs these.
     static let unlockedOnly = [
         AppConstants.KeychainKeys.studentId,
@@ -32,7 +35,7 @@ struct SecureStoreLockedReadTests {
         AppConstants.KeychainKeys.moodleToken,
     ]
 
-    @Test(arguments: readWhileLocked)
+    @Test(arguments: readWhileLocked + readWhileLockedSinceTheMove)
     func aSecretTheBackgroundNeedsIsReadableAfterFirstUnlock(key: String) throws {
         SecureStore.delete(key: key)
         defer { SecureStore.delete(key: key) }
@@ -102,6 +105,45 @@ struct SecureStoreLockedReadTests {
             #expect(SecureStore.load(key: key) == Data("old".utf8))
             try SecureStore.save(Data("rotated".utf8), forKey: key)
             #expect(SecureStore.load(key: key) == Data("rotated".utf8))
+        }
+    }
+
+    /// A launch behind a locked screen can find a stored session with no count of its refresh
+    /// token's sends. A refresh then counts each send, or a relaunch could send a token two lost
+    /// replies used a third time
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/604).
+    @Test(arguments: absentReadsFailWhileLocked)
+    func aLockedLaunchAfterTheUpdateCountsTheRefreshTokensSends(absentReadsFail: Bool) async throws {
+        let keys = [
+            AuthTokenManager.accessTokenKey, AuthTokenManager.refreshTokenKey,
+            AuthTokenManager.expiresAtKey, AuthTokenManager.refreshTokenUsesKey,
+        ]
+        keys.forEach { SecureStore.delete(key: $0) }
+        defer { keys.forEach { SecureStore.delete(key: $0) } }
+        let earlierBuilds = LockablePhoneKeychain(absentReadsFailWhileLocked: absentReadsFail)
+        let refreshURL = SettingsAPIStub.uniqueBaseURL().appendingPathComponent("auth/refresh")
+        SettingsAPIStub.enqueue(.noReply, for: refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: refreshURL)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+
+        try await SecureStore.$sharedForTesting.withValue(earlierBuilds) {
+            for (key, value) in [
+                (AuthTokenManager.accessTokenKey, "A0"), (AuthTokenManager.refreshTokenKey, "R0"),
+                (AuthTokenManager.expiresAtKey, "0"),
+            ] {
+                try SecureStore.save(Data(value.utf8), forKey: key)
+            }
+            earlierBuilds.isLocked = true
+            let manager = AuthTokenManager(
+                baseURLProvider: { refreshURL.deletingLastPathComponent().deletingLastPathComponent() },
+                deviceUUID: "test-device", session: URLSession(configuration: config), beginBackgroundTask: { {} }
+            )
+
+            #expect(await manager.validAccessToken() == nil)
+
+            #expect(SettingsAPIStub.requests(for: refreshURL).count == 2)
+            #expect(SecureStore.load(key: AuthTokenManager.refreshTokenUsesKey) == Data("2".utf8))
         }
     }
 

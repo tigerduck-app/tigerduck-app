@@ -120,22 +120,20 @@ struct ScoreViewModelAccountTests {
         #expect(model.cachedAt == readAt)
     }
 
-    /// The cache answers with the time it read the report. The session is a stand-in with no
-    /// answers, so nothing leaves the process even if the cache stops answering.
+    /// The cache answers with the time it read the report. Every request of the session fails, so
+    /// a fetch that asks the network fails the test, and nothing leaves the process.
     @Test func theDayLongCacheAnswersWithTheTimeItWasRead() async throws {
         try await Self.withCachedReport { studentId in
             let cached = try #require(DataCache.shared.loadScoreReport(studentId: studentId))
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [OfflineURLProtocol.self]
 
             let fetched = try await NTUSTScoreService.fetchScoreReport(
-                session: SSOServerStub.session(), studentId: studentId, password: "unused"
+                session: URLSession(configuration: config), studentId: studentId, password: "unused"
             )
 
             #expect(fetched.report == cached.report)
             #expect(fetched.cachedAt == cached.cachedAt)
-            // The stub's log is shared with the SSO suite, so only this fetch's requests count.
-            #expect(!SSOServerStub.requests.contains {
-                $0.url.host == "stuinfosys.ntust.edu.tw" || $0.body.contains(studentId)
-            })
         }
     }
 
@@ -301,4 +299,12 @@ struct ScoreViewModelAccountTests {
         await first.value
         #expect(model.report.student == student)
     }
+}
+
+/// Fails every request, and holds no state another suite's stub could share.
+private nonisolated final class OfflineURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)) }
+    override func stopLoading() {}
 }

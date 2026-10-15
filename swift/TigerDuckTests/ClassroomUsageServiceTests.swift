@@ -309,6 +309,34 @@ struct ClassroomUsageServiceTests {
         #expect(harness.account.signIns == 0)
     }
 
+    /// The next account's dot starts unknown, whatever the departed account's read gets back
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/620).
+    @Test("a read that a sign-out ends leaves the site's status unknown", arguments: [true, false])
+    func signOutLeavesTheStatusUnknown(answered: Bool) async throws {
+        let harness = Harness()
+        harness.serveFirstDay()
+        _ = try await harness.usage(on: Self.day(10, 14))
+        #expect(harness.service.siteStatus == .ok)
+        let gate = SettingsAPIStub.ReplyGate()
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(rows: [Pages.row("TR-212", "cc....cc..b...")], viewState: "campus"))
+        // The day's only page, so a read the checks let through would end here.
+        SettingsAPIStub.enqueue(
+            answered
+                ? .init(statusCode: 200, body: Data(Pages.page(rows: [Pages.row("TR-617", "cc............")], viewState: "day").utf8), gate: gate)
+                : .init(statusCode: 0, body: Data(), failure: .networkConnectionLost, gate: gate),
+            for: harness.url
+        )
+
+        let read = Task { try await harness.usage(on: Self.day(10, 15)) }
+        try await waitUntil { harness.requests.count == 7 }
+        harness.service.forget()
+        gate.open()
+
+        await #expect(throws: (any Error).self) { try await read.value }
+        #expect(harness.service.siteStatus == .unknown)
+    }
+
     @Test("a read queued behind a sign-out never signs the departed account in again")
     func queuedReadAfterSignOut() async throws {
         let harness = Harness()

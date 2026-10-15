@@ -136,8 +136,8 @@ struct ScheduleSyncServiceTests {
                 store.isLiveActivityEnabled = userSwitch
                 let events = ScheduleSyncService.buildEvents(
                     inputs: ScheduleSyncService.Inputs(
-                        courses: [course],
-                        term: "1142",
+                        now: now,
+                        courses: { _ in [course] },
                         assignments: [assignment],
                         preferences: store,
                         cloudSyncEnabled: cloudSync,
@@ -233,16 +233,7 @@ struct ScheduleSyncServiceTests {
     @Test func theNewTermsFirstDay_getsNoneOfTheOldTermsClasses() {
         let ctx = Self.context()
         let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
-        let tuesday = AcademicCalendar.startOfDay(Self.tuesdayAt(8))
-        let day = { (offset: Int) in AcademicCalendar.calendar.date(byAdding: .day, value: offset, to: tuesday)! }
-        let calendar = AcademicCalendar(
-            revision: 1,
-            terms: [
-                SemesterTerm(code: "1142", start: day(-120), end: day(-1)),
-                SemesterTerm(code: "1151", start: tuesday, end: day(120)),
-            ],
-            holidays: []
-        )
+        let calendar = Self.termStartingTuesday()
         let events = { (term: String) in
             ScheduleSyncService.buildEvents(
                 inputs: Self.defaultInputs(courses: [course], assignments: [assignment], calendar: calendar, term: term),
@@ -253,6 +244,69 @@ struct ScheduleSyncServiceTests {
 
         #expect(events("1142").map(\.scenario) == [.assignmentUrgent])
         #expect(Set(events("1151").map(\.scenario)) == [.classPreparing, .inClass, .assignmentUrgent])
+    }
+
+    /// With the new term's timetable cached, its first day is planned from it, and the old term's
+    /// classes stay off that day (https://github.com/tigerduck-app/tigerduck-app/issues/595).
+    @Test func theNewTermsFirstDay_getsTheNewTermsClassesWhenCached() {
+        let ctx = Self.context()
+        let (old, _, now) = Self.tuesdayClassAndDeadline(context: ctx)
+        let new = Self.makeCourse(courseNo: "CS302", name: "Databases", weekdayToPeriods: [2: ["6"]], context: ctx)
+        var inputs = Self.defaultInputs(courses: [old], calendar: Self.termStartingTuesday())
+        inputs.nextTerm = (code: "1151", courses: [new])
+
+        let events = ScheduleSyncService.buildEvents(
+            inputs: inputs, now: now, horizonEnd: now.addingTimeInterval(48 * 3600)
+        )
+
+        #expect(Set(events.map(\.scenario)) == [.classPreparing, .inClass])
+        #expect(events.allSatisfy { $0.sourceId.hasPrefix("CS302_") })
+    }
+
+    /// The terms are read off `now`, the app's clock the window is built on, and the calendar.
+    @Test func theTermsAreTheGivenClocks() async {
+        let ctx = Self.context()
+        let (old, _, mondayEvening) = Self.tuesdayClassAndDeadline(context: ctx)
+        let new = Self.makeCourse(courseNo: "CS302", name: "Databases", weekdayToPeriods: [2: ["6"]], context: ctx)
+
+        await NotificationSettingsFixtures.withStore { store in
+            let inputs = { (now: Date) in
+                ScheduleSyncService.Inputs(
+                    now: now,
+                    courses: { $0 == "1151" ? [new] : [old] },
+                    assignments: [],
+                    preferences: store,
+                    cloudSyncEnabled: true,
+                    accentHex: 0x4A90E2,
+                    calendar: Self.termStartingTuesday(),
+                    optedInHolidayIDs: []
+                )
+            }
+
+            let evening = inputs(mondayEvening)
+            #expect(evening.term == "1142")
+            #expect(evening.courses.map(\.courseNo) == ["CS301"])
+            #expect(evening.nextTerm?.code == "1151")
+            #expect(evening.nextTerm?.courses.map(\.courseNo) == ["CS302"])
+            let weekBefore = inputs(mondayEvening.addingTimeInterval(-7 * 24 * 3600))
+            #expect(weekBefore.term == "1142")
+            #expect(weekBefore.nextTerm == nil)
+            #expect(inputs(Self.tuesdayAt(8)).term == "1151")
+        }
+    }
+
+    /// Term 1142 ends on the Monday before `tuesdayAt`, and term 1151 begins that Tuesday.
+    private static func termStartingTuesday() -> AcademicCalendar {
+        let tuesday = AcademicCalendar.startOfDay(tuesdayAt(8))
+        let day = { (offset: Int) in AcademicCalendar.calendar.date(byAdding: .day, value: offset, to: tuesday)! }
+        return AcademicCalendar(
+            revision: 1,
+            terms: [
+                SemesterTerm(code: "1142", start: day(-120), end: day(-1)),
+                SemesterTerm(code: "1151", start: tuesday, end: day(120)),
+            ],
+            holidays: []
+        )
     }
 
     /// Before the calendar is fetched the month heuristic's term is current: from February 1 on,

@@ -20,6 +20,8 @@ actor FakeMailClient: MailClient {
     var uidNext: [String: UInt32] = [:]
     var loginError: MailClientError?
     var statusError: MailClientError?
+    /// A `status` refused for one folder only.
+    var statusErrors: [String: MailClientError] = [:]
     /// Simulates a `page` the server refused (e.g. unreachable partway through a session) —
     /// used to prove a caller's own state change (dropping a stale cache, say) survives even
     /// when the reload that follows it doesn't succeed.
@@ -216,6 +218,7 @@ actor FakeMailClient: MailClient {
         calls.append("status \(folder)")
         await gate("status")
         if let statusError { throw statusError }
+        if let error = statusErrors[folder] { throw error }
         return MailboxStatusInfo(uidValidity: uidValidity[folder] ?? 1, uidNext: nextUID(folder))
     }
 
