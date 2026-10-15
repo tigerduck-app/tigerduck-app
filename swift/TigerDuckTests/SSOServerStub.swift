@@ -10,6 +10,8 @@ nonisolated final class SSOServerStub: URLProtocol {
         let body: String
         var followTo: URL?
         var failure: URLError.Code?
+        /// Bytes sent in place of `body`, for a body that is not UTF-8.
+        var rawBody: Data?
 
         static func page(_ html: String, status: Int = 200) -> Answer {
             Answer(status: status, headers: [:], body: html)
@@ -113,7 +115,7 @@ nonisolated final class SSOServerStub: URLProtocol {
             }
         }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(answer.body.utf8))
+        client?.urlProtocol(self, didLoad: answer.rawBody ?? Data(answer.body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 

@@ -338,13 +338,15 @@ enum SSOLoginService {
                 session: session, url: actionURL, fields: form.inputs, generation: generation,
                 delegate: CredentialPostDelegate()
             )
+            // Stopped at a redirect it may not follow: the service got nothing, though a live SSO
+            // session would let the sign-in pass for done. Checked before the body, whatever it is.
+            if let resp = response as? HTTPURLResponse, (300..<400).contains(resp.statusCode) {
+                throw SSOLoginError.invalidResponse
+            }
             guard let newHTML = String(data: data, encoding: .utf8),
                   let resp = response as? HTTPURLResponse else {
                 return (currentHTML, currentURL)
             }
-            // Stopped at a redirect it may not follow: the service got nothing, though a live SSO
-            // session would let the sign-in pass for done.
-            guard !(300..<400).contains(resp.statusCode) else { throw SSOLoginError.invalidResponse }
             currentURL = resp.url ?? actionURL
             currentHTML = newHTML
         }

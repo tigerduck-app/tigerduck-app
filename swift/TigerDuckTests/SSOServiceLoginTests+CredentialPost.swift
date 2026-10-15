@@ -205,12 +205,15 @@ extension SSOServiceLoginTests {
         let service = Self.serviceURL()
         let target = try #require(URL(string: "https://courseselection.ntust.edu.tw/signin-oidc"))
         let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/signin-oidc"))
+        // A body that is not UTF-8, as a Big5 page is, must not hide the redirect.
+        var stopped = SSOServerStub.Answer.redirect(status, to: elsewhere)
+        stopped.rawBody = Data([0xA4, 0xA4, 0xFF])
         let outcome = await signIn(service) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
             SSOServerStub.enqueue(.redirect(302, to: Self.authorizeCallback), for: Self.postURL)
             SSOServerStub.enqueue(.page(Self.bridgeForm(postingTo: target.absoluteString)), for: Self.authorizeCallback)
-            SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: target)
+            SSOServerStub.enqueue(stopped, for: target)
             // The SSO session is live, so only the stopped redirect says the service got nothing.
             SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
         }
