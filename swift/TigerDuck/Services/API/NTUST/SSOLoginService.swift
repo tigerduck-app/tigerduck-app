@@ -242,7 +242,7 @@ enum SSOLoginService {
             // Nothing is posted, so the sign-in does not ask the user to check the password.
             guard CredentialPost.isSignInTarget(actionURL) else {
                 AppLogger.auth.error(
-                    "Sign-in form action refused: \(actionURL.scheme ?? "", privacy: .public) \(actionURL.host ?? "", privacy: .private)"
+                    "Sign-in form action refused: \(CredentialPost.schemeLabel(of: actionURL), privacy: .public) \(actionURL.host ?? "", privacy: .private)"
                 )
                 throw SSOLoginError.invalidResponse
             }

@@ -44,6 +44,13 @@ struct CredentialPostTests {
         }
     }
 
+    @Test("a form action's scheme reaches the log as http, https or other")
+    func schemeLabel() throws {
+        let actions = ["https://elsewhere.stub.invalid/", "HTTP://elsewhere.stub.invalid/", "javascript:void(0)", "ftp://elsewhere.stub.invalid/"]
+        let labels = try actions.map { CredentialPost.schemeLabel(of: try #require(URL(string: $0))) }
+        #expect(labels == ["https", "http", "other", "other"])
+    }
+
     @Test("a 301, 302 or 303 is followed over HTTPS as a GET without the form", arguments: [301, 302, 303])
     func followsAsAGet(status: Int) throws {
         let proposed = try Self.post(to: "https://ssoam2.ntust.edu.tw/connect/authorize/callback")

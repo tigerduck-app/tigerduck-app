@@ -12,6 +12,16 @@ nonisolated enum CredentialPost {
         url.scheme?.lowercased() == "https" && url.host?.lowercased() == signInHost
     }
 
+    /// The scheme of `url` as a fixed label, `http`, `https` or `other`, which the log may show:
+    /// a page names the scheme of its form's action.
+    static func schemeLabel(of url: URL) -> String {
+        switch url.scheme?.lowercased() {
+        case "https": "https"
+        case "http": "http"
+        default: "other"
+        }
+    }
+
     /// The request a redirect of the POST is followed with, or nil to stop at the redirect, which
     /// is then the POST's answer. URLSession sends the form again to the `Location` of a 307 or a
     /// 308, so only a 301, 302 or 303 is followed, as a GET without the form and over HTTPS.
