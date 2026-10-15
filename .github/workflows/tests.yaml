@@ -55,10 +55,12 @@ jobs:
               TigerDuckTests/ClassTableSwitcherTests
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
+              TigerDuckTests/EmptyClassroomLayoutTests
               TigerDuckTests/PagingScrollLockTests
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
               TigerDuckTests/ScrollPositionOriginTests
+              TigerDuckTests/SyncStatusDotDetailsTests
               TigerDuckTests/TigerSyncLinksSectionTests
               TigerDuckTests/TimeSliderAccessibilityTests
           # The watch app is a companion app with its own scheme and destination; Xcode pairs the
