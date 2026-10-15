@@ -5,7 +5,6 @@
 import SwiftUI
 import SwiftData
 import Defaults
-import UserNotifications
 import os
 
 extension AppState {
@@ -103,8 +102,6 @@ extension AppState {
         }
         #if os(iOS)
         if let departingStudentId { MailAccountManager.shared.logout(ifSchoolAccount: departingStudentId) }
-        // Its reminders and bulletins would wait in Notification Center for whoever signs in next.
-        Task { await Self.removeAccountNotifications() }
         #endif
         // The session ends now. Only the device's unregister below still goes out as the departing
         // account, with the token this hands back; without it the device keeps getting that
@@ -164,8 +161,6 @@ extension AppState {
             let departing = AuthTokenManager.DepartingAccount(accessToken: await endingSession.value)
             await AuthTokenManager.$departing.withValue(departing) { await pushCoordinator.disable() }
             #if os(iOS)
-            // The backend can push to the account until the unregister above lands.
-            await Self.removeAccountNotifications()
             await liveActivityCoordinator.endAll()
             #endif
         }
@@ -188,34 +183,4 @@ extension AppState {
     func notifyLibraryStateChanged() {
         _libraryRevision += 1
     }
-
-    #if os(iOS)
-    /// Takes the departing account's notifications out of Notification Center: the backend's
-    /// reminders and bulletin pushes. School Mail's leave with the mail account's own sign-out,
-    /// which keeps another student's mail account.
-    static func removeAccountNotifications(
-        from center: any DeliveredNotificationCenter = UNUserNotificationCenter.current()
-    ) async {
-        let identifiers = await center.deliveredNotificationThreads()
-            .filter { $0.thread != MailConstants.notificationThread }
-            .map(\.identifier)
-        center.removeDeliveredNotifications(withIdentifiers: identifiers)
-    }
-    #endif
 }
-
-#if os(iOS)
-/// The part of `UNUserNotificationCenter` a sign-out uses, so a test can hold notifications of its own.
-@MainActor
-protocol DeliveredNotificationCenter {
-    /// The identifier and thread of each notification in Notification Center.
-    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)]
-    func removeDeliveredNotifications(withIdentifiers identifiers: [String])
-}
-
-extension UNUserNotificationCenter: DeliveredNotificationCenter {
-    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
-        await deliveredNotifications().map { ($0.request.identifier, $0.request.content.threadIdentifier) }
-    }
-}
-#endif
