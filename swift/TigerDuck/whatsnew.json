@@ -304,5 +304,19 @@
         { "symbol": "wrench.and.screwdriver", "title": "Fixes", "body": "Several fixes for a steadier app." }
       ]
     }
+  },
+  "2.5.1": {
+    "zh-TW": {
+      "title": "2.5.1 更新內容",
+      "items": [
+        { "symbol": "wrench.and.screwdriver", "title": "問題修正", "body": "修正課表、空教室、圖書館、信箱、同步與登入的多項問題。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.5.1",
+      "items": [
+        { "symbol": "wrench.and.screwdriver", "title": "Fixes", "body": "Fixes for the class table, free classrooms, Library, Mail, sync and sign-in." }
+      ]
+    }
   }
 }

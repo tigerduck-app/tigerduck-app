@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 /// Top-level bulletin list page. Bulletins live on the push server and are
@@ -14,6 +15,8 @@ struct BulletinsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = BulletinsViewModel()
+    /// Read from storage rather than a view model, which outlives a sign-out that clears it.
+    @Default(.bulletinsSyncedAt) private var bulletinsSyncedAt
     /// Shared across navigations — fetching the taxonomy is a network hop
     /// the user feels as "filter chips missing on entry" every time the
     /// Home widget pushes this view fresh. A singleton keeps the loaded
@@ -186,12 +189,12 @@ struct BulletinsView: View {
             // empty pill. Bare also matches the pages that draw it in a plain header row.
             if #available(iOS 26, *) {
                 ToolbarItem(placement: .topBarTrailing) {
-                    SyncStatusDot(servers: [.backend])
+                    SyncStatusDot(servers: [.backend], lastSynced: .at(bulletinsSyncedAt))
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
                 ToolbarItem(placement: .topBarTrailing) {
-                    SyncStatusDot(servers: [.backend])
+                    SyncStatusDot(servers: [.backend], lastSynced: .at(bulletinsSyncedAt))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {

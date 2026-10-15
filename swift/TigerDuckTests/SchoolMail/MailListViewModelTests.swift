@@ -92,6 +92,50 @@ struct MailListViewModelTests {
         #expect(h.model.serverStatus == .failed)
     }
 
+    /// The status dot's last sync is when the folders on screen last had their newest page
+    /// fetched. The cache keeps it, and a sign-out takes it with the list.
+    @Test func theLastSyncIsWhenTheNewestPageArrived() async throws {
+        let h = Self.harness()
+        let before = Date()
+        await h.model.load()
+
+        let syncedAt = try #require(h.model.syncedAt)
+        #expect(syncedAt >= before && syncedAt <= Date())
+        let cached = try #require(h.cache.loadPage(folder: "INBOX")?.fetchedAt)
+        #expect(abs(cached.timeIntervalSince(syncedAt)) < 0.001)
+
+        h.model.resetForAccountChange()
+        #expect(h.model.syncedAt == nil)
+    }
+
+    /// Offline, the list from the cache shows when it was fetched, not that it never was.
+    @Test func theCachedListKeepsItsTimeWhenOffline() async throws {
+        let h = Self.harness(open: { throw MailClientError.unreachable })
+        let fetchedAt = Date().addingTimeInterval(-3600)
+        h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1,
+                                        summaries: [SchoolMailTestDoubles.summary(uid: 9)], oldestLoadedSequence: nil,
+                                        fetchedAt: fetchedAt))
+        await h.model.load()
+
+        #expect(h.model.serverStatus == .failed)
+        let syncedAt = try #require(h.model.syncedAt)
+        #expect(abs(syncedAt.timeIntervalSince(fetchedAt)) < 0.001)
+    }
+
+    /// A page an earlier build cached carries no fetch time and still loads.
+    @Test func aPageCachedWithoutAFetchTimeStillLoads() throws {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let url = cache.pageURL(folder: "INBOX")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let json = #"{"version":1,"payload":{"folder":"INBOX","uidValidity":7,"messageCount":0,"summaries":[]}}"#
+        try Data(json.utf8).write(to: url)
+
+        let page = try #require(cache.loadPage(folder: "INBOX"))
+
+        #expect(page.uidValidity == 7)
+        #expect(page.fetchedAt == nil)
+    }
+
     @Test func failingWithNothingCachedShowsTheError() async {
         let h = Self.harness(open: { throw MailClientError.unreachable })
         await h.model.load()

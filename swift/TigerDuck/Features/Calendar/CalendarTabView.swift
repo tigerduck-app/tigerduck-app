@@ -77,7 +77,7 @@ struct CalendarTabView: View {
             // TigerSync as well as Moodle: deadlines are Moodle's, but holidays and
             // term boundaries come from the backend's academic calendar, so an
             // unreachable backend means rows missing from this screen.
-            SyncStatusDot(servers: [.moodle, .backend])
+            SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
             Button {
                 viewModel.goToToday()
             } label: {

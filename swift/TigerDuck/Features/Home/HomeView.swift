@@ -58,7 +58,7 @@ struct HomeView: View {
                         .font(TigerDuckTheme.Typography.title)
                         .foregroundStyle(Color.textPrimary)
                     Spacer()
-                    SyncStatusDot(servers: [.moodle, .backend])
+                    SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                 .padding(.top, TigerDuckTheme.Spacing.md)

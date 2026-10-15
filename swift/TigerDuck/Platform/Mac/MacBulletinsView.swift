@@ -1,4 +1,5 @@
 #if os(macOS)
+import Defaults
 import SwiftUI
 import MarkdownUI
 import os
@@ -12,6 +13,7 @@ import os
 struct MacBulletinsView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = BulletinsViewModel()
+    @Default(.bulletinsSyncedAt) private var bulletinsSyncedAt
     @State private var readStore = BulletinReadStateStore()
     // Shared with iPhone: same fetch-once taxonomy cache, so org/tag rawIds
     // resolve to localized labels instead of leaking the raw SQL key.
@@ -51,7 +53,7 @@ struct MacBulletinsView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 8) {
-                    SyncStatusDot(servers: [.backend])
+                    SyncStatusDot(servers: [.backend], lastSynced: .at(bulletinsSyncedAt))
                     Button {
                         Task { await viewModel.refresh() }
                     } label: {

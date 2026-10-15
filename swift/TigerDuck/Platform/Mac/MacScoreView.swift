@@ -44,7 +44,7 @@ struct MacScoreView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 8) {
-                    SyncStatusDot(servers: [.courseSelection])
+                    SyncStatusDot(servers: [.courseSelection], lastSynced: .at(viewModel.cachedAt))
                     Button {
                         Task { await viewModel.refresh(authService: appState.authService, force: true) }
                     } label: {
