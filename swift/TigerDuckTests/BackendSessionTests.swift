@@ -109,17 +109,19 @@ struct BackendTokenRefreshTests {
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
     }
 
-    /// The spent token would stay on disk under a count the new token's sends overwrite.
-    @Test("after the Keychain refused the new token, a relaunch sends no token again")
-    func aRefusedNewTokenLeavesNoSpentOne() async throws {
+    /// Sent while the spent token stayed on disk, the new token would leave its count on that one.
+    @Test("a new token the Keychain refused goes out only once it is stored, and the old one never again")
+    func aRefusedNewTokenWaitsUntilStored() async throws {
         let backend = BackendFixture()
         let keychain = backend.recorder.tokenStore
+        let refused = OSAllocatedUnfairLock(initialState: true)
+        let refuses = { @Sendable (key: String) in key == AuthTokenManager.refreshTokenKey && refused.withLock { $0 } }
         let refusing = AuthTokenManager.TokenStore(
             load: keychain.load,
-            save: { key, value in if key != AuthTokenManager.refreshTokenKey { keychain.save(key, value) } },
-            delete: keychain.delete,
+            save: { key, value in if !refuses(key) { keychain.save(key, value) } },
+            delete: { key in if !refuses(key) { keychain.delete(key) } },
             confirmedSave: { key, value in
-                guard key != AuthTokenManager.refreshTokenKey else { return false }
+                guard !refuses(key) else { return false }
                 keychain.save(key, value)
                 return true
             }
@@ -134,13 +136,15 @@ struct BackendTokenRefreshTests {
         SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", expiresIn: 0), for: backend.refreshURL)
         #expect(await manager.validAccessToken() == "A1")
-        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2", expiresIn: 0), for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == nil)
+        #expect(await backend.relaunched().validAccessToken() == nil)
+
+        refused.withLock { $0 = false }
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2"), for: backend.refreshURL)
         #expect(await manager.validAccessToken() == "A2")
 
-        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A3", refresh: "R3"), for: backend.refreshURL)
-        _ = await backend.relaunched().validAccessToken()
-
         #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R1"])
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R2")
     }
 
     @Test("a refresh the backend turned down takes its send off the count again")

@@ -32,6 +32,9 @@ actor AuthTokenManager {
     /// it over. Kept with the tokens, as the app can end before the next refresh signs in again.
     private var refreshTokenUses = 0
     static let refreshTokenUseLimit = 2
+    /// Whether the Keychain holds `refreshToken`. Until it does, the stored token keeps its count,
+    /// so this one goes out only once it is stored too.
+    private var refreshTokenIsStored = true
 
     /// Re-evaluated on every request, like ``PushAPIClient``, so an endpoint
     /// override applied at runtime moves login/refresh together with the
@@ -390,6 +393,10 @@ actor AuthTokenManager {
     /// may have replaced it meanwhile.
     private func saveUses(_ uses: Int, of token: String) -> Bool {
         guard refreshToken == token else { return false }
+        if !refreshTokenIsStored {
+            guard saveConfirmed(Self.refreshTokenKey, token) else { return false }
+            refreshTokenIsStored = true
+        }
         return saveConfirmed(Self.refreshTokenUsesKey, String(uses))
     }
 
@@ -426,15 +433,10 @@ actor AuthTokenManager {
         self.expiresAt = Date.now.addingTimeInterval(TimeInterval(expiresIn))
         tokens.save(Self.accessTokenKey, access)
         tokens.save(Self.expiresAtKey, String(expiresAt.timeIntervalSince1970))
-        // Kept, the old token, maybe spent, would meet the next launch under a count this one's
-        // sends overwrite; with none stored, that launch signs in again.
-        guard saveConfirmed(Self.refreshTokenKey, refresh) else {
-            tokens.delete(Self.refreshTokenKey)
-            return
-        }
+        refreshTokenIsStored = saveConfirmed(Self.refreshTokenKey, refresh)
         // After the new token: ending in between keeps the old count on the new token, which only
         // signs in again early, while the reverse would send the old token uncounted.
-        tokens.delete(Self.refreshTokenUsesKey)
+        if refreshTokenIsStored { tokens.delete(Self.refreshTokenUsesKey) }
     }
 
     /// The default for `beginBackgroundTask`. A Mac app is not suspended in the background, so
