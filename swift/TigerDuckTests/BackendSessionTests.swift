@@ -113,26 +113,8 @@ struct BackendTokenRefreshTests {
     @Test("a new token the Keychain refused goes out only once it is stored, and the old one never again")
     func aRefusedNewTokenWaitsUntilStored() async throws {
         let backend = BackendFixture()
-        let keychain = backend.recorder.tokenStore
         let refused = OSAllocatedUnfairLock(initialState: true)
-        let refuses = { @Sendable (key: String) in key == AuthTokenManager.refreshTokenKey && refused.withLock { $0 } }
-        let refusing = AuthTokenManager.TokenStore(
-            load: keychain.load,
-            save: { key, value in if !refuses(key) { keychain.save(key, value) } },
-            delete: { key in if !refuses(key) { keychain.delete(key) } },
-            confirmedSave: { key, value in
-                guard !refuses(key) else { return false }
-                keychain.save(key, value)
-                return true
-            }
-        )
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let manager = AuthTokenManager(
-            baseURLProvider: { backend.refreshURL.deletingLastPathComponent().deletingLastPathComponent() },
-            deviceUUID: "test-device", session: URLSession(configuration: config), tokens: refusing,
-            beginBackgroundTask: { {} }
-        )
+        let manager = backend.refusingRefreshToken(while: refused)
         SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", expiresIn: 0), for: backend.refreshURL)
         #expect(await manager.validAccessToken() == "A1")
@@ -145,6 +127,36 @@ struct BackendTokenRefreshTests {
 
         #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R1"])
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R2")
+    }
+
+    @Test("a sign-out that could not delete the token keeps its count for the next launch")
+    func aTokenTheSignOutCouldNotDeleteKeepsItsCount() async throws {
+        let backend = BackendFixture()
+        let manager = backend.refusingRefreshToken(while: OSAllocatedUnfairLock(initialState: true))
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == nil)
+
+        await manager.logout()
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        _ = await backend.relaunched().validAccessToken()
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+    }
+
+    @Test("the sign-out's last send of a token it could not delete leaves it spent for the next launch")
+    func theSignOutsLastSendLeavesTheTokenSpent() async throws {
+        let backend = BackendFixture()
+        let manager = backend.refusingRefreshToken(while: OSAllocatedUnfairLock(initialState: true))
+        SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data()), for: backend.refreshURL)
+        #expect(await manager.validAccessToken() == nil)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A9", refresh: "R9"), for: backend.refreshURL)
+
+        #expect(await manager.endSession() == "A9")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        _ = await backend.relaunched().validAccessToken()
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
     }
 
     @Test("a refresh the backend turned down takes its send off the count again")
@@ -1320,14 +1332,41 @@ private struct BackendFixture {
         Self.manager(baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder)
     }
 
-    private static func manager(baseURL: URL, recorder: Recorder) -> AuthTokenManager {
+    /// A manager on the same Keychain, which refuses every write of the refresh token while
+    /// `refused` holds and reports it where the store can.
+    func refusingRefreshToken(while refused: OSAllocatedUnfairLock<Bool>) -> AuthTokenManager {
+        let keychain = recorder.tokenStore
+        let refuses = { @Sendable (key: String) in key == AuthTokenManager.refreshTokenKey && refused.withLock { $0 } }
+        let tokens = AuthTokenManager.TokenStore(
+            load: keychain.load,
+            save: { key, value in if !refuses(key) { keychain.save(key, value) } },
+            delete: { key in if !refuses(key) { keychain.delete(key) } },
+            confirmedSave: { key, value in
+                guard !refuses(key) else { return false }
+                keychain.save(key, value)
+                return true
+            },
+            confirmedDelete: { key in
+                guard !refuses(key) else { return false }
+                keychain.delete(key)
+                return true
+            }
+        )
+        return Self.manager(
+            baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder, tokens: tokens
+        )
+    }
+
+    private static func manager(
+        baseURL: URL, recorder: Recorder, tokens: AuthTokenManager.TokenStore? = nil
+    ) -> AuthTokenManager {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         return AuthTokenManager(
             baseURLProvider: { baseURL },
             deviceUUID: "test-device",
             session: URLSession(configuration: config),
-            tokens: recorder.tokenStore,
+            tokens: tokens ?? recorder.tokenStore,
             beginBackgroundTask: { recorder.beginBackgroundTask() }
         )
     }

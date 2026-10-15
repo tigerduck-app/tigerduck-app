@@ -87,12 +87,15 @@ actor AuthTokenManager {
         let delete: @Sendable (_ key: String) -> Void
         /// `save` that answers whether the value is stored. A store without it is taken at its word.
         var confirmedSave: (@Sendable (_ key: String, _ value: String) -> Bool)?
+        /// `delete` that answers whether the key is gone, taken at its word the same way.
+        var confirmedDelete: (@Sendable (_ key: String) -> Bool)?
 
         static let keychain = TokenStore(
             load: { KeychainManager.loadString(key: $0) },
             save: { KeychainManager.saveString(key: $0, value: $1) },
             delete: { KeychainManager.delete(key: $0) },
-            confirmedSave: { KeychainManager.saveStringReportingSuccess(key: $0, value: $1) }
+            confirmedSave: { KeychainManager.saveStringReportingSuccess(key: $0, value: $1) },
+            confirmedDelete: { KeychainManager.deleteReportingSuccess(key: $0) }
         )
     }
 
@@ -253,6 +256,8 @@ actor AuthTokenManager {
             if let late, !late.mayResend { return nil }
         }
         guard uses < Self.refreshTokenUseLimit else { return nil }
+        // The sign-out may not have deleted the token, so it is counted spent before its last send.
+        guard saveConfirmed(Self.refreshTokenUsesKey, String(Self.refreshTokenUseLimit)) else { return nil }
         struct RefreshResponse: Decodable { let access_token: String }
         guard let (data, http) = await postRefresh(refresh).reply, http.statusCode == 200 else { return nil }
         return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
@@ -263,9 +268,9 @@ actor AuthTokenManager {
         refreshToken = nil
         expiresAt = .distantPast
         tokens.delete(Self.accessTokenKey)
-        tokens.delete(Self.refreshTokenKey)
         tokens.delete(Self.expiresAtKey)
-        tokens.delete(Self.refreshTokenUsesKey)
+        // A token whose delete did not take is there for the next launch, so its count stays too.
+        if deleteConfirmed(Self.refreshTokenKey) { tokens.delete(Self.refreshTokenUsesKey) }
     }
 
     private func refresh() async -> String? {
@@ -403,6 +408,12 @@ actor AuthTokenManager {
     private func saveConfirmed(_ key: String, _ value: String) -> Bool {
         if let confirmedSave = tokens.confirmedSave { return confirmedSave(key, value) }
         tokens.save(key, value)
+        return true
+    }
+
+    private func deleteConfirmed(_ key: String) -> Bool {
+        if let confirmedDelete = tokens.confirmedDelete { return confirmedDelete(key) }
+        tokens.delete(key)
         return true
     }
 
