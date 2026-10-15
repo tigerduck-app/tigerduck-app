@@ -68,8 +68,8 @@ nonisolated struct BuildingDirectory: Equatable, Sendable {
 }
 
 /// The main campus's buildings by the names the school publishes, in the user's language. A
-/// building has a Chinese and an English name only, so other languages show the English one
-/// (`app-translation/CONVENTIONS.md`). A code without an official English name is left out.
+/// building has a Chinese and an English name only, so other languages show the English one, and
+/// one with no official English name goes by its code (`app-translation/CONVENTIONS.md`).
 nonisolated enum CampusBuildingName {
     static func of(_ code: String) -> String? {
         switch code {
@@ -78,6 +78,7 @@ nonisolated enum CampusBuildingName {
         case "E1": String(localized: "empty_classroom_building_e1")
         case "E2": String(localized: "empty_classroom_building_e2")
         case "EE": String(localized: "empty_classroom_building_ee")
+        case "IA": String(localized: "empty_classroom_building_ia")
         case "IB": String(localized: "empty_classroom_building_ib")
         case "LB": String(localized: "empty_classroom_building_lb")
         case "MA": String(localized: "empty_classroom_building_ma")

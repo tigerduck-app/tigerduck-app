@@ -593,14 +593,15 @@ struct EmptyClassroomViewModelTests {
         harness.serve(Pages.page(viewState: "campus"))
         harness.serve(Pages.page(
             rows: [Pages.row("TR-214", ".............."), Pages.row("IA-501", "..............")],
-            buildings: [("TR", "研揚大樓（舊名）"), ("IA", "醫揚大樓")]
+            buildings: [("TR", "研揚大樓（舊名）"), ("IA", "醫揚大樓（舊名）"), ("QQ", "測試大樓")]
         ))
         harness.model.appear()
         try await waitUntil { harness.model.usage != nil }
 
         #expect(harness.model.buildingName("TR") == String(localized: "empty_classroom_building_tr"))
-        #expect(harness.model.buildingName("IA") == "醫揚大樓")
-        #expect(harness.model.buildingName("QQ") == "QQ")
+        #expect(harness.model.buildingName("IA") == String(localized: "empty_classroom_building_ia"))
+        #expect(harness.model.buildingName("QQ") == "測試大樓")
+        #expect(harness.model.buildingName("ZZ") == "ZZ")
     }
 
     @Test("today and tomorrow are named before the date")
