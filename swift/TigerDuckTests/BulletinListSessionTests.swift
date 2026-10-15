@@ -82,6 +82,33 @@ struct BulletinListSessionTests {
 }
 
 extension BulletinListSessionTests {
+    /// The status dot's last sync is when the feed last gave its newest page. A refresh that
+    /// fails leaves it, and the next visit starts from it.
+    @Test("the last sync is when the newest page arrived, and a failed refresh keeps it")
+    func lastSyncIsTheNewestPage() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            Defaults[.bulletinsSyncedAt] = nil
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            stub.serve(Self.page([stub.id]))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            #expect(model.syncedAt == nil)
+
+            let before = Date()
+            await model.refresh()
+            let syncedAt = try #require(model.syncedAt)
+            #expect(syncedAt >= before)
+
+            // Nothing is served for the second refresh, so it fails.
+            await model.refresh()
+            #expect(model.syncedAt == syncedAt)
+            #expect(BulletinsViewModel(apiClient: stub.client).syncedAt == syncedAt)
+        }
+    }
+
     /// "Mark all read" covers the bulletins the filters leave on screen, not every loaded one
     /// (https://github.com/tigerduck-app/tigerduck-app/issues/522).
     @Test("mark all read covers only the filtered bulletins")

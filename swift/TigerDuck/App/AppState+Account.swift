@@ -115,6 +115,7 @@ extension AppState {
         // green before anything has synced.
         ServerStatusTracker.shared.reset()
         Defaults[.schoolDataSyncedAt] = nil
+        Defaults[.bulletinsSyncedAt] = nil
         // The next account opens the class table on the newest term, not on this one's pick, and
         // the empty-classroom finder on its own building.
         Defaults[.classTableSelectedSemester] = nil

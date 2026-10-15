@@ -45,6 +45,8 @@ final class BulletinsViewModel {
     }
 
     private(set) var filteredItems: [BulletinAPI.BulletinSummary] = []
+    /// When the feed last gave its newest page, kept across launches like the list it heads.
+    private(set) var syncedAt: Date?
 
     private let apiClient: BulletinAPIClient
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.VM")
@@ -61,6 +63,7 @@ final class BulletinsViewModel {
         // the push stack does, so a Debug endpoint override applies to bulletin
         // fetches at once.
         self.apiClient = apiClient ?? BulletinAPIClient()
+        syncedAt = Defaults[.bulletinsSyncedAt]
         // Seed synchronously from disk so the very first render after
         // launch paints real cards instead of a spinner.
         let cached = DataCache.shared.loadBulletinSummaries()
@@ -141,6 +144,7 @@ final class BulletinsViewModel {
         guard let page = try? await apiClient.listBulletins(
             limit: 30, cursor: nil, includeDeleted: includeDeleted
         ), includeDeleted == showDeleted else { return }
+        noteNewestPage()
         let knownIds = Set(items.map(\.id))
         let reachesKeptRows = page.items.contains { knownIds.contains($0.id) }
         items = Self.merge(existing: items, incoming: page.items)
@@ -269,6 +273,7 @@ final class BulletinsViewModel {
             nextCursor = page.nextCursor
             hasMore = page.nextCursor != nil
             loadState = .loaded
+            noteNewestPage()
             refilter()
             persistSummaries()
             startBackgroundPrefetch()
@@ -356,6 +361,13 @@ final class BulletinsViewModel {
             // one network blip silently strand the user mid-history.
             logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .private)")
         }
+    }
+
+    /// Only the newest page counts: an older one says nothing about what has been posted since.
+    private func noteNewestPage() {
+        let now = Date()
+        syncedAt = now
+        Defaults[.bulletinsSyncedAt] = now
     }
 
     private func persistSummaries() {
