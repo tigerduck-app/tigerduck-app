@@ -266,11 +266,11 @@ jobs:
             -resultBundlePath Tests.xcresult \
             -quiet
 
-      # On a simulator that has just booted, a window becoming key, the keyboard coming up or WebKit's
-      # processes launching can hold the main thread for a minute, and every test waiting on the
-      # main actor meanwhile times out (#333, #530). After the rest the simulator has settled, and
-      # run one at a time a slow call holds up only the test that made it. Not quiet: the log shows
-      # each test and any slow launch.
+      # On a simulator that has just booted, a window becoming key, the keyboard coming up or WebKit
+      # starting can hold the main thread for a minute, and every test waiting on the main actor
+      # meanwhile times out (#333, #530). After the rest the simulator has settled, and run one at a
+      # time a slow call holds up only the test that made it. Not quiet: the log shows each test and
+      # any slow launch.
       - name: On-screen tests
         if: ${{ !cancelled() && matrix.on_screen_tests != '' && steps.tests.outcome != 'skipped' }}
         env:
