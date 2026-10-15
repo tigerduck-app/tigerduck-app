@@ -43,12 +43,23 @@ jobs:
             runtime: iOS
             device: iPhone
             only_testing: TigerDuckTests
-            # The tests that load a page into a WKWebView, which run in a step of their own. A Swift
-            # Testing function's identifier carries its argument labels.
-            webkit_tests: >-
+            # The tests that make a window key or bring up the keyboard, a view service, accessibility
+            # or a WKWebView, which run in a step of their own. A Swift Testing function's identifier
+            # carries its argument labels.
+            on_screen_tests: >-
               TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
+              TigerDuckTests/ClassTableShareSheetTests
+              TigerDuckTests/ClassTableSwitcherTests
+              TigerDuckTests/CourseColorPickerSheetTests
+              TigerDuckTests/CourseDetailRootBarTests
+              TigerDuckTests/PagingScrollLockTests
+              TigerDuckTests/PasswordFieldAutoFillTests
+              TigerDuckTests/PullToRevealSearchTests
+              TigerDuckTests/ScrollPositionOriginTests
+              TigerDuckTests/TigerSyncLinksSectionTests
+              TigerDuckTests/TimeSliderAccessibilityTests
           # The watch app is a companion app with its own scheme and destination; Xcode pairs the
           # watch simulator with a phone one. The scheme builds the phone app for running only:
           # built for testing on a watch destination it compiled twice the phone leg's code.
@@ -57,7 +68,7 @@ jobs:
             runtime: watchOS
             device: Apple Watch
             only_testing: ""
-            webkit_tests: ""
+            on_screen_tests: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -240,12 +251,12 @@ jobs:
         env:
           UDID: ${{ steps.sim.outputs.udid }}
           ONLY_TESTING: ${{ matrix.only_testing }}
-          WEBKIT_TESTS: ${{ matrix.webkit_tests }}
+          ON_SCREEN_TESTS: ${{ matrix.on_screen_tests }}
         run: |
           xctestrun=$(ls -t "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun | head -n 1)
           echo "$xctestrun"
           skip=()
-          for id in $WEBKIT_TESTS; do skip+=("-skip-testing:$id"); done
+          for id in $ON_SCREEN_TESTS; do skip+=("-skip-testing:$id"); done
           xcodebuild test-without-building \
             -xctestrun "$xctestrun" \
             -destination "id=$UDID" \
@@ -254,23 +265,26 @@ jobs:
             -resultBundlePath Tests.xcresult \
             -quiet
 
-      # WebKit's processes can take a minute to launch on a simulator that has just booted, and the
-      # other tests stalled while they did (#333). After the rest, the simulator has settled and a
-      # slow launch holds up only these. Not quiet: the log shows each test and any slow launch.
-      - name: WebKit tests
-        if: ${{ !cancelled() && matrix.webkit_tests != '' && steps.tests.outcome != 'skipped' }}
+      # On a simulator that has just booted, a window becoming key, the keyboard coming up or WebKit's
+      # processes launching can hold the main thread for a minute, and every test waiting on the
+      # main actor meanwhile times out (#333, #530). After the rest the simulator has settled, and
+      # run one at a time a slow call holds up only the test that made it. Not quiet: the log shows
+      # each test and any slow launch.
+      - name: On-screen tests
+        if: ${{ !cancelled() && matrix.on_screen_tests != '' && steps.tests.outcome != 'skipped' }}
         env:
           UDID: ${{ steps.sim.outputs.udid }}
-          WEBKIT_TESTS: ${{ matrix.webkit_tests }}
+          ON_SCREEN_TESTS: ${{ matrix.on_screen_tests }}
         run: |
           xctestrun=$(ls -t "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun | head -n 1)
           only=()
-          for id in $WEBKIT_TESTS; do only+=("-only-testing:$id"); done
+          for id in $ON_SCREEN_TESTS; do only+=("-only-testing:$id"); done
           xcodebuild test-without-building \
             -xctestrun "$xctestrun" \
             -destination "id=$UDID" \
             "${only[@]}" \
-            -resultBundlePath WebKitTests.xcresult
+            -parallel-testing-enabled NO \
+            -resultBundlePath OnScreenTests.xcresult
 
       # `-quiet` hides the test count and the failure messages, and a run that executed nothing
       # exits 0, so this prints both. "Ran for" is a bundle's own run; its test step minus it is
@@ -283,7 +297,7 @@ jobs:
         run: |
           set +e -u
           bundles=()
-          for b in Tests.xcresult WebKitTests.xcresult; do
+          for b in Tests.xcresult OnScreenTests.xcresult; do
             if [ -d "$b" ]; then bundles+=("$b"); fi
           done
           if [ ${#bundles[@]} -eq 0 ]; then
@@ -326,7 +340,7 @@ jobs:
           name: xcresults-${{ matrix.leg }}
           path: |
             Tests.xcresult
-            WebKitTests.xcresult
+            OnScreenTests.xcresult
           retention-days: 7
 
   # A Mac-only compile error passes both legs above and `tools/check_macos_sources.py`, which
