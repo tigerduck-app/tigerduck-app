@@ -39,6 +39,23 @@ struct BulletinListSessionTests {
         func serve(_ body: Data, cursor: Int? = nil) {
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: body), for: listURL(cursor: cursor))
         }
+
+        func detailURL(_ id: Int) -> URL {
+            baseURL.appendingPathComponent("bulletins/\(id)")
+        }
+    }
+
+    private static func detail(_ id: Int) -> Data {
+        Data(#"{"id":\#(id),"external_id":"x\#(id)","title":"T","title_clean":null,"canonical_org":null,"content_tags":[],"importance":null,"summary":null,"source_url":"https://example.invalid/\#(id)","posted_at":null,"is_deleted":false,"body_clean":null,"body_md":null,"raw_publisher":null}"#.utf8)
+    }
+
+    /// What a sign-out does to the cached list, for `ids` only: other tests keep their rows.
+    private static func wipeCached(_ ids: Set<Int>) {
+        DataCache.shared.saveBulletinSummaries(DataCache.shared.loadBulletinSummaries().filter { !ids.contains($0.id) })
+    }
+
+    private static var cachedIds: Set<Int> {
+        Set(DataCache.shared.loadBulletinSummaries().map(\.id))
     }
 
     @Test("a later visit asks for the first page and keeps the pages the first visit walked")
@@ -152,6 +169,8 @@ extension BulletinListSessionTests {
 
             #expect(Defaults[.bulletinsSyncedAt] == signedOut)
             #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == stub.id })
+            // Not left loading: the list starts over for the next visit to read.
+            #expect(model.loadState == .idle)
         }
     }
 
@@ -229,6 +248,132 @@ extension BulletinListSessionTests {
             await scroll.value
 
             #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == older })
+        }
+    }
+
+    /// A list on screen at a sign-out is the departing student's: the next visit, a pull or a
+    /// scroll starts from the list the sign-out left, and none writes the old rows back.
+    @Test("the next visit after a sign-out drops the list on screen and reads it again")
+    func aVisitAfterASignOutStartsOver() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (kept, fresh) = (stub.id, stub.id + 1)
+            stub.serve(Self.page([kept]))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            await model.loadIfNeeded()
+            BulletinsViewModel.forgetListSession()
+            Self.wipeCached([kept])
+
+            stub.serve(Self.page([fresh]))
+            await model.loadIfNeeded()
+
+            #expect(model.items.contains { $0.id == fresh })
+            #expect(!model.items.contains { $0.id == kept })
+            #expect(!Self.cachedIds.contains(kept))
+        }
+    }
+
+    @Test("a pull after a sign-out writes only the list it reads")
+    func aPullAfterASignOutStartsOver() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (kept, fresh) = (stub.id, stub.id + 1)
+            stub.serve(Self.page([kept]))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            await model.refresh()
+            BulletinsViewModel.forgetListSession()
+            Self.wipeCached([kept])
+
+            stub.serve(Self.page([fresh]))
+            await model.refresh()
+
+            #expect(model.items.contains { $0.id == fresh })
+            #expect(!model.items.contains { $0.id == kept })
+            #expect(Self.cachedIds.contains(fresh))
+            #expect(!Self.cachedIds.contains(kept))
+        }
+    }
+
+    @Test("a scroll after a sign-out reads the list again instead of paging back through the old one")
+    func aScrollAfterASignOutStartsOver() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (older, kept, fresh) = (stub.id, stub.id + 1, stub.id + 2)
+            stub.serve(Self.page([kept], next: older))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            model.pausePrefetch()
+            await model.refresh()
+            BulletinsViewModel.forgetListSession()
+            Self.wipeCached([kept])
+
+            stub.serve(Self.page([fresh]))
+            let last = try #require(model.items.last)
+            await model.loadMoreIfNeeded(triggeredBy: last)
+
+            #expect(SettingsAPIStub.requests(for: stub.listURL(cursor: older)).isEmpty)
+            #expect(model.items.contains { $0.id == fresh })
+            #expect(!Self.cachedIds.contains(kept))
+        }
+    }
+
+    @Test("a tap resolved after a sign-out goes into the list the sign-out left")
+    func aTapAfterASignOutStartsOver() async throws {
+        try await withExclusiveRealDefaults {
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (kept, tapped) = (stub.id, stub.id + 1)
+            stub.serve(Self.page([kept]))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            await model.refresh()
+            BulletinsViewModel.forgetListSession()
+            Self.wipeCached([kept])
+
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.detail(tapped)), for: stub.detailURL(tapped))
+            let summary = try await model.summary(forId: tapped)
+
+            #expect(summary?.id == tapped)
+            #expect(Self.cachedIds.contains(tapped))
+            #expect(!Self.cachedIds.contains(kept))
+        }
+    }
+
+    @Test("a tap that resolves after a sign-out opens and writes nothing")
+    func aTapAcrossASignOutWritesNothing() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (tapped, fresh) = (stub.id, stub.id + 1)
+            let gate = Self.serveHeld(Self.detail(tapped), for: stub.detailURL(tapped))
+            let model = BulletinsViewModel(apiClient: stub.client)
+            let resolve = Task { try await model.summary(forId: tapped) }
+            try await waitUntil { SettingsAPIStub.requests(for: stub.detailURL(tapped)).count == 1 }
+
+            // Signed out, then the next student's visit reads the list before the tap's answer lands.
+            BulletinsViewModel.forgetListSession()
+            stub.serve(Self.page([fresh]))
+            await model.loadIfNeeded()
+            gate.open()
+            let summary = try await resolve.value
+
+            #expect(summary?.id == tapped)
+            #expect(!model.items.contains { $0.id == tapped })
+            #expect(!Self.cachedIds.contains(tapped))
         }
     }
 
