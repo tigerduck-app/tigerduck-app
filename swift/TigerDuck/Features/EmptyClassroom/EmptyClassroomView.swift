@@ -19,8 +19,10 @@ struct EmptyClassroomView: View {
     }
 
     private var content: some View {
-        ScrollView {
+        let access = appState.ntustProtectedAccessState(isEmpty: false)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                EmptyClassroomTitleBar(viewModel: viewModel, showsStatus: access != .loginRequired)
                 if let reauthError = appState.ntustReauthErrorMessage {
                     NTUSTReauthErrorBanner(
                         message: reauthError,
@@ -31,7 +33,7 @@ struct EmptyClassroomView: View {
                         onDismiss: { appState.clearNTUSTReauthError() }
                     )
                 }
-                switch appState.ntustProtectedAccessState(isEmpty: false) {
+                switch access {
                 case .loginRequired:
                     LoginRequiredView(
                         layout: .page,
@@ -51,7 +53,7 @@ struct EmptyClassroomView: View {
         }
         .scrollIndicators(.hidden)
         .background(Color.backgroundPrimary)
-        .navigationTitle(String(localized: "feature_empty_classroom"))
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .refreshable { await viewModel.refresh() }
         .sheet(item: openRoom) { room in
             // Applied here so the sheet's scaled column widths stop growing with its text.
@@ -83,6 +85,35 @@ struct EmptyClassroomView: View {
     private var openRoom: Binding<RoomUsage?> {
         let room = viewModel.openRoom
         return Binding(get: { room }, set: { if $0 == nil { viewModel.closeRoom() } })
+    }
+}
+
+/// The finder's title where the other pages put theirs, in their type size, and the booking
+/// site's state beside it, which none of the shared dot's servers stand for.
+struct EmptyClassroomTitleBar: View {
+    let viewModel: EmptyClassroomViewModel
+    /// Signed out the site is not read, so there is no state to report.
+    let showsStatus: Bool
+
+    var body: some View {
+        HStack {
+            Text(String(localized: "feature_empty_classroom"))
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            if showsStatus {
+                SyncStatusDot(
+                    status: viewModel.siteStatus,
+                    label: String(localized: "feature_empty_classroom"),
+                    icon: AppFeature.emptyClassroom.iconName,
+                    text: SyncStatusDot.statusText(viewModel.siteStatus),
+                    isLoading: viewModel.isReading,
+                    lastSynced: viewModel.syncedAt.map { SyncStatusDot.LastSynced.at($0) } ?? .hidden
+                )
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.top, TigerDuckTheme.Spacing.md)
     }
 }
 

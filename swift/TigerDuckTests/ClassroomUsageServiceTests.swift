@@ -83,7 +83,7 @@ struct ClassroomUsageServiceTests {
                     studentId: "B00000000", password: "not-a-password",
                     generation: generation ?? account.generation
                 )
-            )
+            ).usage
         }
     }
 
@@ -115,7 +115,7 @@ struct ClassroomUsageServiceTests {
 
         #expect(try await harness.usage(on: Self.day(10, 14)) == usage)
         #expect(harness.requests.count == 4)
-        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == usage)
+        #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == usage)
     }
 
     /// A page left over would post the date it already shows, which the site may answer from that
@@ -165,9 +165,9 @@ struct ClassroomUsageServiceTests {
         let usage = try await harness.usage(on: Self.day(10, 14))
 
         harness.account.now = harness.account.now.addingTimeInterval(11 * 60 * 60)
-        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == usage)
+        #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == usage)
         harness.account.now = harness.account.now.addingTimeInterval(2 * 60 * 60)
-        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
+        #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == nil)
     }
 
     /// Leaving the screen or signing out ends a read; the device log keeps real failures only
@@ -247,7 +247,7 @@ struct ClassroomUsageServiceTests {
 
         harness.account.generation += 1
 
-        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
+        #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == nil)
         harness.serveFirstDay()
         _ = try await harness.usage(on: Self.day(10, 14))
         #expect(harness.requests.count == 8)
@@ -261,7 +261,7 @@ struct ClassroomUsageServiceTests {
 
         harness.service.forget()
 
-        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
+        #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == nil)
         harness.serveFirstDay()
         _ = try await harness.usage(on: Self.day(10, 14))
         #expect(harness.requests.count == 8)
@@ -394,6 +394,6 @@ struct ClassroomUsageServiceTests {
         gate.open()
 
         await #expect(throws: CancellationError.self) { try await read.value }
-        #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
+        #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == nil)
     }
 }

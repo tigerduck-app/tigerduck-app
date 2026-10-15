@@ -54,6 +54,12 @@ final class ClassroomUsageService {
     private static let maxPages = 20
     private static let maxMonthSteps = 3
 
+    /// A day's rooms and when the site gave them.
+    nonisolated struct KeptUsage: Equatable, Sendable {
+        let usage: CampusUsage
+        let fetchedAt: Date
+    }
+
     struct Credentials: Sendable {
         let studentId: String
         let password: String
@@ -75,7 +81,7 @@ final class ClassroomUsageService {
     private let now: @MainActor () -> Date
     private let logFailure: LogFailure
 
-    private var kept: [Int: (usage: CampusUsage, fetchedAt: Date)] = [:]
+    private var kept: [Int: KeptUsage] = [:]
     /// The school session `kept` came from.
     private var stateGeneration: Int?
     /// Moved by ``forget()``, so a fetch running across it writes nothing back.
@@ -103,14 +109,14 @@ final class ClassroomUsageService {
 
     /// The day as last read in this school session, to show while it refreshes; nil once it is
     /// older than ``staleLimit``.
-    func keptUsage(on day: Date) -> CampusUsage? {
+    func keptUsage(on day: Date) -> KeptUsage? {
         adoptSession()
         guard let entry = kept[ClassroomUsageParser.dayNumber(of: day)],
               now().timeIntervalSince(entry.fetchedAt) < Self.staleLimit else { return nil }
-        return entry.usage
+        return entry
     }
 
-    func usage(on day: Date, isToday: Bool, force: Bool, credentials: Credentials) async throws -> CampusUsage {
+    func usage(on day: Date, isToday: Bool, force: Bool, credentials: Credentials) async throws -> KeptUsage {
         let number = ClassroomUsageParser.dayNumber(of: day)
         adoptSession()
         let ticket = Ticket(generation: credentials.generation, epoch: epoch)
@@ -123,8 +129,9 @@ final class ClassroomUsageService {
             if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
             let usage = try await fetch(number, credentials: credentials, ticket: ticket)
             try check(ticket)
-            kept[number] = (usage, now())
-            return usage
+            let read = KeptUsage(usage: usage, fetchedAt: now())
+            kept[number] = read
+            return read
         }
     }
 
@@ -153,10 +160,10 @@ final class ClassroomUsageService {
         guard ticket.generation == sessionGeneration(), ticket.epoch == epoch else { throw CancellationError() }
     }
 
-    private func freshUsage(_ day: Int, isToday: Bool) -> CampusUsage? {
+    private func freshUsage(_ day: Int, isToday: Bool) -> KeptUsage? {
         guard let entry = kept[day] else { return nil }
         let lifetime = isToday ? Self.todayLifetime : Self.laterLifetime
-        return now().timeIntervalSince(entry.fetchedAt) < lifetime ? entry.usage : nil
+        return now().timeIntervalSince(entry.fetchedAt) < lifetime ? entry : nil
     }
 
     /// A page without the grid means the cour01 session lapsed, so the read starts over once from
