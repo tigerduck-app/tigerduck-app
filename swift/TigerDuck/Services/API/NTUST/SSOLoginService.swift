@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 
 enum SSOLoginError: LocalizedError {
     case loginFormNotFound
@@ -238,16 +239,12 @@ enum SSOLoginService {
             }
 
             let actionURL = resolveURL(form.action, base: currentURL)
+            // Nothing is posted, so the sign-in does not ask the user to check the password.
             guard CredentialPost.isSignInTarget(actionURL) else {
-                AppLogger.captureError(
-                    SSOLoginError.loginFailed(reason: nil),
-                    context: [
-                        "service": "ssoEnsureServiceLogin",
-                        "rejectedActionHost": actionURL.host ?? "<nil>",
-                        "rejectedActionScheme": actionURL.scheme ?? "<nil>",
-                    ]
+                AppLogger.auth.error(
+                    "Sign-in form action refused: \(actionURL.scheme ?? "", privacy: .public) \(actionURL.host ?? "", privacy: .private)"
                 )
-                throw SSOLoginError.loginFailed(reason: nil)
+                throw SSOLoginError.invalidResponse
             }
             let (loginData, loginResponse) = try await postForm(
                 session: session, url: actionURL, fields: payload, generation: generation,

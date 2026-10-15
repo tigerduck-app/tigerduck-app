@@ -90,8 +90,9 @@ extension SSOServiceLoginTests {
             }
         }
         #expect(posts.isEmpty)
-        guard case .failure(SSOLoginError.loginFailed(reason: nil)) = outcome.result else {
-            Issue.record("expected loginFailed, got \(outcome.result)")
+        // No password went out, so the sign-in does not ask the user to check it.
+        guard case .failure(SSOLoginError.invalidResponse) = outcome.result else {
+            Issue.record("expected invalidResponse, got \(outcome.result)")
             return
         }
         #expect(!outcome.rejected)
