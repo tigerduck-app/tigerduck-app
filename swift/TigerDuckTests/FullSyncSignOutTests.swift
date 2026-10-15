@@ -188,6 +188,34 @@ struct ConflictCheckRetryTests {
         #expect(!Self.isDue(retry, pending: ["assignments"]))
     }
 
+    /// The departing account's check can end after the next account's reached a verdict, which it
+    /// must not undo (https://github.com/tigerduck-app/tigerduck-app/issues/608).
+    @Test("A check of the departing account that ends after the next account's verdict changes nothing")
+    func anOlderAccountsLateResultIsDropped() {
+        var retry = AppState.ConflictCheckRetry()
+        retry.note(.clear(["assignments"]), at: Self.start, generation: 5)
+        #expect(!Self.isDue(retry, generation: 5))
+
+        retry.note(.dropped, at: Self.start, generation: 4)
+        retry.noteFailure(at: Self.start, generation: 4)
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, at: Self.start, generation: 4)
+
+        #expect(!Self.isDue(retry, generation: 5))
+    }
+
+    /// Keep Local whose save failed would meet the same server content at once and ask the same
+    /// question again (https://github.com/tigerduck-app/tigerduck-app/issues/608).
+    @Test("An answer whose save failed is checked again only after the wait a failed check gets")
+    func aFailedSaveWaitsBeforeAskingAgain() {
+        var retry = AppState.ConflictCheckRetry()
+        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
+
+        retry.noteAnswered(leaving: ["courses"], awaitingAnswer: false, saveFailed: true, at: Self.start, generation: 0)
+
+        #expect(!Self.isDue(retry, pending: ["courses"]))
+        #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay, pending: ["courses"]))
+    }
+
     /// A sign-out moves the login generation. The departing account's failures used to stay, so
     /// after five of them the next account's first failed check waited 16 minutes, not 30 seconds.
     @Test("The next account starts as at launch, even after the departing account's check ends late")

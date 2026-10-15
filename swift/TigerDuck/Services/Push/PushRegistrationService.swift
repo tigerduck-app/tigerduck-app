@@ -141,7 +141,8 @@ actor PushRegistrationService {
     private var deviceRegisterAttempts: Int = 0
     private let maxDeviceRegisterAttempts = 4
     #if os(macOS)
-    private var passiveRegistrationRunning = false
+    /// A count: after a sign-in, `enable()` and `registerAgain()` each start one.
+    private var passiveRegistrationsRunning = 0
     #endif
     /// `performRegister` runs that have started and not ended. A count, as a cancelled run can
     /// still be finishing when the next one starts.
@@ -223,9 +224,9 @@ actor PushRegistrationService {
 
     #if os(macOS)
     func registerPassiveDevice() async {
-        passiveRegistrationRunning = true
+        passiveRegistrationsRunning += 1
         defer {
-            passiveRegistrationRunning = false
+            passiveRegistrationsRunning -= 1
             releaseCloudSyncPatchesIfIdle()
         }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -531,7 +532,7 @@ actor PushRegistrationService {
     /// Whether a registration is out, carrying the cloud-sync value it read.
     private var isRegistering: Bool {
         #if os(macOS)
-        registrationsInFlight > 0 || passiveRegistrationRunning
+        registrationsInFlight > 0 || passiveRegistrationsRunning > 0
         #else
         registrationsInFlight > 0
         #endif
@@ -581,7 +582,7 @@ actor PushRegistrationService {
         #if os(iOS)
         deviceRegisterAttempts >= maxDeviceRegisterAttempts
         #else
-        !passiveRegistrationRunning
+        passiveRegistrationsRunning == 0
         #endif
     }
 

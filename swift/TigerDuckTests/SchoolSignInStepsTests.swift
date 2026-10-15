@@ -234,6 +234,30 @@ struct SchoolSignInStepsTests {
         #expect(calls.harvests == 0)
     }
 
+    /// A sign-out from another window cancels the school step's requests, which end in a
+    /// cancellation the user did not cause (https://github.com/tigerduck-app/tigerduck-app/issues/581).
+    @Test func aSignOutFromAnotherWindowDuringTheSchoolStepShowsNoError() async throws {
+        for failure in [URLError(.cancelled) as any Error, CancellationError()] {
+            try await Self.withKeychain(libraryAccount: nil) { _ in
+                let calls = Calls()
+                let auth = AuthService(
+                    keychainHasCredentials: { false },
+                    notificationCenter: NotificationCenter(),
+                    schoolSignIn: { _, _ in
+                        await MainActor.run { calls.onSchoolAnswer() }
+                        throw failure
+                    },
+                    endSchoolSession: { _ in }
+                )
+                calls.onSchoolAnswer = { auth.logout() }
+
+                #expect(await auth.login(studentId: Self.student, password: "school") == false)
+                #expect(auth.loginError == nil)
+                #expect(!auth.isLoggingIn)
+            }
+        }
+    }
+
     /// The school's requests end with the task, as `URLSession`'s do.
     @Test func aSignInCancelledDuringTheSchoolStepShowsNoError() async throws {
         try await Self.withKeychain(libraryAccount: nil) { keychain in
