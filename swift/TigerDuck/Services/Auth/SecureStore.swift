@@ -43,8 +43,8 @@ nonisolated enum SecureStore {
         DebugEndpointStore.keychainKey,
     ]
 
-    /// Keys of ``readableWhileLockedKeys`` added after the move, which no build kept in ``shared``.
-    /// Their first save needs no look there, which behind a locked screen can refuse it.
+    /// Keys of ``readableWhileLockedKeys`` that nothing stores in ``shared``, so no copy there can
+    /// await a move. Their first save skips the look there, which a locked phone can refuse.
     private static let neverInShared: Set<String> = [AuthTokenManager.refreshTokenUsesKey]
 
     /// Home of ``readableWhileLockedKeys``. `.afterFirstUnlockThisDeviceOnly`

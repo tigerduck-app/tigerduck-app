@@ -24,7 +24,7 @@ struct SecureStoreLockedReadTests {
         DebugEndpointStore.keychainKey,
     ]
 
-    /// Read with them, but added after the move, so no earlier build kept a copy in ``shared``.
+    /// Read with them, but never stored in ``shared``, so no copy there awaits a move.
     static let readWhileLockedSinceTheMove = [AuthTokenManager.refreshTokenUsesKey]
 
     /// Nothing that runs in the background needs these.
