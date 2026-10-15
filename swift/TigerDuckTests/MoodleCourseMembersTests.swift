@@ -1,5 +1,9 @@
 import Foundation
 import os
+#if os(iOS)
+import SwiftUI
+import UIKit
+#endif
 import Testing
 @testable import TigerDuck
 
@@ -608,3 +612,52 @@ struct MoodleCourseMembersTests {
         #expect(Self.member(1, " @ 王小明").studentId == nil)
     }
 }
+
+#if os(iOS)
+extension MoodleCourseMembersTests {
+    /// A first key that matches nobody, as a Zhuyin symbol always does, turned the list from its
+    /// sections to its no-match view, which rebuilt the field and closed the keyboard mid-syllable
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/639).
+    @Test("a key that matches nobody keeps the search field and its keyboard")
+    func aKeyThatMatchesNobodyKeepsTheSearchField() async throws {
+        let folder = Folder()
+        let store = Self.store(folder, site: Site())
+        await store.refreshMembers()
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = UIHostingController(rootView: NavigationStack {
+            MoodleMembersView(store: store, policy: VisualStylePolicy(preset: .default)) { _ in }
+        })
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        try await waitUntil { Self.scrollView(in: window).map { $0.contentSize.height > 0 } ?? false }
+        let list = try #require(Self.scrollView(in: window))
+        // The field shows once the list is pulled past its top.
+        list.contentOffset.y = -list.adjustedContentInset.top - 60
+        try await waitUntil { !Self.textFields(in: window).isEmpty }
+        let field = try #require(Self.textFields(in: window).first)
+        field.becomeFirstResponder()
+        try await waitUntil { field.isFirstResponder }
+        let height = list.contentSize.height
+
+        field.insertText("ㄅ")
+        try await waitUntil { list.contentSize.height != height }
+
+        #expect(field.isFirstResponder)
+        #expect(Self.textFields(in: window).map(ObjectIdentifier.init) == [ObjectIdentifier(field)])
+    }
+
+    private static func scrollView(in view: UIView) -> UIScrollView? {
+        descendants(of: view).compactMap { $0 as? UIScrollView }.first
+    }
+
+    private static func textFields(in view: UIView) -> [UITextField] {
+        descendants(of: view).compactMap { $0 as? UITextField }
+    }
+
+    private static func descendants(of view: UIView) -> [UIView] {
+        view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+}
+#endif

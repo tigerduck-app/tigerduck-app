@@ -332,5 +332,19 @@
         { "symbol": "wrench.and.screwdriver", "title": "Fixes", "body": "The status dot shows when each page was last updated, with fixes for sync, sign-in, Mail, bulletins and Live Activities." }
       ]
     }
+  },
+  "2.5.3": {
+    "zh-TW": {
+      "title": "2.5.3 更新內容",
+      "items": [
+        { "symbol": "wrench.and.screwdriver", "title": "問題修正", "body": "修正搜尋課程成員時的鍵盤問題。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.5.3",
+      "items": [
+        { "symbol": "wrench.and.screwdriver", "title": "Fixes", "body": "Fixes a keyboard issue when searching a course's members." }
+      ]
+    }
   }
 }

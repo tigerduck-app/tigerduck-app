@@ -56,6 +56,7 @@ jobs:
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
               TigerDuckTests/EmptyClassroomLayoutTests
+              TigerDuckTests/MoodleCourseMembersTests/aKeyThatMatchesNobodyKeepsTheSearchField()
               TigerDuckTests/PagingScrollLockTests
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
