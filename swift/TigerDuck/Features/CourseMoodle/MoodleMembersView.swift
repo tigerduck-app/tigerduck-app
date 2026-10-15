@@ -96,9 +96,9 @@ private nonisolated extension MoodleMember {
 /// list is pulled down, matches here and asks Moodle nothing.
 struct MoodleMembersView: View {
     let store: MoodleCourseStore
+    let policy: VisualStylePolicy
     let open: (MoodleCourseRoute) -> Void
 
-    @Environment(AppState.self) private var appState
     @State private var query = ""
     @FocusState private var isSearchFocused: Bool
     #if os(iOS)
@@ -122,23 +122,31 @@ struct MoodleMembersView: View {
             let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
             self = sections.isEmpty && !needle.isEmpty ? .noMatches(query: needle) : .sections(sections)
         }
+
+        /// Whether a list has been fetched, so the search has something to match.
+        var hasList: Bool {
+            if case .firstLoad = self { false } else { true }
+        }
     }
 
     var body: some View {
+        let content = Content(
+            list: store.members.value, isRefreshing: store.members.isRefreshing,
+            failure: store.members.failure, query: query
+        )
         List {
-            switch Content(
-                list: store.members.value, isRefreshing: store.members.isRefreshing,
-                failure: store.members.failure, query: query
-            ) {
+            // Above the switch, so a query that moves the list between its cases keeps the field,
+            // and the keyboard with it.
+            if content.hasList { searchRow }
+            switch content {
             case .firstLoad(let failure):
                 MoodleFirstLoadView(failure: failure, retry: { await store.refreshMembers() })
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets())
             case .sections(let sections):
-                searchRow
                 ForEach(sections) { section in
-                    MoodleMemberSectionView(store: store, section: section, policy: appState.visualStylePolicy) { member in
+                    MoodleMemberSectionView(store: store, section: section, policy: policy) { member in
                         open(.member(member))
                     }
                     .listRowBackground(Color.clear)
@@ -146,7 +154,6 @@ struct MoodleMembersView: View {
                     .listRowInsets(rowInsets)
                 }
             case .noMatches(let needle):
-                searchRow
                 ContentUnavailableView.search(text: needle)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
