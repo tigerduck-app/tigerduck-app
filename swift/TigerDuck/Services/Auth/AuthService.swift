@@ -286,6 +286,7 @@ final class AuthService {
     func login(studentId: String, password: String) async -> Bool {
         isLoggingIn = true
         loginError = nil
+        var schoolStepGeneration: Int?
 
         do {
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
@@ -298,6 +299,7 @@ final class AuthService {
             }
             // Read after that sign-out, which moves it, and before the school step.
             let generation = loginGeneration
+            schoolStepGeneration = generation
 
             let success = try await schoolSignIn(normalizedId, password)
             // A sign-out from another window that landed as the school's answer came back, or the
@@ -327,8 +329,9 @@ final class AuthService {
 
             isLoggingIn = false
             return success
-        } catch where Task.isCancelled {
-            // Cancelled from the sign-in sheet, which shows no error for it.
+        } catch where Task.isCancelled || schoolStepGeneration.map({ $0 != loginGeneration }) == true {
+            // Cancelled from the sign-in sheet, or by a sign-out from another window, which cancels
+            // the school step's requests: neither is an error the user caused.
             isLoggingIn = false
             return false
         } catch {
