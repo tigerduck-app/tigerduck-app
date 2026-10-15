@@ -388,35 +388,29 @@ enum LibraryService {
     /// Generates a QR code payload string. Auto-ensures a valid token first.
     static func generateQRCode() async throws -> String {
         do {
-            let token = try await ensureToken()
-
-            let url = URL(string: "\(baseURL)/virtual-code/generate")!
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(
-                LibraryQRRequest(token: token)
-            )
-
-            let (data, urlResponse) = try await session.data(for: request)
-            try validateHTTP(urlResponse)
-            let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
-
-            if let apiError = response.error, apiError.code != 0 {
-                let error = LibraryServiceError.qrGenerationFailed(apiError.message)
-                AppLogger.captureError(error, context: ["service": "libraryGenerateQRCode"])
-                throw error
-            }
-            guard let qrData = response.data else {
-                let error = LibraryServiceError.qrGenerationFailed("missing data")
-                AppLogger.captureError(error, context: ["service": "libraryGenerateQRCode"])
-                throw error
-            }
-
-            return qrData
+            return try await requestQRCode(token: try await ensureToken(), session: session)
         } catch {
             AppLogger.captureError(error, context: ["service": "libraryGenerateQRCode"])
             throw error
         }
+    }
+
+    /// The QR code request for `token` on `session`, which tests replace.
+    static func requestQRCode(token: String, session: URLSession) async throws -> String {
+        let url = URL(string: "\(baseURL)/virtual-code/generate")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(LibraryQRRequest(token: token))
+
+        let (data, urlResponse) = try await session.data(for: request, delegate: CredentialPostDelegate())
+        try validateHTTP(urlResponse)
+        let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
+
+        if let apiError = response.error, apiError.code != 0 {
+            throw LibraryServiceError.qrGenerationFailed(apiError.message)
+        }
+        guard let qrData = response.data else { throw LibraryServiceError.qrGenerationFailed("missing data") }
+        return qrData
     }
 }

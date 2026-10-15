@@ -300,6 +300,38 @@ extension SSOServiceLoginTests {
         #expect(requests(to: elsewhere).isEmpty)
     }
 
+    @Test("a library QR code request stops at a 307 or a 308 rather than send the library token on", arguments: [307, 308])
+    func libraryCodeRequestStopsAtARedirect(status: Int) async throws {
+        let generate = try #require(URL(string: "https://api.lib.ntust.edu.tw/v1/virtual-code/generate"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/virtual-code/generate"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: generate)
+        await #expect(throws: (any Error).self) {
+            try await LibraryService.requestQRCode(token: "library-token", session: SSOServerStub.session())
+        }
+        #expect(requests(to: generate).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+    }
+
+    @Test("a Moodle web service call stops at a 307 or a 308 rather than send its parameters on", arguments: [307, 308])
+    func moodleCallStopsAtARedirect(status: Int) async throws {
+        struct Answer: Decodable, Sendable {}
+        let site = try #require(URL(string: "https://moodle.stub.invalid"))
+        let endpoint = try #require(URL(string: "https://moodle.stub.invalid/webservice/rest/server.php"
+            + "?moodlewsrestformat=json&wsfunction=tool_mobile_get_autologin_key&wstoken=stub-token"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/webservice/rest/server.php"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: endpoint)
+        await #expect(throws: (any Error).self) {
+            _ = try await MoodleWebserviceClient.call(
+                "tool_mobile_get_autologin_key", params: [("privatetoken", "stub-private-token")],
+                token: "stub-token", as: Answer.self, session: SSOServerStub.session(), siteURL: site
+            )
+        }
+        #expect(requests(to: endpoint).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+    }
+
     @Test("a backend refresh stops at a 307 or a 308 rather than send the refresh token on", arguments: [307, 308])
     func backendRefreshStopsAtARedirect(status: Int) async throws {
         let base = try #require(URL(string: "https://backend.stub.invalid/v3"))
