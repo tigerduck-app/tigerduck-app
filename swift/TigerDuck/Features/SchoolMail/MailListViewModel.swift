@@ -656,11 +656,17 @@ final class MailListViewModel {
         }
         syncedAt = Self.syncedAt(of: targets.map { pages[$0] })
         await noteSeenByPage(status)
-        // Cached too, or a relaunch that paints from the cache shows the older time.
-        for folder in movedUp {
-            guard isCurrent(selection, epoch), let page = pages[folder] else { return }
-            await save(page)
+        // Cached too, or a relaunch that paints from the cache shows the older time. Queued all at
+        // once, so a drop a folder change queues meanwhile lands after them, not before one.
+        guard isCurrent(selection, epoch) else { return }
+        let cache = self.cache
+        let writes = movedUp.compactMap { folder in
+            pages[folder].map { page in
+                let stored = Self.cachedCopy(of: page)
+                return chainCacheWrite { cache.savePage(stored) }
+            }
         }
+        for write in writes { await write.value }
     }
 
     /// Whether the folder holds mail `page` does not: UIDNEXT has moved past the value the page was
