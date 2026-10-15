@@ -43,6 +43,10 @@ nonisolated enum SecureStore {
         DebugEndpointStore.keychainKey,
     ]
 
+    /// Keys of ``readableWhileLockedKeys`` added after the move, which no build kept in ``shared``.
+    /// Their first save needs no look there, which behind a locked screen can refuse it.
+    private static let neverInShared: Set<String> = [AuthTokenManager.refreshTokenUsesKey]
+
     /// Home of ``readableWhileLockedKeys``. `.afterFirstUnlockThisDeviceOnly`
     /// is readable once the phone has been unlocked after a restart, and
     /// like ``shared`` never leaves the device.
@@ -84,7 +88,7 @@ nonisolated enum SecureStore {
         // Only while home is empty: once it has a value, `load` never reads ``shared`` for this
         // key. Checking anyway could only refuse saves, losing a refresh token rotated behind a
         // locked screen if the phone reports even an absent item as unreadable.
-        if home !== shared, (try? home.object(forKey: key)) == nil {
+        if home !== shared, !neverInShared.contains(key), (try? home.object(forKey: key)) == nil {
             try requireNoUnreadableCopyInShared(forKey: key)
         }
         try home.setObject(data, forKey: key)
