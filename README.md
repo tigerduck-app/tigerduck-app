@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.5.2-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.5.2)
+[![Version](https://img.shields.io/badge/Version-v2.5.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.5.3)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -116,6 +116,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| `v2.5.3` | 2026-10-16 | 修正搜尋課程成員時鍵盤會收起的問題 |
 | `v2.5.2` | 2026-10-16 | 狀態點改為顯示上次更新時間，修正同步、登入、信箱、公告與即時動態的多項問題 |
 | `v2.5.1` | 2026-10-15 | 修正課表、空教室、圖書館、信箱、同步與登入的多項問題 |
 | `v2.5.0` | 2026-10-14 | 空教室查詢、TAT 介面風格、修正團隊作業的繳交狀態、翻面開啟圖書館改為預設關閉並在登入圖書館後詢問、課程資訊的 Moodle 區塊不再顯示狀態點、多項修正與套件更新 |
