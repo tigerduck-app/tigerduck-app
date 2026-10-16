@@ -16,10 +16,10 @@ struct MailReadableHTMLTests {
 
     // MARK: The page a mail opens on
 
-    /// A colour anywhere counts, a quoted reply's too. A border colour is not a text or
-    /// background colour, and `background` never gets past the CSS filter. Nor does a colour
-    /// that does not show, or a declaration overruled by another
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/678); one this cannot read still counts.
+    /// A colour anywhere counts, a quoted reply's too, and so does one this cannot read. A colour
+    /// that does not show, or that another declaration overrides, does not count
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/678). A border colour is not a text
+    /// or background colour, and `background` never gets past the CSS filter.
     @Test(arguments: [
         ("<p>Hello</p>", false),
         (##"<p style="font-size: 14px; border-left: 1px solid #cccccc">Hello</p>"##, false),

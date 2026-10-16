@@ -326,8 +326,8 @@ struct MailMessageViewModelTests {
         #expect(h.cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
     }
 
-    /// A body or source on the wire when a sign-out wipes the cache is not saved after the wipe
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/632).
+    /// A body or source on the wire when the cache is wiped, as a sign-out wipes it, is not saved
+    /// after the wipe (https://github.com/tigerduck-app/tigerduck-app/issues/632).
     @Test func aBodyOnTheWireWhenTheCacheIsWipedIsNotSaved() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.fake.hold("detail")
