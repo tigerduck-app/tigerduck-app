@@ -15,7 +15,10 @@ working in those directories.
 - Moodle assignments come from `AppServiceBridge.fetchAssignments`. It runs one round at a time
   for every caller, rebuilds the calendar's Moodle rows and stamps `schoolDataSyncedAt`, which
   the sync status popup shows. Only a pull, or Refresh on the Mac, passes
-  `recheckSubmissions: true`.
+  `recheckSubmissions: true`. A status the assignment page fetches goes in through
+  `AppServiceBridge.takeSubmissionStatus`, which waits out a running round, keeps the newest
+  answer and leaves `schoolDataSyncedAt` alone; any other write to the cached assignments goes
+  through one of these two.
 - Cross-feature updates go through the `NotificationCenter` names in `AppConstants`
   (`dataDidUpdate`, `liveActivityPreferencesDidChange`, `languageDidChange`, ...). There is no
   dependency-injection container or store framework.
