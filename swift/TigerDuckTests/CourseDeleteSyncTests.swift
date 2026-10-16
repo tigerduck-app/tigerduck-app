@@ -230,6 +230,21 @@ struct CourseDeleteSyncTests {
         #expect(viewModel.deletedCourseNos.isEmpty)
     }
 
+    /// The re-enable check asked about such a course as one only the server lists.
+    @Test("The courses re-enable check counts a course whose delete is queued as gone from the server")
+    func queuedDeleteIsNoServerOnlyCourse() {
+        let counts = { (deleting: Set<String>) in
+            AppState.coursesOnOneSide(server: ["CS1", "EE2"], local: ["CS1", "GE3"], semester: "1151", deleting: deleting)
+                .map { [$0.localOnly, $0.serverOnly] }
+        }
+
+        #expect(counts([]) == [1, 1])
+        #expect(counts(["1151:EE2"]) == [1, 0])
+        #expect(counts(["1142:EE2"]) == [1, 1])
+        #expect(AppState.coursesOnOneSide(server: ["EE2"], local: ["CS1"], semester: "1151", deleting: ["1151:EE2"]) == nil)
+        #expect(AppState.coursesOnOneSide(server: ["EE2"], local: [], semester: "1151", deleting: []) == nil)
+    }
+
     @Test("A course whose delete is queued keeps this device's setting through a pull, in its own term only")
     func queuedDeleteKeepsTheLocalSetting() {
         let left = AppState.courseKeysPullLeaves(

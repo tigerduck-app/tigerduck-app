@@ -159,7 +159,9 @@ extension AppState {
                 }
             }
             do {
-                let json = try await pushCoordinator.fetchFullSync()
+                let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
+                    try await pushCoordinator.fetchFullSync()
+                })
                 var diffs: [String] = []
                 var serverMarkedAssignments = Set<String>()
 
@@ -183,9 +185,11 @@ extension AppState {
                         let localNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
                             .union(DataCache.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))
                             .filter { !CourseTombstone.isHidden($0, semester: semester, in: deletedNos) }
-                        guard !serverNos.isEmpty, !localNos.isEmpty else { continue }
-                        localOnly += localNos.subtracting(serverNos).count
-                        serverOnly += serverNos.subtracting(localNos).count
+                        guard let counts = Self.coursesOnOneSide(
+                            server: serverNos, local: localNos, semester: semester, deleting: courseDeletes
+                        ) else { continue }
+                        localOnly += counts.localOnly
+                        serverOnly += counts.serverOnly
                         AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .private) server=\(serverNos.sorted(), privacy: .private)")
                     }
                     if localOnly > 0 && serverOnly > 0 {
@@ -340,6 +344,18 @@ extension AppState {
                 }
             }
         }
+    }
+
+    /// What the re-enable check counts in one term: the courses only this device lists and those only
+    /// the server lists, or nil when either side lists none, as the reconcile uploads or merges such
+    /// a term. A course whose delete is queued here (`deleting`, `CourseTombstone` keys) counts as
+    /// gone from the server, which lists it until the delete lands.
+    nonisolated static func coursesOnOneSide(
+        server: Set<String>, local: Set<String>, semester: String, deleting: Set<String>
+    ) -> (localOnly: Int, serverOnly: Int)? {
+        let server = server.filter { !CourseTombstone.isHidden($0, semester: semester, in: deleting) }
+        guard !server.isEmpty, !local.isEmpty else { return nil }
+        return (local.subtracting(server).count, server.subtracting(local).count)
     }
 
     private func endConflictCheck(checked pending: Set<String>, startedIn generation: Int) {
