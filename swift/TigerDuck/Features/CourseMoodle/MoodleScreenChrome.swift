@@ -11,6 +11,7 @@ struct MoodlePage: Hashable {
     static func forum(cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/view.php?id=\(cmid)") }
     static func discussion(_ id: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/discuss.php?d=\(id)") }
     static func forums(courseId: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/index.php?id=\(courseId)") }
+    static func assignments(courseId: Int) -> MoodlePage { MoodlePage(path: "/mod/assign/index.php?id=\(courseId)") }
     static func course(_ id: Int) -> MoodlePage { MoodlePage(path: "/course/view.php?id=\(id)") }
     /// A module's page, such as `/mod/resource/view.php?id=5` for the module `resource`.
     static func module(_ module: String, cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/\(module)/view.php?id=\(cmid)") }

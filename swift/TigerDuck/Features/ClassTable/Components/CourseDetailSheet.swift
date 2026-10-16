@@ -87,7 +87,7 @@ struct CourseDetailSheet: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             // A sheet opened before the first sync finds no Moodle course id; a sync may bring it.
-            if moodle == nil { moodleAttempt += 1 }
+            if let moodle { moodle.assignments.reload() } else { moodleAttempt += 1 }
         }
         #if os(iOS)
         .presentationDetents([.medium, .large], selection: $detent)
@@ -133,6 +133,10 @@ struct CourseDetailSheet: View {
             MoodleForumView(store: store, forum: forum) { routes.wrappedValue.append($0) }
         case .discussion(let discussion, let forum):
             MoodleDiscussionView(store: store, discussion: discussion, forum: forum)
+        case .assignments:
+            MoodleAssignmentsView(store: store, refresh: refreshAssignments, open: openAssignment)
+        case .assignment:
+            EmptyView()
         }
     }
 
@@ -140,9 +144,7 @@ struct CourseDetailSheet: View {
     private func makeMoodleStore() -> MoodleCourseStore? {
         guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
               let courseId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber),
-              let account = appState.authService.storedStudentId else { return nil }
-        let authService = appState.authService
-        let generation = authService.loginGeneration
+              let context = MoodleCacheContext.signedIn(appState.authService) else { return nil }
         let term = SDCourse.semesterPrefix(ofMoodleId: idnumber)
         let idMap = DataCache.shared.loadMoodleCourseIdMap()
         let termCourseIds = idMap
@@ -154,11 +156,7 @@ struct CourseDetailSheet: View {
             courseCodes: Self.moodleCourseCodes(
                 idnumber: idnumber, courseNo: course.courseNo, courseId: courseId, idMap: idMap
             ),
-            context: MoodleCacheContext(
-                account: account,
-                cache: .shared,
-                isCurrent: { [weak authService] in authService?.loginGeneration == generation }
-            )
+            context: context
         )
     }
 
@@ -331,10 +329,7 @@ struct CourseDetailSheet: View {
 
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
-                    if let url = assignment.moodleOpenURL {
-                        let web = assignment.moodleWebURL
-                        Task { await openURL(url, fallback: web) }
-                    }
+                    openAssignment(assignment)
                 } label: {
                     HStack {
                         Image(systemName: "doc.text")
@@ -348,7 +343,7 @@ struct CourseDetailSheet: View {
                                 .foregroundStyle(assignment.isOverdue ? Color.badgeRed : Color.textSecondary)
                         }
                         Spacer()
-                        Image(systemName: "arrow.up.right.square")
+                        Image(systemName: Self.assignmentAccessory)
                             .foregroundStyle(Color.textSecondary)
                             .font(.caption)
                     }
@@ -362,6 +357,32 @@ struct CourseDetailSheet: View {
     }
 
     // MARK: - Actions
+
+    /// The Mac opens an assignment on Moodle, as it has no page of its own for it.
+    #if os(macOS)
+    private static let assignmentAccessory = "arrow.up.right.square"
+    #else
+    private static let assignmentAccessory = "chevron.right"
+    #endif
+
+    /// Its page, pushed here; on Moodle on the Mac, or while the course's Moodle data is not ready.
+    private func openAssignment(_ assignment: SDAssignment) {
+        #if os(iOS)
+        if moodle != nil {
+            routes.wrappedValue.append(.assignment(assignment))
+            return
+        }
+        #endif
+        guard let url = assignment.moodleOpenURL else { return }
+        let web = assignment.moodleWebURL
+        Task { await openURL(url, fallback: web) }
+    }
+
+    /// A pull on the list, or Refresh on the Mac, asks Moodle about every submission again.
+    private func refreshAssignments() async {
+        _ = await AppServiceBridge.fetchAssignments(authService: appState.authService, recheckSubmissions: true)
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+    }
 
     /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile
     /// picks the user up inside the app, and open the web page when it is not
