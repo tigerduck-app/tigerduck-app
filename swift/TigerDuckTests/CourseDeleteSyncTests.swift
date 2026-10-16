@@ -26,7 +26,9 @@ struct CourseDeleteSyncTests {
             .appendingPathComponent("CourseDeleteSyncTests-\(UUID().uuidString)", isDirectory: true)
     }
 
-    private static func makeCoordinator(_ backend: Backend) -> CloudSyncCoordinator {
+    private static func makeCoordinator(
+        _ backend: Backend, syncsCourseIgnores: @escaping @Sendable () -> Bool = { true }
+    ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
@@ -37,8 +39,68 @@ struct CourseDeleteSyncTests {
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: Self.freshDirectory()), isEnabled: true,
-            syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }
+            syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores
         )
+    }
+
+    private static let colourReply = Data(
+        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##.utf8
+    )
+
+    /// What hiding a course does, through `AppState.deleteBackendCourse`.
+    @Test("Deleting a course drops its own settings still queued, and queues its delete and sends it")
+    func deletingACourseQueuesAndSendsItsDelete() async {
+        let backend = Backend()
+        backend.answer(Self.path)
+        // The settings wait, so the tick sends the delete alone.
+        let coordinator = Self.makeCoordinator(backend, syncsCourseIgnores: { false })
+        for courseNo in ["CS1001301", "EE2005301"] {
+            await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: courseNo, moodleId: "1151\(courseNo)",
+                                                  moodleCourseId: nil, ignore: true)
+        }
+
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+
+        #expect(backend.requests(Self.path).map(\.httpMethod) == ["DELETE"])
+        #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:EE2005301"])
+    }
+
+    @Test("A delete queued while a drain is out goes once that drain ends")
+    func deleteQueuedDuringADrainGoesAfterIt() async throws {
+        let backend = Backend()
+        let gate = SettingsAPIStub.ReplyGate()
+        backend.answer("sync/courses/1151EE2005301/override", .init(statusCode: 200, body: Self.colourReply, gate: gate))
+        backend.answer(Self.path)
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151EE2005301", semester: "1151", colorHex: "#FF6B6B")?.value
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { !backend.requests("sync/courses/1151EE2005301/override").isEmpty }
+
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+        gate.open()
+        await drain.value
+
+        try await waitUntil(timeout: .seconds(10)) { backend.requests(Self.path).count == 1 }
+    }
+
+    /// What a full sync and the re-enable check read for the snapshot they fetch.
+    @Test("A delete that lands while a snapshot is fetched counts for it, as does one queued meanwhile")
+    func deletesQueuedAroundAFetchCount() async {
+        let backend = Backend()
+        backend.answer(Self.path)
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301")
+
+        let (fetched, deleting) = await coordinator.courseDeletes(around: {
+            await coordinator.syncTick()
+            await coordinator.enqueueCourseDelete(semester: "1142", courseNo: "EE2005301")
+            return "snapshot"
+        })
+
+        #expect(fetched == "snapshot")
+        #expect(deleting == ["1151:CS1001301", "1142:EE2005301"])
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1142:EE2005301"])
     }
 
     @Test("A course hidden offline stays queued for its delete, which goes once the server answers")

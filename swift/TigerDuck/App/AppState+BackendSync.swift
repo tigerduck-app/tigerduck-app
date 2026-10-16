@@ -51,13 +51,14 @@ extension AppState {
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
             let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
-            let preFetchCourseDeletes = await cloudSyncCoordinator.pendingCourseDeleteKeys()
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
             #if os(iOS)
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
-            let json = try await pushCoordinator.fetchFullSync()
+            let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
+                try await pushCoordinator.fetchFullSync()
+            })
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             // Whether this sync changed anything on the device. Only then does it post
             // `dataDidUpdate`, which reloads every page, the widgets, the Watch and the schedule.
@@ -117,8 +118,6 @@ extension AppState {
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             // A colour or name edit both queued and sent while the fetch is out is in neither sample.
             let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
-            // A delete that lands while the fetch is out leaves the outbox, but its course is in the snapshot.
-            let courseDeletes = await preFetchCourseDeletes.union(cloudSyncCoordinator.pendingCourseDeleteKeys())
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
@@ -868,12 +867,7 @@ extension AppState {
         // where a full sync finds it from then on.
         recentCourseDeletions[courseNo] = Date()
         revisionPoller.noteActivity()
-        Task {
-            // The server drops the course's setting with its row, so a PATCH still queued would 404.
-            await cloudSyncCoordinator.discardCourseIgnores(semester: semester, courseNo: courseNo)
-            await cloudSyncCoordinator.enqueueCourseDelete(semester: semester, courseNo: courseNo)
-            await cloudSyncCoordinator.syncTick()
-        }
+        Task { await cloudSyncCoordinator.deleteCourse(semester: semester, courseNo: courseNo) }
     }
 
     /// Wipes the backend and only then runs `resetLocally`: a local wipe followed by a

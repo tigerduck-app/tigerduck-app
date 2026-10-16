@@ -372,6 +372,27 @@ final class CloudSyncCoordinator {
         await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: Date()))
     }
 
+    /// Deletes a course hidden here from the server through the outbox. Its settings still queued
+    /// go first: the server drops them with the row, so their PATCH would 404.
+    func deleteCourse(semester: String, courseNo: String) async {
+        await discardCourseIgnores(semester: semester, courseNo: courseNo)
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo)
+        // A drain under way leaves the delete for the next tick.
+        scheduleTick(after: 1)
+        await syncTick()
+    }
+
+    /// Runs `fetch` and returns what it fetched with the keys of the course deletes queued before or
+    /// after it (`pendingCourseDeleteKeys`): one that lands meanwhile leaves the outbox, but the
+    /// snapshot fetched may still list its course.
+    func courseDeletes<Fetched>(
+        around fetch: () async throws -> Fetched
+    ) async rethrows -> (fetched: Fetched, deleting: Set<String>) {
+        let before = await pendingCourseDeleteKeys()
+        let fetched = try await fetch()
+        return (fetched, before.union(await pendingCourseDeleteKeys()))
+    }
+
     /// `CourseTombstone` keys of the courses whose delete is queued, which the server may still
     /// list: a full sync keeps them hidden here.
     func pendingCourseDeleteKeys() async -> Set<String> {
