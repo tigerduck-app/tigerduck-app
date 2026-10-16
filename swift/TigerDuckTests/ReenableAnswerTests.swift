@@ -113,7 +113,7 @@ struct ReenableAnswerTests {
 
         #expect(app.events == [
             #"dropped ["assignments", "course_colors"] courseIgnores: true pending: ["assignments", "course_colors", "courses"]"#,
-            "server data", "answered",
+            "local copies dropped", "server sync, after one running: true", "answered",
         ])
         #expect(app.pending == ["courses"])
     }
@@ -142,11 +142,11 @@ struct ReenableAnswerTests {
     @Test("A sign-out during Use Server's sync leaves the check's retry to the next account")
     func signOutDuringUseServersSyncSettlesNothing() async {
         let app = AnswerProbe(pending: ["course_names"])
-        app.takeServerData = { app.signOut(nextAccountPending: []) }
+        app.syncFromServer = { app.signOut(nextAccountPending: []) }
 
         await AppState.answerReenableConflict(Self.conflict(["course_names"]), keepLocal: false, effects: app.effects)
 
-        #expect(app.events == ["server data"])
+        #expect(app.events == ["local copies dropped", "server sync, after one running: true"])
     }
 }
 
@@ -160,7 +160,7 @@ private final class AnswerProbe {
     var sendCourses: () async throws -> Void = {}
     var queueEdits: () -> [Task<Void, Never>] = { [] }
     var dropQueuedEdits: (Set<String>, Bool) async -> Void = { _, _ in }
-    var takeServerData: () async -> Void = {}
+    var syncFromServer: () async -> Void = {}
     private var signedIn = true
 
     init(pending: Set<String>) {
@@ -194,9 +194,10 @@ private final class AnswerProbe {
                 self.hold.noteReenabled("courses")
             },
             queueEdits: { self.queueEdits() },
-            takeServerData: {
-                await self.takeServerData()
-                self.events.append("server data")
+            dropLocalCopies: { self.events.append("local copies dropped") },
+            syncFromServer: { followUpIfBusy in
+                await self.syncFromServer()
+                self.events.append("server sync, after one running: \(followUpIfBusy)")
             },
             noteAnswered: { self.events.append($0 ? "answered after a failed save" : "answered") }
         )

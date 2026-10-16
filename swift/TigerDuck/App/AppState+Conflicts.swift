@@ -536,10 +536,8 @@ extension AppState {
             sendCourses: { try await self.sendLocalCourses(isCurrent: isCurrent) },
             markCoursesForCheck: { self.markCategoryReenabled("courses") },
             queueEdits: { self.queueLocalEdits(of: conflict) },
-            takeServerData: {
-                Self.dropLocalCopies(for: conflict)
-                await self.syncOverridesFromBackend()
-            },
+            dropLocalCopies: { Self.dropLocalCopies(for: conflict) },
+            syncFromServer: { await self.syncOverridesFromBackend(followUpIfBusy: $0) },
             noteAnswered: { saveFailed in
                 self.conflictCheckRetry.noteAnswered(
                     leaving: Defaults[.pendingConflictCategories], awaitingAnswer: self.reenableConflict != nil,
@@ -566,8 +564,9 @@ extension AppState {
         let markCoursesForCheck: () -> Void
         /// Use Local: this device's colours, names and marks; each task ends once its edit is queued.
         let queueEdits: () -> [Task<Void, Never>]
-        /// Use Server: drops this device's copies and runs the sync that takes the server's.
-        let takeServerData: () async -> Void
+        /// Use Server: drops this device's copies, then runs the full sync that takes the server's.
+        let dropLocalCopies: () -> Void
+        let syncFromServer: (_ followUpIfBusy: Bool) async -> Void
         let noteAnswered: (_ saveFailed: Bool) -> Void
     }
 
@@ -602,7 +601,10 @@ extension AppState {
             guard effects.isCurrent() else { return }
             effects.release(held)
         } else {
-            await effects.takeServerData()
+            effects.dropLocalCopies()
+            // A sync already running would turn this one away, and nothing would fill the copies
+            // dropped above until the next change; it runs once more after that one instead.
+            await effects.syncFromServer(true)
         }
         // After the answer's own requests, which the next check would otherwise read halfway.
         guard effects.isCurrent() else { return }
