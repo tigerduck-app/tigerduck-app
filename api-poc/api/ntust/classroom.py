@@ -42,14 +42,15 @@ Paging targets look like `showinfo_grd$_ctl54$_ctl1`, and the middle number is
 derived from the row count — it becomes `_ctl42` on page two. It has to be
 read out of the pager HTML, never hardcoded.
 
-A cell's text is the course name and the teacher run together with no
-separator of any kind — the grid contains no `<br>` at all — so the raw
-string is reported rather than split on a guess.
+A slot writes the course and the teacher with a stray `</br>` between them,
+and an empty slot holds only that tag. `html.parser` drops an end tag that has
+no start tag, so `parse_grid` turns it into `<br>` first, as HTML5 parsers do.
 
 `parse_grid` distinguishes two things that must not collapse into one value:
 no grid at all (`None`, a failure — a login page or the 500 error page) versus
-a grid with no data rows (`[]`, legitimate — the site returns nothing at all
-for weekends, which is not the same as "everything is free").
+a grid with no data rows (`[]`, legitimate — weekends, and MA, RB and the HHC
+campus on weekdays too, which is not the same as "everything is free"). A
+holiday returns the normal weekly timetable.
 """
 
 from __future__ import annotations
@@ -62,7 +63,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment, NavigableString
 
 from api import load_creds
 from api.ntust.sso import NtustSsoBridge
@@ -80,6 +81,10 @@ CALENDAR_EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 MAX_PAGES = 20
 
 DO_POSTBACK = re.compile(r"__doPostBack\('([^']*)','([^']*)'\)")
+STRAY_BR = re.compile(r"</br\s*>", re.IGNORECASE)
+# Parts of the words for a booking: confirmed, pending, applied for, under
+# review or held, as `ClassroomUsageParser.bookingMarks` has them.
+BOOKING_MARKS = ("借用", "預約", "申請", "審核", "核准", "保留")
 
 logger = logging.getLogger(__name__)
 
@@ -160,43 +165,40 @@ def _direct_rows(table) -> list:
 
 
 def _parse_slot(cell) -> dict[str, Any]:
-    """One slot: the cell's own text, plus whether the site marked it.
+    """One slot as the app reads it (`ClassroomUsageParser.slotUse`): free, booked or a course.
 
-    Every cell holds a nested `<table style="height:16px;width:80px">` with a
-    single empty `<td>`. It is a fixed-size placeholder, so only a fill
-    (`bgcolor`, or `background` in the style) is a mark — the dimensions are
-    not a signal. No marked cell was observed while writing this, so treat
-    `marked` as unconfirmed until one turns up.
-
-    Only the cell's *direct* text nodes are read; `get_text()` would fold the
-    nested table's whitespace into the course name.
-
-    The site writes course and teacher as one run of text with **no
-    separator** (`表達與經典閱讀楊穎詩` is a single text node, and there is not
-    one `<br>` in the whole grid). They cannot be split without a course
-    catalogue to match against, so the raw string is reported as-is.
+    The lines are split at `<br>` and read through every element but the
+    nested placeholder table every cell holds. A booking reads
+    `<booker></br> 已借用`: it is told by that marker line, not by the cell
+    colour, which lands on the wrong cells of a second page. The booker is a
+    person, so a booked slot carries no text.
     """
-    text = ""
-    for node in cell.children:
-        if isinstance(node, str):
-            text += node
-        elif getattr(node, "name", None) == "br":
-            text += " "
-    text = re.sub(r"\s+", " ", text).strip()
+    parts = [""]
 
-    marked = False
-    for node in cell.find_all(["table", "td"]):
-        style = node.get("style", "") or ""
-        if node.has_attr("bgcolor") or "background" in style:
-            marked = True
-            break
+    def read(node) -> None:
+        for child in node.children:
+            if isinstance(child, Comment):
+                continue
+            if isinstance(child, NavigableString):
+                parts[-1] += str(child)
+            elif child.name == "br":
+                parts.append("")
+            elif child.name != "table":
+                read(child)
 
-    return {"text": text, "marked": marked}
+    read(cell)
+    lines = [line for line in (re.sub(r"\s+", " ", p).strip() for p in parts) if line]
+    if not lines:
+        return {"use": "free"}
+    if any(mark in line for line in lines for mark in BOOKING_MARKS):
+        return {"use": "booked"}
+    return {"use": "course", "name": lines[0], "teacher": " ".join(lines[1:])}
 
 
 def parse_grid(html: str) -> list[dict[str, Any]] | None:
     """Room rows, or None when the grid is absent (see module docstring)."""
-    soup = BeautifulSoup(html, "html.parser")
+    # html.parser drops an end tag with no start tag; HTML5 reads `</br>` as `<br>`.
+    soup = BeautifulSoup(STRAY_BR.sub("<br>", html), "html.parser")
     grid = soup.find(id=GRID_ID)
     if grid is None:
         return None
@@ -460,27 +462,32 @@ def _self_check() -> None:
     assert parse_pager_target(html, 2) == ("showinfo_grd$_ctl54$_ctl1", "")
     assert parse_pager_target(html, 3) is None
 
-    # The nested placeholder must not leak into the cell text, and its fixed
-    # height/width must not read as a mark.
-    plain = BeautifulSoup(
-        "<td><table style='height:16px;width:80px'><tr><td></td></tr></table>"
-        "\n\t\t表達與經典閱讀楊穎詩\n\t</td>",
-        "html.parser",
-    ).find("td")
-    assert _parse_slot(plain) == {"text": "表達與經典閱讀楊穎詩", "marked": False}
-
-    # An empty slot is empty text, not a missing slot.
-    empty = BeautifulSoup(
-        "<td><table style='height:16px;width:80px'><tr><td></td></tr></table></td>",
-        "html.parser",
-    ).find("td")
-    assert _parse_slot(empty) == {"text": "", "marked": False}
-
-    # A filled placeholder is the mark.
-    filled = BeautifulSoup(
-        "<td><table><tr><td bgcolor='#ff0'></td></tr></table>X</td>", "html.parser",
-    ).find("td")
-    assert _parse_slot(filled) == {"text": "X", "marked": True}
+    # Course and teacher sit on either side of the site's stray </br>, and the
+    # nested placeholder must not leak into either.
+    placeholder = "<table style='height:16px;width:80px'><tr><td></td></tr></table>"
+    slots = [
+        f"<td>{placeholder}\n\t\t微積分<!-- x --></br>王小明\n\t</td>",
+        f"<td>{placeholder}</br></td>",
+        f"<td style='background-color:YellowGreen'>{placeholder}王小明</br> 已借用</td>",
+        "<td style='background-color:YellowGreen'>"
+        "<table><tr><td bgcolor='#ff0'>1</td></tr></table></td>",
+        f"<td>{placeholder}王小明</br>已預約</td>",
+    ]
+    slots += [f"<td>{placeholder}</br></td>"] * (SECTION_COUNT - len(slots))
+    split = parse_grid(
+        f"<table id='{GRID_ID}'>{header}<tr><td>T1-101</td>{''.join(slots)}</tr>{pager}</table>"
+    )
+    assert split is not None and len(split) == 1, split
+    got = split[0]["slots"]
+    assert got[0] == {"use": "course", "name": "微積分", "teacher": "王小明"}, got[0]
+    # A slot with only the placeholder and the stray tag is free, not missing.
+    assert got[1] == {"use": "free"}, got[1]
+    # A booking is told by its marker line, and the booker's name is never kept.
+    assert got[2] == {"use": "booked"}, got[2]
+    # Colour alone is not a booking (it lands on the wrong cells of page two),
+    # and a nested table's text is not the slot's.
+    assert got[3] == {"use": "free"}, got[3]
+    assert got[4] == {"use": "booked"}, got[4]
 
     # The login page is not an OIDC bridge.
     assert find_form_post_bridge(
