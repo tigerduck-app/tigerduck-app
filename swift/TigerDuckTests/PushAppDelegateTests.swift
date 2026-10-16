@@ -37,6 +37,10 @@ struct PushAppDelegateTests {
         signal.wait(timeout: .now() + .seconds(seconds)) == .success
     }
 
+    /// Far past what a test waits: the main actor can be held for over a minute on a busy runner,
+    /// which the real limits would take for a slow sync.
+    private static let wideLimits = (answer: Duration.seconds(600), send: Duration.seconds(590))
+
     @Test("The app declares the Remote notifications background mode, so a sync trigger reaches it in the background")
     func theAppDeclaresRemoteNotifications() {
         let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
@@ -47,6 +51,7 @@ struct PushAppDelegateTests {
           arguments: [(FullSyncOutcome.synced, UIBackgroundFetchResult.newData), (.skipped, .noData), (.failed, .failed)])
     func aSyncTriggerIsAnsweredWithItsOutcome(outcome: FullSyncOutcome, expected: UIBackgroundFetchResult) async {
         let delegate = PushAppDelegate()
+        delegate.syncTriggerLimits = Self.wideLimits
         delegate.onSyncTrigger = { outcome }
 
         let result = await withCheckedContinuation { continuation in
@@ -64,6 +69,7 @@ struct PushAppDelegateTests {
     @Test("What must not wait for the next launch runs after the sync and before the answer: the widgets, then the send")
     func whatMustNotWaitRunsBeforeTheAnswer() async {
         let delegate = PushAppDelegate()
+        delegate.syncTriggerLimits = Self.wideLimits
         let events = Events()
         delegate.onSyncTrigger = {
             events.record("sync")
@@ -83,7 +89,7 @@ struct PushAppDelegateTests {
         #expect(result == .newData)
     }
 
-    /// The time limit is far off here, as the main actor can be held for seconds by other tests.
+    /// The time limit is far off here, as the main actor can be held for over a minute by other tests.
     @Test("A send that outlasts its deadline does not hold the answer, which reports the sync")
     func aSendPastItsDeadlineDoesNotHoldTheAnswer() async throws {
         let answers = Answers()
@@ -97,7 +103,7 @@ struct PushAppDelegateTests {
                 events.record("send ended")
             },
             sendDeadline: .now + .milliseconds(100)
-        ), within: .seconds(60), appIsActive: { false }) { result in
+        ), within: Self.wideLimits.answer, appIsActive: { false }) { result in
             events.record("answer")
             answers.record(result)
         }
@@ -121,7 +127,7 @@ struct PushAppDelegateTests {
             beforeAnswering: { events.record("widgets") },
             send: { _ in events.record("send") },
             sendDeadline: .now + .milliseconds(50)
-        ), within: .seconds(60), appIsActive: { false }, then: answers.record)
+        ), within: Self.wideLimits.answer, appIsActive: { false }, then: answers.record)
         try await waitUntil { !answers.results.isEmpty }
         await Task.yield()
 
@@ -183,6 +189,24 @@ struct PushAppDelegateTests {
 
         #expect(heldUntilAnswered == true)
         #expect(answers.results == [.failed])
+    }
+
+    @Test("A sync trigger runs under the delegate's limits")
+    func aSyncTriggerRunsUnderTheDelegatesLimits() async {
+        let delegate = PushAppDelegate()
+        delegate.syncTriggerLimits = (answer: .milliseconds(20), send: .milliseconds(10))
+        delegate.onSyncTrigger = {
+            try? await Task.sleep(for: .seconds(5))
+            return .synced
+        }
+
+        let result = await withCheckedContinuation { continuation in
+            delegate.application(UIApplication.shared, didReceiveRemoteNotification: ["kind": "sync_trigger"]) {
+                continuation.resume(returning: $0)
+            }
+        }
+
+        #expect(result == .failed)
     }
 
     @Test("Another push, or a sync trigger before a sync is bound, is answered at once with no data")
