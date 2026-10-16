@@ -67,12 +67,17 @@ final class MoodleCourseAssignments {
     /// The submission as Moodle has it now, with its comments and its group's name where the site
     /// lets the app read them. A call Moodle refuses leaves its part out; one that cannot reach
     /// Moodle keeps what the page showed. An assignment that takes no online submission has none.
+    /// The status the page then shows goes to `api.submissionFetched` too.
     func refreshSubmission(of record: MoodleAssignmentRecord) async {
         guard !record.noSubmissions else { return }
         let context = context
         let isCurrent: @MainActor @Sendable () -> Bool = { context.isCurrent() }
+        let fetched: @MainActor @Sendable (MoodleSubmissionStatus, Date) -> Void = { [api] in
+            api.submissionFetched($0, $1, context)
+        }
         await submission(of: record).refresh { [api] in
             let functions = try await api.functions()
+            let askedAt = Date()
             var submission = try await api.submission(record.assignId)
             if let id = submission.id, submission.takesComments,
                functions.contains(MoodleAssignmentService.commentsFunction) {
@@ -85,6 +90,10 @@ final class MoodleCourseAssignments {
                 guard await isCurrent() else { throw CancellationError() }
                 submission.groupName = try await Self.unlessRefused { try await api.groups(record.courseId) }?[group]
             }
+            await fetched(MoodleSubmissionStatus(
+                assignId: record.assignId, submissionStatus: submission.status, gradingStatus: nil,
+                submittedAt: submission.modified
+            ), askedAt)
             return submission
         }
     }

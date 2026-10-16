@@ -341,6 +341,34 @@ struct MoodleCourseAssignmentsTests {
         #expect(feed.value?.comments == [Self.comment])
     }
 
+    @Test("the status the page shows goes on to Home's writer with when it was asked; one it does not show does not")
+    func statusHandedOn() async throws {
+        let folder = Folder()
+        let site = Site()
+        let requested = OSAllocatedUnfairLock<Date?>(initialState: nil)
+        let handed = OSAllocatedUnfairLock<[(status: MoodleSubmissionStatus, askedAt: Date)]>(initialState: [])
+        var api = site.api { requested.withLock { $0 = Date() } }
+        api.submissionFetched = { status, askedAt, _ in handed.withLock { $0.append((status, askedAt)) } }
+        let store = MoodleCourseStore(
+            courseId: Self.courseId, termCourseIds: [Self.courseId], context: Self.context(folder), api: api
+        )
+
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
+
+        let first = try #require(handed.withLock { $0 }.first)
+        #expect(first.status.assignId == 701)
+        #expect(first.status.isSubmitted)
+        #expect(first.status.submittedAt == Self.handedIn.modified)
+        #expect(try first.askedAt <= #require(requested.withLock { $0 }))
+
+        site.set(submission: MoodleAssignmentSubmission(
+            status: "new", modified: nil, files: [], onlineText: nil, id: 5501, takesComments: true, groupId: 31
+        ), commentsError: MoodleWebserviceError.transientNetwork(underlying: "offline"))
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
+
+        #expect(handed.withLock { $0 }.count == 1)
+    }
+
     @Test("an individual assignment asks for no group, and one that takes no comments asks for none")
     func onlyWhatApplies() async {
         let folder = Folder()
