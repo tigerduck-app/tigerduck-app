@@ -37,7 +37,7 @@ struct CourseResetStampSeedMigrationTests {
     }
 
     private static func appliesReset(at reset: Date) -> Bool {
-        AppState.coursesReset(server: reset, lastSeen: Defaults[.lastSeenCoursesResetAt]).apply
+        AppState.coursesReset(server: reset, lastSeen: Defaults[.lastSeenCoursesResetAt], takesCourses: true).apply
     }
 
     @Test("A reset made after this device's last sync on the old version is applied, one made before it is not")

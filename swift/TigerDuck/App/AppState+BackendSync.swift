@@ -229,7 +229,9 @@ extension AppState {
             let coursesResetAt = Self.backendDate(json["courses_reset_at"])
             let tombstoneArray = json["course_tombstones"] as? [[String: Any]] ?? []
             let lastSeenReset = Defaults[.lastSeenCoursesResetAt]
-            let reset = Self.coursesReset(server: coursesResetAt, lastSeen: lastSeenReset)
+            let reset = Self.coursesReset(
+                server: coursesResetAt, lastSeen: lastSeenReset, takesCourses: taken.contains("courses")
+            )
 
             if reset.apply {
                 DataCache.shared.saveUserAddedCourses([])
@@ -608,15 +610,20 @@ extension AppState {
             ?? TigerDuckDateFormatters.withoutFractional.date(from: raw)
     }
 
-    /// What a full sync does with the server's `courses_reset_at`: whether to apply it, and what
-    /// to keep for the next sync. Both times are the server's, so a device whose clock runs behind
-    /// cannot take one reset for a new one on every sync. With nothing kept, this is the account's
-    /// first sync here, which has nothing from before a reset to drop: it only keeps the reset,
-    /// or `distantPast` when there is none yet, so that the first one counts as new.
-    nonisolated static func coursesReset(server: Date?, lastSeen: Date?) -> (apply: Bool, remember: Date) {
+    /// What a full sync does with the server's `courses_reset_at`: whether to apply it, dropping the
+    /// hand-added and hidden courses, and what to keep for the next sync. Both times are the
+    /// server's, so a device whose clock runs behind cannot take one reset for a new one on every
+    /// sync. With nothing kept, this is the account's first sync here, which has nothing from before
+    /// a reset to drop: it only keeps the reset, or `distantPast` when there is none yet, so that the
+    /// first one counts as new. A sync that does not take courses (`takesCourses`), with the Courses
+    /// switch off or a courses re-enable check pending, keeps them and the reset alike, so the check
+    /// that switching course sync back on runs decides.
+    nonisolated static func coursesReset(
+        server: Date?, lastSeen: Date?, takesCourses: Bool
+    ) -> (apply: Bool, remember: Date) {
         guard let lastSeen else { return (false, server ?? .distantPast) }
         guard let server else { return (false, lastSeen) }
-        return (server > lastSeen, server)
+        return (takesCourses && server > lastSeen, server)
     }
 
     /// What every full sync keeps: the course reset it read, for the next one to compare, and the
