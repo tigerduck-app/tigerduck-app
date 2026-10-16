@@ -346,5 +346,23 @@
         { "symbol": "wrench.and.screwdriver", "title": "Fixes", "body": "Fixes a keyboard issue when searching a course's members." }
       ]
     }
+  },
+  "2.6.0": {
+    "zh-TW": {
+      "title": "2.6.0 更新內容",
+      "items": [
+        { "symbol": "doc.text", "title": "作業頁", "body": "點作業會在 App 內顯示說明、附件和繳交狀態，課程的 Moodle 區塊也新增作業列表。" },
+        { "symbol": "envelope.fill", "title": "深色模式的信件", "body": "深色模式下，信件文字的顏色會跟著調整，看得清楚。" },
+        { "symbol": "wrench.and.screwdriver", "title": "問題修正", "body": "修正同步、信箱與背景更新的多項問題。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.6.0",
+      "items": [
+        { "symbol": "doc.text", "title": "Assignment page", "body": "Tap an assignment to see its description, attachments and submission in the app, and find every assignment in a course's Moodle section." },
+        { "symbol": "envelope.fill", "title": "Mail in dark mode", "body": "In dark mode, a message's text colours adapt so it stays readable." },
+        { "symbol": "wrench.and.screwdriver", "title": "Fixes", "body": "Fixes for sync, Mail and background updates." }
+      ]
+    }
   }
 }
