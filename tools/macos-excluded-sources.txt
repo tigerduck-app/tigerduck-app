@@ -317,6 +317,7 @@ MailGuideWebView.swift
 MailHTMLView.swift
 MailLoginCard.swift
 MailLoginSheet.swift
+MailReadableHTML.swift
 MailRecipientRow.swift
 MailRecipientTokenField.swift
 MailRowView.swift
@@ -354,7 +355,6 @@ MailCharset.swift
 MailFolderMap.swift
 MailHTMLSanitizer.swift
 MailRawHeaders.swift
-MailReadableHTML.swift
 MailTextCleaner.swift
 MailTextLinkifier.swift
 MailWarnings.swift

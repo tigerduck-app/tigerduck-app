@@ -7,24 +7,26 @@ import UIKit
 /// The page a mail's HTML is drawn on: the app's own surface (`app`), or white paper (`light`)
 /// for mail that sets its own colours and whenever the reader asks for it.
 ///
-/// A sender's colours stay as sent, so logos, tables and highlights look as designed, except a
-/// text colour too faint to read on its background, which `MailReadableHTML` moves to the
-/// nearest lightness that reads. `color-scheme` keeps the user agent's own defaults (links, form
-/// controls) legible on a dark page.
+/// A sender's colours stay as sent, so logos, tables and highlights look as designed, except
+/// text too faint to read on its background, which `MailReadableHTML` gives the nearest colour
+/// that reads. `color-scheme` keeps the user agent's own defaults (links, form controls)
+/// legible on a dark page.
 nonisolated struct MailHTMLTheme: Equatable, Hashable, Sendable {
     /// `0xRRGGBB`.
     var background: UInt32
     var foreground: UInt32
+    /// The colour WebKit draws a link in on this page when the sender did not colour it.
+    var link: UInt32
     var isDark: Bool
 
     /// `Color.backgroundPrimary` and `Color.textPrimary`, what `MailMessageView` itself is
     /// drawn in. The app is dark-only (`TigerDuckApp` pins `.preferredColorScheme(.dark)`), so
     /// there is one app theme to follow; the only other page is `light`.
-    static let app = MailHTMLTheme(background: 0x000000, foreground: 0xFFFFFF, isDark: true)
+    static let app = MailHTMLTheme(background: 0x000000, foreground: 0xFFFFFF, link: 0x9E9EFF, isDark: true)
 
     /// White paper, the page mail that sets its own colours was written against: where such mail
     /// opens, and "View in light mode" for any other.
-    static let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x000000, isDark: false)
+    static let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x000000, link: 0x0000EE, isDark: false)
 
     var backgroundCSS: String { Self.css(background) }
     var foregroundCSS: String { Self.css(foreground) }

@@ -613,8 +613,8 @@ final class MailMessageViewModel {
             let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
             let readable = MailReadableHTML(linked.html)
             let pages = MailFormattedPages(
-                app: readable.html(onPage: MailHTMLTheme.app.background),
-                light: readable.html(onPage: MailHTMLTheme.light.background),
+                app: readable.html(on: .app),
+                light: readable.html(on: .light),
                 setsColors: readable.setsColors
             )
             // Built from the sanitized document, like Android's `SchoolMailMessageViewModel`. From

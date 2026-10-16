@@ -21,9 +21,11 @@ tracking images, remote content and links whose text hides their target.
 - `MailHTMLSanitizer.rewriteLinks` replaces each link with `https://link.invalid/<index>`, and
   the view resolves only that exact form, failing closed on anything else.
 - HTML mail that sets a text or background color of its own opens on white paper, other mail
-  on the app's page, and the reader can switch. The sender's colors are kept, except a text
-  color under 4.5:1 against its background on the page shown, which moves to the nearest OKLCH
-  lightness that reaches it (`MailReadableHTML`). Only color values the sanitizer kept change.
+  on the app's page, and the reader can switch. The sender's colors are kept, except text under
+  7:1 against its background on the page shown, or on a mid-tone where no color reaches that,
+  short of the better of white and black. Such a color moves to the nearest OKLCH lightness that
+  reaches the target, and an element with a background but no color of its own whose inherited
+  color does not read is given one (`MailReadableHTML`). Only `color` values change.
 
 ## Consequences
 

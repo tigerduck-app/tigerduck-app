@@ -5,13 +5,16 @@ import os
 
 /// A sanitized mail document, ready to draw on either page with its unreadable text fixed.
 ///
-/// On a page, a text colour the sender set that reads under 4.5:1 (WCAG 2) on its background
-/// moves to the nearest OKLCH lightness that reaches it, keeping its hue and as much chroma as
-/// sRGB holds there. The background is the element's own or nearest ancestor's `background-color`
-/// or `bgcolor`, else the page. Text on a background this cannot read keeps its colour, as does
-/// every other colour. Only the values of `color` declarations and `<font color>` change.
+/// On a page, a text colour under 7:1 (WCAG 2) against the backgrounds behind it moves to the
+/// nearest OKLCH lightness that reaches it, or as close as any colour gets, keeping its hue and
+/// as much chroma as sRGB holds. That covers colours the sender set, and the colour an element
+/// with a background but no colour of its own inherits, which it is then given. Text on a
+/// background this cannot read keeps its colour. Only `color` values change, as `#rrggbb`.
 nonisolated struct MailReadableHTML {
-    static let minimumContrast = 4.5
+    static let minimumContrast = 7.0
+    /// Far deeper than mail nests, and short of the depth where WebKit stops nesting elements, so
+    /// the tree read here is the one the page draws. Deeper, colours stay as sent.
+    static let maximumDepth = 256
 
     /// Whether the mail sets a text or background colour of its own anywhere.
     let setsColors: Bool
@@ -19,51 +22,97 @@ nonisolated struct MailReadableHTML {
     /// Held whole: a node finds its output settings through its document, which a node alone
     /// does not keep alive.
     private let document: Document?
-    private let textColors: [TextColor]
+    private let nodes: [Node]
+    /// `html`'s link and image targets, which no page may change.
+    private let targets: [String]
 
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Contrast")
 
+    /// Reads the document in one pass, outer elements first, carrying each one's backdrop down.
     init(_ html: String) {
         self.html = html
+        targets = Self.targets(in: html)
         var setsColors = false
-        var textColors: [TextColor] = []
+        var nodes: [Node] = []
         var document: Document?
         do {
             let parsed = try SwiftSoup.parseBodyFragment(html)
             parsed.outputSettings().prettyPrint(pretty: false)
             document = parsed
-            for element in try parsed.select("[style], [bgcolor], font[color]") {
-                let style = Style(try element.attr("style"))
-                if try Self.setsColor(element, style: style) { setsColors = true }
-                if let textColor = try Self.textColor(of: element, style: style) { textColors.append(textColor) }
+            var stack = (parsed.body()?.children().array() ?? []).reversed()
+                .map { Visit(element: $0, depth: 1, backdrop: Backdrop(), parent: nil) }
+            while let visit = stack.popLast() {
+                // A screen that has gone cancels this, and the colours stay as sent.
+                guard !Task.isCancelled else {
+                    nodes = []
+                    break
+                }
+                let style = Style(try visit.element.attr("style"))
+                if try Self.setsColor(visit.element, style: style) { setsColors = true }
+                var (backdrop, parent) = (visit.backdrop, visit.parent)
+                if visit.depth <= Self.maximumDepth {
+                    let layer = try Self.layer(of: visit.element, style: style)
+                    backdrop = visit.backdrop.adding(layer)
+                    if let node = try Self.node(visit.element, style: style, layer: layer, backdrop: backdrop, parent: parent) {
+                        nodes.append(node)
+                        parent = nodes.count - 1
+                    }
+                }
+                stack += visit.element.children().array().reversed()
+                    .map { Visit(element: $0, depth: visit.depth + 1, backdrop: backdrop, parent: parent) }
             }
         } catch {
             Self.logger.error("Mail colour read failed, colours left as sent: \(String(describing: type(of: error)), privacy: .public)")
-            textColors = []
+            nodes = []
         }
         self.setsColors = setsColors
         self.document = document
-        self.textColors = textColors
+        self.nodes = nodes
     }
 
-    /// The document on a page of `background` (`0xRRGGBB`). Only values of attributes it already
-    /// has change, and no foreign content survives the sanitizer for a value to steer the parser,
-    /// so the page parses the same tree `MailHTMLSanitizer.rewriteLinks` checked.
-    func html(onPage background: UInt32) -> String {
-        guard let body = document?.body(), !textColors.isEmpty else { return html }
-        let page = RGBA(background)
+    /// The document on `theme`'s page. Each call writes every colour it may change, so calls can
+    /// come in any order. Cancelled, or with a link or image target unlike `html`'s, it is `html`.
+    func html(on theme: MailHTMLTheme) -> String {
+        guard let body = document?.body(), !nodes.isEmpty else { return html }
+        let page = RGBA(theme.background)
+        let (pageText, linkText) = (RGBA(theme.foreground), RGBA(theme.link))
+        var shown: [Shown] = []
+        shown.reserveCapacity(nodes.count)
+        var fixes = Fixes()
         var changed = false
         do {
-            for textColor in textColors {
-                let behind = textColor.backgrounds.reversed().reduce(page) { below, layer in layer.over(below) }
-                var value = textColor.sent
-                if let readable = Self.readable(textColor.color.over(behind), on: behind) {
-                    value.replaceSubrange(textColor.range, with: readable.css)
+            for node in nodes {
+                guard !Task.isCancelled else { return html }
+                let inherited = node.parent.map { shown[$0] } ?? Shown(intended: pageText, displayed: pageText)
+                let behind = node.backdrop.over(page)
+                var now = inherited
+                var fix: RGBA?
+                switch node.kind {
+                case .own(let sent):
+                    now = Shown(intended: sent.color, displayed: sent.color)
+                    if let text = sent.color, text.alpha > 0, let behind { fix = fixes.readable(text.over(behind), on: behind) }
+                    try Self.set(sent.attribute, of: node.element,
+                                 to: fix.map { sent.value.replacingCharacters(in: sent.range, with: $0.css) } ?? sent.value)
+                case .link:
+                    now = Shown(intended: linkText, displayed: linkText)
+                    if node.backdrop.alpha > 0, let behind { fix = fixes.readable(linkText, on: behind) }
+                    try node.give(fix)
+                case .background:
+                    if let behind, let displayed = inherited.displayed, displayed.alpha > 0,
+                       !Self.reads(displayed.over(behind), on: behind), let intended = inherited.intended, intended.alpha > 0 {
+                        fix = fixes.readable(intended.over(behind), on: behind) ?? intended.over(behind)
+                    }
+                    try node.give(fix)
+                }
+                if let fix {
+                    now.displayed = fix
                     changed = true
                 }
-                try textColor.element.attr(textColor.attribute, value)
+                shown.append(now)
             }
-            return changed ? try body.html() : html
+            guard changed else { return html }
+            let output = try body.html()
+            return Self.targets(in: output) == targets ? output : html
         } catch {
             Self.logger.error("Mail colour rewrite failed, colours left as sent: \(String(describing: type(of: error)), privacy: .public)")
             return html
@@ -72,17 +121,88 @@ nonisolated struct MailReadableHTML {
 
     // MARK: The document
 
-    /// A text colour the sender set, where its value is written, and what it is drawn on.
-    private nonisolated struct TextColor {
+    /// One element in the pass, and what it inherits from above.
+    private nonisolated struct Visit {
         let element: Element
-        /// `style`, or `<font>`'s `color`.
+        let depth: Int
+        let backdrop: Backdrop
+        let parent: Int?
+    }
+
+    /// An element whose text colour can depend on the page: it sets its own, it is a link, or it
+    /// has a background of its own. `parent` is the nearest such ancestor, whose colour it inherits.
+    private nonisolated struct Node {
+        nonisolated enum Kind {
+            case own(Sent)
+            case link
+            case background
+        }
+
+        let element: Element
+        let kind: Kind
+        let backdrop: Backdrop
+        let parent: Int?
+        /// The `style` as sent, nil for none: what a given `color` joins, and what is left without one.
+        let style: String?
+
+        func give(_ color: RGBA?) throws {
+            let given = color.map { color in style.map { "\($0); color: \(color.css)" } ?? "color: \(color.css)" }
+            try MailReadableHTML.set("style", of: element, to: given ?? style)
+        }
+    }
+
+    /// A colour the sender set: the attribute it is in, that attribute's value, and where in it
+    /// the colour is. `color` is nil when this cannot read it.
+    private nonisolated struct Sent {
+        let color: RGBA?
         let attribute: String
-        let sent: String
+        let value: String
         let range: Range<String.Index>
-        let color: RGBA
-        /// The element's own background and its ancestors', innermost first, up to the first
-        /// opaque one. Short of an opaque one, the page shows through.
-        let backgrounds: [RGBA]
+    }
+
+    /// The colour a node's text is meant to have, and the one it shows on this page; nil when unknown.
+    private nonisolated struct Shown {
+        var intended: RGBA?
+        var displayed: RGBA?
+    }
+
+    /// What an element paints behind its text.
+    private nonisolated enum Layer {
+        case none
+        case unknown
+        case color(RGBA)
+    }
+
+    /// The sender's backgrounds behind an element, composited as a premultiplied colour and a
+    /// total alpha, so the page goes under them last. Unknown until an opaque layer covers it.
+    private nonisolated struct Backdrop {
+        var red = 0.0
+        var green = 0.0
+        var blue = 0.0
+        var alpha = 0.0
+        var isUnknown = false
+
+        func adding(_ layer: Layer) -> Backdrop {
+            switch layer {
+            case .none:
+                return self
+            case .unknown:
+                return Backdrop(red: red, green: green, blue: blue, alpha: alpha, isUnknown: true)
+            case .color(let top) where top.alpha >= 1:
+                return Backdrop(red: top.red, green: top.green, blue: top.blue, alpha: 1)
+            case .color(let top):
+                let kept = 1 - top.alpha
+                return Backdrop(red: top.red * top.alpha + red * kept, green: top.green * top.alpha + green * kept,
+                                blue: top.blue * top.alpha + blue * kept, alpha: top.alpha + alpha * kept, isUnknown: isUnknown)
+            }
+        }
+
+        /// What shows over the opaque `page`; nil when unknown.
+        func over(_ page: RGBA) -> RGBA? {
+            guard !isUnknown else { return nil }
+            let kept = 1 - alpha
+            return RGBA(red: red + page.red * kept, green: green + page.green * kept, blue: blue + page.blue * kept)
+        }
     }
 
     /// A filtered `style` and its declarations. Each `value` is a slice of `text`, without
@@ -130,58 +250,86 @@ nonisolated struct MailReadableHTML {
         return text
     }
 
-    private static func setsColor(_ element: Element, style: Style) throws -> Bool {
-        if style.declarations.contains(where: { $0.property == "color" || $0.property == "background-color" }) { return true }
-        if !trimmed(try element.attr("bgcolor")[...]).isEmpty { return true }
-        guard element.tagName() == "font" else { return false }
-        return !trimmed(try element.attr("color")[...]).isEmpty
+    /// A `bgcolor` or `<font color>` value; nil when HTML ignores it, blank or `transparent`.
+    private static func legacyValue(_ name: String, of element: Element) throws -> Substring? {
+        let value = trimmed(try element.attr(name)[...])
+        return value.isEmpty || value.lowercased() == "transparent" ? nil : value
     }
 
-    /// The colour `element` sets for its text, when it is drawn on backgrounds this can read. A
-    /// `color` declaration outranks `<font color>`, even one this cannot read.
-    private static func textColor(of element: Element, style: Style) throws -> TextColor? {
-        let attribute: String, sent: String, value: Substring, legacy: Bool
-        if let declaration = style.effective("color") {
-            (attribute, sent, value, legacy) = ("style", style.text, declaration.value, false)
-        } else if element.tagName() == "font", element.hasAttr("color") {
-            let color = try element.attr("color")
-            (attribute, sent, value, legacy) = ("color", color, trimmed(color[...]), true)
+    /// Writes `value`, or removes the attribute for nil, only where it differs: an element left
+    /// alone keeps the bytes it came with.
+    private static func set(_ name: String, of element: Element, to value: String?) throws {
+        let current: String? = element.hasAttr(name) ? try element.attr(name) : nil
+        guard current != value else { return }
+        if let value { try element.attr(name, value) } else { try element.removeAttr(name) }
+    }
+
+    private static func setsColor(_ element: Element, style: Style) throws -> Bool {
+        if style.declarations.contains(where: { $0.property == "color" || $0.property == "background-color" }) { return true }
+        if try legacyValue("bgcolor", of: element) != nil { return true }
+        return try element.tagName() == "font" && legacyValue("color", of: element) != nil
+    }
+
+    /// What `element` paints behind its text. A `border-image` paints over its background, and a
+    /// table's columns between it and its cells, so either makes it one this cannot read.
+    private static func layer(of element: Element, style: Style) throws -> Layer {
+        if style.declares(["border-image", "border-image-source"]) { return .unknown }
+        if element.tagName() == "table", try paintsColumns(element) { return .unknown }
+        if let declaration = style.effective("background-color") {
+            return parse(declaration.value, legacy: false).map(Layer.color) ?? .unknown
+        }
+        guard let value = try legacyValue("bgcolor", of: element) else { return .none }
+        return parse(value, legacy: true).map(Layer.color) ?? .unknown
+    }
+
+    private static func paintsColumns(_ table: Element) throws -> Bool {
+        for group in table.children().array() where group.tagName() == "colgroup" {
+            for column in [group] + group.children().array() {
+                if Style(try column.attr("style")).effective("background-color") != nil { return true }
+            }
+        }
+        return false
+    }
+
+    private static func node(_ element: Element, style: Style, layer: Layer, backdrop: Backdrop, parent: Int?) throws -> Node? {
+        let kind: Node.Kind
+        if let sent = try sentColor(of: element, style: style) {
+            kind = .own(sent)
+        } else if element.tagName() == "a", element.hasAttr("href") {
+            kind = .link
+        } else if case .color(let color) = layer, color.alpha > 0, !backdrop.isUnknown {
+            kind = .background
         } else {
             return nil
         }
-        guard let color = parse(value, legacy: legacy), color.alpha > 0,
-              let backgrounds = try backgrounds(behind: element) else { return nil }
-        return TextColor(element: element, attribute: attribute, sent: sent, range: value.startIndex..<value.endIndex,
-                         color: color, backgrounds: backgrounds)
+        return Node(element: element, kind: kind, backdrop: backdrop, parent: parent,
+                    style: element.hasAttr("style") ? style.text : nil)
     }
 
-    /// `element`'s background and its ancestors', innermost first, up to the first opaque one;
-    /// nil when one of them cannot be read. A `border-image` paints over the background, so it
-    /// counts as one that cannot be read.
-    private static func backgrounds(behind element: Element) throws -> [RGBA]? {
-        var layers: [RGBA] = []
-        var next: Element? = element
-        while let node = next, (layers.last?.alpha ?? 0) < 1 {
-            next = node.parent()
-            let style = Style(try node.attr("style"))
-            if style.declares(["border-image", "border-image-source"]) { return nil }
-            let value: Substring, legacy: Bool
-            if let declaration = style.effective("background-color") {
-                (value, legacy) = (declaration.value, false)
-            } else {
-                (value, legacy) = (trimmed(try node.attr("bgcolor")[...]), true)
-                if value.isEmpty { continue }
-            }
-            guard let layer = parse(value, legacy: legacy) else { return nil }
-            if layer.alpha > 0 { layers.append(layer) }
+    /// The colour `element` sets for its own text: a `color` declaration, which outranks
+    /// `<font color>` even when this cannot read it, or a `<font color>` HTML does not ignore.
+    private static func sentColor(of element: Element, style: Style) throws -> Sent? {
+        if let declaration = style.effective("color") {
+            return Sent(color: parse(declaration.value, legacy: false), attribute: "style", value: style.text,
+                        range: declaration.value.startIndex..<declaration.value.endIndex)
         }
-        return layers
+        guard element.tagName() == "font", let value = try legacyValue("color", of: element) else { return nil }
+        return Sent(color: parse(value, legacy: true), attribute: "color", value: String(value.base),
+                    range: value.startIndex..<value.endIndex)
+    }
+
+    private static let targetPattern = try! NSRegularExpression(pattern: #"\s(?:href|src)="[^"]*""#)
+
+    /// Every `href` and `src` in `html`, in order. SwiftSoup writes every attribute in double quotes.
+    static func targets(in html: String) -> [String] {
+        targetPattern.matches(in: html, range: NSRange(html.startIndex..., in: html))
+            .compactMap { Range($0.range, in: html).map { String(html[$0]) } }
     }
 
     // MARK: Colours
 
     /// An sRGB colour, each channel and the alpha from 0 to 1.
-    nonisolated struct RGBA: Equatable {
+    nonisolated struct RGBA: Hashable {
         var red: Double
         var green: Double
         var blue: Double
@@ -265,30 +413,40 @@ nonisolated struct MailReadableHTML {
         return (max(one, other) + 0.05) / (min(one, other) + 0.05)
     }
 
-    /// The colour nearest `text` in OKLCH lightness that reads at `minimumContrast` on
-    /// `background`, or nil when `text` already does. Both opaque.
-    static func readable(_ text: RGBA, on background: RGBA) -> RGBA? {
-        guard contrast(text, background) < minimumContrast else { return nil }
-        let lab = OKLab(text)
-        return [nearest(lab, towards: 1, on: background), nearest(lab, towards: 0, on: background)]
-            .compactMap { $0 }.min { $0.distance < $1.distance }?.color
+    /// Whether `text` reads on `background`: at `minimumContrast`, or on a mid-tone where no colour
+    /// reaches that, as well as the better of white and black.
+    static func reads(_ text: RGBA, on background: RGBA) -> Bool {
+        let (white, black) = (contrast(RGBA(0xFFFFFF), background), contrast(RGBA(0x000000), background))
+        return contrast(text, background) >= min(minimumContrast, max(white, black))
     }
 
-    /// The first lightness from `lab`'s towards `end` that reads on `background`, found by halving,
-    /// and how far it moved; nil when even `end`, white or black, does not read. The channels
-    /// round away from the background, so the rounded colour still reads.
-    private static func nearest(_ lab: OKLab, towards end: Double, on background: RGBA) -> (color: RGBA, distance: Double)? {
-        let reads = { (lightness: Double) in contrast(displayable(lab, lightness: lightness), background) >= minimumContrast }
-        guard reads(end) else { return nil }
+    /// The colour nearest `text` in OKLCH lightness that reaches `minimumContrast` on
+    /// `background`, or nil when `text` already reads there. Both opaque. Only the side of the
+    /// better of white and black can reach it, and on a mid-tone where neither does, that one is
+    /// the fix: no colour comes closer.
+    static func readable(_ text: RGBA, on background: RGBA) -> RGBA? {
+        guard !reads(text, on: background) else { return nil }
+        let (white, black) = (RGBA(0xFFFFFF), RGBA(0x000000))
+        let best = contrast(white, background) >= contrast(black, background) ? white : black
+        guard contrast(best, background) >= minimumContrast else { return best }
+        return nearest(OKLab(text), towards: best == white ? 1 : 0, on: background) ?? best
+    }
+
+    /// The first lightness from `lab`'s towards `end` that reaches `minimumContrast` on
+    /// `background`, found by halving; nil when even `end` does not. The channels round away
+    /// from the background, so the rounded colour still reaches it.
+    private static func nearest(_ lab: OKLab, towards end: Double, on background: RGBA) -> RGBA? {
+        let reaches = { (lightness: Double) in contrast(displayable(lab, lightness: lightness), background) >= minimumContrast }
+        guard reaches(end) else { return nil }
         var (fails, passes) = (lab.lightness, end)
         for _ in 0..<32 {
             let middle = (fails + passes) / 2
-            if reads(middle) { passes = middle } else { fails = middle }
+            if reaches(middle) { passes = middle } else { fails = middle }
         }
         let rule: FloatingPointRoundingRule = end > lab.lightness ? .up : .down
         let color = displayable(lab, lightness: passes)
         let byte = { (channel: Double) in (channel * 255).rounded(rule) / 255 }
-        return (RGBA(red: byte(color.red), green: byte(color.green), blue: byte(color.blue)), abs(passes - lab.lightness))
+        return RGBA(red: byte(color.red), green: byte(color.green), blue: byte(color.blue))
     }
 
     /// `lab` at `lightness`, with its hue and as much of its chroma as sRGB holds there.
@@ -306,6 +464,25 @@ nonisolated struct MailReadableHTML {
         let (red, green, blue) = scaled(inside).linearRGB
         let channel = { (linear: Double) in encoded(min(max(linear, 0), 1)) }
         return RGBA(red: channel(red), green: channel(green), blue: channel(blue))
+    }
+
+    /// `readable` once per text and background pair: mail paints one colour on one background
+    /// over and over.
+    private nonisolated struct Fixes {
+        private nonisolated struct Pair: Hashable {
+            let text: RGBA
+            let background: RGBA
+        }
+
+        private var known: [Pair: RGBA?] = [:]
+
+        mutating func readable(_ text: RGBA, on background: RGBA) -> RGBA? {
+            let pair = Pair(text: text, background: background)
+            if let fix = known[pair] { return fix }
+            let fix = MailReadableHTML.readable(text, on: background)
+            known[pair] = .some(fix)
+            return fix
+        }
     }
 
     private static func luminance(_ color: RGBA) -> Double {

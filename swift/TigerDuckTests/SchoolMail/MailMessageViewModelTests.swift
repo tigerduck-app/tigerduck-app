@@ -189,7 +189,7 @@ struct MailMessageViewModelTests {
         #expect(h.model.formattedHTML == ##"<p><font color="#333333">Hi</font></p>"##)
         h.model.viewsInLightMode = false
         #expect(h.model.htmlTheme == .app)
-        #expect(h.model.formattedHTML == ##"<p><font color="#757575">Hi</font></p>"##)
+        #expect(h.model.formattedHTML == ##"<p><font color="#959595">Hi</font></p>"##)
     }
 
     @Test func plainTextAndUnstyledMailStayOnTheAppsPage() async {
@@ -217,7 +217,7 @@ struct MailMessageViewModelTests {
         h.model.viewsInLightMode = false
         await h.model.loadImages()
         #expect(!h.model.viewsInLightMode)
-        #expect(h.model.formattedHTML == ##"<p style="color: #757575">Hi <img src="https://x.example/a.png" /></p>"##)
+        #expect(h.model.formattedHTML == ##"<p style="color: #959595">Hi <img src="https://x.example/a.png" /></p>"##)
     }
 
     @Test func unreadableMailFallsBackToSource() async {
@@ -756,7 +756,7 @@ struct MailMessageViewModelTests {
     }
 
     @Test func aLightThemeSaysSo() {
-        let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x1A1A1A, isDark: false)
+        let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x1A1A1A, link: 0x0000EE, isDark: false)
         let document = MailWebViewFactory.document(for: "", allowRemoteImages: false, theme: light)
         #expect(document.contains("color-scheme:light"))
         #expect(document.contains("background:#ffffff;color:#1a1a1a"))
