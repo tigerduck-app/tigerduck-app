@@ -42,6 +42,12 @@ working in those directories.
   install runs `AppState.init` before the user has seen a screen. Check `hasCompletedOnboarding`
   as `AppState.init` does before `pushCoordinator.enable()` and as `backgroundSync()` does;
   `completeOnboarding()` starts both.
+- Do not read `UserDefaults`, the Keychain or the app's files in `TigerDuckApp.init` outside
+  the closure `TigerDuckApp.makeLaunch` hands `AfterFirstUnlock`: a background launch before the
+  first unlock after a restart reads them as empty, and that closure runs only once they can be
+  read (docs/decisions/0024-launch-before-first-unlock.md). A background entry point that can run
+  before that closure, as School Mail's background refresh does, asks
+  `FirstUnlock.storedDataReadsBack()` before it reads stored data.
 - Do not trigger a Live Activity refresh for presentation-only changes such as `visualPreset`.
 - Do not add one-off spacing or color systems next to the shared theme.
 - Do not put a plain `.onTapGesture` on content in a ScrollView or lazy grid, or a plain tap or

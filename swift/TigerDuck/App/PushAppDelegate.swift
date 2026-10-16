@@ -45,15 +45,19 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Delegate")
 
-    /// Wiring that cannot wait for a scene, run once by `didFinishLaunching`: iOS can launch the
+    /// Wiring that cannot wait for a scene, which `didFinishLaunching` runs once: iOS can launch the
     /// app in the background for a silent push or a Watch message, and then no `.onAppear` runs.
-    /// `TigerDuckApp.init` sets it; SwiftUI builds the app before it creates this delegate.
+    /// `TigerDuckApp.init` sets it, as SwiftUI builds the app before it creates this delegate, and
+    /// what it wires waits for the launch's ``AfterFirstUnlock`` build.
     static var launchWork: ((PushAppDelegate) -> Void)?
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        launchLogger.notice(
+            "Launched in the background: \(application.applicationState == .background, privacy: .public), protected data available: \(application.isProtectedDataAvailable, privacy: .public)"
+        )
         // Install the notification delegate before any push can arrive, so a tap
         // that cold-launches the app goes through `routeTap` instead of the OS
         // default open behaviour.
@@ -61,8 +65,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         UNUserNotificationCenter.current().delegate = nd
         self.notificationDelegate = nd
         #if os(iOS)
-        // School Mail's refresh task must be registered before launch finishes.
+        // School Mail's refresh task must be registered before launch finishes. Its checks decode
+        // with the charset hook, which a held-back launch's School Mail bootstrap installs late.
         if SchoolMailAvailability.isEnabled {
+            SchoolMailCharsetHook.install()
             MailBackgroundRefresh.register()
         }
         #endif
@@ -99,6 +105,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     var onSyncTrigger: (() async -> FullSyncOutcome)?
 
+    /// Runs after a sync trigger's sync and before its answer. Once the push is answered iOS may
+    /// suspend the app, so what the sync left on a timer, such as the widgets' reload, goes out here.
+    var beforeAnsweringSyncTrigger: (@MainActor () -> Void)?
+
     /// iOS allows a background push 30 seconds to call its completion handler, and ends an app that
     /// takes longer (Apple's documentation for this delegate method).
     static let syncTriggerTimeLimit: Duration = .seconds(25)
@@ -113,7 +123,12 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
             return
         }
         logger.info("Silent sync trigger received")
-        Self.run({ await onSyncTrigger().fetchResult }, within: Self.syncTriggerTimeLimit, then: completionHandler)
+        let beforeAnswering = beforeAnsweringSyncTrigger
+        Self.run({
+            let result = await onSyncTrigger().fetchResult
+            beforeAnswering?()
+            return result
+        }, within: Self.syncTriggerTimeLimit, then: completionHandler)
     }
 
     /// Runs `work` and calls `completion` once with its result, or, when `limit` passes first,

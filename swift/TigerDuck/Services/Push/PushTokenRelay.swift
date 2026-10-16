@@ -18,6 +18,7 @@ final class PushTokenRelay {
     // violating Swift 6 strict concurrency. Mutations stay on MainActor
     // through start()/stop(), and Task is itself thread-safe.
     private nonisolated(unsafe) var task: Task<Void, Never>?
+    private nonisolated(unsafe) var permissionTask: Task<Void, Never>?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Relay")
 
     init(registration: PushRegistrationService) {
@@ -51,15 +52,24 @@ final class PushTokenRelay {
             }
             logger.info("PTS token stream ended")
         }
+        // Each registration carries the permission, which the server's reminders read.
+        permissionTask = Task.detached(priority: .utility) {
+            for await _ in ActivityAuthorizationInfo().activityEnablementUpdates {
+                await registration.liveActivitiesPermissionChanged()
+            }
+        }
     }
 
     func stop() {
         task?.cancel()
         task = nil
+        permissionTask?.cancel()
+        permissionTask = nil
     }
 
     deinit {
         task?.cancel()
+        permissionTask?.cancel()
     }
 }
 #endif
