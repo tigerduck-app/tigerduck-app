@@ -61,6 +61,7 @@ struct ScheduleSendNowTests {
         reply.open()
         await send.value
         #expect(backend.sent().count == 1)
+        await push.disable()
     }
 
     /// A sign-out's unregister waits only for a POST already under way.
