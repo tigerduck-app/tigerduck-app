@@ -201,7 +201,7 @@ final class ClassroomUsageService {
         }
     }
 
-    /// A read the user ended, by leaving or signing out, is no failure.
+    /// A read the user ended, by choosing another day, pulling or signing out, is no failure.
     nonisolated static func isWorthLogging(_ error: any Error) -> Bool {
         !AppLogger.isCancellation(error)
     }

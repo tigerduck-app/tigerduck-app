@@ -119,19 +119,15 @@ struct PasswordFieldAutoFillTests {
         window.rootViewController = UIHostingController(rootView: SignInForm(credentials: credentials))
         window.makeKeyAndVisible()
         // The password field joins the window once the capture wrapper has laid out its canvas.
-        try await waitUntil { Self.textFields(in: window).contains { $0.textContentType == .password } }
+        try await waitUntil { window.descendants(ofType: UITextField.self).contains { $0.textContentType == .password } }
 
-        let fields = Self.textFields(in: window)
+        let fields = window.descendants(ofType: UITextField.self)
         return Hosted(
             window: window,
             account: try #require(fields.first { $0.textContentType == .username }),
             password: try #require(fields.first { $0.textContentType == .password }),
             decoy: try #require(fields.first { !$0.canBecomeFirstResponder }, "the capture wrapper's field")
         )
-    }
-
-    private static func textFields(in view: UIView) -> [UITextField] {
-        view.subviews.flatMap { [$0 as? UITextField].compactMap { $0 } + textFields(in: $0) }
     }
 }
 #endif
