@@ -144,6 +144,18 @@ struct MailReadableHTMLTests {
         #expect(white.html(on: .light) == ##"<table bgcolor="#ffffff"><caption>Caption</caption><tbody><tr><td>Cell</td></tr></tbody></table>"##)
     }
 
+    /// A `display` that takes the table or its caption out of table layout puts the caption on the
+    /// table's background, where it is judged as any other child.
+    @Test(arguments: [##"<table bgcolor="#000000" style="display: block">"##, ##"<table bgcolor="#000000"><caption style="display: block">"##])
+    func aCaptionOutOfTableLayoutSitsOnTheTable(opening: String) {
+        let html = opening.hasSuffix("<caption style=\"display: block\">")
+            ? opening + ##"<font color="#333333">Caption</font></caption><tr><td>Cell</td></tr></table>"##
+            : opening + ##"<caption><font color="#333333">Caption</font></caption><tr><td>Cell</td></tr></table>"##
+        let out = Self.readable(html).html(on: .light)
+        #expect(!out.contains(##"<font color="#333333">"##))
+        #expect(!out.contains(##"style="color: #000000""##))
+    }
+
     @Test func textOnABackgroundColourThisCannotReadKeepsItsColour() {
         let page = Self.readable(
             ##"<div style="background-color: hsl(0 0% 0%)"><font color="#333333">a</font></div><table><tr><td bgcolor="#000000ff"><font color="#333333">b</font></td></tr></table><p><font color="#333333">c</font></p>"##

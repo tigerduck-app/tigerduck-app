@@ -62,11 +62,14 @@ nonisolated struct MailReadableHTML {
                         parent = nodes.count - 1
                     }
                 }
-                // WebKit paints a table's background and border over its grid only, not its caption.
-                let captionBackdrop = visit.element.tagName() == "table" ? visit.backdrop : backdrop
-                stack += visit.element.children().array().reversed().map { child in
-                    Visit(element: child, depth: visit.depth + 1,
-                          backdrop: child.tagName() == "caption" ? captionBackdrop : backdrop, parent: parent)
+                // WebKit paints a table's background and border over its grid only, not its caption,
+                // while both keep their table display.
+                let captionBackdrop = visit.element.tagName() == "table" && Self.keepsDisplay(style, ["table", "inline-table"])
+                    ? visit.backdrop : backdrop
+                stack += try visit.element.children().array().reversed().map { child in
+                    let outside = try child.tagName() == "caption"
+                        && Self.keepsDisplay(Style(child.attr("style")), ["table-caption"])
+                    return Visit(element: child, depth: visit.depth + 1, backdrop: outside ? captionBackdrop : backdrop, parent: parent)
                 }
             }
         } catch {
@@ -271,6 +274,10 @@ nonisolated struct MailReadableHTML {
         let current: String? = element.hasAttr(name) ? try element.attr(name) : nil
         guard current != value else { return }
         if let value { try element.attr(name, value) } else { try element.removeAttr(name) }
+    }
+
+    private static func keepsDisplay(_ style: Style, _ defaults: Set<String>) -> Bool {
+        style.effective("display").map { defaults.contains($0.value.lowercased()) } ?? true
     }
 
     /// Whether `element` sets a text or background colour that shows. The `color` or
