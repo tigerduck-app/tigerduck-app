@@ -127,6 +127,19 @@ struct MailReadableHTMLTests {
             == ##"<table><colgroup><col style="background-color: #000000" /></colgroup><tbody><tr><td><font color="#333333">a</font></td></tr></tbody></table><table><colgroup><col style="background-color: #000000" /></colgroup><tbody><tr><td><font color="#333333">b</font></td></tr></tbody></table><table><tbody><tr><td><font color="#959595">c</font></td></tr></tbody></table>"##)
     }
 
+    /// WebKit paints a table's background over its grid only, so its caption is judged on what the
+    /// table sits on, and given back the colour the table was given in its place
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/677).
+    @Test func aCaptionSitsOnWhatItsTableSitsOn() {
+        let black = Self.readable(##"<table bgcolor="#000000"><caption><font color="#333333">Caption</font></caption><tr><td>Cell</td></tr></table>"##)
+        #expect(black.html(on: .light)
+            == ##"<table bgcolor="#000000" style="color: #959595"><caption style="color: #000000"><font color="#333333">Caption</font></caption><tbody><tr><td>Cell</td></tr></tbody></table>"##)
+        let white = Self.readable(##"<table bgcolor="#ffffff"><caption>Caption</caption><tr><td>Cell</td></tr></table>"##)
+        #expect(white.html(on: .app)
+            == ##"<table bgcolor="#ffffff" style="color: #595959"><caption style="color: #ffffff">Caption</caption><tbody><tr><td>Cell</td></tr></tbody></table>"##)
+        #expect(white.html(on: .light) == ##"<table bgcolor="#ffffff"><caption>Caption</caption><tbody><tr><td>Cell</td></tr></tbody></table>"##)
+    }
+
     @Test func textOnABackgroundColourThisCannotReadKeepsItsColour() {
         let page = Self.readable(
             ##"<div style="background-color: hsl(0 0% 0%)"><font color="#333333">a</font></div><table><tr><td bgcolor="#000000ff"><font color="#333333">b</font></td></tr></table><p><font color="#333333">c</font></p>"##

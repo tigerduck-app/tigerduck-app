@@ -8,8 +8,9 @@ import os
 /// On a page, a text colour under 7:1 (WCAG 2) against the backgrounds behind it moves to the
 /// nearest OKLCH lightness that reaches it, or as close as any colour gets, keeping its hue and
 /// as much chroma as sRGB holds. That covers colours the sender set, and the colour an element
-/// with a background but no colour of its own inherits, which it is then given. Text on a
-/// background this cannot read keeps its colour. Only `color` values change, as `#rrggbb`.
+/// with a background, or a table caption, but no colour of its own inherits, which it is then
+/// given. Text on a background this cannot read keeps its colour. Only `color` values change,
+/// as `#rrggbb`.
 nonisolated struct MailReadableHTML {
     static let minimumContrast = 7.0
     /// Far deeper than mail nests, and short of the depth where WebKit stops nesting elements, so
@@ -61,8 +62,12 @@ nonisolated struct MailReadableHTML {
                         parent = nodes.count - 1
                     }
                 }
-                stack += visit.element.children().array().reversed()
-                    .map { Visit(element: $0, depth: visit.depth + 1, backdrop: backdrop, parent: parent) }
+                // WebKit paints a table's background and border over its grid only, not its caption.
+                let captionBackdrop = visit.element.tagName() == "table" ? visit.backdrop : backdrop
+                stack += visit.element.children().array().reversed().map { child in
+                    Visit(element: child, depth: visit.depth + 1,
+                          backdrop: child.tagName() == "caption" ? captionBackdrop : backdrop, parent: parent)
+                }
             }
         } catch {
             Self.logger.error("Mail colour read failed, colours left as sent: \(String(describing: type(of: error)), privacy: .public)")
@@ -133,7 +138,8 @@ nonisolated struct MailReadableHTML {
     }
 
     /// An element whose text colour can depend on the page: it sets its own, it is a link, or it
-    /// has a background of its own. `parent` is the nearest such ancestor, whose colour it inherits.
+    /// has a background of its own or is a table's caption, which sits off the table's background.
+    /// `parent` is the nearest such ancestor, whose colour it inherits.
     private nonisolated struct Node {
         nonisolated enum Kind {
             case own(Sent)
@@ -315,6 +321,9 @@ nonisolated struct MailReadableHTML {
         } else if element.tagName() == "a", element.hasAttr("href") {
             kind = .link
         } else if case .color(let color) = layer, color.alpha > 0, !backdrop.isUnknown {
+            kind = .background
+        } else if element.tagName() == "caption", !backdrop.isUnknown {
+            // Off its table's background, it may need back the colour the table was given instead.
             kind = .background
         } else {
             return nil
