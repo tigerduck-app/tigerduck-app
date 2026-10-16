@@ -50,7 +50,7 @@ extension AppState {
             let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
-            let courseEditsBeforeFetch = cloudSyncCoordinator.courseOverrideEdits
+            // Colours and names need no second sample: `courseOverridesToHold` adds the edits after this one.
             let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
@@ -117,9 +117,6 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
-            // A colour or name edit both queued and sent while the fetch is out is in neither sample.
-            let editedDuringFetch = cloudSyncCoordinator.courseOverrides(queuedAfter: courseEditsBeforeFetch)
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
@@ -213,12 +210,10 @@ extension AppState {
             if !takesColors && !takesNames {
                 AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             } else if !courseOverrides.isEmpty {
+                let held = cloudSyncCoordinator.courseOverridesToHold(since: preFetchCourseOverrides)
                 changed = applyCourseOverrides(
                     courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames,
-                    holdingColors: preFetchCourseOverrides.colors.union(queuedCourseOverrides.colors)
-                        .union(editedDuringFetch.colors),
-                    holdingNames: preFetchCourseOverrides.names.union(queuedCourseOverrides.names)
-                        .union(editedDuringFetch.names)
+                    holdingColors: held.colors, holdingNames: held.names
                 ) || changed
             }
 

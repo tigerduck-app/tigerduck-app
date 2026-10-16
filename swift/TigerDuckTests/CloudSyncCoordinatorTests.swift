@@ -197,7 +197,7 @@ struct CloudSyncCoordinatorTests {
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
 
-        let reading = coordinator.courseOverrideEdits
+        let reading = await coordinator.pendingCourseOverrides().edits
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
         await coordinator.enqueueCourseNameOverride(
             moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
@@ -210,6 +210,33 @@ struct CloudSyncCoordinatorTests {
         let edited = coordinator.courseOverrides(queuedAfter: reading)
         #expect(edited.colors == ["1151CS1"])
         #expect(edited.names == ["1151EE2"])
+    }
+
+    /// The sample is taken before the fetch, and the hold is read when the server's colours and
+    /// names are applied (https://github.com/tigerduck-app/tigerduck-app/issues/670).
+    @Test("A full sync holds what its sample listed and what was edited since, sent or not")
+    func aFullSyncHoldsWhatItsSampleListedAndWhatWasEditedSince() async {
+        let backend = Backend()
+        for course in ["1151CS0", "1151CS1", "1151EE2"] {
+            backend.answer("sync/courses/\(course)/override", body: Self.colourReply)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
+
+        let sample = await coordinator.pendingCourseOverrides()
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+        await coordinator.syncTick()
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE3", semester: "1151", customName: "Signals", locale: "en"
+        )?.value
+
+        #expect(backend.requests("sync/courses/1151CS0/override").count == 1)
+        let held = coordinator.courseOverridesToHold(since: sample)
+        #expect(held.colors == ["1151CS0", "1151CS1"])
+        #expect(held.names == ["1151EE2", "1151EE3"])
     }
 
     /// Use Local lets go of its hold once these end
