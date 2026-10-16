@@ -129,6 +129,14 @@ struct MailFetchSectionTests {
         #expect(LiveMailClient.map(error) == .protocolError(String(describing: error)))
     }
 
+    /// The message's last bytes went out and no final reply came back: it may have been sent.
+    @Test func aSendWhoseAcceptanceIsUnknownIsUnconfirmed() {
+        let ambiguous = SMTPSendError(phase: .content, acceptance: .ambiguous, reason: .connectionLost)
+        let notAccepted = SMTPSendError(phase: .content, acceptance: .notAccepted, reason: .connectionLost)
+        #expect(LiveMailClient.map(ambiguous) == .sendUnconfirmed)
+        #expect(LiveMailClient.map(notAccepted) != .sendUnconfirmed)
+    }
+
     @Test func genuinelyNetworkShapedErrorsStayUnreachable() {
         #expect(LiveMailClient.map(IMAPError.timeout) == .unreachable)
         #expect(LiveMailClient.map(IMAPError.connectionFailed("connection reset by peer")) == .unreachable)

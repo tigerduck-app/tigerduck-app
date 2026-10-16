@@ -456,6 +456,8 @@ final class MailComposeViewModel {
             sentCopy = filing.outcome
             if let notice = Self.notice(for: filing.outcome) { onSentCopyNotice?(notice) }
             didFinish = true
+        } catch MailClientError.sendUnconfirmed {
+            self.error = String(localized: "school_mail_send_unconfirmed")
         } catch {
             // The mail is never retried here on any error, `folderChanged` included: the list
             // recovers through its own path the next time the user opens it.
