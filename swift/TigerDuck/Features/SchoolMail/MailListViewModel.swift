@@ -664,7 +664,7 @@ final class MailListViewModel {
         let writes = movedUp.compactMap { folder in
             pages[folder].map { page in
                 let stored = Self.cachedCopy(of: page)
-                return chainCacheWrite { cache.savePage(stored) }
+                return chainCacheWrite { cache.savePage(stored, wipeCount: $0) }
             }
         }
         for write in writes { await write.value }
@@ -705,7 +705,7 @@ final class MailListViewModel {
                     try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity, inlineImages: false)
                 }
                 guard epoch == accountEpoch else { return }
-                chainCacheWrite { cache.saveDetail(detail, folder: inbox, uidValidity: validity) }
+                chainCacheWrite { cache.saveDetail(detail, folder: inbox, uidValidity: validity, wipeCount: $0) }
             } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
                 return
             } catch {
@@ -752,8 +752,8 @@ final class MailListViewModel {
                     // The screen owns a folder it has moved onto since, and its page in memory
                     // and the one on disk must not diverge.
                     if self.targets.contains(folder) { continue }
-                    await self.chainCacheWrite { [page] in
-                        if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page) }
+                    await self.chainCacheWrite { [page] wipeCount in
+                        if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page, wipeCount: wipeCount) }
                     }.value
                 } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
                     return
@@ -981,10 +981,13 @@ final class MailListViewModel {
     /// `markSeenLocally`/`removeLocally` are synchronous (the message screen calls them
     /// without awaiting), so the disk write can't be awaited here — it's queued through
     /// `chainCacheWrite` instead, fire-and-forget.
+    ///
+    /// It checks no `accountEpoch`: it saves only what `pages` holds, and a sign-out empties
+    /// `pages` (`resetInMemoryState`) in the main-actor turn that starts the cache wipe.
     private func persist(folder: String) {
         guard let page = pages[folder].map(Self.cachedCopy(of:)) else { return }
         let cache = self.cache
-        chainCacheWrite { cache.savePage(page) }
+        chainCacheWrite { cache.savePage(page, wipeCount: $0) }
     }
 
     // MARK: Cache (off the main actor — `MailCache` does synchronous disk I/O)
@@ -996,12 +999,12 @@ final class MailListViewModel {
     private func save(_ page: MailFolderPage) async {
         let cache = self.cache
         let stored = Self.cachedCopy(of: page)
-        await chainCacheWrite { cache.savePage(stored) }.value
+        await chainCacheWrite { cache.savePage(stored, wipeCount: $0) }.value
     }
 
     private func dropFolder(_ folder: String) async {
         let cache = self.cache
-        await chainCacheWrite { cache.dropFolder(folder) }.value
+        await chainCacheWrite { _ in cache.dropFolder(folder) }.value
     }
 
     /// Every cache *write* in this type — `persist(folder:)`'s fire-and-forget save, `load()`'s
@@ -1011,11 +1014,15 @@ final class MailListViewModel {
     /// later one starts (a drop that followed it moments later, say), and finish *after* it —
     /// silently resurrecting on disk exactly what the later write meant to replace or remove.
     @discardableResult
-    private func chainCacheWrite(_ operation: @escaping @Sendable () -> Void) -> Task<Void, Never> {
+    private func chainCacheWrite(_ operation: @escaping @Sendable (_ wipeCount: Int) -> Void) -> Task<Void, Never> {
         let previous = pendingCacheWrite
+        // Read when queued. A write queued before a sign-out then writes nothing once its wipe runs;
+        // one queued after it is stopped before this, by the caller's `accountEpoch` check or, in
+        // `persist(folder:)`, by the `pages` the sign-out emptied in the turn that starts the wipe.
+        let wipeCount = cache.wipeCount
         let task = Task.detached {
             _ = await previous?.value
-            operation()
+            operation(wipeCount)
         }
         pendingCacheWrite = task
         return task

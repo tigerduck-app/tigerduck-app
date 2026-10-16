@@ -24,9 +24,9 @@ tracking images, remote content and links whose text hides their target.
   on the app's page, and the reader can switch. The sender's colors are kept, except text under
   7:1 against its background on the page shown, or on a mid-tone where no color reaches that,
   short of the better of white and black. Such a color moves to the nearest OKLCH lightness that
-  reaches the target, and an element with a background but no color of its own whose inherited
-  color does not read is given one (`MailReadableHTML`). Only `color` values change, and the
-  `color` declarations it gives are added to an element's `style`, or make one.
+  reaches the target, and an element with a background, or a table caption, but no color of its
+  own whose inherited color does not read is given one (`MailReadableHTML`). Only `color` values
+  change, and the `color` declarations it gives are added to an element's `style`, or make one.
 
 ## Consequences
 

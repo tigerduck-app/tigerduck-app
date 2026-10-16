@@ -288,6 +288,7 @@ actor FakeMailClient: MailClient {
 
     func rawSource(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> Data {
         calls.append("rawSource \(folder) \(uid)")
+        await gate("rawSource")
         if let rawSourceError { throw rawSourceError }
         try assertUIDValidity(expectedUIDValidity, folder: folder)
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.raw ?? Data()

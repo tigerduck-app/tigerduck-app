@@ -8,8 +8,9 @@ import os
 /// On a page, a text colour under 7:1 (WCAG 2) against the backgrounds behind it moves to the
 /// nearest OKLCH lightness that reaches it, or as close as any colour gets, keeping its hue and
 /// as much chroma as sRGB holds. That covers colours the sender set, and the colour an element
-/// with a background but no colour of its own inherits, which it is then given. Text on a
-/// background this cannot read keeps its colour. Only `color` values change, as `#rrggbb`.
+/// with a background, or a table caption, but no colour of its own inherits, which it is then
+/// given. Text on a background this cannot read keeps its colour. Only `color` values change,
+/// as `#rrggbb`.
 nonisolated struct MailReadableHTML {
     static let minimumContrast = 7.0
     /// Far deeper than mail nests, and short of the depth where WebKit stops nesting elements, so
@@ -61,8 +62,15 @@ nonisolated struct MailReadableHTML {
                         parent = nodes.count - 1
                     }
                 }
-                stack += visit.element.children().array().reversed()
-                    .map { Visit(element: $0, depth: visit.depth + 1, backdrop: backdrop, parent: parent) }
+                // WebKit paints a table's background and border over its grid only, not its caption,
+                // while both keep their table display.
+                let captionBackdrop = visit.element.tagName() == "table" && Self.keepsDisplay(style, ["table", "inline-table"])
+                    ? visit.backdrop : backdrop
+                stack += try visit.element.children().array().reversed().map { child in
+                    let outside = try child.tagName() == "caption"
+                        && Self.keepsDisplay(Style(child.attr("style")), ["table-caption"])
+                    return Visit(element: child, depth: visit.depth + 1, backdrop: outside ? captionBackdrop : backdrop, parent: parent)
+                }
             }
         } catch {
             Self.logger.error("Mail colour read failed, colours left as sent: \(String(describing: type(of: error)), privacy: .public)")
@@ -133,7 +141,8 @@ nonisolated struct MailReadableHTML {
     }
 
     /// An element whose text colour can depend on the page: it sets its own, it is a link, or it
-    /// has a background of its own. `parent` is the nearest such ancestor, whose colour it inherits.
+    /// has a background of its own or is a table's caption, which sits off the table's background.
+    /// `parent` is the nearest such ancestor, whose colour it inherits.
     private nonisolated struct Node {
         nonisolated enum Kind {
             case own(Sent)
@@ -267,11 +276,36 @@ nonisolated struct MailReadableHTML {
         if let value { try element.attr(name, value) } else { try element.removeAttr(name) }
     }
 
-    private static func setsColor(_ element: Element, style: Style) throws -> Bool {
-        if style.declarations.contains(where: { $0.property == "color" || $0.property == "background-color" }) { return true }
-        if try legacyValue("bgcolor", of: element) != nil { return true }
-        return try element.tagName() == "font" && legacyValue("color", of: element) != nil
+    private static func keepsDisplay(_ style: Style, _ defaults: Set<String>) -> Bool {
+        style.effective("display").map { defaults.contains($0.value.lowercased()) } ?? true
     }
+
+    /// Whether `element` sets a text or background colour that shows. The `color` or
+    /// `background-color` that applies outranks `<font color>` or `bgcolor`, as in `sentColor` and
+    /// `layer`, and HTML reads either attribute as an opaque colour unless it is blank or `transparent`.
+    private static func setsColor(_ element: Element, style: Style) throws -> Bool {
+        let text = try style.effective("color").map { shows($0.value) }
+            ?? (element.tagName() == "font" && legacyValue("color", of: element) != nil)
+        let background = try style.effective("background-color").map { shows($0.value, onBackground: true) }
+            ?? (legacyValue("bgcolor", of: element) != nil)
+        return text || background
+    }
+
+    /// Whether a CSS colour value shows: one this reads with alpha above zero, or one it cannot
+    /// read that is not a keyword taking its colour from elsewhere. On a background `currentcolor`
+    /// paints the text colour, so there it shows.
+    private static func shows(_ value: Substring, onBackground: Bool = false) -> Bool {
+        guard let color = parse(value, legacy: false) else {
+            let keyword = value.lowercased()
+            return (onBackground && keyword == "currentcolor") || !colorlessKeywords.contains(keyword)
+        }
+        return color.alpha > 0
+    }
+
+    /// Keywords that set no colour of their own. Not `initial`: on `color` it is the initial colour,
+    /// which WebKit has drawn black under a dark `color-scheme`
+    /// (https://github.com/w3c/csswg-drafts/issues/9274), so it counts as a colour.
+    private static let colorlessKeywords: Set<String> = ["currentcolor", "inherit", "unset", "revert", "revert-layer"]
 
     /// What `element` paints behind its text. A `border-image` paints over its background, and a
     /// table's columns between it and its cells, so either makes it one this cannot read.
@@ -301,6 +335,9 @@ nonisolated struct MailReadableHTML {
         } else if element.tagName() == "a", element.hasAttr("href") {
             kind = .link
         } else if case .color(let color) = layer, color.alpha > 0, !backdrop.isUnknown {
+            kind = .background
+        } else if element.tagName() == "caption", !backdrop.isUnknown {
+            // Off its table's background, it may need back the colour the table was given instead.
             kind = .background
         } else {
             return nil

@@ -16,8 +16,10 @@ struct MailReadableHTMLTests {
 
     // MARK: The page a mail opens on
 
-    /// A colour anywhere counts, a quoted reply's too. A border colour is not a text or
-    /// background colour, and `background` never gets past the CSS filter.
+    /// A colour anywhere counts, a quoted reply's too, and so does one this cannot read. A colour
+    /// that does not show, or that another declaration overrides, does not count
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/678). A border colour is not a text
+    /// or background colour, and `background` never gets past the CSS filter.
     @Test(arguments: [
         ("<p>Hello</p>", false),
         (##"<p style="font-size: 14px; border-left: 1px solid #cccccc">Hello</p>"##, false),
@@ -27,6 +29,19 @@ struct MailReadableHTMLTests {
         (##"<p style="background-color: #fafafa">Hello</p>"##, true),
         (##"<table bgcolor="#ffffff"><tr><td>Hello</td></tr></table>"##, true),
         (##"<p>Thanks</p><blockquote><p style="color: #1f497d">Quoted</p></blockquote>"##, true),
+        (##"<p>Read <a href="https://a.example" style="color: inherit">more</a></p>"##, false),
+        (##"<span style="color: currentColor; background-color: transparent">Hello</span>"##, false),
+        (##"<p style="background-color: currentColor">Hello</p>"##, true),
+        (##"<p style="color: rgba(0, 0, 0, 0); background-color: #fff0">Hello</p>"##, false),
+        (##"<table bgcolor="transparent"><tr><td style="color: unset">Hello</td></tr></table>"##, false),
+        (##"<p style="color: revert">Hello</p>"##, false),
+        (##"<p style="background-color: revert-layer">Hello</p>"##, false),
+        (##"<p style="color: initial">Hello</p>"##, true),
+        (##"<p style="color: #333333; color: inherit">Hello</p>"##, false),
+        (##"<p style="color: inherit; color: #333333">Hello</p>"##, true),
+        (##"<font color="#333333" style="color: inherit">Hello</font>"##, false),
+        (##"<table><tr><td bgcolor="#ffffff" style="background-color: transparent">Hello</td></tr></table>"##, false),
+        (##"<p style="color: hsl(0 0% 20%)">Hello</p>"##, true),
     ])
     func aMailSaysWhetherItSetsColoursOfItsOwn(html: String, setsColors: Bool) {
         #expect(Self.readable(html).setsColors == setsColors)
@@ -114,6 +129,31 @@ struct MailReadableHTMLTests {
         )
         #expect(page.html(on: .app)
             == ##"<table><colgroup><col style="background-color: #000000" /></colgroup><tbody><tr><td><font color="#333333">a</font></td></tr></tbody></table><table><colgroup><col style="background-color: #000000" /></colgroup><tbody><tr><td><font color="#333333">b</font></td></tr></tbody></table><table><tbody><tr><td><font color="#959595">c</font></td></tr></tbody></table>"##)
+    }
+
+    /// WebKit paints a table's background over its grid only, so its caption is judged on what the
+    /// table sits on, and given back the colour the table was given in its place
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/677).
+    @Test func aCaptionSitsOnWhatItsTableSitsOn() {
+        let black = Self.readable(##"<table bgcolor="#000000"><caption><font color="#333333">Caption</font></caption><tr><td>Cell</td></tr></table>"##)
+        #expect(black.html(on: .light)
+            == ##"<table bgcolor="#000000" style="color: #959595"><caption style="color: #000000"><font color="#333333">Caption</font></caption><tbody><tr><td>Cell</td></tr></tbody></table>"##)
+        let white = Self.readable(##"<table bgcolor="#ffffff"><caption>Caption</caption><tr><td>Cell</td></tr></table>"##)
+        #expect(white.html(on: .app)
+            == ##"<table bgcolor="#ffffff" style="color: #595959"><caption style="color: #ffffff">Caption</caption><tbody><tr><td>Cell</td></tr></tbody></table>"##)
+        #expect(white.html(on: .light) == ##"<table bgcolor="#ffffff"><caption>Caption</caption><tbody><tr><td>Cell</td></tr></tbody></table>"##)
+    }
+
+    /// A `display` that takes the table or its caption out of table layout puts the caption on the
+    /// table's background, where it is judged as any other child.
+    @Test(arguments: [##"<table bgcolor="#000000" style="display: block">"##, ##"<table bgcolor="#000000"><caption style="display: block">"##])
+    func aCaptionOutOfTableLayoutSitsOnTheTable(opening: String) {
+        let html = opening.hasSuffix("<caption style=\"display: block\">")
+            ? opening + ##"<font color="#333333">Caption</font></caption><tr><td>Cell</td></tr></table>"##
+            : opening + ##"<caption><font color="#333333">Caption</font></caption><tr><td>Cell</td></tr></table>"##
+        let out = Self.readable(html).html(on: .light)
+        #expect(!out.contains(##"<font color="#333333">"##))
+        #expect(!out.contains(##"style="color: #000000""##))
     }
 
     @Test func textOnABackgroundColourThisCannotReadKeepsItsColour() {

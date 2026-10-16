@@ -284,6 +284,34 @@ struct MailStoreTests {
         #expect(cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 1) == "small source")
     }
 
+    /// A save queued before a sign-out's wipe can run after it, and then writes nothing
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/632).
+    @Test func aSaveUnderACountFromBeforeAWipeWritesNothing() {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        defer { cache.clearAll() }
+        let page = MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1,
+                                  summaries: [SchoolMailTestDoubles.summary(uid: 2)], oldestLoadedSequence: nil)
+        let detail = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 2), messageID: nil, inReplyTo: nil,
+                                       references: nil, parts: [], textBody: "body", htmlBody: nil, inlineImages: nil)
+        let save = { (count: Int) in
+            cache.savePage(page, wipeCount: count)
+            cache.saveDetail(detail, folder: "INBOX", uidValidity: 1, wipeCount: count)
+            cache.saveSource("source", folder: "INBOX", uidValidity: 1, uid: 2, wipeCount: count)
+        }
+        let before = cache.wipeCount
+        cache.clearAll()
+
+        save(before)
+        #expect(cache.loadPage(folder: "INBOX") == nil)
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 2) == nil)
+        #expect(cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 2) == nil)
+
+        save(cache.wipeCount)
+        #expect(cache.loadPage(folder: "INBOX")?.summaries.count == 1)
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 2)?.textBody == "body")
+        #expect(cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 2) == "source")
+    }
+
     @Test func clearAllRemovesPagesBodiesAndTemporaryFiles() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 0, summaries: [], oldestLoadedSequence: nil))

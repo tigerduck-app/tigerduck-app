@@ -326,6 +326,35 @@ struct MailMessageViewModelTests {
         #expect(h.cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
     }
 
+    /// A body or source on the wire when the cache is wiped, as a sign-out wipes it, is not saved
+    /// after the wipe (https://github.com/tigerduck-app/tigerduck-app/issues/632).
+    @Test func aBodyOnTheWireWhenTheCacheIsWipedIsNotSaved() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.fake.hold("detail")
+        let load = Task { await h.model.load() }
+        await h.fake.waitForArrival("detail")
+        h.cache.clearAll()
+        await h.fake.release("detail")
+        await load.value
+
+        #expect(h.model.loadState == .loaded)
+        #expect(h.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
+    }
+
+    @Test func aSourceOnTheWireWhenTheCacheIsWipedIsNotSaved() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        await h.fake.hold("rawSource")
+        let load = Task { await h.model.loadSource() }
+        await h.fake.waitForArrival("rawSource")
+        h.cache.clearAll()
+        await h.fake.release("rawSource")
+        await load.value
+
+        #expect(h.model.source?.contains("Subject:") == true)
+        #expect(h.cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
+    }
+
     @Test func aFailedSourceLoadEndsTheSpinnerWithARetryableFailedState() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
