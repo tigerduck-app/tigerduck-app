@@ -112,6 +112,8 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
+            // shortcut: a colour or name edit both queued and sent during the fetch is in neither
+            // sample, and shows again at the poll's sync after it; track edit times if that matters.
             let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             guard fullSyncMayWrite(since: generation) else { return }
             let protectedOverrides = preFetchProtected
@@ -725,7 +727,8 @@ extension AppState {
 
     /// The server's course colours in the order to apply them, oldest first: where two courses
     /// share a colour the latest pick keeps it, the same way on every device and every sync. A
-    /// course with a colour edit queued here (`held`, Moodle ids) is left out and keeps its own.
+    /// course with a colour edit queued here (`held`, Moodle ids) is left out, so it keeps its own
+    /// unless the server gives that colour to another course.
     static func serverCourseColors(
         _ overrides: [[String: Any]],
         courseNos: [String: String],
