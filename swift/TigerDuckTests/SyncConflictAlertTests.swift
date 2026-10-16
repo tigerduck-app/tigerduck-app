@@ -4,8 +4,8 @@ import Testing
 @testable import TigerDuck
 
 /// `AppState.syncConflictAlertIsPresented`, the binding of the alert for assignments marked
-/// differently here and on the server. Closed without a button, it answered Use Local, which sends
-/// this device's marks over the server's (https://github.com/tigerduck-app/tigerduck-app/issues/403).
+/// differently here and on the server: only its buttons answer it
+/// (https://github.com/tigerduck-app/tigerduck-app/issues/403).
 @MainActor
 struct SyncConflictAlertTests {
     @Test("Closing the assignment conflict alert without a button hides it and answers nothing")

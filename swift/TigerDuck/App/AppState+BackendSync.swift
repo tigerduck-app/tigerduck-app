@@ -114,8 +114,7 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            // shortcut: a colour or name edit both queued and sent during the fetch is in neither
-            // sample, and shows again at the poll's sync after it; track edit times if that matters.
+            // A colour or name edit both queued and sent while the fetch is out is in neither sample.
             let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected

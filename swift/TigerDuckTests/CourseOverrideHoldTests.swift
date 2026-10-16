@@ -1,6 +1,5 @@
-// What a full sync takes of the server's course colours and names while this device has edits of
-// them queued. It took them all, so an edit still in the outbox showed the server's older value
-// until the sync after its request (https://github.com/tigerduck-app/tigerduck-app/issues/649).
+// What a full sync takes of the server's course colours and names while edits of them are queued
+// here (https://github.com/tigerduck-app/tigerduck-app/issues/649).
 import Foundation
 import Testing
 @testable import TigerDuck
