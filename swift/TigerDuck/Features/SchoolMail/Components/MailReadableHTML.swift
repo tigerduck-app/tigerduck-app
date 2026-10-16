@@ -291,7 +291,10 @@ nonisolated struct MailReadableHTML {
         return color.alpha > 0
     }
 
-    private static let colorlessKeywords: Set<String> = ["currentcolor", "inherit", "initial", "unset", "revert", "revert-layer"]
+    /// Keywords that set no colour of their own. Not `initial`: on `color` it is the initial colour,
+    /// which WebKit has drawn black under a dark `color-scheme`
+    /// (https://github.com/w3c/csswg-drafts/issues/9274), so it counts as a colour.
+    private static let colorlessKeywords: Set<String> = ["currentcolor", "inherit", "unset", "revert", "revert-layer"]
 
     /// What `element` paints behind its text. A `border-image` paints over its background, and a
     /// table's columns between it and its cells, so either makes it one this cannot read.
