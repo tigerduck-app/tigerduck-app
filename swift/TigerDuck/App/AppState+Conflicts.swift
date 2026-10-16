@@ -585,22 +585,7 @@ extension AppState {
                     }
                 }
             } else {
-                // Hidden courses stay: the full sync takes the server's list in each term it lists,
-                // and a term it lists none in, which the check did not compare, keeps this device's.
-                if conflict.categories.contains("course_colors") {
-                    DataCache.shared.saveCourseColorMap([:])
-                    TigerDuckTheme.reload()
-                }
-                if conflict.categories.contains("course_names") {
-                    DataCache.shared.saveCourseCustomNames([:])
-                }
-                if conflict.categories.contains("assignments") {
-                    DataCache.shared.replaceArchivedAssignmentIds([])
-                    DataCache.shared.replaceLocallyCompletedAssignmentIds([])
-                    if conflict.serverIgnoredCourses != nil {
-                        DataCache.shared.replaceIgnoredAssignmentCourses([])
-                    }
-                }
+                Self.dropLocalCopies(for: conflict)
                 await syncOverridesFromBackend()
             }
             // After the answer's own requests, which the next check would otherwise read halfway.
@@ -619,6 +604,27 @@ extension AppState {
     /// `resettingSemesters` instead.
     nonisolated static func sentAfterCourses(_ categories: [String]) -> Set<String> {
         Set(categories).subtracting(["courses"])
+    }
+
+    /// What Use Server drops on this device so the full sync after it takes the server's data.
+    /// Hidden courses stay: that sync takes the server's list in each term it lists, and a term it
+    /// lists none in, which the check did not compare, keeps this device's.
+    static func dropLocalCopies(for conflict: ReenableConflict, in cache: DataCache = .shared) {
+        if conflict.categories.contains("course_colors") {
+            cache.saveCourseColorMap([:])
+            // The theme follows the shared cache, which every caller but a test passes.
+            TigerDuckTheme.reload()
+        }
+        if conflict.categories.contains("course_names") {
+            cache.saveCourseCustomNames([:])
+        }
+        if conflict.categories.contains("assignments") {
+            cache.replaceArchivedAssignmentIds([])
+            cache.replaceLocallyCompletedAssignmentIds([])
+            if conflict.serverIgnoredCourses != nil {
+                cache.replaceIgnoredAssignmentCourses([])
+            }
+        }
     }
 
     /// "Use Local" for courses, term by term: reset a term this device caches courses for, upload
