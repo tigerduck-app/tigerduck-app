@@ -311,10 +311,8 @@ final class AppState {
     /// `DataCache.loadSemesterResetAt`'s job.
     var resettingSemesters: Set<String> = []
 
-    /// The categories a Use Local answer keeps pending while its course requests run
-    /// (`sentAfterCourses`). The re-enable check skips them, as the answer sends them itself. In
-    /// memory: after a relaunch no answer runs, and the check asks about them again.
-    var keepingLocalCategories: Set<String> = []
+    /// What running Use Local answers keep pending while their course requests run. See the type.
+    var useLocalHold = UseLocalHold()
 
     var _libraryRevision = 0
     private var librarySignInObserver: Any?
