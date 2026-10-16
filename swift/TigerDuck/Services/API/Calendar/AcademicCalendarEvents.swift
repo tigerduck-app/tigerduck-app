@@ -2,10 +2,9 @@ import Foundation
 
 /// Turns the published academic calendar into rows the Calendar screens list
 /// alongside Moodle deadlines and school events. Not on `CalendarViewModel`,
-/// because the Mac needs it and that view model is out of the macOS build: it
-/// pulls in EventKit, which the Mac leaves out to avoid the Calendar TCC
-/// entitlement. The iPhone view model and `MacCalendarView` both call it, so
-/// they agree on semester boundaries and holidays. Rows are never persisted:
+/// because the Mac needs it and that view model is out of the macOS build. The
+/// iPhone view model and `MacCalendarView` both call it, so they agree on
+/// semester boundaries and holidays. Rows are never persisted:
 /// `DataCache` holds only network data and every load rebuilds these, so a
 /// boundary an older build stored under the wrong source does not survive.
 nonisolated extension AcademicCalendar {

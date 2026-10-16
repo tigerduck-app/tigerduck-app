@@ -503,6 +503,9 @@ extension AppState {
             Defaults[.pendingConflictCategories].subtract(conflict.categories)
             var coursesSaveFailed = false
             if keepLocal {
+                let held = Self.sentAfterCourses(conflict.categories)
+                keepingLocalCategories.formUnion(held)
+                defer { keepingLocalCategories.subtract(held) }
                 if conflict.categories.contains("courses"), CourseUploadPolicy.uploadsCourses {
                     let terms = SemesterCatalog.availableSemesters().map { semester in
                         (semester: semester,
@@ -582,23 +585,7 @@ extension AppState {
                     }
                 }
             } else {
-                if conflict.categories.contains("courses") {
-                    DataCache.shared.saveDeletedCourseNos([])
-                }
-                if conflict.categories.contains("course_colors") {
-                    DataCache.shared.saveCourseColorMap([:])
-                    TigerDuckTheme.reload()
-                }
-                if conflict.categories.contains("course_names") {
-                    DataCache.shared.saveCourseCustomNames([:])
-                }
-                if conflict.categories.contains("assignments") {
-                    DataCache.shared.replaceArchivedAssignmentIds([])
-                    DataCache.shared.replaceLocallyCompletedAssignmentIds([])
-                    if conflict.serverIgnoredCourses != nil {
-                        DataCache.shared.replaceIgnoredAssignmentCourses([])
-                    }
-                }
+                Self.dropLocalCopies(for: conflict)
                 await syncOverridesFromBackend()
             }
             // After the answer's own requests, which the next check would otherwise read halfway.
@@ -608,6 +595,35 @@ extension AppState {
                 saveFailed: coursesSaveFailed, generation: generation
             )
             retryOwedConflictCheck()
+        }
+    }
+
+    /// The answered categories Use Local reads from this device only once its course requests are
+    /// done. A full sync meanwhile would take the server's data of them, and the answer would send
+    /// that back, so they are held as a pending check's are. The courses' own terms are latched in
+    /// `resettingSemesters` instead.
+    nonisolated static func sentAfterCourses(_ categories: [String]) -> Set<String> {
+        Set(categories).subtracting(["courses"])
+    }
+
+    /// What Use Server drops on this device so the full sync after it takes the server's data.
+    /// Hidden courses stay: that sync takes the server's list in each term it lists, and a term it
+    /// lists none in, which the check did not compare, keeps this device's.
+    static func dropLocalCopies(for conflict: ReenableConflict, in cache: DataCache = .shared) {
+        if conflict.categories.contains("course_colors") {
+            cache.saveCourseColorMap([:])
+            // The theme follows the shared cache, which every caller but a test passes.
+            TigerDuckTheme.reload()
+        }
+        if conflict.categories.contains("course_names") {
+            cache.saveCourseCustomNames([:])
+        }
+        if conflict.categories.contains("assignments") {
+            cache.replaceArchivedAssignmentIds([])
+            cache.replaceLocallyCompletedAssignmentIds([])
+            if conflict.serverIgnoredCourses != nil {
+                cache.replaceIgnoredAssignmentCourses([])
+            }
         }
     }
 

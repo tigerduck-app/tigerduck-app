@@ -325,6 +325,25 @@ struct ReenableMarkTests {
         #expect(AppState.categoriesTaken(switchedOn: ["courses"], pendingChecks: [], marksLeftFor: nil) == ["courses"])
     }
 
+    /// Use Local reads the colours, names and marks it sends only after its course requests. A full
+    /// sync in between, as a revision poll that sees those requests runs, took the server's, and
+    /// the answer then sent the server's back over this device's.
+    @Test("A full sync while Use Local sends its courses takes none of what the answer sends after them")
+    func useLocalHoldsWhatItSendsAfterItsCourses() {
+        let pending = AppState.pendingChecks(stored: [], holding: AppState.sentAfterCourses(Array(Self.categories)))
+        let taken = AppState.categoriesTaken(
+            switchedOn: Self.categories,
+            pendingChecks: pending,
+            marksLeftFor: AppState.reasonToLeaveMarks(
+                syncsMarks: true, conflictCheckPending: pending.contains("assignments"),
+                uploadedLocalMarks: false, editedDuringFetch: false
+            )
+        )
+
+        #expect(taken == ["courses"])
+        #expect(AppState.pendingChecks(stored: ["courses"], holding: []) == ["courses"])
+    }
+
     @Test("Names a sync left for a pending colours check stay unrecorded, so switching them off and on checks nothing")
     func namesHeldForAColoursCheckAreNotRecorded() async {
         await Self.withSyncProgress {

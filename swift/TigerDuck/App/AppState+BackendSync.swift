@@ -116,7 +116,9 @@ extension AppState {
                 .union(pendingOverrides)
                 .union(inFlightOverrides)
 
-            let pendingConflicts = Defaults[.pendingConflictCategories]
+            let pendingConflicts = Self.pendingChecks(
+                stored: Defaults[.pendingConflictCategories], holding: keepingLocalCategories
+            )
             let marksLeftFor = Self.reasonToLeaveMarks(
                 // Again after the await: the switch may have gone off while it waited.
                 syncsMarks: syncsMarks && Defaults[.syncAssignments],
@@ -228,7 +230,9 @@ extension AppState {
             let coursesResetAt = Self.backendDate(json["courses_reset_at"])
             let tombstoneArray = json["course_tombstones"] as? [[String: Any]] ?? []
             let lastSeenReset = Defaults[.lastSeenCoursesResetAt]
-            let reset = Self.coursesReset(server: coursesResetAt, lastSeen: lastSeenReset)
+            let reset = Self.coursesReset(
+                server: coursesResetAt, lastSeen: lastSeenReset, takesCourses: taken.contains("courses")
+            )
 
             if reset.apply {
                 DataCache.shared.saveUserAddedCourses([])
@@ -323,6 +327,12 @@ extension AppState {
         case conflictCheckPending = "conflict check pending"
         case uploadedLocalMarks = "local marks just uploaded"
         case editedDuringFetch = "local edit during fetch"
+    }
+
+    /// The re-enable checks a full sync treats as pending: those `stored`, and the categories a Use
+    /// Local answer still sending its courses holds (`keepingLocalCategories`).
+    nonisolated static func pendingChecks(stored: Set<String>, holding: Set<String>) -> Set<String> {
+        stored.union(holding)
     }
 
     /// The categories a full sync takes the server's data of, which it applies and records as
@@ -607,15 +617,20 @@ extension AppState {
             ?? TigerDuckDateFormatters.withoutFractional.date(from: raw)
     }
 
-    /// What a full sync does with the server's `courses_reset_at`: whether to apply it, and what
-    /// to keep for the next sync. Both times are the server's, so a device whose clock runs behind
-    /// cannot take one reset for a new one on every sync. With nothing kept, this is the account's
-    /// first sync here, which has nothing from before a reset to drop: it only keeps the reset,
-    /// or `distantPast` when there is none yet, so that the first one counts as new.
-    nonisolated static func coursesReset(server: Date?, lastSeen: Date?) -> (apply: Bool, remember: Date) {
+    /// What a full sync does with the server's `courses_reset_at`: whether to apply it, dropping the
+    /// hand-added and hidden courses, and what to keep for the next sync. Both times are the
+    /// server's, so a device whose clock runs behind cannot take one reset for a new one on every
+    /// sync. With nothing kept, this is the account's first sync here, which has nothing from before
+    /// a reset to drop: it only keeps the reset, or `distantPast` when there is none yet, so that the
+    /// first one counts as new. A sync that does not take courses (`takesCourses`), with the Courses
+    /// switch off or a courses re-enable check pending, keeps them and the reset alike, so the check
+    /// that switching course sync back on runs decides.
+    nonisolated static func coursesReset(
+        server: Date?, lastSeen: Date?, takesCourses: Bool
+    ) -> (apply: Bool, remember: Date) {
         guard let lastSeen else { return (false, server ?? .distantPast) }
         guard let server else { return (false, lastSeen) }
-        return (server > lastSeen, server)
+        return (takesCourses && server > lastSeen, server)
     }
 
     /// What every full sync keeps: the course reset it read, for the next one to compare, and the
