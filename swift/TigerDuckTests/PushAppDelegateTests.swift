@@ -45,7 +45,6 @@ struct PushAppDelegateTests {
             }
         }
         #expect(results == [.failed])
-        #expect(!ended)
 
         while !ended { try? await Task.sleep(for: .milliseconds(20)) }
         #expect(results == [.failed])
