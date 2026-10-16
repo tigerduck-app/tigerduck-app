@@ -5,9 +5,8 @@ import SwiftUI
 /// cells sized for a Mac sidebar surface; `DatePicker(.graphical)` looks cramped and unfamiliar.
 ///
 /// Events come from `DataCache.loadCalendarEvents()`, filled by `appState.backgroundSync()`, plus
-/// the academic calendar's own rows (`allEvents`). System Calendar (EventKit) events stay out on
-/// Mac, which keeps the app out of the Calendar TCC entitlement. Holidays and semester boundaries
-/// are shown but not actionable: the iPhone's "still remind me" toggle on a holiday turns class
+/// the academic calendar's own rows (`allEvents`). Holidays and semester boundaries are shown but
+/// not actionable: the iPhone's "still remind me" toggle on a holiday turns class
 /// reminders back on, and macOS delivers no class reminders.
 struct MacCalendarView: View {
     @Environment(AppState.self) private var appState
@@ -260,7 +259,6 @@ struct MacCalendarView: View {
         case .moodle: return .blue
         case .school: return .orange
         case .exam: return .red
-        case .system: return .gray
         // Listed on the Mac, not actionable: macOS delivers no class
         // reminders, so there is nothing for a "still remind me" toggle to
         // turn on. The row still says the day is a holiday.
@@ -274,10 +272,6 @@ struct MacCalendarView: View {
         case .moodle: String(localized: "calendar_source_moodle")
         case .school: String(localized: "calendar_source_school")
         case .exam: String(localized: "calendar_source_exam")
-        // Mac never ingests EventKit events, so this branch is dead
-        // for now — fall back to school so we don't crash if a future
-        // ingest path adds them.
-        case .system: String(localized: "calendar_source_school")
         case .holiday: String(localized: "calendar_source_holiday")
         case .semester: String(localized: "calendar_source_semester")
         }
@@ -285,9 +279,8 @@ struct MacCalendarView: View {
 
     /// Mirror of `CalendarViewModel.buildCalendarDays` so the Mac
     /// surface produces the same Sunday-leading 7-column layout as
-    /// iPhone. Kept inline rather than imported because the iOS
-    /// `CalendarViewModel` also pulls in EventKit which the Mac build
-    /// deliberately omits.
+    /// iPhone. Kept inline because the iOS `CalendarViewModel` is not
+    /// in the Mac build.
     private static func buildCalendarDays(for month: Date) -> [Date?] {
         let cal = AppConstants.taipeiCalendar
         let start = month.startOfMonth
@@ -384,7 +377,7 @@ private struct DayCell: View {
     /// last — a Moodle deadline is the thing worth seeing first when the
     /// `prefix(3)` cap bites.
     private func dedupedSources() -> [EventSource] {
-        let order: [EventSource] = [.moodle, .school, .exam, .system, .holiday, .semester]
+        let order: [EventSource] = [.moodle, .school, .exam, .holiday, .semester]
         var seen = Set<EventSource>()
         var result: [EventSource] = []
         for src in events.map(\.source) where !seen.contains(src) {
@@ -399,7 +392,6 @@ private struct DayCell: View {
         case .moodle: return .blue
         case .school: return .orange
         case .exam: return .red
-        case .system: return .gray
         // Listed on the Mac, not actionable: macOS delivers no class
         // reminders, so there is nothing for a "still remind me" toggle to
         // turn on. The row still says the day is a holiday.
