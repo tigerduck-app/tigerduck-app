@@ -147,8 +147,7 @@ nonisolated extension Defaults.Keys {
     static let bulletinsSyncedAt = Key<Date?>("bulletinsSyncedAt")
     /// The last `courses_reset_at` a full sync read, in server time, or `distantPast` once one has
     /// read none, for the signed-in account; see
-    /// `AppState.coursesReset(server:lastSeen:takesCourses:)`. Only a full sync sets it, and
-    /// `CourseResetStampSeedMigration` once on an update from 2.3.0 or earlier: any other
+    /// `AppState.coursesReset(server:lastSeen:takesCourses:)`. Only a full sync sets it: any other
     /// value can make the next sync apply an old reset, which drops the hand-added and hidden
     /// courses.
     static let lastSeenCoursesResetAt = Key<Date?>("lastSeenCoursesResetAt")

@@ -21,8 +21,6 @@ extension AppState {
         // Inline, so that it sees the account signed in at the update before a sign-out or a
         // sign-in can change it.
         SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)
-        // After the seed above, which records the categories of the account signed in at the update.
-        CourseResetStampSeedMigration.runIfNeeded()
         #if os(iOS)
         // Inline because it costs three UserDefaults reads, not for order: the preferences it
         // repairs are read as each register request is built, so a late write self-heals.

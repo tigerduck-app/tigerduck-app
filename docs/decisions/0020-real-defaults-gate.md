@@ -19,8 +19,6 @@ under test reads and writes directly, not through a seam:
   `assignmentMarksSyncedOnce`, `lastSeenCoursesResetAt` and `categoriesSyncedOnce`;
   `AppState.recordFullSync`, which reads the four category switches and writes the last two;
   `SyncedAccountSeedMigration`, which writes `categoriesSyncedOnce` or runs `forgetSyncProgress()`;
-  `CourseResetStampSeedMigration`, which reads `categoriesSyncedOnce` and writes
-  `lastSeenCoursesResetAt`;
   `AppState.markForReenableCheck`, which reads `categoriesSyncedOnce` and
   writes the pending categories; and `CloudSyncCoordinator`'s default holds on marks and course
   settings, which read the pending categories and the Assignments and Courses switches.
@@ -60,6 +58,6 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   `BulletinPushOptOutMigrationTests`, `PushRegistrationServiceTests`,
   `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `LibraryTabAddMigrationTests`,
   `UpdateCheckTests`, `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`,
-  `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `CourseResetStampSeedMigrationTests`,
-  `SSOServiceLoginTests`, `LibrarySignInTests`, `SchoolSignInStepsTests`, `BackendSessionTests`
-  and `SignOutNotificationTests`.
+  `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests`,
+  `LibrarySignInTests`, `SchoolSignInStepsTests`, `BackendSessionTests` and
+  `SignOutNotificationTests`.
