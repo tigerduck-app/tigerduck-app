@@ -91,8 +91,9 @@ final class MailMessageViewModel {
     private(set) var cachedSummary: MailSummary?
     private(set) var loadState: LoadState = .loading
     private(set) var sanitized: SanitizedHTML?
-    /// `sanitized.html`, with every `<a href>` rewritten to an index into `linkedDocument.links`
-    /// — what the web view actually loads. See `linkTarget(forIndex:)`.
+    /// `sanitized.html`, with every `<a href>` rewritten to an index into `linkedDocument.links`.
+    /// The web view loads it with its colours fixed for the page (`formattedHTML`). See
+    /// `linkTarget(forIndex:)`.
     private(set) var linkedDocument: LinkedHTML?
     /// `linkedDocument.html` on each page, with the text the sender made unreadable there fixed.
     private(set) var pages: MailFormattedPages?
