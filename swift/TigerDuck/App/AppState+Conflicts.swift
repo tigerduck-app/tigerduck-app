@@ -585,9 +585,8 @@ extension AppState {
                     }
                 }
             } else {
-                if conflict.categories.contains("courses") {
-                    DataCache.shared.saveDeletedCourseNos([])
-                }
+                // Hidden courses stay: the full sync takes the server's list in each term it lists,
+                // and a term it lists none in, which the check did not compare, keeps this device's.
                 if conflict.categories.contains("course_colors") {
                     DataCache.shared.saveCourseColorMap([:])
                     TigerDuckTheme.reload()
