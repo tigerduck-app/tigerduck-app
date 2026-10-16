@@ -45,15 +45,19 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Delegate")
 
-    /// Wiring that cannot wait for a scene, run once by `didFinishLaunching`: iOS can launch the
+    /// Wiring that cannot wait for a scene, which `didFinishLaunching` runs once: iOS can launch the
     /// app in the background for a silent push or a Watch message, and then no `.onAppear` runs.
-    /// `TigerDuckApp.init` sets it; SwiftUI builds the app before it creates this delegate.
+    /// `TigerDuckApp.init` sets it, as SwiftUI builds the app before it creates this delegate, and
+    /// what it wires waits for the launch's ``AfterFirstUnlock`` build.
     static var launchWork: ((PushAppDelegate) -> Void)?
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        launchLogger.notice(
+            "Launched in the background: \(application.applicationState == .background, privacy: .public), protected data available: \(application.isProtectedDataAvailable, privacy: .public)"
+        )
         // Install the notification delegate before any push can arrive, so a tap
         // that cold-launches the app goes through `routeTap` instead of the OS
         // default open behaviour.

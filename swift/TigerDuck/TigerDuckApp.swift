@@ -32,7 +32,7 @@ private struct UnitTestHostApp: App {
 
 struct TigerDuckApp: App {
     /// What the launch builds from what earlier launches stored.
-    private struct Built {
+    struct Built {
         let appState: AppState
         let watchSync: WatchSyncCoordinator
         let widgetSnapshotWriter: WidgetSnapshotWriter
@@ -54,7 +54,25 @@ struct TigerDuckApp: App {
         // Built here, not as property defaults, so the launch work below can hold them. A silent
         // push or a Watch message can launch the app in the background, where no scene appears
         // and `.onAppear` never runs.
-        let launch = AfterFirstUnlock<Built> {
+        let launch = Self.makeLaunch(hasUnlocked: FirstUnlock.hasHappened(), center: .default)
+        _launch = State(initialValue: launch)
+        // Sync triggers reach the backend, so they wait for onboarding as `AppState.init` does;
+        // `.onAppear` binds them again for a user who finishes onboarding in this session.
+        PushAppDelegate.launchWork = { delegate in
+            launch.whenBuilt { built in
+                if built.appState.hasCompletedOnboarding {
+                    built.appState.bindPushDelegate(delegate)
+                }
+                built.watchSync.activate()
+                delegate.beforeAnsweringSyncTrigger = { built.widgetSnapshotWriter.regenerateAndReloadNow() }
+            }
+        }
+    }
+
+    /// Everything the launch builds from stored data, which ``AfterFirstUnlock`` holds back while
+    /// `hasUnlocked` is false.
+    static func makeLaunch(hasUnlocked: Bool, center: NotificationCenter) -> AfterFirstUnlock<Built> {
+        AfterFirstUnlock(hasUnlocked: hasUnlocked, center: center) {
             let appState = AppState()
             let watchSync = WatchSyncCoordinator()
             #if DEBUG
@@ -72,18 +90,6 @@ struct TigerDuckApp: App {
             let widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
             watchSync.setPayloadSource { WatchSyncCoordinator.Payload(appState: appState) }
             return Built(appState: appState, watchSync: watchSync, widgetSnapshotWriter: widgetSnapshotWriter)
-        }
-        _launch = State(initialValue: launch)
-        // Sync triggers reach the backend, so they wait for onboarding as `AppState.init` does;
-        // `.onAppear` binds them again for a user who finishes onboarding in this session.
-        PushAppDelegate.launchWork = { delegate in
-            launch.whenBuilt { built in
-                if built.appState.hasCompletedOnboarding {
-                    built.appState.bindPushDelegate(delegate)
-                }
-                built.watchSync.activate()
-                delegate.beforeAnsweringSyncTrigger = { built.widgetSnapshotWriter.regenerateAndReloadNow() }
-            }
         }
     }
 
