@@ -752,7 +752,7 @@ final class MailListViewModel {
                     // The screen owns a folder it has moved onto since, and its page in memory
                     // and the one on disk must not diverge.
                     if self.targets.contains(folder) { continue }
-                    await self.chainCacheWrite {
+                    await self.chainCacheWrite { [page] in
                         if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page) }
                     }.value
                 } catch let error as MailClientError where MailChecker.endsPrefetch(error) {

@@ -318,7 +318,7 @@ struct BackendTokenRefreshTests {
 
     @Test("a refresh request with no reply gives up after 20 seconds")
     func refreshRequestTimesOut() async throws {
-        let backend = BackendFixture()
+        let backend = BackendFixture(refreshTimeout: AuthTokenManager.refreshTimeout)
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2"), for: backend.refreshURL)
 
         _ = await backend.manager.validAccessToken()
@@ -1357,9 +1357,15 @@ private struct BackendFixture {
     let recorder: Recorder
     let refreshURL: URL
     let loginURL: URL
+    let refreshTimeout: TimeInterval
 
-    /// `accessTokenExpiry` is when A0 runs out; the default has it expired.
-    init(signedIn: Bool = true, accessTokenExpiry: Date = Date(timeIntervalSince1970: 0)) {
+    /// `accessTokenExpiry` is when A0 runs out; the default has it expired. A request the stub
+    /// holds outlasts the app's 20 seconds on a busy CI run, so the tests give it far longer.
+    init(
+        signedIn: Bool = true,
+        accessTokenExpiry: Date = Date(timeIntervalSince1970: 0),
+        refreshTimeout: TimeInterval = 600
+    ) {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         refreshURL = baseURL.appendingPathComponent("auth/refresh")
         loginURL = baseURL.appendingPathComponent("auth/login")
@@ -1374,12 +1380,16 @@ private struct BackendFixture {
             refreshURL: refreshURL
         )
         self.recorder = recorder
-        manager = Self.manager(baseURL: baseURL, recorder: recorder)
+        self.refreshTimeout = refreshTimeout
+        manager = Self.manager(baseURL: baseURL, recorder: recorder, refreshTimeout: refreshTimeout)
     }
 
     /// A manager on the same Keychain, as after the app ends and starts again.
     func relaunched() -> AuthTokenManager {
-        Self.manager(baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder)
+        Self.manager(
+            baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder,
+            refreshTimeout: refreshTimeout
+        )
     }
 
     /// A manager on the same Keychain, which refuses every write of the refresh token while
@@ -1403,12 +1413,13 @@ private struct BackendFixture {
             }
         )
         return Self.manager(
-            baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder, tokens: tokens
+            baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder,
+            tokens: tokens, refreshTimeout: refreshTimeout
         )
     }
 
     private static func manager(
-        baseURL: URL, recorder: Recorder, tokens: AuthTokenManager.TokenStore? = nil
+        baseURL: URL, recorder: Recorder, tokens: AuthTokenManager.TokenStore? = nil, refreshTimeout: TimeInterval
     ) -> AuthTokenManager {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -1417,6 +1428,7 @@ private struct BackendFixture {
             deviceUUID: "test-device",
             session: URLSession(configuration: config),
             tokens: tokens ?? recorder.tokenStore,
+            refreshTimeout: refreshTimeout,
             beginBackgroundTask: { recorder.beginBackgroundTask() }
         )
     }
