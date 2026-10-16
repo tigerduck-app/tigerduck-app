@@ -13,11 +13,14 @@ enum MoodleDownloadState: Equatable {
 nonisolated enum MoodleFileOwner: Hashable, Sendable {
     case module(Int)
     case post(Int)
+    /// The account's submission of the assignment with this id.
+    case submission(Int)
 
     fileprivate var folderName: String {
         switch self {
         case .module(let id): "m\(id)"
         case .post(let id): "p\(id)"
+        case .submission(let id): "s\(id)"
         }
     }
 }

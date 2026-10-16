@@ -121,7 +121,7 @@ extension AppServiceBridge {
 
     private static func runAssignmentRound(authService: AuthService, recheckSubmissions: Bool) async -> [SDAssignment] {
         let startGeneration = authService.loginGeneration
-        guard authService.storedStudentId != nil,
+        guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
             return DataCache.shared.loadAssignments()
         }
@@ -226,6 +226,9 @@ extension AppServiceBridge {
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignmentsToPersist)
+                DataCache.shared.saveMoodleData(
+                    records, fetchedAt: askedAt, name: MoodleAssignmentRecord.cacheName, account: account
+                )
                 DataCache.shared.replaceClosedUnsubmittedAssignments(closedUnsubmitted(
                     records: records, statuses: statuses, askedAt: askedAt, kept: closed
                 ))
