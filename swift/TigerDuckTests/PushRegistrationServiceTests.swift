@@ -17,8 +17,7 @@ struct PushRegistrationServiceTests {
         baseURL: URL,
         debounces: OSAllocatedUnfairLock<[Duration]> = .init(initialState: []),
         retries: OSAllocatedUnfairLock<[Duration]> = .init(initialState: []),
-        authHeader: @escaping @Sendable () async -> String? = { "Bearer test" },
-        liveActivitiesEnabled: @escaping @Sendable () -> Bool? = { true }
+        authHeader: @escaping @Sendable () async -> String? = { "Bearer test" }
     ) -> PushRegistrationService {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -34,8 +33,7 @@ struct PushRegistrationServiceTests {
             // has nothing to merge: it ends at once and only records the window it asked for.
             debounceSleep: { window in debounces.withLock { $0.append(window) } },
             // The backoff after a failed attempt likewise ends at once.
-            retrySleep: { delay in retries.withLock { $0.append(delay) } },
-            liveActivitiesEnabled: liveActivitiesEnabled
+            retrySleep: { delay in retries.withLock { $0.append(delay) } }
         )
     }
 
@@ -278,29 +276,6 @@ struct PushRegistrationServiceTests {
             #expect(registration["server_push_enabled"] as? Bool == false)
 
             #expect(await service.snapshot().lastRegisteredAt != nil)
-        }
-    }
-
-    @Test("each registration carries the system's Live Activity permission, and a change sends it again")
-    func registrationCarriesLiveActivityPermission() async throws {
-        try await Self.withPinnedDeliveryPreferences {
-            let baseURL = SettingsAPIStub.uniqueBaseURL()
-            let permission = OSAllocatedUnfairLock<Bool?>(initialState: true)
-            let service = Self.makeService(baseURL: baseURL, liveActivitiesEnabled: { permission.withLock { $0 } })
-            Self.expectAttempt(baseURL, registrations: 1)
-            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
-            await service.awaitPendingRegistration()
-
-            // Turned off in Settings: the server must stop counting on the countdown start.
-            permission.withLock { $0 = false }
-            Self.expectAttempt(baseURL, registrations: 1)
-            await service.liveActivitiesPermissionChanged()
-            await service.awaitPendingRegistration()
-
-            let sent = try Self.sentRegistrations(baseURL)
-            try #require(sent.count == 2)
-            #expect(sent[0]["live_activities_enabled"] as? Bool == true)
-            #expect(sent[1]["live_activities_enabled"] as? Bool == false)
         }
     }
 

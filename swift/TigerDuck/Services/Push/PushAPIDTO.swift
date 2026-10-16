@@ -37,10 +37,6 @@ enum PushAPI {
         /// carries the equivalent value; the signed-in row otherwise only
         /// changes when the TigerSync toggle's own PATCH succeeds.
         let server_push_enabled: Bool?
-        /// The system's Live Activity permission for the app. The server leaves out a reminder a
-        /// countdown start just covered only for a device reporting true: a start sent to one with
-        /// Live Activities off shows nothing. Left out from the Mac, which has none.
-        var live_activities_enabled: Bool? = nil
     }
 
     /// `nonisolated` because `DeviceRegisterRequest`'s encoding reaches it.

@@ -1,8 +1,5 @@
 import Defaults
 import Foundation
-#if os(iOS)
-import ActivityKit
-#endif
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -160,8 +157,6 @@ actor PushRegistrationService {
     /// need not sleep through them. The Live Activity retry backoff keeps its own sleep.
     private let debounceSleep: @Sendable (Duration) async -> Void
     private let retrySleep: @Sendable (Duration) async -> Void
-    /// Reads the system's Live Activity permission each registration sends; injectable for tests.
-    private let liveActivitiesEnabled: @Sendable () -> Bool?
 
     init(
         identity: PushIdentity,
@@ -174,8 +169,7 @@ actor PushRegistrationService {
         // Callers pass it from their own main-actor context.
         deviceClass: String,
         debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
-        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
-        liveActivitiesEnabled: @escaping @Sendable () -> Bool? = PushRegistrationService.systemLiveActivitiesEnabled
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.identity = identity
         self.apiClient = apiClient
@@ -185,15 +179,6 @@ actor PushRegistrationService {
         self.deviceClass = deviceClass
         self.debounceSleep = debounceSleep
         self.retrySleep = retrySleep
-        self.liveActivitiesEnabled = liveActivitiesEnabled
-    }
-
-    nonisolated static func systemLiveActivitiesEnabled() -> Bool? {
-        #if os(iOS)
-        ActivityAuthorizationInfo().areActivitiesEnabled
-        #else
-        nil
-        #endif
     }
 
     // MARK: - Locale
@@ -212,13 +197,6 @@ actor PushRegistrationService {
         guard hex != deviceTokenHex else { return }
         deviceTokenHex = hex
         logger.info("device APNs token updated (len=\(hex.count, privacy: .public))")
-        await registerIfReady()
-    }
-
-    /// Registers again with the system's Live Activity permission after the user changed it in
-    /// Settings, so the server stops leaving out reminders for a device that can no longer show
-    /// the countdown.
-    func liveActivitiesPermissionChanged() async {
         await registerIfReady()
     }
 
@@ -706,8 +684,7 @@ actor PushRegistrationService {
                     push_token: token,
                     cloud_sync_enabled: cloudSync,
                     bulletin_push_enabled: Defaults[.bulletinPushEnabled],
-                    server_push_enabled: !Defaults[.serverPushUserOptOut],
-                    live_activities_enabled: liveActivitiesEnabled()
+                    server_push_enabled: !Defaults[.serverPushUserOptOut]
                 )
                 let response = try await apiClient.registerDevice(request)
                 logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .private)")
