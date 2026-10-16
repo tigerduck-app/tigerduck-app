@@ -11,8 +11,8 @@ import Testing
 /// different mail server. The passwords are invented fixtures and appear nowhere else.
 @MainActor
 struct MailCredentialPrefillTests {
-    static let studentID = "B10000000"
-    static let ntustPassword = "prefill-fixture-ntust"
+    nonisolated static let studentID = "B10000000"
+    nonisolated static let ntustPassword = "prefill-fixture-ntust"
     static let typedPassword = "prefill-fixture-typed"
     static let overrideSuffix = "@example.com"
 

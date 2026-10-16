@@ -179,6 +179,76 @@ struct MailMessageViewModelTests {
         #expect(next.htmlTheme == .app)
     }
 
+    /// Mail that sets its own colours was written for white paper, so it opens there. The switch
+    /// still goes back, and the page it goes to gets the fixes that page needs.
+    @Test func aMailThatSetsItsOwnColoursOpensOnWhitePaper() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: ##"<p><font color="#333333">Hi</font></p>"##))
+        await h.model.load()
+        #expect(h.model.viewsInLightMode)
+        #expect(h.model.htmlTheme == .light)
+        #expect(h.model.formattedHTML == ##"<p><font color="#333333">Hi</font></p>"##)
+        h.model.viewsInLightMode = false
+        #expect(h.model.htmlTheme == .app)
+        #expect(h.model.formattedHTML == ##"<p><font color="#959595">Hi</font></p>"##)
+    }
+
+    @Test func plainTextAndUnstyledMailStayOnTheAppsPage() async {
+        for message in [FakeMailClient.message(uid: 5, text: "純文字", html: nil), FakeMailClient.message(uid: 5, html: "<p>hi</p>")] {
+            let h = Self.harness(message)
+            await h.model.load()
+            #expect(!h.model.viewsInLightMode)
+            #expect(h.model.htmlTheme == .app)
+        }
+    }
+
+    /// The page is picked when the body first arrives; a refresh must not undo the reader's choice.
+    @Test func theReadersChoiceOutlastsARefresh() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: ##"<p style="color: #333333">Hi</p>"##))
+        await h.model.load()
+        #expect(h.model.viewsInLightMode)
+        h.model.viewsInLightMode = false
+        await h.model.load()
+        #expect(!h.model.viewsInLightMode)
+    }
+
+    @Test func loadingImagesRedrawsThePageTheReaderIsOn() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: ##"<p style="color: #333333">Hi <img src="https://x.example/a.png"></p>"##))
+        await h.model.load()
+        h.model.viewsInLightMode = false
+        await h.model.loadImages()
+        #expect(!h.model.viewsInLightMode)
+        #expect(h.model.formattedHTML == ##"<p style="color: #959595">Hi <img src="https://x.example/a.png" /></p>"##)
+    }
+
+    /// Leaving the screen cancels its load, and that has to reach the detached work too, or a
+    /// large mail keeps working for a screen that has gone.
+    @Test func cancellingTheCallerCancelsTheDetachedWork() async {
+        let caller = Task {
+            await MailMessageViewModel.detachedCancellably { () -> Bool in
+                for _ in 0..<5_000 {
+                    if Task.isCancelled { return true }
+                    usleep(1_000)
+                }
+                return false
+            }
+        }
+        caller.cancel()
+        #expect(await caller.value)
+    }
+
+    /// A screen that has gone cancels its load, and nothing that load worked out is applied, the
+    /// body the cache already had included.
+    @Test func aCancelledLoadAppliesNothing() async throws {
+        let message = FakeMailClient.message(uid: 5, html: ##"<p style="color: #333333">Hi</p>"##)
+        let h = Self.harness(message)
+        h.cache.saveDetail(try #require(message.detail), folder: "INBOX", uidValidity: 1)
+        let load = Task { await h.model.load() }
+        load.cancel()
+        await load.value
+        #expect(h.model.detail == nil)
+        #expect(h.model.pages == nil)
+    }
+
     @Test func unreadableMailFallsBackToSource() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: nil))
         await h.model.load()
@@ -715,7 +785,7 @@ struct MailMessageViewModelTests {
     }
 
     @Test func aLightThemeSaysSo() {
-        let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x1A1A1A, isDark: false)
+        let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x1A1A1A, link: 0x0000EE, isDark: false)
         let document = MailWebViewFactory.document(for: "", allowRemoteImages: false, theme: light)
         #expect(document.contains("color-scheme:light"))
         #expect(document.contains("background:#ffffff;color:#1a1a1a"))
@@ -782,7 +852,7 @@ struct MailMessageViewModelTests {
         #expect(coordinator.loadedKey != cachedLoad)
     }
 
-    /// Only the page is themed: a sender's own colours reach the document untouched.
+    /// The document adds only the page; a sender's colours reach it as the view model gives them.
     @Test func aSendersOwnColoursAreLeftAlone() {
         let body = #"<p style="background:#ffeeaa;color:#003300">x</p>"#
         #expect(MailWebViewFactory.document(for: body, allowRemoteImages: false).contains(body))

@@ -20,8 +20,13 @@ tracking images, remote content and links whose text hides their target.
   the same sources), so remote loads stay blocked if the rule list fails to compile.
 - `MailHTMLSanitizer.rewriteLinks` replaces each link with `https://link.invalid/<index>`, and
   the view resolves only that exact form, failing closed on anything else.
-- Only the page background and text color follow the app's theme; the sender's own colors are
-  not rewritten.
+- HTML mail that sets a text or background color of its own opens on white paper, other mail
+  on the app's page, and the reader can switch. The sender's colors are kept, except text under
+  7:1 against its background on the page shown, or on a mid-tone where no color reaches that,
+  short of the better of white and black. Such a color moves to the nearest OKLCH lightness that
+  reaches the target, and an element with a background but no color of its own whose inherited
+  color does not read is given one (`MailReadableHTML`). Only `color` values change, and the
+  `color` declarations it gives are added to an element's `style`, or make one.
 
 ## Consequences
 

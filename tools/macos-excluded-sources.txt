@@ -321,6 +321,7 @@ MailGuideWebView.swift
 MailHTMLView.swift
 MailLoginCard.swift
 MailLoginSheet.swift
+MailReadableHTML.swift
 MailRecipientRow.swift
 MailRecipientTokenField.swift
 MailRowView.swift
