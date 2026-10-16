@@ -13,9 +13,9 @@ extension AppState {
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
     ///
-    /// One runs at a time. `followUpIfBusy` is for a sync trigger push: one that arrives during
-    /// a pull waits for one more, since that pull may predate the change it announces, and gets
-    /// that one's outcome.
+    /// One runs at a time. `followUpIfBusy` is for a sync trigger push and for the app's own sync
+    /// at launch and in the revision poll: one that arrives during a pull waits for one more, since
+    /// that pull may predate the change or end at a sync trigger's time limit, and gets its outcome.
     @discardableResult
     func syncOverridesFromBackend(followUpIfBusy: Bool = false) async -> FullSyncOutcome {
         guard Defaults[.cloudSyncEnabled] else { return .skipped }

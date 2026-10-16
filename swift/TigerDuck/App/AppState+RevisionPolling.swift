@@ -52,14 +52,15 @@ extension AppState {
 
     /// Reads the change feed after ``_lastKnownRevision`` and does what ``ChangeFeedPlan`` makes of
     /// it. Until the launch or sign-in sync sets a watermark the feed cannot show what this device
-    /// lacks, so the full sync runs instead. A full sync in flight covers the poll, and a read that
-    /// a sign-out or a full sync overtook is dropped. Settings changes left unapplied, as when the
-    /// document read fails, make the poll `.failed`, so the poller backs off before the next read.
+    /// lacks, so the full sync runs instead. With a full sync in flight the poll waits for it and
+    /// one more, and a read that a sign-out or a full sync overtook is dropped. Settings changes
+    /// left unapplied, as when the document read fails, make the poll `.failed`, so the poller
+    /// backs off before the next read.
     func syncChangesSinceLastRevision() async -> RevisionPollOutcome {
         let since = _lastKnownRevision
         let generation = authService.loginGeneration
         guard since > 0, !fullSyncGate.isRunning else {
-            await syncOverridesFromBackend()
+            await syncOverridesFromBackend(followUpIfBusy: true)
             return .changed
         }
         let page: PushAPI.SyncChangesPage?
@@ -169,7 +170,7 @@ extension AppState {
             _ = await AppServiceBridge.fetchAssignments(
                 authService: authService, recheckSubmissions: recheckSubmissions
             )
-            await syncOverridesFromBackend()
+            await syncOverridesFromBackend(followUpIfBusy: true)
 
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
             async let coursesTask: Bool = syncCoursesIfAuthenticated()
