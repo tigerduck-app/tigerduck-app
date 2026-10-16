@@ -65,6 +65,7 @@ struct WidgetReloadCoordinatorTests {
         #expect(fake.callCount == 1)
 
         // The window it cut short ends without a reload of its own, and nothing waits any more.
+        try await timer.waitUntilArmed()
         await timer.fire()
         await window.value
         coordinator.reloadNowIfPending()
