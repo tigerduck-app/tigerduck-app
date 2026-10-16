@@ -293,6 +293,28 @@ struct MailListViewModelTests {
         }
     }
 
+    /// Rows still painted from the cache after a failed load are a previous visit's, so a poll
+    /// that finds nothing new leaves the time the cache gave them.
+    @Test func aPollAfterAFailedLoadKeepsTheCachedTime() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        let cachedAt = try #require(h.model.syncedAt)
+
+        await h.fake.update { $0.pageError = .serverBusy }
+        let visit = MailListViewModel(
+            session: MailPageSession(idleClose: .milliseconds(10), open: { h.fake }, signOutEvents: NotificationCenter()),
+            cache: h.cache, noteSeenByPage: { _ in }, signOutEvents: NotificationCenter(),
+            warmDelay: { try? await Task.sleep(for: .seconds(86_400)) }
+        )
+        await visit.load()
+        #expect(visit.serverStatus == .failed)
+        await h.fake.update { $0.pageError = nil }
+        await visit.pollOnce()
+
+        let syncedAt = try #require(visit.syncedAt)
+        #expect(abs(syncedAt.timeIntervalSince(cachedAt)) < 0.001)
+    }
+
     /// All mail shows Sent too, so mail sent from webmail reloads it like new inbox mail.
     @Test func thePollReloadsAllMailForMailSentElsewhere() async {
         let h = Self.harness(inboxCount: 3)

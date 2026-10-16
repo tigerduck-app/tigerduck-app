@@ -24,8 +24,8 @@ final class MailListViewModel {
     private(set) var loadState: LoadState = .idle
     private(set) var serverStatus: ServerStatus = .unknown
     /// When the folders on screen were last known current, the least recent of them: a newest page
-    /// fetched, or for the inbox a poll that found nothing new. Nil while one has none. A page from
-    /// the cache brings its own.
+    /// fetched, or a poll that found nothing new in a folder showing fetched rows. Nil while one
+    /// has none. A page from the cache brings its own.
     private(set) var syncedAt: Date?
     private(set) var isRefreshing = false
     private(set) var isPaginating = false
@@ -615,11 +615,11 @@ final class MailListViewModel {
     /// Runs when the inbox is on screen, which includes All mail (it merges the inbox in and is
     /// the screen the list opens on). Reads STATUS for every folder on screen and reloads when
     /// one holds mail the list has not shown (`hasUnshownMail`). A folder found current gets the
-    /// STATUS time as its `fetchedAt`, so the status dot's time moves up without a reload.
+    /// STATUS time as its `fetchedAt`, so the status dot's time moves up without a reload; one
+    /// still showing the cache's rows, which no fresh page has replaced, keeps the cache's time.
     ///
     /// Once the list shows the inbox up to the STATUS it read, the notification marker moves up
-    /// to it (`noteSeenByPage`). A reload that failed leaves the marker, so those mails are still
-    /// announced.
+    /// to it (`noteSeenByPage`); a failed reload leaves it, so those mails are still announced.
     func pollOnce() async {
         guard showsInbox, searchResults == nil else { return }
         let selection = self.selection
@@ -648,7 +648,8 @@ final class MailListViewModel {
         }
         guard isCurrent(selection, epoch), !Self.hasUnshownMail(status, page: pages[inbox]) else { return }
         var movedUp: [String] = []
-        for (folder, folderStatus) in statuses where !Self.hasUnshownMail(folderStatus, page: pages[folder]) {
+        for (folder, folderStatus) in statuses
+        where !cachePaintedFolders.contains(folder) && !Self.hasUnshownMail(folderStatus, page: pages[folder]) {
             guard var page = pages[folder], page.fetchedAt.map({ $0 < checkedAt }) ?? true else { continue }
             page.fetchedAt = checkedAt
             pages[folder] = page
