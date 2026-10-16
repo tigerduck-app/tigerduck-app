@@ -66,7 +66,7 @@ final class CloudSyncCoordinator {
     /// Colour and name edits on their way into the outbox, which `pendingCourseOverrides` counts.
     @ObservationIgnored private var courseOverridesEnqueuing: [UUID: SyncOp] = [:]
     /// Moved by each colour or name edit queued here. `lastColorEdit` and `lastNameEdit` keep its
-    /// value at each course's last edit of either, by Moodle id.
+    /// value at each course's last colour edit and last name edit, by Moodle id.
     @ObservationIgnored private(set) var courseOverrideEdits = 0
     @ObservationIgnored private var lastColorEdit: [String: Int] = [:]
     @ObservationIgnored private var lastNameEdit: [String: Int] = [:]

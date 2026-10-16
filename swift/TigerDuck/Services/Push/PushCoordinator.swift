@@ -444,16 +444,16 @@ final class PushCoordinator {
         }
     }
 
-    /// Builds and sends the list at once, in the background too, and returns once its POST has
-    /// ended: a sync trigger's handler calls it before it answers the push, after which iOS may
-    /// suspend the app.
+    /// Builds and sends the schedule at once, in the background too, and returns once its POST
+    /// has ended: a sync trigger's handler calls it before it answers the push, after which iOS
+    /// may suspend the app.
     func syncNow(inputsBuilder: @MainActor () -> ScheduleSyncService.Inputs) async {
         // A sign-out may have stopped the stack while the session was read; its unregister waits
         // only for a POST already under way.
         guard await apiClient.hasAuthSession(), isStarted else { return }
         #if os(iOS)
-        // The caches the list is built from read as empty behind the lock screen, and an empty
-        // list cancels every start the server queued for this device.
+        // The caches the schedule is built from read as empty behind the lock screen, and an
+        // empty schedule cancels every start the server queued for this device.
         guard UIApplication.shared.isProtectedDataAvailable else { return }
         #endif
         scheduleSync.sync(inputs: inputsBuilder())
