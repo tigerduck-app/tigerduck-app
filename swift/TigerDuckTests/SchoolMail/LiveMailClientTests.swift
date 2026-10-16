@@ -49,7 +49,7 @@ struct LiveMailClientTests {
     }
 
     @Test func mapsSMTPSendErrorsToProtocolErrorCarryingTheDescription() {
-        let sendError = SMTPSendError(phase: .data, acceptance: .ambiguous, reason: .connectionLost)
+        let sendError = SMTPSendError(phase: .data, acceptance: .notAccepted, reason: .connectionLost)
         #expect(LiveMailClient.map(sendError) == .protocolError(String(describing: sendError)))
     }
 
