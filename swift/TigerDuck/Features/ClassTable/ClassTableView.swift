@@ -37,7 +37,9 @@ struct ClassTableView: View {
                         appState.syncCourseIgnore(semester: $1, courseNo: $0.courseNo, moodleIdNumber: $0.moodleIdNumber, ignore: $2)
                     }
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
-                    viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
+                    viewModel.onCourseAdded = {
+                        appState.uploadCourses($0, semester: $1, forceKeys: [CourseTombstone.serverKey(semester: $1, courseNo: $2)])
+                    }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
                     viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0, thenLocally: $1) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
@@ -56,7 +58,9 @@ struct ClassTableView: View {
                         appState.syncCourseIgnore(semester: $1, courseNo: $0.courseNo, moodleIdNumber: $0.moodleIdNumber, ignore: $2)
                     }
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
-                    viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
+                    viewModel.onCourseAdded = {
+                        appState.uploadCourses($0, semester: $1, forceKeys: [CourseTombstone.serverKey(semester: $1, courseNo: $2)])
+                    }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
                     viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0, thenLocally: $1) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }

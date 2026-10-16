@@ -15,9 +15,11 @@ nonisolated enum SyncOp: Codable, Sendable {
     /// `courseOverride`. `moodleCourseId` is the numeric Moodle id; with `ignore` nil the op
     /// sends that id alone, to a server that ignores the course without it.
     case courseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, stamp: Date)
+    /// Deletes a course hidden here from the server, which keeps listing it until this lands.
+    case courseDelete(semester: String, courseNo: String, stamp: Date)
 
     private enum CodingKeys: String, CodingKey {
-        case courseOverride, assignmentOverride, courseIgnore
+        case courseOverride, assignmentOverride, courseIgnore, courseDelete
     }
     private enum CourseOverrideKeys: String, CodingKey {
         case semester, moodleId, courseKey, customName, colorHex, locale, stamp
@@ -27,6 +29,9 @@ nonisolated enum SyncOp: Codable, Sendable {
     }
     private enum CourseIgnoreKeys: String, CodingKey {
         case semester, courseNo, moodleId, moodleCourseId, ignore, stamp
+    }
+    private enum CourseDeleteKeys: String, CodingKey {
+        case semester, courseNo, stamp
     }
 
     /// Manual decode only: `moodleId` was persisted as `courseKey` before the
@@ -61,6 +66,12 @@ nonisolated enum SyncOp: Codable, Sendable {
                 moodleCourseId: try c.decodeIfPresent(Int.self, forKey: .moodleCourseId),
                 ignore: try c.decodeIfPresent(Bool.self, forKey: .ignore),
                 stamp: try c.decode(Date.self, forKey: .stamp))
+        } else if container.contains(.courseDelete) {
+            let c = try container.nestedContainer(keyedBy: CourseDeleteKeys.self, forKey: .courseDelete)
+            self = .courseDelete(
+                semester: try c.decode(String.self, forKey: .semester),
+                courseNo: try c.decode(String.self, forKey: .courseNo),
+                stamp: try c.decode(Date.self, forKey: .stamp))
         } else {
             throw DecodingError.dataCorrupted(DecodingError.Context(
                 codingPath: decoder.codingPath,
@@ -84,6 +95,8 @@ nonisolated enum SyncOp: Codable, Sendable {
             return "ao|\(moodleCourseId)|\(moodleAssignmentId)"
         case .courseIgnore(let semester, _, let moodleId, _, _, _):
             return "ci|\(semester)|\(moodleId)"
+        case .courseDelete(let semester, let courseNo, _):
+            return "cd|\(semester)|\(courseNo)"
         }
     }
 }
@@ -96,6 +109,7 @@ nonisolated enum ResolvedSyncOp: Sendable {
     case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?)
     case assignmentOverride(assignmentId: Int, localStatus: String)
     case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?)
+    case courseDelete(courseKey: String)
 }
 
 // MARK: - OutboxEntry
@@ -324,8 +338,9 @@ actor SyncOutbox {
     }
 
     /// Reports an entry the server refused `maxAttempts` times. A mark or a course's ignore
-    /// setting is parked; a course override, or a numeric course id sent alone, is dropped: the
-    /// next full sync applies the server's colour or name over it, and sends the id again.
+    /// setting is parked; a course override, a course delete, or a numeric course id sent alone,
+    /// is dropped: the next full sync applies the server's colour, name or course over it, and
+    /// sends the id again.
     private func giveUp(on entry: OutboxEntry, after error: Error) {
         let kind: String
         let parks: Bool
@@ -333,6 +348,7 @@ actor SyncOutbox {
         case .courseOverride: (kind, parks) = ("courseOverride", false)
         case .assignmentOverride: (kind, parks) = ("assignmentOverride", true)
         case .courseIgnore(_, _, _, _, let ignore, _): (kind, parks) = ("courseIgnore", ignore != nil)
+        case .courseDelete: (kind, parks) = ("courseDelete", false)
         }
         logger.warning("Outbox: gave up on \(kind, privacy: .public) after \(Self.maxAttempts) attempts")
         AppLogger.captureError(error, context: ["phase": "cloudSync.outbox.giveUp", "op": kind])
@@ -360,6 +376,10 @@ actor SyncOutbox {
 
         case .courseIgnore(_, _, let moodleId, let moodleCourseId, let ignore, _):
             return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore)
+
+        case .courseDelete(let semester, let courseNo, _):
+            // The Moodle idnumber, which PATCH .../override takes, deletes nothing.
+            return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
         }
     }
 
