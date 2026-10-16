@@ -1,10 +1,6 @@
 import SwiftUI
-import EventKit
 import UIKit
 
-// `EKEventStore.requestFullAccessToEvents` calls back off the main actor, and
-// mutating state from there races SwiftUI's reads of @Observable storage.
-// @MainActor on the whole type confines mutations without scattered `MainActor.run`.
 @MainActor
 @Observable
 final class CalendarViewModel {
@@ -16,8 +12,6 @@ final class CalendarViewModel {
 
     private(set) var calendarDays: [Date?] = CalendarViewModel.buildCalendarDays(for: .now)
 
-    private let eventStore = EKEventStore()
-    var calendarAccessGranted = false
     private var hasLoaded = false
     // `nonisolated(unsafe)` lets `deinit`, nonisolated under Swift 6, read this to
     // remove the observer. `@ObservationIgnored` is required: without it `@Observable`
@@ -66,15 +60,10 @@ final class CalendarViewModel {
             queue: .main
         ) { [weak self] _ in
             // Delivered on the main queue, but the closure crosses into this
-            // @MainActor class, so hop explicitly to make touching `events` and
-            // calling `setEvents` sound under Swift 6 strict concurrency.
+            // @MainActor class, so hop explicitly to make calling `setEvents` sound
+            // under Swift 6 strict concurrency.
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                let fresh = DataCache.shared.loadCalendarEvents()
-                var updated = fresh
-                updated.removeAll { $0.source == .system }
-                updated.append(contentsOf: self.events.filter { $0.source == .system })
-                self.setEvents(updated)
+                self?.setEvents(DataCache.shared.loadCalendarEvents())
             }
         }
     }
@@ -121,14 +110,9 @@ final class CalendarViewModel {
                 manager.loadingState = .loaded
                 return
             }
-            // Preserve system events (from EventKit); only replace network-sourced events
-            let systemEvents = events.filter { $0.source == .system }
-            var updated = systemEvents
-            updated.append(contentsOf: moodle)
-            updated.append(contentsOf: school ?? events.filter { $0.source == .school })
+            let updated = moodle + (school ?? events.filter { $0.source == .school })
             setEvents(updated)
-            // Save only non-system events to cache
-            DataCache.shared.saveCalendarEvents(updated.filter { $0.source != .system })
+            DataCache.shared.saveCalendarEvents(updated)
             manager.loadingState = .loaded
         }
     }
@@ -140,50 +124,6 @@ final class CalendarViewModel {
 
     private func fetchSchoolEvents() async -> [SDCalendarEvent]? {
         await CalendarService.fetchAndParseICS()
-    }
-
-    // Not called: the app declares no calendar usage description, so iOS would deny the request.
-    // Kept for calendar sync, https://github.com/tigerduck-app/tigerduck-app/issues/268.
-    func requestCalendarAccess() {
-        Task {
-            do {
-                let granted = try await eventStore.requestFullAccessToEvents()
-                calendarAccessGranted = granted
-                if granted {
-                    loadSystemCalendarEvents()
-                }
-            } catch {
-                AppLogger.captureError(error, context: ["feature": "calendar.requestAccess"])
-                calendarAccessGranted = false
-            }
-        }
-    }
-
-    @MainActor
-    private func loadSystemCalendarEvents() {
-        let cal = AppConstants.taipeiCalendar
-        guard let startDate = cal.date(byAdding: .month, value: -1, to: displayedMonth.startOfMonth),
-              let endDate = cal.date(byAdding: .month, value: 2, to: displayedMonth.startOfMonth) else { return }
-
-        let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: nil)
-        let ekEvents = eventStore.events(matching: predicate)
-
-        let systemEvents = ekEvents.map { ekEvent in
-            SDCalendarEvent(
-                eventId: ekEvent.eventIdentifier ?? UUID().uuidString,
-                title: ekEvent.title ?? "",
-                date: ekEvent.startDate,
-                source: .system
-            )
-        }
-
-        struct DedupKey: Hashable { let title: String; let day: Date }
-        let existingKeys = Set(events.filter { $0.source != .system }.map { DedupKey(title: $0.title, day: $0.date.startOfDay) })
-        let newEvents = systemEvents.filter { !existingKeys.contains(DedupKey(title: $0.title, day: $0.date.startOfDay)) }
-        var updated = events
-        updated.removeAll { $0.source == .system }
-        updated.append(contentsOf: newEvents)
-        setEvents(updated)
     }
 
     private static func buildCalendarDays(for month: Date) -> [Date?] {
