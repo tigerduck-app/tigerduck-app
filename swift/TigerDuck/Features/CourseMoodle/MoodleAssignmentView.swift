@@ -4,25 +4,28 @@ import SwiftUI
 
 /// One assignment, laid out as an announcement is: its course and title, its times, then its
 /// description, attachments, what the account handed in and the comments on it. The app submits
-/// nothing, so the button at the foot opens the assignment on Moodle. Opening the page fetches
-/// the submission, and until that answers it shows what it showed the last time.
+/// nothing, so the button at the foot opens the assignment on Moodle. The page fetches the
+/// submission when it opens and on each return to the app, and shows the last copy meanwhile.
 struct MoodleAssignmentView: View {
     let store: MoodleCourseStore
-    let assignment: SDAssignment
+    let entry: MoodleCourseAssignments.Entry
+    let courseName: String
     let policy: VisualStylePolicy
     let accent: Color
 
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
     /// Coming back from a preview or a pushed screen is not another opening.
     @State private var didOpen = false
     @State private var files = MoodleFileOpener()
 
+    private var record: MoodleAssignmentRecord { entry.record }
+
     var body: some View {
-        let record = store.assignments.record(of: assignment)
-        let feed = store.assignments.submission(of: assignment)
-        let description = record.map { MoodleHTMLText.markdown(fromHTML: $0.intro) } ?? ""
+        let feed = store.assignments.submission(of: record)
+        let description = MoodleHTMLText.markdown(fromHTML: record.intro)
         ScrollView {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                 header
@@ -31,12 +34,14 @@ struct MoodleAssignmentView: View {
                 if !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     section(String(localized: "assignment_detail_description")) { markdown(description) }
                 }
-                if let record, !record.introAttachments.isEmpty {
+                if !record.introAttachments.isEmpty {
                     section(String(localized: "school_mail_attachments")) {
                         fileCard(record.introAttachments.map { MoodleFileRef(file: $0, owner: .module(record.cmId)) })
                     }
                 }
-                submission(feed)
+                if !record.noSubmissions {
+                    submission(feed)
+                }
                 if let comments = feed.value?.comments, !comments.isEmpty {
                     section(String(localized: "assignment_detail_comments")) { commentList(comments) }
                 }
@@ -47,35 +52,41 @@ struct MoodleAssignmentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color.backgroundPrimary)
-        .safeAreaInset(edge: .bottom) { submitButton }
+        .safeAreaInset(edge: .bottom) {
+            if !record.noSubmissions { submitButton }
+        }
         .moodleArticleChrome()
         .task {
             guard !didOpen else { return }
             didOpen = true
-            await store.assignments.refreshSubmission(of: assignment)
+            await store.assignments.refreshSubmission(of: record)
+        }
+        // A submission made on Moodle shows once the app is back.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await store.assignments.refreshSubmission(of: record) }
         }
         .moodleFilePresentation(files)
     }
 
     /// The submission's time, and before the first fetch answers, the one the assignment round
     /// found.
-    static func submittedAt(of assignment: SDAssignment, submission: MoodleAssignmentSubmission?) -> Date? {
-        guard let submission else { return assignment.isCompleted ? assignment.submittedAt : nil }
+    static func submittedAt(of listed: SDAssignment?, submission: MoodleAssignmentSubmission?) -> Date? {
+        guard let submission else { return listed?.isCompleted == true ? listed?.submittedAt : nil }
         return submission.submittedAt
     }
 
-    /// Only for a submission with nothing handed in that is not submitted; one submitted with
-    /// nothing in it shows no line.
+    /// For anything not handed in, a draft's files and text included.
     static func showsNotSubmitted(_ submission: MoodleAssignmentSubmission) -> Bool {
-        !submission.isSubmitted && submission.files.isEmpty && submission.onlineText == nil
+        !submission.isSubmitted
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-            Text(assignment.displayCourseName)
+            Text(courseName)
                 .font(.subheadline)
                 .foregroundStyle(Color.textSecondary)
-            Text(assignment.displayTitle)
+            Text(record.name.decodingHTMLEntities())
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -85,9 +96,11 @@ struct MoodleAssignmentView: View {
 
     private func times(_ submission: MoodleAssignmentSubmission?) -> some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            timeRow(String(localized: "assignment_detail_due"), assignment.dueDate.absoluteTimeString)
-            if let submittedAt = Self.submittedAt(of: assignment, submission: submission) {
-                timeRow(String(localized: "assignment_detail_submitted_at"), submittedAt.absoluteTimeString)
+            if let due = record.dueDate {
+                timeRow(String(localized: "assignment_detail_due"), due.absoluteMinuteString)
+            }
+            if let submittedAt = Self.submittedAt(of: entry.listed, submission: submission) {
+                timeRow(String(localized: "assignment_detail_submitted_at"), submittedAt.absoluteMinuteString)
             }
             if let group = submission?.groupName {
                 timeRow(String(localized: "assignment_detail_group"), group)
@@ -116,9 +129,7 @@ struct MoodleAssignmentView: View {
     @ViewBuilder
     private func submission(_ feed: MoodleFeed<MoodleAssignmentSubmission>) -> some View {
         if let submission = feed.value {
-            let refs = Int(assignment.assignmentId).map { id in
-                submission.files.map { MoodleFileRef(file: $0, owner: .submission(id)) }
-            } ?? []
+            let refs = submission.files.map { MoodleFileRef(file: $0, owner: .submission(record.assignId)) }
             if !refs.isEmpty || submission.onlineText != nil || Self.showsNotSubmitted(submission) {
                 section(String(localized: "assignment_detail_submission")) {
                     if !refs.isEmpty { fileCard(refs) }
@@ -134,7 +145,7 @@ struct MoodleAssignmentView: View {
             section(String(localized: "assignment_detail_submission")) {
                 MoodleFirstLoadView(
                     failure: feed.isRefreshing ? nil : feed.failure,
-                    retry: { await store.assignments.refreshSubmission(of: assignment) }
+                    retry: { await store.assignments.refreshSubmission(of: record) }
                 )
             }
         }
@@ -144,7 +155,7 @@ struct MoodleAssignmentView: View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
             ForEach(comments) { comment in
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-                    Text([MoodlePersonName.displayName(comment.authorName), comment.created.absoluteTimeString]
+                    Text([MoodlePersonName.displayName(comment.authorName), comment.created.absoluteMinuteString]
                         .filter { !$0.isEmpty }
                         .joined(separator: " · "))
                         .font(TigerDuckTheme.Typography.caption)
@@ -217,24 +228,24 @@ struct MoodleAssignmentView: View {
     /// The Moodle app where it is installed, else the web page, signed in.
     private func openOnMoodle() {
         files.forgetPendingOpen()
-        guard let url = assignment.moodleOpenURL else { return }
-        let web = assignment.moodleWebURL
-        Task { await openURL(url, fallback: web) }
+        Task { await openURL(MoodlePage.module("assign", cmid: record.cmId)) }
     }
 }
 
 /// An assignment's page opened outside a course detail, with the store of its course.
 struct MoodleAssignmentPage: Hashable {
-    let assignment: SDAssignment
+    let entry: MoodleCourseAssignments.Entry
     let store: MoodleCourseStore
+    let courseName: String
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.assignment == rhs.assignment && lhs.store === rhs.store
+        lhs.entry == rhs.entry && lhs.store === rhs.store && lhs.courseName == rhs.courseName
     }
 
     func hash(into hasher: inout Hasher) {
-        hasher.combine(assignment)
+        hasher.combine(entry)
         hasher.combine(ObjectIdentifier(store))
+        hasher.combine(courseName)
     }
 }
 #endif

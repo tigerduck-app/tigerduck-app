@@ -1,18 +1,19 @@
 import SwiftUI
 
-/// A course's assignments as the last assignment round left them: those still to come by due
-/// time, then the past ones, the latest first, each with what Moodle says of it on the right.
+/// A course's assignments as the last assignment round recorded them: those still to come by due
+/// time, then the ones with no due date, then the past ones, the latest first, each with what
+/// Moodle says of it on the right.
 struct MoodleAssignmentsView: View {
     let store: MoodleCourseStore
     let policy: VisualStylePolicy
     let refresh: () async -> Void
-    let open: (SDAssignment) -> Void
+    let open: (MoodleCourseAssignments.Entry) -> Void
 
     struct Row: Identifiable {
-        let assignment: SDAssignment
+        let entry: MoodleCourseAssignments.Entry
         let status: AssignmentStatus?
 
-        var id: String { assignment.assignmentId }
+        var id: Int { entry.id }
     }
 
     var body: some View {
@@ -33,8 +34,21 @@ struct MoodleAssignmentsView: View {
         )
     }
 
-    static func rows(of assignments: [SDAssignment], now: Date) -> [Row] {
-        assignments.partitionedByDueDate(now: now).map { Row(assignment: $0, status: shownStatus(of: $0, now: now)) }
+    /// Ties keep Moodle's order, which `entries` is in.
+    static func rows(of entries: [MoodleCourseAssignments.Entry], now: Date) -> [Row] {
+        let ordered = entries.enumerated().map { (order: $0.offset, entry: $0.element) }
+        let isPast = { (entry: MoodleCourseAssignments.Entry) in entry.record.dueDate.map { $0 < now } ?? false }
+        let toCome = ordered.filter { !isPast($0.entry) }.sorted {
+            let lhs = $0.entry.record.dueDate ?? .distantFuture, rhs = $1.entry.record.dueDate ?? .distantFuture
+            return lhs == rhs ? $0.order < $1.order : lhs < rhs
+        }
+        let past = ordered.filter { isPast($0.entry) }.sorted {
+            let lhs = $0.entry.record.dueDate ?? .distantPast, rhs = $1.entry.record.dueDate ?? .distantPast
+            return lhs == rhs ? $0.order < $1.order : lhs > rhs
+        }
+        return (toCome + past).map { item in
+            Row(entry: item.entry, status: item.entry.listed.flatMap { shownStatus(of: $0, now: now) })
+        }
     }
 
     /// What Moodle says of the assignment, without the marks the user puts on Home's rows: handed
@@ -55,7 +69,7 @@ struct MoodleAssignmentsView: View {
                     Divider().padding(.leading, TigerDuckTheme.Spacing.lg)
                 }
                 Button {
-                    open(row.assignment)
+                    open(row.entry)
                 } label: {
                     MoodleAssignmentRow(row: row)
                 }
@@ -80,7 +94,7 @@ private struct MoodleAssignmentRow: View {
             : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             layout {
-                Text(row.assignment.displayTitle)
+                Text(row.entry.record.name.decodingHTMLEntities())
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(stacked ? nil : 2)
@@ -92,10 +106,12 @@ private struct MoodleAssignmentRow: View {
                             .font(TigerDuckTheme.Typography.caption.weight(.semibold))
                             .foregroundStyle(status.tint)
                     }
-                    Text(row.assignment.dueDate.absoluteTimeString)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(Color.textSecondary)
+                    if let due = row.entry.record.dueDate {
+                        Text(due.absoluteMinuteString)
+                            .font(TigerDuckTheme.Typography.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(Color.textSecondary)
+                    }
                 }
                 .fixedSize()
             }

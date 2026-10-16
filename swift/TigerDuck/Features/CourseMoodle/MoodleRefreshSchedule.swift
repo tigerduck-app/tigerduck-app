@@ -10,7 +10,6 @@ nonisolated enum MoodleRefreshInterval {
     static let grades: TimeInterval = 5 * 60
     static let summary: TimeInterval = 5 * 60
     static let members: TimeInterval = 30 * 60
-    static let submission: TimeInterval = 5 * 60
 }
 
 /// Keeps one screen's data fresh while it runs: a refresh as soon as the data is older than

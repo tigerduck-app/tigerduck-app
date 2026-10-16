@@ -317,7 +317,7 @@ enum MoodleCourseRoute: Hashable {
     case forum(MoodleForum)
     case discussion(MoodleDiscussion, in: MoodleForum)
     case assignments
-    case assignment(SDAssignment)
+    case assignment(MoodleCourseAssignments.Entry)
 
     /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {

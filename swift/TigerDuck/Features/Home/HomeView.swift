@@ -13,7 +13,6 @@ struct HomeView: View {
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
     @State private var selectedFeature: AppFeature?
-    @State private var shownAssignment: MoodleAssignmentPage?
     @State private var activeSectionDrag: ReorderDragPayload?
     @State private var didReorderSection = false
 
@@ -154,9 +153,9 @@ struct HomeView: View {
         .navigationDestination(item: $selectedFeature) { feature in
             homeDestination(for: feature)
         }
-        .navigationDestination(item: $shownAssignment) { page in
+        .navigationDestination(item: $viewModel.shownAssignment) { page in
             MoodleAssignmentView(
-                store: page.store, assignment: page.assignment,
+                store: page.store, entry: page.entry, courseName: page.courseName,
                 policy: appState.visualStylePolicy, accent: appState.accentColor
             )
             .moodleLinkOpening()
@@ -164,7 +163,7 @@ struct HomeView: View {
         // On iPad another window can sign out or in, and the page holds the store of the account
         // that opened it.
         .onChange(of: appState.authService.loginGeneration) {
-            shownAssignment = nil
+            viewModel.closeAssignment()
         }
         // An assignment reminder or Live Activity tap, which `MainTabView` brings Home up for.
         .onChange(of: appState.pendingDeepLink, initial: true) { _, link in
@@ -174,7 +173,7 @@ struct HomeView: View {
                 openAssignment(assignment)
             }
         }
-        .sheet(item: $viewModel.selectedCourse) { course in
+        .sheet(item: $viewModel.selectedCourse, onDismiss: viewModel.courseSheetDismissed) { course in
             let slot = viewModel.selectedCourseSlot
             CourseDetailSheet(
                 course: course,
@@ -283,8 +282,9 @@ struct HomeView: View {
     /// course.
     private func openAssignment(_ assignment: SDAssignment) {
         if let context = MoodleCacheContext.signedIn(appState.authService),
-           let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context) {
-            shownAssignment = MoodleAssignmentPage(assignment: assignment, store: store)
+           let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
+           let entry = store.assignments.entry(for: assignment) {
+            viewModel.show(MoodleAssignmentPage(entry: entry, store: store, courseName: assignment.displayCourseName))
         } else if let url = assignment.moodleDeepLink {
             let web = assignment.moodleWebURL
             Task { await openURL(url, fallback: web) }

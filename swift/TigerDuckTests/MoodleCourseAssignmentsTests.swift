@@ -5,8 +5,8 @@ import Testing
 
 /// A course's assignments in `MoodleCourseStore`, from what an assignment round left in a cache in
 /// a folder of its own, and each one's submission over a stand-in `MoodleCourseAPI`: the section's
-/// row, the page's cached copy, the calls the site's functions allow, and what a sign-out leaves.
-/// Every name and id here is made up.
+/// row and list, the page's cached copy, the calls the site's functions allow, and what a sign-out
+/// leaves. Every name and id here is made up.
 @MainActor
 struct MoodleCourseAssignmentsTests {
     private nonisolated static let courseId = 20119
@@ -14,10 +14,13 @@ struct MoodleCourseAssignmentsTests {
     private nonisolated static let account = "B11399001"
     private nonisolated static let due = Date(timeIntervalSince1970: 1_790_600_000)
 
-    private nonisolated static func record(_ id: Int, course: Int = courseId, team: Bool = false) -> MoodleAssignmentRecord {
+    private nonisolated static func record(
+        _ id: Int, course: Int = courseId, team: Bool = false, due offset: TimeInterval? = 0,
+        noSubmissions: Bool = false
+    ) -> MoodleAssignmentRecord {
         MoodleAssignmentRecord(
-            assignId: id, cmId: id + 9000, courseId: course, name: "HW \(id)", dueDate: due, cutoffDate: nil,
-            allowSubmissionsFromDate: nil, intro: "<p>About HW \(id)</p>", noSubmissions: false,
+            assignId: id, cmId: id + 9000, courseId: course, name: "HW \(id)", dueDate: offset.map { due + $0 },
+            cutoffDate: nil, allowSubmissionsFromDate: nil, intro: "<p>About HW \(id)</p>", noSubmissions: noSubmissions,
             introAttachments: [], teamSubmission: team
         )
     }
@@ -46,12 +49,10 @@ struct MoodleCourseAssignmentsTests {
     )
 
     /// What an assignment round leaves: its records for the account, and the assignments Home
-    /// lists, which leave out `unlisted`.
-    private static func round(
-        _ records: [MoodleAssignmentRecord], unlisted: Set<Int> = [], in folder: Folder, account: String = account
-    ) {
+    /// lists, which leave out those with no due date or no online submission.
+    private static func round(_ records: [MoodleAssignmentRecord], in folder: Folder, account: String = account) {
         folder.cache.saveMoodleData(records, fetchedAt: Date(), name: MoodleAssignmentRecord.cacheName, account: account)
-        folder.cache.saveAssignments(records.filter { !unlisted.contains($0.assignId) }.map { assignment($0.assignId) })
+        folder.cache.saveAssignments(records.filter { $0.dueDate != nil && !$0.noSubmissions }.map { assignment($0.assignId) })
     }
 
     /// What the stand-in site answers, and what the store asked it for.
@@ -164,20 +165,21 @@ struct MoodleCourseAssignmentsTests {
 
     // MARK: - Section row
 
-    @Test("the row counts the course's assignments that Home lists, after the materials and before the grades")
+    @Test("the row counts every assignment of the course the round recorded, after the materials, before the grades")
     func sectionRow() async {
         let folder = Folder()
-        Self.round(
-            [Self.record(701), Self.record(702), Self.record(703), Self.record(801, course: Self.otherCourseId)],
-            unlisted: [703], in: folder
-        )
+        Self.round([
+            Self.record(701), Self.record(702), Self.record(703, due: nil), Self.record(704, noSubmissions: true),
+            Self.record(801, course: Self.otherCourseId),
+        ], in: folder)
         let store = Self.store(folder, site: Site())
         await store.refreshMaterials()
         await store.refreshGrades()
 
         #expect(store.sectionRows.map(\.kind) == [.materials, .assignments, .grades])
-        #expect(store.sectionRows.first { $0.kind == .assignments }?.count == 2)
-        #expect(store.assignments.list.map(\.assignmentId) == ["701", "702"])
+        #expect(store.sectionRows.first { $0.kind == .assignments }?.count == 4)
+        #expect(store.assignments.list.map(\.id) == [701, 702, 703, 704])
+        #expect(store.assignments.list.map { $0.listed?.assignmentId } == ["701", "702", nil, nil])
         #expect(MoodleCourseSection.route(for: .assignments, in: store) == .assignments)
     }
 
@@ -199,38 +201,59 @@ struct MoodleCourseAssignmentsTests {
         store.assignments.reload()
 
         #expect(store.sectionRows.map(\.kind) == [.assignments])
-        #expect(store.assignments.record(of: Self.assignment(701))?.intro == "<p>About HW 701</p>")
+        #expect(store.assignments.list.first?.record.intro == "<p>About HW 701</p>")
+    }
+
+    @Test("Home's row opens the page with its record, and one no round has recorded has none, which opens Moodle")
+    func entryForHomeRow() {
+        let folder = Folder()
+        Self.round([Self.record(701)], in: folder)
+        let store = Self.store(folder, site: Site())
+        let listed = Self.assignment(701)
+
+        let entry = store.assignments.entry(for: listed)
+        #expect(entry?.record == Self.record(701))
+        #expect(entry?.listed === listed)
+        #expect(store.assignments.entry(for: Self.assignment(702)) == nil)
     }
 
     // MARK: - List
 
-    /// Due `offset` after `due`, which is the list's clock, and handed in `submitted` after it.
-    private static func listed(
-        _ id: Int, due offset: TimeInterval, submitted: TimeInterval? = nil, cutoff: TimeInterval? = nil,
-        ignored: Bool = false, markedDone: Bool = false
-    ) -> SDAssignment {
-        SDAssignment(
+    /// Due `offset` after `due`, which is the list's clock, and handed in `submitted` after it, with
+    /// Home's row for it unless `listed` is false.
+    private static func entry(
+        _ id: Int, due offset: TimeInterval?, submitted: TimeInterval? = nil, cutoff: TimeInterval? = nil,
+        ignored: Bool = false, markedDone: Bool = false, listed: Bool = true
+    ) -> MoodleCourseAssignments.Entry {
+        let record = Self.record(id, due: offset)
+        guard listed, let offset else { return MoodleCourseAssignments.Entry(record: record, listed: nil) }
+        return MoodleCourseAssignments.Entry(record: record, listed: SDAssignment(
             assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW \(id)",
             dueDate: due + offset, isCompleted: submitted != nil, isArchived: ignored, isLocallyCompleted: markedDone,
             cutoffDate: cutoff.map { due + $0 }, submittedAt: submitted.map { due + $0 }
-        )
+        ))
     }
 
-    @Test("the list shows what is to come first, nearest first, then the past, latest first, each as Moodle sees it")
+    @Test("the list shows what is to come by due time, then the undated in Moodle's order, then the past, latest first")
     func listOrderAndStatuses() {
         let day: TimeInterval = 86_400
         let rows = MoodleAssignmentsView.rows(of: [
-            Self.listed(1, due: -10 * day, submitted: -11 * day),
-            Self.listed(2, due: 7 * day),
-            Self.listed(3, due: -2 * day, submitted: -1 * day),
-            Self.listed(4, due: 2 * day),
-            Self.listed(5, due: -5 * day, cutoff: -1 * day),
-            Self.listed(6, due: -1 * day, ignored: true),
-            Self.listed(7, due: 3 * day, markedDone: true),
+            Self.entry(1, due: -10 * day, submitted: -11 * day),
+            Self.entry(8, due: nil),
+            Self.entry(2, due: 7 * day),
+            Self.entry(3, due: -2 * day, submitted: -1 * day),
+            Self.entry(4, due: 2 * day),
+            Self.entry(9, due: -3 * day, listed: false),
+            Self.entry(5, due: -5 * day, cutoff: -1 * day),
+            Self.entry(6, due: -1 * day, ignored: true),
+            Self.entry(10, due: nil),
+            Self.entry(7, due: 3 * day, markedDone: true),
         ], now: Self.due)
 
-        #expect(rows.map(\.id) == ["4", "7", "2", "6", "3", "5", "1"])
-        #expect(rows.map(\.status) == [nil, nil, nil, .overdueAcceptable, .submittedLate, .overdueAcceptable, .submitted])
+        #expect(rows.map(\.id) == [4, 7, 2, 8, 10, 6, 3, 9, 5, 1])
+        #expect(rows.map(\.status) == [
+            nil, nil, nil, nil, nil, .overdueAcceptable, .submittedLate, nil, .overdueAcceptable, .submitted,
+        ])
         #expect(rows.compactMap { $0.status?.badgeLabel } == [
             String(localized: "assignment_status_overdue"), String(localized: "assignment_status_submitted_late"),
             String(localized: "assignment_status_overdue"), String(localized: "assignment_status_submitted"),
@@ -243,10 +266,10 @@ struct MoodleCourseAssignmentsTests {
     func submissionCacheFirst() async {
         let folder = Folder()
         Self.round([Self.record(701)], in: folder)
-        await Self.store(folder, site: Site()).assignments.refreshSubmission(of: Self.assignment(701))
+        await Self.store(folder, site: Site()).assignments.refreshSubmission(of: Self.record(701))
 
         let reopened = Self.store(folder, site: Site())
-        #expect(reopened.assignments.submission(of: Self.assignment(701)).value?.files == [Self.file])
+        #expect(reopened.assignments.submission(of: Self.record(701)).value?.files == [Self.file])
     }
 
     @Test("comments and the group's name come where the site offers their calls")
@@ -256,9 +279,9 @@ struct MoodleCourseAssignmentsTests {
         let site = Site()
         let store = Self.store(folder, site: site)
 
-        await store.assignments.refreshSubmission(of: Self.assignment(701))
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
 
-        let submission = store.assignments.submission(of: Self.assignment(701)).value
+        let submission = store.assignments.submission(of: Self.record(701)).value
         #expect(submission?.comments == [Self.comment])
         #expect(submission?.groupName == "Group 3")
         #expect(site.calls == ["submission 701", "comments 9701 5501", "groups 20119"])
@@ -268,14 +291,13 @@ struct MoodleCourseAssignmentsTests {
     @Test("a site that does not offer the comments or the groups call shows neither, without asking")
     func callsNotOffered() async {
         let folder = Folder()
-        Self.round([Self.record(701, team: true)], in: folder)
         let site = Site()
         site.set(functions: [])
         let store = Self.store(folder, site: site)
 
-        await store.assignments.refreshSubmission(of: Self.assignment(701))
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
 
-        let submission = store.assignments.submission(of: Self.assignment(701)).value
+        let submission = store.assignments.submission(of: Self.record(701)).value
         #expect(submission?.id == 5501)
         #expect(submission?.comments == nil)
         #expect(submission?.groupName == nil)
@@ -285,7 +307,6 @@ struct MoodleCourseAssignmentsTests {
     @Test("a comments or groups call Moodle refuses leaves out only its part")
     func callsRefused() async {
         let folder = Folder()
-        Self.round([Self.record(701, team: true)], in: folder)
         let site = Site()
         site.set(
             commentsError: MoodleWebserviceError.accessDenied,
@@ -293,9 +314,9 @@ struct MoodleCourseAssignmentsTests {
         )
         let store = Self.store(folder, site: site)
 
-        await store.assignments.refreshSubmission(of: Self.assignment(701))
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
 
-        let feed = store.assignments.submission(of: Self.assignment(701))
+        let feed = store.assignments.submission(of: Self.record(701))
         #expect(feed.status == .ok)
         #expect(feed.value?.files == [Self.file])
         #expect(feed.value?.comments == nil)
@@ -305,17 +326,16 @@ struct MoodleCourseAssignmentsTests {
     @Test("a fetch that cannot reach Moodle keeps what the page showed")
     func unreachable() async {
         let folder = Folder()
-        Self.round([Self.record(701, team: true)], in: folder)
         let site = Site()
         let store = Self.store(folder, site: site)
-        await store.assignments.refreshSubmission(of: Self.assignment(701))
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
 
         site.set(submission: MoodleAssignmentSubmission(
             status: "new", modified: nil, files: [], onlineText: nil, id: 5501, takesComments: true, groupId: 31
         ), commentsError: MoodleWebserviceError.transientNetwork(underlying: "offline"))
-        await store.assignments.refreshSubmission(of: Self.assignment(701))
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
 
-        let feed = store.assignments.submission(of: Self.assignment(701))
+        let feed = store.assignments.submission(of: Self.record(701))
         #expect(feed.status == .failed)
         #expect(feed.value?.files == [Self.file])
         #expect(feed.value?.comments == [Self.comment])
@@ -324,7 +344,6 @@ struct MoodleCourseAssignmentsTests {
     @Test("an individual assignment asks for no group, and one that takes no comments asks for none")
     func onlyWhatApplies() async {
         let folder = Folder()
-        Self.round([Self.record(701)], in: folder)
         let site = Site()
         site.set(submission: MoodleAssignmentSubmission(
             status: "submitted", modified: nil, files: [], onlineText: "<p>Answer</p>", id: 5501,
@@ -332,46 +351,62 @@ struct MoodleCourseAssignmentsTests {
         ))
         let store = Self.store(folder, site: site)
 
-        await store.assignments.refreshSubmission(of: Self.assignment(701))
+        await store.assignments.refreshSubmission(of: Self.record(701))
 
         #expect(site.calls == ["submission 701"])
-        #expect(store.assignments.submission(of: Self.assignment(701)).value?.onlineText == "<p>Answer</p>")
+        #expect(store.assignments.submission(of: Self.record(701)).value?.onlineText == "<p>Answer</p>")
     }
 
-    @Test("an assignment no round recorded still fetches its submission, without comments or a group")
-    func withoutRecord() async {
+    @Test("an assignment that takes no online submission asks Moodle for none")
+    func noOnlineSubmission() async {
         let folder = Folder()
         let site = Site()
         let store = Self.store(folder, site: site)
 
-        await store.assignments.refreshSubmission(of: Self.assignment(701))
+        await store.assignments.refreshSubmission(of: Self.record(704, noSubmissions: true))
 
-        #expect(site.calls == ["submission 701"])
-        #expect(store.assignments.submission(of: Self.assignment(701)).value?.id == 5501)
+        #expect(site.calls.isEmpty)
+        #expect(store.assignments.submission(of: Self.record(704)).value == nil)
     }
 
     // MARK: - Sign-out
 
-    @Test("a sign-out while the submission is on its way writes nothing")
+    @Test("a sign-out while the submission is on its way writes nothing and asks for no comments or group")
     func signOutDuringFetch() async {
         let folder = Folder()
-        Self.round([Self.record(701)], in: folder)
         let signedIn = OSAllocatedUnfairLock(initialState: true)
-        let store = Self.store(folder, site: Site(), signedIn: signedIn) {
+        let site = Site()
+        let store = Self.store(folder, site: site, signedIn: signedIn) {
             signedIn.withLock { $0 = false }
         }
 
-        await store.assignments.refreshSubmission(of: Self.assignment(701))
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
 
-        #expect(store.assignments.submission(of: Self.assignment(701)).value == nil)
+        #expect(site.calls == ["submission 701"])
+        #expect(store.assignments.submission(of: Self.record(701)).value == nil)
         #expect(cachedSubmission(folder, of: 701) == nil)
+    }
+
+    @Test("a sign-out while the submission is on its way asks for no group either")
+    func signOutBeforeGroup() async {
+        let folder = Folder()
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let site = Site()
+        site.set(functions: [MoodleAssignmentService.groupsFunction])
+        let store = Self.store(folder, site: site, signedIn: signedIn) {
+            signedIn.withLock { $0 = false }
+        }
+
+        await store.assignments.refreshSubmission(of: Self.record(701, team: true))
+
+        #expect(site.calls == ["submission 701"])
     }
 
     @Test("signing out deletes the assignment records and every submission")
     func signOutClears() async {
         let folder = Folder()
         Self.round([Self.record(701)], in: folder)
-        await Self.store(folder, site: Site()).assignments.refreshSubmission(of: Self.assignment(701))
+        await Self.store(folder, site: Site()).assignments.refreshSubmission(of: Self.record(701))
         #expect(!MoodleCourseAssignments.records(in: Self.context(folder)).isEmpty)
         #expect(cachedSubmission(folder, of: 701) != nil)
 

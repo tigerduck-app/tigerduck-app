@@ -196,7 +196,7 @@ extension MoodleEnrolledCourse {
 
 /// Kept for the signed-in account under ``cacheName`` by each assignment round, so an
 /// assignment's page has its description and its course without another call.
-nonisolated struct MoodleAssignmentRecord: Codable, Sendable, Equatable {
+nonisolated struct MoodleAssignmentRecord: Codable, Sendable, Hashable {
     static let cacheName = "assignments"
 
     let assignId: Int

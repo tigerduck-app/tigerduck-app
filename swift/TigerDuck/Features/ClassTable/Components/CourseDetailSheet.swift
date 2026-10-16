@@ -137,10 +137,11 @@ struct CourseDetailSheet: View {
             MoodleAssignmentsView(
                 store: store, policy: appState.visualStylePolicy, refresh: refreshAssignments, open: openAssignment
             )
-        case .assignment(let assignment):
+        case .assignment(let entry):
             #if os(iOS)
             MoodleAssignmentView(
-                store: store, assignment: assignment, policy: appState.visualStylePolicy, accent: appState.accentColor
+                store: store, entry: entry, courseName: course.displayName,
+                policy: appState.visualStylePolicy, accent: appState.accentColor
             )
             #else
             EmptyView()
@@ -337,7 +338,7 @@ struct CourseDetailSheet: View {
 
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
-                    openAssignment(assignment)
+                    openListed(assignment)
                 } label: {
                     HStack {
                         Image(systemName: "doc.text")
@@ -373,17 +374,26 @@ struct CourseDetailSheet: View {
     private static let assignmentAccessory = "chevron.right"
     #endif
 
-    /// Its page, pushed here; on Moodle on the Mac, or while the course's Moodle data is not ready.
-    private func openAssignment(_ assignment: SDAssignment) {
+    /// Its page, pushed here; on Moodle on the Mac, or before an assignment round has recorded it.
+    private func openListed(_ assignment: SDAssignment) {
         #if os(iOS)
-        if moodle != nil {
-            routes.wrappedValue.append(.assignment(assignment))
+        if let entry = moodle?.assignments.entry(for: assignment) {
+            routes.wrappedValue.append(.assignment(entry))
             return
         }
         #endif
         guard let url = assignment.moodleOpenURL else { return }
         let web = assignment.moodleWebURL
         Task { await openURL(url, fallback: web) }
+    }
+
+    /// Its page, pushed here; on Moodle on the Mac, which has no page for it.
+    private func openAssignment(_ entry: MoodleCourseAssignments.Entry) {
+        #if os(iOS)
+        routes.wrappedValue.append(.assignment(entry))
+        #else
+        Task { await openURL(MoodlePage.module("assign", cmid: entry.record.cmId)) }
+        #endif
     }
 
     /// A pull on the list, or Refresh on the Mac, asks Moodle about every submission again.
