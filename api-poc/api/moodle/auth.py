@@ -174,7 +174,7 @@ class MoodleOidcAuthClient:
         if not form["antiforgery"]:
             raise MoodleOidcAuthError("AntiForgery token missing — page shape changed")
         action = urljoin(str(login_page.url), form["action"])
-        logger.info("[6] POST %s (Username=%s)", action, self._account)
+        logger.info("[6] POST %s", action)
         resp = self._client.post(
             action,
             data={
