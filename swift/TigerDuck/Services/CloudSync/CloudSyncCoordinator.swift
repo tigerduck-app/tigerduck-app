@@ -65,6 +65,11 @@ final class CloudSyncCoordinator {
     @ObservationIgnored var started = false
     /// Colour and name edits on their way into the outbox, which `pendingCourseOverrides` counts.
     @ObservationIgnored private var courseOverridesEnqueuing: [UUID: SyncOp] = [:]
+    /// Moved by each colour or name edit queued here. `lastColorEdit` and `lastNameEdit` keep its
+    /// value at each course's last edit of either, by Moodle id.
+    @ObservationIgnored private(set) var courseOverrideEdits = 0
+    @ObservationIgnored private var lastColorEdit: [String: Int] = [:]
+    @ObservationIgnored private var lastNameEdit: [String: Int] = [:]
 
     // Observer plumbing
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
@@ -285,6 +290,11 @@ final class CloudSyncCoordinator {
 
     /// The task ends once the edit is in the outbox.
     private func enqueueCourseOverride(_ op: SyncOp) -> Task<Void, Never> {
+        if case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op {
+            courseOverrideEdits += 1
+            if colorHex != nil { lastColorEdit[moodleId] = courseOverrideEdits }
+            if customName != nil { lastNameEdit[moodleId] = courseOverrideEdits }
+        }
         let id = UUID()
         courseOverridesEnqueuing[id] = op
         return Task {
@@ -328,6 +338,13 @@ final class CloudSyncCoordinator {
             if customName != nil { pending.names.insert(moodleId) }
         }
         return pending
+    }
+
+    /// The Moodle ids of the courses with a colour or a name edit queued after `reading`, a value of
+    /// `courseOverrideEdits`. A full sync holds these too: an edit queued and sent while its fetch
+    /// is out is in neither of its outbox samples, and the snapshot fetched can predate it.
+    func courseOverrides(queuedAfter reading: Int) -> (colors: Set<String>, names: Set<String>) {
+        (Set(lastColorEdit.filter { $0.value > reading }.keys), Set(lastNameEdit.filter { $0.value > reading }.keys))
     }
 
     /// For Use Server in the re-enable dialog, which takes the server's data of `categories` over

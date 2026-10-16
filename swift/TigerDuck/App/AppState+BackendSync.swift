@@ -50,6 +50,7 @@ extension AppState {
             let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
+            let courseEditsBeforeFetch = cloudSyncCoordinator.courseOverrideEdits
             let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
@@ -116,8 +117,9 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            // A colour or name edit both queued and sent while the fetch is out is in neither sample.
             let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
+            // A colour or name edit both queued and sent while the fetch is out is in neither sample.
+            let editedDuringFetch = cloudSyncCoordinator.courseOverrides(queuedAfter: courseEditsBeforeFetch)
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
@@ -213,8 +215,10 @@ extension AppState {
             } else if !courseOverrides.isEmpty {
                 changed = applyCourseOverrides(
                     courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames,
-                    holdingColors: preFetchCourseOverrides.colors.union(queuedCourseOverrides.colors),
+                    holdingColors: preFetchCourseOverrides.colors.union(queuedCourseOverrides.colors)
+                        .union(editedDuringFetch.colors),
                     holdingNames: preFetchCourseOverrides.names.union(queuedCourseOverrides.names)
+                        .union(editedDuringFetch.names)
                 ) || changed
             }
 
