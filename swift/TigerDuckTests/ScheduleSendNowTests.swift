@@ -21,6 +21,8 @@ struct ScheduleSendNowTests {
     ) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
+        // A held reply must outlast a main actor held for over a minute by other tests.
+        config.timeoutIntervalForRequest = 600
         let client = PushAPIClient(
             baseURLProvider: { [baseURL = backend.baseURL] in baseURL },
             session: URLSession(configuration: config),
