@@ -48,6 +48,7 @@ extension AppState {
             let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
+            let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
             #if os(iOS)
@@ -111,6 +112,7 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
+            let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             guard fullSyncMayWrite(since: generation) else { return }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
@@ -206,7 +208,9 @@ extension AppState {
                 AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             } else if !courseOverrides.isEmpty {
                 changed = applyCourseOverrides(
-                    courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames
+                    courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames,
+                    holdingColors: preFetchCourseOverrides.colors.union(queuedCourseOverrides.colors),
+                    holdingNames: preFetchCourseOverrides.names.union(queuedCourseOverrides.names)
                 ) || changed
             }
 
@@ -664,9 +668,12 @@ extension AppState {
         )
     }
 
-    /// Takes the server's colours when `colors`, its names when `names`. Returns whether one changed.
+    /// Takes the server's colours when `colors`, its names when `names`, but not those of the courses
+    /// this device has a colour (`holdingColors`) or a name (`holdingNames`) edit queued for, by
+    /// Moodle id. Returns whether one changed.
     private func applyCourseOverrides(
-        _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool
+        _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool,
+        holdingColors: Set<String>, holdingNames: Set<String>
     ) -> Bool {
         // Build moodleId → courseNo from courses array
         var moodleIdToNo: [String: String] = [:]
@@ -682,44 +689,59 @@ extension AppState {
         }
         AppLogger.sync.info("moodleIdToNo: \(moodleIdToNo.count, privacy: .public) entries, overrides: \(overrides.count, privacy: .public)")
 
-        let colorsChanged = colors
-            && TigerDuckTheme.applyColors(Self.serverCourseColors(overrides, courseNos: moodleIdToNo))
+        let colorsChanged = colors && TigerDuckTheme.applyColors(
+            Self.serverCourseColors(overrides, courseNos: moodleIdToNo, holding: holdingColors)
+        )
         let namesBefore = DataCache.shared.loadCourseCustomNames()
-        var customNames = namesBefore
-        var nameCount = 0
-        for o in overrides {
-            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
-            guard let courseNo = moodleIdToNo[mId] else { continue }
-            if names, let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
-                var existing = customNames[courseNo] ?? [:]
-                for (locale, name) in serverNames {
-                    if name.isEmpty {
-                        existing.removeValue(forKey: locale)
-                    } else {
-                        existing[locale] = name
-                    }
-                }
-                customNames[courseNo] = existing.isEmpty ? nil : existing
-                nameCount += 1
-                AppLogger.sync.debug("course custom names updated")
-            }
-        }
-        let namesChanged = nameCount > 0 && customNames != namesBefore
+        let customNames = names
+            ? Self.courseNamesAfterPull(overrides, courseNos: moodleIdToNo, local: namesBefore, holding: holdingNames)
+            : namesBefore
+        let namesChanged = customNames != namesBefore
         if namesChanged {
             DataCache.shared.saveCourseCustomNames(customNames)
         }
         return colorsChanged || namesChanged
     }
 
+    /// `local` with the server's custom names, language by language; an empty one clears its
+    /// language. A course with a name edit queued here (`held`, Moodle ids) keeps all of its own:
+    /// the snapshot can predate the edit.
+    nonisolated static func courseNamesAfterPull(
+        _ overrides: [[String: Any]],
+        courseNos: [String: String],
+        local: [String: [String: String]],
+        holding held: Set<String>
+    ) -> [String: [String: String]] {
+        var names = local
+        for o in overrides {
+            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
+                  !held.contains(mId), let courseNo = courseNos[mId],
+                  let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty
+            else { continue }
+            var existing = names[courseNo] ?? [:]
+            for (locale, name) in serverNames {
+                if name.isEmpty {
+                    existing.removeValue(forKey: locale)
+                } else {
+                    existing[locale] = name
+                }
+            }
+            names[courseNo] = existing.isEmpty ? nil : existing
+        }
+        return names
+    }
+
     /// The server's course colours in the order to apply them, oldest first: where two courses
-    /// share a colour the latest pick keeps it, the same way on every device and every sync.
+    /// share a colour the latest pick keeps it, the same way on every device and every sync. A
+    /// course with a colour edit queued here (`held`, Moodle ids) is left out and keeps its own.
     static func serverCourseColors(
         _ overrides: [[String: Any]],
-        courseNos: [String: String]
+        courseNos: [String: String],
+        holding held: Set<String>
     ) -> [(courseNo: String, hex: UInt32)] {
         let rows = overrides.compactMap { o -> (courseNo: String, hex: UInt32, at: Date)? in
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                  let courseNo = courseNos[mId],
+                  !held.contains(mId), let courseNo = courseNos[mId],
                   let colorHex = o["color_hex"] as? String, !colorHex.isEmpty,
                   let hex = UInt32(colorHex.dropFirst(), radix: 16) else { return nil }
             let at = (o["color_hex_updated_at"] as? String).flatMap {

@@ -154,6 +154,38 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
+    /// A full sync holds these courses' colours and names from the server's
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/649).
+    @Test("A colour or name edit counts as pending from the edit until its request is sent")
+    func colourAndNameEditsArePendingUntilSent() async {
+        let backend = Backend()
+        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
+        backend.answer("sync/courses/1151EE2/override", body: Self.colourReply)
+        let coordinator = Self.makeCoordinator(backend)
+
+        coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")
+        coordinator.enqueueCourseNameOverride(moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en")
+        // Read at once: each edit is queued from a task of its own, which may not have run yet.
+        let pending = await coordinator.pendingCourseOverrides()
+        #expect(pending.colors == ["1151CS1"])
+        #expect(pending.names == ["1151EE2"])
+
+        for _ in 0..<2000 {
+            if await coordinator.outbox.pendingCount() == 2 { break }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        let queued = await coordinator.pendingCourseOverrides()
+        #expect(queued.colors == ["1151CS1"])
+        #expect(queued.names == ["1151EE2"])
+
+        await coordinator.syncTick()
+
+        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        let sent = await coordinator.pendingCourseOverrides()
+        #expect(sent.colors.isEmpty)
+        #expect(sent.names.isEmpty)
+    }
+
     @Test("A mark after the switch went off mid-drain stays queued")
     func switchTurnedOffMidDrainHoldsTheRest() async {
         let backend = Backend()

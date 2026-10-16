@@ -61,6 +61,8 @@ final class CloudSyncCoordinator {
 
     @ObservationIgnored private var tickInFlight = false
     @ObservationIgnored var started = false
+    /// Colour and name edits on their way into the outbox, which `pendingCourseOverrides` counts.
+    @ObservationIgnored private var courseOverridesEnqueuing: [UUID: SyncOp] = [:]
 
     // Observer plumbing
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
@@ -252,18 +254,25 @@ final class CloudSyncCoordinator {
         // queues durably in the outbox and drains once state flips to .active.
         // Gating on == .active would silently drop them.
         guard state != .disabled else { return }
-        let op = SyncOp.courseOverride(
+        enqueueCourseOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: nil, colorHex: colorHex, locale: nil, stamp: Date())
-        Task { await outbox.enqueue(op) }
+            customName: nil, colorHex: colorHex, locale: nil, stamp: Date()))
     }
 
     func enqueueCourseNameOverride(moodleId: String, semester: String, customName: String, locale: String?) {
         guard state != .disabled else { return }
-        let op = SyncOp.courseOverride(
+        enqueueCourseOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: customName, colorHex: nil, locale: locale, stamp: Date())
-        Task { await outbox.enqueue(op) }
+            customName: customName, colorHex: nil, locale: locale, stamp: Date()))
+    }
+
+    private func enqueueCourseOverride(_ op: SyncOp) {
+        let id = UUID()
+        courseOverridesEnqueuing[id] = op
+        Task {
+            await outbox.enqueue(op)
+            courseOverridesEnqueuing[id] = nil
+        }
     }
 
     /// Awaitable so callers can key "op is durably queued" transitions
@@ -288,6 +297,19 @@ final class CloudSyncCoordinator {
             }
         }
         return ids
+    }
+
+    /// The Moodle ids of the courses with a colour or a name edit queued here, which the server
+    /// may not have yet. A full sync leaves those as they are here, as it leaves queued marks.
+    func pendingCourseOverrides() async -> (colors: Set<String>, names: Set<String>) {
+        var pending: (colors: Set<String>, names: Set<String>) = ([], [])
+        // The edits on their way in are read after the snapshot, or one could land between the two.
+        for op in await outbox.snapshot().map(\.op) + courseOverridesEnqueuing.values {
+            guard case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op else { continue }
+            if colorHex != nil { pending.colors.insert(moodleId) }
+            if customName != nil { pending.names.insert(moodleId) }
+        }
+        return pending
     }
 
     /// For the re-enabled Assignments switch's Use Server, which takes the server's marks over the
