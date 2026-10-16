@@ -99,6 +99,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     var onSyncTrigger: (() async -> FullSyncOutcome)?
 
+    /// Runs after a sync trigger's sync and before its answer. Once the push is answered iOS may
+    /// suspend the app, so what the sync left on a timer, such as the widgets' reload, goes out here.
+    var beforeAnsweringSyncTrigger: (@MainActor () -> Void)?
+
     /// iOS allows a background push 30 seconds to call its completion handler, and ends an app that
     /// takes longer (Apple's documentation for this delegate method).
     static let syncTriggerTimeLimit: Duration = .seconds(25)
@@ -113,7 +117,12 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
             return
         }
         logger.info("Silent sync trigger received")
-        Self.run({ await onSyncTrigger().fetchResult }, within: Self.syncTriggerTimeLimit, then: completionHandler)
+        let beforeAnswering = beforeAnsweringSyncTrigger
+        Self.run({
+            let result = await onSyncTrigger().fetchResult
+            beforeAnswering?()
+            return result
+        }, within: Self.syncTriggerTimeLimit, then: completionHandler)
     }
 
     /// Runs `work` and calls `completion` once with its result, or, when `limit` passes first,

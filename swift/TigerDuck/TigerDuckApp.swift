@@ -82,6 +82,7 @@ struct TigerDuckApp: App {
                     built.appState.bindPushDelegate(delegate)
                 }
                 built.watchSync.activate()
+                delegate.beforeAnsweringSyncTrigger = { built.widgetSnapshotWriter.regenerateAndReloadNow() }
             }
         }
     }

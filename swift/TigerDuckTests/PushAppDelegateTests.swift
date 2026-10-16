@@ -20,6 +20,17 @@ struct PushAppDelegateTests {
         }
     }
 
+    /// What happened, in order, from any thread.
+    private final class Events: Sendable {
+        private let state = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+        var all: [String] { state.withLock { $0 } }
+
+        func record(_ event: String) {
+            state.withLock { $0.append(event) }
+        }
+    }
+
     /// Holds the calling thread until `signal`, at most `seconds`, as a long synchronous stretch of
     /// a sync holds the main actor. Returns whether the signal came.
     private static func hold(until signal: DispatchSemaphore, atMost seconds: Int) -> Bool {
@@ -45,6 +56,28 @@ struct PushAppDelegateTests {
         }
 
         #expect(result == expected)
+    }
+
+    /// Once the push is answered iOS may suspend the app, so the widgets' reload goes out first
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/664).
+    @Test("What must not wait for the next launch runs after the sync and before the answer")
+    func whatMustNotWaitRunsBeforeTheAnswer() async {
+        let delegate = PushAppDelegate()
+        let events = Events()
+        delegate.onSyncTrigger = {
+            events.record("sync")
+            return .synced
+        }
+        delegate.beforeAnsweringSyncTrigger = { events.record("widgets") }
+
+        await withCheckedContinuation { continuation in
+            delegate.application(UIApplication.shared, didReceiveRemoteNotification: ["kind": "sync_trigger"]) { _ in
+                events.record("answer")
+                continuation.resume()
+            }
+        }
+
+        #expect(events.all == ["sync", "widgets", "answer"])
     }
 
     @Test("A sync that outlasts the limit is cancelled and answered failed at the limit, and not again when it ends")
