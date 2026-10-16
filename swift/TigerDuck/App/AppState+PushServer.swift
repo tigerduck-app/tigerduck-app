@@ -16,8 +16,10 @@ extension AppState {
     func bindPushDelegate(_ delegate: some PushTokenSource) {
         pushCoordinator.bindTokenForwarding(delegate)
         delegate.onSyncTrigger = { [weak self] in
-            await self?.syncOverridesFromBackend(followUpIfBusy: true)
-            await self?.cloudSyncCoordinator.onSyncTrigger()
+            // `.onAppear` binds this before onboarding ends too, and a sync contacts the backend.
+            guard let self, self.hasCompletedOnboarding else { return }
+            await self.syncOverridesFromBackend(followUpIfBusy: true)
+            await self.cloudSyncCoordinator.onSyncTrigger()
         }
     }
 

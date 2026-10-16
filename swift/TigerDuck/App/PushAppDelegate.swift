@@ -99,19 +99,42 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     var onSyncTrigger: (() async -> Void)?
 
+    /// iOS allows a background push 30 seconds to call its completion handler, and ends an app that
+    /// takes longer (Apple's documentation for this delegate method).
+    static let syncTriggerTimeLimit: Duration = .seconds(25)
+
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        if userInfo["kind"] as? String == "sync_trigger" {
-            logger.info("Silent sync trigger received")
-            Task {
-                await onSyncTrigger?()
-                completionHandler(.newData)
-            }
-        } else {
+        guard userInfo["kind"] as? String == "sync_trigger", let onSyncTrigger else {
             completionHandler(.noData)
+            return
+        }
+        logger.info("Silent sync trigger received")
+        Self.run(onSyncTrigger, within: Self.syncTriggerTimeLimit, then: completionHandler)
+    }
+
+    /// Runs `work` and calls `completion` once: with `.newData` when it ends, or with `.failed` when
+    /// `limit` passes first. The work is not cancelled then; the system suspends it with the app.
+    static func run(
+        _ work: @escaping () async -> Void,
+        within limit: Duration,
+        then completion: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        var answer: ((UIBackgroundFetchResult) -> Void)? = completion
+        let finish = { (result: UIBackgroundFetchResult) in
+            answer?(result)
+            answer = nil
+        }
+        Task {
+            await work()
+            finish(.newData)
+        }
+        Task {
+            try? await Task.sleep(for: limit)
+            finish(.failed)
         }
     }
 }
