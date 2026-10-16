@@ -165,13 +165,14 @@ struct HomeView: View {
         .onChange(of: appState.authService.loginGeneration) {
             viewModel.closeAssignment()
         }
-        // An assignment reminder or Live Activity tap, which `MainTabView` brings Home up for.
+        // An assignment reminder or Live Activity tap, which `MainTabView` brings Home up for. A
+        // sheet up on any tab would cover the page, so it closes first.
         .onChange(of: appState.pendingDeepLink, initial: true) { _, link in
             guard case .assignment(let id) = link else { return }
             appState.pendingDeepLink = nil
-            if let assignment = DataCache.shared.loadAssignments().first(where: { $0.assignmentId == id }) {
-                openAssignment(assignment)
-            }
+            guard let assignment = DataCache.shared.loadAssignments().first(where: { $0.assignmentId == id }) else { return }
+            guard let root = UIApplication.shared.foregroundRoot else { return openAssignment(assignment) }
+            root.closePresentations { openAssignment(assignment) }
         }
         .sheet(item: $viewModel.selectedCourse, onDismiss: viewModel.courseSheetDismissed) { course in
             let slot = viewModel.selectedCourseSlot
