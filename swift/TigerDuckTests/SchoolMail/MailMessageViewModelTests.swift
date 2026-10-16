@@ -220,6 +220,35 @@ struct MailMessageViewModelTests {
         #expect(h.model.formattedHTML == ##"<p style="color: #959595">Hi <img src="https://x.example/a.png" /></p>"##)
     }
 
+    /// Leaving the screen cancels its load, and that has to reach the detached work too, or a
+    /// large mail keeps working for a screen that has gone.
+    @Test func cancellingTheCallerCancelsTheDetachedWork() async {
+        let caller = Task {
+            await MailMessageViewModel.detachedCancellably { () -> Bool in
+                for _ in 0..<5_000 {
+                    if Task.isCancelled { return true }
+                    usleep(1_000)
+                }
+                return false
+            }
+        }
+        caller.cancel()
+        #expect(await caller.value)
+    }
+
+    /// A screen that has gone cancels its load, and nothing that load worked out is applied, the
+    /// body the cache already had included.
+    @Test func aCancelledLoadAppliesNothing() async throws {
+        let message = FakeMailClient.message(uid: 5, html: ##"<p style="color: #333333">Hi</p>"##)
+        let h = Self.harness(message)
+        h.cache.saveDetail(try #require(message.detail), folder: "INBOX", uidValidity: 1)
+        let load = Task { await h.model.load() }
+        load.cancel()
+        await load.value
+        #expect(h.model.detail == nil)
+        #expect(h.model.pages == nil)
+    }
+
     @Test func unreadableMailFallsBackToSource() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: nil))
         await h.model.load()

@@ -594,20 +594,27 @@ final class MailMessageViewModel {
 
     // MARK: Internals
 
+    /// Runs `work` in a detached task that the caller's cancellation reaches: leaving the screen
+    /// cancels its load, and a large mail's HTML should stop being worked on with it.
+    nonisolated static func detachedCancellably<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        let task = Task.detached(operation: work)
+        return await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+    }
+
     /// `MailHTMLSanitizer.sanitize`, `.rewriteLinks` and `MailReadableHTML` together run
     /// SwiftSoup's parser up to four times (a parse, a rewrite-and-reserialize, the rewrite's own
     /// reparse for its lockstep check, and one for both pages' colours). Inline, that would block
     /// the main actor on a large or complex mail, so it runs in a detached task.
     ///
-    /// Bumps and captures `htmlGeneration` before the work starts and returns `nil` unless it is
-    /// still current when the work finishes, so only the last-started of `apply`/`loadImages`
-    /// has its result applied, whatever the completion order.
+    /// Bumps and captures `htmlGeneration` first and returns nil unless it is still current when
+    /// the work finishes, or when the caller was cancelled, so only the last-started of
+    /// `apply`/`loadImages` has its result applied, whatever the completion order.
     private func recomputeSanitizedHTML(
         html: String?, textBody: String?, allowImages: Bool
     ) async -> (SanitizedHTML?, LinkedHTML?, String, MailFormattedPages?)? {
         htmlGeneration += 1
         let generation = htmlGeneration
-        let computed = await Task.detached { () -> (SanitizedHTML?, LinkedHTML?, String, MailFormattedPages?) in
+        let computed = await Self.detachedCancellably { () -> (SanitizedHTML?, LinkedHTML?, String, MailFormattedPages?)? in
             guard let html else { return (nil, nil, textBody ?? "", nil) }
             let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: allowImages)
             let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
@@ -621,9 +628,11 @@ final class MailMessageViewModel {
             // the raw body, text dropped with its container would show only in the plain view,
             // linkified (a bait-and-switch), and fire the password-bait check on text never shown.
             let plain = textBody ?? MailHTMLSanitizer.plainText(fromHTML: sanitized.html)
-            return (sanitized, linked, plain, pages)
-        }.value
-        return generation == htmlGeneration ? computed : nil
+            // Cancelled work left the colours as sent, and none of it is applied.
+            return Task.isCancelled ? nil : (sanitized, linked, plain, pages)
+        }
+        guard let computed, generation == htmlGeneration else { return nil }
+        return computed
     }
 
     private func apply(_ detail: MailMessageDetail) async {
