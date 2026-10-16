@@ -121,7 +121,7 @@ extension AppServiceBridge {
 
     private static func runAssignmentRound(authService: AuthService, recheckSubmissions: Bool) async -> [SDAssignment] {
         let startGeneration = authService.loginGeneration
-        guard authService.storedStudentId != nil,
+        guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
             return DataCache.shared.loadAssignments()
         }
@@ -223,21 +223,19 @@ extension AppServiceBridge {
                 assignmentsToPersist = freshAssignments
             }
 
-            if !Task.isCancelled,
-               authService.loginGeneration == startGeneration {
-                DataCache.shared.saveAssignments(assignmentsToPersist)
-                DataCache.shared.replaceClosedUnsubmittedAssignments(closedUnsubmitted(
-                    records: records, statuses: statuses, askedAt: askedAt, kept: closed
-                ))
+            let persisted = persistRound(
+                assignmentsToPersist,
+                records: records,
+                closed: closedUnsubmitted(records: records, statuses: statuses, askedAt: askedAt, kept: closed),
+                account: account,
+                fetchedAt: askedAt,
+                cache: .shared,
+                isCurrent: { authService.loginGeneration == startGeneration }
+            )
+            if persisted {
                 if statuses.count == recordsToAsk.count {
                     Defaults[.schoolDataSyncedAt] = Date()
                 }
-                // Rebuilt by every round, so a Home pull or a return to the app moves the
-                // calendar's Moodle rows too, not only a launch or a calendar pull.
-                var calendarEvents = DataCache.shared.loadCalendarEvents()
-                calendarEvents.removeAll { $0.source == .moodle }
-                calendarEvents.append(contentsOf: assignmentsToPersist.map(moodleCalendarEvent))
-                DataCache.shared.saveCalendarEvents(calendarEvents)
 
                 // Fire-and-forget: upload the assignment list to the backend
                 // so it can populate its assignments table for cross-device
@@ -273,6 +271,30 @@ extension AppServiceBridge {
             }
             return DataCache.shared.loadAssignments()
         }
+    }
+
+    /// Writes what a round fetched for `account`: the assignments, their records, the closed ones
+    /// and the calendar's Moodle rows, which every round rebuilds so a Home pull or a return to the
+    /// app moves them too. Nothing is written once the round is cancelled or the account signed
+    /// out, and the result says whether it wrote.
+    static func persistRound(
+        _ assignments: [SDAssignment],
+        records: [MoodleAssignmentRecord],
+        closed: [String: Date],
+        account: String,
+        fetchedAt: Date,
+        cache: DataCache,
+        isCurrent: () -> Bool
+    ) -> Bool {
+        guard !Task.isCancelled, isCurrent() else { return false }
+        cache.saveAssignments(assignments)
+        cache.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
+        cache.replaceClosedUnsubmittedAssignments(closed)
+        var calendarEvents = cache.loadCalendarEvents()
+        calendarEvents.removeAll { $0.source == .moodle }
+        calendarEvents.append(contentsOf: assignments.map(moodleCalendarEvent))
+        cache.saveCalendarEvents(calendarEvents)
+        return true
     }
 
     /// A round's assignments, one per record with a due date and a submission, with the user's

@@ -26,6 +26,12 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
     var gradeItems: @Sendable (_ courseId: Int) async throws -> [MoodleGradeItem] = { _ in [] }
     var summary: @Sendable (_ courseId: Int) async throws -> MoodleCourseSummary = { _ in .empty }
+    var submission: @Sendable (_ assignId: Int) async throws -> MoodleAssignmentSubmission = { _ in
+        throw CancellationError()
+    }
+    var comments: @Sendable (_ cmid: Int, _ submissionId: Int) async throws -> [MoodleSubmissionComment] = { _, _ in [] }
+    /// The account's groups on the course, by id.
+    var groups: @Sendable (_ courseId: Int) async throws -> [Int: String] = { _ in [:] }
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -89,6 +95,20 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await MoodleWebserviceClient.withToken {
                 try await MoodleCourseSummaryService.summary(courseId: courseId, token: $0)
             }
+        },
+        submission: { assignId in
+            try await MoodleAssignmentService.submission(assignId: assignId)
+        },
+        comments: { cmid, submissionId in
+            try await MoodleWebserviceClient.withToken {
+                try await MoodleAssignmentService.comments(cmid: cmid, submissionId: submissionId, token: $0)
+            }
+        },
+        groups: { courseId in
+            try await MoodleWebserviceClient.withToken { token in
+                let userId = try await MoodleSiteInfoService.shared.userId(token: token)
+                return try await MoodleAssignmentService.groups(courseId: courseId, userId: userId, token: token)
+            }
         }
     )
 
@@ -130,6 +150,17 @@ struct MoodleCacheContext {
     /// False once the account signs out, after which nothing is written.
     let isCurrent: () -> Bool
     var now: () -> Date = { Date() }
+
+    /// The signed-in account's, nil while signed out.
+    static func signedIn(_ authService: AuthService, cache: DataCache = .shared) -> MoodleCacheContext? {
+        guard let account = authService.storedStudentId else { return nil }
+        let generation = authService.loginGeneration
+        return MoodleCacheContext(
+            account: account,
+            cache: cache,
+            isCurrent: { [weak authService] in authService?.loginGeneration == generation }
+        )
+    }
 }
 
 /// One kind of a course's Moodle data as its screen shows it: the cached copy at once, then each
@@ -285,12 +316,14 @@ enum MoodleCourseRoute: Hashable {
     case forums
     case forum(MoodleForum)
     case discussion(MoodleDiscussion, in: MoodleForum)
+    case assignments
+    case assignment(MoodleCourseAssignments.Entry)
 
     /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {
         switch self {
-        case .announcements, .materials, .grades, .members, .forums, .forum, .discussion: true
-        case .announcement, .member: false
+        case .announcements, .materials, .grades, .members, .forums, .forum, .discussion, .assignments: true
+        case .announcement, .member, .assignment: false
         }
     }
 }
@@ -300,6 +333,7 @@ struct MoodleSectionRow: Identifiable, Equatable {
     enum Kind: Hashable {
         case announcements
         case materials
+        case assignments
         case grades
         case members
         case forums
@@ -327,6 +361,7 @@ final class MoodleCourseStore {
     let grades: MoodleFeed<MoodleCourseGrades>
     let members: MoodleFeed<MoodleMemberList>
     let summary: MoodleFeed<MoodleCourseSummary>
+    let assignments: MoodleCourseAssignments
 
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
@@ -358,6 +393,7 @@ final class MoodleCourseStore {
         grades = MoodleFeed(cacheName: "courses/\(courseId)/grades", ttl: MoodleRefreshInterval.grades, context: context)
         members = MoodleFeed(cacheName: "courses/\(courseId)/members", ttl: MoodleRefreshInterval.members, context: context)
         summary = MoodleFeed(cacheName: "courses/\(courseId)/summary", ttl: MoodleRefreshInterval.summary, context: context)
+        assignments = MoodleCourseAssignments(courseId: courseId, context: context, api: api)
     }
 
     // MARK: Section
@@ -370,6 +406,9 @@ final class MoodleCourseStore {
         }
         if let count = materials.value?.count, count > 0 {
             rows.append(MoodleSectionRow(kind: .materials, count: count, hasUnread: false))
+        }
+        if !assignments.list.isEmpty {
+            rows.append(MoodleSectionRow(kind: .assignments, count: assignments.list.count, hasUnread: false))
         }
         if let graded = grades.value?.graded.count, graded > 0 {
             rows.append(MoodleSectionRow(kind: .grades, count: graded, hasUnread: false))

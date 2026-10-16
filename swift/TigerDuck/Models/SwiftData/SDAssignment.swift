@@ -67,14 +67,21 @@ final class SDAssignment {
     /// views consistent; they all read the same enum instead of each
     /// re-deriving rules from raw dates.
     func status(now: Date = AppClock.now()) -> AssignmentStatus {
+        if !isCompleted {
+            if isArchived { return .archived }
+            if isLocallyCompleted { return .locallyCompleted }
+        }
+        return moodleStatus(now: now)
+    }
+
+    /// ``status(now:)`` without the user's own marks, as Moodle sees the assignment.
+    func moodleStatus(now: Date = AppClock.now()) -> AssignmentStatus {
         if isCompleted {
             if let submittedAt, submittedAt > dueDate {
                 return .submittedLate
             }
             return .submitted
         }
-        if isArchived { return .archived }
-        if isLocallyCompleted { return .locallyCompleted }
         guard dueDate < now else { return .pending }
         if let cutoffDate, now > cutoffDate {
             return .overdueRejected
