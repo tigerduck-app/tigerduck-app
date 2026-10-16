@@ -15,6 +15,9 @@ nonisolated struct MailReadableHTML {
     /// Far deeper than mail nests, and short of the depth where WebKit stops nesting elements, so
     /// the tree read here is the one the page draws. Deeper, colours stay as sent.
     static let maximumDepth = 256
+    /// Distinct colours a page searches a fix for. A search costs a tenth of a millisecond or so,
+    /// and a mail can carry thousands of colours; past these, the better of white and black.
+    static let maximumSearches = 2_000
 
     /// Whether the mail sets a text or background colour of its own anywhere.
     let setsColors: Bool
@@ -320,7 +323,8 @@ nonisolated struct MailReadableHTML {
 
     private static let targetPattern = try! NSRegularExpression(pattern: #"\s(?:href|src)="[^"]*""#)
 
-    /// Every `href` and `src` in `html`, in order. SwiftSoup writes every attribute in double quotes.
+    /// Every double-quoted `href` and `src` in `html`, in order. That is all of them: `html` is
+    /// SwiftSoup's output, which quotes so, and a page reuses those bytes for what it leaves alone.
     static func targets(in html: String) -> [String] {
         targetPattern.matches(in: html, range: NSRange(html.startIndex..., in: html))
             .compactMap { Range($0.range, in: html).map { String(html[$0]) } }
@@ -423,23 +427,23 @@ nonisolated struct MailReadableHTML {
     /// The colour nearest `text` in OKLCH lightness that reaches `minimumContrast` on
     /// `background`, or nil when `text` already reads there. Both opaque. Only the side of the
     /// better of white and black can reach it, and on a mid-tone where neither does, that one is
-    /// the fix: no colour comes closer.
-    static func readable(_ text: RGBA, on background: RGBA) -> RGBA? {
+    /// the fix: no colour comes closer. It is the fix without `searching` too.
+    static func readable(_ text: RGBA, on background: RGBA, searching: Bool = true) -> RGBA? {
         guard !reads(text, on: background) else { return nil }
         let (white, black) = (RGBA(0xFFFFFF), RGBA(0x000000))
         let best = contrast(white, background) >= contrast(black, background) ? white : black
-        guard contrast(best, background) >= minimumContrast else { return best }
+        guard searching, contrast(best, background) >= minimumContrast else { return best }
         return nearest(OKLab(text), towards: best == white ? 1 : 0, on: background) ?? best
     }
 
     /// The first lightness from `lab`'s towards `end` that reaches `minimumContrast` on
-    /// `background`, found by halving; nil when even `end` does not. The channels round away
-    /// from the background, so the rounded colour still reaches it.
+    /// `background`, found by halving; nil when even `end` does not. Twelve halvings are finer
+    /// than a byte step, and the channels round away from the background, so it still reaches it.
     private static func nearest(_ lab: OKLab, towards end: Double, on background: RGBA) -> RGBA? {
         let reaches = { (lightness: Double) in contrast(displayable(lab, lightness: lightness), background) >= minimumContrast }
         guard reaches(end) else { return nil }
         var (fails, passes) = (lab.lightness, end)
-        for _ in 0..<32 {
+        for _ in 0..<12 {
             let middle = (fails + passes) / 2
             if reaches(middle) { passes = middle } else { fails = middle }
         }
@@ -456,7 +460,7 @@ nonisolated struct MailReadableHTML {
         if scaled(1).isInGamut {
             inside = 1
         } else {
-            for _ in 0..<24 {
+            for _ in 0..<12 {
                 let middle = (inside + outside) / 2
                 if scaled(middle).isInGamut { inside = middle } else { outside = middle }
             }
@@ -479,7 +483,7 @@ nonisolated struct MailReadableHTML {
         mutating func readable(_ text: RGBA, on background: RGBA) -> RGBA? {
             let pair = Pair(text: text, background: background)
             if let fix = known[pair] { return fix }
-            let fix = MailReadableHTML.readable(text, on: background)
+            let fix = MailReadableHTML.readable(text, on: background, searching: known.count < MailReadableHTML.maximumSearches)
             known[pair] = .some(fix)
             return fix
         }

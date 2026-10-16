@@ -287,6 +287,16 @@ struct MailReadableHTMLTests {
         }
     }
 
+    /// Past `maximumSearches` distinct colours on a page, a colour that does not read takes the
+    /// better of white and black without a search.
+    @Test func pastTheSearchCapAFixIsWhiteOrBlack() {
+        let colours = (0...MailReadableHTML.maximumSearches).map { String(format: "#%02x%02x%02x", $0 % 16, $0 / 16 % 16, $0 / 256) }
+        let page = MailReadableHTML(colours.map { #"<font color="\#($0)">x</font>"# }.joined()).html(on: .app)
+        #expect(page.hasPrefix(##"<font color="#959595">x</font>"##))
+        #expect(page.hasSuffix(##"<font color="#ffffff">x</font>"##))
+        #expect(page.components(separatedBy: "#ffffff").count == 2)
+    }
+
     /// Cancelled while the document is read, or while a page is written, the colours stay as sent.
     @Test func aCancelledReadLeavesTheColoursAsSent() async {
         let html = ##"<p style="color: #333333">x</p>"##
