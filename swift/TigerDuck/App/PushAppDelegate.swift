@@ -121,6 +121,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
     /// A few seconds before `syncTriggerTimeLimit`, so a slow send still leaves time to answer.
     static let syncTriggerSendLimit: Duration = syncTriggerTimeLimit - .seconds(3)
 
+    /// The limits a sync trigger runs under. A test widens them: other tests running beside it can
+    /// hold the main actor for longer than either.
+    var syncTriggerLimits = (answer: syncTriggerTimeLimit, send: syncTriggerSendLimit)
+
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
@@ -136,9 +140,9 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
                 sync: onSyncTrigger,
                 beforeAnswering: beforeAnsweringSyncTrigger,
                 send: sendBeforeAnsweringSyncTrigger,
-                sendDeadline: .now + Self.syncTriggerSendLimit
+                sendDeadline: .now + syncTriggerLimits.send
             ),
-            within: Self.syncTriggerTimeLimit,
+            within: syncTriggerLimits.answer,
             then: completionHandler
         )
     }
