@@ -366,9 +366,14 @@ nonisolated struct MailReadableHTML {
     private static func hex(_ digits: Substring, legacy: Bool) -> RGBA? {
         let values = digits.compactMap { $0.isASCII ? $0.hexDigitValue : nil }.map(Double.init)
         guard values.count == digits.count, (legacy ? [3, 6] : [3, 4, 6, 8]).contains(values.count) else { return nil }
-        let channels = values.count <= 4
-            ? values.map { $0 / 15 }
-            : stride(from: 0, to: values.count, by: 2).map { (values[$0] * 16 + values[$0 + 1]) / 255 }
+        let channels: [Double]
+        if values.count <= 4 {
+            channels = values.map { $0 / 15 }
+        } else {
+            channels = stride(from: 0, to: values.count, by: 2).map { (index: Int) -> Double in
+                (values[index] * 16 + values[index + 1]) / 255
+            }
+        }
         return RGBA(red: channels[0], green: channels[1], blue: channels[2], alpha: channels.count > 3 ? channels[3] : 1)
     }
 
