@@ -143,6 +143,50 @@ struct MoodleAssignmentServiceTests {
         #expect(submission.takesComments)
     }
 
+    @Test("where every member must submit, the page follows the student's own record, as the round does")
+    func everyMemberSubmits() throws {
+        let submission = try Self.submission(#"""
+        {"lastattempt": {
+          "submission": {"id": 5601, "timemodified": 1790800000, "status": "submitted", "plugins": [
+            {"type": "comments", "name": "Submission comments"}]},
+          "teamsubmission": {"id": 5600, "timemodified": 1790700000, "status": "draft", "plugins": [
+            {"type": "file", "fileareas": [{"area": "submission_files", "files": [
+              \#(Self.file("project.zip", area: "assignsubmission_file/submission_files", item: 5600, size: 2048,
+                           type: "application/zip", time: 1790700000))]}]}]},
+          "submissiongroup": 31, "submissiongroupmemberswhoneedtosubmit": [43]},
+         "warnings": []}
+        """#)
+
+        #expect(submission.id == 5601)
+        #expect(submission.submittedAt == Date(timeIntervalSince1970: 1_790_800_000))
+        #expect(submission.takesComments)
+    }
+
+    @Test("online text points its images and links at its own files, and drops an image with no file")
+    func onlineTextFiles() throws {
+        let submission = try Self.submission(#"""
+        {"lastattempt": {"submission": {"id": 5501, "timemodified": 1790500000, "status": "submitted", "plugins": [
+          {"type": "onlinetext", "fileareas": [{"area": "submissions_onlinetext", "files": [
+            \#(Self.file("chart.png", area: "assignsubmission_onlinetext/submissions_onlinetext", item: 5501,
+                         size: 4096, type: "image/png", time: 1790500000)),
+            {"filename": "notes v2.pdf", "filepath": "/", "filesize": 100, "mimetype": "application/pdf",
+             "fileurl": "https://moodle-stub.invalid/webservice/pluginfile.php/123/assignsubmission_onlinetext/submissions_onlinetext/5501/notes%20v2.pdf",
+             "timemodified": 1790500000}]}],
+           "editorfields": [{"name": "onlinetext", "format": 1, "text":
+             "<p>Chart: <img src=\"@@PLUGINFILE@@/chart.png\" alt=\"chart\"> <img src=\"@@PLUGINFILE@@/gone.png\" alt=\"gone\"></p><p><a href=\"@@PLUGINFILE@@/notes%20v2.pdf\">Notes</a> <a href=\"@@PLUGINFILE@@/old.pdf\">Old notes</a></p>"}]}
+        ]}}}
+        """#)
+
+        let text = try #require(submission.onlineText)
+        #expect(!text.contains("@@PLUGINFILE@@"))
+        #expect(text.contains(
+            "https://moodle-stub.invalid/webservice/pluginfile.php/123/assignsubmission_onlinetext/submissions_onlinetext/5501/chart.png"
+        ))
+        #expect(text.contains("submissions_onlinetext/5501/notes%20v2.pdf"))
+        #expect(!text.contains("gone"))
+        #expect(text.contains("Old notes"))
+    }
+
     @Test("with no record on Moodle yet, nothing is handed in and there is nothing to comment on")
     func noSubmission() throws {
         let submission = try Self.submission(#"""
@@ -175,6 +219,16 @@ struct MoodleAssignmentServiceTests {
         ]}}}
         """#)
         #expect(empty.onlineText == nil)
+
+        let imageOnly = try Self.submission(#"""
+        {"lastattempt": {"submission": {"id": 5703, "timemodified": 1790400000, "status": "submitted", "plugins": [
+          {"type": "onlinetext", "fileareas": [{"area": "submissions_onlinetext", "files": [
+            \#(Self.file("chart.png", area: "assignsubmission_onlinetext/submissions_onlinetext", item: 5703,
+                         size: 4096, type: "image/png", time: 1790400000))]}],
+           "editorfields": [{"name": "onlinetext", "text": "<p><img src=\"@@PLUGINFILE@@/chart.png\"></p>", "format": 1}]}
+        ]}}}
+        """#)
+        #expect(imageOnly.onlineText != nil)
     }
 
     // MARK: - Comments and groups

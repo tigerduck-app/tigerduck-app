@@ -183,12 +183,15 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
 
     let lastattempt: LastAttempt?
 
-    func toMoodleSubmissionStatus(assignId: Int) -> MoodleSubmissionStatus {
-        // A team assignment reports the group's status in `teamsubmission`, so a teammate's
-        // submission leaves the student's own `submission` unsubmitted or without a status.
+    /// A team assignment reports the group's status in `teamsubmission`, so a teammate's
+    /// submission leaves the student's own `submission` unsubmitted or without a status.
+    private var attempt: LastAttempt.Submission? {
         let own = lastattempt?.submission
         let team = lastattempt?.teamsubmission
-        let attempt = team?.status == "submitted" || own?.status == nil ? team ?? own : own
+        return team?.status == "submitted" || own?.status == nil ? team ?? own : own
+    }
+
+    func toMoodleSubmissionStatus(assignId: Int) -> MoodleSubmissionStatus {
         let rawTime = attempt?.timemodified ?? 0
         let submittedAt: Date? = rawTime > 0
             ? Date(timeIntervalSince1970: TimeInterval(rawTime))
@@ -201,12 +204,16 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         )
     }
 
-    /// Moodle answers `teamsubmission` only for a team assignment, where the group's record holds
-    /// what was handed in, as Moodle's own page shows it.
+    /// From the record the round's status comes from, so the page and Home agree.
     var submission: MoodleAssignmentSubmission {
-        let record = lastattempt?.teamsubmission ?? lastattempt?.submission
+        let record = attempt
         let plugins = record?.plugins ?? []
-        let text = plugins.first { $0.type == "onlinetext" }?.editorfields?.first?.text
+        let textPlugin = plugins.first { $0.type == "onlinetext" }
+        let text = textPlugin?.editorfields?.first?.text.map {
+            MoodleHTMLText.resolvingPluginFiles(
+                in: $0, files: (textPlugin?.fileareas ?? []).flatMap { $0.files ?? [] }.compactMap(\.model)
+            )
+        }
         return MoodleAssignmentSubmission(
             status: record?.status,
             modified: record?.timemodified.flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil },
@@ -214,7 +221,9 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
                 .flatMap { $0.fileareas ?? [] }
                 .flatMap { $0.files ?? [] }
                 .compactMap(\.model),
-            onlineText: text.flatMap { MoodleHTMLText.plainText(fromHTML: $0).isEmpty ? nil : $0 },
+            onlineText: text.flatMap {
+                MoodleHTMLText.markdown(fromHTML: $0).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
+            },
             id: record?.id,
             takesComments: plugins.contains { $0.type == "comments" },
             groupId: lastattempt?.submissiongroup

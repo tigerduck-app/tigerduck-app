@@ -21,6 +21,31 @@ nonisolated enum MoodleHTMLText {
         return MarkdownWriter(baseURL: baseURL).blocks(in: body).joined(separator: "\n\n")
     }
 
+    /// `html` with each file Moodle keeps in the text's own area, written `@@PLUGINFILE@@/<path>`,
+    /// pointing at that file in `files`. An image whose file is not there is left out, and a link
+    /// keeps only its text.
+    static func resolvingPluginFiles(in html: String, files: [MoodleFile]) -> String {
+        let placeholder = "@@PLUGINFILE@@"
+        guard html.contains(placeholder), let document = try? SwiftSoup.parseBodyFragment(html),
+              let body = document.body(), let elements = try? body.getAllElements() else { return html }
+        document.outputSettings().prettyPrint(pretty: false)
+        let urls = Dictionary(files.map { (($0.path ?? "/") + $0.name, $0.url) }, uniquingKeysWith: { first, _ in first })
+        for element in elements.array() {
+            for attribute in ["src", "href"] {
+                guard let value = try? element.attr(attribute), value.hasPrefix(placeholder) else { continue }
+                let path = String(value.dropFirst(placeholder.count).prefix { $0 != "?" && $0 != "#" })
+                if let url = urls[path.removingPercentEncoding ?? path] {
+                    _ = try? element.attr(attribute, url)
+                } else if element.tagName().lowercased() == "img" {
+                    try? element.remove()
+                } else {
+                    _ = try? element.unwrap()
+                }
+            }
+        }
+        return (try? body.html()) ?? html
+    }
+
     // MARK: Plain text
 
     private static func appendPlainText(of node: Node, to text: inout String) {
