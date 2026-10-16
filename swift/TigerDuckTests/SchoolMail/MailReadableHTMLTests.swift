@@ -333,24 +333,36 @@ struct MailReadableHTMLTests {
         #expect(MailReadableHTML.targets(in: html) == [#" href="https://link.invalid/0""#, #" src="tdcid:a""#])
     }
 
-    /// Every vector gets a colour that needs fixing, so both pages are written out again: they
-    /// gain no forbidden token, keep their links, and differ from the input only in colours.
-    @Test func eitherPageOfTheCorpusChangesOnlyColourValues() throws {
+    /// Every vector gets elements that need fixing on both pages, through each way a colour is
+    /// written: a style's `color` value, `<font color>`, and a `color` given to a background (after
+    /// quotes, entities and `!important`) and to a link. Each page shows those writes, gains no
+    /// forbidden token, keeps its links, and differs from the input only in colours.
+    @Test func eitherPageOfTheCorpusChangesOnlyColours() throws {
+        let carriers = ##"<p style="font-family: &quot;A&amp;B&quot;, serif; color: #808080 !important">x</p><div style="font-family: 'Noto Sans'; background-color: #ffffff">y</div><div style="background-color: #000000 !important"><a href="https://a.example">z</a></div><font color="#808080">w</font>"##
+        let writes: [(MailHTMLTheme, [String])] = [
+            (.app, ["color: #959595 !important", ##"background-color: #ffffff; color: #595959">y"##, ##"<font color="#959595">w"##]),
+            (.light, ["color: #595959 !important", ##"background-color: #000000 !important; color: #959595">"##,
+                      ##" style="color: #6092ff">z"##, ##"<font color="#595959">w"##]),
+        ]
+        let given = try NSRegularExpression(pattern: #"; color: #[0-9a-f]{6}(?=")| style="color: #[0-9a-f]{6}""#)
         let hex = try NSRegularExpression(pattern: "#[0-9a-f]{6}")
-        let masked = { (html: String) in hex.stringByReplacingMatches(in: html, range: NSRange(html.startIndex..., in: html), withTemplate: "#") }
+        let colourless = { (html: String) -> String in
+            let ungiven = given.stringByReplacingMatches(in: html, range: NSRange(html.startIndex..., in: html), withTemplate: "")
+            return hex.stringByReplacingMatches(in: ungiven, range: NSRange(ungiven.startIndex..., in: ungiven), withTemplate: "#")
+        }
         for vector in MailHTMLSanitizerTests.corpus {
-            let linked = MailHTMLSanitizer.rewriteLinks(
-                MailHTMLSanitizer.sanitize(vector + ##"<p style="color: #333333">x</p>"##, allowRemoteImages: false).html
-            )
+            let linked = MailHTMLSanitizer.rewriteLinks(MailHTMLSanitizer.sanitize(vector + carriers, allowRemoteImages: false).html)
             let page = MailReadableHTML(linked.html)
-            #expect(page.html(on: .app) != linked.html, "\(vector)")
-            for theme in [MailHTMLTheme.app, .light] {
+            for (theme, expected) in writes {
                 let html = page.html(on: theme)
+                for write in expected {
+                    #expect(html.contains(write), "'\(write)' missing on the \(theme.isDark ? "dark" : "light") page: \(vector)")
+                }
                 for token in MailHTMLSanitizerTests.forbiddenTokens {
                     #expect(!html.lowercased().contains(token), "'\(token)' in: \(vector)")
                 }
                 #expect(MailHTMLSanitizer.rewriteLinks(html).links == MailHTMLSanitizer.rewriteLinks(linked.html).links, "\(vector)")
-                #expect(masked(html) == masked(linked.html), "\(vector)")
+                #expect(colourless(html) == colourless(linked.html), "\(vector)")
             }
         }
     }
