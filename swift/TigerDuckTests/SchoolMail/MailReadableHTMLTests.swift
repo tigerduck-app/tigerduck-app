@@ -31,6 +31,7 @@ struct MailReadableHTMLTests {
         (##"<p>Thanks</p><blockquote><p style="color: #1f497d">Quoted</p></blockquote>"##, true),
         (##"<p>Read <a href="https://a.example" style="color: inherit">more</a></p>"##, false),
         (##"<span style="color: currentColor; background-color: transparent">Hello</span>"##, false),
+        (##"<p style="background-color: currentColor">Hello</p>"##, true),
         (##"<p style="color: rgba(0, 0, 0, 0); background-color: #fff0">Hello</p>"##, false),
         (##"<table bgcolor="transparent"><tr><td style="color: unset">Hello</td></tr></table>"##, false),
         (##"<p style="color: revert">Hello</p>"##, false),

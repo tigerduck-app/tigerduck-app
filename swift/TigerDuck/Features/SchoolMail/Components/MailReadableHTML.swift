@@ -279,15 +279,19 @@ nonisolated struct MailReadableHTML {
     private static func setsColor(_ element: Element, style: Style) throws -> Bool {
         let text = try style.effective("color").map { shows($0.value) }
             ?? (element.tagName() == "font" && legacyValue("color", of: element) != nil)
-        let background = try style.effective("background-color").map { shows($0.value) }
+        let background = try style.effective("background-color").map { shows($0.value, onBackground: true) }
             ?? (legacyValue("bgcolor", of: element) != nil)
         return text || background
     }
 
     /// Whether a CSS colour value shows: one this reads with alpha above zero, or one it cannot
-    /// read that is not a keyword taking its colour from elsewhere.
-    private static func shows(_ value: Substring) -> Bool {
-        guard let color = parse(value, legacy: false) else { return !colorlessKeywords.contains(value.lowercased()) }
+    /// read that is not a keyword taking its colour from elsewhere. On a background `currentcolor`
+    /// paints the text colour, so there it shows.
+    private static func shows(_ value: Substring, onBackground: Bool = false) -> Bool {
+        guard let color = parse(value, legacy: false) else {
+            let keyword = value.lowercased()
+            return (onBackground && keyword == "currentcolor") || !colorlessKeywords.contains(keyword)
+        }
         return color.alpha > 0
     }
 
