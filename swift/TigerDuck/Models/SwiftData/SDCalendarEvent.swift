@@ -45,7 +45,7 @@ final class SDCalendarEvent {
             return true
         case .school:
             return AppConstants.taipeiCalendar.startOfDay(for: date) == date
-        case .moodle, .exam, .system:
+        case .moodle, .exam:
             return false
         }
     }
@@ -55,7 +55,6 @@ enum EventSource: String, Codable {
     case moodle
     case school
     case exam
-    case system  // iOS Calendar events
     /// A school holiday, from the published academic calendar. Distinct from
     /// `.school` because these are the only rows the user can act on — a
     /// holiday offers the "still remind me" toggle — and because they are the
@@ -74,7 +73,6 @@ enum EventSource: String, Codable {
         case .moodle: .moodleBlue
         case .school: .schoolOrange
         case .exam: .examRed
-        case .system: .gray
         // Green reads as "no class" against school orange and exam red, and
         // is the one colour not already spoken for.
         case .holiday: .green
@@ -89,7 +87,6 @@ enum EventSource: String, Codable {
         case .moodle: "Moodle"
         case .school: String(localized: "calendar_source_school")
         case .exam: String(localized: "calendar_source_exam")
-        case .system: String(localized: "feature_calendar")
         case .holiday: String(localized: "calendar_source_holiday")
         case .semester: String(localized: "calendar_source_semester")
         }
