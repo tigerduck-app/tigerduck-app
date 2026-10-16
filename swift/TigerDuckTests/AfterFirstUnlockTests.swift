@@ -186,7 +186,40 @@ struct AfterFirstUnlockTests {
             SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
                 let launch = TigerDuckApp.makeLaunch(hasUnlocked: false, center: NotificationCenter())
 
-                #expect(UserDefaults.standard.object(forKey: installed) == nil)
+                #expect(!UserDefaults.standard.bool(forKey: installed))
+                #expect(Defaults[.lastShownWhatsNewVersion] == nil)
+                withExtendedLifetime(launch) {}
+            }
+        }
+    }
+
+    /// The app's own launch with its real read-back check: no install flag ends the process at the
+    /// unlock and builds nothing. Real Defaults: docs/decisions/0020-real-defaults-gate.md.
+    @Test("TigerDuck's held-back launch with nothing stored ends the process at the unlock")
+    func theAppsHeldBackLaunchEndsWithoutStoredData() async {
+        let installed = AppConstants.UserDefaultsKeys.appHasBeenInstalled
+        await withExclusiveRealDefaults {
+            let savedInstalled = UserDefaults.standard.object(forKey: installed)
+            let savedWhatsNew = Defaults[.lastShownWhatsNewVersion]
+            let savedOnboarding = Defaults[.hasCompletedOnboarding]
+            defer {
+                UserDefaults.standard.set(savedInstalled, forKey: installed)
+                Defaults[.lastShownWhatsNewVersion] = savedWhatsNew
+                Defaults[.hasCompletedOnboarding] = savedOnboarding
+            }
+            UserDefaults.standard.removeObject(forKey: installed)
+            Defaults[.lastShownWhatsNewVersion] = nil
+            Defaults[.hasCompletedOnboarding] = false
+
+            SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
+                let center = NotificationCenter()
+                var ended = 0
+                let launch = TigerDuckApp.makeLaunch(hasUnlocked: false, center: center, endProcess: { ended += 1 })
+
+                center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+
+                #expect(ended == 1)
+                #expect(!UserDefaults.standard.bool(forKey: installed))
                 #expect(Defaults[.lastShownWhatsNewVersion] == nil)
                 withExtendedLifetime(launch) {}
             }

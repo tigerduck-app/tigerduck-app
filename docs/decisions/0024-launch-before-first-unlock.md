@@ -28,7 +28,8 @@ that lived on into the user's next open showed onboarding
   before the unlock may keep an empty copy of `UserDefaults` after it. If the flag does not read
   back, the process ends (`exit(0)`) and the next launch starts clean; with a scene up, the app
   closes once and opens as usual at the next tap. A real fresh install never gets here, as its
-  first launch comes after an unlock, and if one did, ending only moves the purge to the next launch.
+  first launch comes after an unlock, unless the probe's write fails for another reason, such as a
+  full disk; then each open ends until that write goes through.
 - School Mail's background refresh asks the same before it reads its preferences, and when the
   answer is no it schedules the next run and checks nothing.
 
@@ -47,7 +48,11 @@ that lived on into the user's next open showed onboarding
 ## Consequences
 
 - Launch code that reads `UserDefaults`, the Keychain or the app's files goes inside the closure
-  `TigerDuckApp.makeLaunch(hasUnlocked:center:)` hands `AfterFirstUnlock`.
+  `TigerDuckApp.makeLaunch` hands `AfterFirstUnlock`.
+- A held-back process the system wakes for a School Mail run after the unlock, before anything
+  built it, checks mail without `SchoolMailBootstrap.install()`: a rejected password stops the
+  background checks without the notice until the next open. One that still reads an empty copy
+  schedules each run and checks nothing until then.
 - Every launch logs to the `Launch` category of `org.ntust.app.TigerDuck`: whether the first
   unlock had happened, whether it started in the background with protected data available, and
   how a held-back build ended. A device check reads them in Console.

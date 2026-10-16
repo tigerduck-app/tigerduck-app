@@ -93,7 +93,9 @@ final class AfterFirstUnlock<Value> {
     private func buildHeldBack() -> Value? {
         if let built { return built }
         guard storedDataReadsBack() else {
-            launchLogger.error("Stored data does not read back after the first unlock; ending the process")
+            let unlocked = FirstUnlock.hasHappened()
+            let background = UIApplication.shared.applicationState == .background
+            launchLogger.error("Stored data does not read back in a held-back launch; ending the process (unlocked: \(unlocked, privacy: .public), background: \(background, privacy: .public))")
             endProcess()
             return nil
         }

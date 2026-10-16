@@ -71,8 +71,10 @@ struct TigerDuckApp: App {
 
     /// Everything the launch builds from stored data, which ``AfterFirstUnlock`` holds back while
     /// `hasUnlocked` is false.
-    static func makeLaunch(hasUnlocked: Bool, center: NotificationCenter) -> AfterFirstUnlock<Built> {
-        AfterFirstUnlock(hasUnlocked: hasUnlocked, center: center) {
+    static func makeLaunch(
+        hasUnlocked: Bool, center: NotificationCenter, endProcess: @escaping () -> Void = { exit(0) }
+    ) -> AfterFirstUnlock<Built> {
+        AfterFirstUnlock(hasUnlocked: hasUnlocked, endProcess: endProcess, center: center) {
             let appState = AppState()
             let watchSync = WatchSyncCoordinator()
             #if DEBUG
