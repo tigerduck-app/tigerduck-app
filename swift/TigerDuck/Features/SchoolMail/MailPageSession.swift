@@ -240,7 +240,8 @@ final class MailPageSession {
         guard let mailError = error as? MailClientError else { return false }
         switch mailError {
         case .unreachable, .certificateRejected: return true
-        case .authenticationFailed, .serverBusy, .searchUnsupported, .folderChanged, .protocolError: return false
+        case .authenticationFailed, .serverBusy, .searchUnsupported, .folderChanged, .sendUnconfirmed,
+             .protocolError: return false
         }
     }
 }

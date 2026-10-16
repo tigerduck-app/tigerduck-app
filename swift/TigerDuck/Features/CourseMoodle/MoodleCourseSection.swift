@@ -64,6 +64,8 @@ struct MoodleCourseSection: View {
             return .announcements
         case .materials:
             return .materials
+        case .assignments:
+            return .assignments
         case .grades:
             return .grades
         case .members:
@@ -191,6 +193,7 @@ struct MoodleSectionRowView: View {
         switch row.kind {
         case .announcements: "megaphone"
         case .materials: "folder"
+        case .assignments: "doc.text"
         case .grades: "chart.bar"
         case .members: "person.2"
         case .forums: "bubble.left.and.bubble.right"
@@ -201,6 +204,7 @@ struct MoodleSectionRowView: View {
         switch row.kind {
         case .announcements: String(localized: "feature_announcements")
         case .materials: String(localized: "course_detail_files_label")
+        case .assignments: String(localized: "course_detail_assignments_label")
         case .grades: String(localized: "course_detail_moodle_grades_label")
         case .members: String(localized: "course_detail_members_label")
         case .forums: String(localized: "course_detail_forums_label")

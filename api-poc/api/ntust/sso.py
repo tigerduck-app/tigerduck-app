@@ -104,7 +104,7 @@ class SQLiteCookieStore:
             client.cookies.set(
                 r["name"], r["value"], domain=r["domain"], path=r["path"],
             )
-        logger.info("Loaded %d cookies for %s", len(rows), account)
+        logger.info("Loaded %d cookies", len(rows))
         return True
 
     def save_from(self, account: str, client: httpx.Client) -> None:
@@ -118,12 +118,12 @@ class SQLiteCookieStore:
             data,
         )
         self._db.commit()
-        logger.info("Saved %d cookies for %s", len(data), account)
+        logger.info("Saved %d cookies", len(data))
 
     def delete(self, account: str) -> None:
         self._db.execute("DELETE FROM cookies WHERE account = ?", (account,))
         self._db.commit()
-        logger.info("Deleted cookies for %s", account)
+        logger.info("Deleted the stored cookies")
 
     def close(self) -> None:
         self._db.close()
@@ -221,7 +221,8 @@ class NtustSsoBridge:
     def _finalize(self, resp: httpx.Response) -> bool:
         self._store.save_from(self._account, self._client)
         self._is_authenticated = True
-        logger.info("Login success. final_url=%s", resp.url)
+        logger.info("Login success.")
+        logger.debug("final_url=%s", resp.url)
         return True
 
     def _resolve_bridges(

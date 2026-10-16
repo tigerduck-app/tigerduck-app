@@ -600,7 +600,8 @@ actor LiveMailClient: MailClient {
     nonisolated static func closesConnectionOnFailure(_ error: MailClientError) -> Bool {
         switch error {
         case .unreachable, .certificateRejected: true
-        case .authenticationFailed, .serverBusy, .searchUnsupported, .folderChanged, .protocolError: false
+        case .authenticationFailed, .serverBusy, .searchUnsupported, .folderChanged, .sendUnconfirmed,
+             .protocolError: false
         }
     }
 
@@ -628,6 +629,8 @@ actor LiveMailClient: MailClient {
             }
         }
         if let sendError = error as? SMTPSendError {
+            // The end of the message went out with no final reply, so it may have been sent.
+            if sendError.acceptance == .ambiguous { return .sendUnconfirmed }
             // `sendRawMessage` throws this for any failure after MAIL FROM (a rejected recipient,
             // a dropped connection mid-transaction, a timeout), the usual send failure. Most are
             // not network failures, so the fallback is `.protocolError`, not `.unreachable`.

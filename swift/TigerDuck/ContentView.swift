@@ -141,6 +141,7 @@ struct MainTabView: View {
         .onChange(of: appState.pendingDeepLink, initial: true) { _, new in
             routeBulletinDeepLinkIfNeeded(new)
             routeSchoolMailDeepLinkIfNeeded(new)
+            routeAssignmentDeepLinkIfNeeded(new)
         }
         #endif
         .onChange(of: scenePhase) { _, newPhase in
@@ -189,6 +190,12 @@ struct MainTabView: View {
     private func routeSchoolMailDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
         guard case .schoolMail = link, SchoolMailAvailability.isEnabled else { return }
         open(.schoolMail)
+    }
+
+    /// Home pushes the assignment's page and clears the link.
+    private func routeAssignmentDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
+        guard case .assignment = link else { return }
+        open(.home)
     }
     #endif
 
