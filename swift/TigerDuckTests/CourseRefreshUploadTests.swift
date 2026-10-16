@@ -2,19 +2,32 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `AppServiceBridge.coursesToUpload`: what a course refresh sends to the server. It sent the
-/// courses hidden here too, and the server keeps one out only by its tombstone, so a course hidden
-/// while cloud sync was off came back (https://github.com/tigerduck-app/tigerduck-app/issues/650).
+/// `AppServiceBridge.uploadVisibleCourses`: what a course refresh sends to the server
+/// (https://github.com/tigerduck-app/tigerduck-app/issues/650).
 @MainActor
 struct CourseRefreshUploadTests {
-    @Test("A course refresh uploads the term's courses but those hidden here, in that term or in every term")
+    private static let courses = ["CS1", "CS2", "CS3"].map { SDCourse(courseNo: $0, courseName: $0) }
+
+    @Test("A course refresh uploads its term but the courses hidden here, in that term or in every term")
     func hiddenCoursesStayOutOfTheUpload() {
-        let courses = ["CS1", "CS2", "CS3", "CS4"].map { SDCourse(courseNo: $0, courseName: $0) }
+        var uploads: [(courses: [String], semester: String)] = []
 
-        let uploaded = AppServiceBridge.coursesToUpload(
-            courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS4"]
-        )
+        AppServiceBridge.uploadVisibleCourses(
+            Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"]
+        ) { uploads.append(($0.map(\.courseNo), $1)) }
 
-        #expect(uploaded.map(\.courseNo) == ["CS1", "CS4"])
+        #expect(uploads.map(\.courses) == [["CS1"]])
+        #expect(uploads.map(\.semester) == ["1151"])
+    }
+
+    @Test("A course refresh whose courses are all hidden here uploads nothing")
+    func aTermHiddenWholeUploadsNothing() {
+        var uploads = 0
+
+        AppServiceBridge.uploadVisibleCourses(
+            Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"]
+        ) { _, _ in uploads += 1 }
+
+        #expect(uploads == 0)
     }
 }

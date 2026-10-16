@@ -219,9 +219,8 @@ enum AppServiceBridge {
             }
             if !courses.isEmpty {
                 DataCache.shared.saveCourses(courses, semester: semester)
-                courseUploader?(
-                    coursesToUpload(courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos())),
-                    semester
+                uploadVisibleCourses(
+                    courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()), to: courseUploader
                 )
             }
             return courses
@@ -234,11 +233,19 @@ enum AppServiceBridge {
         }
     }
 
-    /// The refreshed courses of `semester` that go up: all but those hidden here, as every other
-    /// course upload sends. The server keeps a course out only by its tombstone, and one hidden while
-    /// cloud sync was off has none: it would show on the other devices, and here after the next sync.
-    static func coursesToUpload(_ courses: [SDCourse], semester: String, hidden: Set<String>) -> [SDCourse] {
-        courses.filter { !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden) }
+    /// Hands a refreshed term to `upload` but the courses hidden here, as every other course upload
+    /// sends, and nothing when none is left. The server keeps a course out only by its tombstone, and
+    /// one hidden while cloud sync was off has none: it would show on the other devices, and here
+    /// after the next sync.
+    static func uploadVisibleCourses(
+        _ courses: [SDCourse],
+        semester: String,
+        hidden: Set<String>,
+        to upload: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    ) {
+        let visible = courses.filter { !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden) }
+        guard !visible.isEmpty else { return }
+        upload?(visible, semester)
     }
 
     /// Records a round's answer from `server`, unless the account signed out while the round ran:
