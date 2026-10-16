@@ -10,10 +10,18 @@ import AppKit
 import UserNotifications
 import os
 
+/// What a full sync came to, which a sync trigger push reports to the system.
+nonisolated enum FullSyncOutcome: Equatable, Sendable {
+    case synced
+    case failed
+    /// It did not reach the server: sync off, signed out, locked, turned away or cancelled.
+    case skipped
+}
+
 protocol PushTokenSource: AnyObject {
     var forwardToken: ((Data) -> Void)? { get set }
     var forwardError: ((Error) -> Void)? { get set }
-    var onSyncTrigger: (() async -> Void)? { get set }
+    var onSyncTrigger: (() async -> FullSyncOutcome)? { get set }
 }
 
 struct PushDiagnostic: Sendable {

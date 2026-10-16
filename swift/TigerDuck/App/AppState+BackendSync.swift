@@ -14,29 +14,31 @@ extension AppState {
     /// semester filtering); this only syncs the user's swipe marks.
     ///
     /// One runs at a time. `followUpIfBusy` is for a sync trigger push: one that arrives during
-    /// a pull waits for one more, since that pull may predate the change it announces.
-    func syncOverridesFromBackend(followUpIfBusy: Bool = false) async {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    /// a pull waits for one more, since that pull may predate the change it announces, and gets
+    /// that one's outcome.
+    @discardableResult
+    func syncOverridesFromBackend(followUpIfBusy: Bool = false) async -> FullSyncOutcome {
+        guard Defaults[.cloudSyncEnabled] else { return .skipped }
         #if os(iOS)
         // A sync trigger can launch the app behind the lock screen, where the local marks,
         // courses and colours cannot be opened and read as empty, and a sync would write the
         // server's view over them. Revision polling syncs at the next return to the app.
-        guard UIApplication.shared.isProtectedDataAvailable else { return }
+        guard UIApplication.shared.isProtectedDataAvailable else { return .skipped }
         #endif
         if fullSyncGate.isRunning {
             AppLogger.sync.info("[syncOverrides] already in flight, follow-up: \(followUpIfBusy, privacy: .public)")
         }
-        await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
+        return await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
             await runFullSync(retried: false)
         }
     }
 
-    private func runFullSync(retried: Bool) async {
+    private func runFullSync(retried: Bool) async -> FullSyncOutcome {
         // Sign-out clears what this writes but cancels only `syncTask`, which a poll, a push or a
         // pull does not run in. So no write below follows an await without this check.
         let generation = authService.loginGeneration
         await authService.ensureBackendSignedIn()
-        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return }
+        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return .skipped }
         await retryUnsentEdits()
         do {
             #if DEBUG
@@ -55,7 +57,7 @@ extension AppState {
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
             let json = try await pushCoordinator.fetchFullSync()
-            guard fullSyncMayWrite(since: generation) else { return }
+            guard fullSyncMayWrite(since: generation) else { return .skipped }
             // Whether this sync changed anything on the device. Only then does it post
             // `dataDidUpdate`, which reloads every page, the widgets, the Watch and the schedule.
             var changed = false
@@ -115,7 +117,7 @@ extension AppState {
             // shortcut: a colour or name edit both queued and sent during the fetch is in neither
             // sample, and shows again at the poll's sync after it; track edit times if that matters.
             let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
-            guard fullSyncMayWrite(since: generation) else { return }
+            guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
                 .union(inFlightOverrides)
@@ -276,21 +278,30 @@ extension AppState {
                 linksBeforeSnapshot: settingsLinksBeforeFetch
             )
             #endif
+            return .synced
         } catch {
-            guard fullSyncMayWrite(since: generation) else { return }
+            guard !Self.isCancellation(error), fullSyncMayWrite(since: generation) else { return .skipped }
             ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
+            var outcome = FullSyncOutcome.failed
             if case PushAPIError.httpStatus(401, _) = error, !retried {
                 let reloginOk = await attemptBackendRelogin()
                 if reloginOk {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
-                    guard fullSyncMayWrite(since: generation) else { return }
-                    await runFullSync(retried: true)
+                    guard fullSyncMayWrite(since: generation) else { return .skipped }
+                    outcome = await runFullSync(retried: true)
                 }
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .private)")
+            return outcome
         }
+    }
+
+    /// Whether a full sync's error is its own cancellation, as at the time limit of a sync trigger
+    /// push, which says nothing about the server. `URLSession` throws `URLError.cancelled` for it.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     /// Re-sends the edits whose upload never landed. Every full sync starts with this, and so does
@@ -985,28 +996,29 @@ extension AppState {
 @MainActor
 final class FullSyncGate {
     private(set) var isRunning = false
-    private var followUpWaiters: [CheckedContinuation<Void, Never>] = []
+    private var followUpWaiters: [CheckedContinuation<FullSyncOutcome, Never>] = []
 
     var queuedFollowUps: Int { followUpWaiters.count }
 
     /// Runs `body` unless a run is in flight. Then a call with `followUp` waits for one more run
-    /// that starts after the current one, shared by every call that asked meanwhile; one without
-    /// returns at once. `mayFollow` is checked before each follow-up.
-    func run(followUp: Bool, mayFollow: () -> Bool, _ body: () async -> Void) async {
+    /// that starts after the current one, shared by every call that asked meanwhile, and returns
+    /// its outcome; one without returns `.skipped` at once. `mayFollow` is checked before each
+    /// follow-up. A call that runs `body` returns the outcome of its own run.
+    func run(followUp: Bool, mayFollow: () -> Bool, _ body: () async -> FullSyncOutcome) async -> FullSyncOutcome {
         guard !isRunning else {
-            guard followUp else { return }
-            await withCheckedContinuation { followUpWaiters.append($0) }
-            return
+            guard followUp else { return .skipped }
+            return await withCheckedContinuation { followUpWaiters.append($0) }
         }
         isRunning = true
-        await body()
+        let outcome = await body()
         while !followUpWaiters.isEmpty {
             let waiters = followUpWaiters
             followUpWaiters = []
-            if mayFollow() { await body() }
-            for waiter in waiters { waiter.resume() }
+            let followed = mayFollow() ? await body() : .skipped
+            for waiter in waiters { waiter.resume(returning: followed) }
         }
         isRunning = false
+        return outcome
     }
 }
 
