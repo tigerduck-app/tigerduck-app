@@ -207,11 +207,10 @@ final class EmptyClassroomViewModel {
         appear()
     }
 
-    /// The screen went away: a read it started would otherwise go on, and queue behind it the
-    /// reads of the next visits.
+    /// The screen went away. A read it started goes on, as a day takes long to read: a return to
+    /// the day shows it, and so does a new screen, whose read waits for it in the shared service.
     func disappear() {
         isOnScreen = false
-        stopLoading()
     }
 
     /// The signed-in account changed: what the screen holds belonged to the one before. Off
@@ -299,8 +298,8 @@ final class EmptyClassroomViewModel {
 
     private func load(force: Bool) {
         let day = selectedDay
-        // A repeated appear() while this day loads keeps that load. Leaving the screen
-        // already stopped it, so coming back after a disappear() always starts a new read.
+        // A repeated appear() while this day loads keeps that load, and so does a return after
+        // disappear().
         if !force, running?.day == day { return }
         stopLoading()
         if let off = dayOff(day) {
