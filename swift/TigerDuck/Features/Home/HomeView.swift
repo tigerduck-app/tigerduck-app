@@ -8,10 +8,12 @@ struct HomeView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
     @State private var selectedFeature: AppFeature?
+    @State private var shownAssignment: MoodleAssignmentPage?
     @State private var activeSectionDrag: ReorderDragPayload?
     @State private var didReorderSection = false
 
@@ -152,6 +154,26 @@ struct HomeView: View {
         .navigationDestination(item: $selectedFeature) { feature in
             homeDestination(for: feature)
         }
+        .navigationDestination(item: $shownAssignment) { page in
+            MoodleAssignmentView(
+                store: page.store, assignment: page.assignment,
+                policy: appState.visualStylePolicy, accent: appState.accentColor
+            )
+            .moodleLinkOpening()
+        }
+        // On iPad another window can sign out or in, and the page holds the store of the account
+        // that opened it.
+        .onChange(of: appState.authService.loginGeneration) {
+            shownAssignment = nil
+        }
+        // An assignment reminder or Live Activity tap, which `MainTabView` brings Home up for.
+        .onChange(of: appState.pendingDeepLink, initial: true) { _, link in
+            guard case .assignment(let id) = link else { return }
+            appState.pendingDeepLink = nil
+            if let assignment = DataCache.shared.loadAssignments().first(where: { $0.assignmentId == id }) {
+                openAssignment(assignment)
+            }
+        }
         .sheet(item: $viewModel.selectedCourse) { course in
             let slot = viewModel.selectedCourseSlot
             CourseDetailSheet(
@@ -218,7 +240,8 @@ struct HomeView: View {
                 } else {
                     showNotImplementedAlert = true
                 }
-            }
+            },
+            onOpenAssignment: openAssignment
         )
         .overlay(alignment: .top) {
             if viewModel.isEditingHome {
@@ -253,6 +276,18 @@ struct HomeView: View {
         case .gpa: ScoreView(embedded: true)
         case .emptyClassroom: EmptyClassroomView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)
+        }
+    }
+
+    /// Its page, with the store of its course; on Moodle while no assignment round has named the
+    /// course.
+    private func openAssignment(_ assignment: SDAssignment) {
+        if let context = MoodleCacheContext.signedIn(appState.authService),
+           let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context) {
+            shownAssignment = MoodleAssignmentPage(assignment: assignment, store: store)
+        } else if let url = assignment.moodleDeepLink {
+            let web = assignment.moodleWebURL
+            Task { await openURL(url, fallback: web) }
         }
     }
 
@@ -324,6 +359,7 @@ private struct HomeSectionView: View {
     let viewModel: HomeViewModel
     let appState: AppState
     var onFeatureTap: ((AppFeature) -> Void)? = nil
+    var onOpenAssignment: (SDAssignment) -> Void = { _ in }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -374,7 +410,8 @@ private struct HomeSectionView: View {
                     onUndoComplete: {
                         viewModel.undoLocallyCompleted($0)
                         appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
-                    }
+                    },
+                    onOpen: onOpenAssignment
                 )
                 .allowsHitTesting(!viewModel.isEditingHome)
             }

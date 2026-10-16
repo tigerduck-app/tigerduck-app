@@ -17,9 +17,9 @@ struct UpcomingAssignmentsView: View {
     var onMarkComplete: ((SDAssignment) -> Void)? = nil
     var onUnarchive: ((SDAssignment) -> Void)? = nil
     var onUndoComplete: ((SDAssignment) -> Void)? = nil
+    var onOpen: (SDAssignment) -> Void = { _ in }
 
     @Environment(AppState.self) private var appState
-    @Environment(\.openURL) private var openURL
 
     private var courseByNo: [String: SDCourse] {
         Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
@@ -98,16 +98,10 @@ struct UpcomingAssignmentsView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         let actions = rowSwipeActions(for: assignment, now: now)
-        // Tapping the row opens the Moodle assignment link; when there is no
-        // deep link the tap is a no-op, so don't expose a button trait/hint.
-        let tapHint = assignment.moodleDeepLink == nil
-            ? nil
-            : String(localized: "a11y_assignment_open_moodle_hint")
         return SwipeableRow(
             leadingAction: actions.leading,
             trailingAction: actions.trailing,
-            onTap: { openAssignment(assignment) },
-            tapHint: tapHint,
+            onTap: { onOpen(assignment) },
             content: content
         )
     }
@@ -261,13 +255,6 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    private func openAssignment(_ assignment: SDAssignment) {
-        if let url = assignment.moodleDeepLink {
-            let web = assignment.moodleWebURL
-            Task { await openURL(url, fallback: web) }
-        }
-    }
-
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
         // Past-due rows render the absolute deadline rather than the relative
         // "Overdue" string, which would duplicate the status badge. Matches macOS.
@@ -299,16 +286,12 @@ private struct SwipeableRow<Content: View>: View {
     let leadingAction: SwipeActionDescriptor?
     let trailingAction: SwipeActionDescriptor?
     let onTap: () -> Void
-    /// VoiceOver hint describing what a tap does. `nil` when the row has no
-    /// tap destination — the row then exposes neither a button trait nor a
-    /// hint so assistive tech doesn't advertise an action that does nothing.
-    let tapHint: String?
     let content: Content
 
     @State private var offset: CGFloat = 0
     /// Set on ANY drag movement (>16pt, any direction); cleared on the
     /// next press-down via `SwipeableButtonStyle`. Prevents swipe and
-    /// scroll from accidentally opening Moodle.
+    /// scroll from accidentally opening the assignment.
     @State private var didSwipe = false
 
     private let triggerThreshold: CGFloat = 96
@@ -318,13 +301,11 @@ private struct SwipeableRow<Content: View>: View {
         leadingAction: SwipeActionDescriptor?,
         trailingAction: SwipeActionDescriptor?,
         onTap: @escaping () -> Void,
-        tapHint: String?,
         @ViewBuilder content: () -> Content
     ) {
         self.leadingAction = leadingAction
         self.trailingAction = trailingAction
         self.onTap = onTap
-        self.tapHint = tapHint
         self.content = content()
     }
 
@@ -338,7 +319,7 @@ private struct SwipeableRow<Content: View>: View {
     @ViewBuilder
     private var tappableContent: some View {
         Button {
-            guard !didSwipe, tapHint != nil else { return }
+            guard !didSwipe else { return }
             onTap()
         } label: {
             content
@@ -347,8 +328,6 @@ private struct SwipeableRow<Content: View>: View {
         .contentShape(Rectangle())
         .offset(x: offset)
         .simultaneousGesture(dragGesture)
-        .accessibilityAddTraits(tapHint != nil ? .isButton : [])
-        .accessibilityHint(tapHint.map { Text($0) } ?? Text(""))
         // The swipes are custom drags, which VoiceOver, Voice Control, Switch Control and a
         // keyboard cannot perform; the same actions are offered as accessibility actions.
         .accessibilityActions {

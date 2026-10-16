@@ -134,9 +134,17 @@ struct CourseDetailSheet: View {
         case .discussion(let discussion, let forum):
             MoodleDiscussionView(store: store, discussion: discussion, forum: forum)
         case .assignments:
-            MoodleAssignmentsView(store: store, refresh: refreshAssignments, open: openAssignment)
-        case .assignment:
+            MoodleAssignmentsView(
+                store: store, policy: appState.visualStylePolicy, refresh: refreshAssignments, open: openAssignment
+            )
+        case .assignment(let assignment):
+            #if os(iOS)
+            MoodleAssignmentView(
+                store: store, assignment: assignment, policy: appState.visualStylePolicy, accent: appState.accentColor
+            )
+            #else
             EmptyView()
+            #endif
         }
     }
 

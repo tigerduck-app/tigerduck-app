@@ -4,10 +4,9 @@ import SwiftUI
 /// time, then the past ones, the latest first, each with what Moodle says of it on the right.
 struct MoodleAssignmentsView: View {
     let store: MoodleCourseStore
+    let policy: VisualStylePolicy
     let refresh: () async -> Void
     let open: (SDAssignment) -> Void
-
-    @Environment(AppState.self) private var appState
 
     struct Row: Identifiable {
         let assignment: SDAssignment
@@ -64,33 +63,42 @@ struct MoodleAssignmentsView: View {
                 .moodleRowHover()
             }
         }
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: policy)
     }
 }
 
 private struct MoodleAssignmentRow: View {
     let row: MoodleAssignmentsView.Row
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
+        // At accessibility sizes the time beside the title would leave the title no room.
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
+            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
         HStack(spacing: TigerDuckTheme.Spacing.md) {
-            Text(row.assignment.displayTitle)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            VStack(alignment: .trailing, spacing: 2) {
-                if let status = row.status, let label = status.badgeLabel {
-                    Text(label)
-                        .font(TigerDuckTheme.Typography.caption.weight(.semibold))
-                        .foregroundStyle(status.tint)
+            layout {
+                Text(row.assignment.displayTitle)
+                    .font(TigerDuckTheme.Typography.body)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(stacked ? nil : 2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: stacked ? .leading : .trailing, spacing: 2) {
+                    if let status = row.status, let label = status.badgeLabel {
+                        Text(label)
+                            .font(TigerDuckTheme.Typography.caption.weight(.semibold))
+                            .foregroundStyle(status.tint)
+                    }
+                    Text(row.assignment.dueDate.absoluteTimeString)
+                        .font(TigerDuckTheme.Typography.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(Color.textSecondary)
                 }
-                Text(row.assignment.dueDate.absoluteTimeString)
-                    .font(TigerDuckTheme.Typography.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(Color.textSecondary)
+                .fixedSize()
             }
-            .fixedSize()
             Image(systemName: Self.accessory)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Color.textSecondary.opacity(0.5))
