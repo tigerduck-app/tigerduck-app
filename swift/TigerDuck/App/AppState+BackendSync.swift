@@ -774,17 +774,19 @@ extension AppState {
 
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices. The
-    /// Assignments sync switch covers these marks.
-    func syncAssignmentOverride(moodleId: String, status: String) {
-        guard Defaults[.cloudSyncEnabled], Defaults[.syncAssignments] else { return }
+    /// Assignments sync switch covers these marks. Returns the task that
+    /// queues the mark, which ends once it is in the outbox.
+    @discardableResult
+    func syncAssignmentOverride(moodleId: String, status: String) -> Task<Void, Never>? {
+        guard Defaults[.cloudSyncEnabled], Defaults[.syncAssignments] else { return nil }
         AppLogger.sync.debug("override enqueue: \(moodleId, privacy: .private) → \(status, privacy: .public)")
-        guard let moodleAssignmentId = Int(moodleId) else { return }
+        guard let moodleAssignmentId = Int(moodleId) else { return nil }
         overrideEditGeneration &+= 1
         // Bridge the gap until the op is durably in the outbox; from then
         // on pendingAssignmentOverrideIds() is the conflict-guard signal
         // until the PATCH actually lands on the server.
         pendingOverrides.insert(moodleId)
-        Task { [weak self] in
+        let queued = Task { [weak self] in
             guard let self else { return }
             await cloudSyncCoordinator.enqueueAssignmentOverride(
                 moodleCourseId: 0,
@@ -794,14 +796,17 @@ extension AppState {
         }
         cloudSyncCoordinator.scheduleTick(after: 1)
         revisionPoller.noteActivity()
+        return queued
     }
 
     /// Queues a course's "ignore assignments" setting, which the server's reminders follow. Unlike
     /// a mark it is queued with the Assignments or Courses switch off too, and the outbox holds it
     /// (`CloudSyncCoordinator.sendsCourseIgnores`): the re-enable check compares no course settings
-    /// while Courses is off, so a change made then would otherwise be lost to the server's.
-    func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    /// while Courses is off, so a change made then would otherwise be lost to the server's. Returns
+    /// the task that queues it, as `syncAssignmentOverride` does.
+    @discardableResult
+    func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) -> Task<Void, Never>? {
+        guard Defaults[.cloudSyncEnabled] else { return nil }
         // The server keys a course without an idnumber, a hand-added one, by term and number.
         let moodleId = moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
         let moodleCourseId = DataCache.shared.lookupMoodleCourseId(idnumber: moodleId)
@@ -809,7 +814,7 @@ extension AppState {
         overrideEditGeneration &+= 1
         // Covers the course until its op is in the outbox, as for `syncAssignmentOverride`.
         pendingOverrides.insert(key)
-        Task { [weak self] in
+        let queued = Task { [weak self] in
             guard let self else { return }
             await cloudSyncCoordinator.enqueueCourseIgnore(
                 semester: semester, courseNo: courseNo, moodleId: moodleId,
@@ -818,36 +823,42 @@ extension AppState {
         }
         cloudSyncCoordinator.scheduleTick(after: 1)
         revisionPoller.noteActivity()
+        return queued
     }
 
     /// Queues every course in `keys` as ignored, by the idnumber of the course cached for its term.
-    func syncCourseIgnores(_ keys: Set<String>) {
-        for key in keys.sorted() {
-            guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { continue }
+    @discardableResult
+    func syncCourseIgnores(_ keys: Set<String>) -> [Task<Void, Never>?] {
+        keys.sorted().map { key in
+            guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return nil }
             let course = (DataCache.shared.loadCourses(semester: semester)
                 + DataCache.shared.loadUserAddedCourses(semester: semester)).first { $0.courseNo == courseNo }
-            syncCourseIgnore(semester: semester, courseNo: courseNo, moodleIdNumber: course?.moodleIdNumber, ignore: true)
+            return syncCourseIgnore(semester: semester, courseNo: courseNo, moodleIdNumber: course?.moodleIdNumber, ignore: true)
         }
     }
 
+    /// Returns the tasks that queue the colour and the name, as `syncAssignmentOverride` does.
+    @discardableResult
     func syncCourseOverride(
         moodleCourseId: String,
         colorHex: String? = nil,
         customName: String? = nil,
         locale: String? = nil
-    ) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    ) -> [Task<Void, Never>?] {
+        guard Defaults[.cloudSyncEnabled] else { return [] }
         let semester = CourseSelectionService.currentSemesterCode()
-        if let colorHex {
-            cloudSyncCoordinator.enqueueCourseColorOverride(
-                moodleId: moodleCourseId, semester: semester, colorHex: colorHex)
-        }
-        if let customName {
-            cloudSyncCoordinator.enqueueCourseNameOverride(
-                moodleId: moodleCourseId, semester: semester, customName: customName, locale: locale)
-        }
+        let queued = [
+            colorHex.flatMap {
+                cloudSyncCoordinator.enqueueCourseColorOverride(moodleId: moodleCourseId, semester: semester, colorHex: $0)
+            },
+            customName.flatMap {
+                cloudSyncCoordinator.enqueueCourseNameOverride(
+                    moodleId: moodleCourseId, semester: semester, customName: $0, locale: locale)
+            },
+        ]
         cloudSyncCoordinator.scheduleTick(after: 1)
         revisionPoller.noteActivity()
+        return queued
     }
 
     /// Queues the delete of a course hidden here, which the outbox sends until it lands.

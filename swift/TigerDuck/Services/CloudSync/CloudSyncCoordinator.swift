@@ -249,27 +249,32 @@ final class CloudSyncCoordinator {
 
     // MARK: - Enqueue helpers
 
-    func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) {
+    @discardableResult
+    func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) -> Task<Void, Never>? {
         // Accept edits during the enable() window (.enabling) too: the op
         // queues durably in the outbox and drains once state flips to .active.
         // Gating on == .active would silently drop them.
-        guard state != .disabled else { return }
-        enqueueCourseOverride(.courseOverride(
+        guard state != .disabled else { return nil }
+        return enqueueCourseOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
             customName: nil, colorHex: colorHex, locale: nil, stamp: Date()))
     }
 
-    func enqueueCourseNameOverride(moodleId: String, semester: String, customName: String, locale: String?) {
-        guard state != .disabled else { return }
-        enqueueCourseOverride(.courseOverride(
+    @discardableResult
+    func enqueueCourseNameOverride(
+        moodleId: String, semester: String, customName: String, locale: String?
+    ) -> Task<Void, Never>? {
+        guard state != .disabled else { return nil }
+        return enqueueCourseOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
             customName: customName, colorHex: nil, locale: locale, stamp: Date()))
     }
 
-    private func enqueueCourseOverride(_ op: SyncOp) {
+    /// The task ends once the edit is in the outbox.
+    private func enqueueCourseOverride(_ op: SyncOp) -> Task<Void, Never> {
         let id = UUID()
         courseOverridesEnqueuing[id] = op
-        Task {
+        return Task {
             await outbox.enqueue(op)
             courseOverridesEnqueuing[id] = nil
         }

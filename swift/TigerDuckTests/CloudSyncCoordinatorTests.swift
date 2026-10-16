@@ -186,6 +186,21 @@ struct CloudSyncCoordinatorTests {
         #expect(sent.names.isEmpty)
     }
 
+    /// Use Local lets go of its hold once these end
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/681).
+    @Test("The task that queues a colour or a name ends once the edit is in the outbox")
+    func colourAndNameTasksEndOnceTheEditIsQueued() async {
+        let coordinator = Self.makeCoordinator(Backend())
+
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        #expect(await coordinator.outbox.pendingCount() == 1)
+
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+        #expect(await coordinator.outbox.pendingCount() == 2)
+    }
+
     @Test("A mark after the switch went off mid-drain stays queued")
     func switchTurnedOffMidDrainHoldsTheRest() async {
         let backend = Backend()
