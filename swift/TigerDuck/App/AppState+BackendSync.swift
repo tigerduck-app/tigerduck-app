@@ -116,7 +116,8 @@ extension AppState {
                 .union(pendingOverrides)
                 .union(inFlightOverrides)
 
-            let pendingConflicts = Defaults[.pendingConflictCategories]
+            // A Use Local answer still sending its courses holds what it sends after them.
+            let pendingConflicts = Defaults[.pendingConflictCategories].union(keepingLocalCategories)
             let marksLeftFor = Self.reasonToLeaveMarks(
                 // Again after the await: the switch may have gone off while it waited.
                 syncsMarks: syncsMarks && Defaults[.syncAssignments],

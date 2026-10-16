@@ -503,6 +503,9 @@ extension AppState {
             Defaults[.pendingConflictCategories].subtract(conflict.categories)
             var coursesSaveFailed = false
             if keepLocal {
+                let held = Self.sentAfterCourses(conflict.categories)
+                keepingLocalCategories.formUnion(held)
+                defer { keepingLocalCategories.subtract(held) }
                 if conflict.categories.contains("courses"), CourseUploadPolicy.uploadsCourses {
                     let terms = SemesterCatalog.availableSemesters().map { semester in
                         (semester: semester,
@@ -609,6 +612,14 @@ extension AppState {
             )
             retryOwedConflictCheck()
         }
+    }
+
+    /// The answered categories Use Local reads from this device only once its course requests are
+    /// done. A full sync meanwhile would take the server's data of them, and the answer would send
+    /// that back, so they are held as a pending check's are. The courses' own terms are latched in
+    /// `resettingSemesters` instead.
+    nonisolated static func sentAfterCourses(_ categories: [String]) -> Set<String> {
+        Set(categories).subtracting(["courses"])
     }
 
     /// "Use Local" for courses, term by term: reset a term this device caches courses for, upload
