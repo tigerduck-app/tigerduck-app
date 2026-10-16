@@ -53,13 +53,14 @@ nonisolated enum MoodleAssignmentService {
 
     // MARK: - Comments and groups
 
-    /// A bound on the requests for one submission's comments, which stay far fewer than this many
-    /// pages hold.
+    /// A bound on the pages asked for one submission's comments, which stay far fewer than this
+    /// many pages hold.
     static let commentPageLimit = 10
 
     /// Moodle keeps a submission's comments on the assignment's module, under the submission's
-    /// record, and answers a page at a time, newest first, with the total in `count`. Oldest
-    /// first, as a conversation reads.
+    /// record, and answers a page at a time, newest first, with the total in `count`. Paging ends
+    /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
+    /// or at ``commentPageLimit``. Oldest first, as a conversation reads.
     static func comments(
         cmid: Int,
         submissionId: Int,
@@ -67,9 +68,8 @@ nonisolated enum MoodleAssignmentService {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> [MoodleSubmissionComment] {
-        var byId: [Int: MoodleSubmissionComment] = [:]
-        for page in 0..<commentPageLimit {
-            let answer = try await MoodleWebserviceClient.call(
+        func page(_ number: Int) async throws -> RawComments {
+            try await MoodleWebserviceClient.call(
                 commentsFunction,
                 params: [
                     ("contextlevel", "module"),
@@ -77,16 +77,27 @@ nonisolated enum MoodleAssignmentService {
                     ("component", "assignsubmission_comments"),
                     ("itemid", String(submissionId)),
                     ("area", "submission_comments"),
-                    ("page", String(page)),
+                    ("page", String(number)),
                 ],
                 token: token,
                 as: RawComments.self,
                 session: session,
                 siteURL: siteURL
             )
-            // A comment posted between two requests moves one into the next page again.
+        }
+        var byId: [Int: MoodleSubmissionComment] = [:]
+        var total = 0
+        for number in 0..<commentPageLimit {
+            let answer = try await page(number)
+            let known = byId.count
             for comment in answer.comments { byId[comment.id] = comment.model }
-            guard !answer.comments.isEmpty, byId.count < answer.count ?? 0 else { break }
+            total = answer.count ?? 0
+            guard byId.count > known, byId.count < total else { break }
+        }
+        // A comment posted while paging pushes one already fetched onto the next page and is on
+        // none of those asked for, so the first page is asked for once more.
+        if byId.count < total {
+            for comment in try await page(0).comments { byId[comment.id] = comment.model }
         }
         return byId.values.sorted { ($0.created, $0.id) < ($1.created, $1.id) }
     }

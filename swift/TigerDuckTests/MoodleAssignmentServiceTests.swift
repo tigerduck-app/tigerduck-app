@@ -283,30 +283,29 @@ struct MoodleAssignmentServiceTests {
         }
     }
 
-    @Test("comments past Moodle's first page are asked for a page at a time until the total is in, each once")
+    @Test("comments past Moodle's first page are asked for a page at a time, and the first once more when one came in meanwhile")
     func commentPages() async throws {
         let token = UUID().uuidString
-        // One more comment came in between the two requests, which moves 3 into the second page.
-        Self.answer(Self.commentsPage(Array((3...17).reversed()), count: 17),
-                    function: MoodleAssignmentService.commentsFunction, token: token)
-        Self.answer(Self.commentsPage([3, 2, 1], count: 18),
-                    function: MoodleAssignmentService.commentsFunction, token: token)
-        Self.answer(Self.commentsPage([], count: 18), function: MoodleAssignmentService.commentsFunction, token: token)
+        let function = MoodleAssignmentService.commentsFunction
+        // Comment 18 came in after the first request and moved comment 3 onto the second page.
+        Self.answer(Self.commentsPage(Array((3...17).reversed()), count: 17), function: function, token: token)
+        Self.answer(Self.commentsPage([3, 2, 1], count: 18), function: function, token: token)
+        Self.answer(Self.commentsPage([], count: 18), function: function, token: token)
+        Self.answer(Self.commentsPage(Array((4...18).reversed()), count: 18), function: function, token: token)
 
         let comments = try await MoodleAssignmentService.comments(
             cmid: 9101, submissionId: 5501, token: token, session: Self.session(), siteURL: Self.site
         )
 
-        #expect(comments.map(\.id) == Array(1...17))
-        #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=2"])
+        #expect(comments.map(\.id) == Array(1...18))
+        #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=2", "page=0"])
     }
 
-    @Test("a total Moodle never reaches stops the paging at the limit")
-    func commentPageLimit() async throws {
+    @Test("a site that answers every page with the first stops the paging at the second")
+    func pageIgnored() async throws {
         let token = UUID().uuidString
-        let limit = MoodleAssignmentService.commentPageLimit
-        for page in 0...limit {
-            Self.answer(Self.commentsPage([1000 - page], count: 500),
+        for _ in 0...MoodleAssignmentService.commentPageLimit {
+            Self.answer(Self.commentsPage(Array((1...15).reversed()), count: 40),
                         function: MoodleAssignmentService.commentsFunction, token: token)
         }
 
@@ -314,8 +313,24 @@ struct MoodleAssignmentServiceTests {
             cmid: 9101, submissionId: 5501, token: token, session: Self.session(), siteURL: Self.site
         )
 
-        #expect(comments.count == limit)
-        #expect(Self.pages(asked: token).count == limit)
+        #expect(comments.map(\.id) == Array(1...15))
+        #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=0"])
+    }
+
+    @Test("a total Moodle never reaches stops the paging at the limit")
+    func commentPageLimit() async throws {
+        let token = UUID().uuidString
+        let limit = MoodleAssignmentService.commentPageLimit
+        for page in 0...limit + 1 {
+            Self.answer(Self.commentsPage([1000 - page], count: 500),
+                        function: MoodleAssignmentService.commentsFunction, token: token)
+        }
+
+        _ = try await MoodleAssignmentService.comments(
+            cmid: 9101, submissionId: 5501, token: token, session: Self.session(), siteURL: Self.site
+        )
+
+        #expect(Self.pages(asked: token) == (0..<limit).map { "page=\($0)" } + ["page=0"])
     }
 
     @Test("the account's groups on a course come by id, with their names as text")
