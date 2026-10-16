@@ -191,6 +191,23 @@ struct CourseDeleteSyncTests {
         #expect(!AppState.unhideListedCourses(["EE2"], semester: "1151", deleting: ["1151:EE2"], in: &hidden))
     }
 
+    /// A hand-added course taken back here has no tombstone; a snapshot fetched before its delete
+    /// landed merged it in again.
+    @Test("A full sync takes in a course only the server lists only once no delete of it from here may be on its way")
+    func listedCourseIsMergedOnlyOnceNoDeleteIsOnItsWay() {
+        let merges = { (courseNo: String) in
+            AppState.mergesListedCourse(
+                courseNo, semester: "1151", hidden: ["1151:GE3"], deleting: ["1151:CS1", "EE2", "1142:MA5"]
+            )
+        }
+
+        #expect(!merges("CS1"))
+        #expect(!merges("EE2"))
+        #expect(!merges("GE3"))
+        #expect(merges("MA5"))
+        #expect(merges("PH6"))
+    }
+
     @Test("A course whose delete is queued keeps this device's setting through a pull, in its own term only")
     func queuedDeleteKeepsTheLocalSetting() {
         let left = AppState.courseKeysPullLeaves(

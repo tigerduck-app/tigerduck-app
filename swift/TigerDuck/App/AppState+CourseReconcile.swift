@@ -135,8 +135,9 @@ extension AppState {
                 mergedSemesters.insert(semester)
             }
             for row in rows {
-                guard let courseNo = row["course_no"] as? String,
-                      !knownNos.contains(courseNo), !isHidden(courseNo) else { continue }
+                guard let courseNo = row["course_no"] as? String, !knownNos.contains(courseNo),
+                      Self.mergesListedCourse(courseNo, semester: semester, hidden: deletedNos, deleting: deleting)
+                else { continue }
                 userAdded.append(Self.course(fromServerRow: row, courseNo: courseNo,
                                              semester: semester, name: localNames[courseNo]))
                 knownNos.insert(courseNo)
@@ -176,6 +177,16 @@ extension AppState {
             changed = true
         }
         return changed
+    }
+
+    /// Whether the reconcile keeps a course the server lists and this device lacks as hand-added: not
+    /// one hidden here, nor one whose delete from here may not have landed (`deleting`, as
+    /// `unhideListedCourses` takes it), as for a hand-added course taken back here.
+    nonisolated static func mergesListedCourse(
+        _ courseNo: String, semester: String, hidden: Set<String>, deleting: Set<String>
+    ) -> Bool {
+        !CourseTombstone.isHidden(courseNo, semester: semester, in: hidden)
+            && !CourseTombstone.isHidden(courseNo, semester: semester, in: deleting)
     }
 
     /// Whether a server row really belongs to `semester`. A row whose Moodle id names
