@@ -64,6 +64,19 @@ struct CourseResetStampSeedMigrationTests {
         }
     }
 
+    @Test("The migration runs once: a stamp a later launch finds is not read")
+    func aLaterLaunchReadsNoStamp() async {
+        await Self.withUpdatedInstall {
+            CourseResetStampSeedMigration.runIfNeeded()
+            UserDefaults.standard.set(Self.lastOldSync, forKey: legacyKey)
+            Defaults[.lastSeenCoursesResetAt] = nil
+
+            CourseResetStampSeedMigration.runIfNeeded()
+
+            #expect(Defaults[.lastSeenCoursesResetAt] == nil)
+        }
+    }
+
     @Test("A reset a sync on this version read stays the one compared")
     func aResetReadOnThisVersionIsKept() async {
         await Self.withUpdatedInstall {
