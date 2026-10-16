@@ -49,7 +49,7 @@ struct CourseColorPickTests {
         ]
         let courseNos = ["1151CS1": "CS1", "1151CS2": "CS2", "1151CS3": "CS3", "1151CS4": "CS4"]
 
-        let ordered = AppState.serverCourseColors(rows, courseNos: courseNos)
+        let ordered = AppState.serverCourseColors(rows, courseNos: courseNos, holding: [])
         #expect(ordered.map(\.courseNo) == ["CS3", "CS1", "CS2"])
 
         let apply = { (start: [String: UInt32]) in

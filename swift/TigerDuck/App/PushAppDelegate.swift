@@ -97,21 +97,57 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         }
     }
 
-    var onSyncTrigger: (() async -> Void)?
+    var onSyncTrigger: (() async -> FullSyncOutcome)?
+
+    /// iOS allows a background push 30 seconds to call its completion handler, and ends an app that
+    /// takes longer (Apple's documentation for this delegate method).
+    static let syncTriggerTimeLimit: Duration = .seconds(25)
 
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        if userInfo["kind"] as? String == "sync_trigger" {
-            logger.info("Silent sync trigger received")
-            Task {
-                await onSyncTrigger?()
-                completionHandler(.newData)
-            }
-        } else {
+        guard userInfo["kind"] as? String == "sync_trigger", let onSyncTrigger else {
             completionHandler(.noData)
+            return
+        }
+        logger.info("Silent sync trigger received")
+        Self.run({ await onSyncTrigger().fetchResult }, within: Self.syncTriggerTimeLimit, then: completionHandler)
+    }
+
+    /// Runs `work` and calls `completion` once with its result, or, when `limit` passes first,
+    /// cancels it and calls `completion` with `.failed`. The limit runs off the main actor, which
+    /// the work shares, so a busy main actor cannot hold the answer back.
+    static func run(
+        _ work: @escaping () async -> UIBackgroundFetchResult,
+        within limit: Duration,
+        then completion: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        let answer = OSAllocatedUnfairLock<((UIBackgroundFetchResult) -> Void)?>(uncheckedState: completion)
+        let finish: @Sendable (UIBackgroundFetchResult) -> Void = { result in
+            // Cleared before the call, so whichever side comes second finds nothing to call.
+            let call = answer.withLockUnchecked { stored in
+                defer { stored = nil }
+                return stored
+            }
+            call?(result)
+        }
+        let sync = Task { finish(await work()) }
+        Task.detached {
+            try? await Task.sleep(for: limit)
+            sync.cancel()
+            finish(.failed)
+        }
+    }
+}
+
+private extension FullSyncOutcome {
+    var fetchResult: UIBackgroundFetchResult {
+        switch self {
+        case .synced: .newData
+        case .skipped: .noData
+        case .failed: .failed
         }
     }
 }

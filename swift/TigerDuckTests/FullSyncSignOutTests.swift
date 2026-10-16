@@ -249,6 +249,22 @@ struct ConflictCheckOutcomeTests {
         ) == .resolvedMeanwhile)
     }
 
+    /// Use Local keeps what it sends after its course requests pending until it has queued it, and
+    /// a check begun before the answer compared those categories too.
+    @Test("A check that compared what a Use Local answer still sends asks nothing about it")
+    func whatUseLocalStillSendsIsNotAskedAgain() {
+        let stillPending = AppState.categoriesToCheck(
+            pending: ["course_colors", "courses"], answering: ["course_colors"]
+        )
+
+        #expect(AppState.conflictCheckOutcome(
+            mayWrite: true, checked: ["course_colors"], stillPending: stillPending, foundDifference: true
+        ) == .resolvedMeanwhile)
+        #expect(AppState.conflictCheckOutcome(
+            mayWrite: true, checked: ["course_colors", "courses"], stillPending: stillPending, foundDifference: true
+        ) == .conflict(["courses"]))
+    }
+
     @Test("A difference asks about the categories still pending, and none clears them, which drains the outbox")
     func verdictsCoverTheCategoriesStillPending() {
         #expect(AppState.conflictCheckOutcome(
@@ -325,23 +341,78 @@ struct ReenableMarkTests {
         #expect(AppState.categoriesTaken(switchedOn: ["courses"], pendingChecks: [], marksLeftFor: nil) == ["courses"])
     }
 
-    /// Use Local reads the colours, names and marks it sends only after its course requests. A full
-    /// sync in between, as a revision poll that sees those requests runs, took the server's, and
-    /// the answer then sent the server's back over this device's.
-    @Test("A full sync while Use Local sends its courses takes none of what the answer sends after them")
-    func useLocalHoldsWhatItSendsAfterItsCourses() {
-        let pending = AppState.pendingChecks(stored: [], holding: AppState.sentAfterCourses(Array(Self.categories)))
-        let taken = AppState.categoriesTaken(
+    /// Use Local reads the colours, names and marks it sends only after its course requests, so
+    /// they stay on the stored pending list until it has queued them
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/651).
+    @Test("Use Local keeps what it sends after its courses pending until it has queued it, and only a relaunch asks again")
+    func useLocalKeepsWhatItSendsAfterItsCoursesPending() {
+        var pending = Self.categories
+        var hold = AppState.UseLocalHold()
+
+        let held = hold.take(Array(Self.categories), keepLocal: true, from: &pending)
+
+        #expect(pending == ["course_colors", "course_names", "assignments"])
+        #expect(held == pending)
+        #expect(AppState.categoriesTaken(
             switchedOn: Self.categories,
             pendingChecks: pending,
             marksLeftFor: AppState.reasonToLeaveMarks(
                 syncsMarks: true, conflictCheckPending: pending.contains("assignments"),
                 uploadedLocalMarks: false, editedDuringFetch: false
             )
-        )
+        ) == ["courses"])
+        // The answer sends them itself, so the check leaves them alone; after a relaunch no
+        // answer holds them, and it asks again.
+        #expect(AppState.categoriesToCheck(pending: pending, answering: hold.held).isEmpty)
+        #expect(AppState.categoriesToCheck(pending: pending, answering: AppState.UseLocalHold().held) == pending)
 
-        #expect(taken == ["courses"])
-        #expect(AppState.pendingChecks(stored: ["courses"], holding: []) == ["courses"])
+        hold.release(held, from: &pending)
+
+        #expect(pending.isEmpty)
+        #expect(hold == AppState.UseLocalHold())
+    }
+
+    @Test("Use Server takes every answered category off the pending list at once and holds none")
+    func useServerHoldsNothing() {
+        var pending: Set<String> = ["courses", "course_colors", "assignments"]
+        var hold = AppState.UseLocalHold()
+
+        let held = hold.take(["course_colors", "assignments"], keepLocal: false, from: &pending)
+
+        #expect(held.isEmpty)
+        #expect(pending == ["courses"])
+        #expect(hold.held.isEmpty)
+    }
+
+    /// The re-mark finds the category already pending, and the check skips it while the answer
+    /// holds it.
+    @Test("A category switched off and on while Use Local sends it stays pending for its own check")
+    func aReenableWhileUseLocalSendsItStaysPending() {
+        var pending: Set<String> = ["courses", "course_colors", "course_names"]
+        var hold = AppState.UseLocalHold()
+        let held = hold.take(["courses", "course_colors", "course_names"], keepLocal: true, from: &pending)
+
+        // As `markCategoryReenabled` does for the colours switch.
+        pending.insert("course_colors")
+        hold.noteReenabled("course_colors")
+        hold.noteReenabled("assignments")
+        hold.release(held, from: &pending)
+
+        #expect(pending == ["course_colors"])
+        #expect(hold == AppState.UseLocalHold())
+    }
+
+    @Test("Two Use Local answers each let go of only what they held")
+    func eachAnswerReleasesOnlyItsOwn() {
+        var pending: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
+        var hold = AppState.UseLocalHold()
+        let first = hold.take(["courses", "course_colors"], keepLocal: true, from: &pending)
+        let second = hold.take(["assignments"], keepLocal: true, from: &pending)
+
+        hold.release(second, from: &pending)
+
+        #expect(pending == ["course_colors", "course_names"])
+        #expect(hold.held == first)
     }
 
     @Test("Names a sync left for a pending colours check stay unrecorded, so switching them off and on checks nothing")

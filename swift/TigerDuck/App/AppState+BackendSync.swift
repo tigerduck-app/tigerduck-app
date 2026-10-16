@@ -14,29 +14,31 @@ extension AppState {
     /// semester filtering); this only syncs the user's swipe marks.
     ///
     /// One runs at a time. `followUpIfBusy` is for a sync trigger push: one that arrives during
-    /// a pull waits for one more, since that pull may predate the change it announces.
-    func syncOverridesFromBackend(followUpIfBusy: Bool = false) async {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    /// a pull waits for one more, since that pull may predate the change it announces, and gets
+    /// that one's outcome.
+    @discardableResult
+    func syncOverridesFromBackend(followUpIfBusy: Bool = false) async -> FullSyncOutcome {
+        guard Defaults[.cloudSyncEnabled] else { return .skipped }
         #if os(iOS)
         // A sync trigger can launch the app behind the lock screen, where the local marks,
         // courses and colours cannot be opened and read as empty, and a sync would write the
         // server's view over them. Revision polling syncs at the next return to the app.
-        guard UIApplication.shared.isProtectedDataAvailable else { return }
+        guard UIApplication.shared.isProtectedDataAvailable else { return .skipped }
         #endif
         if fullSyncGate.isRunning {
             AppLogger.sync.info("[syncOverrides] already in flight, follow-up: \(followUpIfBusy, privacy: .public)")
         }
-        await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
+        return await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
             await runFullSync(retried: false)
         }
     }
 
-    private func runFullSync(retried: Bool) async {
+    private func runFullSync(retried: Bool) async -> FullSyncOutcome {
         // Sign-out clears what this writes but cancels only `syncTask`, which a poll, a push or a
         // pull does not run in. So no write below follows an await without this check.
         let generation = authService.loginGeneration
         await authService.ensureBackendSignedIn()
-        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return }
+        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return .skipped }
         await retryUnsentEdits()
         do {
             #if DEBUG
@@ -48,13 +50,14 @@ extension AppState {
             let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
+            let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
             #if os(iOS)
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
             let json = try await pushCoordinator.fetchFullSync()
-            guard fullSyncMayWrite(since: generation) else { return }
+            guard fullSyncMayWrite(since: generation) else { return .skipped }
             // Whether this sync changed anything on the device. Only then does it post
             // `dataDidUpdate`, which reloads every page, the widgets, the Watch and the schedule.
             var changed = false
@@ -111,14 +114,14 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            guard fullSyncMayWrite(since: generation) else { return }
+            // A colour or name edit both queued and sent while the fetch is out is in neither sample.
+            let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
+            guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
                 .union(inFlightOverrides)
 
-            let pendingConflicts = Self.pendingChecks(
-                stored: Defaults[.pendingConflictCategories], holding: keepingLocalCategories
-            )
+            let pendingConflicts = Defaults[.pendingConflictCategories]
             let marksLeftFor = Self.reasonToLeaveMarks(
                 // Again after the await: the switch may have gone off while it waited.
                 syncsMarks: syncsMarks && Defaults[.syncAssignments],
@@ -206,7 +209,9 @@ extension AppState {
                 AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             } else if !courseOverrides.isEmpty {
                 changed = applyCourseOverrides(
-                    courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames
+                    courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames,
+                    holdingColors: preFetchCourseOverrides.colors.union(queuedCourseOverrides.colors),
+                    holdingNames: preFetchCourseOverrides.names.union(queuedCourseOverrides.names)
                 ) || changed
             }
 
@@ -272,21 +277,30 @@ extension AppState {
                 linksBeforeSnapshot: settingsLinksBeforeFetch
             )
             #endif
+            return .synced
         } catch {
-            guard fullSyncMayWrite(since: generation) else { return }
+            guard !Self.isCancellation(error), fullSyncMayWrite(since: generation) else { return .skipped }
             ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
+            var outcome = FullSyncOutcome.failed
             if case PushAPIError.httpStatus(401, _) = error, !retried {
                 let reloginOk = await attemptBackendRelogin()
                 if reloginOk {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
-                    guard fullSyncMayWrite(since: generation) else { return }
-                    await runFullSync(retried: true)
+                    guard fullSyncMayWrite(since: generation) else { return .skipped }
+                    outcome = await runFullSync(retried: true)
                 }
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .private)")
+            return outcome
         }
+    }
+
+    /// Whether a full sync's error is its own cancellation, as at the time limit of a sync trigger
+    /// push, which says nothing about the server. `URLSession` throws `URLError.cancelled` for it.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     /// Re-sends the edits whose upload never landed. Every full sync starts with this, and so does
@@ -327,12 +341,6 @@ extension AppState {
         case conflictCheckPending = "conflict check pending"
         case uploadedLocalMarks = "local marks just uploaded"
         case editedDuringFetch = "local edit during fetch"
-    }
-
-    /// The re-enable checks a full sync treats as pending: those `stored`, and the categories a Use
-    /// Local answer still sending its courses holds (`keepingLocalCategories`).
-    nonisolated static func pendingChecks(stored: Set<String>, holding: Set<String>) -> Set<String> {
-        stored.union(holding)
     }
 
     /// The categories a full sync takes the server's data of, which it applies and records as
@@ -664,9 +672,12 @@ extension AppState {
         )
     }
 
-    /// Takes the server's colours when `colors`, its names when `names`. Returns whether one changed.
+    /// Takes the server's colours when `colors`, its names when `names`, but not those of the courses
+    /// this device has a colour (`holdingColors`) or a name (`holdingNames`) edit queued for, by
+    /// Moodle id. Returns whether one changed.
     private func applyCourseOverrides(
-        _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool
+        _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool,
+        holdingColors: Set<String>, holdingNames: Set<String>
     ) -> Bool {
         // Build moodleId → courseNo from courses array
         var moodleIdToNo: [String: String] = [:]
@@ -682,44 +693,60 @@ extension AppState {
         }
         AppLogger.sync.info("moodleIdToNo: \(moodleIdToNo.count, privacy: .public) entries, overrides: \(overrides.count, privacy: .public)")
 
-        let colorsChanged = colors
-            && TigerDuckTheme.applyColors(Self.serverCourseColors(overrides, courseNos: moodleIdToNo))
+        let colorsChanged = colors && TigerDuckTheme.applyColors(
+            Self.serverCourseColors(overrides, courseNos: moodleIdToNo, holding: holdingColors)
+        )
         let namesBefore = DataCache.shared.loadCourseCustomNames()
-        var customNames = namesBefore
-        var nameCount = 0
-        for o in overrides {
-            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
-            guard let courseNo = moodleIdToNo[mId] else { continue }
-            if names, let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
-                var existing = customNames[courseNo] ?? [:]
-                for (locale, name) in serverNames {
-                    if name.isEmpty {
-                        existing.removeValue(forKey: locale)
-                    } else {
-                        existing[locale] = name
-                    }
-                }
-                customNames[courseNo] = existing.isEmpty ? nil : existing
-                nameCount += 1
-                AppLogger.sync.debug("course custom names updated")
-            }
-        }
-        let namesChanged = nameCount > 0 && customNames != namesBefore
+        let customNames = names
+            ? Self.courseNamesAfterPull(overrides, courseNos: moodleIdToNo, local: namesBefore, holding: holdingNames)
+            : namesBefore
+        let namesChanged = customNames != namesBefore
         if namesChanged {
             DataCache.shared.saveCourseCustomNames(customNames)
         }
         return colorsChanged || namesChanged
     }
 
+    /// `local` with the server's custom names, language by language; an empty one clears its
+    /// language. A course with a name edit queued here (`held`, Moodle ids) keeps all of its own:
+    /// the snapshot can predate the edit.
+    nonisolated static func courseNamesAfterPull(
+        _ overrides: [[String: Any]],
+        courseNos: [String: String],
+        local: [String: [String: String]],
+        holding held: Set<String>
+    ) -> [String: [String: String]] {
+        var names = local
+        for o in overrides {
+            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
+                  !held.contains(mId), let courseNo = courseNos[mId],
+                  let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty
+            else { continue }
+            var existing = names[courseNo] ?? [:]
+            for (locale, name) in serverNames {
+                if name.isEmpty {
+                    existing.removeValue(forKey: locale)
+                } else {
+                    existing[locale] = name
+                }
+            }
+            names[courseNo] = existing.isEmpty ? nil : existing
+        }
+        return names
+    }
+
     /// The server's course colours in the order to apply them, oldest first: where two courses
-    /// share a colour the latest pick keeps it, the same way on every device and every sync.
+    /// share a colour the latest pick keeps it, the same way on every device and every sync. A
+    /// course with a colour edit queued here (`held`, Moodle ids) is left out, so it keeps its own
+    /// unless the server gives that colour to another course.
     static func serverCourseColors(
         _ overrides: [[String: Any]],
-        courseNos: [String: String]
+        courseNos: [String: String],
+        holding held: Set<String>
     ) -> [(courseNo: String, hex: UInt32)] {
         let rows = overrides.compactMap { o -> (courseNo: String, hex: UInt32, at: Date)? in
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                  let courseNo = courseNos[mId],
+                  !held.contains(mId), let courseNo = courseNos[mId],
                   let colorHex = o["color_hex"] as? String, !colorHex.isEmpty,
                   let hex = UInt32(colorHex.dropFirst(), radix: 16) else { return nil }
             let at = (o["color_hex_updated_at"] as? String).flatMap {
@@ -968,28 +995,29 @@ extension AppState {
 @MainActor
 final class FullSyncGate {
     private(set) var isRunning = false
-    private var followUpWaiters: [CheckedContinuation<Void, Never>] = []
+    private var followUpWaiters: [CheckedContinuation<FullSyncOutcome, Never>] = []
 
     var queuedFollowUps: Int { followUpWaiters.count }
 
     /// Runs `body` unless a run is in flight. Then a call with `followUp` waits for one more run
-    /// that starts after the current one, shared by every call that asked meanwhile; one without
-    /// returns at once. `mayFollow` is checked before each follow-up.
-    func run(followUp: Bool, mayFollow: () -> Bool, _ body: () async -> Void) async {
+    /// that starts after the current one, shared by every call that asked meanwhile, and returns
+    /// its outcome; one without returns `.skipped` at once. `mayFollow` is checked before each
+    /// follow-up. A call that runs `body` returns the outcome of its own run.
+    func run(followUp: Bool, mayFollow: () -> Bool, _ body: () async -> FullSyncOutcome) async -> FullSyncOutcome {
         guard !isRunning else {
-            guard followUp else { return }
-            await withCheckedContinuation { followUpWaiters.append($0) }
-            return
+            guard followUp else { return .skipped }
+            return await withCheckedContinuation { followUpWaiters.append($0) }
         }
         isRunning = true
-        await body()
+        let outcome = await body()
         while !followUpWaiters.isEmpty {
             let waiters = followUpWaiters
             followUpWaiters = []
-            if mayFollow() { await body() }
-            for waiter in waiters { waiter.resume() }
+            let followed = mayFollow() ? await body() : .skipped
+            for waiter in waiters { waiter.resume(returning: followed) }
         }
         isRunning = false
+        return outcome
     }
 }
 

@@ -51,12 +51,14 @@
             </array>
         </dict>
     </array>
-    <!-- School Mail (iOS only; macOS ignores these keys). Background App Refresh runs
-         the new-mail check in `MailBackgroundRefresh`; the identifier must equal
-         `MailConstants.backgroundTaskIdentifier`. -->
+    <!-- iOS only; macOS ignores these keys. `fetch`: Background App Refresh runs School
+         Mail's new-mail check in `MailBackgroundRefresh`, and the identifier must equal
+         `MailConstants.backgroundTaskIdentifier`. `remote-notification`: the backend's
+         silent `sync_trigger` push wakes the app for a sync (`PushAppDelegate`). -->
     <key>UIBackgroundModes</key>
     <array>
         <string>fetch</string>
+        <string>remote-notification</string>
     </array>
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
