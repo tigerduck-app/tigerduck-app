@@ -330,17 +330,18 @@ struct ReenableMarkTests {
     /// the answer then sent the server's back over this device's.
     @Test("A full sync while Use Local sends its courses takes none of what the answer sends after them")
     func useLocalHoldsWhatItSendsAfterItsCourses() {
-        let held = AppState.sentAfterCourses(Array(Self.categories))
+        let pending = AppState.pendingChecks(stored: [], holding: AppState.sentAfterCourses(Array(Self.categories)))
         let taken = AppState.categoriesTaken(
             switchedOn: Self.categories,
-            pendingChecks: held,
+            pendingChecks: pending,
             marksLeftFor: AppState.reasonToLeaveMarks(
-                syncsMarks: true, conflictCheckPending: held.contains("assignments"),
+                syncsMarks: true, conflictCheckPending: pending.contains("assignments"),
                 uploadedLocalMarks: false, editedDuringFetch: false
             )
         )
 
         #expect(taken == ["courses"])
+        #expect(AppState.pendingChecks(stored: ["courses"], holding: []) == ["courses"])
     }
 
     @Test("Names a sync left for a pending colours check stay unrecorded, so switching them off and on checks nothing")

@@ -116,8 +116,9 @@ extension AppState {
                 .union(pendingOverrides)
                 .union(inFlightOverrides)
 
-            // A Use Local answer still sending its courses holds what it sends after them.
-            let pendingConflicts = Defaults[.pendingConflictCategories].union(keepingLocalCategories)
+            let pendingConflicts = Self.pendingChecks(
+                stored: Defaults[.pendingConflictCategories], holding: keepingLocalCategories
+            )
             let marksLeftFor = Self.reasonToLeaveMarks(
                 // Again after the await: the switch may have gone off while it waited.
                 syncsMarks: syncsMarks && Defaults[.syncAssignments],
@@ -326,6 +327,12 @@ extension AppState {
         case conflictCheckPending = "conflict check pending"
         case uploadedLocalMarks = "local marks just uploaded"
         case editedDuringFetch = "local edit during fetch"
+    }
+
+    /// The re-enable checks a full sync treats as pending: those `stored`, and the categories a Use
+    /// Local answer still sending its courses holds (`keepingLocalCategories`).
+    nonisolated static func pendingChecks(stored: Set<String>, holding: Set<String>) -> Set<String> {
+        stored.union(holding)
     }
 
     /// The categories a full sync takes the server's data of, which it applies and records as
