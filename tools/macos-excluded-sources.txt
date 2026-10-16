@@ -15,6 +15,9 @@
 # honestly applies, or write a new one.
 
 
+# App — iOS launch before the first unlock after a restart, a state a Mac app never runs in
+AfterFirstUnlock.swift
+
 # App — iOS app-delegate, push registration and CoreMotion flip handling
 FlipToLibraryCoordinator.swift
 NTUSTLoginSheetHost.swift

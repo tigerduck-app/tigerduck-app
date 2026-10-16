@@ -31,44 +31,58 @@ private struct UnitTestHostApp: App {
 }
 
 struct TigerDuckApp: App {
-    @State private var appState: AppState
+    /// What the launch builds from what earlier launches stored.
+    private struct Built {
+        let appState: AppState
+        let watchSync: WatchSyncCoordinator
+        let widgetSnapshotWriter: WidgetSnapshotWriter
+    }
+
+    @State private var launch: AfterFirstUnlock<Built>
     @State private var sceneRefreshTask: Task<Void, Never>?
     @State private var rootLanguageId = UUID()
-    @State private var widgetSnapshotWriter: WidgetSnapshotWriter
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var watchSyncCoordinator: WatchSyncCoordinator
+    // The body reads these only in a scene, which iOS shows on an unlocked phone, so the first read
+    // builds what a launch before the first unlock held back.
+    private var appState: AppState { launch.value.appState }
+    private var watchSyncCoordinator: WatchSyncCoordinator { launch.value.watchSync }
+    private var widgetSnapshotWriter: WidgetSnapshotWriter { launch.value.widgetSnapshotWriter }
 
     init() {
         // Built here, not as property defaults, so the launch work below can hold them. A silent
         // push or a Watch message can launch the app in the background, where no scene appears
         // and `.onAppear` never runs.
-        let appState = AppState()
-        let watchSync = WatchSyncCoordinator()
-        _appState = State(initialValue: appState)
-        _watchSyncCoordinator = State(initialValue: watchSync)
-        #if DEBUG
-        // Scaffolding for the Library freeze: tells a blocked main thread
-        // apart from swallowed touches, which a spinning ProgressView
-        // cannot. See MainThreadWatchdog.
-        MainThreadWatchdog.start()
-        // Apply any persisted clock override before any UI reads the clock,
-        // so view models constructed during the first render see the right
-        // "now". Entire branch compiles out in Release.
-        DebugClockController.shared.bootstrap()
-        #endif
-        PushCoordinator.assertEnvConsistency()
-        SchoolMailBootstrap.install()
-        _widgetSnapshotWriter = State(initialValue: WidgetSnapshotWriter(appState: appState))
-        watchSync.setPayloadSource { WatchSyncCoordinator.Payload(appState: appState) }
+        let launch = AfterFirstUnlock<Built> {
+            let appState = AppState()
+            let watchSync = WatchSyncCoordinator()
+            #if DEBUG
+            // Scaffolding for the Library freeze: tells a blocked main thread
+            // apart from swallowed touches, which a spinning ProgressView
+            // cannot. See MainThreadWatchdog.
+            MainThreadWatchdog.start()
+            // Apply any persisted clock override before any UI reads the clock,
+            // so view models constructed during the first render see the right
+            // "now". Entire branch compiles out in Release.
+            DebugClockController.shared.bootstrap()
+            #endif
+            PushCoordinator.assertEnvConsistency()
+            SchoolMailBootstrap.install()
+            let widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
+            watchSync.setPayloadSource { WatchSyncCoordinator.Payload(appState: appState) }
+            return Built(appState: appState, watchSync: watchSync, widgetSnapshotWriter: widgetSnapshotWriter)
+        }
+        _launch = State(initialValue: launch)
         // Sync triggers reach the backend, so they wait for onboarding as `AppState.init` does;
         // `.onAppear` binds them again for a user who finishes onboarding in this session.
         PushAppDelegate.launchWork = { delegate in
-            if appState.hasCompletedOnboarding {
-                appState.bindPushDelegate(delegate)
+            launch.whenBuilt { built in
+                if built.appState.hasCompletedOnboarding {
+                    built.appState.bindPushDelegate(delegate)
+                }
+                built.watchSync.activate()
             }
-            watchSync.activate()
         }
     }
 
