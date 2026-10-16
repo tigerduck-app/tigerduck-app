@@ -228,7 +228,7 @@ final class CloudSyncCoordinator {
             switch op {
             case .assignmentOverride: return !syncsMarks()
             case .courseIgnore: return !syncsIgnores()
-            case .courseOverride: return false
+            case .courseOverride, .courseDelete: return false
             }
         }) { [weak self] op in
             guard let self else { throw CancellationError() }
@@ -351,6 +351,34 @@ final class CloudSyncCoordinator {
         return keys
     }
 
+    func enqueueCourseDelete(semester: String, courseNo: String) async {
+        guard state != .disabled else { return }
+        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: Date()))
+    }
+
+    /// `CourseTombstone` keys of the courses whose delete is queued, which the server may still
+    /// list: a full sync keeps them hidden here.
+    func pendingCourseDeleteKeys() async -> Set<String> {
+        var keys = Set<String>()
+        for entry in await outbox.snapshot() {
+            if case .courseDelete(let semester, let courseNo, _) = entry.op {
+                keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
+            }
+        }
+        return keys
+    }
+
+    /// Drops the course deletes still queued: every one, or `semester`'s, for a reset, which
+    /// deletes the courses itself and shows them again here, and those of the courses `courseKeys`
+    /// names, which were added back here.
+    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil) async {
+        await outbox.discard { op in
+            guard case .courseDelete(let opSemester, let courseNo, _) = op else { return false }
+            return (semester == nil || semester == opSemester)
+                && (courseKeys.map { $0.contains("client:\(opSemester):\(courseNo)") } ?? true)
+        }
+    }
+
     /// Gives each mark the server kept refusing one more try. Called by every full sync, and by
     /// each poll the change feed settles without one.
     func requeueParkedMarks() async {
@@ -386,6 +414,9 @@ final class CloudSyncCoordinator {
                 // A backend without the setting answers 200 and drops it, so only an answer that
                 // names it settles the op; anything else counts as a refusal.
                 guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
+
+            case .courseDelete(let courseKey):
+                try await pushCoordinator.deleteCourse(courseKey: courseKey)
             }
         } catch {
             if isUnauthorized(error) {

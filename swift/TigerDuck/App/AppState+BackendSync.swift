@@ -51,6 +51,7 @@ extension AppState {
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
             let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
+            let preFetchCourseDeletes = await cloudSyncCoordinator.pendingCourseDeleteKeys()
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
             #if os(iOS)
@@ -116,6 +117,8 @@ extension AppState {
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             // A colour or name edit both queued and sent while the fetch is out is in neither sample.
             let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
+            // A delete that lands while the fetch is out leaves the outbox, but its course is in the snapshot.
+            let courseDeletes = await preFetchCourseDeletes.union(cloudSyncCoordinator.pendingCourseDeleteKeys())
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
@@ -198,7 +201,8 @@ extension AppState {
                 if let serverIgnoredCourses, Defaults[.syncCourses] {
                     changed = applyIgnoredCourses(
                         serverIgnoredCourses, decided: Self.serverDecidedCourses(courseOverrides),
-                        coursesArray: coursesArray, protected: protectedOverrides, fetchedAt: fetchedAt
+                        coursesArray: coursesArray, protected: protectedOverrides, deleting: courseDeletes,
+                        fetchedAt: fetchedAt
                     ) || changed
                 }
             }
@@ -248,8 +252,9 @@ extension AppState {
             Self.recordFullSync(coursesReset: reset.remember, taken: taken)
 
             if taken.contains("courses") {
-                changed = reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray, fetchedAt: fetchedAt)
-                    || changed
+                changed = reconcileCourses(
+                    serverRows: coursesArray, tombstones: tombstoneArray, deleting: courseDeletes, fetchedAt: fetchedAt
+                ) || changed
             } else if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             }
@@ -501,8 +506,9 @@ extension AppState {
     }
 
     /// The keys among `keys` a pull leaves as they are here: those of a course deleted here whose
-    /// DELETE may not have landed (`deleting`, course numbers), which the course reconcile keeps
-    /// hidden as long, and every key of a term reset since the snapshot was fetched or resetting.
+    /// DELETE may not have landed (`deleting`, as `unhideListedCourses` takes it), which the course
+    /// reconcile keeps hidden as long, and every key of a term reset since the snapshot was fetched
+    /// or resetting.
     nonisolated static func courseKeysPullLeaves(
         _ keys: Set<String>,
         deleting: Set<String>,
@@ -510,7 +516,7 @@ extension AppState {
     ) -> Set<String> {
         keys.filter { key in
             guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return false }
-            return deleting.contains(courseNo) || resetSemesters.contains(semester)
+            return CourseTombstone.isHidden(courseNo, semester: semester, in: deleting) || resetSemesters.contains(semester)
         }
     }
 
@@ -566,12 +572,14 @@ extension AppState {
 
     /// Takes the server's ignored courses as `ignoredCoursesAfterPull` says, sends again the ones
     /// it lost, and sends the numeric Moodle ids it lacks. A course some device deleted and added
-    /// back counts as decided (`recreatedCourses`). Returns whether the local set changed.
+    /// back counts as decided (`recreatedCourses`). `deleting` holds the keys of the course deletes
+    /// queued here. Returns whether the local set changed.
     private func applyIgnoredCourses(
         _ server: [ServerIgnoredCourse],
         decided: Set<String>,
         coursesArray: [[String: Any]],
         protected: Set<String>,
+        deleting queuedDeletes: Set<String>,
         fetchedAt: Date
     ) -> Bool {
         let now = Date()
@@ -586,7 +594,7 @@ extension AppState {
         Defaults[.courseRowIdsSeen] = listedRows
         let protected = protected.union(Self.courseKeysPullLeaves(
             Set(server.map(\.key)).union(listed).union(current),
-            deleting: Set(deleting.keys),
+            deleting: Set(deleting.keys).union(queuedDeletes),
             resetSemesters: resetSemesters
         ))
         let missingIds = Self.moodleCourseIdsToSend(server, protected: protected) {
@@ -842,26 +850,18 @@ extension AppState {
         revisionPoller.noteActivity()
     }
 
+    /// Queues the delete of a course hidden here, which the outbox sends until it lands.
     func deleteBackendCourse(courseNo: String, semester: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        // Record the local delete so the sync reconcile's grace window doesn't
-        // resurrect this course before the backend DELETE propagates (F).
+        // The reconcile's grace window keeps the course hidden until its delete is in the outbox,
+        // where a full sync finds it from then on.
         recentCourseDeletions[courseNo] = Date()
-        // DELETE /sync/courses/{key} needs the exact `course_key`, and the server keys every row
-        // this app uploads "client:{semester}:{course_no}". The Moodle idnumber, which PATCH
-        // .../override takes, deletes nothing and writes no tombstone; the course comes back.
-        let courseKey = "client:\(semester):\(courseNo)"
-        let coordinator = pushCoordinator
         revisionPoller.noteActivity()
-        // The server drops the course's setting with its row, so a PATCH still queued would 404.
-        Task { await cloudSyncCoordinator.discardCourseIgnores(semester: semester, courseNo: courseNo) }
-        Task.detached {
-            do {
-                try await coordinator.deleteCourse(courseKey: courseKey)
-                AppLogger.sync.info("deleteBackendCourse ok: \(courseKey, privacy: .private)")
-            } catch {
-                AppLogger.sync.error("deleteBackendCourse failed: \(error, privacy: .private)")
-            }
+        Task {
+            // The server drops the course's setting with its row, so a PATCH still queued would 404.
+            await cloudSyncCoordinator.discardCourseIgnores(semester: semester, courseNo: courseNo)
+            await cloudSyncCoordinator.enqueueCourseDelete(semester: semester, courseNo: courseNo)
+            await cloudSyncCoordinator.syncTick()
         }
     }
 
@@ -892,6 +892,7 @@ extension AppState {
             // list sent before the reset.
             pushCoordinator.forgetUploads(semester: semester)
             await cloudSyncCoordinator.discardCourseIgnores(semester: semester)
+            await cloudSyncCoordinator.discardCourseDeletes(semester: semester)
             resetLocally()
             return true
         } catch {
@@ -904,6 +905,10 @@ extension AppState {
     /// A list the server already took is skipped (`PushCoordinator.uploadCoursesIfChanged`);
     /// `resend` sends it anyway, for a term the server has emptied.
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
+        // A course added back here: its delete still queued would remove it again.
+        if !forceKeys.isEmpty {
+            Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys)) }
+        }
         guard CourseUploadPolicy.uploadsCourses else { return }
         let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         let generation = authService.loginGeneration
