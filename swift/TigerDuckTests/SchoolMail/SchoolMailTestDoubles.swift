@@ -105,6 +105,22 @@ final class InMemoryMailSecretStorage: MailSecretStorage, @unchecked Sendable {
     func deleteAll() { lock.withLock { values = [:] } }
 }
 
+/// Saves for a fixture, which no wipe can overtake: the app's own writers always pass the count
+/// they read when they checked their account.
+extension MailCache {
+    func savePage(_ page: MailFolderPage) {
+        savePage(page, wipeCount: wipeCount)
+    }
+
+    func saveDetail(_ detail: MailMessageDetail, folder: String, uidValidity: UInt32) {
+        saveDetail(detail, folder: folder, uidValidity: uidValidity, wipeCount: wipeCount)
+    }
+
+    func saveSource(_ source: String, folder: String, uidValidity: UInt32, uid: UInt32) {
+        saveSource(source, folder: folder, uidValidity: uidValidity, uid: uid, wipeCount: wipeCount)
+    }
+}
+
 enum SchoolMailTestDoubles {
     static func temporaryCache(bodyLimitBytes: Int = MailConstants.bodyCacheLimitBytes) -> MailCache {
         let directory = FileManager.default.temporaryDirectory

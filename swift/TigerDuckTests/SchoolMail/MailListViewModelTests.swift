@@ -1110,6 +1110,24 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
     }
 
+    /// Saves the list queued before a sign-out can still be waiting when its wipe runs, and none
+    /// of them may land after it (https://github.com/tigerduck-app/tigerduck-app/issues/632).
+    @Test func savesQueuedBeforeASignOutLandNothingAfterItsWipe() async {
+        let center = NotificationCenter()
+        let h = Self.harness(includeSent: false, signOutEvents: center)
+        await h.model.load()
+        // A backlog of fire-and-forget saves, so that some are still queued when the wipe runs.
+        for seen in Array(repeating: [true, false], count: 20).joined() {
+            h.model.markSeenLocally(folder: "INBOX", uid: 1, seen: seen)
+        }
+
+        center.post(name: MailAccountManager.didSignOut, object: nil)
+        h.cache.clearAll()
+        await h.model.waitForCacheWrites()
+
+        #expect(h.cache.loadPage(folder: "INBOX") == nil)
+    }
+
     // MARK: Warm
 
     /// Holds a warm at its start delay until the test opens it.

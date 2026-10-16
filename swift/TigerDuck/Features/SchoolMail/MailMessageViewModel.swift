@@ -266,6 +266,7 @@ final class MailMessageViewModel {
         let folder = route.folder
         let uid = route.uid
         let account = prefs.studentID
+        let wipeCount = cache.wipeCount
         let cachedPage = await Task.detached { cache.loadPage(folder: folder) }.value
         // Pins to the route's generation when it names one, and ignores a page from any other:
         // after a folder recreation the same UID is another mail, which the pinned fetch refuses
@@ -292,9 +293,10 @@ final class MailMessageViewModel {
             }
             await apply(fresh)
             // The cache stamps whoever is signed in when it writes: a body fetched for a student
-            // who signed out while it was on the wire must not be filed under the next one.
+            // who signed out while it was on the wire must not be filed under the next one, nor
+            // land after the wipe of a sign-out that comes while the save waits.
             if let validity, prefs.studentID == account {
-                await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity) }.value
+                await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity, wipeCount: wipeCount) }.value
             }
             if !fresh.summary.isSeen {
                 try await session.use { client in
@@ -353,6 +355,7 @@ final class MailMessageViewModel {
         let uid = route.uid
         let validity = pageUIDValidity
         let account = prefs.studentID
+        let wipeCount = cache.wipeCount
         if let validity,
            let cached = await Task.detached(operation: { cache.loadSource(folder: folder, uidValidity: validity, uid: uid) }).value {
             source = cached
@@ -366,7 +369,7 @@ final class MailMessageViewModel {
             source = text
             // As in `load()`: never filed under a student other than the one it was fetched for.
             if let validity, prefs.studentID == account {
-                await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid) }.value
+                await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid, wipeCount: wipeCount) }.value
             }
         } catch {
             actionError = MailAccountManager.LoginError(error).message

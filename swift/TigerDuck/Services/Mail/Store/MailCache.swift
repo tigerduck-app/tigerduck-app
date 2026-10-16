@@ -8,8 +8,8 @@ import os
 /// write them, and the directory is excluded from backup.
 ///
 /// `nonisolated`, not an `actor`: an internal lock serializes its own file I/O, and it never
-/// hops actors for callers. Every method does synchronous disk I/O, so callers keep their use
-/// of it off the main actor (background refresh, view model loads on a background task).
+/// hops actors for callers. Every method but `wipeCount` does synchronous disk I/O, so callers
+/// keep their use of it off the main actor (background refresh, view model loads on a background task).
 nonisolated final class MailCache: @unchecked Sendable {
     /// Still 1 with raw sources added, deliberately. A source lands under a filename no earlier
     /// build ever wrote (`…-source.json`), so no old file is reinterpreted and nothing a new
@@ -49,6 +49,11 @@ nonisolated final class MailCache: @unchecked Sendable {
     private var maxEntryBytes: Int { bodyLimitBytes / 2 }
     private let account: @Sendable () -> String?
     private let lock = NSLock()
+    /// Bumped by `clearAll()` while it holds `lock`. A writer reads it when it checks its account
+    /// and passes it to its save, which writes nothing once a wipe has run since, so a write
+    /// queued before a sign-out cannot land after that sign-out's wipe. It has a lock of its own
+    /// so that reading it on the main actor never waits for another call's disk I/O.
+    private let wipes = OSAllocatedUnfairLock(initialState: 0)
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Cache")
 
     init(
@@ -72,8 +77,11 @@ nonisolated final class MailCache: @unchecked Sendable {
         lock.withLock { read(MailFolderPage.self, at: pageURL(folder: folder)) }
     }
 
-    func savePage(_ page: MailFolderPage) {
-        lock.withLock { write(page, to: pageURL(folder: page.folder)) }
+    func savePage(_ page: MailFolderPage, wipeCount: Int) {
+        lock.withLock {
+            guard isCurrent(wipeCount) else { return }
+            write(page, to: pageURL(folder: page.folder))
+        }
     }
 
     // MARK: Bodies
@@ -95,8 +103,9 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    func saveDetail(_ detail: MailMessageDetail, folder: String, uidValidity: UInt32) {
+    func saveDetail(_ detail: MailMessageDetail, folder: String, uidValidity: UInt32, wipeCount: Int) {
         lock.withLock {
+            guard isCurrent(wipeCount) else { return }
             writeBounded(detail, to: bodyURL(folder: folder, uidValidity: uidValidity, uid: detail.summary.uid))
         }
     }
@@ -126,8 +135,9 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    func saveSource(_ source: String, folder: String, uidValidity: UInt32, uid: UInt32) {
+    func saveSource(_ source: String, folder: String, uidValidity: UInt32, uid: UInt32, wipeCount: Int) {
         lock.withLock {
+            guard isCurrent(wipeCount) else { return }
             writeBounded(source, to: sourceURL(folder: folder, uidValidity: uidValidity, uid: uid))
         }
     }
@@ -199,10 +209,22 @@ nonisolated final class MailCache: @unchecked Sendable {
     }
 
     func clearAll() {
-        lock.withLock { _ = try? FileManager.default.removeItem(at: directory) }
+        lock.withLock {
+            wipes.withLock { $0 += 1 }
+            _ = try? FileManager.default.removeItem(at: directory)
+        }
     }
 
+    /// How many times `clearAll()` has run in this process.
+    var wipeCount: Int { wipes.withLock { $0 } }
+
     // MARK: Internals
+
+    /// Whether no wipe has run since a writer read `wipeCount` as `count`. Called under `lock`,
+    /// which `clearAll()` holds, so no wipe can come between this and the write it allows.
+    private func isCurrent(_ count: Int) -> Bool {
+        count == wipeCount
+    }
 
     private static func fileKey(_ folder: String) -> String {
         folder.utf8.map { String(format: "%02x", $0) }.joined()

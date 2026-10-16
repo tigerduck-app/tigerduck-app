@@ -677,6 +677,21 @@ struct MailCheckerTests {
         #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == ["detail INBOX 4"])
     }
 
+    /// A wipe the account checks cannot see, as a sign-out's is when it lands just after one
+    /// passes, leaves no body behind (https://github.com/tigerduck-app/tigerduck-app/issues/632).
+    @Test func aBodyOnTheWireWhenTheCacheIsWipedIsNotSaved() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3)], marker: 3, cache: cache)
+        await h.fake.hold("detail")
+        let check = Task { await h.checker.check(trigger: .backgroundTask) }
+        await h.fake.waitForArrival("detail")
+        cache.clearAll()
+        await h.fake.release("detail")
+
+        #expect(await check.value == .newMail(1))
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 3) == nil)
+    }
+
     @Test(arguments: [MailClientError.unreachable, .certificateRejected, .authenticationFailed, .serverBusy])
     func connectionErrorsEndThePrefetch(error: MailClientError) {
         #expect(MailChecker.endsPrefetch(error))
