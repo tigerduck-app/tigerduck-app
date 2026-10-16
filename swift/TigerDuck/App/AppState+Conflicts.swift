@@ -767,7 +767,7 @@ extension AppState {
             try await backend.uploadCourses(courseUploadRequest(courses + stubs, semester: semester, forceKeys: []))
             for courseNo in hiddenNos.sorted() {
                 guard isCurrent() else { throw CancellationError() }
-                try await backend.deleteCourse(courseKey: "client:\(semester):\(courseNo)")
+                try await backend.deleteCourse(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
             }
         }
     }

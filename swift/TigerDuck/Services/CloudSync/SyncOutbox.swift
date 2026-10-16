@@ -378,9 +378,8 @@ actor SyncOutbox {
             return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore)
 
         case .courseDelete(let semester, let courseNo, _):
-            // The server keys every row this app uploads "client:{semester}:{course_no}"; the
-            // Moodle idnumber, which PATCH .../override takes, deletes nothing.
-            return .courseDelete(courseKey: "client:\(semester):\(courseNo)")
+            // The Moodle idnumber, which PATCH .../override takes, deletes nothing.
+            return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
         }
     }
 

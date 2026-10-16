@@ -992,7 +992,7 @@ extension AppState {
         let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
             guard let hex = colors[c.courseNo] else { return nil }
             return PushAPI.CourseOverrideUploadEntry(
-                courseKey: "client:\(semester):\(c.courseNo)",
+                courseKey: CourseTombstone.serverKey(semester: semester, courseNo: c.courseNo),
                 colorHex: String(format: "#%06X", hex)
             )
         }

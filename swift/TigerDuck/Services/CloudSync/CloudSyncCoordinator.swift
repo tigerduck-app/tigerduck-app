@@ -411,8 +411,8 @@ final class CloudSyncCoordinator {
     func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil) async {
         await outbox.discard { op in
             guard case .courseDelete(let opSemester, let courseNo, _) = op else { return false }
-            return (semester == nil || semester == opSemester)
-                && (courseKeys.map { $0.contains("client:\(opSemester):\(courseNo)") } ?? true)
+            let key = CourseTombstone.serverKey(semester: opSemester, courseNo: courseNo)
+            return (semester == nil || semester == opSemester) && (courseKeys?.contains(key) ?? true)
         }
     }
 

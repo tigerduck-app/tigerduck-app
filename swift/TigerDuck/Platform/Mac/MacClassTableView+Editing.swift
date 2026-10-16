@@ -59,7 +59,7 @@ extension MacClassTableView {
         DataCache.shared.saveUserAddedCourses(existing + [course])
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        let forceKey = "client:\(selectedSemester):\(course.courseNo)"
+        let forceKey = CourseTombstone.serverKey(semester: selectedSemester, courseNo: course.courseNo)
         appState.uploadCourses(courses, semester: selectedSemester, forceKeys: [forceKey])
         return true
     }
