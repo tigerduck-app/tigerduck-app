@@ -84,7 +84,8 @@ struct ScheduleSendNowTests {
     }
 
     /// Behind the lock screen the caches read as empty, and the server cancels every start of this
-    /// device that the list it is sent leaves out (tigerduck-backend `server/routes/schedule_v3.py`).
+    /// device that the list it is sent leaves out
+    /// (https://github.com/tigerduck-app/tigerduck-backend/blob/dev/server/routes/schedule_v3.py).
     @Test("Behind the lock screen, sending now sends nothing")
     func sendingNowBehindTheLockScreenSendsNothing() async {
         let backend = Backend()
