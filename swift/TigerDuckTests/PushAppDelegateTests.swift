@@ -80,7 +80,7 @@ struct PushAppDelegateTests {
         #expect(events.all == ["sync", "widgets", "answer"])
     }
 
-    @Test("A sync that outlasts the limit is cancelled and answered failed at the limit, and not again when it ends")
+    @Test("A sync that outlasts the limit is answered failed at the limit, cancelled while the app is not active, and not answered again when it ends")
     func aSyncPastTheLimitIsCancelledAndAnsweredOnce() async {
         let answers = Answers()
         var sawCancellation = false
@@ -91,10 +91,28 @@ struct PushAppDelegateTests {
             sawCancellation = Task.isCancelled
             ended = true
             return .newData
-        }, within: .milliseconds(20), then: answers.record)
+        }, within: .milliseconds(20), appIsActive: { false }, then: answers.record)
         while !ended { try? await Task.sleep(for: .milliseconds(20)) }
 
         #expect(sawCancellation)
+        #expect(answers.results == [.failed])
+    }
+
+    /// The open app shows what the sync fetches, and its own sync may be waiting for this one
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/682).
+    @Test("A sync that outlasts the limit goes on while the app is active, and only the limit answers")
+    func aSyncPastTheLimitGoesOnWhileTheAppIsActive() async {
+        let answers = Answers()
+        var sawCancellation: Bool?
+
+        PushAppDelegate.run({
+            try? await Task.sleep(for: .milliseconds(300))
+            sawCancellation = Task.isCancelled
+            return .newData
+        }, within: .milliseconds(20), appIsActive: { true }, then: answers.record)
+        while sawCancellation == nil { try? await Task.sleep(for: .milliseconds(20)) }
+
+        #expect(sawCancellation == false)
         #expect(answers.results == [.failed])
     }
 
