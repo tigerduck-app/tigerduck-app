@@ -343,15 +343,16 @@ struct ReenableMarkTests {
 
     /// Use Local reads the colours, names and marks it sends only after its course requests, so
     /// they stay on the stored pending list until it has queued them
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/651).
-    @Test("Use Local keeps what it sends after its courses pending until it has queued it, and only a relaunch asks again")
-    func useLocalKeepsWhatItSendsAfterItsCoursesPending() {
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/651), and the courses stay until
+    /// their deletes are done (https://github.com/tigerduck-app/tigerduck-app/issues/667).
+    @Test("Use Local keeps every category it answers pending until it is done with it, and only a relaunch asks again")
+    func useLocalKeepsWhatItAnswersPending() {
         var pending = Self.categories
         var hold = AppState.UseLocalHold()
 
         let held = hold.take(Array(Self.categories), keepLocal: true, from: &pending)
 
-        #expect(pending == ["course_colors", "course_names", "assignments"])
+        #expect(pending == Self.categories)
         #expect(held == pending)
         #expect(AppState.categoriesTaken(
             switchedOn: Self.categories,
@@ -360,7 +361,7 @@ struct ReenableMarkTests {
                 syncsMarks: true, conflictCheckPending: pending.contains("assignments"),
                 uploadedLocalMarks: false, editedDuringFetch: false
             )
-        ) == ["courses"])
+        ).isEmpty)
         // The answer sends them itself, so the check leaves them alone; after a relaunch no
         // answer holds them, and it asks again.
         #expect(AppState.categoriesToCheck(pending: pending, answering: hold.held).isEmpty)
@@ -411,7 +412,7 @@ struct ReenableMarkTests {
 
         hold.release(second, from: &pending)
 
-        #expect(pending == ["course_colors", "course_names"])
+        #expect(pending == ["courses", "course_colors", "course_names"])
         #expect(hold.held == first)
     }
 

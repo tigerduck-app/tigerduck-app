@@ -40,7 +40,11 @@ with no rows for the term and a tombstone for every course it held.
 ## Consequences
 
 - The tombstone pass must stay ahead of the empty-term branch in `reconcileCourses`.
-- Code that builds a course key must use "client:{semester}:{course_no}", as
-  `deleteBackendCourse`, the keep-local conflict resolution in `AppState+Conflicts.swift`, the
-  hand-add paths (`ClassTableView`, `MacClassTableView+Editing`) and the color overrides in
-  `AppServiceBridge.fetchCourses` do.
+- Code that builds a course key uses `CourseTombstone.serverKey(semester:courseNo:)`, which
+  gives "client:{semester}:{course_no}", as the course upload (`AppState.courseUploadRequest`),
+  the outbox's course deletes, Use Local's deletes (`AppState.keepLocalCourses`) and the hand-add
+  paths' forced keys (`ClassTableView`, `MacClassTableView+Editing`) do; adding a course back
+  drops its queued delete by that key (`CloudSyncCoordinator.discardCourseDeletes`).
+- A course deleted here is deleted on the server through the outbox, which retries until the
+  delete lands. Until then the server still lists it, and the reconcile keeps it hidden here for
+  as long as its delete is queued (`CloudSyncCoordinator.pendingCourseDeleteKeys`).

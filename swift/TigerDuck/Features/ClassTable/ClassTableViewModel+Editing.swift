@@ -13,12 +13,13 @@ extension ClassTableViewModel {
     @discardableResult
     func addCourse(_ course: SDCourse) -> Bool {
         guard shownPerson == nil else { return false }
-        // A course both tombstoned and in `courses` (a refresh re-fetched it past
-        // a stale tombstone) is un-hidden before returning, so later reloads stop
-        // filtering it. Returns `false`: the row was already in the timetable.
+        // A course both tombstoned and in `courses` (a refresh re-fetched it past a stale
+        // tombstone) is un-hidden and goes up with its key forced, which takes back a delete of
+        // it still queued. Returns `false`: the row was already in the timetable.
         if courses.contains(where: { $0.courseNo == course.courseNo }) {
             if CourseTombstone.unhide(course.courseNo, semester: currentSemester, from: &deletedCourseNos) {
                 DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+                onCourseAdded?(courses, currentSemester, course.courseNo)
             }
             return false
         }

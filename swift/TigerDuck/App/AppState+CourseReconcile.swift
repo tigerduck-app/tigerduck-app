@@ -10,10 +10,13 @@ extension AppState {
 
     /// Applies the server's course list to the local caches, one semester
     /// at a time. `serverRows` is the `courses` array of `/sync/full`,
-    /// `tombstones` its `course_tombstones`, `fetchedAt` when the request
-    /// went out — what the snapshot is as of. Returns whether it changed the caches.
+    /// `tombstones` its `course_tombstones`, `deleting` the keys of the course
+    /// deletes queued here, `fetchedAt` when the request went out, which is what
+    /// the snapshot is as of. Returns whether it changed the caches.
     @discardableResult
-    func reconcileCourses(serverRows: [[String: Any]], tombstones: [[String: Any]], fetchedAt: Date) -> Bool {
+    func reconcileCourses(
+        serverRows: [[String: Any]], tombstones: [[String: Any]], deleting queuedDeletes: Set<String>, fetchedAt: Date
+    ) -> Bool {
         // Client-uploaded rows carry the term they belong to. The server's
         // own Moodle mirror rows ("moodle:" keys) carry "" and are not a
         // roster, so they drop out here.
@@ -38,6 +41,7 @@ extension AppState {
         recentCourseDeletions = recentCourseDeletions.filter {
             graceNow.timeIntervalSince($0.value) < Self.courseDeleteGraceInterval
         }
+        let deleting = Set(recentCourseDeletions.keys).union(queuedDeletes)
         // A term mid-reset, or one this device reset after this snapshot
         // was fetched — the snapshot still carries the pre-reset roster.
         // See `resettingSemesters` and `DataCache.loadSemesterResetAt`.
@@ -110,8 +114,7 @@ extension AppState {
 
             // Hidden here but back on the server → un-hide, unless our own
             // delete is still in flight.
-            for courseNo in serverNos where isHidden(courseNo) && recentCourseDeletions[courseNo] == nil {
-                CourseTombstone.unhide(courseNo, semester: semester, from: &deletedNos)
+            if Self.unhideListedCourses(serverNos, semester: semester, deleting: deleting, in: &deletedNos) {
                 deletedChanged = true
             }
 
@@ -132,8 +135,9 @@ extension AppState {
                 mergedSemesters.insert(semester)
             }
             for row in rows {
-                guard let courseNo = row["course_no"] as? String,
-                      !knownNos.contains(courseNo), !isHidden(courseNo) else { continue }
+                guard let courseNo = row["course_no"] as? String, !knownNos.contains(courseNo),
+                      Self.mergesListedCourse(courseNo, semester: semester, hidden: deletedNos, deleting: deleting)
+                else { continue }
                 userAdded.append(Self.course(fromServerRow: row, courseNo: courseNo,
                                              semester: semester, name: localNames[courseNo]))
                 knownNos.insert(courseNo)
@@ -157,6 +161,32 @@ extension AppState {
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
         return true
+    }
+
+    /// Shows again each course hidden here in `semester` that the server lists (`serverNos`), but one
+    /// whose delete from here may not have landed: `deleting` holds the course numbers deleted within
+    /// `courseDeleteGraceInterval` and the `CourseTombstone` keys of the deletes still queued.
+    /// Returns whether it showed one.
+    nonisolated static func unhideListedCourses(
+        _ serverNos: Set<String>, semester: String, deleting: Set<String>, in deletedNos: inout Set<String>
+    ) -> Bool {
+        var changed = false
+        for courseNo in serverNos where CourseTombstone.isHidden(courseNo, semester: semester, in: deletedNos)
+            && !CourseTombstone.isHidden(courseNo, semester: semester, in: deleting) {
+            CourseTombstone.unhide(courseNo, semester: semester, from: &deletedNos)
+            changed = true
+        }
+        return changed
+    }
+
+    /// Whether the reconcile keeps a course the server lists and this device lacks as hand-added: not
+    /// one hidden here, nor one whose delete from here may not have landed (`deleting`, as
+    /// `unhideListedCourses` takes it), as for a hand-added course taken back here.
+    nonisolated static func mergesListedCourse(
+        _ courseNo: String, semester: String, hidden: Set<String>, deleting: Set<String>
+    ) -> Bool {
+        !CourseTombstone.isHidden(courseNo, semester: semester, in: hidden)
+            && !CourseTombstone.isHidden(courseNo, semester: semester, in: deleting)
     }
 
     /// Whether a server row really belongs to `semester`. A row whose Moodle id names
