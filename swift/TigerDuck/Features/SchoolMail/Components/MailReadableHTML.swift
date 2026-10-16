@@ -267,11 +267,25 @@ nonisolated struct MailReadableHTML {
         if let value { try element.attr(name, value) } else { try element.removeAttr(name) }
     }
 
+    /// Whether `element` sets a text or background colour that shows. The `color` or
+    /// `background-color` that applies outranks `<font color>` or `bgcolor`, as in `sentColor` and
+    /// `layer`, and HTML reads either attribute as an opaque colour unless it is blank or `transparent`.
     private static func setsColor(_ element: Element, style: Style) throws -> Bool {
-        if style.declarations.contains(where: { $0.property == "color" || $0.property == "background-color" }) { return true }
-        if try legacyValue("bgcolor", of: element) != nil { return true }
-        return try element.tagName() == "font" && legacyValue("color", of: element) != nil
+        let text = try style.effective("color").map { shows($0.value) }
+            ?? (element.tagName() == "font" && legacyValue("color", of: element) != nil)
+        let background = try style.effective("background-color").map { shows($0.value) }
+            ?? (legacyValue("bgcolor", of: element) != nil)
+        return text || background
     }
+
+    /// Whether a CSS colour value shows: one this reads with alpha above zero, or one it cannot
+    /// read that is not a keyword taking its colour from elsewhere.
+    private static func shows(_ value: Substring) -> Bool {
+        guard let color = parse(value, legacy: false) else { return !colorlessKeywords.contains(value.lowercased()) }
+        return color.alpha > 0
+    }
+
+    private static let colorlessKeywords: Set<String> = ["currentcolor", "inherit", "initial", "unset", "revert", "revert-layer"]
 
     /// What `element` paints behind its text. A `border-image` paints over its background, and a
     /// table's columns between it and its cells, so either makes it one this cannot read.

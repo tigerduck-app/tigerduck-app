@@ -17,7 +17,9 @@ struct MailReadableHTMLTests {
     // MARK: The page a mail opens on
 
     /// A colour anywhere counts, a quoted reply's too. A border colour is not a text or
-    /// background colour, and `background` never gets past the CSS filter.
+    /// background colour, and `background` never gets past the CSS filter. Nor does a colour
+    /// that does not show, or a declaration overruled by another
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/678); one this cannot read still counts.
     @Test(arguments: [
         ("<p>Hello</p>", false),
         (##"<p style="font-size: 14px; border-left: 1px solid #cccccc">Hello</p>"##, false),
@@ -27,6 +29,15 @@ struct MailReadableHTMLTests {
         (##"<p style="background-color: #fafafa">Hello</p>"##, true),
         (##"<table bgcolor="#ffffff"><tr><td>Hello</td></tr></table>"##, true),
         (##"<p>Thanks</p><blockquote><p style="color: #1f497d">Quoted</p></blockquote>"##, true),
+        (##"<p>Read <a href="https://a.example" style="color: inherit">more</a></p>"##, false),
+        (##"<span style="color: currentColor; background-color: transparent">Hello</span>"##, false),
+        (##"<p style="color: rgba(0, 0, 0, 0); background-color: #fff0">Hello</p>"##, false),
+        (##"<table bgcolor="transparent"><tr><td style="color: unset">Hello</td></tr></table>"##, false),
+        (##"<p style="color: #333333; color: inherit">Hello</p>"##, false),
+        (##"<p style="color: inherit; color: #333333">Hello</p>"##, true),
+        (##"<font color="#333333" style="color: inherit">Hello</font>"##, false),
+        (##"<table><tr><td bgcolor="#ffffff" style="background-color: transparent">Hello</td></tr></table>"##, false),
+        (##"<p style="color: hsl(0 0% 20%)">Hello</p>"##, true),
     ])
     func aMailSaysWhetherItSetsColoursOfItsOwn(html: String, setsColors: Bool) {
         #expect(Self.readable(html).setsColors == setsColors)
