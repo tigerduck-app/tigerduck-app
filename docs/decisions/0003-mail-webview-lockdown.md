@@ -25,7 +25,8 @@ tracking images, remote content and links whose text hides their target.
   7:1 against its background on the page shown, or on a mid-tone where no color reaches that,
   short of the better of white and black. Such a color moves to the nearest OKLCH lightness that
   reaches the target, and an element with a background but no color of its own whose inherited
-  color does not read is given one (`MailReadableHTML`). Only `color` values change.
+  color does not read is given one (`MailReadableHTML`). Only `color` values change, and the
+  `color` declarations it gives are added to an element's `style`, or make one.
 
 ## Consequences
 
