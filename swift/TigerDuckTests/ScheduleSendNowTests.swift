@@ -15,7 +15,9 @@ struct ScheduleSendNowTests {
         func sent() -> [URLRequest] { SettingsAPIStub.requests(for: schedule) }
     }
 
-    private static func coordinator(_ backend: Backend) -> PushCoordinator {
+    private static func coordinator(
+        _ backend: Backend, isProtectedDataAvailable: (@MainActor () -> Bool)? = nil
+    ) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
@@ -23,7 +25,10 @@ struct ScheduleSendNowTests {
             session: URLSession(configuration: config),
             authHeaderProvider: { "Bearer test" }
         )
-        return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
+        return PushCoordinator(
+            identity: PushIdentity(uuid: "test-device"), apiClient: client,
+            isProtectedDataAvailable: isProtectedDataAvailable
+        )
     }
 
     private static let inputs = ScheduleSyncService.Inputs(
@@ -75,5 +80,19 @@ struct ScheduleSendNowTests {
         await push.syncNow { Self.inputs }
 
         #expect(backend.sent().isEmpty)
+    }
+
+    /// Behind the lock screen the caches read as empty, and the server cancels every start of this
+    /// device that the list it is sent leaves out (tigerduck-backend `server/routes/schedule_v3.py`).
+    @Test("Behind the lock screen, sending now sends nothing")
+    func sendingNowBehindTheLockScreenSendsNothing() async {
+        let backend = Backend()
+        let push = Self.coordinator(backend, isProtectedDataAvailable: { false })
+        push.enable()
+
+        await push.syncNow { Self.inputs }
+
+        #expect(backend.sent().isEmpty)
+        await push.disable()
     }
 }
