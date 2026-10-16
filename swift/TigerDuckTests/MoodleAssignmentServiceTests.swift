@@ -253,7 +253,7 @@ struct MoodleAssignmentServiceTests {
         )
 
         #expect(try Self.body(of: MoodleAssignmentService.commentsFunction, token: token)
-            == "contextlevel=module&instanceid=9101&component=assignsubmission_comments&itemid=5501&area=submission_comments")
+            == "contextlevel=module&instanceid=9101&component=assignsubmission_comments&itemid=5501&area=submission_comments&page=0")
         #expect(comments == [
             MoodleSubmissionComment(
                 id: 901, authorName: "T00001 @ Duck Teacher", created: Date(timeIntervalSince1970: 1_790_505_000),
@@ -264,6 +264,73 @@ struct MoodleAssignmentServiceTests {
                 content: "<div class=\"text_to_html\">Thanks, page 2 is the corrected one.</div>"
             ),
         ])
+    }
+
+    /// A page of comments as Moodle answers it, newest first, with the submission's total.
+    private static func commentsPage(_ ids: [Int], count: Int) -> String {
+        let comments = ids.map { id in
+            #"{"id": \#(id), "content": "<p>Note \#(id)</p>", "format": 1, "timecreated": \#(1_790_500_000 + id), "#
+                + #""fullname": "T00001 @ Duck Teacher", "userid": 7, "delete": false}"#
+        }
+        return #"{"comments": [\#(comments.joined(separator: ", "))], "count": \#(count), "perpage": 15, "#
+            + #""canpost": true, "warnings": []}"#
+    }
+
+    private static func pages(asked token: String) -> [String] {
+        SettingsAPIStub.requests(for: endpoint(MoodleAssignmentService.commentsFunction, token: token)).compactMap {
+            SettingsAPIStub.bodyData(from: $0).flatMap { String(data: $0, encoding: .utf8) }?
+                .components(separatedBy: "&").first { $0.hasPrefix("page=") }
+        }
+    }
+
+    @Test("comments past Moodle's first page are asked for a page at a time, and the first once more when one came in meanwhile")
+    func commentPages() async throws {
+        let token = UUID().uuidString
+        let function = MoodleAssignmentService.commentsFunction
+        // Comment 18 came in after the first request and moved comment 3 onto the second page.
+        Self.answer(Self.commentsPage(Array((3...17).reversed()), count: 17), function: function, token: token)
+        Self.answer(Self.commentsPage([3, 2, 1], count: 18), function: function, token: token)
+        Self.answer(Self.commentsPage([], count: 18), function: function, token: token)
+        Self.answer(Self.commentsPage(Array((4...18).reversed()), count: 18), function: function, token: token)
+
+        let comments = try await MoodleAssignmentService.comments(
+            cmid: 9101, submissionId: 5501, token: token, session: Self.session(), siteURL: Self.site
+        )
+
+        #expect(comments.map(\.id) == Array(1...18))
+        #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=2", "page=0"])
+    }
+
+    @Test("a site that answers every page with the first stops the paging at the second")
+    func pageIgnored() async throws {
+        let token = UUID().uuidString
+        for _ in 0...MoodleAssignmentService.commentPageLimit {
+            Self.answer(Self.commentsPage(Array((1...15).reversed()), count: 40),
+                        function: MoodleAssignmentService.commentsFunction, token: token)
+        }
+
+        let comments = try await MoodleAssignmentService.comments(
+            cmid: 9101, submissionId: 5501, token: token, session: Self.session(), siteURL: Self.site
+        )
+
+        #expect(comments.map(\.id) == Array(1...15))
+        #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=0"])
+    }
+
+    @Test("a total Moodle never reaches stops the paging at the limit")
+    func commentPageLimit() async throws {
+        let token = UUID().uuidString
+        let limit = MoodleAssignmentService.commentPageLimit
+        for page in 0...limit + 1 {
+            Self.answer(Self.commentsPage([1000 - page], count: 500),
+                        function: MoodleAssignmentService.commentsFunction, token: token)
+        }
+
+        _ = try await MoodleAssignmentService.comments(
+            cmid: 9101, submissionId: 5501, token: token, session: Self.session(), siteURL: Self.site
+        )
+
+        #expect(Self.pages(asked: token) == (0..<limit).map { "page=\($0)" } + ["page=0"])
     }
 
     @Test("the account's groups on a course come by id, with their names as text")

@@ -1,7 +1,11 @@
+import Defaults
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
+/// One round at a time, and how a status an assignment's page fetched joins the rounds' writes,
+/// into a cache in a folder of its own. Every id here is made up.
 @MainActor
 @Suite(.serialized)
 struct SharedAssignmentRoundTests {
@@ -156,5 +160,226 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["departing", "next"] }
         rounds.open()
         _ = await (departing.value, next.value)
+    }
+
+    // MARK: - A status the assignment's page fetched
+
+    @MainActor
+    private final class Folder {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SharedAssignmentRoundTests-\(UUID().uuidString)", isDirectory: true)
+        lazy var cache = DataCache(
+            cacheDir: root.appendingPathComponent("cache", isDirectory: true),
+            persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
+        )
+
+        deinit { try? FileManager.default.removeItem(at: root) }
+    }
+
+    private static let due = Date(timeIntervalSince1970: 1_800_000_000)
+    private static let submittedAt = due - 600
+
+    /// The answers the bridge keeps last for an assignment outlive a test, so each takes its own.
+    private static func newId() -> Int { Int.random(in: 100_000...999_999_999) }
+
+    private static func handedIn(_ id: Int) -> MoodleSubmissionStatus {
+        MoodleSubmissionStatus(assignId: id, submissionStatus: "submitted", gradingStatus: nil, submittedAt: submittedAt)
+    }
+
+    /// A round that asked Moodle about `id` at `askedAt` and heard it was not handed in, which it
+    /// writes unless the account signed out meanwhile.
+    @discardableResult
+    private static func round(
+        of id: Int, askedAt: ContinuousClock.Instant, in cache: DataCache, isCurrent: Bool = true
+    ) -> Bool {
+        AppServiceBridge.persistRound(
+            [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
+                          dueDate: due)],
+            records: [], closed: [:], answered: [id: askedAt], account: "B11399001", fetchedAt: due, cache: cache,
+            isCurrent: { isCurrent }
+        )
+    }
+
+    private static func isCompleted(_ id: Int, in cache: DataCache) -> Bool? {
+        cache.loadAssignments().first { $0.assignmentId == String(id) }?.isCompleted
+    }
+
+    @MainActor
+    private final class Flag {
+        var isSet = false
+    }
+
+    @Test("a status the page fetched reaches the cached assignment and tells Home, and the same one again writes nothing")
+    func pageStatusIsWritten() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let id = Self.newId()
+        let now = ContinuousClock.now
+        Self.round(of: id, askedAt: now - .seconds(60), in: folder.cache)
+        let center = NotificationCenter()
+        let heard = OSAllocatedUnfairLock(initialState: 0)
+        let observer = center.addObserver(forName: AppConstants.dataDidUpdate, object: nil, queue: nil) { _ in
+            heard.withLock { $0 += 1 }
+        }
+        defer { center.removeObserver(observer) }
+
+        #expect(await AppServiceBridge.takeSubmissionStatus(
+            Self.handedIn(id), askedAt: now, cache: folder.cache, isCurrent: { true }, notifying: center
+        ))
+
+        let cached = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
+        #expect(cached?.isCompleted == true)
+        #expect(cached?.submittedAt == Self.submittedAt)
+        #expect(heard.withLock { $0 } == 1)
+        #expect(await !AppServiceBridge.takeSubmissionStatus(
+            Self.handedIn(id), askedAt: now + .seconds(1), cache: folder.cache, isCurrent: { true }, notifying: center
+        ))
+        #expect(heard.withLock { $0 } == 1)
+    }
+
+    @Test("a round running when the page's status comes is waited out, and its older answer does not replace it")
+    func pageStatusWaitsOutARound() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let cache = folder.cache
+        let id = Self.newId()
+        let pageAskedAt = ContinuousClock.now
+        Self.round(of: id, askedAt: pageAskedAt - .seconds(60), in: cache)
+        let rounds = Rounds()
+        // Asked Moodle before the page did, and writes once it ends.
+        let pull = Task {
+            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { true }) {
+                _ = await rounds.run("pull")
+                Self.round(of: id, askedAt: pageAskedAt - .seconds(5), in: cache)
+                return []
+            }
+        }
+        try await waitUntil { rounds.started == ["pull"] }
+
+        let asked = Flag()
+        let page = Task {
+            asked.isSet = true
+            return await AppServiceBridge.takeSubmissionStatus(
+                Self.handedIn(id), askedAt: pageAskedAt, cache: cache, isCurrent: { true }
+            )
+        }
+        // The page ran up to its first wait before the flag reads true.
+        try await waitUntil { asked.isSet }
+        #expect(Self.isCompleted(id, in: cache) == false)
+        rounds.open()
+        await pull.value
+
+        #expect(await page.value)
+        #expect(Self.isCompleted(id, in: cache) == true)
+    }
+
+    @Test("an answer asked for before the one the assignment has, a round's or another page's, is dropped")
+    func olderAnswersAreDropped() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let id = Self.newId()
+        let now = ContinuousClock.now
+        Self.round(of: id, askedAt: now, in: folder.cache)
+
+        #expect(await !AppServiceBridge.takeSubmissionStatus(
+            Self.handedIn(id), askedAt: now - .seconds(1), cache: folder.cache, isCurrent: { true }
+        ))
+        #expect(Self.isCompleted(id, in: folder.cache) == false)
+
+        #expect(await AppServiceBridge.takeSubmissionStatus(
+            Self.handedIn(id), askedAt: now + .seconds(10), cache: folder.cache, isCurrent: { true }
+        ))
+        let reverted = MoodleSubmissionStatus(assignId: id, submissionStatus: "draft", gradingStatus: nil, submittedAt: nil)
+        #expect(await !AppServiceBridge.takeSubmissionStatus(
+            reverted, askedAt: now + .seconds(5), cache: folder.cache, isCurrent: { true }
+        ))
+        #expect(Self.isCompleted(id, in: folder.cache) == true)
+    }
+
+    @Test("a round that wrote nothing, its account signed out, leaves no time a page's answer has to beat")
+    func unwrittenRoundKeepsNoTime() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let id = Self.newId()
+        let now = ContinuousClock.now
+        Self.round(of: id, askedAt: now - .seconds(60), in: folder.cache)
+        #expect(!Self.round(of: id, askedAt: now + .seconds(5), in: folder.cache, isCurrent: false))
+
+        #expect(await AppServiceBridge.takeSubmissionStatus(
+            Self.handedIn(id), askedAt: now, cache: folder.cache, isCurrent: { true }
+        ))
+    }
+
+    @Test("a status fetched for an account that signed out while a round ran writes nothing")
+    func pageStatusAfterSignOut() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let cache = folder.cache
+        let id = Self.newId()
+        Self.round(of: id, askedAt: .now - .seconds(60), in: cache)
+        let rounds = Rounds()
+        let signIn = SignIn()
+        let launch = start("launch", rounds, rechecks: false)
+        try await waitUntil { rounds.started == ["launch"] }
+
+        let asked = Flag()
+        let page = Task {
+            asked.isSet = true
+            return await AppServiceBridge.takeSubmissionStatus(
+                Self.handedIn(id), askedAt: .now, cache: cache, isCurrent: { signIn.isCurrent }
+            )
+        }
+        try await waitUntil { asked.isSet }
+        signIn.isCurrent = false
+        rounds.open()
+        await launch.value
+
+        #expect(await !page.value)
+        #expect(Self.isCompleted(id, in: cache) == false)
+    }
+
+    @Test("the app's Moodle calls hand the page's status to the writer")
+    func liveHandsStatusOn() async throws {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let id = Self.newId()
+        Self.round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
+
+        MoodleCourseAPI.live.submissionFetched(
+            Self.handedIn(id), .now, MoodleCacheContext(account: "B11399001", cache: folder.cache, isCurrent: { true })
+        )
+
+        try await waitUntil(timeout: .seconds(10)) { Self.isCompleted(id, in: folder.cache) == true }
+    }
+
+    @MainActor
+    private final class Sent {
+        var requests: [PushAPI.AssignmentUploadRequest] = []
+    }
+
+    /// Reads and sets `cloudSyncEnabled` (docs/decisions/0020-real-defaults-gate.md).
+    @Test("a status that changes the list sends it on for the reminders, with TigerSync on")
+    func pageStatusIsUploaded() async {
+        await withExclusiveRealDefaults {
+            AppServiceBridge.cancelAssignmentRound()
+            let saved = Defaults[.cloudSyncEnabled]
+            let sent = Sent()
+            Defaults[.cloudSyncEnabled] = true
+            AppServiceBridge.assignmentUploader = { sent.requests.append($0) }
+            defer {
+                Defaults[.cloudSyncEnabled] = saved
+                AppServiceBridge.assignmentUploader = nil
+            }
+            let folder = Folder()
+            let id = Self.newId()
+            Self.round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
+
+            await AppServiceBridge.takeSubmissionStatus(
+                Self.handedIn(id), askedAt: .now, cache: folder.cache, isCurrent: { true }
+            )
+
+            #expect(sent.requests.map { $0.assignments.map(\.moodleAssignmentId) } == [[id]])
+            #expect(sent.requests.first?.assignments.first?.isSubmitted == true)
+        }
     }
 }

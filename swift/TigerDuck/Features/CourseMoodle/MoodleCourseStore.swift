@@ -32,6 +32,10 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var comments: @Sendable (_ cmid: Int, _ submissionId: Int) async throws -> [MoodleSubmissionComment] = { _, _ in [] }
     /// The account's groups on the course, by id.
     var groups: @Sendable (_ courseId: Int) async throws -> [Int: String] = { _ in [:] }
+    /// Takes the status of a submission the page fetched, asked for at `askedAt`.
+    var submissionFetched: @MainActor @Sendable (
+        _ status: MoodleSubmissionStatus, _ askedAt: ContinuousClock.Instant, _ context: MoodleCacheContext
+    ) -> Void = { _, _, _ in }
 
     static let live = MoodleCourseAPI(
         functions: {
@@ -108,6 +112,14 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await MoodleWebserviceClient.withToken { token in
                 let userId = try await MoodleSiteInfoService.shared.userId(token: token)
                 return try await MoodleAssignmentService.groups(courseId: courseId, userId: userId, token: token)
+            }
+        },
+        // To the writer of the cached assignments, so Home shows it before the next round.
+        submissionFetched: { status, askedAt, context in
+            Task {
+                await AppServiceBridge.takeSubmissionStatus(
+                    status, askedAt: askedAt, cache: context.cache, isCurrent: context.isCurrent
+                )
             }
         }
     )

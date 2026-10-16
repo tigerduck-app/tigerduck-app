@@ -184,5 +184,22 @@ struct MoodleAssignmentPageTests {
         viewModel.courseSheetDismissed()
         #expect(viewModel.shownAssignment == nil)
     }
+
+    @Test("with a sheet over the course sheet that refused to close, the page goes in behind and the course sheet stays")
+    func behindAKeptCourseSheet() {
+        let root = Self.folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let page = MoodleAssignmentPage(
+            entry: MoodleCourseAssignments.Entry(record: Self.record, listed: nil),
+            store: Self.store(in: root), courseName: "Data Structures"
+        )
+        let viewModel = HomeViewModel()
+        viewModel.selectedCourse = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
+
+        viewModel.show(page, closingSheet: false)
+
+        #expect(viewModel.selectedCourse != nil)
+        #expect(viewModel.shownAssignment == page)
+    }
 }
 #endif

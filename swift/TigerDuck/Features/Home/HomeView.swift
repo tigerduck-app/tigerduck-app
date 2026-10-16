@@ -165,13 +165,14 @@ struct HomeView: View {
         .onChange(of: appState.authService.loginGeneration) {
             viewModel.closeAssignment()
         }
-        // An assignment reminder or Live Activity tap, which `MainTabView` brings Home up for.
+        // An assignment reminder or Live Activity tap, which `MainTabView` brings Home up for. A
+        // sheet up on any tab would cover the page, so it closes first.
         .onChange(of: appState.pendingDeepLink, initial: true) { _, link in
             guard case .assignment(let id) = link else { return }
             appState.pendingDeepLink = nil
-            if let assignment = DataCache.shared.loadAssignments().first(where: { $0.assignmentId == id }) {
-                openAssignment(assignment)
-            }
+            guard let assignment = DataCache.shared.loadAssignments().first(where: { $0.assignmentId == id }) else { return }
+            guard let root = UIApplication.shared.foregroundRoot else { return openAssignment(assignment) }
+            root.closePresentations { closedAll in openAssignment(assignment, closingSheet: closedAll) }
         }
         .sheet(item: $viewModel.selectedCourse, onDismiss: viewModel.courseSheetDismissed) { course in
             let slot = viewModel.selectedCourseSlot
@@ -240,7 +241,7 @@ struct HomeView: View {
                     showNotImplementedAlert = true
                 }
             },
-            onOpenAssignment: openAssignment
+            onOpenAssignment: { openAssignment($0) }
         )
         .overlay(alignment: .top) {
             if viewModel.isEditingHome {
@@ -280,11 +281,14 @@ struct HomeView: View {
 
     /// Its page, with the store of its course; on Moodle while no assignment round has named the
     /// course.
-    private func openAssignment(_ assignment: SDAssignment) {
+    private func openAssignment(_ assignment: SDAssignment, closingSheet: Bool = true) {
         if let context = MoodleCacheContext.signedIn(appState.authService),
            let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
            let entry = store.assignments.entry(for: assignment) {
-            viewModel.show(MoodleAssignmentPage(entry: entry, store: store, courseName: assignment.displayCourseName))
+            viewModel.show(
+                MoodleAssignmentPage(entry: entry, store: store, courseName: assignment.displayCourseName),
+                closingSheet: closingSheet
+            )
         } else if let url = assignment.moodleDeepLink {
             let web = assignment.moodleWebURL
             Task { await openURL(url, fallback: web) }
