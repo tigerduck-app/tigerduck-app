@@ -154,6 +154,11 @@ extension Date {
         return Self.absoluteFormatter.string(from: self)
     }
 
+    /// ``absoluteTimeString`` that never shows seconds, for a time read to the minute.
+    var absoluteMinuteString: String {
+        Self.absoluteFormatterNoSeconds.string(from: self)
+    }
+
     /// Relative time, e.g. "5 days later", "30 hours later", or "Overdue".
     /// `<= 0` reads as overdue (a deadline at the exact current second is no
     /// longer "later"); buckets round up so the user never sees "0 minutes

@@ -112,10 +112,7 @@ struct TigerDuckApp: App {
                 }
                 .onOpenURL { url in
                     if let id = WidgetURLRouter.assignmentId(from: url) {
-                        let assignments = DataCache.shared.loadAssignments()
-                        if let assignment = assignments.first(where: { $0.assignmentId == id }) {
-                            Self.openInMoodle(assignment)
-                        }
+                        appState.pendingDeepLink = .assignment(id)
                         return
                     }
                     guard let destination = WidgetURLRouter.route(url) else { return }
@@ -196,7 +193,7 @@ struct TigerDuckApp: App {
                 from: info,
                 in: DataCache.shared.loadAssignments()
             ) {
-                openInMoodle(assignment)
+                appState.pendingDeepLink = .assignment(assignment.assignmentId)
             }
         case "custom_push_popup":
             guard let nid = info["notification_id"] as? String,
@@ -233,19 +230,6 @@ struct TigerDuckApp: App {
             // Unknown / legacy kinds fall through to the OS default open
             // behaviour — no-op here so we don't accidentally swallow them.
             break
-        }
-    }
-
-    /// Opens the assignment in the Moodle app, as its Home row does, or its web page, signed in,
-    /// when iOS refuses the `moodlemobile://` link because the app is not installed.
-    @MainActor
-    private static func openInMoodle(_ assignment: SDAssignment) {
-        let link = assignment.moodleDeepLink
-        let web = assignment.moodleWebURL
-        Task {
-            if let link, await UIApplication.shared.open(link) { return }
-            guard let web else { return }
-            await UIApplication.shared.open(await MoodleAutologinService.shared.url(for: web))
         }
     }
 }

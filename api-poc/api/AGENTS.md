@@ -69,7 +69,8 @@ uv run python -m api.public.bulletin          # reads cached pages by default
 - Do not pick a cour01 building before selecting its campus. The site answers with an HTTP 500
   error page that parses as "no grid", not as an error.
 - Do not treat an empty cour01 grid as "every room is free". No grid at all is a failure; a grid
-  with no rows is what weekends return.
+  with no rows is what weekends return, and MA, RB and the HHC campus on weekdays too. A holiday
+  returns the normal weekly timetable.
 - Do not send rendered forum text back on an edit. Read with `moodlewssettingraw=true` and
   filters off, or stored `@@PLUGINFILE@@` placeholders are replaced by absolute URLs for good.
 - Do not append `?token=<wstoken>` to file URLs when `userprivateaccesskey` is available;

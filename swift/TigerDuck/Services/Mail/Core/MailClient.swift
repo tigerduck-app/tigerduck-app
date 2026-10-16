@@ -12,6 +12,9 @@ nonisolated enum MailClientError: Error, Equatable, Sendable {
     /// throws this before COPY/STORE touch anything; the caller must refresh the folder before
     /// retrying the move or delete.
     case folderChanged
+    /// The whole message went to the server but no final reply came back, so it may have been
+    /// accepted: sending it again may deliver it twice.
+    case sendUnconfirmed
     case protocolError(String)
 }
 

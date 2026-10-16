@@ -194,7 +194,11 @@ extension MoodleEnrolledCourse {
 
 // MARK: - Assignments (mod_assign_get_assignments)
 
-struct MoodleAssignmentRecord: Sendable {
+/// Kept for the signed-in account under ``cacheName`` by each assignment round, so an
+/// assignment's page has its description and its course without another call.
+nonisolated struct MoodleAssignmentRecord: Codable, Sendable, Hashable {
+    static let cacheName = "assignments"
+
     let assignId: Int
     let cmId: Int
     let courseId: Int
@@ -205,11 +209,47 @@ struct MoodleAssignmentRecord: Sendable {
     /// submissions indefinitely.
     let cutoffDate: Date?
     let allowSubmissionsFromDate: Date?
+    /// HTML.
     let intro: String
     let noSubmissions: Bool
+    var introAttachments: [MoodleFile] = []
+    /// A group hands in one submission for all its members.
+    var teamSubmission = false
 }
 
 // MARK: - Submission Status (mod_assign_get_submission_status)
+
+/// What the account handed in for an assignment, as its page shows it, with the submission's
+/// comments and its group's name where the site lets the app read them.
+nonisolated struct MoodleAssignmentSubmission: Codable, Sendable, Equatable {
+    /// `new`, `draft`, `submitted` or `reopened`; nil before Moodle keeps a record.
+    let status: String?
+    let modified: Date?
+    let files: [MoodleFile]
+    /// HTML; nil without any.
+    let onlineText: String?
+    /// The record comments are kept on; nil before Moodle keeps one.
+    let id: Int?
+    /// Whether the assignment takes comments on submissions.
+    let takesComments: Bool
+    /// The group a team assignment's submission is for.
+    let groupId: Int?
+    var groupName: String? = nil
+    /// Nil where the site does not let the app read them.
+    var comments: [MoodleSubmissionComment]? = nil
+
+    var isSubmitted: Bool { status == "submitted" }
+    var submittedAt: Date? { isSubmitted ? modified : nil }
+}
+
+nonisolated struct MoodleSubmissionComment: Codable, Sendable, Equatable, Identifiable {
+    let id: Int
+    /// As Moodle spells it, which at NTUST is "student ID @ name".
+    let authorName: String
+    let created: Date
+    /// HTML.
+    let content: String
+}
 
 struct MoodleSubmissionStatus: Sendable {
     let assignId: Int
