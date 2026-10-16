@@ -3,6 +3,7 @@
 // (https://github.com/tigerduck-app/tigerduck-app/issues/663). The backend is `SettingsAPIStub`.
 import Foundation
 import Testing
+import UIKit
 @testable import TigerDuck
 
 @MainActor
@@ -94,5 +95,14 @@ struct ScheduleSendNowTests {
 
         #expect(backend.sent().isEmpty)
         await push.disable()
+    }
+
+    /// In the foreground the debounced `requestPushScheduleSync` that the sync's changes start sends it.
+    @Test("A sync trigger's handler sends the schedule only after a sync that synced, with the app in the background",
+          arguments: [FullSyncOutcome.synced, .skipped, .failed],
+          [UIApplication.State.background, .inactive, .active])
+    func theHandlerSendsOnlyAfterASyncInTheBackground(outcome: FullSyncOutcome, state: UIApplication.State) {
+        #expect(AppState.sendsScheduleAfterSyncTrigger(outcome: outcome, applicationState: state)
+            == (outcome == .synced && state == .background))
     }
 }

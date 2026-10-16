@@ -109,9 +109,17 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
     /// suspend the app, so what the sync left on a timer, such as the widgets' reload, goes out here.
     var beforeAnsweringSyncTrigger: (@MainActor () -> Void)?
 
+    /// Runs after `beforeAnsweringSyncTrigger` with the sync's outcome, for a request that must go
+    /// out before the answer, such as the Live Activity schedule's. The handler waits for it until
+    /// `syncTriggerSendLimit` after the push arrived, so the answer still reports the sync.
+    var sendBeforeAnsweringSyncTrigger: (@MainActor (FullSyncOutcome) async -> Void)?
+
     /// iOS allows a background push 30 seconds to call its completion handler, and ends an app that
     /// takes longer (Apple's documentation for this delegate method).
     static let syncTriggerTimeLimit: Duration = .seconds(25)
+
+    /// A few seconds before `syncTriggerTimeLimit`, so a slow send still leaves time to answer.
+    static let syncTriggerSendLimit: Duration = syncTriggerTimeLimit - .seconds(3)
 
     func application(
         _ application: UIApplication,
@@ -123,12 +131,56 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
             return
         }
         logger.info("Silent sync trigger received")
-        let beforeAnswering = beforeAnsweringSyncTrigger
-        Self.run({
-            let result = await onSyncTrigger().fetchResult
+        Self.run(
+            Self.syncTriggerWork(
+                sync: onSyncTrigger,
+                beforeAnswering: beforeAnsweringSyncTrigger,
+                send: sendBeforeAnsweringSyncTrigger,
+                sendDeadline: .now + Self.syncTriggerSendLimit
+            ),
+            within: Self.syncTriggerTimeLimit,
+            then: completionHandler
+        )
+    }
+
+    /// A sync trigger's work: the sync, `beforeAnswering`, then `send` with the sync's outcome,
+    /// waited for until `sendDeadline` at most, and the sync's outcome as the answer.
+    static func syncTriggerWork(
+        sync: @escaping () async -> FullSyncOutcome,
+        beforeAnswering: (@MainActor () -> Void)?,
+        send: (@MainActor (FullSyncOutcome) async -> Void)?,
+        sendDeadline: ContinuousClock.Instant
+    ) -> () async -> UIBackgroundFetchResult {
+        {
+            let outcome = await sync()
             beforeAnswering?()
-            return result
-        }, within: Self.syncTriggerTimeLimit, then: completionHandler)
+            if let send { await wait(for: { await send(outcome) }, until: sendDeadline) }
+            return outcome.fetchResult
+        }
+    }
+
+    /// Runs `step` and returns once it has ended or `deadline` has passed, whichever comes first;
+    /// a step still running goes on, and one whose deadline has already passed is not started.
+    static func wait(for step: @escaping @MainActor () async -> Void, until deadline: ContinuousClock.Instant) async {
+        guard ContinuousClock.now < deadline else { return }
+        await withCheckedContinuation { (waiting: CheckedContinuation<Void, Never>) in
+            let pending = OSAllocatedUnfairLock<CheckedContinuation<Void, Never>?>(initialState: waiting)
+            let stop: @Sendable () -> Void = {
+                pending.withLock { stored in
+                    defer { stored = nil }
+                    return stored
+                }?.resume()
+            }
+            let timer = Task.detached {
+                try? await Task.sleep(until: deadline, clock: .continuous)
+                stop()
+            }
+            Task {
+                await step()
+                timer.cancel()
+                stop()
+            }
+        }
     }
 
     /// Runs `work` and calls `completion` once with its result, or, when `limit` passes first,

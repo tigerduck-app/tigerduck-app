@@ -59,8 +59,9 @@ struct PushAppDelegateTests {
     }
 
     /// Once the push is answered iOS may suspend the app, so the widgets' reload goes out first
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/664).
-    @Test("What must not wait for the next launch runs after the sync and before the answer")
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/664), and then the Live Activity
+    /// schedule, whose request can take longer (https://github.com/tigerduck-app/tigerduck-app/issues/663).
+    @Test("What must not wait for the next launch runs after the sync and before the answer: the widgets, then the send")
     func whatMustNotWaitRunsBeforeTheAnswer() async {
         let delegate = PushAppDelegate()
         let events = Events()
@@ -69,15 +70,59 @@ struct PushAppDelegateTests {
             return .synced
         }
         delegate.beforeAnsweringSyncTrigger = { events.record("widgets") }
+        delegate.sendBeforeAnsweringSyncTrigger = { events.record("send after \($0)") }
 
-        await withCheckedContinuation { continuation in
-            delegate.application(UIApplication.shared, didReceiveRemoteNotification: ["kind": "sync_trigger"]) { _ in
+        let result = await withCheckedContinuation { continuation in
+            delegate.application(UIApplication.shared, didReceiveRemoteNotification: ["kind": "sync_trigger"]) {
                 events.record("answer")
-                continuation.resume()
+                continuation.resume(returning: $0)
             }
         }
 
-        #expect(events.all == ["sync", "widgets", "answer"])
+        #expect(events.all == ["sync", "widgets", "send after synced", "answer"])
+        #expect(result == .newData)
+    }
+
+    @Test("A send that outlasts its deadline does not hold the answer, which reports the sync")
+    func aSendPastItsDeadlineDoesNotHoldTheAnswer() async throws {
+        let answers = Answers()
+        let events = Events()
+
+        PushAppDelegate.run(PushAppDelegate.syncTriggerWork(
+            sync: { .synced },
+            beforeAnswering: nil,
+            send: { _ in
+                try? await Task.sleep(for: .seconds(5))
+                events.record("send ended")
+            },
+            sendDeadline: .now + .milliseconds(100)
+        ), within: .seconds(3), appIsActive: { false }, then: answers.record)
+        try await waitUntil(timeout: .seconds(2)) { !answers.results.isEmpty }
+
+        #expect(answers.results == [.newData])
+        #expect(events.all.isEmpty)
+    }
+
+    /// The deadline comes before the time limit, so a sync the limit cancelled sends nothing either.
+    @Test("A send whose deadline passed during the sync is not started")
+    func aSendPastItsDeadlineBeforeItStartsIsNotStarted() async throws {
+        let answers = Answers()
+        let events = Events()
+
+        PushAppDelegate.run(PushAppDelegate.syncTriggerWork(
+            sync: {
+                try? await Task.sleep(for: .milliseconds(150))
+                return .synced
+            },
+            beforeAnswering: { events.record("widgets") },
+            send: { _ in events.record("send") },
+            sendDeadline: .now + .milliseconds(50)
+        ), within: .seconds(3), appIsActive: { false }, then: answers.record)
+        try await waitUntil(timeout: .seconds(2)) { !answers.results.isEmpty }
+        await Task.yield()
+
+        #expect(answers.results == [.newData])
+        #expect(events.all == ["widgets"])
     }
 
     @Test("A sync that outlasts the limit is answered failed at the limit, cancelled while the app is not active, and not answered again when it ends")

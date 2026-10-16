@@ -20,16 +20,29 @@ extension AppState {
             guard let self, self.hasCompletedOnboarding else { return .skipped }
             let outcome = await self.syncOverridesFromBackend(followUpIfBusy: true)
             await self.cloudSyncCoordinator.onSyncTrigger()
-            #if os(iOS)
-            // `requestPushScheduleSync` sends nothing in the background, and iOS may suspend the
-            // app once the push is answered: the schedule the sync may have changed goes out first.
-            if outcome == .synced, !Task.isCancelled, UIApplication.shared.applicationState == .background {
-                await self.pushCoordinator.syncNow { self.pushScheduleInputs() }
-            }
-            #endif
             return outcome
         }
     }
+
+    #if os(iOS)
+    /// A sync trigger's handler calls this after the sync and the widgets' reload, before it
+    /// answers the push: `requestPushScheduleSync` sends nothing in the background, and iOS may
+    /// suspend the app once the push is answered.
+    func sendPushScheduleAfterSyncTrigger(_ outcome: FullSyncOutcome) async {
+        guard Self.sendsScheduleAfterSyncTrigger(
+            outcome: outcome, applicationState: UIApplication.shared.applicationState
+        ) else { return }
+        await pushCoordinator.syncNow { self.pushScheduleInputs() }
+    }
+
+    /// Only after a sync that reached the server, and only in the background: elsewhere the
+    /// sync's `dataDidUpdate` reaches `requestPushScheduleSync`, which sends then.
+    nonisolated static func sendsScheduleAfterSyncTrigger(
+        outcome: FullSyncOutcome, applicationState: UIApplication.State
+    ) -> Bool {
+        outcome == .synced && applicationState == .background
+    }
+    #endif
 
     /// Sync the next-48h event list to the push server. Safe to call from any scene or data
     /// transition: `PushCoordinator` debounces bursts into a single POST.
