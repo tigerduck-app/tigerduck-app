@@ -15,17 +15,17 @@ extension UIApplication {
 
 extension UIViewController {
     /// Closes everything presented over this controller, as a swipe down closes a sheet, and then
-    /// runs `then`; SwiftUI clears each sheet's state and runs its `onDismiss`. An alert, which
-    /// waits on a choice, or a sheet that refuses the swipe, such as a mail draft, keeps the whole
-    /// chain up, and `then` runs at once.
-    func closePresentations(then: @escaping () -> Void) {
+    /// runs `then` with whether nothing is left up; SwiftUI clears each sheet's state and runs its
+    /// `onDismiss` before that. An alert, which waits on a choice, or a sheet that refuses the
+    /// swipe, such as a mail draft, keeps the whole chain up, and `then(false)` runs at once.
+    func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
         var next = presentedViewController
         while let shown = next {
-            guard !(shown is UIAlertController), !shown.isModalInPresentation else { return then() }
+            guard !(shown is UIAlertController), !shown.isModalInPresentation else { return then(false) }
             next = shown.presentedViewController
         }
-        guard presentedViewController != nil else { return then() }
-        dismiss(animated: true, completion: then)
+        guard presentedViewController != nil else { return then(true) }
+        dismiss(animated: true) { then(true) }
     }
 }
 #endif

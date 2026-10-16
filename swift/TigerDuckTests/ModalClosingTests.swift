@@ -13,6 +13,7 @@ struct ModalClosingTests {
     final class Sheets {
         var course = false
         var files = false
+        var filesRefuseToClose = false
         var draft = false
         var conflict = false
         var courseDismissals = 0
@@ -24,7 +25,9 @@ struct ModalClosingTests {
         var body: some View {
             Color.clear
                 .sheet(isPresented: $sheets.course, onDismiss: { sheets.courseDismissals += 1 }) {
-                    Text("Course").sheet(isPresented: $sheets.files) { Text("Files") }
+                    Text("Course").sheet(isPresented: $sheets.files) {
+                        Text("Files").interactiveDismissDisabled(sheets.filesRefuseToClose)
+                    }
                 }
                 .background(Color.clear.sheet(isPresented: $sheets.draft) {
                     Text("Draft").interactiveDismissDisabled()
@@ -33,8 +36,9 @@ struct ModalClosingTests {
         }
     }
 
-    /// What `then` found when `closePresentations` ran it.
+    /// What `then` was told and found when `closePresentations` ran it.
     private struct AtThen: Equatable {
+        let closedAll: Bool
         let isPresenting: Bool
         let course: Bool
         let files: Bool
@@ -52,10 +56,10 @@ struct ModalClosingTests {
 
     private static func close(_ root: UIViewController, _ sheets: Sheets) async -> AtThen {
         await withCheckedContinuation { done in
-            root.closePresentations {
+            root.closePresentations { closedAll in
                 done.resume(returning: AtThen(
-                    isPresenting: root.presentedViewController != nil, course: sheets.course, files: sheets.files,
-                    courseDismissals: sheets.courseDismissals
+                    closedAll: closedAll, isPresenting: root.presentedViewController != nil, course: sheets.course,
+                    files: sheets.files, courseDismissals: sheets.courseDismissals
                 ))
             }
         }
@@ -75,7 +79,7 @@ struct ModalClosingTests {
         try await waitUntil { root.presentedViewController?.presentedViewController != nil }
 
         #expect(await Self.close(root, sheets)
-            == AtThen(isPresenting: false, course: false, files: false, courseDismissals: 1))
+            == AtThen(closedAll: true, isPresenting: false, course: false, files: false, courseDismissals: 1))
 
         sheets.course = true
         try await waitUntil { root.presentedViewController != nil }
@@ -92,14 +96,16 @@ struct ModalClosingTests {
 
         sheets.draft = true
         try await waitUntil { root.presentedViewController != nil }
-        #expect(await Self.close(root, sheets).isPresenting)
+        #expect(await Self.close(root, sheets).closedAll == false)
+        #expect(root.presentedViewController != nil)
         #expect(sheets.draft)
         sheets.draft = false
         try await waitUntil { root.presentedViewController == nil }
 
         sheets.conflict = true
         try await waitUntil { root.presentedViewController is UIAlertController }
-        #expect(await Self.close(root, sheets).isPresenting)
+        #expect(await Self.close(root, sheets).closedAll == false)
+        #expect(root.presentedViewController != nil)
         #expect(sheets.conflict)
         sheets.conflict = false
         try await waitUntil { root.presentedViewController == nil }
@@ -112,7 +118,73 @@ struct ModalClosingTests {
         defer { window.isHidden = true }
         let root = try #require(window.rootViewController)
 
-        #expect(await !Self.close(root, sheets).isPresenting)
+        #expect(await Self.close(root, sheets)
+            == AtThen(closedAll: true, isPresenting: false, course: false, files: false, courseDismissals: 0))
+    }
+
+    /// Home's course sheet with a member's mail draft over it: closing the course sheet would take
+    /// the draft with it.
+    @Test("a sheet that refuses a swipe over another keeps both up, and says so")
+    func guardedOverAnother() async throws {
+        let sheets = Sheets()
+        let window = try Self.show(sheets)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        sheets.filesRefuseToClose = true
+        sheets.course = true
+        try await waitUntil { root.presentedViewController != nil }
+        sheets.files = true
+        try await waitUntil { root.presentedViewController?.presentedViewController != nil }
+
+        #expect(await Self.close(root, sheets)
+            == AtThen(closedAll: false, isPresenting: true, course: true, files: true, courseDismissals: 0))
+
+        sheets.course = false
+        try await waitUntil { root.presentedViewController == nil }
+    }
+
+    /// The page is pushed from the dismissal's completion, so a close UIKit dropped while a sheet
+    /// slides would leave the reminder tap doing nothing.
+    @Test("a sheet still sliding up closes once it is up, and then the page is pushed")
+    func sheetStillSliding() async throws {
+        let sheets = Sheets()
+        let window = try Self.show(sheets)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        sheets.course = true
+        try await waitUntil { root.presentedViewController?.isBeingPresented == true }
+
+        let told = Told()
+        root.closePresentations { told.closedAll = $0 }
+
+        try await waitUntil(timeout: .seconds(10)) { told.closedAll != nil }
+        #expect(told.closedAll == true)
+        #expect(root.presentedViewController == nil)
+        #expect(!sheets.course)
+    }
+
+    @Test("a sheet already sliding down is waited out, and then the page is pushed")
+    func sheetSlidingDown() async throws {
+        let sheets = Sheets()
+        let window = try Self.show(sheets)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        sheets.course = true
+        try await waitUntil { root.presentedViewController.map { !$0.isBeingPresented } == true }
+        sheets.course = false
+        try await waitUntil { root.presentedViewController?.isBeingDismissed == true }
+
+        let told = Told()
+        root.closePresentations { told.closedAll = $0 }
+
+        try await waitUntil(timeout: .seconds(10)) { told.closedAll != nil }
+        #expect(told.closedAll == true)
+        #expect(root.presentedViewController == nil)
+    }
+
+    @MainActor
+    private final class Told {
+        var closedAll: Bool?
     }
 }
 #endif
