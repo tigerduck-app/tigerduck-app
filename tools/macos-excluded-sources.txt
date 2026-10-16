@@ -354,6 +354,7 @@ MailCharset.swift
 MailFolderMap.swift
 MailHTMLSanitizer.swift
 MailRawHeaders.swift
+MailReadableHTML.swift
 MailTextCleaner.swift
 MailTextLinkifier.swift
 MailWarnings.swift
