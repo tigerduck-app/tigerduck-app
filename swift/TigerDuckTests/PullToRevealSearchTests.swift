@@ -32,8 +32,8 @@ struct PullToRevealSearchTests {
         window.makeKeyAndVisible()
         host.view.layoutIfNeeded()
         // The rows may be laid out after this pass, and the list's insets are final once they are.
-        try await waitUntil { Self.scrollView(in: host.view).map { $0.contentSize.height > $0.bounds.height } ?? false }
-        let scrollView = try #require(Self.scrollView(in: host.view))
+        try await waitUntil { host.view.descendants(ofType: UIScrollView.self).first.map { $0.contentSize.height > $0.bounds.height } ?? false }
+        let scrollView = try #require(host.view.descendants(ofType: UIScrollView.self).first)
         let top = -scrollView.adjustedContentInset.top
         #expect(!flag.isRevealed, "hidden at rest")
 
@@ -47,14 +47,6 @@ struct PullToRevealSearchTests {
         #expect(flag.isRevealed == isActive, "a scroll folds it, unless the search is active")
 
         window.isHidden = true
-    }
-
-    private static func scrollView(in view: UIView) -> UIScrollView? {
-        descendants(of: view).compactMap { $0 as? UIScrollView }.first
-    }
-
-    private static func descendants(of view: UIView) -> [UIView] {
-        view.subviews.flatMap { [$0] + descendants(of: $0) }
     }
 }
 #endif
