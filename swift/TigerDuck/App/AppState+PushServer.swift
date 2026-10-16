@@ -20,6 +20,13 @@ extension AppState {
             guard let self, self.hasCompletedOnboarding else { return .skipped }
             let outcome = await self.syncOverridesFromBackend(followUpIfBusy: true)
             await self.cloudSyncCoordinator.onSyncTrigger()
+            #if os(iOS)
+            // `requestPushScheduleSync` sends nothing in the background, and iOS may suspend the
+            // app once the push is answered: the schedule the sync may have changed goes out first.
+            if outcome == .synced, !Task.isCancelled, UIApplication.shared.applicationState == .background {
+                await self.pushCoordinator.syncNow { self.pushScheduleInputs() }
+            }
+            #endif
             return outcome
         }
     }
@@ -46,35 +53,39 @@ extension AppState {
                     term: CourseSelectionService.currentSemesterCode()
                 )
             }
-            #if os(iOS)
-            return ScheduleSyncService.Inputs(
-                now: AppClock.now(),
-                courses: { self.courseProvider.currentCourses(semester: $0) },
-                assignments: DataCache.shared.loadAssignments(),
-                preferences: liveActivityPreferences,
-                cloudSyncEnabled: cloudSyncEnabled,
-                accentHex: accentColorHex,
-                calendar: AcademicCalendarStore.shared.calendar,
-                optedInHolidayIDs: AcademicCalendarStore.shared.optedInHolidayIDs
-            )
-            #else
-            // Empty on a Mac: no push reaches macOS, so a list would only put course and
-            // assignment titles on the server, against the user's wish with TigerSync off.
-            // It is still sent, to cancel any starts an older build queued for this Mac.
-            return ScheduleSyncService.Inputs(
-                courses: [],
-                assignments: [],
-                accentHex: accentColorHex,
-                classPreparingLeadTime: 0,
-                assignmentLeadTime: 0,
-                showClassPreparing: false,
-                showInClass: false,
-                showAssignmentScenario: false,
-                liveActivityAvailable: false,
-                term: CourseSelectionService.currentSemesterCode()
-            )
-            #endif
+            return self.pushScheduleInputs()
         }
+    }
+
+    private func pushScheduleInputs() -> ScheduleSyncService.Inputs {
+        #if os(iOS)
+        return ScheduleSyncService.Inputs(
+            now: AppClock.now(),
+            courses: { self.courseProvider.currentCourses(semester: $0) },
+            assignments: DataCache.shared.loadAssignments(),
+            preferences: liveActivityPreferences,
+            cloudSyncEnabled: cloudSyncEnabled,
+            accentHex: accentColorHex,
+            calendar: AcademicCalendarStore.shared.calendar,
+            optedInHolidayIDs: AcademicCalendarStore.shared.optedInHolidayIDs
+        )
+        #else
+        // Empty on a Mac: no push reaches macOS, so a list would only put course and
+        // assignment titles on the server, against the user's wish with TigerSync off.
+        // It is still sent, to cancel any starts an older build queued for this Mac.
+        return ScheduleSyncService.Inputs(
+            courses: [],
+            assignments: [],
+            accentHex: accentColorHex,
+            classPreparingLeadTime: 0,
+            assignmentLeadTime: 0,
+            showClassPreparing: false,
+            showInClass: false,
+            showAssignmentScenario: false,
+            liveActivityAvailable: false,
+            term: CourseSelectionService.currentSemesterCode()
+        )
+        #endif
     }
 
     /// Enable server push (registers for remote notifications, starts PTS
