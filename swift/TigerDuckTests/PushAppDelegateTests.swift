@@ -83,6 +83,7 @@ struct PushAppDelegateTests {
         #expect(result == .newData)
     }
 
+    /// The time limit is far off here, as the main actor can be held for seconds by other tests.
     @Test("A send that outlasts its deadline does not hold the answer, which reports the sync")
     func aSendPastItsDeadlineDoesNotHoldTheAnswer() async throws {
         let answers = Answers()
@@ -96,11 +97,14 @@ struct PushAppDelegateTests {
                 events.record("send ended")
             },
             sendDeadline: .now + .milliseconds(100)
-        ), within: .seconds(3), appIsActive: { false }, then: answers.record)
-        try await waitUntil(timeout: .seconds(2)) { !answers.results.isEmpty }
+        ), within: .seconds(60), appIsActive: { false }) { result in
+            events.record("answer")
+            answers.record(result)
+        }
+        try await waitUntil { !answers.results.isEmpty }
 
         #expect(answers.results == [.newData])
-        #expect(events.all.isEmpty)
+        #expect(events.all.first == "answer")
     }
 
     /// The deadline comes before the time limit, so a sync the limit cancelled sends nothing either.
@@ -117,8 +121,8 @@ struct PushAppDelegateTests {
             beforeAnswering: { events.record("widgets") },
             send: { _ in events.record("send") },
             sendDeadline: .now + .milliseconds(50)
-        ), within: .seconds(3), appIsActive: { false }, then: answers.record)
-        try await waitUntil(timeout: .seconds(2)) { !answers.results.isEmpty }
+        ), within: .seconds(60), appIsActive: { false }, then: answers.record)
+        try await waitUntil { !answers.results.isEmpty }
         await Task.yield()
 
         #expect(answers.results == [.newData])
