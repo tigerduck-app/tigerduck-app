@@ -208,6 +208,28 @@ struct CourseDeleteSyncTests {
         #expect(merges("PH6"))
     }
 
+    /// Un-hidden without an upload, the course kept its queued delete, which then hid it again.
+    @Test("Adding back a hidden course the class table still shows sends it with its key forced")
+    func addingBackAStillShownHiddenCourseUploadsIt() {
+        let savedHidden = DataCache.shared.loadDeletedCourseNos()
+        defer { DataCache.shared.saveDeletedCourseNos(savedHidden) }
+        let folder = Self.freshDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let viewModel = ClassTableViewModel(importedTables: ImportedClassTableStore(
+            fileURL: folder.appendingPathComponent("imported_class_tables.json"), signedInStudentId: { "B11300000" }
+        ))
+        let course = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: viewModel.currentSemester)
+        viewModel.courses = [course]
+        viewModel.deletedCourseNos = [CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "GE1010001")]
+        var added: [String] = []
+        viewModel.onCourseAdded = { _, _, courseNo in added.append(courseNo) }
+
+        #expect(!viewModel.addCourse(course))
+
+        #expect(added == ["GE1010001"])
+        #expect(viewModel.deletedCourseNos.isEmpty)
+    }
+
     @Test("A course whose delete is queued keeps this device's setting through a pull, in its own term only")
     func queuedDeleteKeepsTheLocalSetting() {
         let left = AppState.courseKeysPullLeaves(
