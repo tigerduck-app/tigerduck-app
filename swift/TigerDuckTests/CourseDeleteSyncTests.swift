@@ -143,9 +143,12 @@ struct CourseDeleteSyncTests {
         let outbox = SyncOutbox(directory: Self.freshDirectory())
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "CS1001301", stamp: Date()))
 
-        for _ in 0..<SyncOutbox.maxAttempts {
+        for _ in 1..<SyncOutbox.maxAttempts {
             await outbox.drain { _ in throw PushAPIError.httpStatus(404, body: "") }
         }
+        #expect(await outbox.pendingCount() == 1)
+
+        await outbox.drain { _ in throw PushAPIError.httpStatus(404, body: "") }
 
         #expect(await outbox.pendingCount() == 0)
         #expect(await outbox.parkedSnapshot().isEmpty)

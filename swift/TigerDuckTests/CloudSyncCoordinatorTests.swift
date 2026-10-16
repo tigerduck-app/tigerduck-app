@@ -298,17 +298,14 @@ struct CloudSyncCoordinatorTests {
     @Test("Use Server for colours or names drops those edits still queued, and leaves the other kind and every other edit")
     func useServerDropsTheAnsweredColoursOrNames() async {
         let coordinator = Self.makeCoordinator(Backend())
-        coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")
-        coordinator.enqueueCourseNameOverride(moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en")
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
         await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3")
-        // The colour and the name are queued from tasks of their own.
-        for _ in 0..<2000 {
-            if await coordinator.outbox.pendingCount() == 5 { break }
-            try? await Task.sleep(for: .milliseconds(5))
-        }
 
         await coordinator.discardEdits(of: ["courses"], courseIgnores: true)
         let afterCourses = await coordinator.pendingCourseOverrides()
