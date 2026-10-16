@@ -618,13 +618,16 @@ final class MailMessageViewModel {
         let computed = await Self.detachedCancellably { () -> (SanitizedHTML?, LinkedHTML?, String, MailFormattedPages?)? in
             guard let html else { return (nil, nil, textBody ?? "", nil) }
             let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: allowImages)
+            guard !Task.isCancelled else { return nil }
             let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
+            guard !Task.isCancelled else { return nil }
             let readable = MailReadableHTML(linked.html)
             let pages = MailFormattedPages(
                 app: readable.html(on: .app),
                 light: readable.html(on: .light),
                 setsColors: readable.setsColors
             )
+            guard !Task.isCancelled else { return nil }
             // Built from the sanitized document, like Android's `SchoolMailMessageViewModel`. From
             // the raw body, text dropped with its container would show only in the plain view,
             // linkified (a bait-and-switch), and fire the password-bait check on text never shown.
