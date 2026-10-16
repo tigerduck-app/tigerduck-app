@@ -93,6 +93,14 @@ struct MailReadableHTMLTests {
             == ##"<div style="border-image: linear-gradient(#000000, #000000) fill 1"><font color="#333333">Over an image</font></div><table><tbody><tr><td><font color="#959595">On the page</font></td></tr></tbody></table>"##)
     }
 
+    @Test func anOpaqueBackgroundCoversOneThisCannotRead() {
+        let page = Self.readable(
+            ##"<div style="border-image: linear-gradient(#000000, #000000) fill 1"><p style="background-color: #000000"><font color="#333333">Covered</font></p></div>"##
+        )
+        #expect(page.html(on: .app)
+            == ##"<div style="border-image: linear-gradient(#000000, #000000) fill 1"><p style="background-color: #000000"><font color="#959595">Covered</font></p></div>"##)
+    }
+
     @Test func theBorderImageLonghandCountsAsAnImage() {
         let page = Self.readable(##"<div style="border-image-source: linear-gradient(#000000, #000000)"><font color="#333333">a</font></div><p><font color="#333333">b</font></p>"##)
         #expect(page.html(on: .app)
@@ -208,6 +216,13 @@ struct MailReadableHTMLTests {
             == ##"<table bgcolor="#000000" style="color: #959595"><tbody><tr><td>Text <a href="https://link.invalid/0" style="color: #6092ff">link</a></td></tr></tbody></table><p><a href="https://link.invalid/1">page link</a></p>"##)
         #expect(page.html(on: .app)
             == ##"<table bgcolor="#000000"><tbody><tr><td>Text <a href="https://link.invalid/0">link</a></td></tr></tbody></table><p><a href="https://link.invalid/1">page link</a></p>"##)
+    }
+
+    /// Text inside a link inherits the link colour, so a highlight there starts from it.
+    @Test func aHighlightInsideALinkStartsFromTheLinkColour() {
+        let page = Self.readable(##"<p><a href="https://a.example"><span style="background-color: #ffff00">Marked</span> link</a></p>"##)
+        #expect(page.html(on: .app)
+            == ##"<p><a href="https://link.invalid/0"><span style="background-color: #ffff00; color: #4e48a1">Marked</span> link</a></p>"##)
     }
 
     @Test func aLinkInsideColouredTextKeepsTheLinkColour() {
