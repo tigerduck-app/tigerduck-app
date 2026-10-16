@@ -60,6 +60,8 @@ final class CloudSyncCoordinator {
     // MARK: Internal state
 
     @ObservationIgnored private var tickInFlight = false
+    /// A tick asked for while one is running, which runs once that one ends.
+    @ObservationIgnored private var tickAskedDuringFlight = false
     @ObservationIgnored var started = false
     /// Colour and name edits on their way into the outbox, which `pendingCourseOverrides` counts.
     @ObservationIgnored private var courseOverridesEnqueuing: [UUID: SyncOp] = [:]
@@ -210,10 +212,21 @@ final class CloudSyncCoordinator {
     /// Drains the outbox. Pulls belong to `AppState.syncOverridesFromBackend`,
     /// which applies what it fetches; a tick has no use for a snapshot.
     func syncTick() async {
-        guard state == .active, !tickInFlight else { return }
+        guard state == .active else { return }
+        // An op queued while a drain is out is not in that drain, so it gets one more pass.
+        guard !tickInFlight else {
+            tickAskedDuringFlight = true
+            return
+        }
         tickInFlight = true
         defer { tickInFlight = false }
+        repeat {
+            tickAskedDuringFlight = false
+            await drainOnce()
+        } while tickAskedDuringFlight && state == .active
+    }
 
+    private func drainOnce() async {
         #if canImport(UIKit)
         let protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable
         #else
@@ -377,8 +390,6 @@ final class CloudSyncCoordinator {
     func deleteCourse(semester: String, courseNo: String) async {
         await discardCourseIgnores(semester: semester, courseNo: courseNo)
         await enqueueCourseDelete(semester: semester, courseNo: courseNo)
-        // A drain under way leaves the delete for the next tick.
-        scheduleTick(after: 1)
         await syncTick()
     }
 
