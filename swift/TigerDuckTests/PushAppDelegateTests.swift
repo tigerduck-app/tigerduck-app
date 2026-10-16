@@ -9,21 +9,21 @@ import os
 /// time for the completion handler (https://github.com/tigerduck-app/tigerduck-app/issues/449).
 @MainActor
 struct PushAppDelegateTests {
-    /// What a completion handler was called with, from any thread, and when.
+    /// What a completion handler was called with, from any thread.
     private final class Answers: Sendable {
-        private let state = OSAllocatedUnfairLock<[(result: UIBackgroundFetchResult, at: Date)]>(initialState: [])
+        private let state = OSAllocatedUnfairLock<[UIBackgroundFetchResult]>(initialState: [])
 
-        var results: [UIBackgroundFetchResult] { state.withLock { $0.map(\.result) } }
-        var firstAt: Date? { state.withLock { $0.first?.at } }
+        var results: [UIBackgroundFetchResult] { state.withLock { $0 } }
 
         func record(_ result: UIBackgroundFetchResult) {
-            state.withLock { $0.append((result, Date())) }
+            state.withLock { $0.append(result) }
         }
     }
 
-    /// Holds the calling thread, as a long synchronous stretch of a sync holds the main actor.
-    private static func hold(for seconds: TimeInterval) {
-        Thread.sleep(forTimeInterval: seconds)
+    /// Holds the calling thread until `signal`, at most `seconds`, as a long synchronous stretch of
+    /// a sync holds the main actor. Returns whether the signal came.
+    private static func hold(until signal: DispatchSemaphore, atMost seconds: Int) -> Bool {
+        signal.wait(timeout: .now() + .seconds(seconds)) == .success
     }
 
     @Test("The app declares the Remote notifications background mode, so a sync trigger reaches it in the background")
@@ -66,19 +66,23 @@ struct PushAppDelegateTests {
     }
 
     @Test("The limit answers while the sync holds the main actor")
-    func theLimitAnswersWhileTheMainActorIsBusy() async throws {
+    func theLimitAnswersWhileTheMainActorIsBusy() async {
         let answers = Answers()
-        var busyUntil: Date?
+        let answered = DispatchSemaphore(value: 0)
+        var heldUntilAnswered: Bool?
 
+        // The sync lets the main actor go only once the answer is recorded, or after 10 seconds.
         PushAppDelegate.run({
-            Self.hold(for: 0.3)
-            busyUntil = Date()
+            heldUntilAnswered = Self.hold(until: answered, atMost: 10)
             return .newData
-        }, within: .milliseconds(20), then: answers.record)
-        while busyUntil == nil { try? await Task.sleep(for: .milliseconds(20)) }
+        }, within: .milliseconds(20)) { result in
+            answers.record(result)
+            answered.signal()
+        }
+        while heldUntilAnswered == nil { try? await Task.sleep(for: .milliseconds(20)) }
 
+        #expect(heldUntilAnswered == true)
         #expect(answers.results == [.failed])
-        #expect(try #require(answers.firstAt) < #require(busyUntil))
     }
 
     @Test("Another push, or a sync trigger before a sync is bound, is answered at once with no data")
