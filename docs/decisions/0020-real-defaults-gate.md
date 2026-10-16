@@ -60,4 +60,4 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   `UpdateCheckTests`, `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`,
   `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests`,
   `LibrarySignInTests`, `SchoolSignInStepsTests`, `BackendSessionTests`,
-  `SignOutNotificationTests` and `SharedAssignmentRoundTests`.
+  `SignOutNotificationTests`, `SharedAssignmentRoundTests` and `AfterFirstUnlockTests`.

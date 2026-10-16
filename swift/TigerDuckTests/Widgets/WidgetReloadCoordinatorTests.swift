@@ -51,4 +51,47 @@ struct WidgetReloadCoordinatorTests {
         await timer.fire()
         try await waitUntil { fake.callCount == 2 }
     }
+
+    /// A sync trigger's handler answers next, and iOS may suspend the app before the debounce
+    /// ends (https://github.com/tigerduck-app/tigerduck-app/issues/664).
+    @Test func reloadNowIfPending_sendsAWaitingReloadAtOnce_andOnlyOnce() async throws {
+        let fake = FakeReloader()
+        let timer = ManualSleeper()
+        let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { await timer.sleep(for: $0) })
+        coordinator.requestReload()
+        let window = try #require(coordinator.pendingTask)
+
+        coordinator.reloadNowIfPending()
+        #expect(fake.callCount == 1)
+
+        // The window it cut short ends without a reload of its own, and nothing waits any more.
+        try await timer.waitUntilArmed()
+        await timer.fire()
+        await window.value
+        coordinator.reloadNowIfPending()
+        #expect(fake.callCount == 1)
+    }
+
+    @Test func reloadNowIfPending_afterTheDebounceReloaded_sendsNothing() async throws {
+        let fake = FakeReloader()
+        let timer = ManualSleeper()
+        let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { await timer.sleep(for: $0) })
+        coordinator.requestReload()
+        try await timer.waitUntilArmed()
+        await timer.fire()
+        try await waitUntil { fake.callCount == 1 }
+
+        coordinator.reloadNowIfPending()
+
+        #expect(fake.callCount == 1)
+    }
+
+    @Test func reloadNowIfPending_withNothingAsked_sendsNothing() {
+        let fake = FakeReloader()
+        let coordinator = WidgetReloadCoordinator(reloader: fake)
+
+        coordinator.reloadNowIfPending()
+
+        #expect(fake.callCount == 0)
+    }
 }

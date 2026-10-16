@@ -104,8 +104,8 @@ final class PushCoordinator {
 
     // MARK: - Lifecycle
 
-    /// Must be called from `TigerDuckApp.init` or `onAppear` so the
-    /// `PushAppDelegate` can forward APNs tokens before they arrive.
+    /// Called through `AppState.bindPushDelegate`: by the launch work once the launch is built, and
+    /// again in `.onAppear`. A token that arrives before it waits in the delegate.
     func bindTokenForwarding(_ appDelegate: some PushTokenSource) {
         appDelegate.forwardToken = { [weak self] data in
             guard let self else { return }

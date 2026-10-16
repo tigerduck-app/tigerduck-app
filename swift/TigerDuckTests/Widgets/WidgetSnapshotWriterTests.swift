@@ -88,6 +88,51 @@ struct WidgetSnapshotWriterTests {
         withExtendedLifetime(writer) {}
     }
 
+    /// A sync trigger's handler calls this right before it answers the push, after which iOS may
+    /// suspend the app before the debounce ends (https://github.com/tigerduck-app/tigerduck-app/issues/664).
+    @Test func aReloadNowSendsTheChangedSnapshotsReloadWithoutTheDebounce() async throws {
+        let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let store = WidgetSnapshotStore(appGroupIdentifier: suite)
+        let reloads = WidgetReloadCoordinatorTests.FakeReloader()
+        let timer = ManualSleeper()
+        let writer = WidgetSnapshotWriter(
+            isLoggedIn: { true },
+            accentColorHex: { 0x007AFF },
+            store: store,
+            coordinator: WidgetReloadCoordinator(reloader: reloads, sleep: { await timer.sleep(for: $0) })
+        )
+
+        writer.regenerateAndReloadNow()
+
+        #expect(store.readSnapshot() != nil)
+        #expect(reloads.callCount == 1)
+        // Unchanged since, so another one sends nothing.
+        writer.regenerateAndReloadNow()
+        #expect(reloads.callCount == 1)
+    }
+
+    /// The sync's own `dataDidUpdate` may have regenerated first and left its reload waiting.
+    @Test func aReloadNowSendsTheReloadAnEarlierRegenerateLeftWaiting() async throws {
+        let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let store = WidgetSnapshotStore(appGroupIdentifier: suite)
+        let reloads = WidgetReloadCoordinatorTests.FakeReloader()
+        let timer = ManualSleeper()
+        let writer = WidgetSnapshotWriter(
+            isLoggedIn: { true },
+            accentColorHex: { 0x007AFF },
+            store: store,
+            coordinator: WidgetReloadCoordinator(reloader: reloads, sleep: { await timer.sleep(for: $0) })
+        )
+        writer.regenerate()
+        #expect(reloads.callCount == 0)
+
+        writer.regenerateAndReloadNow()
+
+        #expect(reloads.callCount == 1)
+    }
+
     // MARK: - Quiet days
 
     private static func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
