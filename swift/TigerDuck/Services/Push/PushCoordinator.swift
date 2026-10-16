@@ -10,10 +10,18 @@ import AppKit
 import UserNotifications
 import os
 
+/// What a full sync came to, which a sync trigger push reports to the system.
+nonisolated enum FullSyncOutcome: Equatable, Sendable {
+    case synced
+    case failed
+    /// It did not reach the server: sync off, signed out, locked, turned away or cancelled.
+    case skipped
+}
+
 protocol PushTokenSource: AnyObject {
     var forwardToken: ((Data) -> Void)? { get set }
     var forwardError: ((Error) -> Void)? { get set }
-    var onSyncTrigger: (() async -> Void)? { get set }
+    var onSyncTrigger: (() async -> FullSyncOutcome)? { get set }
 }
 
 struct PushDiagnostic: Sendable {
@@ -54,13 +62,20 @@ final class PushCoordinator {
     /// and nothing but a launch or this flag starts the stack again.
     private var stoppedBySignOut = false
     private var pendingSyncTask: Task<Void, Never>?
+    private let isProtectedDataAvailable: @MainActor () -> Bool
 
     init(
         identity: PushIdentity = .loadOrCreate(),
         apiClient: PushAPIClient? = nil,
-        authTokenManager: AuthTokenManager? = nil
+        authTokenManager: AuthTokenManager? = nil,
+        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil
     ) {
         self.identity = identity
+        #if os(iOS)
+        self.isProtectedDataAvailable = isProtectedDataAvailable ?? { UIApplication.shared.isProtectedDataAvailable }
+        #else
+        self.isProtectedDataAvailable = isProtectedDataAvailable ?? { true }
+        #endif
         // The auth header comes from `authTokenManager`. Without one (unit
         // tests, for example) the client sends no `Authorization` header.
         let resolvedClient: PushAPIClient
@@ -96,8 +111,8 @@ final class PushCoordinator {
 
     // MARK: - Lifecycle
 
-    /// Must be called from `TigerDuckApp.init` or `onAppear` so the
-    /// `PushAppDelegate` can forward APNs tokens before they arrive.
+    /// Called through `AppState.bindPushDelegate`: by the launch work once the launch is built, and
+    /// again in `.onAppear`. A token that arrives before it waits in the delegate.
     func bindTokenForwarding(_ appDelegate: some PushTokenSource) {
         appDelegate.forwardToken = { [weak self] data in
             guard let self else { return }
@@ -434,6 +449,20 @@ final class PushCoordinator {
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
         }
+    }
+
+    /// Builds and sends the schedule at once, in the background too, and returns once its POST
+    /// has ended: a sync trigger's handler calls it before it answers the push, after which iOS
+    /// may suspend the app.
+    func syncNow(inputsBuilder: @MainActor () -> ScheduleSyncService.Inputs) async {
+        // A sign-out may have stopped the stack while the session was read; its unregister waits
+        // only for a POST already under way.
+        guard await apiClient.hasAuthSession(), isStarted else { return }
+        // The caches the schedule is built from read as empty behind the lock screen, and an
+        // empty schedule cancels every start the server queued for this device.
+        guard isProtectedDataAvailable() else { return }
+        scheduleSync.sync(inputs: inputsBuilder())
+        await scheduleSync.awaitInflight()
     }
 
     // MARK: - Build-time env sanity

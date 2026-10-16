@@ -59,5 +59,5 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   `NotificationSettingsFixtures`, `DefaultTabsPinMigrationTests`, `LibraryTabAddMigrationTests`,
   `UpdateCheckTests`, `CloudSyncCoordinatorTests`, `ReenableCheckSignOutTests`,
   `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests`,
-  `LibrarySignInTests`, `SchoolSignInStepsTests`, `BackendSessionTests` and
-  `SignOutNotificationTests`.
+  `LibrarySignInTests`, `SchoolSignInStepsTests`, `BackendSessionTests`,
+  `SignOutNotificationTests`, `SharedAssignmentRoundTests` and `AfterFirstUnlockTests`.

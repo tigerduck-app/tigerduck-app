@@ -15,7 +15,10 @@ working in those directories.
 - Moodle assignments come from `AppServiceBridge.fetchAssignments`. It runs one round at a time
   for every caller, rebuilds the calendar's Moodle rows and stamps `schoolDataSyncedAt`, which
   the sync status popup shows. Only a pull, or Refresh on the Mac, passes
-  `recheckSubmissions: true`.
+  `recheckSubmissions: true`. A status the assignment page fetches goes in through
+  `AppServiceBridge.takeSubmissionStatus`, which waits out a running round, keeps the newest
+  answer and leaves `schoolDataSyncedAt` alone; any other write to the cached assignments goes
+  through one of these two.
 - Cross-feature updates go through the `NotificationCenter` names in `AppConstants`
   (`dataDidUpdate`, `liveActivityPreferencesDidChange`, `languageDidChange`, ...). There is no
   dependency-injection container or store framework.
@@ -39,6 +42,12 @@ working in those directories.
   install runs `AppState.init` before the user has seen a screen. Check `hasCompletedOnboarding`
   as `AppState.init` does before `pushCoordinator.enable()` and as `backgroundSync()` does;
   `completeOnboarding()` starts both.
+- Do not read `UserDefaults`, the Keychain or the app's files in `TigerDuckApp.init` outside
+  the closure `TigerDuckApp.makeLaunch` hands `AfterFirstUnlock`: a background launch before the
+  first unlock after a restart reads them as empty, and that closure runs only once they can be
+  read (docs/decisions/0024-launch-before-first-unlock.md). A background entry point that can run
+  before that closure, as School Mail's background refresh does, asks
+  `FirstUnlock.storedDataReadsBack()` before it reads stored data.
 - Do not trigger a Live Activity refresh for presentation-only changes such as `visualPreset`.
 - Do not add one-off spacing or color systems next to the shared theme.
 - Do not put a plain `.onTapGesture` on content in a ScrollView or lazy grid, or a plain tap or

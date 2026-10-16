@@ -293,6 +293,28 @@ struct MailListViewModelTests {
         }
     }
 
+    /// Rows still painted from the cache after a failed load are a previous visit's, so a poll
+    /// that finds nothing new leaves the time the cache gave them.
+    @Test func aPollAfterAFailedLoadKeepsTheCachedTime() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        let cachedAt = try #require(h.model.syncedAt)
+
+        await h.fake.update { $0.pageError = .serverBusy }
+        let visit = MailListViewModel(
+            session: MailPageSession(idleClose: .milliseconds(10), open: { h.fake }, signOutEvents: NotificationCenter()),
+            cache: h.cache, noteSeenByPage: { _ in }, signOutEvents: NotificationCenter(),
+            warmDelay: { try? await Task.sleep(for: .seconds(86_400)) }
+        )
+        await visit.load()
+        #expect(visit.serverStatus == .failed)
+        await h.fake.update { $0.pageError = nil }
+        await visit.pollOnce()
+
+        let syncedAt = try #require(visit.syncedAt)
+        #expect(abs(syncedAt.timeIntervalSince(cachedAt)) < 0.001)
+    }
+
     /// All mail shows Sent too, so mail sent from webmail reloads it like new inbox mail.
     @Test func thePollReloadsAllMailForMailSentElsewhere() async {
         let h = Self.harness(inboxCount: 3)
@@ -1086,6 +1108,24 @@ struct MailListViewModelTests {
         #expect(h.model.rows.isEmpty)
         #expect(h.model.loadState == .idle)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
+    }
+
+    /// Saves the list queued before a sign-out can still be waiting when its wipe runs, and none
+    /// of them may land after it (https://github.com/tigerduck-app/tigerduck-app/issues/632).
+    @Test func savesQueuedBeforeASignOutLandNothingAfterItsWipe() async {
+        let center = NotificationCenter()
+        let h = Self.harness(includeSent: false, signOutEvents: center)
+        await h.model.load()
+        // A backlog of fire-and-forget saves, so that some are still queued when the wipe runs.
+        for seen in Array(repeating: [true, false], count: 20).joined() {
+            h.model.markSeenLocally(folder: "INBOX", uid: 1, seen: seen)
+        }
+
+        center.post(name: MailAccountManager.didSignOut, object: nil)
+        h.cache.clearAll()
+        await h.model.waitForCacheWrites()
+
+        #expect(h.cache.loadPage(folder: "INBOX") == nil)
     }
 
     // MARK: Warm

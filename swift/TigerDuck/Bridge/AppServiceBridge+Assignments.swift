@@ -18,6 +18,9 @@ private final class AssignmentRound {
 extension AppServiceBridge {
 
     private static var runningRound: AssignmentRound?
+    /// When Moodle was asked for the status each cached assignment last took, by id. A monotonic
+    /// clock, as a wall clock set back would make a later answer look older.
+    private static var statusAskedAt: [String: ContinuousClock.Instant] = [:]
 
     /// One Moodle assignment round at a time: launch, a return to the app and the Home, Class
     /// Table and Calendar pulls write the same cache. A caller joins the round in flight for its
@@ -121,7 +124,7 @@ extension AppServiceBridge {
 
     private static func runAssignmentRound(authService: AuthService, recheckSubmissions: Bool) async -> [SDAssignment] {
         let startGeneration = authService.loginGeneration
-        guard authService.storedStudentId != nil,
+        guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
             return DataCache.shared.loadAssignments()
         }
@@ -193,15 +196,10 @@ extension AppServiceBridge {
                 records, confirmed: confirmed, closed: recheckSubmissions ? [:] : closed
             )
             let askedAt = Date()
-            let answers = await concurrentMap(recordsToAsk) { record -> (Int, MoodleSubmissionStatus)? in
-                guard let status = try? await MoodleAssignmentService.fetchSubmissionStatus(
-                    assignId: record.assignId
-                ) else {
-                    return nil
-                }
-                return (record.assignId, status)
+            let answers = await askStatuses(of: recordsToAsk) {
+                try await MoodleAssignmentService.fetchSubmissionStatus(assignId: $0)
             }
-            let statuses = Dictionary(answers.compactMap { $0 }, uniquingKeysWith: { first, _ in first })
+            let statuses = answers.mapValues(\.status)
 
             let freshAssignments = assignments(
                 from: records,
@@ -223,45 +221,21 @@ extension AppServiceBridge {
                 assignmentsToPersist = freshAssignments
             }
 
-            if !Task.isCancelled,
-               authService.loginGeneration == startGeneration {
-                DataCache.shared.saveAssignments(assignmentsToPersist)
-                DataCache.shared.replaceClosedUnsubmittedAssignments(closedUnsubmitted(
-                    records: records, statuses: statuses, askedAt: askedAt, kept: closed
-                ))
+            let persisted = persistRound(
+                assignmentsToPersist,
+                records: records,
+                closed: closedUnsubmitted(records: records, statuses: statuses, askedAt: askedAt, kept: closed),
+                answered: answers.mapValues(\.askedAt),
+                account: account,
+                fetchedAt: askedAt,
+                cache: .shared,
+                isCurrent: { authService.loginGeneration == startGeneration }
+            )
+            if persisted {
                 if statuses.count == recordsToAsk.count {
                     Defaults[.schoolDataSyncedAt] = Date()
                 }
-                // Rebuilt by every round, so a Home pull or a return to the app moves the
-                // calendar's Moodle rows too, not only a launch or a calendar pull.
-                var calendarEvents = DataCache.shared.loadCalendarEvents()
-                calendarEvents.removeAll { $0.source == .moodle }
-                calendarEvents.append(contentsOf: assignmentsToPersist.map(moodleCalendarEvent))
-                DataCache.shared.saveCalendarEvents(calendarEvents)
-
-                // Fire-and-forget: upload the assignment list to the backend
-                // so it can populate its assignments table for cross-device
-                // sync and notification scheduling.
-                #if os(iOS)
-                if Defaults[.cloudSyncEnabled] {
-                    let iso = ISO8601DateFormatter()
-                    iso.formatOptions = [.withInternetDateTime]
-                    let entries = assignmentsToPersist.compactMap { a -> PushAPI.AssignmentUploadEntry? in
-                        guard let id = Int(a.assignmentId) else { return nil }
-                        return PushAPI.AssignmentUploadEntry(
-                            moodleAssignmentId: id,
-                            courseNo: a.courseNo,
-                            courseName: a.courseName,
-                            title: a.title,
-                            dueAt: iso.string(from: a.dueDate),
-                            moodleUrl: a.moodleUrl,
-                            isSubmitted: a.isCompleted,
-                            grade: nil
-                        )
-                    }
-                    assignmentUploader?(PushAPI.AssignmentUploadRequest(assignments: entries))
-                }
-                #endif
+                uploadForReminders(assignmentsToPersist)
             }
             await MainActor.run { record(.ok, for: .moodle, round: startGeneration, authService: authService) }
             return assignmentsToPersist
@@ -273,6 +247,110 @@ extension AppServiceBridge {
             }
             return DataCache.shared.loadAssignments()
         }
+    }
+
+    /// Writes what a round fetched for `account`: the assignments, their records, the closed ones
+    /// and the calendar's Moodle rows, which every round rebuilds so a Home pull or a return to the
+    /// app moves them too. `answered` holds when Moodle was asked for each status it gave. Nothing
+    /// is written once the round is cancelled or the account signed out, and the result says
+    /// whether it wrote.
+    static func persistRound(
+        _ assignments: [SDAssignment],
+        records: [MoodleAssignmentRecord],
+        closed: [String: Date],
+        answered: [Int: ContinuousClock.Instant],
+        account: String,
+        fetchedAt: Date,
+        cache: DataCache,
+        isCurrent: () -> Bool
+    ) -> Bool {
+        guard !Task.isCancelled, isCurrent() else { return false }
+        cache.saveAssignments(assignments)
+        cache.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
+        cache.replaceClosedUnsubmittedAssignments(closed)
+        var calendarEvents = cache.loadCalendarEvents()
+        calendarEvents.removeAll { $0.source == .moodle }
+        calendarEvents.append(contentsOf: assignments.map(moodleCalendarEvent))
+        cache.saveCalendarEvents(calendarEvents)
+        for (id, askedAt) in answered { statusAskedAt[String(id)] = askedAt }
+        return true
+    }
+
+    /// Moodle's answer for each record that gave one, with when its own request went out: a round
+    /// asks a few at a time, and one time for all would let a page's answer asked for in between
+    /// pass for newer than one asked after it.
+    static func askStatuses(
+        of records: [MoodleAssignmentRecord],
+        limit: Int = maxConcurrentRequests,
+        fetch: @escaping @Sendable (_ assignId: Int) async throws -> MoodleSubmissionStatus
+    ) async -> [Int: (status: MoodleSubmissionStatus, askedAt: ContinuousClock.Instant)] {
+        typealias Answer = (Int, MoodleSubmissionStatus, ContinuousClock.Instant)
+        let answers = await concurrentMap(records, limit: limit) { record -> Answer? in
+            let askedAt = ContinuousClock.now
+            guard let status = try? await fetch(record.assignId) else { return nil }
+            return (record.assignId, status, askedAt)
+        }
+        return Dictionary(
+            answers.compactMap { $0.map { ($0.0, (status: $0.1, askedAt: $0.2)) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    /// Writes a status an assignment's page fetched into the cached assignments, which Home, the
+    /// Live Activity and the reminders read, once no round is running. An answer asked for before
+    /// the one the assignment has, a round's or another page's, is dropped, and nothing is written
+    /// once the account signed out. `schoolDataSyncedAt` dates whole rounds, so it stays.
+    @discardableResult
+    static func takeSubmissionStatus(
+        _ status: MoodleSubmissionStatus,
+        askedAt: ContinuousClock.Instant,
+        cache: DataCache,
+        isCurrent: () -> Bool,
+        notifying center: NotificationCenter = .default
+    ) async -> Bool {
+        // As in `sharedRound`, a finished round can stay in `runningRound` for a moment.
+        var waitedFor: AssignmentRound?
+        while let round = runningRound, round !== waitedFor {
+            await round.task?.value
+            waitedFor = round
+        }
+        let id = String(status.assignId)
+        guard !Task.isCancelled, isCurrent(), statusAskedAt[id].map({ $0 < askedAt }) ?? true else { return false }
+        statusAskedAt[id] = askedAt
+        let assignments = cache.loadAssignments()
+        guard let assignment = assignments.first(where: { $0.assignmentId == id }),
+              assignment.isCompleted != status.isSubmitted || assignment.submittedAt != status.submittedAt
+        else { return false }
+        assignment.isCompleted = status.isSubmitted
+        assignment.submittedAt = status.submittedAt
+        cache.saveAssignments(assignments)
+        uploadForReminders(assignments)
+        center.post(name: AppConstants.dataDidUpdate, object: nil)
+        return true
+    }
+
+    /// Fire-and-forget: the backend keeps the list for cross-device sync and builds the
+    /// reminders from it.
+    private static func uploadForReminders(_ assignments: [SDAssignment]) {
+        #if os(iOS)
+        guard let upload = assignmentUploader, Defaults[.cloudSyncEnabled] else { return }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        let entries = assignments.compactMap { a -> PushAPI.AssignmentUploadEntry? in
+            guard let id = Int(a.assignmentId) else { return nil }
+            return PushAPI.AssignmentUploadEntry(
+                moodleAssignmentId: id,
+                courseNo: a.courseNo,
+                courseName: a.courseName,
+                title: a.title,
+                dueAt: iso.string(from: a.dueDate),
+                moodleUrl: a.moodleUrl,
+                isSubmitted: a.isCompleted,
+                grade: nil
+            )
+        }
+        upload(PushAPI.AssignmentUploadRequest(assignments: entries))
+        #endif
     }
 
     /// A round's assignments, one per record with a due date and a submission, with the user's

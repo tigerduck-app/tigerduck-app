@@ -25,12 +25,12 @@ struct MacHomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             cacheRevision &+= 1
         }
-        .alert(String(localized: "sync_conflict_title"), isPresented: Binding(
-            get: { !appState.syncConflicts.isEmpty },
-            set: { if !$0 { appState.resolveSyncConflicts(keepLocal: true) } }
-        )) {
+        .alert(
+            String(localized: "sync_conflict_title"),
+            isPresented: AppState.syncConflictAlertIsPresented(Bindable(appState).syncConflicts)
+        ) {
             Button(String(localized: "sync_conflict_use_server")) { appState.resolveSyncConflicts(keepLocal: false) }
-            Button(String(localized: "sync_conflict_use_local"), role: .cancel) { appState.resolveSyncConflicts(keepLocal: true) }
+            Button(String(localized: "sync_conflict_use_local")) { appState.resolveSyncConflicts(keepLocal: true) }
         } message: {
             Text(appState.syncConflictAlertMessage)
         }

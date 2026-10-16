@@ -52,6 +52,20 @@ extension AppState {
         pendingSyncServerCompleted = []
     }
 
+    /// `isPresented` of the alert for assignments marked differently here and on the server. Only
+    /// its buttons answer it, as with `reenableAlertIsPresented`. Closed any other way, it sends
+    /// nothing and leaves the marks as they are here, and the next full sync asks again.
+    static func syncConflictAlertIsPresented(_ conflicts: Binding<[SyncConflictItem]>) -> Binding<Bool> {
+        Binding(
+            get: { !conflicts.wrappedValue.isEmpty },
+            set: { isPresented in
+                guard !isPresented, !conflicts.wrappedValue.isEmpty else { return }
+                AppLogger.sync.info("[syncConflicts] alert closed unanswered, marks left as they are")
+                conflicts.wrappedValue = []
+            }
+        )
+    }
+
     struct ReenableConflict {
         let categories: [String]
         let description: String
@@ -67,6 +81,7 @@ extension AppState {
         // The server may have dropped the lists while the category was off on every device.
         pushCoordinator.forgetUploads()
         Self.markForReenableCheck(category, signedIn: authService.hasStoredCredentials)
+        useLocalHold.noteReenabled(category)
     }
 
     /// Marks `category` for the re-enable check, which compares this device's copy of the account's
@@ -113,7 +128,9 @@ extension AppState {
     ///   own 401 handler, which takes over the in-flight flag the outer call holds
     ///   and releases it when it ends, as the outer call would have.
     func checkPendingConflicts(retriesLeft: Int, isRetry: Bool) {
-        let pending = Defaults[.pendingConflictCategories]
+        let pending = Self.categoriesToCheck(
+            pending: Defaults[.pendingConflictCategories], answering: useLocalHold.held
+        )
         let generation = authService.loginGeneration
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
@@ -142,7 +159,9 @@ extension AppState {
                 }
             }
             do {
-                let json = try await pushCoordinator.fetchFullSync()
+                let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
+                    try await pushCoordinator.fetchFullSync()
+                })
                 var diffs: [String] = []
                 var serverMarkedAssignments = Set<String>()
 
@@ -166,9 +185,11 @@ extension AppState {
                         let localNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
                             .union(DataCache.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))
                             .filter { !CourseTombstone.isHidden($0, semester: semester, in: deletedNos) }
-                        guard !serverNos.isEmpty, !localNos.isEmpty else { continue }
-                        localOnly += localNos.subtracting(serverNos).count
-                        serverOnly += serverNos.subtracting(localNos).count
+                        guard let counts = Self.coursesOnOneSide(
+                            server: serverNos, local: localNos, semester: semester, deleting: courseDeletes
+                        ) else { continue }
+                        localOnly += counts.localOnly
+                        serverOnly += counts.serverOnly
                         AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .private) server=\(serverNos.sorted(), privacy: .private)")
                     }
                     if localOnly > 0 && serverOnly > 0 {
@@ -284,7 +305,10 @@ extension AppState {
                 await MainActor.run {
                     let outcome = Self.conflictCheckOutcome(
                         mayWrite: fullSyncMayWrite(since: generation), checked: pending,
-                        stillPending: Defaults[.pendingConflictCategories], foundDifference: !diffs.isEmpty
+                        stillPending: Self.categoriesToCheck(
+                            pending: Defaults[.pendingConflictCategories], answering: useLocalHold.held
+                        ),
+                        foundDifference: !diffs.isEmpty
                     )
                     conflictCheckRetry.note(outcome, at: Date(), generation: generation)
                     switch outcome {
@@ -320,6 +344,18 @@ extension AppState {
                 }
             }
         }
+    }
+
+    /// What the re-enable check counts in one term: the courses only this device lists and those only
+    /// the server lists, or nil when either side lists none, as the reconcile uploads or merges such
+    /// a term. A course whose delete is queued here (`deleting`, `CourseTombstone` keys) counts as
+    /// gone from the server, which lists it until the delete lands.
+    nonisolated static func coursesOnOneSide(
+        server: Set<String>, local: Set<String>, semester: String, deleting: Set<String>
+    ) -> (localOnly: Int, serverOnly: Int)? {
+        let server = server.filter { !CourseTombstone.isHidden($0, semester: semester, in: deleting) }
+        guard !server.isEmpty, !local.isEmpty else { return nil }
+        return (local.subtracting(server).count, server.subtracting(local).count)
     }
 
     private func endConflictCheck(checked pending: Set<String>, startedIn generation: Int) {
@@ -474,140 +510,251 @@ extension AppState {
         )
     }
 
-    /// Applies the user's answer to `reenableConflict`. Keeping local courses awaits every
-    /// request and asks again on any failure, after the wait a failed check gets: until a term's
-    /// upload lands, the server holds none of its courses and the reset's tombstones hide them on
-    /// every other device.
+    /// Applies the user's answer to `reenableConflict`, as `answerReenableConflict` orders it.
+    /// Keeping local courses awaits every request and asks again on any failure, after the wait a
+    /// failed check gets: until a term's upload lands, the server holds none of its courses and the
+    /// reset's tombstones hide them on every other device.
     func resolveReenableConflict(keepLocal: Bool) {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
-        let coordinator = pushCoordinator
         // Keep Local stops at a sign-out: its course requests would go out on the next account's
         // session, the check it asks again for would be left to that account, and the rest would
         // read emptied caches.
         let generation = authService.loginGeneration
         let isCurrent = { [weak self] in self?.authService.loginGeneration == generation }
-        Task {
-            if !keepLocal, conflict.categories.contains("assignments") {
-                // Before the subtract below: until then the pending check holds these in the
-                // outbox, and once it ends a drain could send them before they are dropped.
-                await cloudSyncCoordinator.discardAssignmentOverrides()
-                if conflict.serverIgnoredCourses != nil {
-                    await cloudSyncCoordinator.discardCourseIgnores()
+        let effects = ReenableAnswerEffects(
+            isCurrent: isCurrent,
+            take: { self.useLocalHold.take($0, keepLocal: $1, from: &Defaults[.pendingConflictCategories]) },
+            release: {
+                self.useLocalHold.release($0, from: &Defaults[.pendingConflictCategories])
+                // The ticks its edits asked for may have come while the hold kept the marks queued.
+                self.cloudSyncCoordinator.scheduleTick()
+            },
+            end: { self.useLocalHold.end($0) },
+            dropQueuedEdits: { await self.cloudSyncCoordinator.discardEdits(of: $0, courseIgnores: $1) },
+            sendCourses: { try await self.sendLocalCourses(isCurrent: isCurrent) },
+            markCoursesForCheck: { self.markCategoryReenabled("courses") },
+            queueEdits: { self.queueLocalEdits(of: conflict) },
+            dropLocalCopies: { Self.dropLocalCopies(for: conflict) },
+            syncFromServer: { await self.syncOverridesFromBackend(followUpIfBusy: $0) },
+            noteAnswered: { saveFailed in
+                self.conflictCheckRetry.noteAnswered(
+                    leaving: Defaults[.pendingConflictCategories], awaitingAnswer: self.reenableConflict != nil,
+                    saveFailed: saveFailed, generation: generation
+                )
+                self.retryOwedConflictCheck()
+            }
+        )
+        Task { await Self.answerReenableConflict(conflict, keepLocal: keepLocal, effects: effects) }
+    }
+
+    /// What an answer to the re-enable dialog does, for `answerReenableConflict` to order.
+    struct ReenableAnswerEffects {
+        /// Whether the sign-in the dialog was answered under is still the current one.
+        let isCurrent: () -> Bool
+        /// `UseLocalHold`'s `take`, `release` and `end` on the stored pending list.
+        let take: (_ categories: [String], _ keepLocal: Bool) -> Set<String>
+        let release: (_ held: Set<String>) -> Void
+        let end: (_ held: Set<String>) -> Void
+        /// Use Server: `CloudSyncCoordinator.discardEdits(of:courseIgnores:)`.
+        let dropQueuedEdits: (_ categories: Set<String>, _ courseIgnores: Bool) async -> Void
+        /// Use Local: this device's courses (`keepLocalCourses`), asked about again when they fail.
+        let sendCourses: () async throws -> Void
+        let markCoursesForCheck: () -> Void
+        /// Use Local: this device's colours, names and marks; each task ends once its edit is queued.
+        let queueEdits: () -> [Task<Void, Never>]
+        /// Use Server: drops this device's copies, then runs the full sync that takes the server's.
+        let dropLocalCopies: () -> Void
+        let syncFromServer: (_ followUpIfBusy: Bool) async -> Void
+        let noteAnswered: (_ saveFailed: Bool) -> Void
+    }
+
+    /// The order of an answer. Use Server drops the queued edits of what it answers first: until a
+    /// category leaves the pending list, its check holds its marks in the outbox, and the sync that
+    /// takes the server's data leaves a course with a colour or a name queued as it is here. Use
+    /// Local keeps what it answers pending until its course requests are done and its other edits
+    /// are in the outbox (`UseLocalHold`). After a sign-out, which cleared the pending list, it
+    /// writes nothing more, and the hold ends without letting go of anything.
+    static func answerReenableConflict(
+        _ conflict: ReenableConflict, keepLocal: Bool, effects: ReenableAnswerEffects
+    ) async {
+        if !keepLocal {
+            await effects.dropQueuedEdits(Set(conflict.categories), conflict.serverIgnoredCourses != nil)
+        }
+        guard effects.isCurrent() else { return }
+        let held = effects.take(conflict.categories, keepLocal)
+        var coursesSaveFailed = false
+        if keepLocal {
+            defer { effects.end(held) }
+            if conflict.categories.contains("courses") {
+                do {
+                    try await effects.sendCourses()
+                } catch {
+                    AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .private)")
+                    if effects.isCurrent() { effects.markCoursesForCheck() }
+                    coursesSaveFailed = true
                 }
             }
-            // Subtract, not clear: a category re-enabled after this check started was not in this
-            // dialog, so clearing it would record a decision the user was never asked to make.
-            // Left pending, the next check presents it on its own.
-            Defaults[.pendingConflictCategories].subtract(conflict.categories)
-            var coursesSaveFailed = false
-            if keepLocal {
-                if conflict.categories.contains("courses"), CourseUploadPolicy.uploadsCourses {
-                    let terms = SemesterCatalog.availableSemesters().map { semester in
-                        (semester: semester,
-                         courses: DataCache.shared.loadCourses(semester: semester)
-                            + DataCache.shared.loadUserAddedCourses(semester: semester))
-                    }
-                    // Latched and stamped as in `deleteBackendCourses`: a sync that read a term
-                    // mid-way would un-hide the courses the upload puts back before their deletes.
-                    let latched = Set(terms.map(\.semester))
-                    resettingSemesters.formUnion(latched)
-                    defer {
-                        resettingSemesters.subtract(latched)
-                        for semester in latched { DataCache.shared.recordSemesterReset(semester) }
-                    }
-                    do {
-                        try await Self.keepLocalCourses(
-                            terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: coordinator,
-                            isCurrent: isCurrent
-                        )
-                    } catch {
-                        AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .private)")
-                        await MainActor.run { if isCurrent() { markCategoryReenabled("courses") } }
-                        coursesSaveFailed = true
-                    }
+            guard effects.isCurrent() else { return }
+            for task in effects.queueEdits() { await task.value }
+            guard effects.isCurrent() else { return }
+            effects.release(held)
+        } else {
+            effects.dropLocalCopies()
+            // A sync already running would turn this one away, and nothing would fill the copies
+            // dropped above until the next change; it runs once more after that one instead.
+            await effects.syncFromServer(true)
+        }
+        // After the answer's own requests, which the next check would otherwise read halfway.
+        guard effects.isCurrent() else { return }
+        effects.noteAnswered(coursesSaveFailed)
+    }
+
+    /// Use Local's course requests (`keepLocalCourses`) for every term this device caches, which
+    /// stay latched and are stamped as in `deleteBackendCourses`: a sync that read a term mid-way
+    /// would un-hide the courses the upload puts back before their deletes.
+    private func sendLocalCourses(isCurrent: () -> Bool) async throws {
+        guard CourseUploadPolicy.uploadsCourses else { return }
+        let terms = SemesterCatalog.availableSemesters().map { semester in
+            (semester: semester,
+             courses: DataCache.shared.loadCourses(semester: semester)
+                + DataCache.shared.loadUserAddedCourses(semester: semester))
+        }
+        let latched = Set(terms.map(\.semester))
+        resettingSemesters.formUnion(latched)
+        defer {
+            resettingSemesters.subtract(latched)
+            for semester in latched { DataCache.shared.recordSemesterReset(semester) }
+        }
+        try await Self.keepLocalCourses(
+            terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: pushCoordinator, isCurrent: isCurrent
+        )
+    }
+
+    /// Use Local's colours, names and marks, from this device's copies, and the tasks that queue them.
+    private func queueLocalEdits(of conflict: ReenableConflict) -> [Task<Void, Never>] {
+        var queued: [Task<Void, Never>?] = []
+        if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
+            // The colour and name maps are keyed by courseNo, but the override endpoint
+            // resolves moodle_id: map through the cached course list and skip courses
+            // without one, as the live edit paths do.
+            let moodleIdByCourseNo = Dictionary(
+                SemesterCatalog.availableSemesters()
+                    .flatMap { DataCache.shared.loadCourses(semester: $0) }
+                    .compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
+                uniquingKeysWith: { first, _ in first })
+            if conflict.categories.contains("course_colors") {
+                let colorMap = TigerDuckTheme.courseColorMap
+                for (courseNo, hex) in colorMap {
+                    guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
+                    queued += syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
                 }
-                guard isCurrent() else { return }
-                if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
-                    // The colour and name maps are keyed by courseNo, but the override endpoint
-                    // resolves moodle_id: map through the cached course list and skip courses
-                    // without one, as the live edit paths do.
-                    let moodleIdByCourseNo = Dictionary(
-                        SemesterCatalog.availableSemesters()
-                            .flatMap { DataCache.shared.loadCourses(semester: $0) }
-                            .compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
-                        uniquingKeysWith: { first, _ in first })
-                    if conflict.categories.contains("course_colors") {
-                        let colorMap = TigerDuckTheme.courseColorMap
-                        for (courseNo, hex) in colorMap {
-                            guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
-                            syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
-                        }
-                    }
-                    if conflict.categories.contains("course_names") {
-                        let customNames = DataCache.shared.loadCourseCustomNames()
-                        for (courseNo, locales) in customNames {
-                            guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
-                            for (locale, name) in locales where !name.isEmpty {
-                                syncCourseOverride(moodleCourseId: moodleId, customName: name, locale: locale)
-                            }
-                        }
-                    }
-                }
-                if conflict.categories.contains("assignments") {
-                    let archived = DataCache.shared.loadArchivedAssignmentIds()
-                    let completed = DataCache.shared.loadLocallyCompletedAssignmentIds()
-                    for id in archived {
-                        syncAssignmentOverride(moodleId: id, status: "archived")
-                    }
-                    for id in completed {
-                        syncAssignmentOverride(moodleId: id, status: "locally_completed")
-                    }
-                    let cleared = Self.assignmentMarksToClear(
-                        server: conflict.serverMarkedAssignments, local: archived.union(completed)
-                    )
-                    for id in cleared {
-                        syncAssignmentOverride(moodleId: id, status: "none")
-                    }
-                    if let serverIgnoredCourses = conflict.serverIgnoredCourses {
-                        let ignoredCourses = DataCache.shared.loadIgnoredAssignmentCourses()
-                        syncCourseIgnores(ignoredCourses)
-                        for course in Self.courseIgnoresToClear(server: serverIgnoredCourses, local: ignoredCourses) {
-                            syncCourseIgnore(
-                                semester: course.semester, courseNo: course.courseNo,
-                                moodleIdNumber: course.moodleId, ignore: false
-                            )
-                        }
-                    }
-                }
-            } else {
-                if conflict.categories.contains("courses") {
-                    DataCache.shared.saveDeletedCourseNos([])
-                }
-                if conflict.categories.contains("course_colors") {
-                    DataCache.shared.saveCourseColorMap([:])
-                    TigerDuckTheme.reload()
-                }
-                if conflict.categories.contains("course_names") {
-                    DataCache.shared.saveCourseCustomNames([:])
-                }
-                if conflict.categories.contains("assignments") {
-                    DataCache.shared.replaceArchivedAssignmentIds([])
-                    DataCache.shared.replaceLocallyCompletedAssignmentIds([])
-                    if conflict.serverIgnoredCourses != nil {
-                        DataCache.shared.replaceIgnoredAssignmentCourses([])
-                    }
-                }
-                await syncOverridesFromBackend()
             }
-            // After the answer's own requests, which the next check would otherwise read halfway.
-            guard isCurrent() else { return }
-            conflictCheckRetry.noteAnswered(
-                leaving: Defaults[.pendingConflictCategories], awaitingAnswer: reenableConflict != nil,
-                saveFailed: coursesSaveFailed, generation: generation
+            if conflict.categories.contains("course_names") {
+                let customNames = DataCache.shared.loadCourseCustomNames()
+                for (courseNo, locales) in customNames {
+                    guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
+                    for (locale, name) in locales where !name.isEmpty {
+                        queued += syncCourseOverride(moodleCourseId: moodleId, customName: name, locale: locale)
+                    }
+                }
+            }
+        }
+        if conflict.categories.contains("assignments") {
+            let archived = DataCache.shared.loadArchivedAssignmentIds()
+            let completed = DataCache.shared.loadLocallyCompletedAssignmentIds()
+            for id in archived {
+                queued.append(syncAssignmentOverride(moodleId: id, status: "archived"))
+            }
+            for id in completed {
+                queued.append(syncAssignmentOverride(moodleId: id, status: "locally_completed"))
+            }
+            let cleared = Self.assignmentMarksToClear(
+                server: conflict.serverMarkedAssignments, local: archived.union(completed)
             )
-            retryOwedConflictCheck()
+            for id in cleared {
+                queued.append(syncAssignmentOverride(moodleId: id, status: "none"))
+            }
+            if let serverIgnoredCourses = conflict.serverIgnoredCourses {
+                let ignoredCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+                queued += syncCourseIgnores(ignoredCourses)
+                for course in Self.courseIgnoresToClear(server: serverIgnoredCourses, local: ignoredCourses) {
+                    queued.append(syncCourseIgnore(
+                        semester: course.semester, courseNo: course.courseNo,
+                        moodleIdNumber: course.moodleId, ignore: false
+                    ))
+                }
+            }
+        }
+        return queued.compactMap { $0 }
+    }
+
+    /// The pending categories a re-enable check compares: all but those a Use Local answer still
+    /// keeps pending (`answering`, `UseLocalHold.held`), which it sends itself. Asking about one
+    /// again would repeat the question the user has answered.
+    nonisolated static func categoriesToCheck(pending: Set<String>, answering: Set<String>) -> Set<String> {
+        pending.subtracting(answering)
+    }
+
+    /// The categories running Use Local answers keep on the pending list until their course
+    /// requests are done and their other edits queued, and which of those were switched back on
+    /// meanwhile. A full sync meanwhile would take the server's data of them, which the answer
+    /// would send back, and an app ended between the courses' upload and their deletes would show
+    /// the hidden courses again on every device; pending, they are asked about after the relaunch.
+    /// In memory: after a relaunch no answer runs.
+    nonisolated struct UseLocalHold: Equatable, Sendable {
+        /// What the re-enable check skips (`categoriesToCheck`): the answers send it themselves.
+        private(set) var held: Set<String> = []
+        private var reenabled: Set<String> = []
+
+        /// The tap: Use Server takes the answered `categories` off `pending`, and Use Local holds
+        /// them, which it returns. Only those: a category switched back on after the check started
+        /// was not in the dialog, and stays pending for the next check to ask about.
+        mutating func take(_ categories: [String], keepLocal: Bool, from pending: inout Set<String>) -> Set<String> {
+            guard keepLocal else {
+                pending.subtract(categories)
+                return []
+            }
+            held.formUnion(categories)
+            return Set(categories)
+        }
+
+        /// A held category switched off and on again: its switch asks for a check of its own.
+        mutating func noteReenabled(_ category: String) {
+            if held.contains(category) { reenabled.insert(category) }
+        }
+
+        /// The answer is done with `kept`: it leaves `pending`, but for what was switched back on meanwhile.
+        mutating func release(_ kept: Set<String>, from pending: inout Set<String>) {
+            pending.subtract(kept.subtracting(reenabled))
+            end(kept)
+        }
+
+        mutating func end(_ kept: Set<String>) {
+            held.subtract(kept)
+            reenabled.subtract(kept)
+        }
+    }
+
+    /// What Use Server drops on this device so the full sync after it takes the server's data.
+    /// Hidden courses stay: that sync takes the server's list in each term it lists, and a term it
+    /// lists none in, which the check did not compare, keeps this device's.
+    static func dropLocalCopies(for conflict: ReenableConflict, in cache: DataCache = .shared) {
+        if conflict.categories.contains("course_colors") {
+            cache.saveCourseColorMap([:])
+            // The theme follows the shared cache, which every caller but a test passes.
+            TigerDuckTheme.reload()
+        }
+        if conflict.categories.contains("course_names") {
+            cache.saveCourseCustomNames([:])
+        }
+        if conflict.categories.contains("assignments") {
+            cache.replaceArchivedAssignmentIds([])
+            cache.replaceLocallyCompletedAssignmentIds([])
+            if conflict.serverIgnoredCourses != nil {
+                cache.replaceIgnoredAssignmentCourses([])
+            }
         }
     }
 
@@ -638,7 +785,7 @@ extension AppState {
             try await backend.uploadCourses(courseUploadRequest(courses + stubs, semester: semester, forceKeys: []))
             for courseNo in hiddenNos.sorted() {
                 guard isCurrent() else { throw CancellationError() }
-                try await backend.deleteCourse(courseKey: "client:\(semester):\(courseNo)")
+                try await backend.deleteCourse(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
             }
         }
     }

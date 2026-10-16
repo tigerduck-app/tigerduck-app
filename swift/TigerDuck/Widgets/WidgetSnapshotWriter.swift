@@ -153,6 +153,14 @@ final class WidgetSnapshotWriter {
         coordinator.requestReload()
     }
 
+    /// ``regenerate(forceReload:)``, then sends at once a reload that waits on the debounce, whether
+    /// this one asked for it or an earlier change did. A sync trigger's handler calls it before it
+    /// answers the push, after which iOS may suspend the app before the debounce ends.
+    func regenerateAndReloadNow() {
+        regenerate()
+        coordinator.reloadNowIfPending()
+    }
+
     /// Equal but for `generatedAt`, which every build stamps afresh and no widget reads.
     static func hasSameContent(_ snapshot: WidgetSnapshot, as other: WidgetSnapshot) -> Bool {
         var candidate = snapshot

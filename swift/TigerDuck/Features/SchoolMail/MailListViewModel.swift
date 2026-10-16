@@ -24,8 +24,8 @@ final class MailListViewModel {
     private(set) var loadState: LoadState = .idle
     private(set) var serverStatus: ServerStatus = .unknown
     /// When the folders on screen were last known current, the least recent of them: a newest page
-    /// fetched, or for the inbox a poll that found nothing new. Nil while one has none. A page from
-    /// the cache brings its own.
+    /// fetched, or a poll that found nothing new in a folder showing fetched rows. Nil while one
+    /// has none. A page from the cache brings its own.
     private(set) var syncedAt: Date?
     private(set) var isRefreshing = false
     private(set) var isPaginating = false
@@ -615,11 +615,11 @@ final class MailListViewModel {
     /// Runs when the inbox is on screen, which includes All mail (it merges the inbox in and is
     /// the screen the list opens on). Reads STATUS for every folder on screen and reloads when
     /// one holds mail the list has not shown (`hasUnshownMail`). A folder found current gets the
-    /// STATUS time as its `fetchedAt`, so the status dot's time moves up without a reload.
+    /// STATUS time as its `fetchedAt`, so the status dot's time moves up without a reload; one
+    /// still showing the cache's rows, which no fresh page has replaced, keeps the cache's time.
     ///
     /// Once the list shows the inbox up to the STATUS it read, the notification marker moves up
-    /// to it (`noteSeenByPage`). A reload that failed leaves the marker, so those mails are still
-    /// announced.
+    /// to it (`noteSeenByPage`); a failed reload leaves it, so those mails are still announced.
     func pollOnce() async {
         guard showsInbox, searchResults == nil else { return }
         let selection = self.selection
@@ -648,7 +648,8 @@ final class MailListViewModel {
         }
         guard isCurrent(selection, epoch), !Self.hasUnshownMail(status, page: pages[inbox]) else { return }
         var movedUp: [String] = []
-        for (folder, folderStatus) in statuses where !Self.hasUnshownMail(folderStatus, page: pages[folder]) {
+        for (folder, folderStatus) in statuses
+        where !cachePaintedFolders.contains(folder) && !Self.hasUnshownMail(folderStatus, page: pages[folder]) {
             guard var page = pages[folder], page.fetchedAt.map({ $0 < checkedAt }) ?? true else { continue }
             page.fetchedAt = checkedAt
             pages[folder] = page
@@ -663,7 +664,7 @@ final class MailListViewModel {
         let writes = movedUp.compactMap { folder in
             pages[folder].map { page in
                 let stored = Self.cachedCopy(of: page)
-                return chainCacheWrite { cache.savePage(stored) }
+                return chainCacheWrite { cache.savePage(stored, wipeCount: $0) }
             }
         }
         for write in writes { await write.value }
@@ -704,7 +705,7 @@ final class MailListViewModel {
                     try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity, inlineImages: false)
                 }
                 guard epoch == accountEpoch else { return }
-                chainCacheWrite { cache.saveDetail(detail, folder: inbox, uidValidity: validity) }
+                chainCacheWrite { cache.saveDetail(detail, folder: inbox, uidValidity: validity, wipeCount: $0) }
             } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
                 return
             } catch {
@@ -751,8 +752,8 @@ final class MailListViewModel {
                     // The screen owns a folder it has moved onto since, and its page in memory
                     // and the one on disk must not diverge.
                     if self.targets.contains(folder) { continue }
-                    await self.chainCacheWrite {
-                        if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page) }
+                    await self.chainCacheWrite { [page] wipeCount in
+                        if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page, wipeCount: wipeCount) }
                     }.value
                 } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
                     return
@@ -980,10 +981,13 @@ final class MailListViewModel {
     /// `markSeenLocally`/`removeLocally` are synchronous (the message screen calls them
     /// without awaiting), so the disk write can't be awaited here — it's queued through
     /// `chainCacheWrite` instead, fire-and-forget.
+    ///
+    /// It checks no `accountEpoch`: it saves only what `pages` holds, and a sign-out empties
+    /// `pages` (`resetInMemoryState`) in the main-actor turn that starts the cache wipe.
     private func persist(folder: String) {
         guard let page = pages[folder].map(Self.cachedCopy(of:)) else { return }
         let cache = self.cache
-        chainCacheWrite { cache.savePage(page) }
+        chainCacheWrite { cache.savePage(page, wipeCount: $0) }
     }
 
     // MARK: Cache (off the main actor — `MailCache` does synchronous disk I/O)
@@ -995,12 +999,12 @@ final class MailListViewModel {
     private func save(_ page: MailFolderPage) async {
         let cache = self.cache
         let stored = Self.cachedCopy(of: page)
-        await chainCacheWrite { cache.savePage(stored) }.value
+        await chainCacheWrite { cache.savePage(stored, wipeCount: $0) }.value
     }
 
     private func dropFolder(_ folder: String) async {
         let cache = self.cache
-        await chainCacheWrite { cache.dropFolder(folder) }.value
+        await chainCacheWrite { _ in cache.dropFolder(folder) }.value
     }
 
     /// Every cache *write* in this type — `persist(folder:)`'s fire-and-forget save, `load()`'s
@@ -1010,11 +1014,15 @@ final class MailListViewModel {
     /// later one starts (a drop that followed it moments later, say), and finish *after* it —
     /// silently resurrecting on disk exactly what the later write meant to replace or remove.
     @discardableResult
-    private func chainCacheWrite(_ operation: @escaping @Sendable () -> Void) -> Task<Void, Never> {
+    private func chainCacheWrite(_ operation: @escaping @Sendable (_ wipeCount: Int) -> Void) -> Task<Void, Never> {
         let previous = pendingCacheWrite
+        // Read when queued. A write queued before a sign-out then writes nothing once its wipe runs;
+        // one queued after it is stopped before this, by the caller's `accountEpoch` check or, in
+        // `persist(folder:)`, by the `pages` the sign-out emptied in the turn that starts the wipe.
+        let wipeCount = cache.wipeCount
         let task = Task.detached {
             _ = await previous?.value
-            operation()
+            operation(wipeCount)
         }
         pendingCacheWrite = task
         return task

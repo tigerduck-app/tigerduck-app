@@ -15,6 +15,9 @@
 # honestly applies, or write a new one.
 
 
+# App — iOS launch before the first unlock after a restart, a state a Mac app never runs in
+AfterFirstUnlock.swift
+
 # App — iOS app-delegate, push registration and CoreMotion flip handling
 FlipToLibraryCoordinator.swift
 NTUSTLoginSheetHost.swift
@@ -36,6 +39,7 @@ WhatsNewSampleFlow.swift
 
 # Extensions — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
+UIApplication+Modals.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
 
@@ -68,6 +72,9 @@ ClassTableExportView.swift
 ClassTableImportScannerView.swift  # camera scanner; the Mac reads an image file instead
 ConflictLShape.swift
 TimetableGridView.swift
+
+# Features/CourseMoodle — the assignment page; the Mac opens an assignment on Moodle instead
+MoodleAssignmentView.swift
 
 # Features/EmptyClassroom — the iOS finder screen and the ranking it shows; macOS hides
 # the feature (MacFeatureFiltering.swift) and keeps only its cour01 client
@@ -317,6 +324,7 @@ MailGuideWebView.swift
 MailHTMLView.swift
 MailLoginCard.swift
 MailLoginSheet.swift
+MailReadableHTML.swift
 MailRecipientRow.swift
 MailRecipientTokenField.swift
 MailRowView.swift

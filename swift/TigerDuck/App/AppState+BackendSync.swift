@@ -13,30 +13,32 @@ extension AppState {
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
     ///
-    /// One runs at a time. `followUpIfBusy` is for a sync trigger push: one that arrives during
-    /// a pull waits for one more, since that pull may predate the change it announces.
-    func syncOverridesFromBackend(followUpIfBusy: Bool = false) async {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    /// One runs at a time. `followUpIfBusy` is for a sync trigger push and for the app's own sync
+    /// at launch and in the revision poll: one that arrives during a pull waits for one more, since
+    /// that pull may predate the change or end at a sync trigger's time limit, and gets its outcome.
+    @discardableResult
+    func syncOverridesFromBackend(followUpIfBusy: Bool = false) async -> FullSyncOutcome {
+        guard Defaults[.cloudSyncEnabled] else { return .skipped }
         #if os(iOS)
         // A sync trigger can launch the app behind the lock screen, where the local marks,
         // courses and colours cannot be opened and read as empty, and a sync would write the
         // server's view over them. Revision polling syncs at the next return to the app.
-        guard UIApplication.shared.isProtectedDataAvailable else { return }
+        guard UIApplication.shared.isProtectedDataAvailable else { return .skipped }
         #endif
         if fullSyncGate.isRunning {
             AppLogger.sync.info("[syncOverrides] already in flight, follow-up: \(followUpIfBusy, privacy: .public)")
         }
-        await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
-            await runFullSync(retried: false)
+        return await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
+            await self.runFullSync(retried: false)
         }
     }
 
-    private func runFullSync(retried: Bool) async {
+    private func runFullSync(retried: Bool) async -> FullSyncOutcome {
         // Sign-out clears what this writes but cancels only `syncTask`, which a poll, a push or a
         // pull does not run in. So no write below follows an await without this check.
         let generation = authService.loginGeneration
         await authService.ensureBackendSignedIn()
-        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return }
+        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return .skipped }
         await retryUnsentEdits()
         do {
             #if DEBUG
@@ -48,13 +50,17 @@ extension AppState {
             let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
+            // Colours and names need no second sample: `courseOverridesToHold` adds the edits after this one.
+            let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
             #if os(iOS)
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
-            let json = try await pushCoordinator.fetchFullSync()
-            guard fullSyncMayWrite(since: generation) else { return }
+            let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
+                try await pushCoordinator.fetchFullSync()
+            })
+            guard fullSyncMayWrite(since: generation) else { return .skipped }
             // Whether this sync changed anything on the device. Only then does it post
             // `dataDidUpdate`, which reloads every page, the widgets, the Watch and the schedule.
             var changed = false
@@ -111,7 +117,7 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            guard fullSyncMayWrite(since: generation) else { return }
+            guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
                 .union(inFlightOverrides)
@@ -193,7 +199,8 @@ extension AppState {
                 if let serverIgnoredCourses, Defaults[.syncCourses] {
                     changed = applyIgnoredCourses(
                         serverIgnoredCourses, decided: Self.serverDecidedCourses(courseOverrides),
-                        coursesArray: coursesArray, protected: protectedOverrides, fetchedAt: fetchedAt
+                        coursesArray: coursesArray, protected: protectedOverrides, deleting: courseDeletes,
+                        fetchedAt: fetchedAt
                     ) || changed
                 }
             }
@@ -203,8 +210,10 @@ extension AppState {
             if !takesColors && !takesNames {
                 AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             } else if !courseOverrides.isEmpty {
+                let held = cloudSyncCoordinator.courseOverridesToHold(since: preFetchCourseOverrides)
                 changed = applyCourseOverrides(
-                    courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames
+                    courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames,
+                    holdingColors: held.colors, holdingNames: held.names
                 ) || changed
             }
 
@@ -228,7 +237,9 @@ extension AppState {
             let coursesResetAt = Self.backendDate(json["courses_reset_at"])
             let tombstoneArray = json["course_tombstones"] as? [[String: Any]] ?? []
             let lastSeenReset = Defaults[.lastSeenCoursesResetAt]
-            let reset = Self.coursesReset(server: coursesResetAt, lastSeen: lastSeenReset)
+            let reset = Self.coursesReset(
+                server: coursesResetAt, lastSeen: lastSeenReset, takesCourses: taken.contains("courses")
+            )
 
             if reset.apply {
                 DataCache.shared.saveUserAddedCourses([])
@@ -239,8 +250,9 @@ extension AppState {
             Self.recordFullSync(coursesReset: reset.remember, taken: taken)
 
             if taken.contains("courses") {
-                changed = reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray, fetchedAt: fetchedAt)
-                    || changed
+                changed = reconcileCourses(
+                    serverRows: coursesArray, tombstones: tombstoneArray, deleting: courseDeletes, fetchedAt: fetchedAt
+                ) || changed
             } else if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             }
@@ -268,21 +280,30 @@ extension AppState {
                 linksBeforeSnapshot: settingsLinksBeforeFetch
             )
             #endif
+            return .synced
         } catch {
-            guard fullSyncMayWrite(since: generation) else { return }
+            guard !Self.isCancellation(error), fullSyncMayWrite(since: generation) else { return .skipped }
             ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
+            var outcome = FullSyncOutcome.failed
             if case PushAPIError.httpStatus(401, _) = error, !retried {
                 let reloginOk = await attemptBackendRelogin()
                 if reloginOk {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
-                    guard fullSyncMayWrite(since: generation) else { return }
-                    await runFullSync(retried: true)
+                    guard fullSyncMayWrite(since: generation) else { return .skipped }
+                    outcome = await runFullSync(retried: true)
                 }
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .private)")
+            return outcome
         }
+    }
+
+    /// Whether a full sync's error is its own cancellation, as at the time limit of a sync trigger
+    /// push, which says nothing about the server. `URLSession` throws `URLError.cancelled` for it.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     /// Re-sends the edits whose upload never landed. Every full sync starts with this, and so does
@@ -483,8 +504,9 @@ extension AppState {
     }
 
     /// The keys among `keys` a pull leaves as they are here: those of a course deleted here whose
-    /// DELETE may not have landed (`deleting`, course numbers), which the course reconcile keeps
-    /// hidden as long, and every key of a term reset since the snapshot was fetched or resetting.
+    /// DELETE may not have landed (`deleting`, as `unhideListedCourses` takes it), which the course
+    /// reconcile keeps hidden as long, and every key of a term reset since the snapshot was fetched
+    /// or resetting.
     nonisolated static func courseKeysPullLeaves(
         _ keys: Set<String>,
         deleting: Set<String>,
@@ -492,7 +514,7 @@ extension AppState {
     ) -> Set<String> {
         keys.filter { key in
             guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return false }
-            return deleting.contains(courseNo) || resetSemesters.contains(semester)
+            return CourseTombstone.isHidden(courseNo, semester: semester, in: deleting) || resetSemesters.contains(semester)
         }
     }
 
@@ -548,12 +570,14 @@ extension AppState {
 
     /// Takes the server's ignored courses as `ignoredCoursesAfterPull` says, sends again the ones
     /// it lost, and sends the numeric Moodle ids it lacks. A course some device deleted and added
-    /// back counts as decided (`recreatedCourses`). Returns whether the local set changed.
+    /// back counts as decided (`recreatedCourses`). `deleting` holds the keys of the course deletes
+    /// queued here. Returns whether the local set changed.
     private func applyIgnoredCourses(
         _ server: [ServerIgnoredCourse],
         decided: Set<String>,
         coursesArray: [[String: Any]],
         protected: Set<String>,
+        deleting queuedDeletes: Set<String>,
         fetchedAt: Date
     ) -> Bool {
         let now = Date()
@@ -568,7 +592,7 @@ extension AppState {
         Defaults[.courseRowIdsSeen] = listedRows
         let protected = protected.union(Self.courseKeysPullLeaves(
             Set(server.map(\.key)).union(listed).union(current),
-            deleting: Set(deleting.keys),
+            deleting: Set(deleting.keys).union(queuedDeletes),
             resetSemesters: resetSemesters
         ))
         let missingIds = Self.moodleCourseIdsToSend(server, protected: protected) {
@@ -607,15 +631,20 @@ extension AppState {
             ?? TigerDuckDateFormatters.withoutFractional.date(from: raw)
     }
 
-    /// What a full sync does with the server's `courses_reset_at`: whether to apply it, and what
-    /// to keep for the next sync. Both times are the server's, so a device whose clock runs behind
-    /// cannot take one reset for a new one on every sync. With nothing kept, this is the account's
-    /// first sync here, which has nothing from before a reset to drop: it only keeps the reset,
-    /// or `distantPast` when there is none yet, so that the first one counts as new.
-    nonisolated static func coursesReset(server: Date?, lastSeen: Date?) -> (apply: Bool, remember: Date) {
+    /// What a full sync does with the server's `courses_reset_at`: whether to apply it, dropping the
+    /// hand-added and hidden courses, and what to keep for the next sync. Both times are the
+    /// server's, so a device whose clock runs behind cannot take one reset for a new one on every
+    /// sync. With nothing kept, this is the account's first sync here, which has nothing from before
+    /// a reset to drop: it only keeps the reset, or `distantPast` when there is none yet, so that the
+    /// first one counts as new. A sync that does not take courses (`takesCourses`), with the Courses
+    /// switch off or a courses re-enable check pending, keeps them and the reset alike, so the check
+    /// that switching course sync back on runs decides.
+    nonisolated static func coursesReset(
+        server: Date?, lastSeen: Date?, takesCourses: Bool
+    ) -> (apply: Bool, remember: Date) {
         guard let lastSeen else { return (false, server ?? .distantPast) }
         guard let server else { return (false, lastSeen) }
-        return (server > lastSeen, server)
+        return (takesCourses && server > lastSeen, server)
     }
 
     /// What every full sync keeps: the course reset it read, for the next one to compare, and the
@@ -649,9 +678,12 @@ extension AppState {
         )
     }
 
-    /// Takes the server's colours when `colors`, its names when `names`. Returns whether one changed.
+    /// Takes the server's colours when `colors`, its names when `names`, but not those of the courses
+    /// this device has a colour (`holdingColors`) or a name (`holdingNames`) edit queued for, by
+    /// Moodle id. Returns whether one changed.
     private func applyCourseOverrides(
-        _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool
+        _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool,
+        holdingColors: Set<String>, holdingNames: Set<String>
     ) -> Bool {
         // Build moodleId → courseNo from courses array
         var moodleIdToNo: [String: String] = [:]
@@ -667,44 +699,60 @@ extension AppState {
         }
         AppLogger.sync.info("moodleIdToNo: \(moodleIdToNo.count, privacy: .public) entries, overrides: \(overrides.count, privacy: .public)")
 
-        let colorsChanged = colors
-            && TigerDuckTheme.applyColors(Self.serverCourseColors(overrides, courseNos: moodleIdToNo))
+        let colorsChanged = colors && TigerDuckTheme.applyColors(
+            Self.serverCourseColors(overrides, courseNos: moodleIdToNo, holding: holdingColors)
+        )
         let namesBefore = DataCache.shared.loadCourseCustomNames()
-        var customNames = namesBefore
-        var nameCount = 0
-        for o in overrides {
-            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
-            guard let courseNo = moodleIdToNo[mId] else { continue }
-            if names, let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
-                var existing = customNames[courseNo] ?? [:]
-                for (locale, name) in serverNames {
-                    if name.isEmpty {
-                        existing.removeValue(forKey: locale)
-                    } else {
-                        existing[locale] = name
-                    }
-                }
-                customNames[courseNo] = existing.isEmpty ? nil : existing
-                nameCount += 1
-                AppLogger.sync.debug("course custom names updated")
-            }
-        }
-        let namesChanged = nameCount > 0 && customNames != namesBefore
+        let customNames = names
+            ? Self.courseNamesAfterPull(overrides, courseNos: moodleIdToNo, local: namesBefore, holding: holdingNames)
+            : namesBefore
+        let namesChanged = customNames != namesBefore
         if namesChanged {
             DataCache.shared.saveCourseCustomNames(customNames)
         }
         return colorsChanged || namesChanged
     }
 
+    /// `local` with the server's custom names, language by language; an empty one clears its
+    /// language. A course with a name edit queued here (`held`, Moodle ids) keeps all of its own:
+    /// the snapshot can predate the edit.
+    nonisolated static func courseNamesAfterPull(
+        _ overrides: [[String: Any]],
+        courseNos: [String: String],
+        local: [String: [String: String]],
+        holding held: Set<String>
+    ) -> [String: [String: String]] {
+        var names = local
+        for o in overrides {
+            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
+                  !held.contains(mId), let courseNo = courseNos[mId],
+                  let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty
+            else { continue }
+            var existing = names[courseNo] ?? [:]
+            for (locale, name) in serverNames {
+                if name.isEmpty {
+                    existing.removeValue(forKey: locale)
+                } else {
+                    existing[locale] = name
+                }
+            }
+            names[courseNo] = existing.isEmpty ? nil : existing
+        }
+        return names
+    }
+
     /// The server's course colours in the order to apply them, oldest first: where two courses
-    /// share a colour the latest pick keeps it, the same way on every device and every sync.
+    /// share a colour the latest pick keeps it, the same way on every device and every sync. A
+    /// course with a colour edit queued here (`held`, Moodle ids) is left out, so it keeps its own
+    /// unless the server gives that colour to another course.
     static func serverCourseColors(
         _ overrides: [[String: Any]],
-        courseNos: [String: String]
+        courseNos: [String: String],
+        holding held: Set<String>
     ) -> [(courseNo: String, hex: UInt32)] {
         let rows = overrides.compactMap { o -> (courseNo: String, hex: UInt32, at: Date)? in
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                  let courseNo = courseNos[mId],
+                  !held.contains(mId), let courseNo = courseNos[mId],
                   let colorHex = o["color_hex"] as? String, !colorHex.isEmpty,
                   let hex = UInt32(colorHex.dropFirst(), radix: 16) else { return nil }
             let at = (o["color_hex_updated_at"] as? String).flatMap {
@@ -724,17 +772,19 @@ extension AppState {
 
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices. The
-    /// Assignments sync switch covers these marks.
-    func syncAssignmentOverride(moodleId: String, status: String) {
-        guard Defaults[.cloudSyncEnabled], Defaults[.syncAssignments] else { return }
+    /// Assignments sync switch covers these marks. Returns the task that
+    /// queues the mark, which ends once it is in the outbox.
+    @discardableResult
+    func syncAssignmentOverride(moodleId: String, status: String) -> Task<Void, Never>? {
+        guard Defaults[.cloudSyncEnabled], Defaults[.syncAssignments] else { return nil }
         AppLogger.sync.debug("override enqueue: \(moodleId, privacy: .private) → \(status, privacy: .public)")
-        guard let moodleAssignmentId = Int(moodleId) else { return }
+        guard let moodleAssignmentId = Int(moodleId) else { return nil }
         overrideEditGeneration &+= 1
         // Bridge the gap until the op is durably in the outbox; from then
         // on pendingAssignmentOverrideIds() is the conflict-guard signal
         // until the PATCH actually lands on the server.
         pendingOverrides.insert(moodleId)
-        Task { [weak self] in
+        let queued = Task { [weak self] in
             guard let self else { return }
             await cloudSyncCoordinator.enqueueAssignmentOverride(
                 moodleCourseId: 0,
@@ -744,14 +794,17 @@ extension AppState {
         }
         cloudSyncCoordinator.scheduleTick(after: 1)
         revisionPoller.noteActivity()
+        return queued
     }
 
     /// Queues a course's "ignore assignments" setting, which the server's reminders follow. Unlike
     /// a mark it is queued with the Assignments or Courses switch off too, and the outbox holds it
     /// (`CloudSyncCoordinator.sendsCourseIgnores`): the re-enable check compares no course settings
-    /// while Courses is off, so a change made then would otherwise be lost to the server's.
-    func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    /// while Courses is off, so a change made then would otherwise be lost to the server's. Returns
+    /// the task that queues it, as `syncAssignmentOverride` does.
+    @discardableResult
+    func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) -> Task<Void, Never>? {
+        guard Defaults[.cloudSyncEnabled] else { return nil }
         // The server keys a course without an idnumber, a hand-added one, by term and number.
         let moodleId = moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
         let moodleCourseId = DataCache.shared.lookupMoodleCourseId(idnumber: moodleId)
@@ -759,7 +812,7 @@ extension AppState {
         overrideEditGeneration &+= 1
         // Covers the course until its op is in the outbox, as for `syncAssignmentOverride`.
         pendingOverrides.insert(key)
-        Task { [weak self] in
+        let queued = Task { [weak self] in
             guard let self else { return }
             await cloudSyncCoordinator.enqueueCourseIgnore(
                 semester: semester, courseNo: courseNo, moodleId: moodleId,
@@ -768,59 +821,52 @@ extension AppState {
         }
         cloudSyncCoordinator.scheduleTick(after: 1)
         revisionPoller.noteActivity()
+        return queued
     }
 
     /// Queues every course in `keys` as ignored, by the idnumber of the course cached for its term.
-    func syncCourseIgnores(_ keys: Set<String>) {
-        for key in keys.sorted() {
-            guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { continue }
+    @discardableResult
+    func syncCourseIgnores(_ keys: Set<String>) -> [Task<Void, Never>?] {
+        keys.sorted().map { key in
+            guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return nil }
             let course = (DataCache.shared.loadCourses(semester: semester)
                 + DataCache.shared.loadUserAddedCourses(semester: semester)).first { $0.courseNo == courseNo }
-            syncCourseIgnore(semester: semester, courseNo: courseNo, moodleIdNumber: course?.moodleIdNumber, ignore: true)
+            return syncCourseIgnore(semester: semester, courseNo: courseNo, moodleIdNumber: course?.moodleIdNumber, ignore: true)
         }
     }
 
+    /// Returns the tasks that queue the colour and the name, as `syncAssignmentOverride` does.
+    @discardableResult
     func syncCourseOverride(
         moodleCourseId: String,
         colorHex: String? = nil,
         customName: String? = nil,
         locale: String? = nil
-    ) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    ) -> [Task<Void, Never>?] {
+        guard Defaults[.cloudSyncEnabled] else { return [] }
         let semester = CourseSelectionService.currentSemesterCode()
-        if let colorHex {
-            cloudSyncCoordinator.enqueueCourseColorOverride(
-                moodleId: moodleCourseId, semester: semester, colorHex: colorHex)
-        }
-        if let customName {
-            cloudSyncCoordinator.enqueueCourseNameOverride(
-                moodleId: moodleCourseId, semester: semester, customName: customName, locale: locale)
-        }
+        let queued = [
+            colorHex.flatMap {
+                cloudSyncCoordinator.enqueueCourseColorOverride(moodleId: moodleCourseId, semester: semester, colorHex: $0)
+            },
+            customName.flatMap {
+                cloudSyncCoordinator.enqueueCourseNameOverride(
+                    moodleId: moodleCourseId, semester: semester, customName: $0, locale: locale)
+            },
+        ]
         cloudSyncCoordinator.scheduleTick(after: 1)
         revisionPoller.noteActivity()
+        return queued
     }
 
+    /// Queues the delete of a course hidden here, which the outbox sends until it lands.
     func deleteBackendCourse(courseNo: String, semester: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        // Record the local delete so the sync reconcile's grace window doesn't
-        // resurrect this course before the backend DELETE propagates (F).
+        // The reconcile's grace window keeps the course hidden until its delete is in the outbox,
+        // where a full sync finds it from then on.
         recentCourseDeletions[courseNo] = Date()
-        // DELETE /sync/courses/{key} needs the exact `course_key`, and the server keys every row
-        // this app uploads "client:{semester}:{course_no}". The Moodle idnumber, which PATCH
-        // .../override takes, deletes nothing and writes no tombstone; the course comes back.
-        let courseKey = "client:\(semester):\(courseNo)"
-        let coordinator = pushCoordinator
         revisionPoller.noteActivity()
-        // The server drops the course's setting with its row, so a PATCH still queued would 404.
-        Task { await cloudSyncCoordinator.discardCourseIgnores(semester: semester, courseNo: courseNo) }
-        Task.detached {
-            do {
-                try await coordinator.deleteCourse(courseKey: courseKey)
-                AppLogger.sync.info("deleteBackendCourse ok: \(courseKey, privacy: .private)")
-            } catch {
-                AppLogger.sync.error("deleteBackendCourse failed: \(error, privacy: .private)")
-            }
-        }
+        Task { await cloudSyncCoordinator.deleteCourse(semester: semester, courseNo: courseNo) }
     }
 
     /// Wipes the backend and only then runs `resetLocally`: a local wipe followed by a
@@ -850,6 +896,7 @@ extension AppState {
             // list sent before the reset.
             pushCoordinator.forgetUploads(semester: semester)
             await cloudSyncCoordinator.discardCourseIgnores(semester: semester)
+            await cloudSyncCoordinator.discardCourseDeletes(semester: semester)
             resetLocally()
             return true
         } catch {
@@ -862,6 +909,10 @@ extension AppState {
     /// A list the server already took is skipped (`PushCoordinator.uploadCoursesIfChanged`);
     /// `resend` sends it anyway, for a term the server has emptied.
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
+        // A course added back here: its delete still queued would remove it again.
+        if !forceKeys.isEmpty {
+            Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys)) }
+        }
         guard CourseUploadPolicy.uploadsCourses else { return }
         let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         let generation = authService.loginGeneration
@@ -940,7 +991,7 @@ extension AppState {
         let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
             guard let hex = colors[c.courseNo] else { return nil }
             return PushAPI.CourseOverrideUploadEntry(
-                courseKey: "client:\(semester):\(c.courseNo)",
+                courseKey: CourseTombstone.serverKey(semester: semester, courseNo: c.courseNo),
                 colorHex: String(format: "#%06X", hex)
             )
         }
@@ -953,28 +1004,74 @@ extension AppState {
 @MainActor
 final class FullSyncGate {
     private(set) var isRunning = false
-    private var followUpWaiters: [CheckedContinuation<Void, Never>] = []
+    /// The calls waiting for a run that starts after the current one, by ticket.
+    private var queued: [Int: CheckedContinuation<FullSyncOutcome, Never>] = [:]
+    /// The calls waiting for `runningFollowUp`.
+    private var following: [Int: CheckedContinuation<FullSyncOutcome, Never>] = [:]
+    private var runningFollowUp: Task<Void, Never>?
+    private var lastTicket = 0
 
-    var queuedFollowUps: Int { followUpWaiters.count }
+    var queuedFollowUps: Int { queued.count }
 
     /// Runs `body` unless a run is in flight. Then a call with `followUp` waits for one more run
-    /// that starts after the current one, shared by every call that asked meanwhile; one without
-    /// returns at once. `mayFollow` is checked before each follow-up.
-    func run(followUp: Bool, mayFollow: () -> Bool, _ body: () async -> Void) async {
+    /// that starts after the current one, shared by every call that asked meanwhile, and returns
+    /// its outcome; one without returns `.skipped` at once. `mayFollow` is checked before each
+    /// follow-up. A call that runs `body` returns the outcome of its own run.
+    ///
+    /// A follow-up runs in a task of its own, which cancelling the call before it does not reach.
+    /// A waiting call that is cancelled returns `.skipped` at once, and a follow-up every call
+    /// waiting for it gave up on does not start, or is cancelled.
+    func run(
+        followUp: Bool, mayFollow: @escaping () -> Bool, _ body: @escaping () async -> FullSyncOutcome
+    ) async -> FullSyncOutcome {
         guard !isRunning else {
-            guard followUp else { return }
-            await withCheckedContinuation { followUpWaiters.append($0) }
-            return
+            guard followUp else { return .skipped }
+            return await waitForFollowUp()
         }
         isRunning = true
-        await body()
-        while !followUpWaiters.isEmpty {
-            let waiters = followUpWaiters
-            followUpWaiters = []
-            if mayFollow() { await body() }
-            for waiter in waiters { waiter.resume() }
+        let outcome = await body()
+        follow(mayFollow: mayFollow, body)
+        return outcome
+    }
+
+    private func waitForFollowUp() async -> FullSyncOutcome {
+        lastTicket += 1
+        let ticket = lastTicket
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { waiter in
+                if Task.isCancelled { waiter.resume(returning: .skipped) } else { queued[ticket] = waiter }
+            }
+        } onCancel: {
+            Task { @MainActor in self.giveUp(ticket) }
         }
-        isRunning = false
+    }
+
+    private func giveUp(_ ticket: Int) {
+        if let waiter = queued.removeValue(forKey: ticket) {
+            waiter.resume(returning: .skipped)
+        } else if let waiter = following.removeValue(forKey: ticket) {
+            waiter.resume(returning: .skipped)
+            if following.isEmpty { runningFollowUp?.cancel() }
+        }
+    }
+
+    /// Starts the run the queued calls wait for, or ends the gate's run when none is due.
+    private func follow(mayFollow: @escaping () -> Bool, _ body: @escaping () async -> FullSyncOutcome) {
+        guard !queued.isEmpty, mayFollow() else {
+            for waiter in queued.values { waiter.resume(returning: .skipped) }
+            queued = [:]
+            isRunning = false
+            return
+        }
+        following = queued
+        queued = [:]
+        runningFollowUp = Task {
+            // Its callers may all have given up before it started.
+            let outcome: FullSyncOutcome = if Task.isCancelled { .skipped } else { await body() }
+            for waiter in following.values { waiter.resume(returning: outcome) }
+            following = [:]
+            follow(mayFollow: mayFollow, body)
+        }
     }
 }
 

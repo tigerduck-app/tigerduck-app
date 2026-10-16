@@ -214,6 +214,10 @@ final class HomeViewModel {
     /// tapped (right weekday, right start/end). Nil when the sheet was
     /// opened from somewhere that doesn't have slot context.
     var selectedCourseSlot: CourseTimeSlot? = nil
+    /// The assignment page pushed over Home.
+    var shownAssignment: MoodleAssignmentPage? = nil
+    /// One opened while the course sheet covered Home, pushed once the sheet has gone.
+    @ObservationIgnored private var assignmentAfterSheet: MoodleAssignmentPage?
 
     func archiveAssignment(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
@@ -270,6 +274,29 @@ final class HomeViewModel {
         isUpdatingFromNetwork = true
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         isUpdatingFromNetwork = false
+    }
+
+    /// Pushes `page`, closing the course sheet first when one covers Home, which a reminder tapped
+    /// with the sheet up would otherwise open behind. With `closingSheet` false the page goes in
+    /// behind the sheet: one over it refused to close, such as a mail draft, and would go with it.
+    func show(_ page: MoodleAssignmentPage, closingSheet: Bool = true) {
+        guard closingSheet, selectedCourse != nil else {
+            shownAssignment = page
+            return
+        }
+        assignmentAfterSheet = page
+        selectedCourse = nil
+    }
+
+    func courseSheetDismissed() {
+        guard let page = assignmentAfterSheet else { return }
+        assignmentAfterSheet = nil
+        shownAssignment = page
+    }
+
+    func closeAssignment() {
+        assignmentAfterSheet = nil
+        shownAssignment = nil
     }
 
     func assignmentsFor(courseNo: String) -> [SDAssignment] {

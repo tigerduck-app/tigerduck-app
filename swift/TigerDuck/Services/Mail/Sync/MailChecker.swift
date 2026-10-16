@@ -303,6 +303,9 @@ actor MailChecker {
     /// connection is gone. `detail` fetches with `BODY.PEEK`, so nothing here marks a mail read.
     private func prefetchBodies(for account: String, client: any MailClient, uidValidity: UInt32, uids: [UInt32]) async {
         guard let cache else { return }
+        // Read before the account checks below: they run beside a sign-out on the main actor,
+        // so a wipe can land just after one passes, and the saves must then write nothing.
+        let wipeCount = cache.wipeCount
         for uid in uids.sorted(by: >).prefix(MailConstants.bodyPrefetchLimit) {
             // The cache stamps whoever is signed in *now*; a body fetched for the previous
             // student must not be filed under the next one.
@@ -312,7 +315,7 @@ actor MailChecker {
                 let detail = try await client.detail(folder: MailConstants.inbox, uid: uid, expectedUIDValidity: uidValidity,
                                                      inlineImages: false)
                 guard !Task.isCancelled, stillSignedIn(as: account) else { return }
-                cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity)
+                cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity, wipeCount: wipeCount)
             } catch let error as MailClientError where Self.endsPrefetch(error) {
                 return
             } catch {
@@ -328,7 +331,7 @@ actor MailChecker {
     nonisolated static func endsPrefetch(_ error: MailClientError) -> Bool {
         switch error {
         case .unreachable, .certificateRejected, .authenticationFailed, .serverBusy: true
-        case .searchUnsupported, .folderChanged, .protocolError: false
+        case .searchUnsupported, .folderChanged, .sendUnconfirmed, .protocolError: false
         }
     }
 

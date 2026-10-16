@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.5.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.5.3)
+[![Version](https://img.shields.io/badge/Version-v2.6.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.6.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -116,6 +116,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| `v2.6.0` | 2026-10-17 | App 內的作業頁與課程作業列表、深色模式的信件可讀性、同步衝突的回答與背景同步推播、重開機後尚未解鎖時的背景啟動、多項修正 |
 | `v2.5.3` | 2026-10-16 | 修正搜尋課程成員時鍵盤會收起的問題 |
 | `v2.5.2` | 2026-10-16 | 狀態點改為顯示上次更新時間，修正同步、登入、信箱、公告與即時動態的多項問題 |
 | `v2.5.1` | 2026-10-15 | 修正課表、空教室、圖書館、信箱、同步與登入的多項問題 |

@@ -154,6 +154,106 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
+    /// A full sync holds these courses' colours and names from the server's
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/649).
+    @Test("A colour or name edit counts as pending from the edit until its request is sent")
+    func colourAndNameEditsArePendingUntilSent() async {
+        let backend = Backend()
+        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
+        backend.answer("sync/courses/1151EE2/override", body: Self.colourReply)
+        let coordinator = Self.makeCoordinator(backend)
+
+        coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")
+        coordinator.enqueueCourseNameOverride(moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en")
+        // Read at once: each edit is queued from a task of its own, which may not have run yet.
+        let pending = await coordinator.pendingCourseOverrides()
+        #expect(pending.colors == ["1151CS1"])
+        #expect(pending.names == ["1151EE2"])
+
+        for _ in 0..<2000 {
+            if await coordinator.outbox.pendingCount() == 2 { break }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        let queued = await coordinator.pendingCourseOverrides()
+        #expect(queued.colors == ["1151CS1"])
+        #expect(queued.names == ["1151EE2"])
+
+        await coordinator.syncTick()
+
+        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        let sent = await coordinator.pendingCourseOverrides()
+        #expect(sent.colors.isEmpty)
+        #expect(sent.names.isEmpty)
+    }
+
+    /// An edit both queued and sent while a full sync's fetch is out is in neither of its outbox
+    /// samples (https://github.com/tigerduck-app/tigerduck-app/issues/670).
+    @Test("A colour or name edit queued after a reading is listed after it is sent, and one queued before is not")
+    func editsQueuedAfterAReadingAreListedOnceSent() async {
+        let backend = Backend()
+        for course in ["1151CS0", "1151CS1", "1151EE2"] {
+            backend.answer("sync/courses/\(course)/override", body: Self.colourReply)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
+
+        let reading = await coordinator.pendingCourseOverrides().edits
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+        await coordinator.syncTick()
+
+        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        let pending = await coordinator.pendingCourseOverrides()
+        #expect(pending.colors.isEmpty && pending.names.isEmpty)
+        let edited = coordinator.courseOverrides(queuedAfter: reading)
+        #expect(edited.colors == ["1151CS1"])
+        #expect(edited.names == ["1151EE2"])
+    }
+
+    /// The sample is taken before the fetch, and the hold is read when the server's colours and
+    /// names are applied (https://github.com/tigerduck-app/tigerduck-app/issues/670).
+    @Test("A full sync holds what its sample listed and what was edited since, sent or not")
+    func aFullSyncHoldsWhatItsSampleListedAndWhatWasEditedSince() async {
+        let backend = Backend()
+        for course in ["1151CS0", "1151CS1", "1151EE2"] {
+            backend.answer("sync/courses/\(course)/override", body: Self.colourReply)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
+
+        let sample = await coordinator.pendingCourseOverrides()
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+        await coordinator.syncTick()
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE3", semester: "1151", customName: "Signals", locale: "en"
+        )?.value
+
+        #expect(backend.requests("sync/courses/1151CS0/override").count == 1)
+        let held = coordinator.courseOverridesToHold(since: sample)
+        #expect(held.colors == ["1151CS0", "1151CS1"])
+        #expect(held.names == ["1151EE2", "1151EE3"])
+    }
+
+    /// Use Local lets go of its hold once these end
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/681).
+    @Test("The task that queues a colour or a name ends once the edit is in the outbox")
+    func colourAndNameTasksEndOnceTheEditIsQueued() async {
+        let coordinator = Self.makeCoordinator(Backend())
+
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        #expect(await coordinator.outbox.pendingCount() == 1)
+
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+        #expect(await coordinator.outbox.pendingCount() == 2)
+    }
+
     @Test("A mark after the switch went off mid-drain stays queued")
     func switchTurnedOffMidDrainHoldsTheRest() async {
         let backend = Backend()
@@ -240,10 +340,54 @@ struct CloudSyncCoordinatorTests {
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardAssignmentOverrides()
+        await coordinator.discardEdits(of: ["assignments"], courseIgnores: false)
 
         #expect(await coordinator.pendingAssignmentOverrideIds().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
+    }
+
+    /// They went up after the answer and overwrote the server's values the user chose
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/665).
+    @Test("Use Server for colours or names drops those edits still queued, and leaves the other kind and every other edit")
+    func useServerDropsTheAnsweredColoursOrNames() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3")
+
+        await coordinator.discardEdits(of: ["courses"], courseIgnores: true)
+        let afterCourses = await coordinator.pendingCourseOverrides()
+        #expect(afterCourses.colors == ["1151CS1"])
+        #expect(afterCourses.names == ["1151EE2"])
+
+        await coordinator.discardEdits(of: ["course_colors"], courseIgnores: true)
+        let afterColours = await coordinator.pendingCourseOverrides()
+        #expect(afterColours.colors.isEmpty)
+        #expect(afterColours.names == ["1151EE2"])
+
+        await coordinator.discardEdits(of: ["course_names"], courseIgnores: true)
+        #expect(await coordinator.pendingCourseOverrides().names.isEmpty)
+        #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:GE3"])
+    }
+
+    @Test("Use Server for assignments drops the course settings still queued only when its check compared them")
+    func useServerDropsCourseSettingsTheCheckCompared() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+
+        await coordinator.discardEdits(of: ["courses", "course_colors", "course_names"], courseIgnores: true)
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
+
+        await coordinator.discardEdits(of: ["assignments"], courseIgnores: true)
+        #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
     }
 
     @Test("Closing the re-enable alert unanswered sends nothing and leaves its categories pending")

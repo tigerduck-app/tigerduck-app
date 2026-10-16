@@ -1,26 +1,40 @@
 // `FullSyncGate`, which runs one full sync at a time. A sync trigger push that arrived during a
 // pull used to be turned away, and the change it announced stayed unfetched in the background.
+import Foundation
 import Testing
 @testable import TigerDuck
 
 @MainActor
 struct FullSyncGateTests {
-    /// A full sync whose first run parks until `release()`. Records when each run starts and
-    /// ends, and what the callers note.
+    /// A full sync whose runs in `parking` park until `release()` or until their task is cancelled.
+    /// The first run syncs and later ones fail. Records when each run starts and ends, whether it
+    /// ended cancelled, and what the callers note.
     @MainActor
     private final class Pull {
         private(set) var events: [String] = []
         private var runs = 0
         private var parked: CheckedContinuation<Void, Never>?
+        private let parking: Set<Int>
+
+        init(parking: Set<Int> = [1]) {
+            self.parking = parking
+        }
 
         var isParked: Bool { parked != nil }
 
-        func run() async {
+        func run() async -> FullSyncOutcome {
             runs += 1
             let run = runs
             events.append("start \(run)")
-            if run == 1 { await withCheckedContinuation { parked = $0 } }
-            events.append("end \(run)")
+            if parking.contains(run) {
+                await withTaskCancellationHandler {
+                    await withCheckedContinuation { parked = $0 }
+                } onCancel: {
+                    Task { @MainActor in self.release() }
+                }
+            }
+            events.append(Task.isCancelled ? "end \(run), cancelled" : "end \(run)")
+            return run == 1 ? .synced : .failed
         }
 
         func note(_ event: String) { events.append(event) }
@@ -33,14 +47,15 @@ struct FullSyncGateTests {
 
     private static func call(
         _ gate: FullSyncGate, _ pull: Pull, followUp: Bool, mayFollow: Bool = true, note: String
-    ) -> Task<Void, Never> {
+    ) -> Task<FullSyncOutcome, Never> {
         Task {
-            await gate.run(followUp: followUp, mayFollow: { mayFollow }) { await pull.run() }
+            let outcome = await gate.run(followUp: followUp, mayFollow: { mayFollow }) { await pull.run() }
             pull.note(note)
+            return outcome
         }
     }
 
-    @Test("A trigger during a pull waits for one more pull that starts after it")
+    @Test("A trigger during a pull waits for one more pull that starts after it, and gets that one's outcome")
     func triggerDuringAPullGetsAFollowUp() async throws {
         let gate = FullSyncGate()
         let pull = Pull()
@@ -50,12 +65,94 @@ struct FullSyncGateTests {
         try await waitUntil { gate.queuedFollowUps == 1 }
 
         pull.release()
-        await trigger.value
-        await first.value
+        #expect(await trigger.value == .failed)
+        #expect(await first.value == .synced)
 
-        #expect(pull.events.prefix(4) == ["start 1", "end 1", "start 2", "end 2"])
-        #expect(pull.events.dropFirst(4).contains("trigger returned"))
+        // The call that ran the first pull returns without waiting for the follow-up.
+        #expect(pull.events == ["start 1", "end 1", "first returned", "start 2", "end 2", "trigger returned"])
         #expect(!gate.isRunning)
+    }
+
+    /// A sync trigger's time limit cancels its own pull, and a trigger that came later still has
+    /// time left (https://github.com/tigerduck-app/tigerduck-app/issues/682).
+    @Test("A follow-up is not cancelled with the call whose pull came before it")
+    func aFollowUpOutlivesTheCallBeforeIt() async throws {
+        let gate = FullSyncGate()
+        let pull = Pull()
+        let first = Self.call(gate, pull, followUp: true, note: "first returned")
+        try await waitUntil { pull.isParked }
+        let trigger = Self.call(gate, pull, followUp: true, note: "trigger returned")
+        try await waitUntil { gate.queuedFollowUps == 1 }
+
+        first.cancel()
+        #expect(await trigger.value == .failed)
+
+        #expect(pull.events.filter { $0.hasPrefix("start") || $0.hasPrefix("end") }
+            == ["start 1", "end 1, cancelled", "start 2", "end 2"])
+    }
+
+    @Test("A trigger that gives up while it waits returns at once, and no follow-up runs for it")
+    func aWaiterThatGivesUpGetsNoFollowUp() async throws {
+        let gate = FullSyncGate()
+        let pull = Pull()
+        let first = Self.call(gate, pull, followUp: false, note: "first returned")
+        try await waitUntil { pull.isParked }
+        let trigger = Self.call(gate, pull, followUp: true, note: "trigger returned")
+        try await waitUntil { gate.queuedFollowUps == 1 }
+
+        trigger.cancel()
+        try await waitUntil(timeout: .seconds(5)) { pull.events.contains("trigger returned") }
+        #expect(gate.queuedFollowUps == 0)
+        #expect(pull.isParked)
+
+        pull.release()
+        #expect(await trigger.value == .skipped)
+        #expect(await first.value == .synced)
+        #expect(pull.events.filter { $0.hasPrefix("start") } == ["start 1"])
+    }
+
+    @Test("A follow-up is cancelled once every call waiting for it gives up")
+    func aFollowUpNobodyWaitsForIsCancelled() async throws {
+        let gate = FullSyncGate()
+        let pull = Pull(parking: [1, 2])
+        let first = Self.call(gate, pull, followUp: false, note: "first returned")
+        try await waitUntil { pull.isParked }
+        let trigger = Self.call(gate, pull, followUp: true, note: "trigger returned")
+        try await waitUntil { gate.queuedFollowUps == 1 }
+        pull.release()
+        try await waitUntil { pull.events.contains("start 2") && pull.isParked }
+
+        trigger.cancel()
+        try await waitUntil(timeout: .seconds(5)) { pull.events.contains("end 2, cancelled") }
+        // Ends the follow-up if the cancel did not.
+        pull.release()
+
+        #expect(await trigger.value == .skipped)
+        #expect(await first.value == .synced)
+        try await waitUntil(timeout: .seconds(5)) { !gate.isRunning }
+    }
+
+    @Test("A follow-up goes on while a call still waits for it")
+    func aFollowUpSomebodyWaitsForGoesOn() async throws {
+        let gate = FullSyncGate()
+        let pull = Pull(parking: [1, 2])
+        let first = Self.call(gate, pull, followUp: false, note: "first returned")
+        try await waitUntil { pull.isParked }
+        let leaving = Self.call(gate, pull, followUp: true, note: "trigger returned")
+        let staying = Self.call(gate, pull, followUp: true, note: "app returned")
+        try await waitUntil { gate.queuedFollowUps == 2 }
+        pull.release()
+        try await waitUntil { pull.events.contains("start 2") && pull.isParked }
+
+        leaving.cancel()
+        try await waitUntil(timeout: .seconds(5)) { pull.events.contains("trigger returned") }
+        #expect(pull.isParked)
+        pull.release()
+
+        #expect(await leaving.value == .skipped)
+        #expect(await staying.value == .failed)
+        _ = await first.value
+        #expect(pull.events.contains("end 2"))
     }
 
     @Test("Triggers during one pull share one follow-up")
@@ -71,8 +168,8 @@ struct FullSyncGateTests {
         try await waitUntil { gate.queuedFollowUps == 2 }
 
         pull.release()
-        for trigger in triggers { await trigger.value }
-        await first.value
+        for trigger in triggers { _ = await trigger.value }
+        _ = await first.value
 
         #expect(pull.events.filter { $0.hasPrefix("start") } == ["start 1", "start 2"])
     }
@@ -84,11 +181,11 @@ struct FullSyncGateTests {
         let first = Self.call(gate, pull, followUp: false, note: "first returned")
         try await waitUntil { pull.isParked }
 
-        await Self.call(gate, pull, followUp: false, note: "second returned").value
+        #expect(await Self.call(gate, pull, followUp: false, note: "second returned").value == .skipped)
         #expect(pull.events == ["start 1", "second returned"])
 
         pull.release()
-        await first.value
+        _ = await first.value
         #expect(pull.events.filter { $0.hasPrefix("start") } == ["start 1"])
     }
 
@@ -102,10 +199,18 @@ struct FullSyncGateTests {
         try await waitUntil { gate.queuedFollowUps == 1 }
 
         pull.release()
-        await trigger.value
-        await first.value
+        #expect(await trigger.value == .skipped)
+        _ = await first.value
 
         #expect(pull.events.filter { $0.hasPrefix("start") } == ["start 1"])
         #expect(pull.events.contains("trigger returned"))
+    }
+
+    @Test("A sync cancelled at a sync trigger's time limit counts as no result, and a network failure as a failure")
+    func cancellationIsNoResult() {
+        #expect(AppState.isCancellation(CancellationError()))
+        #expect(AppState.isCancellation(URLError(.cancelled)))
+        #expect(!AppState.isCancellation(URLError(.timedOut)))
+        #expect(!AppState.isCancellation(PushAPIError.httpStatus(503, body: "")))
     }
 }

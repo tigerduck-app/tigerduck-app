@@ -51,11 +51,13 @@ jobs:
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
+              TigerDuckTests/MailReadableHTMLTests/theLinkColourIsWebKitsOwn(theme:)
               TigerDuckTests/ClassTableShareSheetTests
               TigerDuckTests/ClassTableSwitcherTests
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
               TigerDuckTests/EmptyClassroomLayoutTests
+              TigerDuckTests/ModalClosingTests
               TigerDuckTests/MoodleCourseMembersTests/aKeyThatMatchesNobodyKeepsTheSearchField()
               TigerDuckTests/PagingScrollLockTests
               TigerDuckTests/PasswordFieldAutoFillTests

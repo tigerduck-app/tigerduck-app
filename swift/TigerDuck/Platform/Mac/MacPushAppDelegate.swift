@@ -25,7 +25,7 @@ final class MacPushAppDelegate: NSObject, NSApplicationDelegate, PushTokenSource
             forward(error)
         }
     }
-    var onSyncTrigger: (() async -> Void)?
+    var onSyncTrigger: (() async -> FullSyncOutcome)?
 
     private var bufferedToken: Data?
     private var bufferedError: Error?
@@ -64,7 +64,7 @@ final class MacPushAppDelegate: NSObject, NSApplicationDelegate, PushTokenSource
                      didReceiveRemoteNotification userInfo: [String: Any]) {
         if userInfo["kind"] as? String == "sync_trigger" {
             logger.info("Silent sync trigger received")
-            Task { await onSyncTrigger?() }
+            Task { _ = await onSyncTrigger?() }
         }
     }
 }

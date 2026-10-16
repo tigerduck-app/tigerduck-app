@@ -326,7 +326,7 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.syncedAt == read)
     }
 
-    @Test("the dot spins while the day shown is read, and stops once it is read or the screen leaves")
+    @Test("the dot spins while the day shown is read, off screen too, and stops once it is read")
     func reading() async throws {
         let harness = Harness(at: Self.time(14, 10, 5))
         let gate = SettingsAPIStub.ReplyGate()
@@ -348,8 +348,9 @@ struct EmptyClassroomViewModelTests {
         harness.model.select(day: Self.day(15))
         #expect(harness.model.isReading)
         harness.model.disappear()
-        #expect(!harness.model.isReading)
+        #expect(harness.model.isReading)
         held.open()
+        try await waitUntil { !harness.model.isReading }
     }
 
     @Test("an answer that arrives after the account changed is not shown")
@@ -500,8 +501,26 @@ struct EmptyClassroomViewModelTests {
         harness.serve(Pages.page(rows: [Pages.row("IB-508", "..............")]), gate: gate)
     }
 
-    @Test("leaving the screen stops its read, so nothing it started lands later")
-    func leavingStopsTheRead() async throws {
+    @Test("leaving the screen lets its read finish, and a return to the day shows it without another")
+    func leavingKeepsTheRead() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        let gate = SettingsAPIStub.ReplyGate()
+        Self.serveHeldWednesday(harness, gate: gate)
+        harness.model.appear()
+        try await waitUntil { harness.requestCount == 3 }
+
+        // A pinned tab keeps its model across the visits.
+        harness.model.disappear()
+        harness.model.appear()
+        gate.open()
+
+        try await waitUntil { harness.model.usage != nil }
+        #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
+        #expect(harness.requestCount == 3)
+    }
+
+    @Test("a new screen while the last one's read runs shows that read instead of starting another")
+    func newScreenJoinsTheRead() async throws {
         let harness = Harness(at: Self.time(14, 10, 5))
         let gate = SettingsAPIStub.ReplyGate()
         Self.serveHeldWednesday(harness, gate: gate)
@@ -509,14 +528,13 @@ struct EmptyClassroomViewModelTests {
         try await waitUntil { harness.requestCount == 3 }
 
         harness.model.disappear()
+        let screen = harness.newScreen()
+        screen.appear()
         gate.open()
-        harness.serveDay([Pages.row("TR-209", "..............")])
-        let usage = try await harness.service.usage(
-            on: Self.day(14), isToday: true, force: false, credentials: Harness.credentials
-        ).usage
 
-        #expect(usage.rooms.map(\.room) == ["TR-209"])
-        #expect(harness.model.content == .loading)
+        try await waitUntil { screen.usage != nil }
+        #expect(screen.usage?.rooms.map(\.room) == ["IB-508"])
+        #expect(harness.requestCount == 3)
     }
 
     @Test("a second appear while the day loads keeps that load")
@@ -557,6 +575,34 @@ struct EmptyClassroomViewModelTests {
         try await waitUntil { harness.model.usage != nil }
         #expect(harness.model.usage?.rooms.map(\.room) == ["TR-209"])
         #expect(harness.model.selectedDay == Self.day(15))
+    }
+
+    @Test("a read ended by choosing another day leaves the dot as the site last answered")
+    func endedReadKeepsTheDot() async throws {
+        let harness = Harness(at: Self.time(14, 10, 5))
+        harness.serveDay([Pages.row("IB-508", "..............")])
+        harness.model.appear()
+        try await waitUntil { harness.model.usage != nil }
+        #expect(harness.service.siteStatus == .ok)
+
+        let thursday = SettingsAPIStub.ReplyGate()
+        let friday = SettingsAPIStub.ReplyGate()
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus"))
+        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]), gate: thursday)
+        harness.model.select(day: Self.day(15))
+        try await waitUntil { harness.requestCount == 6 }
+
+        harness.serve(Pages.page(campus: ""))
+        harness.serve(Pages.page(viewState: "campus"))
+        harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]), gate: friday)
+        harness.model.select(day: Self.day(16))
+        // Friday's read starts once Thursday's has ended, so its handling has run.
+        try await waitUntil { harness.requestCount == 9 }
+        #expect(harness.service.siteStatus == .ok)
+
+        friday.open()
+        thursday.open()
     }
 
     @Test("a return to the app reads the screen on view again, on today once the day shown has passed")

@@ -17,6 +17,8 @@ extension AppState {
         /// failure notice) opens the folder list. `uidValidity` is the generation `uid` was
         /// minted under, so a folder recreated before the tap cannot hand it to another mail.
         case schoolMail(folder: String, uid: UInt32?, uidValidity: UInt32? = nil)
+        /// An assignment reminder or the "due soon" Live Activity, by `SDAssignment.assignmentId`.
+        case assignment(String)
     }
 
     /// Parses a bulletin notification tap into a `DeepLink`: an operator's custom push and a

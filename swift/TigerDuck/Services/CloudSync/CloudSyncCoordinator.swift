@@ -60,7 +60,16 @@ final class CloudSyncCoordinator {
     // MARK: Internal state
 
     @ObservationIgnored private var tickInFlight = false
+    /// A tick asked for while one is running, which runs once that one ends.
+    @ObservationIgnored private var tickAskedDuringFlight = false
     @ObservationIgnored var started = false
+    /// Colour and name edits on their way into the outbox, which `pendingCourseOverrides` counts.
+    @ObservationIgnored private var courseOverridesEnqueuing: [UUID: SyncOp] = [:]
+    /// Moved by each colour or name edit queued here. `lastColorEdit` and `lastNameEdit` keep its
+    /// value at each course's last colour edit and last name edit, by Moodle id.
+    @ObservationIgnored private var courseOverrideEdits = 0
+    @ObservationIgnored private var lastColorEdit: [String: Int] = [:]
+    @ObservationIgnored private var lastNameEdit: [String: Int] = [:]
 
     // Observer plumbing
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
@@ -208,10 +217,21 @@ final class CloudSyncCoordinator {
     /// Drains the outbox. Pulls belong to `AppState.syncOverridesFromBackend`,
     /// which applies what it fetches; a tick has no use for a snapshot.
     func syncTick() async {
-        guard state == .active, !tickInFlight else { return }
+        guard state == .active else { return }
+        // An op queued while a drain is out is not in that drain, so it gets one more pass.
+        guard !tickInFlight else {
+            tickAskedDuringFlight = true
+            return
+        }
         tickInFlight = true
         defer { tickInFlight = false }
+        repeat {
+            tickAskedDuringFlight = false
+            await drainOnce()
+        } while tickAskedDuringFlight && state == .active
+    }
 
+    private func drainOnce() async {
         #if canImport(UIKit)
         let protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable
         #else
@@ -226,7 +246,7 @@ final class CloudSyncCoordinator {
             switch op {
             case .assignmentOverride: return !syncsMarks()
             case .courseIgnore: return !syncsIgnores()
-            case .courseOverride: return false
+            case .courseOverride, .courseDelete: return false
             }
         }) { [weak self] op in
             guard let self else { throw CancellationError() }
@@ -247,23 +267,40 @@ final class CloudSyncCoordinator {
 
     // MARK: - Enqueue helpers
 
-    func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) {
+    @discardableResult
+    func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) -> Task<Void, Never>? {
         // Accept edits during the enable() window (.enabling) too: the op
         // queues durably in the outbox and drains once state flips to .active.
         // Gating on == .active would silently drop them.
-        guard state != .disabled else { return }
-        let op = SyncOp.courseOverride(
+        guard state != .disabled else { return nil }
+        return enqueueCourseOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: nil, colorHex: colorHex, locale: nil, stamp: Date())
-        Task { await outbox.enqueue(op) }
+            customName: nil, colorHex: colorHex, locale: nil, stamp: Date()))
     }
 
-    func enqueueCourseNameOverride(moodleId: String, semester: String, customName: String, locale: String?) {
-        guard state != .disabled else { return }
-        let op = SyncOp.courseOverride(
+    @discardableResult
+    func enqueueCourseNameOverride(
+        moodleId: String, semester: String, customName: String, locale: String?
+    ) -> Task<Void, Never>? {
+        guard state != .disabled else { return nil }
+        return enqueueCourseOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: customName, colorHex: nil, locale: locale, stamp: Date())
-        Task { await outbox.enqueue(op) }
+            customName: customName, colorHex: nil, locale: locale, stamp: Date()))
+    }
+
+    /// The task ends once the edit is in the outbox.
+    private func enqueueCourseOverride(_ op: SyncOp) -> Task<Void, Never> {
+        if case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op {
+            courseOverrideEdits += 1
+            if colorHex != nil { lastColorEdit[moodleId] = courseOverrideEdits }
+            if customName != nil { lastNameEdit[moodleId] = courseOverrideEdits }
+        }
+        let id = UUID()
+        courseOverridesEnqueuing[id] = op
+        return Task {
+            await outbox.enqueue(op)
+            courseOverridesEnqueuing[id] = nil
+        }
     }
 
     /// Awaitable so callers can key "op is durably queued" transitions
@@ -290,12 +327,53 @@ final class CloudSyncCoordinator {
         return ids
     }
 
-    /// For the re-enabled Assignments switch's Use Server, which takes the server's marks over the
-    /// ones still on their way up.
-    func discardAssignmentOverrides() async {
+    /// The Moodle ids of the courses with a colour or a name edit queued here, which the server
+    /// may not have yet, and `edits`, the `courseOverrideEdits` count read before them. A full
+    /// sync leaves those as they are here, as it leaves queued marks (`courseOverridesToHold`).
+    func pendingCourseOverrides() async -> (colors: Set<String>, names: Set<String>, edits: Int) {
+        var pending: (colors: Set<String>, names: Set<String>, edits: Int) = ([], [], courseOverrideEdits)
+        // The edits on their way in are read after the snapshot, or one could land between the two.
+        for op in await outbox.snapshot().map(\.op) + courseOverridesEnqueuing.values {
+            guard case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op else { continue }
+            if colorHex != nil { pending.colors.insert(moodleId) }
+            if customName != nil { pending.names.insert(moodleId) }
+        }
+        return pending
+    }
+
+    /// The Moodle ids of the courses with a colour or a name edit queued after `reading`, a value of
+    /// `courseOverrideEdits`.
+    func courseOverrides(queuedAfter reading: Int) -> (colors: Set<String>, names: Set<String>) {
+        (Set(lastColorEdit.filter { $0.value > reading }.keys), Set(lastNameEdit.filter { $0.value > reading }.keys))
+    }
+
+    /// What a full sync leaves as it is here: what `pending` listed before its fetch, and each
+    /// colour or name edited since, which an edit queued and sent while the fetch was out would
+    /// otherwise escape, as it is in no sample.
+    func courseOverridesToHold(
+        since pending: (colors: Set<String>, names: Set<String>, edits: Int)
+    ) -> (colors: Set<String>, names: Set<String>) {
+        let edited = courseOverrides(queuedAfter: pending.edits)
+        return (pending.colors.union(edited.colors), pending.names.union(edited.names))
+    }
+
+    /// For Use Server in the re-enable dialog, which takes the server's data of `categories` over
+    /// the edits of them still on their way up: the marks for "assignments", with the course
+    /// settings when its check compared them (`courseIgnores`), and the colours and the names for
+    /// "course_colors" and "course_names".
+    func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
         await outbox.discard { op in
-            if case .assignmentOverride = op { return true }
-            return false
+            switch op {
+            case .assignmentOverride:
+                return categories.contains("assignments")
+            case .courseIgnore:
+                return courseIgnores && categories.contains("assignments")
+            case .courseOverride(_, _, let customName, let colorHex, _, _):
+                return (colorHex != nil && categories.contains("course_colors"))
+                    || (customName != nil && categories.contains("course_names"))
+            case .courseDelete:
+                return false
+            }
         }
     }
 
@@ -327,6 +405,53 @@ final class CloudSyncCoordinator {
             }
         }
         return keys
+    }
+
+    func enqueueCourseDelete(semester: String, courseNo: String) async {
+        guard state != .disabled else { return }
+        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: Date()))
+    }
+
+    /// Deletes a course hidden here from the server through the outbox. Its settings still queued
+    /// go first: the server drops them with the row, so their PATCH would 404.
+    func deleteCourse(semester: String, courseNo: String) async {
+        await discardCourseIgnores(semester: semester, courseNo: courseNo)
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo)
+        await syncTick()
+    }
+
+    /// Runs `fetch` and returns what it fetched with the keys of the course deletes queued before or
+    /// after it (`pendingCourseDeleteKeys`): one that lands meanwhile leaves the outbox, but the
+    /// snapshot fetched may still list its course.
+    func courseDeletes<Fetched>(
+        around fetch: () async throws -> Fetched
+    ) async rethrows -> (fetched: Fetched, deleting: Set<String>) {
+        let before = await pendingCourseDeleteKeys()
+        let fetched = try await fetch()
+        return (fetched, before.union(await pendingCourseDeleteKeys()))
+    }
+
+    /// `CourseTombstone` keys of the courses whose delete is queued, which the server may still
+    /// list: a full sync keeps them hidden here.
+    func pendingCourseDeleteKeys() async -> Set<String> {
+        var keys = Set<String>()
+        for entry in await outbox.snapshot() {
+            if case .courseDelete(let semester, let courseNo, _) = entry.op {
+                keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
+            }
+        }
+        return keys
+    }
+
+    /// Drops the course deletes still queued: every one, or `semester`'s, for a reset, which
+    /// deletes the courses itself and shows them again here, and those of the courses `courseKeys`
+    /// names, which were added back here.
+    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil) async {
+        await outbox.discard { op in
+            guard case .courseDelete(let opSemester, let courseNo, _) = op else { return false }
+            let key = CourseTombstone.serverKey(semester: opSemester, courseNo: courseNo)
+            return (semester == nil || semester == opSemester) && (courseKeys?.contains(key) ?? true)
+        }
     }
 
     /// Gives each mark the server kept refusing one more try. Called by every full sync, and by
@@ -364,6 +489,9 @@ final class CloudSyncCoordinator {
                 // A backend without the setting answers 200 and drops it, so only an answer that
                 // names it settles the op; anything else counts as a refusal.
                 guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
+
+            case .courseDelete(let courseKey):
+                try await pushCoordinator.deleteCourse(courseKey: courseKey)
             }
         } catch {
             if isUnauthorized(error) {

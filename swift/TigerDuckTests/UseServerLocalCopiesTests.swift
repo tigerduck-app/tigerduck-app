@@ -1,0 +1,41 @@
+import Foundation
+import Testing
+@testable import TigerDuck
+
+/// `AppState.dropLocalCopies(for:in:)`: what Use Server in the re-enable dialog drops on this
+/// device before the full sync that takes the server's data, against a cache of its own.
+@MainActor
+struct UseServerLocalCopiesTests {
+    private static func makeCache() -> DataCache {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("UseServerLocalCopiesTests-\(UUID().uuidString)", isDirectory: true)
+        return DataCache(
+            cacheDir: root.appendingPathComponent("cache", isDirectory: true),
+            persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
+        )
+    }
+
+    /// Cleared here, the hidden courses of a term the server lists none in, which the check did not
+    /// compare, came back with the sync after the answer and were uploaded.
+    @Test("Use Server keeps the hidden courses and drops what the other answered categories hold here")
+    func useServerKeepsTheHiddenCourses() {
+        let cache = Self.makeCache()
+        cache.saveDeletedCourseNos(["1142:CS1"])
+        cache.saveCourseCustomNames(["EE2": ["zh": "Name"]])
+        cache.replaceArchivedAssignmentIds(["7"])
+        cache.replaceIgnoredAssignmentCourses(["1151:EE2"])
+
+        AppState.dropLocalCopies(
+            for: AppState.ReenableConflict(
+                categories: ["courses", "course_names", "assignments"], description: "",
+                serverIgnoredCourses: [], serverMarkedAssignments: []
+            ),
+            in: cache
+        )
+
+        #expect(cache.loadDeletedCourseNos() == ["1142:CS1"])
+        #expect(cache.loadCourseCustomNames().isEmpty)
+        #expect(cache.loadArchivedAssignmentIds().isEmpty)
+        #expect(cache.loadIgnoredAssignmentCourses().isEmpty)
+    }
+}

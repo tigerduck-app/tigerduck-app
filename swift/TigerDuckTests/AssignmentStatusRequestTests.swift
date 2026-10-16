@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -17,6 +18,27 @@ struct AssignmentStatusRequestTests {
         MoodleSubmissionStatus(
             assignId: id, submissionStatus: submitted ? "submitted" : "new", gradingStatus: nil, submittedAt: nil
         )
+    }
+
+    @Test("each answer keeps when its own request went out, and one that fails is left out")
+    func eachAnswerKeepsItsAskTime() async throws {
+        let started = OSAllocatedUnfairLock<[Int: ContinuousClock.Instant]>(initialState: [:])
+        let records = [1, 2, 3].map { Self.record($0, cutoff: nil) }
+
+        // One at a time, so the second goes out only once the first has answered.
+        let answers = await AppServiceBridge.askStatuses(of: records, limit: 1) { id in
+            started.withLock { $0[id] = .now }
+            try await Task.sleep(for: .milliseconds(5))
+            guard id != 3 else { throw URLError(.timedOut) }
+            return MoodleSubmissionStatus(
+                assignId: id, submissionStatus: id == 2 ? "submitted" : "new", gradingStatus: nil, submittedAt: nil
+            )
+        }
+
+        #expect(answers.keys.sorted() == [1, 2])
+        #expect(answers[2]?.status.isSubmitted == true)
+        let firstStarted = try #require(started.withLock { $0[1] })
+        #expect(try #require(answers[2]?.askedAt) > firstStarted)
     }
 
     @Test("a closed assignment is not asked about again until its cutoff moves past the answer")

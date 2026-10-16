@@ -44,6 +44,59 @@ struct MailBackgroundRefreshTests {
             featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: true))
     }
 
+    /// Before the first unlock after a restart, or in a process that started then and kept the
+    /// empty copy, the preferences read as signed out, and a run that went by them would schedule
+    /// no next one (https://github.com/tigerduck-app/tigerduck-app/issues/691).
+    @Test func aRunWhileStoredDataDoesNotReadBackSchedulesTheNextAndChecksNothing() async throws {
+        let suite = "MailBackgroundRefreshTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let prefs = DefaultsMailPreferences(defaults: defaults)
+        prefs.studentID = "B00000000"
+        var scheduled = 0
+        var checked = 0
+
+        let succeeded = await MailBackgroundRefresh.refresh(
+            storedDataReadsBack: { false },
+            prefs: prefs,
+            notificationsDenied: { false },
+            schedule: { scheduled += 1 },
+            check: {
+                checked += 1
+                return .skippedBusy
+            }
+        )
+
+        #expect(!succeeded)
+        #expect(scheduled == 1)
+        #expect(checked == 0)
+    }
+
+    @Test func aRunOnReadablePreferencesOfASignedInAccountSchedulesTheNextAndChecks() async throws {
+        let suite = "MailBackgroundRefreshTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let prefs = DefaultsMailPreferences(defaults: defaults)
+        prefs.studentID = "B00000000"
+        var scheduled = 0
+        var checked = 0
+
+        let succeeded = await MailBackgroundRefresh.refresh(
+            storedDataReadsBack: { true },
+            prefs: prefs,
+            notificationsDenied: { false },
+            schedule: { scheduled += 1 },
+            check: {
+                checked += 1
+                return .skippedBusy
+            }
+        )
+
+        #expect(succeeded)
+        #expect(scheduled == 1)
+        #expect(checked == 1)
+    }
+
     /// Leaving the foreground cannot wait for a permission read, so it decides from the last
     /// one, which every read records. Every reader here records the simulator's real answer.
     @Test func leavingTheForegroundDecidesFromTheLastPermissionRead() async {

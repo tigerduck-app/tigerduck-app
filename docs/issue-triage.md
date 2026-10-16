@@ -26,7 +26,7 @@ Pull requests have no type, so a label gives the kind:
 - `bug`: fixes a bug
 - `enhancement`: adds or improves a feature
 - `documentation`: only changes documentation
-- `dependencies`: a dependency update; Dependabot and Renovate add it
+- `dependencies`: a dependency update; Dependabot adds it
 
 Other work, such as refactoring or CI, gets no kind label. Link the issue with `Closes #123` in
 the description. Reviewers, milestone and projects are not set by hand; Greptile reviews every

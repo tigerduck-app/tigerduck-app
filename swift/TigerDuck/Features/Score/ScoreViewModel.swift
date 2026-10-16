@@ -159,7 +159,8 @@ final class ScoreViewModel {
         generation: Int,
         isCurrent: () -> Bool,
         isReachable: () async -> Bool,
-        fetch: () async throws -> (report: ScoreReport, cachedAt: Date)
+        fetch: () async throws -> (report: ScoreReport, cachedAt: Date),
+        indicator manager: LoadingIndicator = NTUSTSessionManager.shared
     ) async {
         switchAccount(to: studentId)
         let owner = RefreshOwner(studentId: studentId, generation: generation)
@@ -167,7 +168,6 @@ final class ScoreViewModel {
         inFlightRefresh = owner
         defer { if inFlightRefresh == owner { inFlightRefresh = nil } }
         errorMessage = nil
-        let manager = NTUSTSessionManager.shared
         // Captive-portal pre-flight: NTUSTScoreService rides the pinned SSO chain, so a portal
         // would surface as a confusing TLS error. Setting `manager.loadingState` as the other tabs'
         // bail paths do keeps ScoreView's SyncStatusDot in the same offline state as theirs.

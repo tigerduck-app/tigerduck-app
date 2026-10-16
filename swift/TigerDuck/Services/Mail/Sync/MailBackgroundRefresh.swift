@@ -50,28 +50,42 @@ nonisolated enum MailBackgroundRefresh {
     }
 
     private static func handle(_ task: BGAppRefreshTask) {
-        // `DefaultsMailPreferences()` (nonisolated), not `MailAccountManager.shared`, which is
-        // @MainActor and this callback isn't guaranteed to run on the main actor.
-        let prefs = DefaultsMailPreferences()
         let completion = TaskCompletion(task: task)
-        let work = Task {
-            let denied = await MailNotificationPermission.isDenied()
-            if shouldRescheduleAfterHandling(
-                featureEnabled: SchoolMailAvailability.isEnabled,
-                signedIn: prefs.studentID != nil,
-                notificationsEnabled: prefs.notificationsEnabled,
-                authFailed: prefs.authFailed,
-                notificationsDenied: denied
-            ) {
-                schedule()
-            }
-            let outcome = await MailChecker.shared.check(trigger: .backgroundTask)
-            completion.finish(success: outcome.isSuccess)
-        }
+        let work = Task { completion.finish(success: await refresh()) }
         task.expirationHandler = {
             work.cancel()
             completion.finish(success: false)
         }
+    }
+
+    /// One background check. While stored data does not read back, as before the first unlock after
+    /// a restart or in a process that started then, the preferences read as signed out and a check
+    /// would schedule no next one, so it only schedules it
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/691). `prefs` is
+    /// `DefaultsMailPreferences()`, not `MailAccountManager.shared`, which is @MainActor: this
+    /// callback isn't guaranteed to run on the main actor.
+    static func refresh(
+        storedDataReadsBack: () -> Bool = { FirstUnlock.storedDataReadsBack() },
+        prefs: any MailPreferences = DefaultsMailPreferences(),
+        notificationsDenied: () async -> Bool = { await MailNotificationPermission.isDenied() },
+        schedule: () -> Void = { MailBackgroundRefresh.schedule() },
+        check: () async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .backgroundTask) }
+    ) async -> Bool {
+        guard storedDataReadsBack() else {
+            schedule()
+            return false
+        }
+        let denied = await notificationsDenied()
+        if shouldRescheduleAfterHandling(
+            featureEnabled: SchoolMailAvailability.isEnabled,
+            signedIn: prefs.studentID != nil,
+            notificationsEnabled: prefs.notificationsEnabled,
+            authFailed: prefs.authFailed,
+            notificationsDenied: denied
+        ) {
+            schedule()
+        }
+        return await check().isSuccess
     }
 
     /// Calls `setTaskCompleted` exactly once, whichever of expiry and completion is first.

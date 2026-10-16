@@ -13,6 +13,12 @@ nonisolated enum CourseTombstone {
         "\(semester):\(courseNo)"
     }
 
+    /// The server's `course_key` for a course this app uploads, which its deletes and forced
+    /// uploads name: the key here, after "client:".
+    static func serverKey(semester: String, courseNo: String) -> String {
+        "client:" + key(semester: semester, courseNo: courseNo)
+    }
+
     /// The term and course number of a scoped key, or nil for a legacy bare entry.
     static func parts(of key: String) -> (semester: String, courseNo: String)? {
         guard let colon = key.firstIndex(of: ":") else { return nil }

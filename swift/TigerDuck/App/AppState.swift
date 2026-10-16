@@ -311,6 +311,9 @@ final class AppState {
     /// `DataCache.loadSemesterResetAt`'s job.
     var resettingSemesters: Set<String> = []
 
+    /// What running Use Local answers keep pending while their course requests run. See the type.
+    var useLocalHold = UseLocalHold()
+
     var _libraryRevision = 0
     private var librarySignInObserver: Any?
     var syncTask: Task<Void, Never>?

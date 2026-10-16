@@ -504,6 +504,16 @@ struct MoodleCourseMembersTests {
         #expect(retrying == nil)
     }
 
+    @Test("the search field shows over a fetched list and its no-match line, never over the first fetch")
+    func searchNeedsAList() {
+        let error = MoodleWebserviceError.transientNetwork(underlying: "offline")
+        let list = MoodleMemberList(ownId: nil, members: [])
+        #expect(!MoodleMembersView.Content(list: nil, isRefreshing: true, failure: nil, query: "").hasList)
+        #expect(!MoodleMembersView.Content(list: nil, isRefreshing: false, failure: error, query: "").hasList)
+        #expect(MoodleMembersView.Content(list: list, isRefreshing: false, failure: nil, query: "").hasList)
+        #expect(MoodleMembersView.Content(list: list, isRefreshing: false, failure: nil, query: "nobody").hasList)
+    }
+
     @Test("sections run instructors, assistants, other roles by Moodle's order, auditors, then students")
     func sectionOrder() {
         let sections = MoodleMemberSection.sections(of: [
@@ -631,12 +641,12 @@ extension MoodleCourseMembersTests {
         })
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
-        try await waitUntil { Self.scrollView(in: window).map { $0.contentSize.height > 0 } ?? false }
-        let list = try #require(Self.scrollView(in: window))
+        try await waitUntil { window.descendants(ofType: UIScrollView.self).first.map { $0.contentSize.height > 0 } ?? false }
+        let list = try #require(window.descendants(ofType: UIScrollView.self).first)
         // The field shows once the list is pulled past its top.
         list.contentOffset.y = -list.adjustedContentInset.top - 60
-        try await waitUntil { !Self.textFields(in: window).isEmpty }
-        let field = try #require(Self.textFields(in: window).first)
+        try await waitUntil { !window.descendants(ofType: UITextField.self).isEmpty }
+        let field = try #require(window.descendants(ofType: UITextField.self).first)
         field.becomeFirstResponder()
         try await waitUntil { field.isFirstResponder }
         let height = list.contentSize.height
@@ -645,19 +655,7 @@ extension MoodleCourseMembersTests {
         try await waitUntil { list.contentSize.height != height }
 
         #expect(field.isFirstResponder)
-        #expect(Self.textFields(in: window).map(ObjectIdentifier.init) == [ObjectIdentifier(field)])
-    }
-
-    private static func scrollView(in view: UIView) -> UIScrollView? {
-        descendants(of: view).compactMap { $0 as? UIScrollView }.first
-    }
-
-    private static func textFields(in view: UIView) -> [UITextField] {
-        descendants(of: view).compactMap { $0 as? UITextField }
-    }
-
-    private static func descendants(of view: UIView) -> [UIView] {
-        view.subviews.flatMap { [$0] + descendants(of: $0) }
+        #expect(window.descendants(ofType: UITextField.self).map(ObjectIdentifier.init) == [ObjectIdentifier(field)])
     }
 }
 #endif
