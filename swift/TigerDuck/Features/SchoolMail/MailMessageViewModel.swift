@@ -54,6 +54,14 @@ nonisolated struct MailLinkTarget: Equatable, Sendable, Identifiable {
     }
 }
 
+/// A mail's formatted view on each page (`MailReadableHTML`).
+nonisolated struct MailFormattedPages: Equatable, Sendable {
+    var app: String
+    var light: String
+    /// The mail sets a text or background colour of its own, so it opens on white paper.
+    var setsColors: Bool
+}
+
 @MainActor
 @Observable
 final class MailMessageViewModel {
@@ -86,6 +94,8 @@ final class MailMessageViewModel {
     /// `sanitized.html`, with every `<a href>` rewritten to an index into `linkedDocument.links`
     /// — what the web view actually loads. See `linkTarget(forIndex:)`.
     private(set) var linkedDocument: LinkedHTML?
+    /// `linkedDocument.html` on each page, with the text the sender made unreadable there fixed.
+    private(set) var pages: MailFormattedPages?
     private(set) var plainText = ""
     /// `plainText` with its links, found once per message rather than on every redraw.
     private(set) var linkedPlainText = AttributedString()
@@ -120,9 +130,13 @@ final class MailMessageViewModel {
     private(set) var folderRoles: [MailFolderRole: String]
     var mode: ViewMode = .formatted
     /// "View in light mode": the formatted view drawn on white paper (`MailHTMLTheme.light`)
-    /// instead of the app's own page. It belongs to this screen, like `mode` — never saved — so
-    /// the next mail opens on the app's page again; only the mail that needed it was switched.
+    /// instead of the app's own page. On from the start for mail that sets its own colours,
+    /// which was written against white paper, and off for any other. It belongs to this screen,
+    /// like `mode`, and is never saved, so each mail opens on the page its own colours call for.
     var viewsInLightMode = false
+    /// Set once the first HTML body has picked `viewsInLightMode`'s starting value, so a refresh
+    /// or a retry keeps the reader's own choice.
+    @ObservationIgnored private var hasPickedPage = false
 
     /// `(folder, uid, seen)` — the folder is part of the identity being reported, not
     /// context: a UID means nothing without it, and the list must be able to tell that this
@@ -202,6 +216,9 @@ final class MailMessageViewModel {
 
     /// The page the formatted view draws the mail on.
     var htmlTheme: MailHTMLTheme { viewsInLightMode ? .light : .app }
+
+    /// The document the formatted view loads: `linkedDocument.html` as `htmlTheme`'s page draws it.
+    var formattedHTML: String? { viewsInLightMode ? pages?.light : pages?.app }
 
     /// Delete means "move to Trash"; inside Trash, or with no Trash folder resolved, it is
     /// permanent.
@@ -317,6 +334,7 @@ final class MailMessageViewModel {
         guard let computed = await recomputeSanitizedHTML(html: html, textBody: nil, allowImages: true) else { return }
         sanitized = computed.0
         linkedDocument = computed.1
+        pages = computed.3
     }
 
     /// `BODY.PEEK[]`: never marks the mail read. No size prompt: `MailSourceTextView` lays out
@@ -576,26 +594,34 @@ final class MailMessageViewModel {
 
     // MARK: Internals
 
-    /// `MailHTMLSanitizer.sanitize` and `.rewriteLinks` together run SwiftSoup's parser up to
-    /// three times (a parse, a rewrite-and-reserialize, and the rewrite's own reparse for its
-    /// lockstep check). Inline, that would block the main actor on a large or complex mail, so
-    /// it runs in a detached task.
+    /// `MailHTMLSanitizer.sanitize`, `.rewriteLinks` and `MailReadableHTML` together run
+    /// SwiftSoup's parser up to four times (a parse, a rewrite-and-reserialize, the rewrite's own
+    /// reparse for its lockstep check, and one for both pages' colours). Inline, that would block
+    /// the main actor on a large or complex mail, so it runs in a detached task.
     ///
     /// Bumps and captures `htmlGeneration` before the work starts and returns `nil` unless it is
     /// still current when the work finishes, so only the last-started of `apply`/`loadImages`
     /// has its result applied, whatever the completion order.
-    private func recomputeSanitizedHTML(html: String?, textBody: String?, allowImages: Bool) async -> (SanitizedHTML?, LinkedHTML?, String)? {
+    private func recomputeSanitizedHTML(
+        html: String?, textBody: String?, allowImages: Bool
+    ) async -> (SanitizedHTML?, LinkedHTML?, String, MailFormattedPages?)? {
         htmlGeneration += 1
         let generation = htmlGeneration
-        let computed = await Task.detached { () -> (SanitizedHTML?, LinkedHTML?, String) in
-            guard let html else { return (nil, nil, textBody ?? "") }
+        let computed = await Task.detached { () -> (SanitizedHTML?, LinkedHTML?, String, MailFormattedPages?) in
+            guard let html else { return (nil, nil, textBody ?? "", nil) }
             let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: allowImages)
             let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
+            let readable = MailReadableHTML(linked.html)
+            let pages = MailFormattedPages(
+                app: readable.html(onPage: MailHTMLTheme.app.background),
+                light: readable.html(onPage: MailHTMLTheme.light.background),
+                setsColors: readable.setsColors
+            )
             // Built from the sanitized document, like Android's `SchoolMailMessageViewModel`. From
             // the raw body, text dropped with its container would show only in the plain view,
             // linkified (a bait-and-switch), and fire the password-bait check on text never shown.
             let plain = textBody ?? MailHTMLSanitizer.plainText(fromHTML: sanitized.html)
-            return (sanitized, linked, plain)
+            return (sanitized, linked, plain, pages)
         }.value
         return generation == htmlGeneration ? computed : nil
     }
@@ -605,9 +631,14 @@ final class MailMessageViewModel {
             return
         }
         self.detail = detail
-        let (freshSanitized, freshLinked, freshPlainText) = computed
+        let (freshSanitized, freshLinked, freshPlainText, freshPages) = computed
         sanitized = freshSanitized
         linkedDocument = freshLinked
+        pages = freshPages
+        if !hasPickedPage, let freshPages {
+            viewsInLightMode = freshPages.setsColors
+            hasPickedPage = true
+        }
         plainText = freshPlainText
         linkedPlainText = MailTextLinkifier.attributed(freshPlainText)
         // The formatted view is about to stop being offered for a mail with no HTML part

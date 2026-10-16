@@ -5,26 +5,25 @@ import os
 import UIKit
 
 /// The page a mail's HTML is drawn on: the app's own surface (`app`), or white paper (`light`)
-/// only when the reader asks for it.
+/// for mail that sets its own colours and whenever the reader asks for it.
 ///
-/// Only the page is themed. A sender's own colours are never rewritten, because rewriting them
-/// distorts logos, screenshots and branded mail with no way for the reader to tell; mail that
-/// opts into `prefers-color-scheme` follows along through `color-scheme`, which also keeps the
-/// user agent's own defaults (links, form controls) legible on a dark page.
+/// A sender's colours stay as sent, so logos, tables and highlights look as designed, except a
+/// text colour too faint to read on its background, which `MailReadableHTML` moves to the
+/// nearest lightness that reads. `color-scheme` keeps the user agent's own defaults (links, form
+/// controls) legible on a dark page.
 nonisolated struct MailHTMLTheme: Equatable, Hashable, Sendable {
     /// `0xRRGGBB`.
     var background: UInt32
     var foreground: UInt32
     var isDark: Bool
 
-    /// `Color.backgroundPrimary` and `Color.textPrimary` — what `MailMessageView` itself is
+    /// `Color.backgroundPrimary` and `Color.textPrimary`, what `MailMessageView` itself is
     /// drawn in. The app is dark-only (`TigerDuckApp` pins `.preferredColorScheme(.dark)`), so
-    /// there is exactly one app theme to follow; the only other page is `light`, on request.
+    /// there is one app theme to follow; the only other page is `light`.
     static let app = MailHTMLTheme(background: 0x000000, foreground: 0xFFFFFF, isDark: true)
 
-    /// White paper: "View in light mode". Leaving the sender's colours alone means a mail that
-    /// sets dark text and no background of its own reads as nothing on `app`'s black page; this
-    /// is the page such a mail was written against, and the reader's way back to it.
+    /// White paper, the page mail that sets its own colours was written against: where such mail
+    /// opens, and "View in light mode" for any other.
     static let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x000000, isDark: false)
 
     var backgroundCSS: String { Self.css(background) }
