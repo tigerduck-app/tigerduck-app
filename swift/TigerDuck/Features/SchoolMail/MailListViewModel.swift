@@ -981,6 +981,9 @@ final class MailListViewModel {
     /// `markSeenLocally`/`removeLocally` are synchronous (the message screen calls them
     /// without awaiting), so the disk write can't be awaited here — it's queued through
     /// `chainCacheWrite` instead, fire-and-forget.
+    ///
+    /// It checks no `accountEpoch`: it saves only what `pages` holds, and a sign-out empties
+    /// `pages` (`resetInMemoryState`) in the main-actor turn that starts the cache wipe.
     private func persist(folder: String) {
         guard let page = pages[folder].map(Self.cachedCopy(of:)) else { return }
         let cache = self.cache
@@ -1013,8 +1016,9 @@ final class MailListViewModel {
     @discardableResult
     private func chainCacheWrite(_ operation: @escaping @Sendable (_ wipeCount: Int) -> Void) -> Task<Void, Never> {
         let previous = pendingCacheWrite
-        // Read when queued, just after the caller checked `accountEpoch` on the main actor, where
-        // a sign-out runs too: a write still queued when its wipe runs then writes nothing.
+        // Read when queued. A write queued before a sign-out then writes nothing once its wipe runs;
+        // one queued after it is stopped before this, by the caller's `accountEpoch` check or, in
+        // `persist(folder:)`, by the `pages` the sign-out emptied in the turn that starts the wipe.
         let wipeCount = cache.wipeCount
         let task = Task.detached {
             _ = await previous?.value
