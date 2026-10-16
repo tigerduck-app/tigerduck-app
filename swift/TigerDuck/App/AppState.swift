@@ -311,9 +311,9 @@ final class AppState {
     /// `DataCache.loadSemesterResetAt`'s job.
     var resettingSemesters: Set<String> = []
 
-    /// The categories a Use Local answer sends after its course requests, while those run. A full
-    /// sync leaves them as it leaves a pending check's (`sentAfterCourses`). In memory, like
-    /// `resettingSemesters`.
+    /// The categories a Use Local answer keeps pending while its course requests run
+    /// (`sentAfterCourses`). The re-enable check skips them, as the answer sends them itself. In
+    /// memory: after a relaunch no answer runs, and the check asks about them again.
     var keepingLocalCategories: Set<String> = []
 
     var _libraryRevision = 0

@@ -113,7 +113,9 @@ extension AppState {
     ///   own 401 handler, which takes over the in-flight flag the outer call holds
     ///   and releases it when it ends, as the outer call would have.
     func checkPendingConflicts(retriesLeft: Int, isRetry: Bool) {
-        let pending = Defaults[.pendingConflictCategories]
+        let pending = Self.categoriesToCheck(
+            pending: Defaults[.pendingConflictCategories], answering: keepingLocalCategories
+        )
         let generation = authService.loginGeneration
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
@@ -284,7 +286,10 @@ extension AppState {
                 await MainActor.run {
                     let outcome = Self.conflictCheckOutcome(
                         mayWrite: fullSyncMayWrite(since: generation), checked: pending,
-                        stillPending: Defaults[.pendingConflictCategories], foundDifference: !diffs.isEmpty
+                        stillPending: Self.categoriesToCheck(
+                            pending: Defaults[.pendingConflictCategories], answering: keepingLocalCategories
+                        ),
+                        foundDifference: !diffs.isEmpty
                     )
                     conflictCheckRetry.note(outcome, at: Date(), generation: generation)
                     switch outcome {
@@ -500,10 +505,10 @@ extension AppState {
             // Subtract, not clear: a category re-enabled after this check started was not in this
             // dialog, so clearing it would record a decision the user was never asked to make.
             // Left pending, the next check presents it on its own.
-            Defaults[.pendingConflictCategories].subtract(conflict.categories)
+            let held = keepLocal ? Self.sentAfterCourses(conflict.categories) : []
+            Defaults[.pendingConflictCategories].subtract(Set(conflict.categories).subtracting(held))
             var coursesSaveFailed = false
             if keepLocal {
-                let held = Self.sentAfterCourses(conflict.categories)
                 keepingLocalCategories.formUnion(held)
                 defer { keepingLocalCategories.subtract(held) }
                 if conflict.categories.contains("courses"), CourseUploadPolicy.uploadsCourses {
@@ -584,6 +589,8 @@ extension AppState {
                         }
                     }
                 }
+                // Queued, so from here the outbox holds them from full syncs until they are sent.
+                Defaults[.pendingConflictCategories].subtract(held)
             } else {
                 Self.dropLocalCopies(for: conflict)
                 await syncOverridesFromBackend()
@@ -598,10 +605,17 @@ extension AppState {
         }
     }
 
+    /// The pending categories a re-enable check compares: all but those a Use Local answer still
+    /// keeps pending (`answering`, `keepingLocalCategories`), which it sends itself. Asking about
+    /// one again would repeat the question the user has answered.
+    nonisolated static func categoriesToCheck(pending: Set<String>, answering: Set<String>) -> Set<String> {
+        pending.subtracting(answering)
+    }
+
     /// The answered categories Use Local reads from this device only once its course requests are
     /// done. A full sync meanwhile would take the server's data of them, and the answer would send
-    /// that back, so they are held as a pending check's are. The courses' own terms are latched in
-    /// `resettingSemesters` instead.
+    /// that back, so they stay pending until the answer has queued them; an app ended meanwhile
+    /// asks again after its relaunch. The courses' own terms are latched in `resettingSemesters`.
     nonisolated static func sentAfterCourses(_ categories: [String]) -> Set<String> {
         Set(categories).subtracting(["courses"])
     }
