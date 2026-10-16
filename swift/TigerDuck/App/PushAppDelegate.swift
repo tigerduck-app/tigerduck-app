@@ -65,8 +65,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         UNUserNotificationCenter.current().delegate = nd
         self.notificationDelegate = nd
         #if os(iOS)
-        // School Mail's refresh task must be registered before launch finishes.
+        // School Mail's refresh task must be registered before launch finishes. Its checks decode
+        // with the charset hook, which a held-back launch's School Mail bootstrap installs late.
         if SchoolMailAvailability.isEnabled {
+            SchoolMailCharsetHook.install()
             MailBackgroundRefresh.register()
         }
         #endif
