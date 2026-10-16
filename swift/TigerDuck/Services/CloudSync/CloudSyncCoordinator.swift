@@ -312,12 +312,23 @@ final class CloudSyncCoordinator {
         return pending
     }
 
-    /// For the re-enabled Assignments switch's Use Server, which takes the server's marks over the
-    /// ones still on their way up.
-    func discardAssignmentOverrides() async {
+    /// For Use Server in the re-enable dialog, which takes the server's data of `categories` over
+    /// the edits of them still on their way up: the marks for "assignments", with the course
+    /// settings when its check compared them (`courseIgnores`), and the colours and the names for
+    /// "course_colors" and "course_names".
+    func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
         await outbox.discard { op in
-            if case .assignmentOverride = op { return true }
-            return false
+            switch op {
+            case .assignmentOverride:
+                return categories.contains("assignments")
+            case .courseIgnore:
+                return courseIgnores && categories.contains("assignments")
+            case .courseOverride(_, _, let customName, let colorHex, _, _):
+                return (colorHex != nil && categories.contains("course_colors"))
+                    || (customName != nil && categories.contains("course_names"))
+            case .courseDelete:
+                return false
+            }
         }
     }
 

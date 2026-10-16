@@ -509,13 +509,13 @@ extension AppState {
         let generation = authService.loginGeneration
         let isCurrent = { [weak self] in self?.authService.loginGeneration == generation }
         Task {
-            if !keepLocal, conflict.categories.contains("assignments") {
-                // Before the subtract below: until then the pending check holds these in the
-                // outbox, and once it ends a drain could send them before they are dropped.
-                await cloudSyncCoordinator.discardAssignmentOverrides()
-                if conflict.serverIgnoredCourses != nil {
-                    await cloudSyncCoordinator.discardCourseIgnores()
-                }
+            if !keepLocal {
+                // Before the subtract below, as the pending check holds the marks in the outbox
+                // until then, and before the sync below, which leaves a course with a colour or a
+                // name queued as it is here.
+                await cloudSyncCoordinator.discardEdits(
+                    of: Set(conflict.categories), courseIgnores: conflict.serverIgnoredCourses != nil
+                )
             }
             let held = useLocalHold.take(
                 conflict.categories, keepLocal: keepLocal, from: &Defaults[.pendingConflictCategories]

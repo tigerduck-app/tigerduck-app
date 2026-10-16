@@ -272,10 +272,57 @@ struct CloudSyncCoordinatorTests {
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardAssignmentOverrides()
+        await coordinator.discardEdits(of: ["assignments"], courseIgnores: false)
 
         #expect(await coordinator.pendingAssignmentOverrideIds().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
+    }
+
+    /// They went up after the answer and overwrote the server's values the user chose
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/665).
+    @Test("Use Server for colours or names drops those edits still queued, and leaves the other kind and every other edit")
+    func useServerDropsTheAnsweredColoursOrNames() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")
+        coordinator.enqueueCourseNameOverride(moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en")
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3")
+        // The colour and the name are queued from tasks of their own.
+        for _ in 0..<2000 {
+            if await coordinator.outbox.pendingCount() == 5 { break }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+
+        await coordinator.discardEdits(of: ["courses"], courseIgnores: true)
+        let afterCourses = await coordinator.pendingCourseOverrides()
+        #expect(afterCourses.colors == ["1151CS1"])
+        #expect(afterCourses.names == ["1151EE2"])
+
+        await coordinator.discardEdits(of: ["course_colors"], courseIgnores: true)
+        let afterColours = await coordinator.pendingCourseOverrides()
+        #expect(afterColours.colors.isEmpty)
+        #expect(afterColours.names == ["1151EE2"])
+
+        await coordinator.discardEdits(of: ["course_names"], courseIgnores: true)
+        #expect(await coordinator.pendingCourseOverrides().names.isEmpty)
+        #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:GE3"])
+    }
+
+    @Test("Use Server for assignments drops the course settings still queued only when its check compared them")
+    func useServerDropsCourseSettingsTheCheckCompared() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+
+        await coordinator.discardEdits(of: ["courses", "course_colors", "course_names"], courseIgnores: true)
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
+
+        await coordinator.discardEdits(of: ["assignments"], courseIgnores: true)
+        #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
     }
 
     @Test("Closing the re-enable alert unanswered sends nothing and leaves its categories pending")
