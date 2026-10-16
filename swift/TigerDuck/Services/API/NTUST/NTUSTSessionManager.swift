@@ -11,6 +11,14 @@ enum LoadingState: Equatable {
     case error(String)
 }
 
+/// The sync indicator a refresh drives, so a test can hand in its own instead of the app's one.
+protocol LoadingIndicator: AnyObject {
+    var loadingState: LoadingState { get set }
+    var loadingStarts: Int { get }
+}
+
+extension NTUSTSessionManager: LoadingIndicator {}
+
 @Observable
 final class NTUSTSessionManager {
     static let shared = NTUSTSessionManager()
