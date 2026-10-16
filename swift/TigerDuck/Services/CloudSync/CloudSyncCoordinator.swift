@@ -65,6 +65,11 @@ final class CloudSyncCoordinator {
     @ObservationIgnored var started = false
     /// Colour and name edits on their way into the outbox, which `pendingCourseOverrides` counts.
     @ObservationIgnored private var courseOverridesEnqueuing: [UUID: SyncOp] = [:]
+    /// Moved by each colour or name edit queued here. `lastColorEdit` and `lastNameEdit` keep its
+    /// value at each course's last colour edit and last name edit, by Moodle id.
+    @ObservationIgnored private var courseOverrideEdits = 0
+    @ObservationIgnored private var lastColorEdit: [String: Int] = [:]
+    @ObservationIgnored private var lastNameEdit: [String: Int] = [:]
 
     // Observer plumbing
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
@@ -285,6 +290,11 @@ final class CloudSyncCoordinator {
 
     /// The task ends once the edit is in the outbox.
     private func enqueueCourseOverride(_ op: SyncOp) -> Task<Void, Never> {
+        if case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op {
+            courseOverrideEdits += 1
+            if colorHex != nil { lastColorEdit[moodleId] = courseOverrideEdits }
+            if customName != nil { lastNameEdit[moodleId] = courseOverrideEdits }
+        }
         let id = UUID()
         courseOverridesEnqueuing[id] = op
         return Task {
@@ -318,9 +328,10 @@ final class CloudSyncCoordinator {
     }
 
     /// The Moodle ids of the courses with a colour or a name edit queued here, which the server
-    /// may not have yet. A full sync leaves those as they are here, as it leaves queued marks.
-    func pendingCourseOverrides() async -> (colors: Set<String>, names: Set<String>) {
-        var pending: (colors: Set<String>, names: Set<String>) = ([], [])
+    /// may not have yet, and `edits`, the `courseOverrideEdits` count read before them. A full
+    /// sync leaves those as they are here, as it leaves queued marks (`courseOverridesToHold`).
+    func pendingCourseOverrides() async -> (colors: Set<String>, names: Set<String>, edits: Int) {
+        var pending: (colors: Set<String>, names: Set<String>, edits: Int) = ([], [], courseOverrideEdits)
         // The edits on their way in are read after the snapshot, or one could land between the two.
         for op in await outbox.snapshot().map(\.op) + courseOverridesEnqueuing.values {
             guard case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op else { continue }
@@ -328,6 +339,22 @@ final class CloudSyncCoordinator {
             if customName != nil { pending.names.insert(moodleId) }
         }
         return pending
+    }
+
+    /// The Moodle ids of the courses with a colour or a name edit queued after `reading`, a value of
+    /// `courseOverrideEdits`.
+    func courseOverrides(queuedAfter reading: Int) -> (colors: Set<String>, names: Set<String>) {
+        (Set(lastColorEdit.filter { $0.value > reading }.keys), Set(lastNameEdit.filter { $0.value > reading }.keys))
+    }
+
+    /// What a full sync leaves as it is here: what `pending` listed before its fetch, and each
+    /// colour or name edited since, which an edit queued and sent while the fetch was out would
+    /// otherwise escape, as it is in no sample.
+    func courseOverridesToHold(
+        since pending: (colors: Set<String>, names: Set<String>, edits: Int)
+    ) -> (colors: Set<String>, names: Set<String>) {
+        let edited = courseOverrides(queuedAfter: pending.edits)
+        return (pending.colors.union(edited.colors), pending.names.union(edited.names))
     }
 
     /// For Use Server in the re-enable dialog, which takes the server's data of `categories` over

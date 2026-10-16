@@ -186,6 +186,59 @@ struct CloudSyncCoordinatorTests {
         #expect(sent.names.isEmpty)
     }
 
+    /// An edit both queued and sent while a full sync's fetch is out is in neither of its outbox
+    /// samples (https://github.com/tigerduck-app/tigerduck-app/issues/670).
+    @Test("A colour or name edit queued after a reading is listed after it is sent, and one queued before is not")
+    func editsQueuedAfterAReadingAreListedOnceSent() async {
+        let backend = Backend()
+        for course in ["1151CS0", "1151CS1", "1151EE2"] {
+            backend.answer("sync/courses/\(course)/override", body: Self.colourReply)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
+
+        let reading = await coordinator.pendingCourseOverrides().edits
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+        await coordinator.syncTick()
+
+        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        let pending = await coordinator.pendingCourseOverrides()
+        #expect(pending.colors.isEmpty && pending.names.isEmpty)
+        let edited = coordinator.courseOverrides(queuedAfter: reading)
+        #expect(edited.colors == ["1151CS1"])
+        #expect(edited.names == ["1151EE2"])
+    }
+
+    /// The sample is taken before the fetch, and the hold is read when the server's colours and
+    /// names are applied (https://github.com/tigerduck-app/tigerduck-app/issues/670).
+    @Test("A full sync holds what its sample listed and what was edited since, sent or not")
+    func aFullSyncHoldsWhatItsSampleListedAndWhatWasEditedSince() async {
+        let backend = Backend()
+        for course in ["1151CS0", "1151CS1", "1151EE2"] {
+            backend.answer("sync/courses/\(course)/override", body: Self.colourReply)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
+
+        let sample = await coordinator.pendingCourseOverrides()
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+        await coordinator.syncTick()
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE3", semester: "1151", customName: "Signals", locale: "en"
+        )?.value
+
+        #expect(backend.requests("sync/courses/1151CS0/override").count == 1)
+        let held = coordinator.courseOverridesToHold(since: sample)
+        #expect(held.colors == ["1151CS0", "1151CS1"])
+        #expect(held.names == ["1151EE2", "1151EE3"])
+    }
+
     /// Use Local lets go of its hold once these end
     /// (https://github.com/tigerduck-app/tigerduck-app/issues/681).
     @Test("The task that queues a colour or a name ends once the edit is in the outbox")

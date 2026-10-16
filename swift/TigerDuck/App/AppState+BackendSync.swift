@@ -13,9 +13,9 @@ extension AppState {
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
     ///
-    /// One runs at a time. `followUpIfBusy` is for a sync trigger push: one that arrives during
-    /// a pull waits for one more, since that pull may predate the change it announces, and gets
-    /// that one's outcome.
+    /// One runs at a time. `followUpIfBusy` is for a sync trigger push and for the app's own sync
+    /// at launch and in the revision poll: one that arrives during a pull waits for one more, since
+    /// that pull may predate the change or end at a sync trigger's time limit, and gets its outcome.
     @discardableResult
     func syncOverridesFromBackend(followUpIfBusy: Bool = false) async -> FullSyncOutcome {
         guard Defaults[.cloudSyncEnabled] else { return .skipped }
@@ -29,7 +29,7 @@ extension AppState {
             AppLogger.sync.info("[syncOverrides] already in flight, follow-up: \(followUpIfBusy, privacy: .public)")
         }
         return await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
-            await runFullSync(retried: false)
+            await self.runFullSync(retried: false)
         }
     }
 
@@ -50,6 +50,7 @@ extension AppState {
             let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
+            // Colours and names need no second sample: `courseOverridesToHold` adds the edits after this one.
             let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             let editGenerationAtFetch = overrideEditGeneration
             let fetchedAt = Date()
@@ -116,8 +117,6 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            // A colour or name edit both queued and sent while the fetch is out is in neither sample.
-            let queuedCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
@@ -211,10 +210,10 @@ extension AppState {
             if !takesColors && !takesNames {
                 AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             } else if !courseOverrides.isEmpty {
+                let held = cloudSyncCoordinator.courseOverridesToHold(since: preFetchCourseOverrides)
                 changed = applyCourseOverrides(
                     courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames,
-                    holdingColors: preFetchCourseOverrides.colors.union(queuedCourseOverrides.colors),
-                    holdingNames: preFetchCourseOverrides.names.union(queuedCourseOverrides.names)
+                    holdingColors: held.colors, holdingNames: held.names
                 ) || changed
             }
 
@@ -1005,29 +1004,74 @@ extension AppState {
 @MainActor
 final class FullSyncGate {
     private(set) var isRunning = false
-    private var followUpWaiters: [CheckedContinuation<FullSyncOutcome, Never>] = []
+    /// The calls waiting for a run that starts after the current one, by ticket.
+    private var queued: [Int: CheckedContinuation<FullSyncOutcome, Never>] = [:]
+    /// The calls waiting for `runningFollowUp`.
+    private var following: [Int: CheckedContinuation<FullSyncOutcome, Never>] = [:]
+    private var runningFollowUp: Task<Void, Never>?
+    private var lastTicket = 0
 
-    var queuedFollowUps: Int { followUpWaiters.count }
+    var queuedFollowUps: Int { queued.count }
 
     /// Runs `body` unless a run is in flight. Then a call with `followUp` waits for one more run
     /// that starts after the current one, shared by every call that asked meanwhile, and returns
     /// its outcome; one without returns `.skipped` at once. `mayFollow` is checked before each
     /// follow-up. A call that runs `body` returns the outcome of its own run.
-    func run(followUp: Bool, mayFollow: () -> Bool, _ body: () async -> FullSyncOutcome) async -> FullSyncOutcome {
+    ///
+    /// A follow-up runs in a task of its own, which cancelling the call before it does not reach.
+    /// A waiting call that is cancelled returns `.skipped` at once, and a follow-up every call
+    /// waiting for it gave up on does not start, or is cancelled.
+    func run(
+        followUp: Bool, mayFollow: @escaping () -> Bool, _ body: @escaping () async -> FullSyncOutcome
+    ) async -> FullSyncOutcome {
         guard !isRunning else {
             guard followUp else { return .skipped }
-            return await withCheckedContinuation { followUpWaiters.append($0) }
+            return await waitForFollowUp()
         }
         isRunning = true
         let outcome = await body()
-        while !followUpWaiters.isEmpty {
-            let waiters = followUpWaiters
-            followUpWaiters = []
-            let followed = mayFollow() ? await body() : .skipped
-            for waiter in waiters { waiter.resume(returning: followed) }
-        }
-        isRunning = false
+        follow(mayFollow: mayFollow, body)
         return outcome
+    }
+
+    private func waitForFollowUp() async -> FullSyncOutcome {
+        lastTicket += 1
+        let ticket = lastTicket
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { waiter in
+                if Task.isCancelled { waiter.resume(returning: .skipped) } else { queued[ticket] = waiter }
+            }
+        } onCancel: {
+            Task { @MainActor in self.giveUp(ticket) }
+        }
+    }
+
+    private func giveUp(_ ticket: Int) {
+        if let waiter = queued.removeValue(forKey: ticket) {
+            waiter.resume(returning: .skipped)
+        } else if let waiter = following.removeValue(forKey: ticket) {
+            waiter.resume(returning: .skipped)
+            if following.isEmpty { runningFollowUp?.cancel() }
+        }
+    }
+
+    /// Starts the run the queued calls wait for, or ends the gate's run when none is due.
+    private func follow(mayFollow: @escaping () -> Bool, _ body: @escaping () async -> FullSyncOutcome) {
+        guard !queued.isEmpty, mayFollow() else {
+            for waiter in queued.values { waiter.resume(returning: .skipped) }
+            queued = [:]
+            isRunning = false
+            return
+        }
+        following = queued
+        queued = [:]
+        runningFollowUp = Task {
+            // Its callers may all have given up before it started.
+            let outcome: FullSyncOutcome = if Task.isCancelled { .skipped } else { await body() }
+            for waiter in following.values { waiter.resume(returning: outcome) }
+            following = [:]
+            follow(mayFollow: mayFollow, body)
+        }
     }
 }
 
