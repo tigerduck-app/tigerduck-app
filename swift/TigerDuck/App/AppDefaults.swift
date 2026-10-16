@@ -146,9 +146,10 @@ nonisolated extension Defaults.Keys {
     /// clears it at sign-out with the cached list.
     static let bulletinsSyncedAt = Key<Date?>("bulletinsSyncedAt")
     /// The last `courses_reset_at` a full sync read, in server time, or `distantPast` once one has
-    /// read none, for the signed-in account; see `AppState.coursesReset(server:lastSeen:)`. Only a
-    /// full sync sets it: any other value can make the next sync apply an old reset, which drops the
-    /// hand-added and hidden courses.
+    /// read none, for the signed-in account; see
+    /// `AppState.coursesReset(server:lastSeen:takesCourses:)`. Only a full sync sets it: any other
+    /// value can make the next sync apply an old reset, which drops the hand-added and hidden
+    /// courses.
     static let lastSeenCoursesResetAt = Key<Date?>("lastSeenCoursesResetAt")
     /// Optional on purpose: `nil` means "never picked a semester", which
     /// `SemesterCatalog.selectedSemester(storedPick:)` resolves to the newest
