@@ -52,6 +52,20 @@ extension AppState {
         pendingSyncServerCompleted = []
     }
 
+    /// `isPresented` of the alert for assignments marked differently here and on the server. Only
+    /// its buttons answer it, as with `reenableAlertIsPresented`. Closed any other way, it sends
+    /// nothing and leaves the marks as they are here, and the next full sync asks again.
+    static func syncConflictAlertIsPresented(_ conflicts: Binding<[SyncConflictItem]>) -> Binding<Bool> {
+        Binding(
+            get: { !conflicts.wrappedValue.isEmpty },
+            set: { isPresented in
+                guard !isPresented, !conflicts.wrappedValue.isEmpty else { return }
+                AppLogger.sync.info("[syncConflicts] alert closed unanswered, marks left as they are")
+                conflicts.wrappedValue = []
+            }
+        )
+    }
+
     struct ReenableConflict {
         let categories: [String]
         let description: String
