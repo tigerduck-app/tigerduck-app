@@ -247,6 +247,19 @@ struct MailComposeViewModelTests {
         #expect(model.subject == "問題")
     }
 
+    /// A send that may have gone out says so, as sending it again may deliver it twice.
+    @Test func anUnconfirmedSendSaysItMayHaveGone() async {
+        let fake = Self.fake()
+        await fake.update { $0.sendError = .sendUnconfirmed }
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+        model.subject = "問題"
+        await model.send()
+        #expect(model.error == String(localized: "school_mail_send_unconfirmed"))
+        #expect(!model.didFinish)
+    }
+
     /// A password the server has rejected is never sent again: repeated failures lock the school
     /// account. SMTP `AUTH LOGIN` happens inside `send()`, outside the sign-in path, so without
     /// routing it through the same choke point every Send tap is another login attempt with the

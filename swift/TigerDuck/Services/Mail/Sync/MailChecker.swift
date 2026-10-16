@@ -328,7 +328,7 @@ actor MailChecker {
     nonisolated static func endsPrefetch(_ error: MailClientError) -> Bool {
         switch error {
         case .unreachable, .certificateRejected, .authenticationFailed, .serverBusy: true
-        case .searchUnsupported, .folderChanged, .protocolError: false
+        case .searchUnsupported, .folderChanged, .sendUnconfirmed, .protocolError: false
         }
     }
 
