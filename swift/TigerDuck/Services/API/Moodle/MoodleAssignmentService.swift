@@ -53,8 +53,13 @@ nonisolated enum MoodleAssignmentService {
 
     // MARK: - Comments and groups
 
+    /// A bound on the requests for one submission's comments, which stay far fewer than this many
+    /// pages hold.
+    static let commentPageLimit = 10
+
     /// Moodle keeps a submission's comments on the assignment's module, under the submission's
-    /// record. Oldest first, as a conversation reads.
+    /// record, and answers a page at a time, newest first, with the total in `count`. Oldest
+    /// first, as a conversation reads.
     static func comments(
         cmid: Int,
         submissionId: Int,
@@ -62,20 +67,28 @@ nonisolated enum MoodleAssignmentService {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> [MoodleSubmissionComment] {
-        try await MoodleWebserviceClient.call(
-            commentsFunction,
-            params: [
-                ("contextlevel", "module"),
-                ("instanceid", String(cmid)),
-                ("component", "assignsubmission_comments"),
-                ("itemid", String(submissionId)),
-                ("area", "submission_comments"),
-            ],
-            token: token,
-            as: RawComments.self,
-            session: session,
-            siteURL: siteURL
-        ).comments.map(\.model).sorted { ($0.created, $0.id) < ($1.created, $1.id) }
+        var byId: [Int: MoodleSubmissionComment] = [:]
+        for page in 0..<commentPageLimit {
+            let answer = try await MoodleWebserviceClient.call(
+                commentsFunction,
+                params: [
+                    ("contextlevel", "module"),
+                    ("instanceid", String(cmid)),
+                    ("component", "assignsubmission_comments"),
+                    ("itemid", String(submissionId)),
+                    ("area", "submission_comments"),
+                    ("page", String(page)),
+                ],
+                token: token,
+                as: RawComments.self,
+                session: session,
+                siteURL: siteURL
+            )
+            // A comment posted between two requests moves one into the next page again.
+            for comment in answer.comments { byId[comment.id] = comment.model }
+            guard !answer.comments.isEmpty, byId.count < answer.count ?? 0 else { break }
+        }
+        return byId.values.sorted { ($0.created, $0.id) < ($1.created, $1.id) }
     }
 
     /// The groups the account is in on the course, by id.
@@ -249,6 +262,8 @@ nonisolated private struct RawComments: Decodable, Sendable {
     }
 
     let comments: [Comment]
+    /// All the submission's comments, not this page's; Moodle may leave it out.
+    let count: Int?
 }
 
 nonisolated private struct RawGroups: Decodable, Sendable {
