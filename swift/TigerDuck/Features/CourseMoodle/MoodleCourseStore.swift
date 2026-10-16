@@ -34,7 +34,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var groups: @Sendable (_ courseId: Int) async throws -> [Int: String] = { _ in [:] }
     /// Takes the status of a submission the page fetched, asked for at `askedAt`.
     var submissionFetched: @MainActor @Sendable (
-        _ status: MoodleSubmissionStatus, _ askedAt: Date, _ context: MoodleCacheContext
+        _ status: MoodleSubmissionStatus, _ askedAt: ContinuousClock.Instant, _ context: MoodleCacheContext
     ) -> Void = { _, _, _ in }
 
     static let live = MoodleCourseAPI(

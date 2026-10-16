@@ -72,12 +72,12 @@ final class MoodleCourseAssignments {
         guard !record.noSubmissions else { return }
         let context = context
         let isCurrent: @MainActor @Sendable () -> Bool = { context.isCurrent() }
-        let fetched: @MainActor @Sendable (MoodleSubmissionStatus, Date) -> Void = { [api] in
+        let fetched: @MainActor @Sendable (MoodleSubmissionStatus, ContinuousClock.Instant) -> Void = { [api] in
             api.submissionFetched($0, $1, context)
         }
         await submission(of: record).refresh { [api] in
             let functions = try await api.functions()
-            let askedAt = Date()
+            let askedAt = ContinuousClock.now
             var submission = try await api.submission(record.assignId)
             if let id = submission.id, submission.takesComments,
                functions.contains(MoodleAssignmentService.commentsFunction) {

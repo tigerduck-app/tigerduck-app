@@ -18,8 +18,9 @@ private final class AssignmentRound {
 extension AppServiceBridge {
 
     private static var runningRound: AssignmentRound?
-    /// When Moodle was asked for the status each cached assignment last took, by id.
-    private static var statusAskedAt: [String: Date] = [:]
+    /// When Moodle was asked for the status each cached assignment last took, by id. A monotonic
+    /// clock, as a wall clock set back would make a later answer look older.
+    private static var statusAskedAt: [String: ContinuousClock.Instant] = [:]
 
     /// One Moodle assignment round at a time: launch, a return to the app and the Home, Class
     /// Table and Calendar pulls write the same cache. A caller joins the round in flight for its
@@ -195,15 +196,10 @@ extension AppServiceBridge {
                 records, confirmed: confirmed, closed: recheckSubmissions ? [:] : closed
             )
             let askedAt = Date()
-            let answers = await concurrentMap(recordsToAsk) { record -> (Int, MoodleSubmissionStatus)? in
-                guard let status = try? await MoodleAssignmentService.fetchSubmissionStatus(
-                    assignId: record.assignId
-                ) else {
-                    return nil
-                }
-                return (record.assignId, status)
+            let answers = await askStatuses(of: recordsToAsk) {
+                try await MoodleAssignmentService.fetchSubmissionStatus(assignId: $0)
             }
-            let statuses = Dictionary(answers.compactMap { $0 }, uniquingKeysWith: { first, _ in first })
+            let statuses = answers.mapValues(\.status)
 
             let freshAssignments = assignments(
                 from: records,
@@ -229,7 +225,7 @@ extension AppServiceBridge {
                 assignmentsToPersist,
                 records: records,
                 closed: closedUnsubmitted(records: records, statuses: statuses, askedAt: askedAt, kept: closed),
-                answered: Set(statuses.keys),
+                answered: answers.mapValues(\.askedAt),
                 account: account,
                 fetchedAt: askedAt,
                 cache: .shared,
@@ -255,14 +251,14 @@ extension AppServiceBridge {
 
     /// Writes what a round fetched for `account`: the assignments, their records, the closed ones
     /// and the calendar's Moodle rows, which every round rebuilds so a Home pull or a return to the
-    /// app moves them too. `answered` are the assignments whose status Moodle gave, asked for at
-    /// `fetchedAt`. Nothing is written once the round is cancelled or the account signed out, and
-    /// the result says whether it wrote.
+    /// app moves them too. `answered` holds when Moodle was asked for each status it gave. Nothing
+    /// is written once the round is cancelled or the account signed out, and the result says
+    /// whether it wrote.
     static func persistRound(
         _ assignments: [SDAssignment],
         records: [MoodleAssignmentRecord],
         closed: [String: Date],
-        answered: Set<Int>,
+        answered: [Int: ContinuousClock.Instant],
         account: String,
         fetchedAt: Date,
         cache: DataCache,
@@ -276,8 +272,28 @@ extension AppServiceBridge {
         calendarEvents.removeAll { $0.source == .moodle }
         calendarEvents.append(contentsOf: assignments.map(moodleCalendarEvent))
         cache.saveCalendarEvents(calendarEvents)
-        for id in answered { statusAskedAt[String(id)] = fetchedAt }
+        for (id, askedAt) in answered { statusAskedAt[String(id)] = askedAt }
         return true
+    }
+
+    /// Moodle's answer for each record that gave one, with when its own request went out: a round
+    /// asks a few at a time, and one time for all would let a page's answer asked for in between
+    /// pass for newer than one asked after it.
+    static func askStatuses(
+        of records: [MoodleAssignmentRecord],
+        limit: Int = maxConcurrentRequests,
+        fetch: @escaping @Sendable (_ assignId: Int) async throws -> MoodleSubmissionStatus
+    ) async -> [Int: (status: MoodleSubmissionStatus, askedAt: ContinuousClock.Instant)] {
+        typealias Answer = (Int, MoodleSubmissionStatus, ContinuousClock.Instant)
+        let answers = await concurrentMap(records, limit: limit) { record -> Answer? in
+            let askedAt = ContinuousClock.now
+            guard let status = try? await fetch(record.assignId) else { return nil }
+            return (record.assignId, status, askedAt)
+        }
+        return Dictionary(
+            answers.compactMap { $0.map { ($0.0, (status: $0.1, askedAt: $0.2)) } },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     /// Writes a status an assignment's page fetched into the cached assignments, which Home, the
@@ -287,9 +303,10 @@ extension AppServiceBridge {
     @discardableResult
     static func takeSubmissionStatus(
         _ status: MoodleSubmissionStatus,
-        askedAt: Date,
-        cache: DataCache = .shared,
-        isCurrent: () -> Bool
+        askedAt: ContinuousClock.Instant,
+        cache: DataCache,
+        isCurrent: () -> Bool,
+        notifying center: NotificationCenter = .default
     ) async -> Bool {
         // As in `sharedRound`, a finished round can stay in `runningRound` for a moment.
         var waitedFor: AssignmentRound?
@@ -308,7 +325,7 @@ extension AppServiceBridge {
         assignment.submittedAt = status.submittedAt
         cache.saveAssignments(assignments)
         uploadForReminders(assignments)
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        center.post(name: AppConstants.dataDidUpdate, object: nil)
         return true
     }
 
@@ -316,7 +333,7 @@ extension AppServiceBridge {
     /// reminders from it.
     private static func uploadForReminders(_ assignments: [SDAssignment]) {
         #if os(iOS)
-        guard Defaults[.cloudSyncEnabled] else { return }
+        guard let upload = assignmentUploader, Defaults[.cloudSyncEnabled] else { return }
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
         let entries = assignments.compactMap { a -> PushAPI.AssignmentUploadEntry? in
@@ -332,7 +349,7 @@ extension AppServiceBridge {
                 grade: nil
             )
         }
-        assignmentUploader?(PushAPI.AssignmentUploadRequest(assignments: entries))
+        upload(PushAPI.AssignmentUploadRequest(assignments: entries))
         #endif
     }
 

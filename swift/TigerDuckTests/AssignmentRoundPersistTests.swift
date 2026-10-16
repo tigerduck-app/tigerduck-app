@@ -31,7 +31,7 @@ struct AssignmentRoundPersistTests {
             [SDAssignment(assignmentId: "701", courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2", dueDate: due)],
             records: [record],
             closed: ["702": due],
-            answered: [],
+            answered: [:],
             account: account,
             fetchedAt: due,
             cache: cache,

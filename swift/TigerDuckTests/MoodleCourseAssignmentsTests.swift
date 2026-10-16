@@ -345,9 +345,11 @@ struct MoodleCourseAssignmentsTests {
     func statusHandedOn() async throws {
         let folder = Folder()
         let site = Site()
-        let requested = OSAllocatedUnfairLock<Date?>(initialState: nil)
-        let handed = OSAllocatedUnfairLock<[(status: MoodleSubmissionStatus, askedAt: Date)]>(initialState: [])
-        var api = site.api { requested.withLock { $0 = Date() } }
+        let requested = OSAllocatedUnfairLock<ContinuousClock.Instant?>(initialState: nil)
+        let handed = OSAllocatedUnfairLock<[(status: MoodleSubmissionStatus, askedAt: ContinuousClock.Instant)]>(
+            initialState: []
+        )
+        var api = site.api { requested.withLock { $0 = .now } }
         api.submissionFetched = { status, askedAt, _ in handed.withLock { $0.append((status, askedAt)) } }
         let store = MoodleCourseStore(
             courseId: Self.courseId, termCourseIds: [Self.courseId], context: Self.context(folder), api: api
