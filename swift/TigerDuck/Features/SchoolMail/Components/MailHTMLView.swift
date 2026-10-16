@@ -3,9 +3,10 @@ import SwiftUI
 import WebKit
 
 /// Sanitized mail HTML, grown to its content height so the message scrolls as one page. `html`
-/// must already be `MailHTMLSanitizer.rewriteLinks`' output: every `<a href>` in it is
-/// `https://link.invalid/<n>`, and `onLinkTap` is called with `n`, never a URL, so no WebKit
-/// canonicalization quirk can retarget a tap.
+/// must already be `MailHTMLSanitizer.rewriteLinks`' output, as the view model's `formattedHTML`
+/// is with only its colours changed: every `<a href>` in it is `https://link.invalid/<n>`, and
+/// `onLinkTap` is called with `n`, never a URL, so no WebKit canonicalization quirk can retarget
+/// a tap.
 struct MailHTMLView: UIViewRepresentable {
     let html: String
     let linkCount: Int

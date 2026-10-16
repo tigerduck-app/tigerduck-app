@@ -42,6 +42,7 @@ actor AuthTokenManager {
     private let baseURLProvider: @Sendable () -> URL
     private let deviceUUID: String
     private let session: URLSession
+    private let refreshRequestTimeout: TimeInterval
     private let tokens: TokenStore
     /// Starts what keeps the app running until a refresh is done, and returns what ends it.
     private let beginBackgroundTask: @Sendable () async -> @Sendable () async -> Void
@@ -104,12 +105,14 @@ actor AuthTokenManager {
         deviceUUID: String,
         session: URLSession = .shared,
         tokens: TokenStore = .keychain,
+        refreshTimeout: TimeInterval = AuthTokenManager.refreshTimeout,
         beginBackgroundTask: @escaping @Sendable () async -> @Sendable () async -> Void
             = AuthTokenManager.beginRefreshBackgroundTask
     ) {
         self.baseURLProvider = baseURLProvider
         self.deviceUUID = deviceUUID
         self.session = session
+        self.refreshRequestTimeout = refreshTimeout
         self.tokens = tokens
         self.beginBackgroundTask = beginBackgroundTask
         self.accessToken = tokens.load(Self.accessTokenKey)
@@ -424,7 +427,7 @@ actor AuthTokenManager {
         struct RefreshRequest: Encodable { let refresh_token: String }
         var request = URLRequest(
             url: baseURLProvider().appendingPathComponent("auth/refresh"),
-            timeoutInterval: Self.refreshTimeout
+            timeoutInterval: refreshRequestTimeout
         )
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

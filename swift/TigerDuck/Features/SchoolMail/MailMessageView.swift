@@ -261,9 +261,9 @@ struct MailMessageView: View {
         } else {
             switch viewModel.mode {
             case .formatted:
-                if let linked = viewModel.linkedDocument {
+                if let linked = viewModel.linkedDocument, let html = viewModel.formattedHTML {
                     MailHTMLView(
-                        html: linked.html,
+                        html: html,
                         linkCount: linked.links.count,
                         inlineImages: viewModel.detail?.inlineImages ?? [:],
                         allowRemoteImages: viewModel.allowRemoteImages,
