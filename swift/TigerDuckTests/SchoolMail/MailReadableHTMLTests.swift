@@ -37,6 +37,7 @@ struct MailReadableHTMLTests {
         (##"<p style="color: revert">Hello</p>"##, false),
         (##"<p style="background-color: revert-layer">Hello</p>"##, false),
         (##"<p style="color: initial">Hello</p>"##, true),
+        (##"<p style="background-color: initial">Hello</p>"##, false),
         (##"<p style="color: #333333; color: inherit">Hello</p>"##, false),
         (##"<p style="color: inherit; color: #333333">Hello</p>"##, true),
         (##"<font color="#333333" style="color: inherit">Hello</font>"##, false),

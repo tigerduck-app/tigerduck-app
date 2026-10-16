@@ -293,11 +293,12 @@ nonisolated struct MailReadableHTML {
 
     /// Whether a CSS colour value shows: one this reads with alpha above zero, or one it cannot
     /// read that is not a keyword taking its colour from elsewhere. On a background `currentcolor`
-    /// paints the text colour, so there it shows.
+    /// paints the text colour, so there it shows, and `initial` is transparent, so there it does not.
     private static func shows(_ value: Substring, onBackground: Bool = false) -> Bool {
         guard let color = parse(value, legacy: false) else {
             let keyword = value.lowercased()
-            return (onBackground && keyword == "currentcolor") || !colorlessKeywords.contains(keyword)
+            if onBackground { return keyword == "currentcolor" || !(colorlessKeywords.contains(keyword) || keyword == "initial") }
+            return !colorlessKeywords.contains(keyword)
         }
         return color.alpha > 0
     }
