@@ -1,6 +1,6 @@
-# Swift packages only: Renovate cannot read Xcode projects and updates the rest
-# (.github/renovate.json). Security updates stay off in the repository settings, as they always
-# target the default branch and changes reach main through dev.
+# Swift packages, GitHub Actions and api-poc's Python packages; the submodules are bumped by hand.
+# Security updates stay off in the repository settings, as they always target the default branch
+# and changes reach main through dev.
 version: 2
 updates:
   - package-ecosystem: swift
@@ -17,4 +17,34 @@ updates:
       prefix: chore(deps)
     groups:
       swift-packages:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Taipei
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: uv
+    directory: /api-poc
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Taipei
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      api-poc:
         update-types: [minor, patch]
