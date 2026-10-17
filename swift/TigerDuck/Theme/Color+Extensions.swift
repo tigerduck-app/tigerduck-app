@@ -46,6 +46,8 @@ extension Color {
     /// pages carry their own per-page colours rather than the app tint.
     static let onboardingAccent = Color(hex: 0x007AFF)
     static let badgeRed = Color(hex: 0xFF3B30)
+    /// Red text on a faint ``badgeRed`` fill, where ``badgeRed`` itself reads at only about 4:1.
+    static let badgeRedText = Color(hex: 0xFF7A72)
     /// Text on a ``pastel`` fill, which stays light in either appearance.
     static let textOnPastel = Color(hex: 0x1A1A1A)
     static let textOnPastelSecondary = Color(hex: 0x1A1A1A, alpha: 0.8)
