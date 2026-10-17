@@ -56,23 +56,9 @@ struct MoodleAssignmentPageStateTests {
             window.rootViewController = host
             window.isHidden = false
             defer { window.isHidden = true }
-            try await waitUntil { texts(in: host.view).contains { $0.contains(shown) } }
-            return texts(in: host.view)
+            try await waitUntil { exposedAccessibilityTexts(in: host.view).contains { $0.contains(shown) } }
+            return exposedAccessibilityTexts(in: host.view)
         }
-    }
-
-    private static func texts(in node: NSObject) -> [String] {
-        var found = [node.accessibilityLabel, node.accessibilityValue].compactMap { $0 }.filter { !$0.isEmpty }
-        var children = node.accessibilityElements ?? []
-        let count = node.accessibilityElementCount()
-        if children.isEmpty, count != NSNotFound, count > 0 {
-            children = (0..<count).compactMap { node.accessibilityElement(at: $0) }
-        }
-        if let view = node as? UIView { children += view.subviews }
-        for case let child as NSObject in children {
-            found += texts(in: child)
-        }
-        return found
     }
 
     /// Where the first text holding each of `parts` comes; nil for a part that is not there.
