@@ -89,8 +89,7 @@ struct TimeSliderSection: View {
                     FluidGlassTrackView(
                         viewModel: viewModel,
                         invertDirection: appState.invertSliderDirection,
-                        policy: policy,
-                        timeText: timeLabelString
+                        policy: policy
                     )
                 }
             }

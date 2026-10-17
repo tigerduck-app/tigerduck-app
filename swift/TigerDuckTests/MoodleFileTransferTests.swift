@@ -101,6 +101,22 @@ struct MoodleFileTransferTests {
         }
     }
 
+    @Test("a file listed without a type passes as any type but a page", arguments: [nil, ""] as [String?])
+    func unlistedType(_ mimeType: String?) throws {
+        let file = try Self.body("%PDF-1.7")
+        let page = try Self.body("<html>Sign in</html>")
+        defer {
+            for url in [file, page] { try? FileManager.default.removeItem(at: url) }
+        }
+
+        #expect(throws: Never.self) {
+            try MoodleFileTransfer.check(Self.response(type: "application/pdf"), at: file, mimeType: mimeType)
+        }
+        #expect(throws: MoodleWebserviceError.malformedResponse(detail: "text/html")) {
+            try MoodleFileTransfer.check(Self.response(type: "text/html; charset=utf-8"), at: page, mimeType: mimeType)
+        }
+    }
+
     @Test("a web service error in place of the file throws its own case, so a stale token renews")
     func webServiceError() throws {
         let file = try Self.body(#"{"error": "Invalid token", "errorcode": "invalidtoken"}"#)
