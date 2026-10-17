@@ -18,13 +18,6 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.accentColorHex,
         default: 0x007AFF
     )
-    static let rememberAnnouncementFilter = Key<Bool>(
-        AppConstants.UserDefaultsKeys.rememberAnnouncementFilter,
-        default: false
-    )
-    static let savedAnnouncementDepartmentsData = Key<Data?>(
-        AppConstants.UserDefaultsKeys.savedAnnouncementDepartments
-    )
     static let browserPreference = Key<BrowserPreference>(
         AppConstants.UserDefaultsKeys.browserPreference,
         default: .system

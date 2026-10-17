@@ -5,8 +5,8 @@ import UIKit
 @testable import TigerDuck
 
 /// What closes before a reminder's assignment page is pushed: every sheet, with the state SwiftUI
-/// keeps for it, and neither an alert nor a sheet that refuses a swipe down. Each test shows a
-/// window of its own.
+/// keeps for it, and neither an alert, a sheet that refuses a swipe down nor one kept over
+/// reminders. Each test shows a window of its own.
 @MainActor
 struct ModalClosingTests {
     @Observable
@@ -14,6 +14,7 @@ struct ModalClosingTests {
         var course = false
         var files = false
         var filesRefuseToClose = false
+        var filesKept = false
         var draft = false
         var conflict = false
         var courseDismissals = 0
@@ -26,7 +27,9 @@ struct ModalClosingTests {
             Color.clear
                 .sheet(isPresented: $sheets.course, onDismiss: { sheets.courseDismissals += 1 }) {
                     Text("Course").sheet(isPresented: $sheets.files) {
-                        Text("Files").interactiveDismissDisabled(sheets.filesRefuseToClose)
+                        Text("Files")
+                            .interactiveDismissDisabled(sheets.filesRefuseToClose)
+                            .keptOverReminders(sheets.filesKept)
                     }
                 }
                 .background(Color.clear.sheet(isPresented: $sheets.draft) {
@@ -136,6 +139,28 @@ struct ModalClosingTests {
         sheets.files = true
         try await waitUntil { root.presentedViewController?.presentedViewController != nil }
 
+        #expect(await Self.close(root, sheets)
+            == AtThen(closedAll: false, isPresenting: true, course: true, files: true, courseDismissals: 0))
+
+        sheets.course = false
+        try await waitUntil { root.presentedViewController == nil }
+    }
+
+    /// What's New over Home's course sheet: closing it would mark it as seen unread
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/673).
+    @Test("a sheet kept over reminders stays, with the one under it, yet still closes on a swipe")
+    func keptStays() async throws {
+        let sheets = Sheets()
+        let window = try Self.show(sheets)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        sheets.filesKept = true
+        sheets.course = true
+        try await waitUntil { root.presentedViewController != nil }
+        sheets.files = true
+        try await waitUntil { root.presentedViewController?.presentedViewController.map { !$0.isBeingPresented } == true }
+
+        #expect(root.presentedViewController?.presentedViewController?.isModalInPresentation == false)
         #expect(await Self.close(root, sheets)
             == AtThen(closedAll: false, isPresenting: true, course: true, files: true, courseDismissals: 0))
 

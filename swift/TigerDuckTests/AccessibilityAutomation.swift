@@ -21,16 +21,28 @@ func withAccessibilityAutomation<T>(_ body: () async throws -> T) async throws -
 @MainActor
 func accessibilityElement(labeled label: String, in node: NSObject) -> NSObject? {
     if node.accessibilityLabel == label { return node }
+    for child in accessibilityChildren(of: node) {
+        if let found = accessibilityElement(labeled: label, in: child) { return found }
+    }
+    return nil
+}
+
+/// The labels of every element under `node` that VoiceOver can land on, an unlabeled one as "".
+@MainActor
+func exposedAccessibilityLabels(in node: NSObject) -> [String] {
+    let own = node.isAccessibilityElement ? [node.accessibilityLabel ?? ""] : []
+    return own + accessibilityChildren(of: node).flatMap { exposedAccessibilityLabels(in: $0) }
+}
+
+@MainActor
+private func accessibilityChildren(of node: NSObject) -> [NSObject] {
     var children = node.accessibilityElements ?? []
     let count = node.accessibilityElementCount()
     if children.isEmpty, count != NSNotFound, count > 0 {
         children = (0..<count).compactMap { node.accessibilityElement(at: $0) }
     }
     if let view = node as? UIView { children += view.subviews }
-    for case let child as NSObject in children {
-        if let found = accessibilityElement(labeled: label, in: child) { return found }
-    }
-    return nil
+    return children.compactMap { $0 as? NSObject }
 }
 
 @MainActor

@@ -278,7 +278,8 @@ final class HomeViewModel {
 
     /// Pushes `page`, closing the course sheet first when one covers Home, which a reminder tapped
     /// with the sheet up would otherwise open behind. With `closingSheet` false the page goes in
-    /// behind the sheet: one over it refused to close, such as a mail draft, and would go with it.
+    /// behind the sheet: one over it refused to close, such as a mail draft, or is kept over
+    /// reminders, such as What's New, and would go with it.
     func show(_ page: MoodleAssignmentPage, closingSheet: Bool = true) {
         guard closingSheet, selectedCourse != nil else {
             shownAssignment = page
