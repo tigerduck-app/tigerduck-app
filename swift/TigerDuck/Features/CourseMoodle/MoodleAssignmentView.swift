@@ -198,7 +198,7 @@ struct MoodleAssignmentView: View {
 
     private func submissionSection(_ feed: MoodleFeed<MoodleAssignmentSubmission>, badge: Badge?) -> some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-            // The badge goes under the heading where beside it it would not fit.
+            // The badge goes under the heading when it does not fit beside it.
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: TigerDuckTheme.Spacing.md) {
                     sectionTitle(String(localized: "assignment_detail_submission"))
