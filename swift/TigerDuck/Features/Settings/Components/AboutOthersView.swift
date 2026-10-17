@@ -60,6 +60,7 @@ struct AboutOthersView: View {
         .sheet(isPresented: $showFeedback) {
             InAppBrowserView(url: Self.feedbackURL)
                 .ignoresSafeArea()
+                .keptOverReminders()
         }
         .sheet(isPresented: $showPrivacyPolicy) {
             InAppBrowserView(url: Self.privacyURL)
@@ -68,6 +69,7 @@ struct AboutOthersView: View {
         .sheet(isPresented: $showDeleteAccount) {
             InAppBrowserView(url: Self.deleteAccountURL)
                 .ignoresSafeArea()
+                .keptOverReminders()
         }
     }
 
