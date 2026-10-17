@@ -48,6 +48,7 @@ struct MoodleGradesView: View {
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
         .refreshable { await store.refreshGrades() }
+        .moodleRefreshFailureNote(store.grades)
         .moodleListChrome(
             title: String(localized: "course_detail_moodle_grades_label"),
             page: .gradeReport(courseId: store.courseId),

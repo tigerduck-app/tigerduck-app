@@ -71,6 +71,7 @@ struct MoodleDiscussionsView: View {
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
         .refreshable { await pages.refresh() }
+        .moodleRefreshFailureNote(pages.feed)
         .moodleListChrome(
             title: title,
             page: page,
