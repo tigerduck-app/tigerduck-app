@@ -34,6 +34,15 @@ func exposedAccessibilityLabels(in node: NSObject) -> [String] {
     return own + accessibilityChildren(of: node).flatMap { exposedAccessibilityLabels(in: $0) }
 }
 
+/// What VoiceOver reads on each element under `node` it can land on: the label, then the value
+/// where there is one.
+@MainActor
+func exposedAccessibilityTexts(in node: NSObject) -> [String] {
+    let read = [node.accessibilityLabel, node.accessibilityValue].compactMap { $0 }.filter { !$0.isEmpty }
+    let own = node.isAccessibilityElement ? [read.joined(separator: ", ")] : []
+    return own + accessibilityChildren(of: node).flatMap { exposedAccessibilityTexts(in: $0) }
+}
+
 @MainActor
 private func accessibilityChildren(of node: NSObject) -> [NSObject] {
     var children = node.accessibilityElements ?? []

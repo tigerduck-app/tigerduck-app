@@ -10,9 +10,9 @@ import UIKit
 /// brings it up. Every name here is made up.
 @MainActor
 struct MoodleAssignmentPageTests {
-    private static let due = Date(timeIntervalSince1970: 1_790_600_000)
+    nonisolated static let due = Date(timeIntervalSince1970: 1_790_600_000)
 
-    private static let file = MoodleFile(
+    nonisolated static let file = MoodleFile(
         name: "hw.pdf", size: 870_400,
         url: "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/123/assignsubmission_file/submission_files/5501/hw.pdf",
         mimeType: "application/pdf", modified: due, path: "/"
@@ -30,7 +30,7 @@ struct MoodleAssignmentPageTests {
         )
     }
 
-    private static func submission(
+    nonisolated static func submission(
         _ status: String?, modified: Date? = due - 3600, files: [MoodleFile] = [], text: String? = nil
     ) -> MoodleAssignmentSubmission {
         MoodleAssignmentSubmission(
@@ -39,13 +39,14 @@ struct MoodleAssignmentPageTests {
         )
     }
 
-    /// A store over a cache in a folder of its own that the test removes, whose site counts the
-    /// submission fetches.
-    private static func store(
-        in root: URL, fetches: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: 0)
+    /// A store over a cache in a folder of its own that the test removes, whose site answers
+    /// `answer` and counts the submission fetches.
+    static func store(
+        in root: URL,
+        answer: MoodleAssignmentSubmission = submission("submitted"),
+        fetches: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: 0)
     ) -> MoodleCourseStore {
-        let answer = submission("submitted")
-        return MoodleCourseStore(
+        MoodleCourseStore(
             courseId: 20119,
             termCourseIds: [20119],
             context: MoodleCacheContext(
@@ -69,7 +70,7 @@ struct MoodleAssignmentPageTests {
         )
     }
 
-    private static func folder() -> URL {
+    static func folder() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleAssignmentPageTests-\(UUID().uuidString)", isDirectory: true)
     }
@@ -90,14 +91,141 @@ struct MoodleAssignmentPageTests {
         #expect(MoodleAssignmentView.submittedAt(of: nil, submission: nil) == nil)
     }
 
-    @Test("the not-submitted line shows for anything not handed in, a draft with files or text included")
-    func notSubmittedLine() {
-        #expect(MoodleAssignmentView.showsNotSubmitted(Self.submission(nil)))
-        #expect(MoodleAssignmentView.showsNotSubmitted(Self.submission("new")))
-        #expect(MoodleAssignmentView.showsNotSubmitted(Self.submission("reopened")))
-        #expect(MoodleAssignmentView.showsNotSubmitted(Self.submission("draft", files: [Self.file])))
-        #expect(MoodleAssignmentView.showsNotSubmitted(Self.submission("draft", text: "<p>Half done</p>")))
-        #expect(!MoodleAssignmentView.showsNotSubmitted(Self.submission("submitted")))
+    @Test("whether it is handed in comes from the fetch, else Home's row, and nothing says so where Moodle takes nothing online")
+    func handedIn() {
+        let offline = MoodleAssignmentRecord(
+            assignId: 702, cmId: 9702, courseId: 20119, name: "Poster", dueDate: Self.due, cutoffDate: nil,
+            allowSubmissionsFromDate: nil, intro: "", noSubmissions: true
+        )
+        let handedIn = Self.assignment(submittedAt: Self.due - 3600)
+
+        #expect(MoodleAssignmentView.isSubmitted(record: Self.record, listed: handedIn, submission: nil) == true)
+        #expect(MoodleAssignmentView.isSubmitted(record: Self.record, listed: Self.assignment(submittedAt: nil), submission: nil)
+            == false)
+        #expect(MoodleAssignmentView.isSubmitted(record: Self.record, listed: handedIn, submission: Self.submission("draft"))
+            == false)
+        #expect(MoodleAssignmentView.isSubmitted(record: Self.record, listed: nil, submission: Self.submission("submitted"))
+            == true)
+        #expect(MoodleAssignmentView.isSubmitted(record: Self.record, listed: nil, submission: nil) == nil)
+        #expect(MoodleAssignmentView.isSubmitted(record: offline, listed: handedIn, submission: nil) == nil)
+    }
+
+    @Test("the badge says not submitted, submitted, or how early or late against the due date")
+    func badge() {
+        let due = Self.due
+        #expect(MoodleAssignmentView.badge(isSubmitted: nil, submittedAt: nil, due: due) == nil)
+        #expect(MoodleAssignmentView.badge(isSubmitted: false, submittedAt: nil, due: due) == .notSubmitted)
+        #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: due - 60, due: nil) == .submitted)
+        #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: nil, due: due) == .submitted)
+        #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: due - 907_200, due: due) == .early(907_200))
+        // Moodle counts a submission at the due time itself as on time.
+        #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: due, due: due) == .early(0))
+        #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: due + 4380, due: due) == .late(4380))
+
+        #expect(MoodleAssignmentView.Badge.late(4380).text
+            == String(format: String(localized: "assignment_detail_submitted_late_by"), MoodleAssignmentView.durationText(4380)))
+        #expect(MoodleAssignmentView.Badge.early(60).text
+            == String(format: String(localized: "assignment_detail_submitted_early"), MoodleAssignmentView.durationText(60)))
+        #expect(MoodleAssignmentView.Badge.submitted.text == String(localized: "assignment_status_submitted"))
+        #expect(MoodleAssignmentView.Badge.notSubmitted.text == String(localized: "assignment_detail_not_submitted"))
+    }
+
+    @Test("the deadline line counts down, then says the deadline passed, or by how long for one not handed in")
+    func deadline() {
+        let due = Self.due
+        #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: false, now: due - 100_800) == .left(100_800, urgent: true))
+        #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: true, now: due - 777_600) == .left(777_600, urgent: false))
+        #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: nil, now: due - 60) == .left(60, urgent: false))
+        // As Home's row has it, the due time itself is not past it yet.
+        #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: false, now: due) == .left(0, urgent: true))
+        #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: true, now: due + 1) == .passed)
+        #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: nil, now: due + 1) == .passed)
+        #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: false, now: due + 158_400) == .overdue(158_400))
+
+        #expect(MoodleAssignmentView.Deadline.passed.text == String(localized: "assignment_detail_due_passed"))
+        #expect(MoodleAssignmentView.Deadline.left(60, urgent: false).text
+            == String(format: String(localized: "assignment_detail_time_left"), MoodleAssignmentView.durationText(60)))
+        #expect(MoodleAssignmentView.Deadline.overdue(60).text
+            == String(format: String(localized: "assignment_detail_overdue_by"), MoodleAssignmentView.durationText(60)))
+    }
+
+    @Test("each badge and deadline line has its colour, and only the urgent and the overdue lines are bold")
+    func colours() {
+        let badges: [(MoodleAssignmentView.Badge, text: Color, fill: Color)] = [
+            (.notSubmitted, Color.textSecondary, Color.textSecondary.opacity(0.16)),
+            (.submitted, .green, Color.green.opacity(0.16)),
+            (.early(60), .green, Color.green.opacity(0.16)),
+            (.late(60), Color.badgeRedText, Color.badgeRed.opacity(0.16)),
+        ]
+        for (badge, text, fill) in badges {
+            #expect(badge.tint == text, "\(badge)")
+            #expect(badge.fill == fill, "\(badge)")
+        }
+
+        let lines: [(MoodleAssignmentView.Deadline, text: Color, isEmphasized: Bool, isOverdue: Bool)] = [
+            (.left(60, urgent: true), .orange, true, false),
+            (.left(60, urgent: false), Color.textSecondary, false, false),
+            (.passed, Color.textSecondary, false, false),
+            (.overdue(60), Color.badgeRedText, true, true),
+        ]
+        for (line, text, isEmphasized, isOverdue) in lines {
+            #expect(line.tint == text, "\(line)")
+            #expect(line.isEmphasized == isEmphasized, "\(line)")
+            #expect(line.isOverdue == isOverdue, "\(line)")
+        }
+    }
+
+    @Test("the submission's card shows for files, text or a submission time, and not for a record with none of them")
+    func card() {
+        #expect(MoodleAssignmentView.showsCard(Self.submission("submitted")))
+        #expect(!MoodleAssignmentView.showsCard(Self.submission("submitted", modified: nil)))
+        #expect(MoodleAssignmentView.showsCard(Self.submission("draft", files: [Self.file])))
+        #expect(MoodleAssignmentView.showsCard(Self.submission("draft", text: "<p>Half done</p>")))
+        #expect(!MoodleAssignmentView.showsCard(Self.submission("draft")))
+        #expect(!MoodleAssignmentView.showsCard(Self.submission("new")))
+    }
+
+    @Test("points split into the score and the most it could be without the zeros ending them; other grades stay whole")
+    func score() {
+        #expect(MoodleAssignmentView.score(of: "85.00 / 100.00") == .init(value: "85", max: "100"))
+        #expect(MoodleAssignmentView.score(of: "85.50 / 100.00") == .init(value: "85.5", max: "100"))
+        #expect(MoodleAssignmentView.score(of: "7,25 / 10,00") == .init(value: "7,25", max: "10"))
+        #expect(MoodleAssignmentView.score(of: "100 / 100") == .init(value: "100", max: "100"))
+        #expect(MoodleAssignmentView.score(of: "0.00 / 100.00") == .init(value: "0", max: "100"))
+        #expect(MoodleAssignmentView.score(of: "B+") == .init(value: "B+", max: nil))
+        #expect(MoodleAssignmentView.score(of: "85.00 %") == .init(value: "85.00 %", max: nil))
+        #expect(MoodleAssignmentView.score(of: "Pass / Fail") == .init(value: "Pass / Fail", max: nil))
+        #expect(MoodleAssignmentView.Score(value: "85", max: "100").spoken
+            == "85, \(String(format: String(localized: "course_moodle_grade_out_of"), "100"))")
+        #expect(MoodleAssignmentView.Score(value: "B+", max: nil).spoken == "B+")
+    }
+
+    @Test("a length reads in at most two units, rounded down, and anything under a minute as one minute")
+    func durations() {
+        let zh = Locale(identifier: "zh-Hant-TW")
+        let en = Locale(identifier: "en_US")
+        let tenDaysAndAHalf: TimeInterval = 10 * 86_400 + 12 * 3_600 + 40 * 60
+        let overAnHour: TimeInterval = 3_600 + 13 * 60 + 40
+
+        #expect(MoodleAssignmentView.durationText(tenDaysAndAHalf, locale: zh) == "10天12小時")
+        #expect(MoodleAssignmentView.durationText(tenDaysAndAHalf, locale: en) == "10 days, 12 hr")
+        #expect(MoodleAssignmentView.durationText(overAnHour, locale: zh) == "1小時13分鐘")
+        #expect(MoodleAssignmentView.durationText(overAnHour, locale: en) == "1 hr, 13 min")
+        #expect(MoodleAssignmentView.durationText(9 * 86_400, locale: zh) == "9天")
+        #expect(MoodleAssignmentView.durationText(20, locale: en) == "1 min")
+        #expect(MoodleAssignmentView.durationText(0, locale: zh) == "1分鐘")
+    }
+
+    @Test("the small times read the month, day, weekday and time in Taipei, without the seconds")
+    func smallTimes() {
+        // Thursday 15 October 2026, 20:03:59 in Taipei.
+        let date = Date(timeIntervalSince1970: 1_792_065_839)
+        let zh = Locale(identifier: "zh-Hant-TW")
+
+        #expect(MoodleAssignmentView.timeText(date, locale: zh) == "10月15日週四 20:03")
+        #expect(MoodleAssignmentView.timeText(date, locale: Locale(identifier: "en_US")) == "Thu, Oct 15 at 20:03")
+        #expect(MoodleAssignmentView.monthText(date, locale: zh) == "10月")
+        #expect(MoodleAssignmentView.weekdayTimeText(date, locale: zh) == "\(String(localized: "weekday_thu_caption")) 20:03")
     }
 
     @Test("times show the app's date and time to the minute, never the seconds")
