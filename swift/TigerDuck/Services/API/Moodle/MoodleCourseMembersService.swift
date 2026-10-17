@@ -7,7 +7,6 @@ nonisolated struct MoodleMember: Codable, Sendable, Hashable, Identifiable {
     /// As Moodle spells it, which at NTUST is "student ID @ name".
     let fullName: String
     let idNumber: String?
-    let department: String?
     let email: String?
     let groups: [String]
     let roles: [Role]
@@ -41,7 +40,7 @@ nonisolated enum MoodleCourseMembersService {
 
     /// Only what the members screens show, so Moodle sends no other personal data, such as last
     /// access times or other courses.
-    static let userFields = "id,fullname,idnumber,department,email,groups,roles,profileimageurl,description,interests,customfields"
+    static let userFields = "id,fullname,idnumber,email,groups,roles,profileimageurl,description,interests,customfields"
 
     static func members(
         courseId: Int,
@@ -107,7 +106,6 @@ private nonisolated struct RawMember: Decodable, Sendable {
     let id: Int
     let fullname: String
     let idnumber: String?
-    let department: String?
     let email: String?
     let groups: [RawGroup]?
     let roles: [RawRole]?
@@ -122,7 +120,6 @@ private nonisolated struct RawMember: Decodable, Sendable {
             id: id,
             fullName: fullname,
             idNumber: Self.nonEmpty(idnumber),
-            department: Self.nonEmpty(department),
             email: Self.nonEmpty(email),
             groups: (groups ?? []).compactMap { Self.nonEmpty(MoodleHTMLText.plainText(fromHTML: $0.name)) },
             roles: (roles ?? []).map { MoodleMember.Role(shortName: $0.shortname, name: $0.name, sortOrder: $0.sortorder) },

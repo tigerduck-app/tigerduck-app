@@ -9,7 +9,8 @@ import Testing
 
 /// A course's members in `MoodleCourseStore` over a stand-in `MoodleCourseAPI` and a cache in a
 /// folder of its own, then the sections, the detail rows and the list states the screens draw
-/// from them. Every person here is made up.
+/// from them. Every person here is made up, and a student ID with a real department code has the
+/// entry year 199, which is still to come.
 @MainActor
 struct MoodleCourseMembersTests {
     private nonisolated static let courseId = 20119
@@ -19,14 +20,13 @@ struct MoodleCourseMembersTests {
         _ id: Int,
         _ fullName: String,
         idNumber: String? = nil,
-        department: String? = nil,
         roles: [String] = ["student"],
         email: String? = nil,
         groups: [String] = [],
         fields: [MoodleMember.Field] = []
     ) -> MoodleMember {
         member(
-            id, fullName, idNumber: idNumber, department: department, email: email, groups: groups, fields: fields,
+            id, fullName, idNumber: idNumber, email: email, groups: groups, fields: fields,
             roleDetails: roles.enumerated().map { MoodleMember.Role(shortName: $0.element, name: "", sortOrder: $0.offset) }
         )
     }
@@ -35,14 +35,13 @@ struct MoodleCourseMembersTests {
         _ id: Int,
         _ fullName: String,
         idNumber: String? = nil,
-        department: String? = nil,
         email: String? = nil,
         groups: [String] = [],
         fields: [MoodleMember.Field] = [],
         roleDetails: [MoodleMember.Role]
     ) -> MoodleMember {
         MoodleMember(
-            id: id, fullName: fullName, idNumber: idNumber, department: department, email: email, groups: groups,
+            id: id, fullName: fullName, idNumber: idNumber, email: email, groups: groups,
             roles: roleDetails, pictureURL: nil, description: "", interests: [], fields: fields
         )
     }
@@ -308,7 +307,7 @@ struct MoodleCourseMembersTests {
 
     private nonisolated static func withPicture(_ member: MoodleMember, rev: Int) -> MoodleMember {
         MoodleMember(
-            id: member.id, fullName: member.fullName, idNumber: member.idNumber, department: member.department,
+            id: member.id, fullName: member.fullName, idNumber: member.idNumber,
             email: member.email, groups: member.groups, roles: member.roles,
             // Each user has a context of their own, which the path names.
             pictureURL: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/\(member.id + 1000)/user/icon/moove/f1?rev=\(rev)"),
@@ -564,22 +563,29 @@ struct MoodleCourseMembersTests {
         #expect(sections[1].members.map(\.name) == ["Bo", "Zoe", "Ann", "Nobody"])
     }
 
-    @Test("search matches a name, a student ID or a department here, and a search no one matches says so")
+    @Test("search matches a name, a student ID or the department as the list shows it, and a search no one matches says so")
     func search() {
         let members = [
-            Self.member(1, "B11399001 @ 王小明", idNumber: "B11399001", department: "資訊工程系"),
-            Self.member(2, "B11399002 @ Duck Tiger", idNumber: "B11399002", department: "Information Management"),
-            Self.member(3, "Tiger Teacher", department: "Computer Science", roles: ["editingteacher"]),
+            Self.member(1, "B19915001 @ 王小明", idNumber: "B19915001"),
+            Self.member(2, "B19901002 @ Duck Tiger", idNumber: "B19901002"),
+            Self.member(3, "Tiger Teacher", roles: ["editingteacher"]),
+            Self.member(4, "M19901003 @ Grad Duck", idNumber: "M19901003"),
         ]
         func ids(_ query: String) -> [Int] {
             MoodleMemberSection.sections(of: members, matching: query).flatMap { $0.members.map(\.id) }
         }
 
         #expect(ids("小明") == [1])
-        #expect(ids("b113990") == [1, 2])
-        #expect(ids("information") == [2])
+        #expect(ids("b199") == [2, 1])
+        #expect(ids(NTUSTDepartment.im.shortName) == [2])
         #expect(ids("tiger") == [3, 2])
-        #expect(ids("  ") == [3, 1, 2])
+        #expect(ids("  ") == [3, 2, 1, 4])
+        // The list shows the short name, so what only the full name has, as English's
+        // "Department of", finds no one.
+        let fullOnly = NTUSTDepartment.im.name.replacingOccurrences(of: NTUSTDepartment.im.shortName, with: "")
+        if !fullOnly.trimmingCharacters(in: .whitespaces).isEmpty {
+            #expect(ids(fullOnly) == [])
+        }
         guard case .noMatches(let query) = MoodleMembersView.Content(
             list: MoodleMemberList(ownId: nil, members: members), isRefreshing: false, failure: nil, query: " nobody "
         ) else {
@@ -591,25 +597,53 @@ struct MoodleCourseMembersTests {
 
     // MARK: - Member detail
 
-    @Test("the detail lists the student ID, department, email, groups and custom fields, each only when there is one")
+    @Test("the detail lists the student ID, the department it names, email, groups and custom fields, each only when there is one")
     func detailRows() {
         let full = Self.member(
-            1, "B11399001 @ Tiger Duck", idNumber: "B11399001", department: "Information Management",
-            email: "b11399001@example.edu.tw", groups: ["Group 3", "Group 4"],
+            1, "B19915001 @ Tiger Duck", idNumber: "B19915001",
+            email: "b19915001@example.edu.tw", groups: ["Group 3", "Group 4"],
             fields: [MoodleMember.Field(name: "Office", value: "TR-412")]
         )
 
         #expect(MoodleMemberProfile.rows(of: full) == [
-            .init(label: String(localized: "sign_in_student_id"), value: .text("B11399001")),
-            .init(label: String(localized: "course_member_department"), value: .text("Information Management")),
-            .init(label: String(localized: "course_member_email"), value: .email("b11399001@example.edu.tw")),
+            .init(label: String(localized: "sign_in_student_id"), value: .text("B19915001")),
+            .init(label: String(localized: "course_member_department"), value: .text(NTUSTDepartment.cs.name)),
+            .init(label: String(localized: "course_member_email"), value: .email("b19915001@example.edu.tw")),
             .init(label: String(localized: "course_member_groups"), value: .text("Group 3、Group 4")),
             .init(label: "Office", value: .text("TR-412")),
         ])
         #expect(MoodleMemberProfile.rows(of: Self.member(2, "Tiger Teacher")).isEmpty)
-        #expect(MoodleMemberProfile.rows(of: Self.member(3, "B11399003 @ Duck")) == [
-            .init(label: String(localized: "sign_in_student_id"), value: .text("B11399003")),
-        ])
+        for id in ["B11399003", "M19915003"] {
+            #expect(MoodleMemberProfile.rows(of: Self.member(3, "\(id) @ Duck")) == [
+                .init(label: String(localized: "sign_in_student_id"), value: .text(id)),
+            ], "\(id)")
+        }
+    }
+
+    // MARK: - Department
+
+    @Test("a bachelor's student ID names the department of its code, in either case", arguments: [
+        ("01", "im"), ("02", "et"), ("03", "me"), ("04", "tx"), ("05", "ct"), ("06", "ch"),
+        ("07", "ee"), ("08", "ba"), ("10", "dt"), ("13", "ad"), ("15", "cs"), ("30", "hc"),
+    ])
+    func department(code: String, courseCode: String) throws {
+        let department = try #require(NTUSTDepartment(studentId: "B199\(code)042"))
+
+        #expect("\(department)" == courseCode)
+        #expect(NTUSTDepartment(studentId: "b199\(code)042") == department)
+        // The case names its strings, so a name taken from another department's key shows here.
+        let key = "course_member_department_\(courseCode)"
+        #expect(department.name == Bundle.main.localizedString(forKey: key, value: nil, table: nil))
+        #expect(department.shortName == Bundle.main.localizedString(forKey: key + "_short", value: nil, table: nil))
+        #expect(department.name != key)
+    }
+
+    @Test("no department for another degree's ID, a code the table lacks, an ID of another form, or none", arguments: [
+        "B19999042", "B19909042", "B19911042", "M19915042", "D19915042", "A19915042",
+        "B1991504", "B199150042", "B19915O42", "B１９９１５０４２", " B19915042", "", nil,
+    ] as [String?])
+    func noDepartment(studentId: String?) {
+        #expect(NTUSTDepartment(studentId: studentId) == nil)
     }
 
     @Test("a name splits into the part after the @ and the student ID before it")
@@ -656,6 +690,31 @@ extension MoodleCourseMembersTests {
 
         #expect(field.isFirstResponder)
         #expect(window.descendants(ofType: UITextField.self).map(ObjectIdentifier.init) == [ObjectIdentifier(field)])
+    }
+
+    /// Shown without making it key, so the test of the search field keeps its keyboard.
+    private func show(_ view: some View) throws -> UIWindow {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = UIHostingController(rootView: view)
+        window.isHidden = false
+        return window
+    }
+
+    @Test("a row tells the student ID and the short name of the department it names, a graduate's only the ID")
+    func aRowTellsTheDepartmentAfterTheStudentId() async throws {
+        try await withAccessibilityAutomation {
+            for (id, value) in [("B19915002", "B19915002, \(NTUSTDepartment.cs.shortName)"), ("M19915002", "M19915002")] {
+                let window = try show(MoodleMemberRow(member: Self.member(43, "\(id) @ Duck Tiger", idNumber: id), picture: nil))
+                defer { window.isHidden = true }
+                let root = try #require(window.rootViewController?.view)
+
+                try await waitUntil { accessibilityElement(labeled: "Duck Tiger", in: root) != nil }
+
+                #expect(accessibilityElement(labeled: "Duck Tiger", in: root)?.accessibilityValue == value)
+            }
+        }
     }
 }
 #endif

@@ -21,8 +21,7 @@ struct MoodleCourseMembersServiceTests {
 
     static let members = #"""
     [
-      {"id": 3, "fullname": "Tiger Teacher", "department": "Computer Science",
-       "email": "teacher@example.edu.tw",
+      {"id": 3, "fullname": "Tiger Teacher", "email": "teacher@example.edu.tw",
        "profileimageurl": "https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1?rev=5",
        "description": "<p dir=\"ltr\">Office hours: <strong>Tue</strong> 10:00</p>", "descriptionformat": 1,
        "interests": "networks, QUIC ,",
@@ -35,11 +34,11 @@ struct MoodleCourseMembersServiceTests {
          {"type": "menu", "value": "", "name": "Year", "shortname": "year"}
        ]},
       {"id": 42, "fullname": "B11399001 @ Tiger Duck", "idnumber": "B11399001",
-       "department": "Information Management", "email": "b11399001@example.edu.tw",
+       "email": "b11399001@example.edu.tw",
        "profileimageurl": "https://moodle-stub.invalid/theme/image.php/moove/core/1/u/f1",
        "roles": [{"roleid": 5, "name": "", "shortname": "student", "sortorder": 5}],
        "groups": [{"id": 9, "name": "Group 3 &amp; 4", "description": "", "descriptionformat": 1}]},
-      {"id": 77, "fullname": "B11399002 @ Duck Tiger", "idnumber": "", "department": " ",
+      {"id": 77, "fullname": "B11399002 @ Duck Tiger", "idnumber": " ",
        "roles": [{"roleid": 5, "name": "", "shortname": "student", "sortorder": 5}]}
     ]
     """#
@@ -56,7 +55,7 @@ struct MoodleCourseMembersServiceTests {
         let request = try #require(SettingsAPIStub.requests(for: Self.endpoint(token: token)).first)
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
         #expect(body == "courseid=20119&options%5B0%5D%5Bname%5D=userfields&options%5B0%5D%5Bvalue%5D="
-            + "id%2Cfullname%2Cidnumber%2Cdepartment%2Cemail%2Cgroups%2Croles%2Cprofileimageurl%2Cdescription"
+            + "id%2Cfullname%2Cidnumber%2Cemail%2Cgroups%2Croles%2Cprofileimageurl%2Cdescription"
             + "%2Cinterests%2Ccustomfields")
     }
 
@@ -73,7 +72,6 @@ struct MoodleCourseMembersServiceTests {
         let teacher = members[0]
         #expect(teacher.fullName == "Tiger Teacher")
         #expect(teacher.idNumber == nil)
-        #expect(teacher.department == "Computer Science")
         #expect(teacher.email == "teacher@example.edu.tw")
         #expect(teacher.roles == [MoodleMember.Role(shortName: "editingteacher", name: "", sortOrder: 3)])
         #expect(teacher.pictureURL == URL(string: "https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1?rev=5"))
@@ -89,7 +87,6 @@ struct MoodleCourseMembersServiceTests {
 
         let bare = members[2]
         #expect(bare.idNumber == nil)
-        #expect(bare.department == nil)
         #expect(bare.email == nil)
         #expect(bare.groups.isEmpty)
         #expect(bare.description.isEmpty)

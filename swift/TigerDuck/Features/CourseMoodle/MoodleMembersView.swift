@@ -3,6 +3,59 @@ import SwiftUI
 nonisolated extension MoodleMember {
     var name: String { MoodlePersonName.displayName(fullName) }
     var studentId: String? { idNumber ?? MoodlePersonName.studentId(fullName) }
+    /// Never Moodle's own field, which NTUST's Moodle fills with the degree level, and only for the
+    /// signed-in student.
+    var department: NTUSTDepartment? { NTUSTDepartment(studentId: studentId) }
+}
+
+/// The department a bachelor's student ID names, the one the student was admitted to. The ID is a
+/// letter, the entry year in three digits, the department's code in two and a serial in three.
+/// Each case is the department's course code, which names its strings, and only the codes the
+/// school's course rosters confirm are here (`app-translation/CONVENTIONS.md`).
+nonisolated enum NTUSTDepartment: String {
+    case im = "01", et = "02", me = "03", tx = "04", ct = "05", ch = "06"
+    case ee = "07", ba = "08", dt = "10", ad = "13", cs = "15", hc = "30"
+
+    /// Nil for another degree's ID, one of another form, and a code not here.
+    init?(studentId: String?) {
+        guard let match = studentId?.wholeMatch(of: /[Bb][0-9]{3}([0-9]{2})[0-9]{3}/) else { return nil }
+        self.init(rawValue: String(match.1))
+    }
+
+    var name: String {
+        switch self {
+        case .im: String(localized: "course_member_department_im")
+        case .et: String(localized: "course_member_department_et")
+        case .me: String(localized: "course_member_department_me")
+        case .tx: String(localized: "course_member_department_tx")
+        case .ct: String(localized: "course_member_department_ct")
+        case .ch: String(localized: "course_member_department_ch")
+        case .ee: String(localized: "course_member_department_ee")
+        case .ba: String(localized: "course_member_department_ba")
+        case .dt: String(localized: "course_member_department_dt")
+        case .ad: String(localized: "course_member_department_ad")
+        case .cs: String(localized: "course_member_department_cs")
+        case .hc: String(localized: "course_member_department_hc")
+        }
+    }
+
+    /// For the members list, where it follows the student ID on one line.
+    var shortName: String {
+        switch self {
+        case .im: String(localized: "course_member_department_im_short")
+        case .et: String(localized: "course_member_department_et_short")
+        case .me: String(localized: "course_member_department_me_short")
+        case .tx: String(localized: "course_member_department_tx_short")
+        case .ct: String(localized: "course_member_department_ct_short")
+        case .ch: String(localized: "course_member_department_ch_short")
+        case .ee: String(localized: "course_member_department_ee_short")
+        case .ba: String(localized: "course_member_department_ba_short")
+        case .dt: String(localized: "course_member_department_dt_short")
+        case .ad: String(localized: "course_member_department_ad_short")
+        case .cs: String(localized: "course_member_department_cs_short")
+        case .hc: String(localized: "course_member_department_hc_short")
+        }
+    }
 }
 
 extension MoodlePage {
@@ -88,7 +141,7 @@ nonisolated struct MoodleMemberSection: Identifiable, Equatable {
 
 private nonisolated extension MoodleMember {
     func matches(_ needle: String) -> Bool {
-        [name, studentId, department].contains { $0?.localizedStandardContains(needle) == true }
+        [name, studentId, department?.shortName].contains { $0?.localizedStandardContains(needle) == true }
     }
 }
 
@@ -287,8 +340,8 @@ struct MoodleMemberRow: View {
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
-                if member.studentId != nil || member.department != nil {
-                    subline
+                if let studentId = member.studentId {
+                    subline(studentId)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -303,19 +356,19 @@ struct MoodleMemberRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(member.name)
-        .accessibilityValue([member.studentId, member.department].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([member.studentId, department].compactMap(\.self).joined(separator: ", "))
     }
 
-    private var subline: some View {
+    private var department: String? { member.department?.shortName }
+
+    private func subline(_ studentId: String) -> some View {
         HStack(spacing: 0) {
-            if let studentId = member.studentId {
-                Text(studentId)
-                    .monospacedDigit()
-                    .fixedSize()
-                    .layoutPriority(1)
-            }
-            if let department = member.department {
-                Text(member.studentId == nil ? department : " · \(department)")
+            Text(studentId)
+                .monospacedDigit()
+                .fixedSize()
+                .layoutPriority(1)
+            if let department {
+                Text(verbatim: " · \(department)")
                     .lineLimit(1)
                     .truncationMode(.tail)
             }

@@ -67,9 +67,9 @@ struct MoodleMemberView: View {
     }
 }
 
-/// A member as Moodle shows them to the course: picture, name and role, then whichever of their
-/// student ID, department, email, groups and custom fields Moodle gives, each a row only when
-/// there is one, and their own description and interests.
+/// A member as Moodle shows them to the course: picture, name and role, then their student ID and
+/// the department it names, and whichever of their email, groups and custom fields Moodle gives,
+/// each a row only when there is one, and their own description and interests.
 struct MoodleMemberProfile: View {
     let member: MoodleMember
     let picture: CGImage?
@@ -116,7 +116,7 @@ struct MoodleMemberProfile: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// What the card lists, in order: a field shows only when Moodle gives it.
+    /// What the card lists, in order: a field shows only when there is one.
     nonisolated struct Row: Equatable {
         enum Value: Equatable {
             case text(String)
@@ -138,7 +138,7 @@ struct MoodleMemberProfile: View {
             rows.append(Row(label: String(localized: "sign_in_student_id"), value: .text(studentId)))
         }
         if let department = member.department {
-            rows.append(Row(label: String(localized: "course_member_department"), value: .text(department)))
+            rows.append(Row(label: String(localized: "course_member_department"), value: .text(department.name)))
         }
         if let email = member.email {
             rows.append(Row(label: String(localized: "course_member_email"), value: .email(email)))
