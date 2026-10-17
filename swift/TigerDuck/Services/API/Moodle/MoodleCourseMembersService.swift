@@ -7,7 +7,6 @@ nonisolated struct MoodleMember: Codable, Sendable, Hashable, Identifiable {
     /// As Moodle spells it, which at NTUST is "student ID @ name".
     let fullName: String
     let idNumber: String?
-    let department: String?
     let email: String?
     let groups: [String]
     let roles: [Role]
@@ -41,7 +40,7 @@ nonisolated enum MoodleCourseMembersService {
 
     /// Only what the members screens show, so Moodle sends no other personal data, such as last
     /// access times or other courses.
-    static let userFields = "id,fullname,idnumber,department,email,groups,roles,profileimageurl,description,interests,customfields"
+    static let userFields = "id,fullname,idnumber,email,groups,roles,profileimageurl,description,interests,customfields"
 
     static func members(
         courseId: Int,
@@ -72,6 +71,16 @@ nonisolated enum MoodleCourseMembersService {
         let path = url.path
         return (path.hasPrefix("/pluginfile.php/") || path.hasPrefix("/webservice/pluginfile.php/"))
             && path.contains("/user/icon/")
+    }
+
+    /// The 512 px size of a member's own picture: Moodle names it `f3` where `profileimageurl`
+    /// names the 100 px `f1`, and sends `f1` for a picture uploaded before Moodle kept `f3`. Nil
+    /// for a URL that names another size.
+    static func largePicture(_ url: URL) -> URL? {
+        guard url.lastPathComponent == "f1",
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        components.percentEncodedPath = String(components.percentEncodedPath.dropLast(2)) + "f3"
+        return components.url
     }
 
     /// A member's own picture, under the file URL every Moodle file downloads from. An answer that
@@ -107,7 +116,6 @@ private nonisolated struct RawMember: Decodable, Sendable {
     let id: Int
     let fullname: String
     let idnumber: String?
-    let department: String?
     let email: String?
     let groups: [RawGroup]?
     let roles: [RawRole]?
@@ -122,7 +130,6 @@ private nonisolated struct RawMember: Decodable, Sendable {
             id: id,
             fullName: fullname,
             idNumber: Self.nonEmpty(idnumber),
-            department: Self.nonEmpty(department),
             email: Self.nonEmpty(email),
             groups: (groups ?? []).compactMap { Self.nonEmpty(MoodleHTMLText.plainText(fromHTML: $0.name)) },
             roles: (roles ?? []).map { MoodleMember.Role(shortName: $0.shortname, name: $0.name, sortOrder: $0.sortorder) },
