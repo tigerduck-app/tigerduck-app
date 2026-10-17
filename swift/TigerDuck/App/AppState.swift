@@ -422,14 +422,6 @@ final class AppState {
 
     // MARK: - Settings
 
-    /// Whether to persist announcement filter selection across sessions
-    var rememberAnnouncementFilter: Bool = Defaults[.rememberAnnouncementFilter] {
-        didSet {
-            Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter
-            if !rememberAnnouncementFilter { Defaults[.savedAnnouncementDepartmentsData] = nil }
-        }
-    }
-
     /// Cross-device sync toggle (Sync course information). When off, every
     /// backend sync call (override download and upload, course and assignment
     /// upload) is skipped; push notifications and Live Activities are unavailable.
