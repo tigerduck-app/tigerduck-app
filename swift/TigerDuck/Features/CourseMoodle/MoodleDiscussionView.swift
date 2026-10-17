@@ -44,6 +44,7 @@ struct MoodleDiscussionView: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
         .refreshable { await refresh() }
+        .moodleRefreshFailureNote(thread, hasContent: thread.value != nil)
         .moodleArticleChrome()
         .moodleRefreshShortcut { await refresh() }
         .moodleAutoRefresh(every: thread.ttl, fetchedAt: { thread.fetchedAt }) {

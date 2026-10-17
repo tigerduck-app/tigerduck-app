@@ -59,6 +59,7 @@ jobs:
               TigerDuckTests/EmptyClassroomLayoutTests
               TigerDuckTests/ModalClosingTests
               TigerDuckTests/MoodleCourseMembersTests/aKeyThatMatchesNobodyKeepsTheSearchField()
+              TigerDuckTests/MoodleRefreshFailureNoteTests/noteShowsOnlyOverContent()
               TigerDuckTests/PagingScrollLockTests
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
