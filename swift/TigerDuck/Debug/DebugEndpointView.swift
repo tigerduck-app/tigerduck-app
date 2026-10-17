@@ -10,6 +10,7 @@ import SwiftUI
 /// onboarding's sign-in page and the macOS Settings → Developer tab, so it has its own file: the
 /// rest of `DebugSettingsView.swift` is iPhone-only and DEBUG-only.
 struct DebugEndpointView: View {
+    @Environment(AppState.self) private var appState
     @State private var viewModel = DebugEndpointViewModel()
     #if os(iOS)
     @FocusState private var fieldFocused: Bool
@@ -56,7 +57,7 @@ struct DebugEndpointView: View {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        Task { await viewModel.save() }
+                        Task { await viewModel.save { await appState.endpointChangeSignOutNotes() } }
                     } label: {
                         if viewModel.isChecking {
                             // Swapping the label keeps the row from resizing mid-probe and names
@@ -78,7 +79,7 @@ struct DebugEndpointView: View {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        viewModel.resetToDefault()
+                        Task { await viewModel.resetToDefault { await appState.endpointChangeSignOutNotes() } }
                     }
                     .disabled(viewModel.isChecking || viewModel.storedOverride == nil)
                 }
@@ -135,6 +136,8 @@ final class DebugEndpointViewModel {
         let url: URL?
         /// The typed https became http, as a private address takes it.
         var rewritten = false
+        /// What the sign-out deletes, in lines the alert adds.
+        var notes: [String] = []
     }
 
     var draft: String
@@ -162,8 +165,8 @@ final class DebugEndpointViewModel {
     }
 
     /// Checks the typed endpoint. One that would move the app to another server waits for the
-    /// user's answer in ``pendingChange``; the one in use already is saved at once.
-    func save() async {
+    /// user's answer in ``pendingChange``, with `notes`; the one in use already is saved at once.
+    func save(notes: () async -> [String] = { [] }) async {
         guard !isChecking else { return }
         isChecking = true
         validationError = nil
@@ -181,7 +184,9 @@ final class DebugEndpointViewModel {
             if url == backing.effectiveURL() {
                 await apply(change)
             } else {
-                pendingChange = change
+                var asked = change
+                asked.notes = await notes()
+                pendingChange = asked
             }
         case .rejected(let reason):
             validationError = Self.message(for: reason)
@@ -189,8 +194,8 @@ final class DebugEndpointViewModel {
     }
 
     /// Asks before going back to the default, which moves the app to another server too.
-    func resetToDefault() {
-        pendingChange = PendingChange(url: nil)
+    func resetToDefault(notes: () async -> [String] = { [] }) async {
+        pendingChange = PendingChange(url: nil, notes: await notes())
     }
 
     /// Makes `change` once the user agreed. `signOut` comes first and is waited for: the session
@@ -265,8 +270,9 @@ private struct EndpointChangeAlert: ViewModifier {
                 Task { await viewModel.confirm(change) { await appState.signOutOfEveryAccount() } }
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
-        } message: { _ in
-            Text(String(localized: "settings_api_endpoint_change_alert_message"))
+        } message: { change in
+            Text(([String(localized: "settings_api_endpoint_change_alert_message")] + change.notes)
+                .joined(separator: "\n\n"))
         }
     }
 }

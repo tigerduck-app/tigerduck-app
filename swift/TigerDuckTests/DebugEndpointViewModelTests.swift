@@ -71,16 +71,35 @@ struct DebugEndpointViewModelTests {
         backend.stored = Self.other.absoluteString
         let model = Self.model(backend)
 
-        model.resetToDefault()
+        await model.resetToDefault { ["notes"] }
         #expect(backend.events.isEmpty)
         let change = try #require(model.pendingChange)
-        #expect(change == .init(url: nil))
+        #expect(change == .init(url: nil, notes: ["notes"]))
 
         await model.confirm(change) { backend.events.append("sign out") }
 
         #expect(backend.events == ["sign out", "clear"])
         #expect(model.storedOverride == nil)
         #expect(model.effectiveURL == Self.inUse.absoluteString)
+    }
+
+    @Test("the alert names what the sign-out deletes")
+    func notesComeWithTheChange() async {
+        let backend = Backend()
+        let model = Self.model(backend)
+        model.draft = Self.other.absoluteString
+
+        await model.save { [String(localized: "settings_sign_out_imported_tables")] }
+
+        #expect(model.pendingChange?.notes == [String(localized: "settings_sign_out_imported_tables")])
+    }
+
+    @Test("only a stored school account or a backend session is signed out")
+    func signsOutOnlyAHeldSchoolAccount() {
+        #expect(!AppState.endsSchoolAccount(hasCredentials: false, studentId: nil, backendSignedIn: false))
+        #expect(AppState.endsSchoolAccount(hasCredentials: true, studentId: nil, backendSignedIn: false))
+        #expect(AppState.endsSchoolAccount(hasCredentials: false, studentId: "B11399001", backendSignedIn: false))
+        #expect(AppState.endsSchoolAccount(hasCredentials: false, studentId: nil, backendSignedIn: true))
     }
 
     @Test("the endpoint in use already is saved without asking or signing out")
