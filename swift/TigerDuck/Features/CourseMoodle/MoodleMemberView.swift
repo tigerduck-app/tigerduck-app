@@ -1,14 +1,17 @@
+import QuickLook
 import SwiftUI
 
-/// One member of a course, pushed from the members list: their profile, "Open in Moodle" for
-/// their page in the course, and their email opening a new School Mail message where the account
-/// has School Mail, else the system's mail.
+/// One member of a course, pushed from the members list: their profile, their own picture opening
+/// full screen in Quick Look, whose share menu saves it, "Open in Moodle" for their page in the
+/// course, and their email opening a new School Mail message where the account has School Mail,
+/// else the system's mail.
 struct MoodleMemberView: View {
     let store: MoodleCourseStore
     let member: MoodleMember
 
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @State private var picturePreview: URL?
     #if os(iOS)
     @State private var mail: MemberMail?
     @State private var sentCopyNotice: String?
@@ -31,7 +34,8 @@ struct MoodleMemberView: View {
                     member: member,
                     picture: member.pictureURL.flatMap { store.pictures[$0] },
                     policy: appState.visualStylePolicy,
-                    writeTo: writeTo
+                    writeTo: writeTo,
+                    openPicture: { picturePreview = store.picturePreview(of: member) }
                 )
                 .task(id: member.pictureURL) { await store.loadPicture(of: member) }
             }
@@ -41,6 +45,7 @@ struct MoodleMemberView: View {
         }
         .background(Color.backgroundPrimary)
         .moodleArticleChrome(page: .profile(userId: member.id, courseId: store.courseId))
+        .quickLookPreview($picturePreview)
         #if os(iOS)
         .sheet(item: $mail) { mail in
             MailComposeView(
@@ -75,6 +80,7 @@ struct MoodleMemberProfile: View {
     let picture: CGImage?
     let policy: VisualStylePolicy
     let writeTo: (String) -> Void
+    let openPicture: () -> Void
 
     private static let avatarSize: CGFloat = 88
 
@@ -101,7 +107,7 @@ struct MoodleMemberProfile: View {
 
     private var header: some View {
         VStack(spacing: TigerDuckTheme.Spacing.xs) {
-            MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
+            avatar
                 .padding(.bottom, TigerDuckTheme.Spacing.xs)
             Text(member.name)
                 .font(TigerDuckTheme.Typography.title)
@@ -114,6 +120,20 @@ struct MoodleMemberProfile: View {
                 .foregroundStyle(Color.textSecondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Moodle's default picture, or none, has nothing to open.
+    @ViewBuilder
+    private var avatar: some View {
+        let image = MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
+        if picture != nil {
+            Button(action: openPicture) { image }
+                .buttonStyle(.plain)
+                .accessibilityLabel(member.name)
+                .accessibilityAddTraits(.isImage)
+        } else {
+            image
+        }
     }
 
     /// What the card lists, in order: a field shows only when there is one.

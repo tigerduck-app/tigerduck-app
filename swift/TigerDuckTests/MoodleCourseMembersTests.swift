@@ -475,15 +475,44 @@ struct MoodleCourseMembersTests {
         #expect(store.pictures[try #require(last.pictureURL)] != nil)
     }
 
-    @Test("signing out deletes the pictures with every other Moodle file")
-    func signOutClearsPictures() async {
+    @Test("signing out deletes the pictures, and the copies that opened, with every other Moodle file")
+    func signOutClearsPictures() async throws {
         let folder = Folder()
-        await Self.store(folder, site: Site()).loadPicture(of: Self.withPicture(Self.classmate, rev: 5))
+        let store = Self.store(folder, site: Site())
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        await store.loadPicture(of: member)
+        let preview = try #require(store.picturePreview(of: member))
         #expect(!pictures(folder).isEmpty)
 
         folder.cache.clearUserScopedData()
 
         #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
+        #expect(!FileManager.default.fileExists(atPath: preview.path))
+    }
+
+    @Test("a member's own picture opens as an image file named for them, from the copy on the device")
+    func picturePreview() async throws {
+        let folder = Folder()
+        let site = Site()
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let store = Self.store(folder, site: site, signedIn: signedIn)
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        #expect(store.picturePreview(of: member) == nil)
+
+        await store.loadPicture(of: member)
+        let preview = try #require(store.picturePreview(of: member))
+
+        #expect(preview.lastPathComponent == "Duck Tiger.png")
+        #expect(try Data(contentsOf: preview) == Self.png)
+        #expect(site.pictureCalls.count == 1)
+        #expect(store.picturePreview(of: Self.classmate) == nil)
+        signedIn.withLock { $0 = false }
+        #expect(store.picturePreview(of: member) == nil)
+        signedIn.withLock { $0 = true }
+
+        await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
+        #expect(pictures(folder) == ["43-6"])
+        #expect(!FileManager.default.fileExists(atPath: preview.path))
     }
 
     // MARK: - Members screen
@@ -713,6 +742,31 @@ extension MoodleCourseMembersTests {
                 try await waitUntil { accessibilityElement(labeled: "Duck Tiger", in: root) != nil }
 
                 #expect(accessibilityElement(labeled: "Duck Tiger", in: root)?.accessibilityValue == value)
+            }
+        }
+    }
+
+    @Test("a member's own picture on their page is a button that opens it, and one without has none")
+    func aMembersOwnPictureOpensFromTheirPage() async throws {
+        try await withAccessibilityAutomation {
+            let image = try #require(UIImage(data: Self.png)?.cgImage)
+            for picture in [image, nil] {
+                var opened = 0
+                let window = try show(MoodleMemberProfile(
+                    member: Self.classmate, picture: picture, policy: VisualStylePolicy(preset: .default),
+                    writeTo: { _ in }, openPicture: { opened += 1 }
+                ))
+                defer { window.isHidden = true }
+                let root = try #require(window.rootViewController?.view)
+                try await waitUntil { accessibilityElement(labeled: "Duck Tiger", in: root) != nil }
+
+                // The picture comes before the name, the page's header.
+                let first = try #require(accessibilityElement(labeled: "Duck Tiger", in: root))
+                #expect(first.accessibilityTraits.contains(.button) == (picture != nil))
+                guard picture != nil else { continue }
+                #expect(first.accessibilityTraits.contains(.image))
+                #expect(first.accessibilityActivate())
+                try await waitUntil { opened == 1 }
             }
         }
     }

@@ -1,6 +1,7 @@
 import Foundation
 import ImageIO
 import Observation
+import UniformTypeIdentifiers
 
 /// The Moodle calls behind a course's Moodle screens. Each runs under the stored token, renewed
 /// as for any Moodle call. Tests pass stand-ins.
@@ -689,6 +690,31 @@ final class MoodleCourseStore {
         guard let data = await downloadInTurn(url), let image = await decodeOffMain(data), context.isCurrent() else { return }
         savePicture(data, to: file)
         pictures[url] = image
+    }
+
+    /// The member's own picture as a file named for them, which Quick Look opens and its share
+    /// menu saves; nil while it is not on the device. Quick Look tells an image by its extension,
+    /// which the kept file has none of. The copy sits next to it, so a new upload and a sign-out
+    /// delete it too. One small file on a tap, it is copied on the main actor.
+    func picturePreview(of member: MoodleMember) -> URL? {
+        guard let url = member.pictureURL, context.isCurrent() else { return nil }
+        let kept = pictureFile(of: member.id, url: url)
+        guard let data = try? Data(contentsOf: kept),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let type = CGImageSourceGetType(source).flatMap({ UTType($0 as String) }),
+              let fileExtension = type.preferredFilenameExtension else { return nil }
+        let preview = kept.deletingLastPathComponent()
+            .appendingPathComponent(kept.lastPathComponent + "-preview", isDirectory: true)
+            .appendingPathComponent(MoodleFileDownloads.safeName(member.name))
+            .appendingPathExtension(fileExtension)
+        do {
+            try FileManager.default.createDirectory(at: preview.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: preview, options: [.atomic, .completeFileProtectionUnlessOpen])
+            return preview
+        } catch {
+            AppLogger.breadcrumb("moodle member picture preview not written: \(error)", category: "moodle")
+            return nil
+        }
     }
 
     /// Off the main actor, as a course of hundreds asks for every member's picture at once. One
