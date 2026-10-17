@@ -31,7 +31,7 @@ struct MoodleMaterialsView: View {
         }
         .background(Color.backgroundPrimary)
         .refreshable { await store.refreshMaterials() }
-        .moodleRefreshFailureNote(store.materials)
+        .moodleRefreshFailureNote(store.materials, hasContent: store.materials.value != nil)
         .moodleListChrome(
             title: String(localized: "course_detail_files_label"),
             page: .course(store.courseId),

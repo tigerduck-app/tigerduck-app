@@ -18,7 +18,8 @@ struct MoodleRefreshFailureNoteTests {
     }
 
     /// A page reads the feed in its body, as the Moodle pages do, so the note sees each change. The
-    /// line of counts shows that a change has been drawn.
+    /// line of counts shows that a change has been drawn. Like the forums page with a term's cache
+    /// that lacks its course, it shows nothing for a cached value until that holds two items.
     private struct Page: View {
         let feed: MoodleFeed<[Int]>
         let sleeper: ManualSleeper
@@ -28,7 +29,9 @@ struct MoodleRefreshFailureNoteTests {
                 Text("failures \(feed.failureCount), items \(feed.value?.count ?? 0)")
                 Color.clear
             }
-            .moodleRefreshFailureNote(feed, sleep: { await sleeper.sleep(for: $0) })
+            .moodleRefreshFailureNote(
+                feed, hasContent: (feed.value?.count ?? 0) > 1, sleep: { await sleeper.sleep(for: $0) }
+            )
         }
     }
 
@@ -183,7 +186,7 @@ struct MoodleRefreshFailureNoteTests {
 
     /// Each step is drawn before the next, and a note the first failure put up would be drawn by the
     /// time the second step is; the note's wait is never fired, so it stays up however slow the run.
-    @Test("on a page, a failure over cached content shows the note and one with nothing cached does not")
+    @Test("on a page, a failure over its content shows the note and one over nothing it shows does not")
     func noteShowsOnlyOverContent() async throws {
         try await withAccessibilityAutomation {
             let root = Self.folder()
@@ -202,6 +205,12 @@ struct MoodleRefreshFailureNoteTests {
             try await waitUntil { accessibilityElement(labeled: "failures 1, items 0", in: host.view) != nil }
             await feed.refresh { [1] }
             try await waitUntil { accessibilityElement(labeled: "failures 1, items 1", in: host.view) != nil }
+            #expect(accessibilityElement(labeled: text, in: host.view) == nil)
+
+            await feed.refresh { throw Failure() }
+            try await waitUntil { accessibilityElement(labeled: "failures 2, items 1", in: host.view) != nil }
+            await feed.refresh { [1, 2] }
+            try await waitUntil { accessibilityElement(labeled: "failures 2, items 2", in: host.view) != nil }
             #expect(accessibilityElement(labeled: text, in: host.view) == nil)
 
             await feed.refresh { throw Failure() }

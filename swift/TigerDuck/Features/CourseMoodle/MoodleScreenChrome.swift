@@ -291,13 +291,15 @@ struct MoodleFirstLoadView: View {
 extension View {
     /// A short note at the top when a refresh fails while the page still shows what it had
     /// (https://github.com/tigerduck-app/tigerduck-app/issues/432); with nothing to show, the
-    /// page's `MoodleFirstLoadView` says it instead.
+    /// page's `MoodleFirstLoadView` says it instead. `hasContent` is the page's own check, since a
+    /// cached value can be one the page does not show.
     func moodleRefreshFailureNote<Value>(
         _ feed: MoodleFeed<Value>,
+        hasContent: Bool,
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) -> some View {
         modifier(MoodleRefreshFailureNote(
-            failureCount: feed.failureCount, failure: feed.failure, hasContent: feed.value != nil, sleep: sleep
+            failureCount: feed.failureCount, failure: feed.failure, hasContent: hasContent, sleep: sleep
         ))
     }
 }
