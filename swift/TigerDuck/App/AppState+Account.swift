@@ -182,7 +182,7 @@ extension AppState {
         let held = SignOutData(
             courses: !cache.loadUserAddedCourses().isEmpty || !cache.loadDeletedCourseNos().isEmpty,
             courseNames: cache.loadCourseCustomNames().values.contains { !$0.isEmpty },
-            courseColors: !TigerDuckTheme.courseColorMap.isEmpty,
+            courseColors: !cache.loadPickedCourseColors().isEmpty,
             assignmentMarks: !cache.loadArchivedAssignmentIds().isEmpty
                 || !cache.loadLocallyCompletedAssignmentIds().isEmpty,
             ignoredCourses: !cache.loadIgnoredAssignmentCourses().isEmpty,
@@ -205,7 +205,7 @@ extension AppState {
         /// Courses added by hand or hidden from the class table.
         var courses = false
         var courseNames = false
-        /// Every course shown has one, and a pick cannot be told from a generated colour.
+        /// Colours the user picked: a generated one comes back with its course.
         var courseColors = false
         /// Assignments marked done or ignored.
         var assignmentMarks = false

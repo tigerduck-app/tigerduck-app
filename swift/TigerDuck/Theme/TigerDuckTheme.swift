@@ -114,6 +114,7 @@ enum TigerDuckTheme {
     /// first unused preset (or a distinct hex derived from its number when all 20 are taken)
     /// so the uniqueness invariant survives the edit. Returns every course
     /// whose colour changed, with its new colour, displaced ones included.
+    /// Only the picked course is noted as picked.
     @discardableResult
     static func setColor(hex: UInt32, for courseNo: String) -> [String: UInt32] {
         state.setColor(hex: hex & 0xFFFFFF, for: courseNo, palette: coursePaletteHexes)
@@ -150,7 +151,7 @@ enum TigerDuckTheme {
 
     /// Clear every assignment and rebuild from scratch using the preset
     /// palette (falling back to derived hex once exhausted). Powers the
-    /// Settings "Reassign course colors" action.
+    /// Settings "Reassign course colors" action, which leaves no colour picked.
     static func reassignAll(courseNos: [String]) {
         state.reassignAll(courseNos: courseNos, palette: coursePaletteHexes)
     }
@@ -171,6 +172,9 @@ final class ColorState: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock()
     private let load: @Sendable () -> [String: UInt32]?
     private let save: @Sendable ([String: UInt32]) -> Void
+    /// Keep the record of the colours the user picked (`DataCache.loadPickedCourseColors()`).
+    private let notePick: @Sendable (String) -> Void
+    private let forgetPicks: @Sendable () -> Void
     private let protectedDataAvailable: @Sendable () -> Bool
     private let now: @Sendable () -> Date
 
@@ -192,11 +196,15 @@ final class ColorState: @unchecked Sendable {
     init(
         load: @escaping @Sendable () -> [String: UInt32]? = { DataCache.shared.loadCourseColorMapIfReadable() },
         save: @escaping @Sendable ([String: UInt32]) -> Void = { DataCache.shared.saveCourseColorMap($0) },
+        notePick: @escaping @Sendable (String) -> Void = { DataCache.shared.notePickedCourseColor($0) },
+        forgetPicks: @escaping @Sendable () -> Void = { DataCache.shared.savePickedCourseColors([]) },
         protectedDataAvailable: @escaping @Sendable () -> Bool = ColorState.isProtectedDataAvailable,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.load = load
         self.save = save
+        self.notePick = notePick
+        self.forgetPicks = forgetPicks
         self.protectedDataAvailable = protectedDataAvailable
         self.now = now
         self.map = read()
@@ -292,7 +300,10 @@ final class ColorState: @unchecked Sendable {
             self.map = result.map
             return result.changed
         }
-        if !changed.isEmpty { persist() }
+        if !changed.isEmpty {
+            persist()
+            notePick(courseNo)
+        }
         return changed
     }
 
@@ -346,8 +357,8 @@ final class ColorState: @unchecked Sendable {
     /// preset when the palette is empty — making the reassignment feel
     /// deterministic for an unchanged roster.
     func reassignAll(courseNos: [String], palette: [UInt32]) {
-        lock.withLock {
-            guard loadedMap() != nil else { return }
+        let reassigned: Bool = lock.withLock {
+            guard loadedMap() != nil else { return false }
             let shuffled = palette.shuffled()
             var fresh: [String: UInt32] = [:]
             var used: Set<UInt32> = []
@@ -357,8 +368,12 @@ final class ColorState: @unchecked Sendable {
                 used.insert(assigned)
             }
             map = fresh
+            return true
         }
+        guard reassigned else { return }
         persist()
+        // Every colour is a generated one again.
+        forgetPicks()
     }
 
     private func persist() {
