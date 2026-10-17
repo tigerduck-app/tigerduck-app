@@ -155,7 +155,7 @@ struct MoodleAssignmentView: View {
         VStack(spacing: 0) {
             Text(Self.monthText(due))
                 .font(TigerDuckTheme.Typography.caption.weight(.semibold))
-                .foregroundStyle(isOverdue ? Color.badgeRed : accent)
+                .foregroundStyle(isOverdue ? Color.badgeRedText : accent)
             Text(verbatim: String(AppConstants.taipeiCalendar.component(.day, from: due)))
                 .font(.title.bold())
                 .monospacedDigit()
@@ -235,7 +235,7 @@ struct MoodleAssignmentView: View {
         .foregroundStyle(badge.tint)
         .padding(.horizontal, TigerDuckTheme.Spacing.md)
         .padding(.vertical, TigerDuckTheme.Spacing.xs)
-        .background(badge.tint.opacity(0.16), in: Capsule())
+        .background(badge.fill, in: Capsule())
         .accessibilityElement(children: .combine)
     }
 

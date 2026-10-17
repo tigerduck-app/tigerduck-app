@@ -23,11 +23,21 @@ extension MoodleAssignmentView {
             }
         }
 
+        /// The text and its icon.
         var tint: Color {
             switch self {
             case .notSubmitted: Color.textSecondary
             case .submitted, .early: .green
-            case .late: Color.badgeRed
+            case .late: Color.badgeRedText
+            }
+        }
+
+        /// A faint wash of the text's colour, and for a late hand-in of ``Color/badgeRed``, as the
+        /// overdue tile's.
+        var fill: Color {
+            switch self {
+            case .late: Color.badgeRed.opacity(0.16)
+            case .notSubmitted, .submitted, .early: tint.opacity(0.16)
             }
         }
 
@@ -55,7 +65,7 @@ extension MoodleAssignmentView {
             switch self {
             case .left(_, urgent: true): .orange
             case .left, .passed: Color.textSecondary
-            case .overdue: Color.badgeRed
+            case .overdue: Color.badgeRedText
             }
         }
 
