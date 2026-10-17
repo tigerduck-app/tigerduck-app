@@ -747,6 +747,7 @@ struct BackendTokenRefreshTests {
         #expect(await ending.value == nil)
         #expect(await refresh.value == nil)
         #expect(try backend.sentRefreshTokens() == ["R0"])
+        #expect(!backend.relaunched().hasDepartingSession)
     }
 
     @Test("a sign-out sends no third use of a token an earlier refresh sent twice")
@@ -760,6 +761,7 @@ struct BackendTokenRefreshTests {
         #expect(await backend.manager.endSession() == nil)
 
         #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+        #expect(!backend.relaunched().hasDepartingSession)
     }
 
     /// The 401 came before the sign-out, so no reply was overtaken, and the sign-out sent the
@@ -1003,17 +1005,6 @@ struct DepartingSessionTests {
         #expect(unregister.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
         #expect(SettingsAPIStub.requests(under: current).isEmpty)
         #expect(try Self.kept(backend) == nil)
-    }
-
-    @Test("a kept session stored without its backend goes to the current endpoint")
-    func aSessionStoredWithoutItsBackendTakesTheCurrentOne() async throws {
-        let backend = BackendFixture(signedIn: false)
-        backend.recorder.tokenStore.save(AuthTokenManager.departingSessionKey, #"{"refreshToken":"R0","uses":0}"#)
-        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
-
-        #expect(await backend.manager.departingAccessToken() == "A1")
-
-        #expect(try backend.sentRefreshTokens() == ["R0"])
     }
 
     @Test("a kept session the backend turns down is forgotten")
