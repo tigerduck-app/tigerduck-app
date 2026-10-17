@@ -288,6 +288,143 @@ struct MoodleFirstLoadView: View {
     }
 }
 
+extension View {
+    /// A short note at the top when a refresh fails while the page still shows what it had
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/432); with nothing to show, the
+    /// page's `MoodleFirstLoadView` says it instead. `hasContent` is the page's own check, since a
+    /// cached value can be one the page does not show.
+    func moodleRefreshFailureNote<Value>(
+        _ feed: MoodleFeed<Value>,
+        hasContent: Bool,
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) -> some View {
+        modifier(MoodleRefreshFailureNote(
+            failureCount: feed.failureCount, failure: feed.failure, hasContent: hasContent, sleep: sleep
+        ))
+    }
+}
+
+/// Whether the refresh-failure note is up, and for how long; the view hands it its events.
+@MainActor
+@Observable
+final class MoodleRefreshFailureNoteModel {
+    static let duration: Duration = .seconds(3)
+
+    private(set) var note: MoodleRefreshFailureNote.Note?
+    @ObservationIgnored private var isShown = false
+    @ObservationIgnored private var notesShown = 0
+    @ObservationIgnored private let sleep: @Sendable (Duration) async -> Void
+
+    init(sleep: @escaping @Sendable (Duration) async -> Void) {
+        self.sleep = sleep
+    }
+
+    func appeared() { isShown = true }
+
+    func disappeared() {
+        isShown = false
+        note = nil
+    }
+
+    /// Puts up the note for a failed refresh, if it gets one, and returns it.
+    func failed(_ failure: (any Error)?, hasContent: Bool) -> MoodleRefreshFailureNote.Note? {
+        guard let next = MoodleRefreshFailureNote.note(for: failure, hasContent: hasContent, isShown: isShown) else {
+            return nil
+        }
+        notesShown += 1
+        let shown = notesShown
+        note = next
+        let sleep = sleep
+        Task { [weak self] in
+            await sleep(Self.duration)
+            self?.hide(ifStill: shown)
+        }
+        return next
+    }
+
+    /// Takes down the note once its time is up, unless a later failure put up its own, which
+    /// waits for itself. Notes count from 1.
+    func hide(ifStill shown: Int) {
+        guard notesShown == shown else { return }
+        note = nil
+    }
+
+    func close() { note = nil }
+}
+
+struct MoodleRefreshFailureNote: ViewModifier {
+    struct Note: Equatable {
+        let text: String
+        let symbol: String
+    }
+
+    let failureCount: Int
+    let failure: (any Error)?
+    let hasContent: Bool
+    @State private var model: MoodleRefreshFailureNoteModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(failureCount: Int, failure: (any Error)?, hasContent: Bool, sleep: @escaping @Sendable (Duration) async -> Void) {
+        self.failureCount = failureCount
+        self.failure = failure
+        self.hasContent = hasContent
+        _model = State(initialValue: MoodleRefreshFailureNoteModel(sleep: sleep))
+    }
+
+    /// The note a failed refresh shows: none when the page kept nothing or is off screen, as under
+    /// a page pushed over it.
+    static func note(for failure: (any Error)?, hasContent: Bool, isShown: Bool) -> Note? {
+        guard let failure, hasContent, isShown else { return nil }
+        if MoodleFirstLoadView.isNetworkError(failure) {
+            return Note(text: String(localized: "error_network_unavailable"), symbol: "wifi.slash")
+        }
+        if case MoodleWebserviceError.siteMaintenance = failure {
+            return Note(text: String(localized: "error_moodle_site_maintenance"), symbol: "exclamationmark.triangle")
+        }
+        return Note(text: String(localized: "course_moodle_refresh_failed"), symbol: "exclamationmark.triangle")
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                ZStack {
+                    if let note = model.note {
+                        noteButton(note)
+                            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy, value: model.note)
+            }
+            .onAppear { model.appeared() }
+            .onDisappear { model.disappeared() }
+            .onChange(of: failureCount) { _, _ in
+                guard let note = model.failed(failure, hasContent: hasContent) else { return }
+                AccessibilityNotification.Announcement(note.text).post()
+            }
+    }
+
+    private func noteButton(_ note: Note) -> some View {
+        Button { model.close() } label: {
+            Label {
+                Text(note.text)
+                    .foregroundStyle(Color.textPrimary)
+                    .multilineTextAlignment(.leading)
+            } icon: {
+                Image(systemName: note.symbol).foregroundStyle(Color.schoolOrange)
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            .padding(.vertical, TigerDuckTheme.Spacing.md)
+            // A rounded rectangle, not a capsule: a long message wraps, and a capsule's ends cut it.
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
+            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, TigerDuckTheme.Spacing.sm)
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+}
+
 /// The floating "Open in Moodle" capsule at the foot of a Moodle article, styled as the school
 /// bulletin's source button.
 struct MoodleOpenCapsule: View {
