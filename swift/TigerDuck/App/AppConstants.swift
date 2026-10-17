@@ -130,8 +130,6 @@ nonisolated enum AppConstants {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
         static let appHasBeenInstalled = "appHasBeenInstalled"
         static let accentColorHex = "accentColorHex"
-        static let rememberAnnouncementFilter = "rememberAnnouncementFilter"
-        static let savedAnnouncementDepartments = "savedAnnouncementDepartments"
         static let browserPreference = "browserPreference"
         static let macMoodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"

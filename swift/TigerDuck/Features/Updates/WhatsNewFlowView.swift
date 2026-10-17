@@ -227,6 +227,7 @@ extension View {
     func whatsNewSheetPresentation() -> some View {
         presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .keptOverReminders()
     }
 }
 #endif

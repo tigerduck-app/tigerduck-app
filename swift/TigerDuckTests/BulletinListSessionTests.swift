@@ -417,8 +417,6 @@ extension BulletinListSessionTests {
     @Test("mark all read covers only the filtered bulletins")
     func markAllReadCoversOnlyTheFilteredBulletins() async throws {
         try await withExclusiveRealDefaults {
-            let saved = Defaults[.savedAnnouncementDepartmentsData]
-            defer { Defaults[.savedAnnouncementDepartmentsData] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -431,32 +429,6 @@ extension BulletinListSessionTests {
             let unread = model.unreadShown { _ in false }
             #expect(unread.contains(shown))
             #expect(!unread.contains(hidden))
-        }
-    }
-
-    /// "Remember bulletin filter" brings the department filter back on the next visit, and only
-    /// while it is on (https://github.com/tigerduck-app/tigerduck-app/issues/523).
-    @Test("a remembered department filter comes back on the next visit")
-    func aRememberedFilterComesBack() async throws {
-        try await withExclusiveRealDefaults {
-            let (remember, saved) = (Defaults[.rememberAnnouncementFilter], Defaults[.savedAnnouncementDepartmentsData])
-            defer {
-                Defaults[.rememberAnnouncementFilter] = remember
-                Defaults[.savedAnnouncementDepartmentsData] = saved
-            }
-            let client = Stub().client
-            @MainActor func nextVisit(known: Set<String>) -> Set<String> {
-                let model = BulletinsViewModel(apiClient: client)
-                model.restoreRememberedOrgs(known: known)
-                return model.selectedOrgs
-            }
-            Defaults[.rememberAnnouncementFilter] = true
-            BulletinsViewModel(apiClient: client).selectedOrgs = ["TEST-A"]
-            #expect(nextVisit(known: ["TEST-A", "TEST-B"]) == ["TEST-A"])
-            // A department the chips no longer list would filter the list with nothing to show it.
-            #expect(nextVisit(known: ["TEST-B"]).isEmpty)
-            Defaults[.rememberAnnouncementFilter] = false
-            #expect(nextVisit(known: ["TEST-A", "TEST-B"]).isEmpty)
         }
     }
 }
