@@ -10,7 +10,7 @@ import UIKit
 /// keeps it `.afterFirstUnlockThisDeviceOnly`: never restored via iCloud Keychain, and readable by
 /// a launch behind the lock screen, which would otherwise use the default backend. A value is
 /// stored only if ``PushServerConfig/isOverrideAllowed(_:)`` and ``EndpointHealthCheck/probe(_:)``
-/// accept it. Set and clear call ``AcademicCalendarStore/endpointDidChange()``: the calendar's ETag
+/// accept it, and once the user agrees to the sign-out that comes with a change. Set and clear call ``AcademicCalendarStore/endpointDidChange()``: the calendar's ETag
 /// does not name its backend, so the next server could answer 304 against the old server's dates.
 nonisolated enum DebugEndpointStore {
     /// Internal (not private) so the erase-everything action can name the
@@ -31,8 +31,8 @@ nonisolated enum DebugEndpointStore {
     private static let stored = KeychainReadCache(load: { try KeychainManager.loadStringIfReadable(key: keychainKey) })
     #endif
 
-    enum SetOverrideResult: Equatable {
-        case success
+    /// Why ``check(_:)`` turned a candidate endpoint down.
+    enum Rejection: Equatable {
         /// Not parseable as a URL with a scheme and a host.
         case malformed
         /// Parsed, but points at a routable address over plain HTTP.
@@ -41,7 +41,6 @@ nonisolated enum DebugEndpointStore {
         case unreachable(detail: String)
         /// Something answered the health probe, but not this backend.
         case notTigerDuck
-        case keychainWriteFailed
     }
 
     /// Returns the stored override URL string, or nil if none is set or
@@ -72,37 +71,43 @@ nonisolated enum DebugEndpointStore {
         return raw
     }
 
-    /// Validates `value`, probes it, and stores it only if a TigerDuck
-    /// backend answered.
+    /// What ``check(_:)`` makes of a candidate endpoint.
+    enum CheckResult: Equatable {
+        /// A TigerDuck backend answered at this normalized URL. Nothing is stored yet.
+        case accepted(URL)
+        case rejected(Rejection)
+    }
+
+    /// Validates `value` and probes it, storing nothing, so the user is asked before the endpoint
+    /// changes (``store(_:)``).
     ///
-    /// The probe runs **before** the write on purpose: this endpoint is
-    /// where every subsequent request goes, including the ones that fetch
-    /// the screens the user would need to come back and fix a bad value.
-    /// Returns a typed result so the caller can tell a typo from a host
-    /// that is simply down from a Keychain failure.
-    static func setOverride(_ value: String) async -> SetOverrideResult {
+    /// The probe runs before any write on purpose: this endpoint is where every later request
+    /// goes, including the ones that fetch the screens the user would need to fix a bad value.
+    /// The result tells a typo from a host that is simply down.
+    static func check(_ value: String) async -> CheckResult {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let parsed = URL(string: trimmed), parsed.host != nil else {
-            return .malformed
+            return .rejected(.malformed)
         }
         let url = PushServerConfig.normalize(parsed)
-        guard PushServerConfig.isOverrideAllowed(url) else { return .insecure }
+        guard PushServerConfig.isOverrideAllowed(url) else { return .rejected(.insecure) }
 
         switch await EndpointHealthCheck.probe(url) {
         case .unreachable(let detail):
-            return .unreachable(detail: detail)
+            return .rejected(.unreachable(detail: detail))
         case .notTigerDuck:
-            return .notTigerDuck
+            return .rejected(.notTigerDuck)
         case .ok:
-            break
+            return .accepted(url)
         }
+    }
 
-        let written = KeychainManager.saveStringReportingSuccess(
-            key: keychainKey, value: url.absoluteString
-        )
+    /// Stores an endpoint ``check(_:)`` accepted and returns whether the Keychain took it.
+    static func store(_ url: URL) async -> Bool {
+        let written = KeychainManager.saveStringReportingSuccess(key: keychainKey, value: url.absoluteString)
         stored.forget()
         if written { await AcademicCalendarStore.shared.endpointDidChange() }
-        return written ? .success : .keychainWriteFailed
+        return written
     }
 
     /// `@MainActor` for the calendar invalidation below. The only caller is
