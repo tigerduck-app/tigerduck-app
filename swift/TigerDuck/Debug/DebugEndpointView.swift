@@ -57,7 +57,7 @@ struct DebugEndpointView: View {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        Task { await viewModel.save { await appState.endpointChangeSignOutNotes() } }
+                        Task { await viewModel.save { await EndpointChangeSignOut(appState: appState).notes() } }
                     } label: {
                         if viewModel.isChecking {
                             // Swapping the label keeps the row from resizing mid-probe and names
@@ -79,7 +79,7 @@ struct DebugEndpointView: View {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        Task { await viewModel.resetToDefault { await appState.endpointChangeSignOutNotes() } }
+                        Task { await viewModel.resetToDefault { await EndpointChangeSignOut(appState: appState).notes() } }
                     }
                     .disabled(viewModel.isChecking || viewModel.storedOverride == nil)
                 }
@@ -195,6 +195,9 @@ final class DebugEndpointViewModel {
 
     /// Asks before going back to the default, which moves the app to another server too.
     func resetToDefault(notes: () async -> [String] = { [] }) async {
+        guard !isChecking else { return }
+        isChecking = true
+        defer { isChecking = false }
         pendingChange = PendingChange(url: nil, notes: await notes())
     }
 
@@ -245,6 +248,52 @@ final class DebugEndpointViewModel {
     }
 }
 
+/// What an API endpoint change does to the accounts: the lines its alert adds and the sign-out
+/// that comes first, both through `AppState`.
+@MainActor
+struct EndpointChangeSignOut {
+    let appState: AppState
+
+    /// Whether the change's sign-out ends a school account: one stored, or a backend session.
+    /// Without one, a full sign-out would only reset settings such as TigerSync for nobody.
+    nonisolated static func endsSchoolAccount(hasCredentials: Bool, studentId: String?, backendSignedIn: Bool) -> Bool {
+        hasCredentials || studentId != nil || backendSignedIn
+    }
+
+    /// The lines the alert adds for what the sign-out deletes, as the sign-out's own confirmation
+    /// names them.
+    func notes() async -> [String] {
+        guard await endsSchoolAccount() else { return [] }
+        var notes: [String] = []
+        if await appState.signOutDeletesUnsyncedData() { notes.append(String(localized: "settings_sign_out_unsynced_data")) }
+        if ImportedClassTableStore.shared.hasImportedClassTables {
+            notes.append(String(localized: "settings_sign_out_imported_tables"))
+        }
+        return notes
+    }
+
+    /// Signs out of every account signed in, and returns once the sign-out calls are done, an
+    /// earlier sign-out's too: a call still out would reach the new endpoint, which never issued
+    /// that session. With no school account, nothing else is reset.
+    func run() async {
+        let calls: Task<Void, Never>? = await endsSchoolAccount()
+            ? appState.logoutNTUST() : appState.authService.signOutCalls
+        if appState.isLibraryLoggedIn { appState.logoutLibrary() }
+        #if os(iOS)
+        if MailAccountManager.shared.isLoggedIn { MailAccountManager.shared.logout() }
+        #endif
+        await calls?.value
+    }
+
+    private func endsSchoolAccount() async -> Bool {
+        Self.endsSchoolAccount(
+            hasCredentials: appState.authService.hasStoredCredentials,
+            studentId: appState.authService.storedStudentId,
+            backendSignedIn: await appState.authTokenManager.isLoggedIn
+        )
+    }
+}
+
 extension View {
     /// Asks before the API endpoint changes, and on Change signs out of every account first
     /// (``DebugEndpointViewModel/confirm(_:signingOut:)``).
@@ -267,7 +316,7 @@ private struct EndpointChangeAlert: ViewModifier {
             presenting: viewModel.pendingChange
         ) { change in
             Button(String(localized: "settings_api_endpoint_change_alert_confirm"), role: .destructive) {
-                Task { await viewModel.confirm(change) { await appState.signOutOfEveryAccount() } }
+                Task { await viewModel.confirm(change) { await EndpointChangeSignOut(appState: appState).run() } }
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: { change in

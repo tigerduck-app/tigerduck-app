@@ -70,7 +70,7 @@ struct MacOtherSettingsView: View {
 
                 HStack {
                     Button {
-                        Task { await endpointVM.save { await appState.endpointChangeSignOutNotes() } }
+                        Task { await endpointVM.save { await EndpointChangeSignOut(appState: appState).notes() } }
                     } label: {
                         if endpointVM.isChecking {
                             Text(String(localized: "settings_api_endpoint_checking"))
@@ -81,7 +81,7 @@ struct MacOtherSettingsView: View {
                     .disabled(endpointVM.isChecking || endpointVM.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Spacer()
                     Button(String(localized: "settings_api_endpoint_reset_action"), role: .destructive) {
-                        Task { await endpointVM.resetToDefault { await appState.endpointChangeSignOutNotes() } }
+                        Task { await endpointVM.resetToDefault { await EndpointChangeSignOut(appState: appState).notes() } }
                     }
                     .disabled(endpointVM.isChecking || endpointVM.storedOverride == nil)
                 }

@@ -96,10 +96,26 @@ struct DebugEndpointViewModelTests {
 
     @Test("only a stored school account or a backend session is signed out")
     func signsOutOnlyAHeldSchoolAccount() {
-        #expect(!AppState.endsSchoolAccount(hasCredentials: false, studentId: nil, backendSignedIn: false))
-        #expect(AppState.endsSchoolAccount(hasCredentials: true, studentId: nil, backendSignedIn: false))
-        #expect(AppState.endsSchoolAccount(hasCredentials: false, studentId: "B11399001", backendSignedIn: false))
-        #expect(AppState.endsSchoolAccount(hasCredentials: false, studentId: nil, backendSignedIn: true))
+        #expect(!EndpointChangeSignOut.endsSchoolAccount(hasCredentials: false, studentId: nil, backendSignedIn: false))
+        #expect(EndpointChangeSignOut.endsSchoolAccount(hasCredentials: true, studentId: nil, backendSignedIn: false))
+        #expect(EndpointChangeSignOut.endsSchoolAccount(hasCredentials: false, studentId: "B11399001", backendSignedIn: false))
+        #expect(EndpointChangeSignOut.endsSchoolAccount(hasCredentials: false, studentId: nil, backendSignedIn: true))
+    }
+
+    @Test("Reset is busy while it reads what the sign-out deletes, so Save cannot start meanwhile")
+    func resetIsBusyWhileReadingNotes() async {
+        let backend = Backend()
+        backend.stored = Self.other.absoluteString
+        let model = Self.model(backend)
+        var busy = false
+
+        await model.resetToDefault {
+            busy = model.isChecking
+            return []
+        }
+
+        #expect(busy)
+        #expect(!model.isChecking)
     }
 
     @Test("the endpoint in use already is saved without asking or signing out")

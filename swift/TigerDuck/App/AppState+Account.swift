@@ -71,43 +71,6 @@ extension AppState {
         _libraryRevision += 1
     }
 
-    /// Signs out of every account signed in before the API endpoint changes, and returns once the
-    /// sign-out calls are done, an earlier sign-out's too: a call still out would reach the new
-    /// endpoint, which never issued that session. With no school account, nothing else is reset.
-    func signOutOfEveryAccount() async {
-        let signedIn = Self.endsSchoolAccount(
-            hasCredentials: authService.hasStoredCredentials, studentId: authService.storedStudentId,
-            backendSignedIn: await authTokenManager.isLoggedIn
-        )
-        let calls: Task<Void, Never>? = signedIn ? logoutNTUST() : authService.signOutCalls
-        if isLibraryLoggedIn { logoutLibrary() }
-        #if os(iOS)
-        if MailAccountManager.shared.isLoggedIn { MailAccountManager.shared.logout() }
-        #endif
-        await calls?.value
-    }
-
-    /// Whether an endpoint change's sign-out ends a school account: one stored, or a backend session.
-    /// Without one, a full sign-out would only reset settings such as TigerSync for nobody.
-    nonisolated static func endsSchoolAccount(hasCredentials: Bool, studentId: String?, backendSignedIn: Bool) -> Bool {
-        hasCredentials || studentId != nil || backendSignedIn
-    }
-
-    /// The lines the endpoint change's alert adds for what its sign-out deletes, as the sign-out's
-    /// own confirmation names them.
-    func endpointChangeSignOutNotes() async -> [String] {
-        guard Self.endsSchoolAccount(
-            hasCredentials: authService.hasStoredCredentials, studentId: authService.storedStudentId,
-            backendSignedIn: await authTokenManager.isLoggedIn
-        ) else { return [] }
-        var notes: [String] = []
-        if await signOutDeletesUnsyncedData() { notes.append(String(localized: "settings_sign_out_unsynced_data")) }
-        if ImportedClassTableStore.shared.hasImportedClassTables {
-            notes.append(String(localized: "settings_sign_out_imported_tables"))
-        }
-        return notes
-    }
-
     /// Full NTUST logout: cancel any in-flight background sync, invalidate
     /// credentials, end the Live Activity and purge user-scoped caches, so the
     /// next login (possibly another user) never inherits this state on the lock
