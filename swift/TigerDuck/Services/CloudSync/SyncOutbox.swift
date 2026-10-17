@@ -200,6 +200,12 @@ actor SyncOutbox {
         adopt(queued: queued ?? [], parked: parkedOnDisk ?? [])
     }
 
+    /// Whether any entry is queued or parked.
+    func holdsEntries() -> Bool {
+        loadIfNeeded()
+        return !entries.isEmpty || !parked.isEmpty
+    }
+
     func snapshot() -> [OutboxEntry] {
         loadIfNeeded()
         return entries

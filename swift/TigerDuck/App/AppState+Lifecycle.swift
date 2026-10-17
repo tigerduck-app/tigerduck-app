@@ -21,6 +21,8 @@ extension AppState {
         // Inline, so that it sees the account signed in at the update before a sign-out or a
         // sign-in can change it.
         SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)
+        // Inline, so a sign-out right after the update asks about the colours from before it.
+        CourseColorPickSeedMigration.runIfNeeded()
         #if os(iOS)
         // Inline because it costs three UserDefaults reads, not for order: the preferences it
         // repairs are read as each register request is built, so a late write self-heals.

@@ -36,7 +36,7 @@ struct CourseColorMapLockedTests {
     /// A state whose map file is `disk`, with protected data available as `unlocked` says.
     private static func makeState(_ disk: Disk, clock: TestClock, unlocked: Bool) -> ColorState {
         ColorState(
-            load: { disk.read() }, save: { disk.write($0) },
+            load: { disk.read() }, save: { disk.write($0) }, notePick: { _ in }, forgetPicks: {},
             protectedDataAvailable: { unlocked }, now: { clock.now }
         )
     }

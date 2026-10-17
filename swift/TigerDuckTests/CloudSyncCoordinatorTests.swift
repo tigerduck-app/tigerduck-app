@@ -114,6 +114,36 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
     }
 
+    /// A sign-out empties the outbox, so its confirmation counts both
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/563).
+    @Test("Edits queued or parked are still unsent, and an empty outbox holds none")
+    func queuedAndParkedEditsAreUnsent() async {
+        let backend = Backend()
+        for _ in 0..<SyncOutbox.maxAttempts {
+            backend.answer("sync/assignments/42/override", status: 404)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        #expect(await !coordinator.holdsUnsentEdits())
+
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+        #expect(await coordinator.holdsUnsentEdits())
+
+        for _ in 0..<SyncOutbox.maxAttempts { await coordinator.syncTick() }
+        #expect(await coordinator.outbox.pendingCount() == 0)
+        #expect(await coordinator.holdsUnsentEdits())
+    }
+
+    /// Read after the outbox, an edit that reached it during that read was seen in neither place.
+    @Test("A course edit still on its way into the outbox is unsent")
+    func anEditOnItsWayInIsUnsent() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        let enqueuing = coordinator.enqueueCourseColorOverride(moodleId: "7", semester: "1142", colorHex: "#FF7A72")
+
+        #expect(await coordinator.holdsUnsentEdits())
+        await enqueuing?.value
+        #expect(await coordinator.holdsUnsentEdits())
+    }
+
     @Test("Clearing a mark leaves the outbox after one request, though its reply is not the row")
     func clearedMarkIsSentOnce() async {
         let backend = Backend()

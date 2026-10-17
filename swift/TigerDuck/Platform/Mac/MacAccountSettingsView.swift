@@ -9,6 +9,7 @@ struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var showSignIn = false
     @State private var confirmsSignOut = false
+    @State private var signOutLines: [String] = []
 
     var body: some View {
         Form {
@@ -20,10 +21,16 @@ struct MacAccountSettingsView: View {
                         Text(String(localized: "desktop_settings_signed_in_ntust"))
                     }
                     Button(role: .destructive) {
-                        ImportedClassTableStore.shared.requestSignOut(
-                            confirm: { confirmsSignOut = true },
-                            signOut: { appState.logoutNTUST() }
-                        )
+                        Task {
+                            let unsynced = await appState.signOutDeletesUnsyncedData()
+                            // Another click may have signed out while this one looked.
+                            guard appState.authService.hasStoredCredentials else { return }
+                            ImportedClassTableStore.shared.requestSignOut(
+                                unsyncedData: unsynced,
+                                confirm: { signOutLines = $0; confirmsSignOut = true },
+                                signOut: { appState.logoutNTUST() }
+                            )
+                        }
                     } label: {
                         Label(String(localized: "action_sign_out"), systemImage: "rectangle.portrait.and.arrow.right")
                     }
@@ -46,7 +53,7 @@ struct MacAccountSettingsView: View {
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
-            Text(String(localized: "settings_sign_out_imported_tables"))
+            Text(signOutLines.joined(separator: "\n"))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $showSignIn) {

@@ -25,7 +25,7 @@ struct SecureStoreLockedReadTests {
     ]
 
     /// Read with them, but never stored in ``shared``, so no copy there awaits a move.
-    static let readWhileLockedSinceTheMove = [AuthTokenManager.refreshTokenUsesKey]
+    static let readWhileLockedSinceTheMove = [AuthTokenManager.refreshTokenUsesKey, AuthTokenManager.departingSessionKey]
 
     /// Nothing that runs in the background needs these.
     static let unlockedOnly = [

@@ -1212,6 +1212,7 @@
 					AppLogger.swift,
 					SemesterAttributionCacheMigration.swift,
 					SyncedAccountSeedMigration.swift,
+					CourseColorPickSeedMigration.swift,
 					PushServerConfig.swift,
 					PushCoordinator.swift,
 					PushRegistrationService.swift,
@@ -1503,6 +1504,7 @@
 					AppLogger.swift,
 					SemesterAttributionCacheMigration.swift,
 					SyncedAccountSeedMigration.swift,
+					CourseColorPickSeedMigration.swift,
 					PushServerConfig.swift,
 					PushCoordinator.swift,
 					PushRegistrationService.swift,
@@ -2364,7 +2366,7 @@
 			repositoryURL = "https://github.com/scinfu/SwiftSoup";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.14.1;
+				minimumVersion = 2.14.3;
 			};
 		};
 		60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */ = {

@@ -170,12 +170,86 @@ extension AppState {
         // Every sign-in waits for this, so none of it lands on the session that sign-in starts.
         return authService.startSignOutCalls { [self] in
             await cloudSyncCoordinator.settleForSignOut()
-            let departing = AuthTokenManager.DepartingAccount(accessToken: await endingSession.value)
-            await AuthTokenManager.$departing.withValue(departing) { await pushCoordinator.disable() }
+            await authTokenManager.unregisterDeparting(accessToken: await endingSession.value) {
+                await pushCoordinator.disable()
+            }
             #if os(iOS)
             await liveActivityCoordinator.endAll()
             #endif
         }
+    }
+
+    /// Whether a launch sends the unregister a sign-out left unsent: past onboarding, as no launch
+    /// reaches the backend before it, and signed out. Signed in, that account's backend sign-in
+    /// drops what it would send, and sent beside that sign-in it could revoke its session.
+    nonisolated static func retriesDepartingUnregister(onboarded: Bool, signedIn: Bool, sessionKept: Bool) -> Bool {
+        onboarded && !signedIn && sessionKept
+    }
+
+    /// ``signOutDeletesUnsyncedData(_:cloudSyncEnabled:switchedOn:synced:pendingChecks:unsent:)``
+    /// for what this device holds now.
+    func signOutDeletesUnsyncedData() async -> Bool {
+        let cache = DataCache.shared
+        let calendar = AcademicCalendarStore.shared
+        let held = SignOutData(
+            courses: !cache.loadUserAddedCourses().isEmpty || !cache.loadDeletedCourseNos().isEmpty,
+            courseNames: cache.loadCourseCustomNames().values.contains { !$0.isEmpty },
+            courseColors: !cache.loadPickedCourseColors().isEmpty,
+            assignmentMarks: !cache.loadArchivedAssignmentIds().isEmpty
+                || !cache.loadLocallyCompletedAssignmentIds().isEmpty,
+            ignoredCourses: !cache.loadIgnoredAssignmentCourses().isEmpty,
+            holidays: !calendar.optedInHolidayIDs.isEmpty
+        )
+        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || !pendingOverrides.isEmpty
+            || !calendar.unacknowledgedHolidayIDs.isEmpty
+        return Self.signOutDeletesUnsyncedData(
+            held,
+            cloudSyncEnabled: cloudSyncEnabled,
+            switchedOn: Self.switchedOnCategories(),
+            synced: Defaults[.categoriesSyncedOnce],
+            pendingChecks: Defaults[.pendingConflictCategories],
+            unsent: unsent
+        )
+    }
+
+    /// The user's own data on this device that a sign-out deletes, by kind.
+    nonisolated struct SignOutData {
+        /// Courses added by hand or hidden from the class table.
+        var courses = false
+        var courseNames = false
+        /// Colours the user picked: a generated one comes back with its course.
+        var courseColors = false
+        /// Assignments marked done or ignored.
+        var assignmentMarks = false
+        /// Courses whose assignments are all ignored.
+        var ignoredCourses = false
+        /// Holidays with class reminders kept on.
+        var holidays = false
+    }
+
+    /// Whether a sign-out deletes data TigerSync does not keep, which its confirmation names. A
+    /// category is kept with TigerSync on, its switch on, its data taken by a full sync here
+    /// (`hasSynced`) and no re-enable check holding it back. Ignored courses need Assignments and
+    /// Courses both, holiday choices TigerSync alone, and edits still on their way up (`unsent`)
+    /// are lost however the switches stand.
+    nonisolated static func signOutDeletesUnsyncedData(
+        _ data: SignOutData,
+        cloudSyncEnabled: Bool,
+        switchedOn: Set<String>,
+        synced: Set<String>,
+        pendingChecks: Set<String>,
+        unsent: Bool
+    ) -> Bool {
+        let kept = cloudSyncEnabled ? switchedOn.intersection(synced).subtracting(pendingChecks) : []
+        let needs: [(held: Bool, categories: Set<String>)] = [
+            (data.courses, ["courses"]),
+            (data.courseNames, ["course_names"]),
+            (data.courseColors, ["course_colors"]),
+            (data.assignmentMarks, ["assignments"]),
+            (data.ignoredCourses, ["assignments", "courses"]),
+        ]
+        return unsent || (data.holidays && !cloudSyncEnabled)
+            || needs.contains { $0.held && !$0.categories.isSubset(of: kept) }
     }
 
     /// Forgets how far the departing account's sync got on this device, which lives in `Defaults`,
