@@ -61,9 +61,33 @@ struct MoodleAssignmentPageStateTests {
         }
     }
 
-    /// Where the first text holding each of `parts` comes; nil for a part that is not there.
-    private static func order(of parts: [String], in texts: [String]) -> [Int?] {
-        parts.map { part in texts.firstIndex { $0.contains(part) } }
+    /// A text VoiceOver reads: one that is `exactly` a heading's, a badge's or a button's, one
+    /// `holding` a piece of a file row or of Moodle's text, or a `row` holding a label and its
+    /// value. A label alone can hide in a longer text: "Submitted" is in a late badge's too.
+    private enum Read: CustomStringConvertible {
+        case exactly(String)
+        case holding(String)
+        case row(String, String)
+
+        func matches(_ text: String) -> Bool {
+            switch self {
+            case .exactly(let string): text == string
+            case .holding(let string): text.contains(string)
+            case .row(let label, let value): text.contains(label) && text.contains(value)
+            }
+        }
+
+        var description: String {
+            switch self {
+            case .exactly(let string), .holding(let string): string
+            case .row(let label, let value): "\(label): \(value)"
+            }
+        }
+    }
+
+    /// Where the first text each of `parts` matches comes; nil for a part that is not there.
+    private static func order(of parts: [Read], in texts: [String]) -> [Int?] {
+        parts.map { part in texts.firstIndex(where: part.matches) }
     }
 
     private static func key(_ value: String.LocalizationValue) -> String { String(localized: value) }
@@ -71,7 +95,8 @@ struct MoodleAssignmentPageStateTests {
     @Test("graded after a late hand-in with a group: the deadline passed, the group, then submission, comments and grade")
     func gradedLateWithAGroup() async throws {
         let due = AppClock.now() - 2 * 86_400
-        var answer = MoodleAssignmentPageTests.submission("submitted", modified: due + 4_380, files: [MoodleAssignmentPageTests.file])
+        let submittedAt = due + 4_380
+        var answer = MoodleAssignmentPageTests.submission("submitted", modified: submittedAt, files: [MoodleAssignmentPageTests.file])
         answer.groupName = "Group 3"
         answer.comments = [Self.comment(1, "The fifth answer is on the last page."), Self.comment(2, "Noted.")]
         answer.grade = MoodleAssignmentGrade(
@@ -81,14 +106,18 @@ struct MoodleAssignmentPageStateTests {
 
         let texts = try await Self.spoken(Self.record(due: due, attachments: [Self.spec]), answer: answer, once: late)
 
-        let parts = [
-            Self.key("assignment_detail_due"), Self.key("assignment_detail_due_passed"), "Group 3",
-            Self.key("assignment_detail_description"), "binary search tree", Self.key("school_mail_attachments"), "spec.pdf",
-            Self.key("assignment_detail_submission"), late, Self.key("assignment_detail_submitted_at"), "hw.pdf",
-            Self.key("assignment_detail_comments"), "The fifth answer", "Noted.",
-            Self.key("assignment_detail_grade"), MoodleAssignmentView.Score(value: "85", max: "100").spoken,
-            Self.key("assignment_detail_graded_at"), Self.key("assignment_detail_feedback"), "Case 7",
-            Self.key("assignment_detail_submit_on_moodle"),
+        let parts: [Read] = [
+            .row(Self.key("assignment_detail_due"), Self.key("assignment_detail_due_passed")),
+            .row(Self.key("assignment_detail_group"), "Group 3"),
+            .exactly(Self.key("assignment_detail_description")), .holding("binary search tree"),
+            .exactly(Self.key("school_mail_attachments")), .holding("spec.pdf"),
+            .exactly(Self.key("assignment_detail_submission")), .exactly(late),
+            .row(Self.key("assignment_detail_submitted_at"), MoodleAssignmentView.timeText(submittedAt)), .holding("hw.pdf"),
+            .exactly(Self.key("assignment_detail_comments")), .holding("The fifth answer"), .holding("Noted."),
+            .exactly(Self.key("assignment_detail_grade")), .exactly(MoodleAssignmentView.Score(value: "85", max: "100").spoken),
+            .row(Self.key("assignment_detail_graded_at"), MoodleAssignmentView.timeText(due + 86_400)),
+            .exactly(Self.key("assignment_detail_feedback")), .holding("Case 7"),
+            .exactly(Self.key("assignment_detail_submit_on_moodle")),
         ]
         let found = Self.order(of: parts, in: texts)
         #expect(found.allSatisfy { $0 != nil }, "missing: \(zip(parts, found).filter { $0.1 == nil }.map(\.0))")
@@ -98,14 +127,19 @@ struct MoodleAssignmentPageStateTests {
     @Test("a draft before the due date: the time left, not submitted, and the draft's file, with no group, comments or grade")
     func draftBeforeTheDueDate() async throws {
         let left: TimeInterval = 86_400 + 4 * 3_600 + 1_800
-        let answer = MoodleAssignmentPageTests.submission("draft", modified: AppClock.now() - 600, files: [MoodleAssignmentPageTests.file])
+        let draftedAt = AppClock.now() - 600
+        let answer = MoodleAssignmentPageTests.submission("draft", modified: draftedAt, files: [MoodleAssignmentPageTests.file])
         let notSubmitted = Self.key("assignment_detail_not_submitted")
 
         let texts = try await Self.spoken(Self.record(due: AppClock.now() + left), answer: answer, once: notSubmitted)
 
         let timeLeft = MoodleAssignmentView.Deadline.left(86_400 + 4 * 3_600, urgent: true).text
-        #expect(Self.order(of: [timeLeft, notSubmitted, Self.key("assignment_detail_draft"), "hw.pdf"], in: texts)
-            .allSatisfy { $0 != nil }, "\(texts)")
+        let found = Self.order(of: [
+            .row(Self.key("assignment_detail_due"), timeLeft), .exactly(notSubmitted),
+            .row(Self.key("assignment_detail_draft"), MoodleAssignmentView.timeText(draftedAt)), .holding("hw.pdf"),
+        ], in: texts)
+        #expect(found.allSatisfy { $0 != nil }, "\(texts)")
+        #expect(found.compactMap { $0 } == found.compactMap { $0 }.sorted(), "\(texts)")
         for absent in [
             Self.key("assignment_detail_group"), Self.key("school_mail_attachments"), Self.key("assignment_detail_comments"),
             Self.key("assignment_detail_grade"), Self.key("assignment_detail_submitted_at"),
@@ -118,8 +152,9 @@ struct MoodleAssignmentPageStateTests {
     func handedInEarly() async throws {
         // Half an hour past the hour, so the time left reads the same however slowly the page comes up.
         let due = AppClock.now() + 9 * 86_400 + 2 * 3_600 + 1_800
+        let submittedAt = due - (10 * 86_400 + 12 * 3_600)
         var answer = MoodleAssignmentPageTests.submission(
-            "submitted", modified: due - (10 * 86_400 + 12 * 3_600), text: "<p>The work split is on the last page.</p>"
+            "submitted", modified: submittedAt, text: "<p>The work split is on the last page.</p>"
         )
         answer.groupName = "Project team A"
         answer.comments = [Self.comment(1, "This is the final draft.")]
@@ -127,10 +162,12 @@ struct MoodleAssignmentPageStateTests {
 
         let texts = try await Self.spoken(Self.record(due: due), answer: answer, once: early)
 
-        let parts = [
-            MoodleAssignmentView.Deadline.left(9 * 86_400 + 2 * 3_600, urgent: false).text, "Project team A",
-            early, Self.key("assignment_detail_submitted_at"), "work split", Self.key("assignment_detail_comments"),
-            "final draft",
+        let parts: [Read] = [
+            .row(Self.key("assignment_detail_due"), MoodleAssignmentView.Deadline.left(9 * 86_400 + 2 * 3_600, urgent: false).text),
+            .row(Self.key("assignment_detail_group"), "Project team A"),
+            .exactly(early),
+            .row(Self.key("assignment_detail_submitted_at"), MoodleAssignmentView.timeText(submittedAt)), .holding("work split"),
+            .exactly(Self.key("assignment_detail_comments")), .holding("final draft"),
         ]
         let found = Self.order(of: parts, in: texts)
         #expect(found.allSatisfy { $0 != nil }, "missing: \(zip(parts, found).filter { $0.1 == nil }.map(\.0))")
@@ -145,14 +182,15 @@ struct MoodleAssignmentPageStateTests {
 
         let texts = try await Self.spoken(Self.record(due: AppClock.now() - late), once: notSubmitted)
 
-        #expect(texts.contains { $0.contains(MoodleAssignmentView.Deadline.overdue(86_400 + 20 * 3_600).text) }, "\(texts)")
+        let overdueBy = MoodleAssignmentView.Deadline.overdue(86_400 + 20 * 3_600).text
+        #expect(texts.contains(where: Read.row(Self.key("assignment_detail_due"), overdueBy).matches), "\(texts)")
         for absent in [
             Self.key("assignment_detail_submitted_at"), Self.key("assignment_detail_draft"),
             Self.key("assignment_detail_comments"), Self.key("assignment_detail_grade"),
         ] {
             #expect(!texts.contains { $0.contains(absent) }, "\(absent) shows")
         }
-        #expect(texts.contains(Self.key("assignment_detail_submit_on_moodle")))
+        #expect(texts.contains(where: Read.exactly(Self.key("assignment_detail_submit_on_moodle")).matches))
     }
 
     @Test("with no due date there is no deadline card, and a hand-in reads as submitted")
@@ -162,7 +200,7 @@ struct MoodleAssignmentPageStateTests {
 
         let texts = try await Self.spoken(Self.record(due: nil), answer: answer, once: "hw.pdf")
 
-        #expect(texts.contains(submitted), "\(texts)")
+        #expect(texts.contains(where: Read.exactly(submitted).matches), "\(texts)")
         #expect(!texts.contains { $0.contains(Self.key("assignment_detail_due")) })
     }
 
@@ -174,8 +212,8 @@ struct MoodleAssignmentPageStateTests {
             Self.record(due: due, noSubmissions: true), once: Self.key("assignment_detail_due")
         )
 
-        #expect(texts.contains { $0.contains(MoodleAssignmentView.Deadline.left(3 * 86_400 + 5 * 3_600, urgent: false).text) },
-                "\(texts)")
+        let timeLeft = MoodleAssignmentView.Deadline.left(3 * 86_400 + 5 * 3_600, urgent: false).text
+        #expect(texts.contains(where: Read.row(Self.key("assignment_detail_due"), timeLeft).matches), "\(texts)")
         for absent in [
             Self.key("assignment_detail_submission"), Self.key("assignment_detail_not_submitted"),
             Self.key("assignment_detail_submit_on_moodle"),
