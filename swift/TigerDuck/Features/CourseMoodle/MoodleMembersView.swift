@@ -219,6 +219,7 @@ struct MoodleMembersView: View {
         .pullToRevealSearch(isRevealed: $isSearchRevealed, isActive: isSearchFocused || !query.isEmpty)
         #endif
         .refreshable { await store.refreshMembers() }
+        .moodleRefreshFailureNote(store.members, hasContent: store.members.value != nil)
         .moodleListChrome(
             title: String(localized: "course_detail_members_label"),
             page: .participants(courseId: store.courseId),

@@ -191,6 +191,8 @@ final class MoodleFeed<Value: Codable & Sendable> {
     private(set) var status: ServerStatus = .unknown
     /// The last fetch's error, cleared by the next success.
     private(set) var failure: (any Error)?
+    /// How many fetches have failed; a screen's refresh-failure note waits for it to change.
+    private(set) var failureCount = 0
 
     @ObservationIgnored private let cacheName: String
     @ObservationIgnored private let context: MoodleCacheContext
@@ -247,6 +249,7 @@ final class MoodleFeed<Value: Codable & Sendable> {
             guard context.isCurrent() else { return }
             status = .failed
             failure = error
+            failureCount += 1
         }
     }
 }

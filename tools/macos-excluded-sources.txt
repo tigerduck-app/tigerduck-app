@@ -75,6 +75,7 @@ TimetableGridView.swift
 
 # Features/CourseMoodle — the assignment page; the Mac opens an assignment on Moodle instead
 MoodleAssignmentView.swift
+MoodleAssignmentView+Status.swift
 
 # Features/EmptyClassroom — the iOS finder screen and the ranking it shows; macOS hides
 # the feature (MacFeatureFiltering.swift) and keeps only its cour01 client

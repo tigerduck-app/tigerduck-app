@@ -21,6 +21,7 @@ struct MoodleForumsView: View {
         }
         .background(Color.backgroundPrimary)
         .refreshable { await store.refreshForums() }
+        .moodleRefreshFailureNote(store.forums, hasContent: store.forumsFetchedAt != nil)
         .moodleListChrome(
             title: String(localized: "course_detail_forums_label"),
             page: .forums(courseId: store.courseId),
