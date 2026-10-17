@@ -32,6 +32,7 @@ private struct UpdateNotifySheetHost: ViewModifier {
                     coordinator.acknowledgeWhatsNew()
                 }
                 .whatsNewSheetPresentation()
+                .keptOverReminders()
             case .update(let pending):
                 UpdatePromptView(pending: pending) { action in
                     coordinator.handleUpdatePromptAction(action)
