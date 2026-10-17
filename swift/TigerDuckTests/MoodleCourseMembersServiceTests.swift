@@ -115,6 +115,27 @@ struct MoodleCourseMembersServiceTests {
         }
     }
 
+    @Test("the 512 px picture is an f1 picture's f3 under the same path and revision, and no other size has one")
+    func largePicture() throws {
+        let cases: [(picture: String, large: String?)] = [
+            ("https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1?rev=5",
+             "https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f3?rev=5"),
+            ("https://moodle-stub.invalid/webservice/pluginfile.php/88/user/icon/moove/f1",
+             "https://moodle-stub.invalid/webservice/pluginfile.php/88/user/icon/moove/f3"),
+            ("https://moodle-stub.invalid/pluginfile.php/88/user/icon/f1?rev=5",
+             "https://moodle-stub.invalid/pluginfile.php/88/user/icon/f3?rev=5"),
+            ("https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f2?rev=5", nil),
+            ("https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f3?rev=5", nil),
+        ]
+        for (picture, large) in cases {
+            let derived = MoodleCourseMembersService.largePicture(try #require(URL(string: picture)))
+            #expect(derived?.absoluteString == large, "\(picture)")
+            if let derived {
+                #expect(MoodleCourseMembersService.isOwnPicture(derived, siteURL: Self.site), "\(picture)")
+            }
+        }
+    }
+
     @Test("a picture downloads under tokenpluginfile; its answer counts only as an image, and a page standing in throws")
     func pictureAnswer() async throws {
         let picture = try #require(URL(string: "https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1?rev=5"))

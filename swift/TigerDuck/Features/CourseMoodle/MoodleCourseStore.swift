@@ -693,16 +693,16 @@ final class MoodleCourseStore {
     }
 
     /// The member's own picture as a file named for them, which Quick Look opens and its share
-    /// menu saves; nil while it is not on the device. Quick Look tells an image by its extension,
-    /// which the kept file has none of. The copy sits next to it, so a new upload and a sign-out
-    /// delete it too. One small file on a tap, it is copied on the main actor.
-    func picturePreview(of member: MoodleMember) -> URL? {
+    /// menu saves: Moodle's 512 px size, downloaded on the first open and kept, else the 100 px
+    /// one the list shows; nil while neither is on the device. Quick Look tells an image by its
+    /// extension, which the kept files have none of. The copy sits next to them, so a new upload
+    /// and a sign-out delete it too.
+    func picturePreview(of member: MoodleMember) async -> URL? {
         guard let url = member.pictureURL, context.isCurrent() else { return nil }
         let kept = pictureFile(of: member.id, url: url)
-        guard let data = try? Data(contentsOf: kept),
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let type = CGImageSourceGetType(source).flatMap({ UTType($0 as String) }),
-              let fileExtension = type.preferredFilenameExtension else { return nil }
+        let large = kept.deletingLastPathComponent().appendingPathComponent(kept.lastPathComponent + "-f3")
+        guard let data = await largePicture(of: url, keptAt: large) ?? (try? Data(contentsOf: kept)),
+              context.isCurrent(), let fileExtension = Self.fileExtension(of: data) else { return nil }
         let preview = kept.deletingLastPathComponent()
             .appendingPathComponent(kept.lastPathComponent + "-preview", isDirectory: true)
             .appendingPathComponent(MoodleFileDownloads.safeName(member.name))
@@ -715,6 +715,29 @@ final class MoodleCourseStore {
             AppLogger.breadcrumb("moodle member picture preview not written: \(error)", category: "moodle")
             return nil
         }
+    }
+
+    /// The 512 px picture from the device, else from Moodle, kept once it reads as an image. Nil
+    /// when the download fails or lands after a sign-out, and the 100 px one opens instead.
+    private func largePicture(of url: URL, keptAt file: URL) async -> Data? {
+        if let kept = try? Data(contentsOf: file) { return kept }
+        guard let large = MoodleCourseMembersService.largePicture(url) else { return nil }
+        do {
+            let data = try await api.picture(large)
+            guard Self.fileExtension(of: data) != nil, context.isCurrent() else { return nil }
+            try? data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
+            return data
+        } catch {
+            AppLogger.breadcrumb("moodle member large picture not downloaded: \(error)", category: "moodle")
+            return nil
+        }
+    }
+
+    /// Nil for data that is not an image.
+    private nonisolated static func fileExtension(of data: Data) -> String? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let type = CGImageSourceGetType(source).flatMap({ UTType($0 as String) }) else { return nil }
+        return type.preferredFilenameExtension
     }
 
     /// Off the main actor, as a course of hundreds asks for every member's picture at once. One

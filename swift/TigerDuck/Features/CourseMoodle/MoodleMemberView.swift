@@ -35,7 +35,7 @@ struct MoodleMemberView: View {
                     picture: member.pictureURL.flatMap { store.pictures[$0] },
                     policy: appState.visualStylePolicy,
                     writeTo: writeTo,
-                    openPicture: { picturePreview = store.picturePreview(of: member) }
+                    openPicture: { Task { picturePreview = await store.picturePreview(of: member) } }
                 )
                 .task(id: member.pictureURL) { await store.loadPicture(of: member) }
             }

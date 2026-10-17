@@ -73,6 +73,16 @@ nonisolated enum MoodleCourseMembersService {
             && path.contains("/user/icon/")
     }
 
+    /// The 512 px size of a member's own picture: Moodle names it `f3` where `profileimageurl`
+    /// names the 100 px `f1`, and sends `f1` for a picture uploaded before Moodle kept `f3`. Nil
+    /// for a URL that names another size.
+    static func largePicture(_ url: URL) -> URL? {
+        guard url.lastPathComponent == "f1",
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        components.percentEncodedPath = String(components.percentEncodedPath.dropLast(2)) + "f3"
+        return components.url
+    }
+
     /// A member's own picture, under the file URL every Moodle file downloads from. An answer that
     /// is not an image, such as a sign-in page standing in for a file the key does not open, throws.
     static func picture(

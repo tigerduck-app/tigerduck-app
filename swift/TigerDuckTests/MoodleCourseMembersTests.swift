@@ -49,6 +49,9 @@ struct MoodleCourseMembersTests {
     /// A picture one pixel square.
     private nonisolated static let png = Data(base64Encoded:
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")!
+    /// Another picture one pixel square, which the site sends for the 512 px size.
+    private nonisolated static let largePNG = Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO4YGAAAAMEATF0v3V3AAAAAElFTkSuQmCC")!
 
     private nonisolated static let me = member(ownId, "B11399001 @ Tiger Duck", idNumber: "B11399001")
     private nonisolated static let classmate = member(43, "B11399002 @ Duck Tiger", idNumber: "B11399002")
@@ -60,6 +63,7 @@ struct MoodleCourseMembersTests {
         private var _list = MoodleMemberList(ownId: MoodleCourseMembersTests.ownId, members: [me, classmate])
         private var _calls: [Int] = []
         private var _picture = MoodleCourseMembersTests.png
+        private var _largePicture: Data? = MoodleCourseMembersTests.largePNG
         private var _pictureCalls: [URL] = []
 
         func set(functions: Set<String>? = nil, members: [MoodleMember]? = nil, picture: Data? = nil) {
@@ -68,6 +72,11 @@ struct MoodleCourseMembersTests {
                 if let members { _list.members = members }
                 if let picture { _picture = picture }
             }
+        }
+
+        /// Nil fails a request for the 512 px size.
+        func setLargePicture(_ data: Data?) {
+            lock.withLock { _largePicture = data }
         }
 
         var calls: [Int] { lock.withLock { _calls } }
@@ -88,7 +97,9 @@ struct MoodleCourseMembersTests {
                 picture: { url in
                     self.lock.withLock { self._pictureCalls.append(url) }
                     try await before()
-                    return self.lock.withLock { self._picture }
+                    let answer = self.lock.withLock { url.lastPathComponent == "f3" ? self._largePicture : self._picture }
+                    guard let answer else { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+                    return answer
                 }
             )
         }
@@ -481,7 +492,7 @@ struct MoodleCourseMembersTests {
         let store = Self.store(folder, site: Site())
         let member = Self.withPicture(Self.classmate, rev: 5)
         await store.loadPicture(of: member)
-        let preview = try #require(store.picturePreview(of: member))
+        let preview = try #require(await store.picturePreview(of: member))
         #expect(!pictures(folder).isEmpty)
 
         folder.cache.clearUserScopedData()
@@ -490,29 +501,79 @@ struct MoodleCourseMembersTests {
         #expect(!FileManager.default.fileExists(atPath: preview.path))
     }
 
-    @Test("a member's own picture opens as an image file named for them, from the copy on the device")
+    @Test("a member's own picture opens as an image file named for them, kept with the account's Moodle files")
     func picturePreview() async throws {
         let folder = Folder()
         let site = Site()
         let signedIn = OSAllocatedUnfairLock(initialState: true)
         let store = Self.store(folder, site: site, signedIn: signedIn)
         let member = Self.withPicture(Self.classmate, rev: 5)
-        #expect(store.picturePreview(of: member) == nil)
-
         await store.loadPicture(of: member)
-        let preview = try #require(store.picturePreview(of: member))
+
+        let preview = try #require(await store.picturePreview(of: member))
 
         #expect(preview.lastPathComponent == "Duck Tiger.png")
-        #expect(try Data(contentsOf: preview) == Self.png)
-        #expect(site.pictureCalls.count == 1)
-        #expect(store.picturePreview(of: Self.classmate) == nil)
+        #expect(await store.picturePreview(of: Self.classmate) == nil)
         signedIn.withLock { $0 = false }
-        #expect(store.picturePreview(of: member) == nil)
+        #expect(await store.picturePreview(of: member) == nil)
         signedIn.withLock { $0 = true }
 
         await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
         #expect(pictures(folder) == ["43-6"])
         #expect(!FileManager.default.fileExists(atPath: preview.path))
+    }
+
+    @Test("a member's picture opens at Moodle's 512 px size, downloaded on the first open and kept")
+    func picturePreviewOpensTheLargeSize() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let store = Self.store(folder, site: site)
+        await store.loadPicture(of: member)
+
+        _ = await store.picturePreview(of: member)
+        let preview = try #require(await store.picturePreview(of: member))
+
+        let large = try #require(URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/1043/user/icon/moove/f3?rev=5"))
+        #expect(site.pictureCalls == [member.pictureURL, large])
+        #expect(try Data(contentsOf: preview) == Self.largePNG)
+    }
+
+    @Test("a 512 px download that fails or is not an image opens the 100 px picture, and the next open tries again",
+          arguments: [nil, Data("<html></html>".utf8)] as [Data?])
+    func picturePreviewFallsBack(largeAnswer: Data?) async throws {
+        let folder = Folder()
+        let site = Site()
+        site.setLargePicture(largeAnswer)
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let store = Self.store(folder, site: site)
+        await store.loadPicture(of: member)
+
+        let small = try #require(await store.picturePreview(of: member))
+        #expect(try Data(contentsOf: small) == Self.png)
+
+        site.setLargePicture(Self.largePNG)
+        let large = try #require(await store.picturePreview(of: member))
+        #expect(try Data(contentsOf: large) == Self.largePNG)
+        #expect(site.pictureCalls.filter { $0.lastPathComponent == "f3" }.count == 2)
+    }
+
+    @Test("a 512 px picture that lands after a sign-out is neither opened nor kept")
+    func largePictureAfterASignOut() async throws {
+        let folder = Folder()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        await Self.store(folder, site: Site()).loadPicture(of: member)
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: Site(), signedIn: signedIn) { await answer.sleep(for: .zero) }
+
+        let open = Task { await store.picturePreview(of: member) }
+        try await answer.waitUntilArmed()
+        signedIn.withLock { $0 = false }
+        await answer.fire()
+
+        #expect(await open.value == nil)
+        #expect(pictures(folder) == ["43-5"])
     }
 
     // MARK: - Members screen
