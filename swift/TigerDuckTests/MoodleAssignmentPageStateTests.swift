@@ -6,8 +6,8 @@ import UIKit
 @testable import TigerDuck
 
 /// What VoiceOver reads on an assignment's page in each state the page draws: which sections
-/// show, in which order. Times are set off the real clock, which the page reads. Every name here
-/// is made up.
+/// show, in which order. Times are set off `AppClock`, which the page reads. Every name here is
+/// made up.
 @MainActor
 @Suite(.serialized)
 struct MoodleAssignmentPageStateTests {
@@ -70,7 +70,7 @@ struct MoodleAssignmentPageStateTests {
 
     @Test("graded after a late hand-in with a group: the deadline passed, the group, then submission, comments and grade")
     func gradedLateWithAGroup() async throws {
-        let due = Date() - 2 * 86_400
+        let due = AppClock.now() - 2 * 86_400
         var answer = MoodleAssignmentPageTests.submission("submitted", modified: due + 4_380, files: [MoodleAssignmentPageTests.file])
         answer.groupName = "Group 3"
         answer.comments = [Self.comment(1, "The fifth answer is on the last page."), Self.comment(2, "Noted.")]
@@ -98,10 +98,10 @@ struct MoodleAssignmentPageStateTests {
     @Test("a draft before the due date: the time left, not submitted, and the draft's file, with no group, comments or grade")
     func draftBeforeTheDueDate() async throws {
         let left: TimeInterval = 86_400 + 4 * 3_600 + 1_800
-        let answer = MoodleAssignmentPageTests.submission("draft", modified: Date() - 600, files: [MoodleAssignmentPageTests.file])
+        let answer = MoodleAssignmentPageTests.submission("draft", modified: AppClock.now() - 600, files: [MoodleAssignmentPageTests.file])
         let notSubmitted = Self.key("assignment_detail_not_submitted")
 
-        let texts = try await Self.spoken(Self.record(due: Date() + left), answer: answer, once: notSubmitted)
+        let texts = try await Self.spoken(Self.record(due: AppClock.now() + left), answer: answer, once: notSubmitted)
 
         let timeLeft = MoodleAssignmentView.Deadline.left(86_400 + 4 * 3_600, urgent: true).text
         #expect(Self.order(of: [timeLeft, notSubmitted, Self.key("assignment_detail_draft"), "hw.pdf"], in: texts)
@@ -117,7 +117,7 @@ struct MoodleAssignmentPageStateTests {
     @Test("handed in early: the time left in grey, the early badge, the text and a comment, and no grade yet")
     func handedInEarly() async throws {
         // Half an hour past the hour, so the time left reads the same however slowly the page comes up.
-        let due = Date() + 9 * 86_400 + 2 * 3_600 + 1_800
+        let due = AppClock.now() + 9 * 86_400 + 2 * 3_600 + 1_800
         var answer = MoodleAssignmentPageTests.submission(
             "submitted", modified: due - (10 * 86_400 + 12 * 3_600), text: "<p>The work split is on the last page.</p>"
         )
@@ -143,7 +143,7 @@ struct MoodleAssignmentPageStateTests {
         let late: TimeInterval = 86_400 + 20 * 3_600 + 600
         let notSubmitted = Self.key("assignment_detail_not_submitted")
 
-        let texts = try await Self.spoken(Self.record(due: Date() - late), once: notSubmitted)
+        let texts = try await Self.spoken(Self.record(due: AppClock.now() - late), once: notSubmitted)
 
         #expect(texts.contains { $0.contains(MoodleAssignmentView.Deadline.overdue(86_400 + 20 * 3_600).text) }, "\(texts)")
         for absent in [
@@ -168,7 +168,7 @@ struct MoodleAssignmentPageStateTests {
 
     @Test("one Moodle takes nothing online for keeps its due time but shows no submission and no button")
     func noOnlineSubmission() async throws {
-        let due = Date() + 3 * 86_400 + 5 * 3_600 + 1_800
+        let due = AppClock.now() + 3 * 86_400 + 5 * 3_600 + 1_800
 
         let texts = try await Self.spoken(
             Self.record(due: due, noSubmissions: true), once: Self.key("assignment_detail_due")
