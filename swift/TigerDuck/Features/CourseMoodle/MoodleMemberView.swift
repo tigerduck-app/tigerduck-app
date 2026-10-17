@@ -129,8 +129,7 @@ struct MoodleMemberProfile: View {
         if picture != nil {
             Button(action: openPicture) { image }
                 .buttonStyle(.plain)
-                .accessibilityLabel(member.name)
-                .accessibilityAddTraits(.isImage)
+                .accessibilityLabel(String(localized: "course_member_profile_picture"))
         } else {
             image
         }

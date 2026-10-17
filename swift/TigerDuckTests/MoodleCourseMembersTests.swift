@@ -750,6 +750,7 @@ extension MoodleCourseMembersTests {
     func aMembersOwnPictureOpensFromTheirPage() async throws {
         try await withAccessibilityAutomation {
             let image = try #require(UIImage(data: Self.png)?.cgImage)
+            let label = String(localized: "course_member_profile_picture")
             for picture in [image, nil] {
                 var opened = 0
                 let window = try show(MoodleMemberProfile(
@@ -758,14 +759,18 @@ extension MoodleCourseMembersTests {
                 ))
                 defer { window.isHidden = true }
                 let root = try #require(window.rootViewController?.view)
+                // The name, the page's header, shows with a picture or without.
                 try await waitUntil { accessibilityElement(labeled: "Duck Tiger", in: root) != nil }
 
-                // The picture comes before the name, the page's header.
-                let first = try #require(accessibilityElement(labeled: "Duck Tiger", in: root))
-                #expect(first.accessibilityTraits.contains(.button) == (picture != nil))
-                guard picture != nil else { continue }
-                #expect(first.accessibilityTraits.contains(.image))
-                #expect(first.accessibilityActivate())
+                let button = accessibilityElement(labeled: label, in: root)
+                guard picture != nil else {
+                    #expect(button == nil)
+                    continue
+                }
+                let found = try #require(button)
+                #expect(found.accessibilityTraits.contains(.button))
+                #expect(!found.accessibilityTraits.contains(.image))
+                #expect(found.accessibilityActivate())
                 try await waitUntil { opened == 1 }
             }
         }
