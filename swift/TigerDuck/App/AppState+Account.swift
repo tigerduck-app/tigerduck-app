@@ -158,12 +158,20 @@ extension AppState {
         // Every sign-in waits for this, so none of it lands on the session that sign-in starts.
         return authService.startSignOutCalls { [self] in
             await cloudSyncCoordinator.settleForSignOut()
-            let departing = AuthTokenManager.DepartingAccount(accessToken: await endingSession.value)
-            await AuthTokenManager.$departing.withValue(departing) { await pushCoordinator.disable() }
+            await authTokenManager.unregisterDeparting(accessToken: await endingSession.value) {
+                await pushCoordinator.disable()
+            }
             #if os(iOS)
             await liveActivityCoordinator.endAll()
             #endif
         }
+    }
+
+    /// Whether a launch sends the unregister a sign-out left unsent: past onboarding, as no launch
+    /// reaches the backend before it, and signed out. Signed in, that account's backend sign-in
+    /// drops what it would send, and sent beside that sign-in it could revoke its session.
+    nonisolated static func retriesDepartingUnregister(onboarded: Bool, signedIn: Bool, sessionKept: Bool) -> Bool {
+        onboarded && !signedIn && sessionKept
     }
 
     /// ``signOutDeletesUnsyncedData(_:cloudSyncEnabled:switchedOn:synced:pendingChecks:unsent:)``

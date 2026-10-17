@@ -64,6 +64,7 @@ final class AppState {
                 AuthTokenManager.accessTokenKey,
                 AuthTokenManager.refreshTokenKey,
                 AuthTokenManager.expiresAtKey,
+                AuthTokenManager.departingSessionKey,
             ]
             let allOk = keysToWipe
                 .map { KeychainManager.deleteReportingSuccess(key: $0) }
@@ -192,6 +193,18 @@ final class AppState {
         // from `serverPushUserOptOut`. It POSTs device ids, so it waits for onboarding.
         if hasCompletedOnboarding {
             pushCoordinator.enable()
+        }
+        // The unregister a sign-out left unsent goes out again as that account. Sign-ins wait for it
+        // as for any sign-out's calls.
+        if Self.retriesDepartingUnregister(
+            onboarded: hasCompletedOnboarding, signedIn: authService.hasStoredCredentials,
+            sessionKept: atm.hasDepartingSession
+        ) {
+            _ = authService.startSignOutCalls { [pushCoordinator] in
+                await atm.unregisterDeparting(accessToken: await atm.departingAccessToken()) {
+                    await pushCoordinator.registration.unregisterDevice()
+                }
+            }
         }
 
         authService.authTokenManager = atm

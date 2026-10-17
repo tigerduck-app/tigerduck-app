@@ -493,17 +493,13 @@ actor PushRegistrationService {
 
     // MARK: - Unregister
 
-    /// Called on sign-out, and only there. Its one caller is
-    /// `PushCoordinator.disable()`, whose one caller is `AppState.logout()`
-    /// — there is no longer a switch that takes the push stack down, only
-    /// the per-channel opt-outs, which leave the device registered.
-    func unregister() async {
-        do {
-            try await apiClient.unregisterDevice(deviceId: identity.uuid)
-            logger.info("unregistered device on server")
-        } catch {
-            logger.error("unregister failed: \(error.localizedDescription, privacy: .private)")
-        }
+    /// Called on sign-out, and only there. Its one caller is `PushCoordinator.disable()`, whose one
+    /// caller is `AppState.logoutNTUST()`: no switch takes the push stack down, only the per-channel
+    /// opt-outs, which leave the device registered. Returns whether the server has the unregister,
+    /// as ``unregisterDevice()`` answers.
+    @discardableResult
+    func unregister() async -> Bool {
+        let landed = await unregisterDevice()
         deviceTokenHex = nil
         ptsTokenHex = nil
         #if os(iOS)
@@ -519,6 +515,23 @@ actor PushRegistrationService {
         deviceRegisterRetryTask = nil
         deviceRegisterAttempts = 0
         registerAgainIfRunningFails = false
+        return landed
+    }
+
+    /// Sends the device's unregister and returns whether the server has it: answered, or a 404, as
+    /// the account has no such device left. A launch sends it too, for a sign-out's that did not land.
+    func unregisterDevice() async -> Bool {
+        do {
+            try await apiClient.unregisterDevice(deviceId: identity.uuid)
+            logger.info("unregistered device on server")
+            return true
+        } catch PushAPIError.httpStatus(404, _) {
+            logger.info("device already unregistered on server")
+            return true
+        } catch {
+            logger.error("unregister failed: \(error.localizedDescription, privacy: .private)")
+            return false
+        }
     }
 
     // MARK: - Internals
