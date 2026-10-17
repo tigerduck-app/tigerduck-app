@@ -364,5 +364,23 @@
         { "symbol": "wrench.and.screwdriver", "title": "Fixes", "body": "Fixes for sync, Mail and background updates." }
       ]
     }
+  },
+  "2.6.1": {
+    "zh-TW": {
+      "title": "2.6.1 更新內容",
+      "items": [
+        { "symbol": "doc.text", "title": "作業頁", "body": "重新設計作業頁面。" },
+        { "symbol": "person.crop.circle", "title": "課程成員", "body": "在成員名單中，將根據學號判斷並顯示系所、點擊頭像可進行預覽。" },
+        { "symbol": "wrench.and.screwdriver", "title": "改進與修正", "body": "Moodle 更新失敗提示文字、登出時的未同步資料提醒、修正 Moodle 內文圖片顯示問題。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.6.1",
+      "items": [
+        { "symbol": "doc.text", "title": "Assignment page", "body": "A redesigned assignment page." },
+        { "symbol": "person.crop.circle", "title": "Course members", "body": "The members list shows each student's department from their student ID, and tapping a picture opens a preview." },
+        { "symbol": "wrench.and.screwdriver", "title": "Improvements and fixes", "body": "A note when a Moodle refresh fails, a reminder about unsynced data when you sign out, and a fix for images in Moodle text." }
+      ]
+    }
   }
 }

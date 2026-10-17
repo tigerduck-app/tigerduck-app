@@ -747,6 +747,7 @@ struct BackendTokenRefreshTests {
         #expect(await ending.value == nil)
         #expect(await refresh.value == nil)
         #expect(try backend.sentRefreshTokens() == ["R0"])
+        #expect(!backend.relaunched().hasDepartingSession)
     }
 
     @Test("a sign-out sends no third use of a token an earlier refresh sent twice")
@@ -760,6 +761,7 @@ struct BackendTokenRefreshTests {
         #expect(await backend.manager.endSession() == nil)
 
         #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+        #expect(!backend.relaunched().hasDepartingSession)
     }
 
     /// The 401 came before the sign-out, so no reply was overtaken, and the sign-out sent the
@@ -897,6 +899,216 @@ struct BackendTokenRefreshTests {
         #expect(tasks.ended == 1)
         #expect(tasks.requestsAtFirstBegin == 0)
         #expect(backend.recorder.writesOutsideABackgroundTask == 0)
+    }
+}
+
+/// A sign-out's unregister that did not land: the session it ended stays for a later launch to send
+/// the unregister as that account (https://github.com/tigerduck-app/tigerduck-app/issues/460).
+@Suite("The session a sign-out keeps for its unregister")
+struct DepartingSessionTests {
+    /// The kept session's refresh token, its sends and the backend it belongs to, or nil with none kept.
+    private static func kept(_ backend: BackendFixture) throws -> (token: String, uses: Int, baseURL: String?)? {
+        guard let json = backend.recorder.stored(AuthTokenManager.departingSessionKey) else { return nil }
+        let session = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        return (
+            try #require(session["refreshToken"] as? String), try #require(session["uses"] as? Int),
+            session["baseURL"] as? String
+        )
+    }
+
+    /// Signed in with an access token that outlasts the sign-out's calls, so the sign-out sends nothing.
+    private static func signedOut() async -> BackendFixture {
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+        _ = await backend.manager.endSession()
+        return backend
+    }
+
+    @Test("a sign-out keeps the session it ends, and a later launch refreshes it once for the unregister")
+    func aLaterLaunchRefreshesTheKeptSession() async throws {
+        let backend = await Self.signedOut()
+        #expect(try Self.kept(backend)?.token == "R0")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        let relaunched = backend.relaunched()
+        #expect(relaunched.hasDepartingSession)
+        #expect(await relaunched.departingAccessToken() == "A1")
+
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+        #expect(try Self.kept(backend)?.token == "R1")
+        #expect(try Self.kept(backend)?.uses == 0)
+        #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
+        #expect(await !relaunched.isLoggedIn)
+    }
+
+    @Test("a sign-out counts its own refresh in the session it keeps before the request goes out, and keeps the next token")
+    func theSignOutsRefreshIsCountedThenItsTokenKept() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL
+        )
+        let ending = Task { await backend.manager.endSession() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
+        #expect(try Self.kept(backend)?.token == "R0")
+        #expect(try Self.kept(backend)?.uses == 1)
+        #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
+        gate.open()
+
+        #expect(await ending.value == "A1")
+        #expect(try Self.kept(backend)?.token == "R1")
+        #expect(try Self.kept(backend)?.uses == 0)
+        #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
+    }
+
+    @Test("a refresh a sign-out overtook leaves the token it brings for the unregister")
+    func anOvertakenRefreshLeavesItsToken() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL
+        )
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        let ending = Task { await manager.endSession() }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == "A1")
+        #expect(await refresh.value == nil)
+        #expect(try Self.kept(backend)?.token == "R1")
+        #expect(try Self.kept(backend)?.uses == 0)
+        #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
+    }
+
+    /// The endpoint can change between the sign-out and that launch, and the other server never
+    /// issued the session.
+    @Test("a kept session is refreshed and unregistered on the backend it was kept against, after the endpoint changed")
+    func theRetryGoesToTheBackendTheSessionWasKeptAgainst() async throws {
+        let backend = await Self.signedOut()
+        let current = SettingsAPIStub.uniqueBaseURL()
+        let relaunched = backend.relaunched(at: current)
+        let registration = RegistrationFixture(manager: relaunched, baseURL: current)
+        let unregisterURL = backend.baseURL.appendingPathComponent("devices/test-device")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: unregisterURL)
+
+        await relaunched.retryDepartingUnregister { await registration.service.unregisterDevice(at: $0) }
+
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+        let unregister = try #require(SettingsAPIStub.requests(for: unregisterURL).first)
+        #expect(unregister.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
+        #expect(SettingsAPIStub.requests(under: current).isEmpty)
+        #expect(try Self.kept(backend) == nil)
+    }
+
+    @Test("a kept session the backend turns down is forgotten")
+    func aTurnedDownSessionIsForgotten() async throws {
+        let backend = await Self.signedOut()
+        SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
+
+        #expect(await backend.relaunched().departingAccessToken() == nil)
+
+        #expect(try Self.kept(backend) == nil)
+        #expect(!backend.relaunched().hasDepartingSession)
+    }
+
+    /// The backend takes a third use for theft, which revokes the device's sessions but leaves its
+    /// push tokens, so the unregister could never go after it.
+    @Test("a kept session sent twice with no reply goes out no more, and is forgotten")
+    func aKeptSessionGoesOutNoThirdTime() async throws {
+        let backend = await Self.signedOut()
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        #expect(await backend.relaunched().departingAccessToken() == nil)
+        #expect(try Self.kept(backend)?.uses == 1)
+        #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
+        #expect(await backend.relaunched().departingAccessToken() == nil)
+        #expect(await backend.relaunched().departingAccessToken() == nil)
+
+        #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
+        #expect(try Self.kept(backend) == nil)
+    }
+
+    @Test("a refresh that never left the device uses none of the kept session's sends")
+    func anUnsentRefreshCountsNothing() async throws {
+        let backend = await Self.signedOut()
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 0, body: Data(), failure: .notConnectedToInternet), for: backend.refreshURL
+        )
+
+        #expect(await backend.relaunched().departingAccessToken() == nil)
+
+        #expect(try Self.kept(backend)?.uses == 0)
+    }
+
+    @Test("the unregister goes as the departing account and forgets the kept session once the server has it")
+    func theUnregisterForgetsTheKeptSessionOnceItLands() async throws {
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+        let manager = backend.manager
+        let token = await manager.endSession()
+
+        await manager.unregisterDeparting(accessToken: token) { await manager.validAccessToken() == nil }
+        #expect(try Self.kept(backend) != nil)
+
+        await manager.unregisterDeparting(accessToken: token) { await manager.validAccessToken() == "A0" }
+        #expect(try Self.kept(backend) == nil)
+    }
+
+    @Test("a sign-in forgets the kept session: the backend has the device for that account now")
+    func aSignInForgetsTheKeptSession() async throws {
+        let backend = await Self.signedOut()
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+
+        _ = try await backend.manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+
+        #expect(try Self.kept(backend) == nil)
+    }
+
+    @Test("a refresh of the kept session that a sign-in overtook hands out no token and keeps nothing")
+    func aSignInDuringTheRetryGetsNoUnregister() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = await Self.signedOut()
+        let manager = backend.relaunched()
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL
+        )
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        let retry = Task { await manager.departingAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+
+        #expect(await retry.value == nil)
+        #expect(try Self.kept(backend) == nil)
+        #expect(await manager.validAccessToken() == "B1")
+    }
+
+    @Test("the device's unregister lands when answered, or when the account has the device no more",
+          arguments: zip([204, 404, 401, 500], [true, true, false, false]))
+    func theUnregisterLandsOnlyWhenTheServerHasIt(status: Int, lands: Bool) async {
+        let backend = BackendFixture()
+        let registration = RegistrationFixture(manager: backend.manager)
+        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data()), for: registration.unregisterURL)
+
+        let landed = await AuthTokenManager.$departing.withValue(.init(accessToken: "A1")) {
+            await registration.service.unregisterDevice()
+        }
+
+        #expect(landed == lands)
     }
 }
 
@@ -1355,6 +1567,7 @@ struct BackendSignInTests {
 private struct BackendFixture {
     let manager: AuthTokenManager
     let recorder: Recorder
+    let baseURL: URL
     let refreshURL: URL
     let loginURL: URL
     let refreshTimeout: TimeInterval
@@ -1367,6 +1580,7 @@ private struct BackendFixture {
         refreshTimeout: TimeInterval = 600
     ) {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
+        self.baseURL = baseURL
         refreshURL = baseURL.appendingPathComponent("auth/refresh")
         loginURL = baseURL.appendingPathComponent("auth/login")
         let recorder = Recorder(
@@ -1384,11 +1598,12 @@ private struct BackendFixture {
         manager = Self.manager(baseURL: baseURL, recorder: recorder, refreshTimeout: refreshTimeout)
     }
 
-    /// A manager on the same Keychain, as after the app ends and starts again.
-    func relaunched() -> AuthTokenManager {
+    /// A manager on the same Keychain, as after the app ends and starts again, on `baseURL` when
+    /// given, as after the endpoint changed.
+    func relaunched(at baseURL: URL? = nil) -> AuthTokenManager {
         Self.manager(
-            baseURL: refreshURL.deletingLastPathComponent().deletingLastPathComponent(), recorder: recorder,
-            refreshTimeout: refreshTimeout
+            baseURL: baseURL ?? refreshURL.deletingLastPathComponent().deletingLastPathComponent(),
+            recorder: recorder, refreshTimeout: refreshTimeout
         )
     }
 
@@ -1485,8 +1700,8 @@ private struct RegistrationFixture {
     let registerURL: URL
     let unregisterURL: URL
 
-    init(manager: AuthTokenManager) {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
+    /// On `baseURL`, the endpoint its requests go to unless told otherwise.
+    init(manager: AuthTokenManager, baseURL: URL = SettingsAPIStub.uniqueBaseURL()) {
         announceURL = baseURL.appendingPathComponent("devices/anonymous")
         registerURL = baseURL.appendingPathComponent("devices/register")
         unregisterURL = baseURL.appendingPathComponent("devices/test-device")

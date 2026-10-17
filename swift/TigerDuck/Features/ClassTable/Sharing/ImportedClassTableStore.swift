@@ -225,10 +225,15 @@ final class ImportedClassTableStore {
         shownPersonID = id
     }
 
-    /// The account rows' sign-out deletes the imported class tables, so with any here it calls
-    /// `confirm` to ask first; otherwise it signs out at once.
-    func requestSignOut(confirm: () -> Void, signOut: () -> Void) {
-        if hasImportedClassTables { confirm() } else { signOut() }
+    /// The account rows' sign-out deletes the data TigerSync does not keep (`unsyncedData`) and the
+    /// imported class tables, so with either it calls `confirm` with the lines that ask first, in
+    /// that order; otherwise it signs out at once.
+    func requestSignOut(unsyncedData: Bool, confirm: ([String]) -> Void, signOut: () -> Void) {
+        let lines = [
+            unsyncedData ? String(localized: "settings_sign_out_unsynced_data") : nil,
+            hasImportedClassTables ? String(localized: "settings_sign_out_imported_tables") : nil,
+        ].compactMap { $0 }
+        if lines.isEmpty { signOut() } else { confirm(lines) }
     }
 
     /// For a sign-out by the user: an expired session and TigerSync turned off must not call it.

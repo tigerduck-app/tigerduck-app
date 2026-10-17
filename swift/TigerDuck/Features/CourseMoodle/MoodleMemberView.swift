@@ -1,14 +1,20 @@
+import QuickLook
 import SwiftUI
 
-/// One member of a course, pushed from the members list: their profile, "Open in Moodle" for
-/// their page in the course, and their email opening a new School Mail message where the account
-/// has School Mail, else the system's mail.
+/// One member of a course, pushed from the members list: their profile, their own picture opening
+/// full screen in Quick Look, whose share menu saves it, "Open in Moodle" for their page in the
+/// course, and their email opening a new School Mail message where the account has School Mail,
+/// else the system's mail.
 struct MoodleMemberView: View {
     let store: MoodleCourseStore
     let member: MoodleMember
 
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @State private var picturePreview: URL?
+    /// Set while the full-size picture downloads, so a second tap starts no second download that
+    /// would open Quick Look again after the first is closed.
+    @State private var isOpeningPicture = false
     #if os(iOS)
     @State private var mail: MemberMail?
     @State private var sentCopyNotice: String?
@@ -31,7 +37,9 @@ struct MoodleMemberView: View {
                     member: member,
                     picture: member.pictureURL.flatMap { store.pictures[$0] },
                     policy: appState.visualStylePolicy,
-                    writeTo: writeTo
+                    writeTo: writeTo,
+                    isOpeningPicture: isOpeningPicture,
+                    openPicture: openPicture
                 )
                 .task(id: member.pictureURL) { await store.loadPicture(of: member) }
             }
@@ -41,6 +49,7 @@ struct MoodleMemberView: View {
         }
         .background(Color.backgroundPrimary)
         .moodleArticleChrome(page: .profile(userId: member.id, courseId: store.courseId))
+        .quickLookPreview($picturePreview)
         #if os(iOS)
         .sheet(item: $mail) { mail in
             MailComposeView(
@@ -55,6 +64,15 @@ struct MoodleMemberView: View {
         #endif
     }
 
+    private func openPicture() {
+        guard !isOpeningPicture else { return }
+        isOpeningPicture = true
+        Task {
+            picturePreview = await store.picturePreview(of: member)
+            isOpeningPicture = false
+        }
+    }
+
     private func writeTo(_ address: String) {
         #if os(iOS)
         if MailAccountManager.shared.isLoggedIn {
@@ -67,14 +85,17 @@ struct MoodleMemberView: View {
     }
 }
 
-/// A member as Moodle shows them to the course: picture, name and role, then whichever of their
-/// student ID, department, email, groups and custom fields Moodle gives, each a row only when
-/// there is one, and their own description and interests.
+/// A member as Moodle shows them to the course: picture, name and role, then their student ID and
+/// the department it names, and whichever of their email, groups and custom fields Moodle gives,
+/// each a row only when there is one, and their own description and interests.
 struct MoodleMemberProfile: View {
     let member: MoodleMember
     let picture: CGImage?
     let policy: VisualStylePolicy
     let writeTo: (String) -> Void
+    /// The full-size picture is on its way, so the picture shows a spinner and takes no tap.
+    var isOpeningPicture = false
+    let openPicture: () -> Void
 
     private static let avatarSize: CGFloat = 88
 
@@ -101,7 +122,7 @@ struct MoodleMemberProfile: View {
 
     private var header: some View {
         VStack(spacing: TigerDuckTheme.Spacing.xs) {
-            MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
+            avatar
                 .padding(.bottom, TigerDuckTheme.Spacing.xs)
             Text(member.name)
                 .font(TigerDuckTheme.Typography.title)
@@ -116,7 +137,23 @@ struct MoodleMemberProfile: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// What the card lists, in order: a field shows only when Moodle gives it.
+    /// Moodle's default picture, or none, has nothing to open.
+    @ViewBuilder
+    private var avatar: some View {
+        let image = MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
+        if picture != nil {
+            Button(action: openPicture) {
+                image.overlay { if isOpeningPicture { ProgressView() } }
+            }
+            .buttonStyle(.plain)
+            .disabled(isOpeningPicture)
+            .accessibilityLabel(String(localized: "course_member_profile_picture"))
+        } else {
+            image
+        }
+    }
+
+    /// What the card lists, in order: a field shows only when there is one.
     nonisolated struct Row: Equatable {
         enum Value: Equatable {
             case text(String)
@@ -138,7 +175,7 @@ struct MoodleMemberProfile: View {
             rows.append(Row(label: String(localized: "sign_in_student_id"), value: .text(studentId)))
         }
         if let department = member.department {
-            rows.append(Row(label: String(localized: "course_member_department"), value: .text(department)))
+            rows.append(Row(label: String(localized: "course_member_department"), value: .text(department.name)))
         }
         if let email = member.email {
             rows.append(Row(label: String(localized: "course_member_email"), value: .email(email)))

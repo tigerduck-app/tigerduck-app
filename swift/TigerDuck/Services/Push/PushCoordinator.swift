@@ -398,9 +398,11 @@ final class PushCoordinator {
         )
     }
 
-    /// Disable and inform the server. Safe to call repeatedly.
-    func disable() async {
-        guard isStarted else { return }
+    /// Disable and inform the server. Safe to call repeatedly. Returns whether the server has the
+    /// device's unregister: false with the stack down already, which sends none.
+    @discardableResult
+    func disable() async -> Bool {
+        guard isStarted else { return false }
         isStarted = false
         stoppedBySignOut = true
         acceptedMoodleCredentials = nil
@@ -415,7 +417,7 @@ final class PushCoordinator {
         // and builder; the POST runs in `ScheduleSyncService.inflight`.
         await pendingSyncTask?.value
         await scheduleSync.awaitInflight()
-        await registration.unregister()
+        return await registration.unregister()
     }
 
     #if os(iOS)

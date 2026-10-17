@@ -9,7 +9,8 @@ import Testing
 
 /// A course's members in `MoodleCourseStore` over a stand-in `MoodleCourseAPI` and a cache in a
 /// folder of its own, then the sections, the detail rows and the list states the screens draw
-/// from them. Every person here is made up.
+/// from them. Every person here is made up, and a student ID with a real department code has the
+/// entry year 199, which is still to come.
 @MainActor
 struct MoodleCourseMembersTests {
     private nonisolated static let courseId = 20119
@@ -19,14 +20,13 @@ struct MoodleCourseMembersTests {
         _ id: Int,
         _ fullName: String,
         idNumber: String? = nil,
-        department: String? = nil,
         roles: [String] = ["student"],
         email: String? = nil,
         groups: [String] = [],
         fields: [MoodleMember.Field] = []
     ) -> MoodleMember {
         member(
-            id, fullName, idNumber: idNumber, department: department, email: email, groups: groups, fields: fields,
+            id, fullName, idNumber: idNumber, email: email, groups: groups, fields: fields,
             roleDetails: roles.enumerated().map { MoodleMember.Role(shortName: $0.element, name: "", sortOrder: $0.offset) }
         )
     }
@@ -35,14 +35,13 @@ struct MoodleCourseMembersTests {
         _ id: Int,
         _ fullName: String,
         idNumber: String? = nil,
-        department: String? = nil,
         email: String? = nil,
         groups: [String] = [],
         fields: [MoodleMember.Field] = [],
         roleDetails: [MoodleMember.Role]
     ) -> MoodleMember {
         MoodleMember(
-            id: id, fullName: fullName, idNumber: idNumber, department: department, email: email, groups: groups,
+            id: id, fullName: fullName, idNumber: idNumber, email: email, groups: groups,
             roles: roleDetails, pictureURL: nil, description: "", interests: [], fields: fields
         )
     }
@@ -50,6 +49,9 @@ struct MoodleCourseMembersTests {
     /// A picture one pixel square.
     private nonisolated static let png = Data(base64Encoded:
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")!
+    /// Another picture one pixel square, which the site sends for the 512 px size.
+    private nonisolated static let largePNG = Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO4YGAAAAMEATF0v3V3AAAAAElFTkSuQmCC")!
 
     private nonisolated static let me = member(ownId, "B11399001 @ Tiger Duck", idNumber: "B11399001")
     private nonisolated static let classmate = member(43, "B11399002 @ Duck Tiger", idNumber: "B11399002")
@@ -61,6 +63,7 @@ struct MoodleCourseMembersTests {
         private var _list = MoodleMemberList(ownId: MoodleCourseMembersTests.ownId, members: [me, classmate])
         private var _calls: [Int] = []
         private var _picture = MoodleCourseMembersTests.png
+        private var _largePicture: Data? = MoodleCourseMembersTests.largePNG
         private var _pictureCalls: [URL] = []
 
         func set(functions: Set<String>? = nil, members: [MoodleMember]? = nil, picture: Data? = nil) {
@@ -69,6 +72,11 @@ struct MoodleCourseMembersTests {
                 if let members { _list.members = members }
                 if let picture { _picture = picture }
             }
+        }
+
+        /// Nil fails a request for the 512 px size.
+        func setLargePicture(_ data: Data?) {
+            lock.withLock { _largePicture = data }
         }
 
         var calls: [Int] { lock.withLock { _calls } }
@@ -89,7 +97,9 @@ struct MoodleCourseMembersTests {
                 picture: { url in
                     self.lock.withLock { self._pictureCalls.append(url) }
                     try await before()
-                    return self.lock.withLock { self._picture }
+                    let answer = self.lock.withLock { url.lastPathComponent == "f3" ? self._largePicture : self._picture }
+                    guard let answer else { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+                    return answer
                 }
             )
         }
@@ -308,7 +318,7 @@ struct MoodleCourseMembersTests {
 
     private nonisolated static func withPicture(_ member: MoodleMember, rev: Int) -> MoodleMember {
         MoodleMember(
-            id: member.id, fullName: member.fullName, idNumber: member.idNumber, department: member.department,
+            id: member.id, fullName: member.fullName, idNumber: member.idNumber,
             email: member.email, groups: member.groups, roles: member.roles,
             // Each user has a context of their own, which the path names.
             pictureURL: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/\(member.id + 1000)/user/icon/moove/f1?rev=\(rev)"),
@@ -476,15 +486,94 @@ struct MoodleCourseMembersTests {
         #expect(store.pictures[try #require(last.pictureURL)] != nil)
     }
 
-    @Test("signing out deletes the pictures with every other Moodle file")
-    func signOutClearsPictures() async {
+    @Test("signing out deletes the pictures, and the copies that opened, with every other Moodle file")
+    func signOutClearsPictures() async throws {
         let folder = Folder()
-        await Self.store(folder, site: Site()).loadPicture(of: Self.withPicture(Self.classmate, rev: 5))
+        let store = Self.store(folder, site: Site())
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        await store.loadPicture(of: member)
+        let preview = try #require(await store.picturePreview(of: member))
         #expect(!pictures(folder).isEmpty)
 
         folder.cache.clearUserScopedData()
 
         #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
+        #expect(!FileManager.default.fileExists(atPath: preview.path))
+    }
+
+    @Test("a member's own picture opens as an image file named for them, kept with the account's Moodle files")
+    func picturePreview() async throws {
+        let folder = Folder()
+        let site = Site()
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let store = Self.store(folder, site: site, signedIn: signedIn)
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        await store.loadPicture(of: member)
+
+        let preview = try #require(await store.picturePreview(of: member))
+
+        #expect(preview.lastPathComponent == "Duck Tiger.png")
+        #expect(await store.picturePreview(of: Self.classmate) == nil)
+        signedIn.withLock { $0 = false }
+        #expect(await store.picturePreview(of: member) == nil)
+        signedIn.withLock { $0 = true }
+
+        await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
+        #expect(pictures(folder) == ["43-6"])
+        #expect(!FileManager.default.fileExists(atPath: preview.path))
+    }
+
+    @Test("a member's picture opens at Moodle's 512 px size, downloaded on the first open and kept")
+    func picturePreviewOpensTheLargeSize() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let store = Self.store(folder, site: site)
+        await store.loadPicture(of: member)
+
+        _ = await store.picturePreview(of: member)
+        let preview = try #require(await store.picturePreview(of: member))
+
+        let large = try #require(URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/1043/user/icon/moove/f3?rev=5"))
+        #expect(site.pictureCalls == [member.pictureURL, large])
+        #expect(try Data(contentsOf: preview) == Self.largePNG)
+    }
+
+    @Test("a 512 px download that fails or is not an image opens the 100 px picture, and the next open tries again",
+          arguments: [nil, Data("<html></html>".utf8)] as [Data?])
+    func picturePreviewFallsBack(largeAnswer: Data?) async throws {
+        let folder = Folder()
+        let site = Site()
+        site.setLargePicture(largeAnswer)
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let store = Self.store(folder, site: site)
+        await store.loadPicture(of: member)
+
+        let small = try #require(await store.picturePreview(of: member))
+        #expect(try Data(contentsOf: small) == Self.png)
+
+        site.setLargePicture(Self.largePNG)
+        let large = try #require(await store.picturePreview(of: member))
+        #expect(try Data(contentsOf: large) == Self.largePNG)
+        #expect(site.pictureCalls.filter { $0.lastPathComponent == "f3" }.count == 2)
+    }
+
+    @Test("a 512 px picture that lands after a sign-out is neither opened nor kept")
+    func largePictureAfterASignOut() async throws {
+        let folder = Folder()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        await Self.store(folder, site: Site()).loadPicture(of: member)
+        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: Site(), signedIn: signedIn) { await answer.sleep(for: .zero) }
+
+        let open = Task { await store.picturePreview(of: member) }
+        try await answer.waitUntilArmed()
+        signedIn.withLock { $0 = false }
+        await answer.fire()
+
+        #expect(await open.value == nil)
+        #expect(pictures(folder) == ["43-5"])
     }
 
     // MARK: - Members screen
@@ -564,22 +653,29 @@ struct MoodleCourseMembersTests {
         #expect(sections[1].members.map(\.name) == ["Bo", "Zoe", "Ann", "Nobody"])
     }
 
-    @Test("search matches a name, a student ID or a department here, and a search no one matches says so")
+    @Test("search matches a name, a student ID or the department as the list shows it, and a search no one matches says so")
     func search() {
         let members = [
-            Self.member(1, "B11399001 @ 王小明", idNumber: "B11399001", department: "資訊工程系"),
-            Self.member(2, "B11399002 @ Duck Tiger", idNumber: "B11399002", department: "Information Management"),
-            Self.member(3, "Tiger Teacher", department: "Computer Science", roles: ["editingteacher"]),
+            Self.member(1, "B19915001 @ 王小明", idNumber: "B19915001"),
+            Self.member(2, "B19901002 @ Duck Tiger", idNumber: "B19901002"),
+            Self.member(3, "Tiger Teacher", roles: ["editingteacher"]),
+            Self.member(4, "M19901003 @ Grad Duck", idNumber: "M19901003"),
         ]
         func ids(_ query: String) -> [Int] {
             MoodleMemberSection.sections(of: members, matching: query).flatMap { $0.members.map(\.id) }
         }
 
         #expect(ids("小明") == [1])
-        #expect(ids("b113990") == [1, 2])
-        #expect(ids("information") == [2])
+        #expect(ids("b199") == [2, 1])
+        #expect(ids(NTUSTDepartment.im.shortName) == [2])
         #expect(ids("tiger") == [3, 2])
-        #expect(ids("  ") == [3, 1, 2])
+        #expect(ids("  ") == [3, 2, 1, 4])
+        // The list shows the short name, so what only the full name has, as English's
+        // "Department of", finds no one.
+        let fullOnly = NTUSTDepartment.im.name.replacingOccurrences(of: NTUSTDepartment.im.shortName, with: "")
+        if !fullOnly.trimmingCharacters(in: .whitespaces).isEmpty {
+            #expect(ids(fullOnly) == [])
+        }
         guard case .noMatches(let query) = MoodleMembersView.Content(
             list: MoodleMemberList(ownId: nil, members: members), isRefreshing: false, failure: nil, query: " nobody "
         ) else {
@@ -591,25 +687,53 @@ struct MoodleCourseMembersTests {
 
     // MARK: - Member detail
 
-    @Test("the detail lists the student ID, department, email, groups and custom fields, each only when there is one")
+    @Test("the detail lists the student ID, the department it names, email, groups and custom fields, each only when there is one")
     func detailRows() {
         let full = Self.member(
-            1, "B11399001 @ Tiger Duck", idNumber: "B11399001", department: "Information Management",
-            email: "b11399001@example.edu.tw", groups: ["Group 3", "Group 4"],
+            1, "B19915001 @ Tiger Duck", idNumber: "B19915001",
+            email: "b19915001@example.edu.tw", groups: ["Group 3", "Group 4"],
             fields: [MoodleMember.Field(name: "Office", value: "TR-412")]
         )
 
         #expect(MoodleMemberProfile.rows(of: full) == [
-            .init(label: String(localized: "sign_in_student_id"), value: .text("B11399001")),
-            .init(label: String(localized: "course_member_department"), value: .text("Information Management")),
-            .init(label: String(localized: "course_member_email"), value: .email("b11399001@example.edu.tw")),
+            .init(label: String(localized: "sign_in_student_id"), value: .text("B19915001")),
+            .init(label: String(localized: "course_member_department"), value: .text(NTUSTDepartment.cs.name)),
+            .init(label: String(localized: "course_member_email"), value: .email("b19915001@example.edu.tw")),
             .init(label: String(localized: "course_member_groups"), value: .text("Group 3、Group 4")),
             .init(label: "Office", value: .text("TR-412")),
         ])
         #expect(MoodleMemberProfile.rows(of: Self.member(2, "Tiger Teacher")).isEmpty)
-        #expect(MoodleMemberProfile.rows(of: Self.member(3, "B11399003 @ Duck")) == [
-            .init(label: String(localized: "sign_in_student_id"), value: .text("B11399003")),
-        ])
+        for id in ["B11399003", "M19915003"] {
+            #expect(MoodleMemberProfile.rows(of: Self.member(3, "\(id) @ Duck")) == [
+                .init(label: String(localized: "sign_in_student_id"), value: .text(id)),
+            ], "\(id)")
+        }
+    }
+
+    // MARK: - Department
+
+    @Test("a bachelor's student ID names the department of its code, in either case", arguments: [
+        ("01", "im"), ("02", "et"), ("03", "me"), ("04", "tx"), ("05", "ct"), ("06", "ch"),
+        ("07", "ee"), ("08", "ba"), ("10", "dt"), ("13", "ad"), ("15", "cs"), ("30", "hc"),
+    ])
+    func department(code: String, courseCode: String) throws {
+        let department = try #require(NTUSTDepartment(studentId: "B199\(code)042"))
+
+        #expect("\(department)" == courseCode)
+        #expect(NTUSTDepartment(studentId: "b199\(code)042") == department)
+        // The case names its strings, so a name taken from another department's key shows here.
+        let key = "course_member_department_\(courseCode)"
+        #expect(department.name == Bundle.main.localizedString(forKey: key, value: nil, table: nil))
+        #expect(department.shortName == Bundle.main.localizedString(forKey: key + "_short", value: nil, table: nil))
+        #expect(department.name != key)
+    }
+
+    @Test("no department for another degree's ID, a code the table lacks, an ID of another form, or none", arguments: [
+        "B19999042", "B19909042", "B19911042", "M19915042", "D19915042", "A19915042",
+        "B1991504", "B199150042", "B19915O42", "B１９９１５０４２", " B19915042", "", nil,
+    ] as [String?])
+    func noDepartment(studentId: String?) {
+        #expect(NTUSTDepartment(studentId: studentId) == nil)
     }
 
     @Test("a name splits into the part after the @ and the student ID before it")
@@ -656,6 +780,74 @@ extension MoodleCourseMembersTests {
 
         #expect(field.isFirstResponder)
         #expect(window.descendants(ofType: UITextField.self).map(ObjectIdentifier.init) == [ObjectIdentifier(field)])
+    }
+
+    /// Shown without making it key, so the test of the search field keeps its keyboard.
+    private func show(_ view: some View) throws -> UIWindow {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = UIHostingController(rootView: view)
+        window.isHidden = false
+        return window
+    }
+
+    @Test("a row tells the student ID and the short name of the department it names, a graduate's only the ID")
+    func aRowTellsTheDepartmentAfterTheStudentId() async throws {
+        try await withAccessibilityAutomation {
+            for (id, value) in [("B19915002", "B19915002, \(NTUSTDepartment.cs.shortName)"), ("M19915002", "M19915002")] {
+                let window = try show(MoodleMemberRow(member: Self.member(43, "\(id) @ Duck Tiger", idNumber: id), picture: nil))
+                defer { window.isHidden = true }
+                let root = try #require(window.rootViewController?.view)
+
+                try await waitUntil { accessibilityElement(labeled: "Duck Tiger", in: root) != nil }
+
+                #expect(accessibilityElement(labeled: "Duck Tiger", in: root)?.accessibilityValue == value)
+            }
+        }
+    }
+
+    @Test("a member's own picture on their page is a button that opens it, and one without has none")
+    func aMembersOwnPictureOpensFromTheirPage() async throws {
+        try await withAccessibilityAutomation {
+            let image = try #require(UIImage(data: Self.png)?.cgImage)
+            let label = String(localized: "course_member_profile_picture")
+            for picture in [image, nil] {
+                var opened = 0
+                let window = try show(MoodleMemberProfile(
+                    member: Self.classmate, picture: picture, policy: VisualStylePolicy(preset: .default),
+                    writeTo: { _ in }, openPicture: { opened += 1 }
+                ))
+                defer { window.isHidden = true }
+                let root = try #require(window.rootViewController?.view)
+                // The name, the page's header, shows with a picture or without.
+                try await waitUntil { accessibilityElement(labeled: "Duck Tiger", in: root) != nil }
+
+                let button = accessibilityElement(labeled: label, in: root)
+                guard picture != nil else {
+                    #expect(button == nil)
+                    continue
+                }
+                let found = try #require(button)
+                #expect(found.accessibilityTraits.contains(.button))
+                #expect(!found.accessibilityTraits.contains(.image))
+                #expect(found.accessibilityActivate())
+                try await waitUntil { opened == 1 }
+            }
+
+            // While the full-size picture is on its way, the picture takes no second tap.
+            var opened = 0
+            let window = try show(MoodleMemberProfile(
+                member: Self.classmate, picture: image, policy: VisualStylePolicy(preset: .default),
+                writeTo: { _ in }, isOpeningPicture: true, openPicture: { opened += 1 }
+            ))
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController?.view)
+            try await waitUntil { accessibilityElement(labeled: label, in: root) != nil }
+            _ = accessibilityElement(labeled: label, in: root)?.accessibilityActivate()
+            #expect(accessibilityElement(labeled: label, in: root)?.accessibilityTraits.contains(.notEnabled) == true)
+            #expect(opened == 0)
+        }
     }
 }
 #endif

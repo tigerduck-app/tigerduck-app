@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State private var showingTabEditor = false
     @State private var showLibraryLogin = false
     @State private var confirmsSignOut = false
+    @State private var signOutLines: [String] = []
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
     #if os(iOS)
@@ -126,7 +127,6 @@ struct SettingsView: View {
                 )
                 Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowAllPeriods)
-                Toggle(String(localized: "settings_remember_bulletin_filter"), isOn: $appState.rememberAnnouncementFilter)
                 Picker(String(localized: "settings_link_opening_method"), selection: $appState.browserPreference) {
                     Text(String(localized: "settings_browser_system_default")).tag(BrowserPreference.system)
                     Text(String(localized: "settings_browser_in_app")).tag(BrowserPreference.inApp)
@@ -389,7 +389,7 @@ struct SettingsView: View {
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
-            Text(String(localized: "settings_sign_out_imported_tables"))
+            Text(signOutLines.joined(separator: "\n"))
         }
         .sheet(isPresented: $showOfficialWebsite) {
             InAppBrowserView(url: Self.websiteURL)
@@ -581,10 +581,16 @@ struct SettingsView: View {
             detail: appState.authService.storedStudentId,
             onLogin: { appState.presentNTUSTLogin() },
             onLogout: {
-                ImportedClassTableStore.shared.requestSignOut(
-                    confirm: { confirmsSignOut = true },
-                    signOut: { appState.logoutNTUST() }
-                )
+                Task {
+                    let unsynced = await appState.signOutDeletesUnsyncedData()
+                    // Another tap may have signed out while this one looked.
+                    guard appState.authService.hasStoredCredentials else { return }
+                    ImportedClassTableStore.shared.requestSignOut(
+                        unsyncedData: unsynced,
+                        confirm: { signOutLines = $0; confirmsSignOut = true },
+                        signOut: { appState.logoutNTUST() }
+                    )
+                }
             }
         )
     }

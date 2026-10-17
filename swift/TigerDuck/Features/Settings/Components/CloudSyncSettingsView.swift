@@ -224,6 +224,7 @@ struct TigerSyncLinksSection: View {
         .sheet(item: $inAppPage) { page in
             InAppBrowserView(url: page.url)
                 .ignoresSafeArea()
+                .keptOverReminders(page.url == AppURLs.deleteAccount)
         }
     }
 

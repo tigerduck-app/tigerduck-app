@@ -470,6 +470,23 @@ final class DataCache {
     /// fully custom) and auto-assignments share this file.
     func saveCourseColorMap(_ map: [String: UInt32]) {
         save(map, to: "course_color_map.json", in: persistentDir)
+        // With no colour left, no pick is left either.
+        if map.isEmpty { savePickedCourseColors([]) }
+    }
+
+    /// The courses whose colour the user picked, which the color map cannot tell from the generated
+    /// ones. A sign-out loses only a pick for good: a generated colour comes back with its course.
+    func loadPickedCourseColors() -> Set<String> {
+        let courseNos: [String] = load(from: "picked_course_colors.json", in: persistentDir) ?? []
+        return Set(courseNos)
+    }
+
+    func savePickedCourseColors(_ courseNos: Set<String>) {
+        save(courseNos.sorted(), to: "picked_course_colors.json", in: persistentDir)
+    }
+
+    func notePickedCourseColor(_ courseNo: String) {
+        savePickedCourseColors(loadPickedCourseColors().union([courseNo]))
     }
 
     /// The per-course color map, or nil while its file exists but cannot be read, as behind the
@@ -564,6 +581,7 @@ final class DataCache {
             ("course_custom_names.json", persistentDir),
             ("course_custom_colors.json", persistentDir),
             ("course_color_map.json", persistentDir),
+            ("picked_course_colors.json", persistentDir),
             ("archived_assignments.json", persistentDir),
             ("locally_completed_assignments.json", persistentDir),
             ("ignored_courses.json", persistentDir),

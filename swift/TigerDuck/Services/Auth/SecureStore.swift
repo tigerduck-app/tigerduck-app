@@ -39,13 +39,18 @@ nonisolated enum SecureStore {
         AuthTokenManager.refreshTokenKey,
         AuthTokenManager.expiresAtKey,
         AuthTokenManager.refreshTokenUsesKey,
+        // A sign-out's calls write it in a background task, behind the lock screen too, and a
+        // launch's retry of the unregister reads it.
+        AuthTokenManager.departingSessionKey,
         AppConstants.KeychainKeys.pushDeviceId,
         DebugEndpointStore.keychainKey,
     ]
 
     /// Keys of ``readableWhileLockedKeys`` that nothing stores in ``shared``, so no copy there can
     /// await a move. Their first save skips the look there, which a locked phone can refuse.
-    private static let neverInShared: Set<String> = [AuthTokenManager.refreshTokenUsesKey]
+    private static let neverInShared: Set<String> = [
+        AuthTokenManager.refreshTokenUsesKey, AuthTokenManager.departingSessionKey,
+    ]
 
     /// Home of ``readableWhileLockedKeys``. `.afterFirstUnlockThisDeviceOnly`
     /// is readable once the phone has been unlocked after a restart, and

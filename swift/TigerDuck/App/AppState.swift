@@ -64,6 +64,7 @@ final class AppState {
                 AuthTokenManager.accessTokenKey,
                 AuthTokenManager.refreshTokenKey,
                 AuthTokenManager.expiresAtKey,
+                AuthTokenManager.departingSessionKey,
             ]
             let allOk = keysToWipe
                 .map { KeychainManager.deleteReportingSuccess(key: $0) }
@@ -192,6 +193,16 @@ final class AppState {
         // from `serverPushUserOptOut`. It POSTs device ids, so it waits for onboarding.
         if hasCompletedOnboarding {
             pushCoordinator.enable()
+        }
+        // The unregister a sign-out left unsent goes out again as that account. Sign-ins wait for it
+        // as for any sign-out's calls.
+        if Self.retriesDepartingUnregister(
+            onboarded: hasCompletedOnboarding, signedIn: authService.hasStoredCredentials,
+            sessionKept: atm.hasDepartingSession
+        ) {
+            _ = authService.startSignOutCalls { [pushCoordinator] in
+                await atm.retryDepartingUnregister { await pushCoordinator.registration.unregisterDevice(at: $0) }
+            }
         }
 
         authService.authTokenManager = atm
@@ -421,14 +432,6 @@ final class AppState {
     ]
 
     // MARK: - Settings
-
-    /// Whether to persist announcement filter selection across sessions
-    var rememberAnnouncementFilter: Bool = Defaults[.rememberAnnouncementFilter] {
-        didSet {
-            Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter
-            if !rememberAnnouncementFilter { Defaults[.savedAnnouncementDepartmentsData] = nil }
-        }
-    }
 
     /// Cross-device sync toggle (Sync course information). When off, every
     /// backend sync call (override download and upload, course and assignment

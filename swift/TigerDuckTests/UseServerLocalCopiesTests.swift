@@ -38,4 +38,24 @@ struct UseServerLocalCopiesTests {
         #expect(cache.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.loadIgnoredAssignmentCourses().isEmpty)
     }
+
+    /// Left behind, the picks would make the sign-out ask about colours that are the server's now
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/563).
+    @Test("Use Server on the colours drops them here with the record of which were picked")
+    func useServerDropsTheColoursAndTheirPicks() {
+        let cache = Self.makeCache()
+        cache.saveCourseColorMap(["CS1": 0x123456])
+        cache.notePickedCourseColor("CS1")
+
+        AppState.dropLocalCopies(
+            for: AppState.ReenableConflict(
+                categories: ["course_colors"], description: "",
+                serverIgnoredCourses: nil, serverMarkedAssignments: []
+            ),
+            in: cache
+        )
+
+        #expect(cache.loadCourseColorMap().isEmpty)
+        #expect(cache.loadPickedCourseColors().isEmpty)
+    }
 }

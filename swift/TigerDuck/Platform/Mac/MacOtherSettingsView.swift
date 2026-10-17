@@ -10,6 +10,7 @@ import SwiftUI
 /// iPhone has had it in Settings → Other settings for exactly that
 /// reason; this is the Mac half of the same idea.
 struct MacOtherSettingsView: View {
+    @Environment(AppState.self) private var appState
     @State private var endpointVM = DebugEndpointViewModel()
 
     var body: some View {
@@ -69,7 +70,7 @@ struct MacOtherSettingsView: View {
 
                 HStack {
                     Button {
-                        Task { await endpointVM.save() }
+                        Task { await endpointVM.save { await EndpointChangeSignOut(appState: appState).notes() } }
                     } label: {
                         if endpointVM.isChecking {
                             Text(String(localized: "settings_api_endpoint_checking"))
@@ -80,7 +81,7 @@ struct MacOtherSettingsView: View {
                     .disabled(endpointVM.isChecking || endpointVM.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Spacer()
                     Button(String(localized: "settings_api_endpoint_reset_action"), role: .destructive) {
-                        endpointVM.resetToDefault()
+                        Task { await endpointVM.resetToDefault { await EndpointChangeSignOut(appState: appState).notes() } }
                     }
                     .disabled(endpointVM.isChecking || endpointVM.storedOverride == nil)
                 }
@@ -95,6 +96,7 @@ struct MacOtherSettingsView: View {
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .endpointChangeAlert(endpointVM)
     }
 }
 #endif

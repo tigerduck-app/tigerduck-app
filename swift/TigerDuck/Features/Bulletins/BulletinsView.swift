@@ -59,9 +59,6 @@ struct BulletinsView: View {
             // paints before either resolves.
             async let bulletins: Void = viewModel.loadIfNeeded()
             await taxonomy.loadIfNeeded()
-            if let orgs = taxonomy.state.taxonomy?.orgs {
-                viewModel.restoreRememberedOrgs(known: Set(orgs.map(\.id)))
-            }
             await bulletins
         }
         .onDisappear { viewModel.pausePrefetch() }
