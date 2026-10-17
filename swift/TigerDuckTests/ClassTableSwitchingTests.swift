@@ -566,25 +566,29 @@ struct ClassTableSwitchingTests {
         #expect(!viewModel.showsLookupFailed)
     }
 
-    @Test("signing out asks first only while imported class tables would go with it")
-    func signOutAsksOnlyWithImportedTables() throws {
+    @Test("signing out asks first while unsynced data or imported class tables would go with it, naming each")
+    func signOutAsksOnlyWithSomethingToLose() throws {
         let folder = Folder()
         let store = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { "B11300000" })
-        var asked = 0
+        var asked: [[String]] = []
         var signedOut = 0
+        let unsynced = String(localized: "settings_sign_out_unsynced_data")
+        let imported = String(localized: "settings_sign_out_imported_tables")
 
-        store.requestSignOut(confirm: { asked += 1 }, signOut: { signedOut += 1 })
-        #expect(asked == 0)
+        store.requestSignOut(unsyncedData: false, confirm: { asked.append($0) }, signOut: { signedOut += 1 })
+        #expect(asked.isEmpty)
         #expect(signedOut == 1)
 
+        store.requestSignOut(unsyncedData: true, confirm: { asked.append($0) }, signOut: { signedOut += 1 })
         store.add(
             ClassTableShareCode(format: .tigerDuck, studentId: "B11300001", sharedAt: nil, terms: [
                 Term(semester: "1151", courseNos: ["CS1010001"]),
             ]),
             nickname: "Ming", courses: [:]
         )
-        store.requestSignOut(confirm: { asked += 1 }, signOut: { signedOut += 1 })
-        #expect(asked == 1)
+        store.requestSignOut(unsyncedData: false, confirm: { asked.append($0) }, signOut: { signedOut += 1 })
+        store.requestSignOut(unsyncedData: true, confirm: { asked.append($0) }, signOut: { signedOut += 1 })
+        #expect(asked == [[unsynced], [imported], [unsynced, imported]])
         #expect(signedOut == 1)
     }
 }

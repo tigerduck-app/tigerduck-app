@@ -22,9 +22,9 @@ actor AuthTokenManager {
     /// to the account that left, so it stores nothing.
     private var signInGeneration = 0
     /// What a refresh that the sign-out of `generation` overtook got, for that sign-out's
-    /// ``endSession()``: the access token of a reply, or whether the refresh token may go once
-    /// more, which it may below ``refreshTokenUseLimit`` uses if the backend did not turn it down.
-    private var lateRefresh: (generation: Int, accessToken: String?, mayResend: Bool)?
+    /// ``endSession()``: the pair of a reply, or whether the refresh token may go once more, which
+    /// it may below ``refreshTokenUseLimit`` uses if the backend did not turn it down.
+    private var lateRefresh: (generation: Int, accessToken: String?, refreshToken: String?, mayResend: Bool)?
     /// How many times the backend may have used the stored refresh token without this device
     /// keeping the pair: sends that may have reached it and got no reply, a server error or a 200
     /// it could not keep. The backend rotates a token sent again while its successor is unused and
@@ -63,6 +63,8 @@ actor AuthTokenManager {
     static let refreshTokenKey = "v3_refresh_token"
     static let expiresAtKey = "v3_token_expires_at"
     static let refreshTokenUsesKey = "v3_refresh_token_uses"
+    /// ``DepartingSession``, as JSON.
+    static let departingSessionKey = "v3_departing_session"
 
     /// A refresh with no reply by then goes once more, which the backend answers with a fresh pair
     /// while the pair it sent is unused, for up to 24 hours.
@@ -75,6 +77,22 @@ actor AuthTokenManager {
     /// Wraps the token so a sign-out left without one sends nothing instead of signing in again.
     struct DepartingAccount: Sendable {
         let accessToken: String?
+    }
+
+    /// What ``endSession()`` keeps of the session it ended until the device's unregister lands as
+    /// that account, for a later launch to send it then (``retryDepartingUnregister(_:)``): the
+    /// newest refresh token, its sends that may have reached the backend with no reply kept, and the
+    /// backend it belongs to, the endpoint at the sign-out. Its refresh and the unregister go there
+    /// after the endpoint changes too, as no other server issued it.
+    private nonisolated struct DepartingSession: Codable {
+        var refreshToken: String
+        var uses: Int
+        var baseURL: URL
+
+        /// This session with one more send.
+        func counted() -> DepartingSession {
+            DepartingSession(refreshToken: refreshToken, uses: uses + 1, baseURL: baseURL)
+        }
     }
 
     /// How long the token ``endSession()`` hands out has to last: the unregister waits for a
@@ -222,6 +240,9 @@ actor AuthTokenManager {
         let result = try JSONDecoder().decode(LoginResponse.self, from: data)
         guard signInGeneration == generation else { throw CancellationError() }
         store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
+        // The backend has this device for the account signed in now, so an unregister a sign-out
+        // left unsent no longer applies, and the same account's would revoke this session.
+        forgetDepartingSession()
         return LoginResult(
             accessToken: result.access_token,
             refreshToken: result.refresh_token,
@@ -240,13 +261,18 @@ actor AuthTokenManager {
     /// follows starts its own, a launch after the app is ended mid-sign-out has none, and a login
     /// or refresh still out stores nothing. Returns an access token for the device's unregister,
     /// which goes out as the departing account under ``departing``. One that would not outlast it
-    /// is refreshed first, and the pair that brings is not kept; a refresh already out is waited
-    /// for instead.
+    /// is refreshed first, and a refresh already out is waited for instead. The refresh token is
+    /// kept apart until the unregister lands (``DepartingSession``).
     func endSession() async -> String? {
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
         let refreshOut = refreshTask, generation = signInGeneration, uses = refreshTokenUses
         logout()
         guard let refresh else { return nil }
+        // A refresh still out may send the token once more.
+        let departing = DepartingSession(
+            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURLProvider()
+        )
+        keepDeparting(departing)
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
         // That refresh sent this token once, or twice after a lost reply, and the backend takes a
         // third use for theft, which revokes every session of the device. So it goes once more only
@@ -255,18 +281,105 @@ actor AuthTokenManager {
             _ = await refreshOut.value
             let late = lateRefresh?.generation == generation ? lateRefresh : nil
             lateRefresh = nil
-            if let token = late?.accessToken { return token }
-            if let late, !late.mayResend { return nil }
+            if let late, let token = late.accessToken {
+                if let next = late.refreshToken {
+                    keepDeparting(DepartingSession(refreshToken: next, uses: 0, baseURL: departing.baseURL))
+                }
+                return token
+            }
+            if let late, !late.mayResend {
+                forgetDepartingSession()
+                return nil
+            }
         }
-        guard uses < Self.refreshTokenUseLimit else { return nil }
+        guard uses < Self.refreshTokenUseLimit else {
+            forgetDepartingSession()
+            return nil
+        }
         // The sign-out may not have deleted the token, so it is counted spent before its last send.
         // Not when a sign-in since has stored its own token over it: the count on disk is that token's.
         if refreshToken == nil || !refreshTokenIsStored {
             guard saveConfirmed(Self.refreshTokenUsesKey, String(Self.refreshTokenUseLimit)) else { return nil }
         }
-        struct RefreshResponse: Decodable { let access_token: String }
-        guard let (data, http) = await postRefresh(refresh).reply, http.statusCode == 200 else { return nil }
-        return (try? JSONDecoder().decode(RefreshResponse.self, from: data))?.access_token
+        // Left uncounted, a later launch could send the token a third time.
+        if !keepDeparting(departing.counted()) { forgetDepartingSession() }
+        return await refreshDeparting(departing)
+    }
+
+    /// Whether a sign-out left the session it ended for an unregister a later launch sends.
+    nonisolated var hasDepartingSession: Bool { storedDepartingSession() != nil }
+
+    /// An access token for the device's unregister that a sign-out left unsent, from one refresh of
+    /// the session it kept on the backend it belongs to. Nil when none is kept or the refresh brings
+    /// none, and once a sign-in has started a session of its own. A session sent twice with no reply
+    /// kept is forgotten unsent: the backend takes a third use for theft, which leaves the device
+    /// registered with no session left to unregister it.
+    func departingAccessToken() async -> String? {
+        guard let session = storedDepartingSession() else { return nil }
+        guard session.uses < Self.refreshTokenUseLimit else {
+            forgetDepartingSession()
+            return nil
+        }
+        guard keepDeparting(session.counted()) else { return nil }
+        let token = await refreshDeparting(session)
+        return refreshToken == nil ? token : nil
+    }
+
+    /// Sends the device's unregister that a sign-out left unsent (`unregister`, given the backend
+    /// to send it to) as the departing account, to the backend the session it kept belongs to.
+    func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {
+        guard let session = storedDepartingSession(), let token = await departingAccessToken() else { return }
+        let target = session.baseURL
+        await unregisterDeparting(accessToken: token) { await unregister(target) }
+    }
+
+    /// Sends the device's unregister (`unregister`) as the departing account with `accessToken`,
+    /// and forgets the session kept for it once `unregister` answers that the server has it.
+    func unregisterDeparting(accessToken: String?, _ unregister: @MainActor @Sendable () async -> Bool) async {
+        let landed = await Self.$departing.withValue(DepartingAccount(accessToken: accessToken)) {
+            await unregister()
+        }
+        if landed { forgetDepartingSession() }
+    }
+
+    /// Forgets the session a sign-out kept, once its unregister has landed or no longer applies.
+    func forgetDepartingSession() {
+        tokens.delete(Self.departingSessionKey)
+    }
+
+    private nonisolated func storedDepartingSession() -> DepartingSession? {
+        tokens.load(Self.departingSessionKey)
+            .flatMap { try? JSONDecoder().decode(DepartingSession.self, from: Data($0.utf8)) }
+    }
+
+    /// Stores `session`, unless a sign-in since has started a session of its own, which the
+    /// departing account's unregister no longer concerns. Returns whether it is stored.
+    @discardableResult
+    private func keepDeparting(_ session: DepartingSession) -> Bool {
+        guard refreshToken == nil, let data = try? JSONEncoder().encode(session) else { return false }
+        return saveConfirmed(Self.departingSessionKey, String(decoding: data, as: UTF8.self))
+    }
+
+    /// Sends the departing session's refresh token, its send counted already, and keeps what the
+    /// reply brings: the next token, the count as it was for a send that never reached the backend,
+    /// or nothing once the backend turned the token down. Returns the reply's access token.
+    private func refreshDeparting(_ session: DepartingSession) async -> String? {
+        struct RefreshResponse: Decodable {
+            let access_token: String
+            let refresh_token: String
+        }
+        let send = await postRefresh(session.refreshToken, on: session.baseURL)
+        let status = send.reply?.1.statusCode
+        if let status, status != 200 { await APIVersionGate.shared.note(statusCode: status) }
+        if let status, Self.turnsDown(status) {
+            forgetDepartingSession()
+            return nil
+        }
+        if !send.mayHaveUsed { keepDeparting(session) }
+        guard status == 200, let data = send.reply?.0,
+              let reply = try? JSONDecoder().decode(RefreshResponse.self, from: data) else { return nil }
+        keepDeparting(DepartingSession(refreshToken: reply.refresh_token, uses: 0, baseURL: session.baseURL))
+        return reply.access_token
     }
 
     private func clearTokens() {
@@ -324,7 +437,9 @@ actor AuthTokenManager {
                 return nil
             }
             guard signInGeneration == generation else {
-                noteOvertaken(generation, accessToken: result.access_token, mayResend: false)
+                noteOvertaken(
+                    generation, accessToken: result.access_token, refreshToken: result.refresh_token, mayResend: false
+                )
                 return nil
             }
             store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
@@ -334,7 +449,7 @@ actor AuthTokenManager {
         await APIVersionGate.shared.note(statusCode: http.statusCode)
         // A 4xx means the backend turned this token down, so a relogin is tried. A 429 from the
         // per-IP limit, a 410 (API retired) and a 5xx say nothing about the token and keep it.
-        let turnedDown = (400...499).contains(http.statusCode) && ![410, 429].contains(http.statusCode)
+        let turnedDown = Self.turnsDown(http.statusCode)
         // Answered after a sign-out: the session it turned down is the departing account's.
         guard signInGeneration == generation else {
             noteOvertaken(generation, accessToken: nil, mayResend: mayResend && !turnedDown)
@@ -355,10 +470,15 @@ actor AuthTokenManager {
         return nil
     }
 
+    /// Whether a refresh answered `statusCode` turned its token down: a 4xx but a 429 or a 410.
+    private static func turnsDown(_ statusCode: Int) -> Bool {
+        (400...499).contains(statusCode) && ![410, 429].contains(statusCode)
+    }
+
     /// Keeps what a refresh got for the sign-out of `generation`, if one overtook it.
-    private func noteOvertaken(_ generation: Int, accessToken: String?, mayResend: Bool) {
+    private func noteOvertaken(_ generation: Int, accessToken: String?, refreshToken: String? = nil, mayResend: Bool) {
         guard signInGeneration != generation else { return }
-        lateRefresh = (generation, accessToken, mayResend)
+        lateRefresh = (generation, accessToken, refreshToken, mayResend)
     }
 
     /// Whether the relogin that stands in for a refresh worked, with no sign-out meanwhile.
@@ -394,7 +514,7 @@ actor AuthTokenManager {
         _ refreshToken: String, usedBefore uses: Int
     ) async -> (reply: (Data, HTTPURLResponse)?, uses: Int) {
         guard saveUses(uses + 1, of: refreshToken) else { return (nil, uses) }
-        let send = await postRefresh(refreshToken)
+        let send = await postRefresh(refreshToken, on: baseURLProvider())
         let total = send.mayHaveUsed ? uses + 1 : uses
         _ = saveUses(total, of: refreshToken)
         return (send.reply, total)
@@ -423,10 +543,10 @@ actor AuthTokenManager {
         return true
     }
 
-    private func postRefresh(_ refreshToken: String) async -> RefreshSend {
+    private func postRefresh(_ refreshToken: String, on baseURL: URL) async -> RefreshSend {
         struct RefreshRequest: Encodable { let refresh_token: String }
         var request = URLRequest(
-            url: baseURLProvider().appendingPathComponent("auth/refresh"),
+            url: baseURL.appendingPathComponent("auth/refresh"),
             timeoutInterval: refreshRequestTimeout
         )
         request.httpMethod = "POST"
@@ -456,11 +576,16 @@ actor AuthTokenManager {
         if refreshTokenIsStored { tokens.delete(Self.refreshTokenUsesKey) }
     }
 
-    /// The default for `beginBackgroundTask`. A Mac app is not suspended in the background, so
-    /// only iOS needs one.
+    /// The default for `beginBackgroundTask`.
     nonisolated static func beginRefreshBackgroundTask() async -> @Sendable () async -> Void {
+        await beginBackgroundTask(named: "Backend token refresh")
+    }
+
+    /// Starts a UIKit background task and returns what ends it. A Mac app is not suspended in the
+    /// background, so only iOS needs one.
+    nonisolated static func beginBackgroundTask(named name: String) async -> @Sendable () async -> Void {
         #if os(iOS)
-        let task = await RefreshBackgroundTask()
+        let task = await AppBackgroundTask(named: name)
         return { await task.end() }
         #else
         return {}
@@ -473,12 +598,12 @@ actor AuthTokenManager {
 }
 
 #if os(iOS)
-/// A UIKit background task, which the refresh and its expiry can both end.
-private final class RefreshBackgroundTask {
+/// A UIKit background task, which its work and its expiry can both end.
+private final class AppBackgroundTask {
     private var id = UIBackgroundTaskIdentifier.invalid
 
-    init() {
-        id = UIApplication.shared.beginBackgroundTask(withName: "Backend token refresh") { [weak self] in
+    init(named name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
             self?.end()
         }
     }
