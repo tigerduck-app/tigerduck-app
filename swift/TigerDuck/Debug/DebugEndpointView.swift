@@ -10,6 +10,7 @@ import SwiftUI
 /// onboarding's sign-in page and the macOS Settings → Developer tab, so it has its own file: the
 /// rest of `DebugSettingsView.swift` is iPhone-only and DEBUG-only.
 struct DebugEndpointView: View {
+    @Environment(AppState.self) private var appState
     @State private var viewModel = DebugEndpointViewModel()
     #if os(iOS)
     @FocusState private var fieldFocused: Bool
@@ -56,7 +57,7 @@ struct DebugEndpointView: View {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        Task { await viewModel.save() }
+                        Task { await viewModel.save { await EndpointChangeSignOut(appState: appState).notes() } }
                     } label: {
                         if viewModel.isChecking {
                             // Swapping the label keeps the row from resizing mid-probe and names
@@ -78,7 +79,7 @@ struct DebugEndpointView: View {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        viewModel.resetToDefault()
+                        Task { await viewModel.resetToDefault { await EndpointChangeSignOut(appState: appState).notes() } }
                     }
                     .disabled(viewModel.isChecking || viewModel.storedOverride == nil)
                 }
@@ -92,6 +93,7 @@ struct DebugEndpointView: View {
         #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
         #endif
+        .endpointChangeAlert(viewModel)
     }
 
     @ViewBuilder
@@ -118,27 +120,53 @@ struct DebugEndpointView: View {
 @MainActor
 @Observable
 final class DebugEndpointViewModel {
+    /// The endpoint store's calls, which tests replace.
+    struct Backing {
+        var currentOverride: () -> String? = { DebugEndpointStore.currentOverride() }
+        var rejectedOverride: () -> String? = { DebugEndpointStore.storedButRejectedOverride() }
+        var effectiveURL: () -> URL = { PushServerConfig.resolveServerURL() }
+        var check: (String) async -> DebugEndpointStore.CheckResult = { await DebugEndpointStore.check($0) }
+        var store: (URL) async -> Bool = { await DebugEndpointStore.store($0) }
+        var clear: () -> Void = { DebugEndpointStore.clearOverride() }
+    }
+
+    /// A change of endpoint the user is asked about first: a checked endpoint, or nil to go back to
+    /// the default.
+    struct PendingChange: Equatable {
+        let url: URL?
+        /// The typed https became http, as a private address takes it.
+        var rewritten = false
+        /// What the sign-out deletes, in lines the alert adds.
+        var notes: [String] = []
+    }
+
     var draft: String
     private(set) var storedOverride: String?
     private(set) var staleOverride: String?
     private(set) var validationError: String?
     private(set) var statusNote: String?
     private(set) var effectiveURL: String
-    /// True while the health probe is in flight. Disables both buttons —
-    /// a second Save landing mid-probe would race two writes to the same
-    /// Keychain key with no ordering guarantee.
+    /// True while the health probe or a confirmed change is in flight. Disables both buttons: a
+    /// second Save landing mid-probe would race two writes to the same Keychain key with no
+    /// ordering guarantee.
     private(set) var isChecking = false
+    /// The change ``endpointChangeAlert(_:)`` asks about.
+    var pendingChange: PendingChange?
+    private let backing: Backing
 
-    init() {
-        let current = DebugEndpointStore.currentOverride()
-        let stale = DebugEndpointStore.storedButRejectedOverride()
+    init(backing: Backing = Backing()) {
+        self.backing = backing
+        let current = backing.currentOverride()
+        let stale = backing.rejectedOverride()
         self.storedOverride = current
         self.staleOverride = stale
         self.draft = current ?? stale ?? ""
-        self.effectiveURL = PushServerConfig.resolveServerURL().absoluteString
+        self.effectiveURL = backing.effectiveURL().absoluteString
     }
 
-    func save() async {
+    /// Checks the typed endpoint. One that would move the app to another server waits for the
+    /// user's answer in ``pendingChange``, with `notes`; the one in use already is saved at once.
+    func save(notes: () async -> [String] = { [] }) async {
         guard !isChecking else { return }
         isChecking = true
         validationError = nil
@@ -146,42 +174,154 @@ final class DebugEndpointViewModel {
         defer { isChecking = false }
 
         let submitted = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        switch await DebugEndpointStore.setOverride(submitted) {
-        case .success:
-            storedOverride = DebugEndpointStore.currentOverride()
-            staleOverride = DebugEndpointStore.storedButRejectedOverride()
-            if let stored = storedOverride { draft = stored }
-            effectiveURL = PushServerConfig.resolveServerURL().absoluteString
-            // Say so when we quietly downgraded the scheme, rather than
-            // letting the field silently disagree with what was typed.
-            let rewritten = submitted.lowercased().hasPrefix("https://")
-                && (storedOverride?.lowercased().hasPrefix("http://") ?? false)
-            statusNote = rewritten
-                ? String(localized: "settings_api_endpoint_saved_rewritten")
-                : String(localized: "settings_api_endpoint_saved")
-        case .malformed:
-            validationError = String(localized: "settings_api_endpoint_error_malformed")
-        case .insecure:
-            validationError = String(localized: "settings_api_endpoint_error_insecure")
-        case .unreachable(let detail):
-            validationError = String(
-                format: String(localized: "settings_api_endpoint_error_unreachable"),
-                detail
+        switch await backing.check(submitted) {
+        case .accepted(let url):
+            // Say so when the scheme was downgraded, rather than letting the field silently
+            // disagree with what was typed.
+            let change = PendingChange(
+                url: url, rewritten: submitted.lowercased().hasPrefix("https://") && url.scheme == "http"
             )
-        case .notTigerDuck:
-            validationError = String(localized: "settings_api_endpoint_error_not_backend")
-        case .keychainWriteFailed:
-            validationError = String(localized: "settings_api_endpoint_error_save_failed")
+            if url == backing.effectiveURL() {
+                await apply(change)
+            } else {
+                var asked = change
+                asked.notes = await notes()
+                pendingChange = asked
+            }
+        case .rejected(let reason):
+            validationError = Self.message(for: reason)
         }
     }
 
-    func resetToDefault() {
-        DebugEndpointStore.clearOverride()
-        storedOverride = nil
-        staleOverride = nil
-        draft = ""
+    /// Asks before going back to the default, which moves the app to another server too.
+    func resetToDefault(notes: () async -> [String] = { [] }) async {
+        guard !isChecking else { return }
+        isChecking = true
+        defer { isChecking = false }
+        pendingChange = PendingChange(url: nil, notes: await notes())
+    }
+
+    /// Makes `change` once the user agreed. `signOut` comes first and is waited for: the session
+    /// and its last calls belong to the endpoint in use, and no other server issued them.
+    func confirm(_ change: PendingChange, signingOut signOut: () async -> Void) async {
+        pendingChange = nil
+        guard !isChecking else { return }
+        isChecking = true
         validationError = nil
-        effectiveURL = PushServerConfig.resolveServerURL().absoluteString
-        statusNote = String(localized: "settings_api_endpoint_reset_done")
+        statusNote = nil
+        defer { isChecking = false }
+
+        await signOut()
+        await apply(change)
+    }
+
+    private func apply(_ change: PendingChange) async {
+        if let url = change.url {
+            guard await backing.store(url) else {
+                validationError = String(localized: "settings_api_endpoint_error_save_failed")
+                return
+            }
+            statusNote = change.rewritten
+                ? String(localized: "settings_api_endpoint_saved_rewritten")
+                : String(localized: "settings_api_endpoint_saved")
+        } else {
+            backing.clear()
+            statusNote = String(localized: "settings_api_endpoint_reset_done")
+        }
+        storedOverride = backing.currentOverride()
+        staleOverride = backing.rejectedOverride()
+        draft = storedOverride ?? ""
+        effectiveURL = backing.effectiveURL().absoluteString
+    }
+
+    private static func message(for reason: DebugEndpointStore.Rejection) -> String {
+        switch reason {
+        case .malformed:
+            String(localized: "settings_api_endpoint_error_malformed")
+        case .insecure:
+            String(localized: "settings_api_endpoint_error_insecure")
+        case .unreachable(let detail):
+            String(format: String(localized: "settings_api_endpoint_error_unreachable"), detail)
+        case .notTigerDuck:
+            String(localized: "settings_api_endpoint_error_not_backend")
+        }
+    }
+}
+
+/// What an API endpoint change does to the accounts: the lines its alert adds and the sign-out
+/// that comes first, both through `AppState`.
+@MainActor
+struct EndpointChangeSignOut {
+    let appState: AppState
+
+    /// Whether the change's sign-out ends a school account: one stored, or a backend session.
+    /// Without one, a full sign-out would only reset settings such as TigerSync for nobody.
+    nonisolated static func endsSchoolAccount(hasCredentials: Bool, studentId: String?, backendSignedIn: Bool) -> Bool {
+        hasCredentials || studentId != nil || backendSignedIn
+    }
+
+    /// The lines the alert adds for what the sign-out deletes, as the sign-out's own confirmation
+    /// names them.
+    func notes() async -> [String] {
+        guard await endsSchoolAccount() else { return [] }
+        var notes: [String] = []
+        if await appState.signOutDeletesUnsyncedData() { notes.append(String(localized: "settings_sign_out_unsynced_data")) }
+        if ImportedClassTableStore.shared.hasImportedClassTables {
+            notes.append(String(localized: "settings_sign_out_imported_tables"))
+        }
+        return notes
+    }
+
+    /// Signs out of every account signed in, and returns once the sign-out calls are done, an
+    /// earlier sign-out's too: a call still out would reach the new endpoint, which never issued
+    /// that session. With no school account, nothing else is reset.
+    func run() async {
+        let calls: Task<Void, Never>? = await endsSchoolAccount()
+            ? appState.logoutNTUST() : appState.authService.signOutCalls
+        if appState.isLibraryLoggedIn { appState.logoutLibrary() }
+        #if os(iOS)
+        if MailAccountManager.shared.isLoggedIn { MailAccountManager.shared.logout() }
+        #endif
+        await calls?.value
+    }
+
+    private func endsSchoolAccount() async -> Bool {
+        Self.endsSchoolAccount(
+            hasCredentials: appState.authService.hasStoredCredentials,
+            studentId: appState.authService.storedStudentId,
+            backendSignedIn: await appState.authTokenManager.isLoggedIn
+        )
+    }
+}
+
+extension View {
+    /// Asks before the API endpoint changes, and on Change signs out of every account first
+    /// (``DebugEndpointViewModel/confirm(_:signingOut:)``).
+    func endpointChangeAlert(_ viewModel: DebugEndpointViewModel) -> some View {
+        modifier(EndpointChangeAlert(viewModel: viewModel))
+    }
+}
+
+private struct EndpointChangeAlert: ViewModifier {
+    let viewModel: DebugEndpointViewModel
+    @Environment(AppState.self) private var appState
+
+    func body(content: Content) -> some View {
+        content.alert(
+            String(localized: "settings_api_endpoint_change_alert_title"),
+            isPresented: Binding(
+                get: { viewModel.pendingChange != nil },
+                set: { if !$0 { viewModel.pendingChange = nil } }
+            ),
+            presenting: viewModel.pendingChange
+        ) { change in
+            Button(String(localized: "settings_api_endpoint_change_alert_confirm"), role: .destructive) {
+                Task { await viewModel.confirm(change) { await EndpointChangeSignOut(appState: appState).run() } }
+            }
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        } message: { change in
+            Text(([String(localized: "settings_api_endpoint_change_alert_message")] + change.notes)
+                .joined(separator: "\n"))
+        }
     }
 }
