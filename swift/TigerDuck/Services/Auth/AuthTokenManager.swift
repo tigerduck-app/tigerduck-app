@@ -456,11 +456,16 @@ actor AuthTokenManager {
         if refreshTokenIsStored { tokens.delete(Self.refreshTokenUsesKey) }
     }
 
-    /// The default for `beginBackgroundTask`. A Mac app is not suspended in the background, so
-    /// only iOS needs one.
+    /// The default for `beginBackgroundTask`.
     nonisolated static func beginRefreshBackgroundTask() async -> @Sendable () async -> Void {
+        await beginBackgroundTask(named: "Backend token refresh")
+    }
+
+    /// Starts a UIKit background task and returns what ends it. A Mac app is not suspended in the
+    /// background, so only iOS needs one.
+    nonisolated static func beginBackgroundTask(named name: String) async -> @Sendable () async -> Void {
         #if os(iOS)
-        let task = await RefreshBackgroundTask()
+        let task = await AppBackgroundTask(named: name)
         return { await task.end() }
         #else
         return {}
@@ -473,12 +478,12 @@ actor AuthTokenManager {
 }
 
 #if os(iOS)
-/// A UIKit background task, which the refresh and its expiry can both end.
-private final class RefreshBackgroundTask {
+/// A UIKit background task, which its work and its expiry can both end.
+private final class AppBackgroundTask {
     private var id = UIBackgroundTaskIdentifier.invalid
 
-    init() {
-        id = UIApplication.shared.beginBackgroundTask(withName: "Backend token refresh") { [weak self] in
+    init(named name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
             self?.end()
         }
     }
