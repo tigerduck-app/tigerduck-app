@@ -518,11 +518,12 @@ actor PushRegistrationService {
         return landed
     }
 
-    /// Sends the device's unregister and returns whether the server has it: answered, or a 404, as
-    /// the account has no such device left. A launch sends it too, for a sign-out's that did not land.
-    func unregisterDevice() async -> Bool {
+    /// Sends the device's unregister, to `baseURL` when given, and returns whether the server has it:
+    /// answered, or a 404, as the account has no such device left. A launch sends it too, for a
+    /// sign-out's that did not land, to the backend that sign-out's session belongs to.
+    func unregisterDevice(at baseURL: URL? = nil) async -> Bool {
         do {
-            try await apiClient.unregisterDevice(deviceId: identity.uuid)
+            try await apiClient.unregisterDevice(deviceId: identity.uuid, at: baseURL)
             logger.info("unregistered device on server")
             return true
         } catch PushAPIError.httpStatus(404, _) {

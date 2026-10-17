@@ -201,9 +201,7 @@ final class AppState {
             sessionKept: atm.hasDepartingSession
         ) {
             _ = authService.startSignOutCalls { [pushCoordinator] in
-                await atm.unregisterDeparting(accessToken: await atm.departingAccessToken()) {
-                    await pushCoordinator.registration.unregisterDevice()
-                }
+                await atm.retryDepartingUnregister { await pushCoordinator.registration.unregisterDevice(at: $0) }
             }
         }
 

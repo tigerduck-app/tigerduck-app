@@ -80,17 +80,19 @@ actor AuthTokenManager {
     }
 
     /// What ``endSession()`` keeps of the session it ended until the device's unregister lands as
-    /// that account, for a later launch to send it then (``departingAccessToken()``): the newest
-    /// refresh token, its sends that may have reached the backend with no reply kept, and where its
-    /// refreshes go: the backend that issued it, and no other.
+    /// that account, for a later launch to send it then (``retryDepartingUnregister(_:)``): the
+    /// newest refresh token, its sends that may have reached the backend with no reply kept, and the
+    /// backend it belongs to, the endpoint at the sign-out. Its refresh and the unregister go there
+    /// after the endpoint changes too, as no other server issued it.
     private nonisolated struct DepartingSession: Codable {
         var refreshToken: String
         var uses: Int
-        var endpoint: String
+        /// Nil in a session stored without it, which takes the current endpoint.
+        var baseURL: URL?
 
         /// This session with one more send.
         func counted() -> DepartingSession {
-            DepartingSession(refreshToken: refreshToken, uses: uses + 1, endpoint: endpoint)
+            DepartingSession(refreshToken: refreshToken, uses: uses + 1, baseURL: baseURL)
         }
     }
 
@@ -269,7 +271,7 @@ actor AuthTokenManager {
         guard let refresh else { return nil }
         // A refresh still out may send the token once more.
         let departing = DepartingSession(
-            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), endpoint: refreshEndpoint().absoluteString
+            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURLProvider()
         )
         keepDeparting(departing)
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
@@ -282,7 +284,7 @@ actor AuthTokenManager {
             lateRefresh = nil
             if let late, let token = late.accessToken {
                 if let next = late.refreshToken {
-                    keepDeparting(DepartingSession(refreshToken: next, uses: 0, endpoint: departing.endpoint))
+                    keepDeparting(DepartingSession(refreshToken: next, uses: 0, baseURL: departing.baseURL))
                 }
                 return token
             }
@@ -309,14 +311,12 @@ actor AuthTokenManager {
     nonisolated var hasDepartingSession: Bool { storedDepartingSession() != nil }
 
     /// An access token for the device's unregister that a sign-out left unsent, from one refresh of
-    /// the session it kept, which goes to the backend that issued it and no other. Nil when none is
-    /// kept or the refresh brings none, and once a sign-in has started a session of its own. A
-    /// session sent twice with no reply kept is forgotten unsent: the backend takes a third use for
-    /// theft, which leaves the device registered with no session left to unregister it.
+    /// the session it kept on the backend it belongs to. Nil when none is kept or the refresh brings
+    /// none, and once a sign-in has started a session of its own. A session sent twice with no reply
+    /// kept is forgotten unsent: the backend takes a third use for theft, which leaves the device
+    /// registered with no session left to unregister it.
     func departingAccessToken() async -> String? {
-        guard let session = storedDepartingSession(), session.endpoint == refreshEndpoint().absoluteString else {
-            return nil
-        }
+        guard let session = storedDepartingSession() else { return nil }
         guard session.uses < Self.refreshTokenUseLimit else {
             forgetDepartingSession()
             return nil
@@ -324,6 +324,14 @@ actor AuthTokenManager {
         guard keepDeparting(session.counted()) else { return nil }
         let token = await refreshDeparting(session)
         return refreshToken == nil ? token : nil
+    }
+
+    /// Sends the device's unregister that a sign-out left unsent (`unregister`, given the backend
+    /// to send it to) as the departing account, to the backend the session it kept belongs to.
+    func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {
+        guard let session = storedDepartingSession(), let token = await departingAccessToken() else { return }
+        let target = backend(of: session)
+        await unregisterDeparting(accessToken: token) { await unregister(target) }
     }
 
     /// Sends the device's unregister (`unregister`) as the departing account with `accessToken`,
@@ -338,6 +346,11 @@ actor AuthTokenManager {
     /// Forgets the session a sign-out kept, once its unregister has landed or no longer applies.
     func forgetDepartingSession() {
         tokens.delete(Self.departingSessionKey)
+    }
+
+    /// Where `session`'s refresh and the device's unregister go.
+    private nonisolated func backend(of session: DepartingSession) -> URL {
+        session.baseURL ?? baseURLProvider()
     }
 
     private nonisolated func storedDepartingSession() -> DepartingSession? {
@@ -361,7 +374,7 @@ actor AuthTokenManager {
             let access_token: String
             let refresh_token: String
         }
-        let send = await postRefresh(session.refreshToken)
+        let send = await postRefresh(session.refreshToken, on: backend(of: session))
         let status = send.reply?.1.statusCode
         if let status, status != 200 { await APIVersionGate.shared.note(statusCode: status) }
         if let status, Self.turnsDown(status) {
@@ -371,7 +384,7 @@ actor AuthTokenManager {
         if !send.mayHaveUsed { keepDeparting(session) }
         guard status == 200, let data = send.reply?.0,
               let reply = try? JSONDecoder().decode(RefreshResponse.self, from: data) else { return nil }
-        keepDeparting(DepartingSession(refreshToken: reply.refresh_token, uses: 0, endpoint: session.endpoint))
+        keepDeparting(DepartingSession(refreshToken: reply.refresh_token, uses: 0, baseURL: session.baseURL))
         return reply.access_token
     }
 
@@ -507,7 +520,7 @@ actor AuthTokenManager {
         _ refreshToken: String, usedBefore uses: Int
     ) async -> (reply: (Data, HTTPURLResponse)?, uses: Int) {
         guard saveUses(uses + 1, of: refreshToken) else { return (nil, uses) }
-        let send = await postRefresh(refreshToken)
+        let send = await postRefresh(refreshToken, on: baseURLProvider())
         let total = send.mayHaveUsed ? uses + 1 : uses
         _ = saveUses(total, of: refreshToken)
         return (send.reply, total)
@@ -536,14 +549,12 @@ actor AuthTokenManager {
         return true
     }
 
-    /// Where a refresh goes, on the backend the endpoint names now.
-    private nonisolated func refreshEndpoint() -> URL {
-        baseURLProvider().appendingPathComponent("auth/refresh")
-    }
-
-    private func postRefresh(_ refreshToken: String) async -> RefreshSend {
+    private func postRefresh(_ refreshToken: String, on baseURL: URL) async -> RefreshSend {
         struct RefreshRequest: Encodable { let refresh_token: String }
-        var request = URLRequest(url: refreshEndpoint(), timeoutInterval: refreshRequestTimeout)
+        var request = URLRequest(
+            url: baseURL.appendingPathComponent("auth/refresh"),
+            timeoutInterval: refreshRequestTimeout
+        )
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))

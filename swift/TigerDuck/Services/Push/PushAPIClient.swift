@@ -55,9 +55,10 @@ final class PushAPIClient: Sendable {
         _ = try await postExpectingNoBody(path: "/devices/anonymous", body: request, authenticated: false)
     }
 
-    func unregisterDevice(deviceId: String) async throws {
+    /// To `baseURL` when given, in place of the current endpoint.
+    func unregisterDevice(deviceId: String, at baseURL: URL? = nil) async throws {
         let safeDevice = Self.percentEncoded(deviceId)
-        try await delete(path: "/devices/\(safeDevice)")
+        try await delete(path: "/devices/\(safeDevice)", at: baseURL)
     }
 
     /// PUT the user's "notify me anyway" exception for one holiday.
@@ -341,8 +342,8 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    private func delete(path: String) async throws {
-        let baseURL = baseURLProvider()
+    private func delete(path: String, at baseURL: URL? = nil) async throws {
+        let baseURL = baseURL ?? baseURLProvider()
         // `path` may carry a query string; appendingPathComponent would
         // percent-escape the `?`, so splice it back on after the join.
         let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
