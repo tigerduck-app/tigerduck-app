@@ -327,6 +327,12 @@ final class CloudSyncCoordinator {
         return ids
     }
 
+    /// Whether edits wait to go up: queued or parked in the outbox, or on their way into it.
+    func holdsUnsentEdits() async -> Bool {
+        let waiting = await outbox.snapshot().count + outbox.parkedSnapshot().count
+        return waiting > 0 || !courseOverridesEnqueuing.isEmpty
+    }
+
     /// The Moodle ids of the courses with a colour or a name edit queued here, which the server
     /// may not have yet, and `edits`, the `courseOverrideEdits` count read before them. A full
     /// sync leaves those as they are here, as it leaves queued marks (`courseOverridesToHold`).

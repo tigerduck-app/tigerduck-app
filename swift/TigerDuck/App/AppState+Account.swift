@@ -166,6 +166,72 @@ extension AppState {
         }
     }
 
+    /// ``signOutDeletesUnsyncedData(_:cloudSyncEnabled:switchedOn:synced:pendingChecks:unsent:)``
+    /// for what this device holds now.
+    func signOutDeletesUnsyncedData() async -> Bool {
+        let cache = DataCache.shared
+        let calendar = AcademicCalendarStore.shared
+        let held = SignOutData(
+            courses: !cache.loadUserAddedCourses().isEmpty || !cache.loadDeletedCourseNos().isEmpty,
+            courseNames: cache.loadCourseCustomNames().values.contains { !$0.isEmpty },
+            courseColors: !TigerDuckTheme.courseColorMap.isEmpty,
+            assignmentMarks: !cache.loadArchivedAssignmentIds().isEmpty
+                || !cache.loadLocallyCompletedAssignmentIds().isEmpty,
+            ignoredCourses: !cache.loadIgnoredAssignmentCourses().isEmpty,
+            holidays: !calendar.optedInHolidayIDs.isEmpty
+        )
+        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || !pendingOverrides.isEmpty
+            || !calendar.unacknowledgedHolidayIDs.isEmpty
+        return Self.signOutDeletesUnsyncedData(
+            held,
+            cloudSyncEnabled: cloudSyncEnabled,
+            switchedOn: Self.switchedOnCategories(),
+            synced: Defaults[.categoriesSyncedOnce],
+            pendingChecks: Defaults[.pendingConflictCategories],
+            unsent: unsent
+        )
+    }
+
+    /// The user's own data on this device that a sign-out deletes, by kind.
+    nonisolated struct SignOutData {
+        /// Courses added by hand or hidden from the class table.
+        var courses = false
+        var courseNames = false
+        /// Every course shown has one, and a pick cannot be told from a generated colour.
+        var courseColors = false
+        /// Assignments marked done or ignored.
+        var assignmentMarks = false
+        /// Courses whose assignments are all ignored.
+        var ignoredCourses = false
+        /// Holidays with class reminders kept on.
+        var holidays = false
+    }
+
+    /// Whether a sign-out deletes data TigerSync does not keep, which its confirmation names. A
+    /// category is kept with TigerSync on, its switch on, its data taken by a full sync here
+    /// (`hasSynced`) and no re-enable check holding it back. Ignored courses need Assignments and
+    /// Courses both, holiday choices TigerSync alone, and edits still on their way up (`unsent`)
+    /// are lost however the switches stand.
+    nonisolated static func signOutDeletesUnsyncedData(
+        _ data: SignOutData,
+        cloudSyncEnabled: Bool,
+        switchedOn: Set<String>,
+        synced: Set<String>,
+        pendingChecks: Set<String>,
+        unsent: Bool
+    ) -> Bool {
+        let kept = cloudSyncEnabled ? switchedOn.intersection(synced).subtracting(pendingChecks) : []
+        let needs: [(held: Bool, categories: Set<String>)] = [
+            (data.courses, ["courses"]),
+            (data.courseNames, ["course_names"]),
+            (data.courseColors, ["course_colors"]),
+            (data.assignmentMarks, ["assignments"]),
+            (data.ignoredCourses, ["assignments", "courses"]),
+        ]
+        return unsent || (data.holidays && !cloudSyncEnabled)
+            || needs.contains { $0.held && !$0.categories.isSubset(of: kept) }
+    }
+
     /// Forgets how far the departing account's sync got on this device, which lives in `Defaults`,
     /// out of reach of `clearUserScopedData`. A re-enable check left pending would keep the next
     /// account's pulls off the categories it names and hold the account's marks and course settings
