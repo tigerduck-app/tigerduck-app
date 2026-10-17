@@ -95,6 +95,7 @@ struct MacOtherSettingsView: View {
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .endpointChangeAlert(endpointVM)
     }
 }
 #endif

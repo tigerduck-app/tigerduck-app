@@ -71,6 +71,18 @@ extension AppState {
         _libraryRevision += 1
     }
 
+    /// Signs out of every account before the API endpoint changes, and returns once the school
+    /// account's backend calls are done: a call still out would reach the new endpoint, which never
+    /// issued that session.
+    func signOutOfEveryAccount() async {
+        let calls = logoutNTUST()
+        logoutLibrary()
+        #if os(iOS)
+        MailAccountManager.shared.logout()
+        #endif
+        await calls.value
+    }
+
     /// Full NTUST logout: cancel any in-flight background sync, invalidate
     /// credentials, end the Live Activity and purge user-scoped caches, so the
     /// next login (possibly another user) never inherits this state on the lock
