@@ -133,6 +133,17 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.holdsUnsentEdits())
     }
 
+    /// Read after the outbox, an edit that reached it during that read was seen in neither place.
+    @Test("A course edit still on its way into the outbox is unsent")
+    func anEditOnItsWayInIsUnsent() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        let enqueuing = coordinator.enqueueCourseColorOverride(moodleId: "7", semester: "1142", colorHex: "#FF7A72")
+
+        #expect(await coordinator.holdsUnsentEdits())
+        await enqueuing?.value
+        #expect(await coordinator.holdsUnsentEdits())
+    }
+
     @Test("Clearing a mark leaves the outbox after one request, though its reply is not the row")
     func clearedMarkIsSentOnce() async {
         let backend = Backend()

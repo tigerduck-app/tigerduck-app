@@ -327,10 +327,12 @@ final class CloudSyncCoordinator {
         return ids
     }
 
-    /// Whether edits wait to go up: queued or parked in the outbox, or on their way into it.
+    /// Whether edits wait to go up: on their way into the outbox, or queued or parked in it. Those
+    /// on their way in are read first and the outbox in one call, so an edit that reaches the outbox
+    /// meanwhile is seen there.
     func holdsUnsentEdits() async -> Bool {
-        let waiting = await outbox.snapshot().count + outbox.parkedSnapshot().count
-        return waiting > 0 || !courseOverridesEnqueuing.isEmpty
+        if !courseOverridesEnqueuing.isEmpty { return true }
+        return await outbox.holdsEntries()
     }
 
     /// The Moodle ids of the courses with a colour or a name edit queued here, which the server
