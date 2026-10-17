@@ -5,8 +5,8 @@ import UIKit
 @testable import TigerDuck
 
 /// What closes before a reminder's assignment page is pushed: every sheet, with the state SwiftUI
-/// keeps for it, and neither an alert nor a sheet that refuses a swipe down. Each test shows a
-/// window of its own.
+/// keeps for it, and neither an alert, a sheet that refuses a swipe down nor one kept over
+/// reminders. Each test shows a window of its own.
 @MainActor
 struct ModalClosingTests {
     @Observable

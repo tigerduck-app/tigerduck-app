@@ -23,7 +23,8 @@ extension UIViewController {
     func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
         var next = presentedViewController
         while let shown = next {
-            guard !(shown is UIAlertController), !shown.isModalInPresentation, !shown.view.holdsReminderKeep
+            guard !(shown is UIAlertController), !shown.isModalInPresentation,
+                  shown.viewIfLoaded?.holdsReminderKeep != true
             else { return then(false) }
             next = shown.presentedViewController
         }
@@ -45,7 +46,11 @@ extension View {
 private struct ReminderKeep: UIViewRepresentable {
     final class Mark: UIView {}
 
-    func makeUIView(context: Context) -> Mark { Mark() }
+    func makeUIView(context: Context) -> Mark {
+        let mark = Mark()
+        mark.isUserInteractionEnabled = false
+        return mark
+    }
     func updateUIView(_ view: Mark, context: Context) {}
 }
 
