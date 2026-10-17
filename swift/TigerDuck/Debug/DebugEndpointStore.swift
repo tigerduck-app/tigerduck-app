@@ -4,14 +4,14 @@ import os
 import UIKit
 #endif
 
-/// Keychain-backed API endpoint override, set in Settings → Other settings → API endpoint or on
-/// onboarding's sign-in page, and honoured by every build. Keychain, not UserDefaults, so it
-/// survives the reinstalls done to retest fresh installs against another backend. ``SecureStore``
-/// keeps it `.afterFirstUnlockThisDeviceOnly`: never restored via iCloud Keychain, and readable by
-/// a launch behind the lock screen, which would otherwise use the default backend. A value is
-/// stored only if ``PushServerConfig/isOverrideAllowed(_:)`` and ``EndpointHealthCheck/probe(_:)``
-/// accept it, and once the user agrees to the sign-out that comes with a change. Set and clear call ``AcademicCalendarStore/endpointDidChange()``: the calendar's ETag
-/// does not name its backend, so the next server could answer 304 against the old server's dates.
+/// Keychain-backed API endpoint override, set in Settings → Other settings → API endpoint, on
+/// onboarding's sign-in page or in the Mac settings, and honoured by every build. The Keychain
+/// keeps it through the reinstalls done to retest fresh installs against another backend, never
+/// restores it via iCloud and lets a launch behind the lock screen read it. A value is stored only
+/// if ``PushServerConfig/isOverrideAllowed(_:)`` and ``EndpointHealthCheck/probe(_:)`` accept it
+/// and the user agrees to the sign-out that comes with a change. Set and clear call
+/// ``AcademicCalendarStore/endpointDidChange()``: the calendar's ETag does not name its backend,
+/// so the next server could answer 304 against the old server's dates.
 nonisolated enum DebugEndpointStore {
     /// Internal (not private) so the erase-everything action can name the
     /// one key it deliberately preserves.

@@ -24,9 +24,13 @@ backend carry the Bearer token from `AuthTokenManager`.
   a routable address puts the Bearer token on the wire for anyone on the path.
 - `PushServerConfig.normalize(_:)` rewrites `https://` to `http://` for private hosts only,
   which fixes the common LAN typo that fails the handshake with `WRONG_VERSION_NUMBER`.
-- `DebugEndpointStore.setOverride(_:)` stores an endpoint only after
+- `DebugEndpointStore.check(_:)` accepts an endpoint only after
   `EndpointHealthCheck.probe(_:)` finds a TigerDuck backend there, and `currentOverride()`
   checks the stored value against the gate again on every read.
+- A change of endpoint is stored (`DebugEndpointStore.store(_:)`, `clearOverride()`) only from
+  `DebugEndpointViewModel.confirm(_:signingOut:)`, after the user agrees and every account is
+  signed out with its backend calls finished: a session goes to no server but the one that
+  issued it.
 - `PushCoordinator.assertEnvConsistency()` skips its host check while a user-set endpoint is
   active: a self-hosted backend cannot be enumerated, and a launch crash would leave no UI to
   clear the Keychain entry.
