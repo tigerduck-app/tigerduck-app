@@ -116,6 +116,54 @@ struct MoodleAssignmentServiceTests {
         #expect(submission.id == 5501)
         #expect(submission.takesComments)
         #expect(submission.groupId == nil)
+        #expect(submission.grade == nil)
+    }
+
+    @Test("a graded submission brings the grade as Moodle writes it for the student, when it was graded and the feedback")
+    func gradedSubmission() throws {
+        let submission = try Self.submission(#"""
+        {"lastattempt": {"submission": {"id": 5501, "timemodified": 1790500000, "status": "submitted", "plugins": []},
+          "graded": true, "gradingstatus": "graded"},
+         "feedback": {
+           "grade": {"id": 801, "assignment": 701, "userid": 42, "attemptnumber": 0, "timecreated": 1790600000,
+             "timemodified": 1790700000, "grader": 7, "grade": "85.00000"},
+           "gradefordisplay": "85.00&nbsp;/&nbsp;100.00", "gradeddate": 1790700000,
+           "plugins": [
+             {"type": "comments", "name": "Feedback comments",
+              "fileareas": [{"area": "feedback", "files": [
+                \#(Self.file("case7.png", area: "assignfeedback_comments/feedback", item: 801, size: 2048,
+                             type: "image/png", time: 1790700000))]}],
+              "editorfields": [{"name": "comments", "description": "Feedback comments", "format": 1,
+                "text": "<p>Case 7 misses the empty tree.</p><p><img src=\"@@PLUGINFILE@@/case7.png\" alt=\"case 7\"> <img src=\"@@PLUGINFILE@@/gone.png\" alt=\"gone\"></p>"}]},
+             {"type": "file", "name": "File feedback", "fileareas": [{"area": "feedback_files", "files": []}]}
+           ]},
+         "warnings": []}
+        """#)
+
+        let grade = try #require(submission.grade)
+        #expect(grade.grade == "85.00 / 100.00")
+        #expect(grade.gradedAt == Date(timeIntervalSince1970: 1_790_700_000))
+        let feedback = try #require(grade.feedback)
+        #expect(feedback.contains("Case 7 misses the empty tree."))
+        #expect(feedback.contains("https://moodle-stub.invalid/webservice/pluginfile.php/123/assignfeedback_comments/feedback/801/case7.png"))
+        #expect(!feedback.contains("gone"))
+    }
+
+    @Test("feedback without a grade keeps the feedback, and a grade of - with empty feedback is no grade")
+    func feedbackWithoutAGrade() throws {
+        let feedbackOnly = try Self.submission(#"""
+        {"lastattempt": {"submission": {"id": 5501, "timemodified": 1790500000, "status": "submitted"}},
+         "feedback": {"gradefordisplay": null, "gradeddate": null, "plugins": [
+           {"type": "comments", "editorfields": [{"name": "comments", "text": "<p>See me after class.</p>", "format": 1}]}]}}
+        """#)
+        #expect(feedbackOnly.grade == MoodleAssignmentGrade(grade: nil, gradedAt: nil, feedback: "<p>See me after class.</p>"))
+
+        let nothing = try Self.submission(#"""
+        {"lastattempt": {"submission": {"id": 5501, "timemodified": 1790500000, "status": "submitted"}},
+         "feedback": {"gradefordisplay": "-", "gradeddate": 0, "plugins": [
+           {"type": "comments", "editorfields": [{"name": "comments", "text": "<p></p>", "format": 1}]}]}}
+        """#)
+        #expect(nothing.grade == nil)
     }
 
     @Test("a team assignment shows what the group handed in, with the group it is for")
