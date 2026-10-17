@@ -220,7 +220,7 @@ nonisolated struct MoodleAssignmentRecord: Codable, Sendable, Hashable {
 // MARK: - Submission Status (mod_assign_get_submission_status)
 
 /// What the account handed in for an assignment, as its page shows it, with the submission's
-/// comments and its group's name where the site lets the app read them.
+/// comments and its group's name where the site lets the app read them, and its grade.
 nonisolated struct MoodleAssignmentSubmission: Codable, Sendable, Equatable {
     /// `new`, `draft`, `submitted` or `reopened`; nil before Moodle keeps a record.
     let status: String?
@@ -237,9 +237,21 @@ nonisolated struct MoodleAssignmentSubmission: Codable, Sendable, Equatable {
     var groupName: String? = nil
     /// Nil where the site does not let the app read them.
     var comments: [MoodleSubmissionComment]? = nil
+    /// Nil until Moodle shows the student a grade or feedback.
+    var grade: MoodleAssignmentGrade? = nil
 
     var isSubmitted: Bool { status == "submitted" }
     var submittedAt: Date? { isSubmitted ? modified : nil }
+}
+
+/// The grade and the grader's feedback on the last attempt, as Moodle shows them to the student.
+nonisolated struct MoodleAssignmentGrade: Codable, Sendable, Equatable {
+    /// As Moodle writes it, such as "85.00 / 100.00", a letter or a scale's word; nil with only
+    /// feedback.
+    let grade: String?
+    let gradedAt: Date?
+    /// HTML; nil without any.
+    let feedback: String?
 }
 
 nonisolated struct MoodleSubmissionComment: Codable, Sendable, Equatable, Identifiable {

@@ -26,6 +26,20 @@ struct MoodleSubmissionStatusDecodingTests {
         #expect(try Self.status(#"{"lastattempt":{"teamsubmission":{"status":"submitted"}}}"#).isSubmitted)
     }
 
+    /// The assignment round reads this answer for Home and the reminders.
+    @Test("feedback in a shape the app does not expect costs the grade, not the submission's status")
+    func unreadableFeedback() throws {
+        let json = #"{"lastattempt":{"submission":{"status":"submitted","timemodified":1790000000}},"#
+            + #""feedback":{"gradefordisplay":85,"gradeddate":"soon","plugins":"none"}}"#
+        let answer = try JSONDecoder().decode(RawSubmissionStatusResponse.self, from: Data(json.utf8))
+
+        let status = answer.toMoodleSubmissionStatus(assignId: 7)
+        #expect(status.isSubmitted)
+        #expect(status.submittedAt == Date(timeIntervalSince1970: 1_790_000_000))
+        #expect(answer.submission.isSubmitted)
+        #expect(answer.submission.grade == nil)
+    }
+
     @Test("an unsubmitted team stays unsubmitted, and a missing attempt has no status")
     func unsubmittedTeam() throws {
         let team = try Self.status(#"{"lastattempt":{"submission":{},"teamsubmission":{"status":"new"}}}"#)
