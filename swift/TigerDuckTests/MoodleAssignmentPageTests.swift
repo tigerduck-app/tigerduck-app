@@ -149,6 +149,32 @@ struct MoodleAssignmentPageTests {
             == String(format: String(localized: "assignment_detail_overdue_by"), MoodleAssignmentView.durationText(60)))
     }
 
+    @Test("each badge and deadline line has its colour, and only the urgent and the overdue lines are bold")
+    func colours() {
+        let badges: [(MoodleAssignmentView.Badge, text: Color, fill: Color)] = [
+            (.notSubmitted, Color.textSecondary, Color.textSecondary.opacity(0.16)),
+            (.submitted, .green, Color.green.opacity(0.16)),
+            (.early(60), .green, Color.green.opacity(0.16)),
+            (.late(60), Color.badgeRedText, Color.badgeRed.opacity(0.16)),
+        ]
+        for (badge, text, fill) in badges {
+            #expect(badge.tint == text, "\(badge)")
+            #expect(badge.fill == fill, "\(badge)")
+        }
+
+        let lines: [(MoodleAssignmentView.Deadline, text: Color, isEmphasized: Bool, isOverdue: Bool)] = [
+            (.left(60, urgent: true), .orange, true, false),
+            (.left(60, urgent: false), Color.textSecondary, false, false),
+            (.passed, Color.textSecondary, false, false),
+            (.overdue(60), Color.badgeRedText, true, true),
+        ]
+        for (line, text, isEmphasized, isOverdue) in lines {
+            #expect(line.tint == text, "\(line)")
+            #expect(line.isEmphasized == isEmphasized, "\(line)")
+            #expect(line.isOverdue == isOverdue, "\(line)")
+        }
+    }
+
     @Test("the submission's card shows for files, text or a submission time, and not for a record with none of them")
     func card() {
         #expect(MoodleAssignmentView.showsCard(Self.submission("submitted")))
