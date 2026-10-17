@@ -87,8 +87,7 @@ actor AuthTokenManager {
     private nonisolated struct DepartingSession: Codable {
         var refreshToken: String
         var uses: Int
-        /// Nil in a session stored without it, which takes the current endpoint.
-        var baseURL: URL?
+        var baseURL: URL
 
         /// This session with one more send.
         func counted() -> DepartingSession {
@@ -330,7 +329,7 @@ actor AuthTokenManager {
     /// to send it to) as the departing account, to the backend the session it kept belongs to.
     func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {
         guard let session = storedDepartingSession(), let token = await departingAccessToken() else { return }
-        let target = backend(of: session)
+        let target = session.baseURL
         await unregisterDeparting(accessToken: token) { await unregister(target) }
     }
 
@@ -346,11 +345,6 @@ actor AuthTokenManager {
     /// Forgets the session a sign-out kept, once its unregister has landed or no longer applies.
     func forgetDepartingSession() {
         tokens.delete(Self.departingSessionKey)
-    }
-
-    /// Where `session`'s refresh and the device's unregister go.
-    private nonisolated func backend(of session: DepartingSession) -> URL {
-        session.baseURL ?? baseURLProvider()
     }
 
     private nonisolated func storedDepartingSession() -> DepartingSession? {
@@ -374,7 +368,7 @@ actor AuthTokenManager {
             let access_token: String
             let refresh_token: String
         }
-        let send = await postRefresh(session.refreshToken, on: backend(of: session))
+        let send = await postRefresh(session.refreshToken, on: session.baseURL)
         let status = send.reply?.1.statusCode
         if let status, status != 200 { await APIVersionGate.shared.note(statusCode: status) }
         if let status, Self.turnsDown(status) {
