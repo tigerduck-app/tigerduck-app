@@ -63,6 +63,17 @@ struct MoodleHTMLTextTests {
             == "[map v2.png](<https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_forum/post/7/map%20v2.png>)")
     }
 
+    @Test("an embedded image points at its file even when nothing else in the text changes")
+    func pluginFileImage() {
+        let url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_assign/intro/chart.png"
+        let file = MoodleFile(name: "chart.png", size: 1, url: url, mimeType: "image/png", modified: nil)
+        let html = MoodleHTMLText.resolvingPluginFiles(
+            in: #"<p><img src="@@PLUGINFILE@@/chart.png" alt="chart"></p>"#, files: [file]
+        )
+        #expect(!html.contains("@@PLUGINFILE@@"))
+        #expect(html.contains(#"src="\#(url)""#))
+    }
+
     @Test("the preview is the text on one line, words kept apart where blocks meet")
     func preview() {
         let html = "<p>Exam&nbsp;on <b>11/4</b>.</p><ul><li>Room TR-412</li><li>Bring&nbsp;&nbsp;ID</li></ul><script>x()</script>"
