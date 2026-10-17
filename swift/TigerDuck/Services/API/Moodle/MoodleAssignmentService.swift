@@ -216,6 +216,18 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         let plugins: [LastAttempt.Plugin]?
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case lastattempt, feedback
+    }
+
+    /// The assignment round reads this answer for Home and the reminders, so feedback in a shape
+    /// the app does not expect is left out instead of failing the whole answer.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        lastattempt = try container.decodeIfPresent(LastAttempt.self, forKey: .lastattempt)
+        feedback = try? container.decodeIfPresent(Feedback.self, forKey: .feedback)
+    }
+
     /// A team assignment reports the group's status in `teamsubmission`, so a teammate's
     /// submission leaves the student's own `submission` unsubmitted or without a status.
     private var attempt: LastAttempt.Submission? {
