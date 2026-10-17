@@ -834,6 +834,19 @@ extension MoodleCourseMembersTests {
                 #expect(found.accessibilityActivate())
                 try await waitUntil { opened == 1 }
             }
+
+            // While the full-size picture is on its way, the picture takes no second tap.
+            var opened = 0
+            let window = try show(MoodleMemberProfile(
+                member: Self.classmate, picture: image, policy: VisualStylePolicy(preset: .default),
+                writeTo: { _ in }, isOpeningPicture: true, openPicture: { opened += 1 }
+            ))
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController?.view)
+            try await waitUntil { accessibilityElement(labeled: label, in: root) != nil }
+            _ = accessibilityElement(labeled: label, in: root)?.accessibilityActivate()
+            #expect(accessibilityElement(labeled: label, in: root)?.accessibilityTraits.contains(.notEnabled) == true)
+            #expect(opened == 0)
         }
     }
 }

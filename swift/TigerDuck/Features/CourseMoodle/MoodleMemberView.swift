@@ -12,6 +12,9 @@ struct MoodleMemberView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @State private var picturePreview: URL?
+    /// Set while the full-size picture downloads, so a second tap starts no second download that
+    /// would open Quick Look again after the first is closed.
+    @State private var isOpeningPicture = false
     #if os(iOS)
     @State private var mail: MemberMail?
     @State private var sentCopyNotice: String?
@@ -35,7 +38,8 @@ struct MoodleMemberView: View {
                     picture: member.pictureURL.flatMap { store.pictures[$0] },
                     policy: appState.visualStylePolicy,
                     writeTo: writeTo,
-                    openPicture: { Task { picturePreview = await store.picturePreview(of: member) } }
+                    isOpeningPicture: isOpeningPicture,
+                    openPicture: openPicture
                 )
                 .task(id: member.pictureURL) { await store.loadPicture(of: member) }
             }
@@ -60,6 +64,15 @@ struct MoodleMemberView: View {
         #endif
     }
 
+    private func openPicture() {
+        guard !isOpeningPicture else { return }
+        isOpeningPicture = true
+        Task {
+            picturePreview = await store.picturePreview(of: member)
+            isOpeningPicture = false
+        }
+    }
+
     private func writeTo(_ address: String) {
         #if os(iOS)
         if MailAccountManager.shared.isLoggedIn {
@@ -80,6 +93,8 @@ struct MoodleMemberProfile: View {
     let picture: CGImage?
     let policy: VisualStylePolicy
     let writeTo: (String) -> Void
+    /// The full-size picture is on its way, so the picture shows a spinner and takes no tap.
+    var isOpeningPicture = false
     let openPicture: () -> Void
 
     private static let avatarSize: CGFloat = 88
@@ -127,9 +142,12 @@ struct MoodleMemberProfile: View {
     private var avatar: some View {
         let image = MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
         if picture != nil {
-            Button(action: openPicture) { image }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "course_member_profile_picture"))
+            Button(action: openPicture) {
+                image.overlay { if isOpeningPicture { ProgressView() } }
+            }
+            .buttonStyle(.plain)
+            .disabled(isOpeningPicture)
+            .accessibilityLabel(String(localized: "course_member_profile_picture"))
         } else {
             image
         }
