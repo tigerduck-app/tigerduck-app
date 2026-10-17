@@ -272,7 +272,7 @@ private struct EndpointChangeAlert: ViewModifier {
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: { change in
             Text(([String(localized: "settings_api_endpoint_change_alert_message")] + change.notes)
-                .joined(separator: "\n\n"))
+                .joined(separator: "\n"))
         }
     }
 }
