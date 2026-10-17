@@ -206,6 +206,15 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
     }
 
     let lastattempt: LastAttempt?
+    let feedback: Feedback?
+
+    /// Moodle sends `gradefordisplay` and `gradeddate` as null without a grade, and the plugins
+    /// only with the grader's record.
+    struct Feedback: Decodable {
+        let gradefordisplay: String?
+        let gradeddate: Int?
+        let plugins: [LastAttempt.Plugin]?
+    }
 
     /// A team assignment reports the group's status in `teamsubmission`, so a teammate's
     /// submission leaves the student's own `submission` unsubmitted or without a status.
@@ -232,26 +241,42 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
     var submission: MoodleAssignmentSubmission {
         let record = attempt
         let plugins = record?.plugins ?? []
-        let textPlugin = plugins.first { $0.type == "onlinetext" }
-        let text = textPlugin?.editorfields?.first?.text.map {
-            MoodleHTMLText.resolvingPluginFiles(
-                in: $0, files: (textPlugin?.fileareas ?? []).flatMap { $0.files ?? [] }.compactMap(\.model)
-            )
-        }
         return MoodleAssignmentSubmission(
             status: record?.status,
-            modified: record?.timemodified.flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil },
+            modified: record?.timemodified.flatMap(Self.date),
             files: plugins.filter { $0.type == "file" }
                 .flatMap { $0.fileareas ?? [] }
                 .flatMap { $0.files ?? [] }
                 .compactMap(\.model),
-            onlineText: text.flatMap {
-                MoodleHTMLText.markdown(fromHTML: $0).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
-            },
+            onlineText: Self.text(of: plugins.first { $0.type == "onlinetext" }),
             id: record?.id,
             takesComments: plugins.contains { $0.type == "comments" },
-            groupId: lastattempt?.submissiongroup
+            groupId: lastattempt?.submissiongroup,
+            grade: grade
         )
+    }
+
+    /// Moodle writes "-" for no grade.
+    private var grade: MoodleAssignmentGrade? {
+        guard let feedback else { return nil }
+        let shown = MoodleHTMLText.plainText(fromHTML: feedback.gradefordisplay ?? "")
+        let grade = shown.isEmpty || shown == "-" ? nil : shown
+        let comments = Self.text(of: feedback.plugins?.first { $0.type == "comments" })
+        guard grade != nil || comments != nil else { return nil }
+        return MoodleAssignmentGrade(grade: grade, gradedAt: feedback.gradeddate.flatMap(Self.date), feedback: comments)
+    }
+
+    /// A plugin's editor text pointing at its own files; nil for text that shows nothing.
+    private static func text(of plugin: LastAttempt.Plugin?) -> String? {
+        guard let text = plugin?.editorfields?.first?.text else { return nil }
+        let html = MoodleHTMLText.resolvingPluginFiles(
+            in: text, files: (plugin?.fileareas ?? []).flatMap { $0.files ?? [] }.compactMap(\.model)
+        )
+        return MoodleHTMLText.markdown(fromHTML: html).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : html
+    }
+
+    private static func date(_ seconds: Int) -> Date? {
+        seconds > 0 ? Date(timeIntervalSince1970: TimeInterval(seconds)) : nil
     }
 }
 
