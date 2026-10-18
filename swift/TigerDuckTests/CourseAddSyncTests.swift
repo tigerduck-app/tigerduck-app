@@ -50,13 +50,15 @@ struct CourseAddSyncTests {
     private static func makeCoordinator(
         _ backend: Backend, cache: DataCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
         push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true },
-        isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true }
+        isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true },
+        loginGeneration: @escaping @MainActor () -> Int = { 0 }
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: push ?? makePush(backend), outbox: outbox, isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
             addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:]) },
-            uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable
+            uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
+            loginGeneration: loginGeneration
         )
     }
 
@@ -160,6 +162,22 @@ struct CourseAddSyncTests {
 
         #expect(backend.uploads.isEmpty)
         #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast) == ["1151:GE1010001"])
+    }
+
+    /// A sign-out while the add waits in the term's upload chain leaves its list with the departing account.
+    @Test("A course add is not sent once the login has changed since its list was read")
+    func addOfAnEarlierLoginIsNotSent() async {
+        let backend = Backend()
+        let signedOut = Switch()
+        signedOut.isOn = false
+        let coordinator = Self.makeCoordinator(
+            backend, cache: Self.makeCache(userAdded: [Self.art()]),
+            loginGeneration: { defer { signedOut.isOn = true }; return signedOut.isOn ? 1 : 0 }
+        )
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        #expect(backend.uploads.isEmpty)
     }
 
     /// The course is saved here before its add reaches the outbox, which a full sync can read meanwhile.

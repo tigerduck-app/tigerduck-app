@@ -79,7 +79,8 @@ final class AppState {
 
         // After the purge: AuthService's first keychain read raises the credentials mirror
         // when it finds credentials, and only a sign-in or sign-out lowers it again.
-        self.authService = AuthService()
+        let authService = AuthService()
+        self.authService = authService
 
         let identity = PushIdentity.loadOrCreate()
         let atm = AuthTokenManager(deviceUUID: identity.uuid)
@@ -91,7 +92,8 @@ final class AppState {
         self.cloudSyncCoordinator = CloudSyncCoordinator(
             pushCoordinator: self.pushCoordinator,
             addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1) },
-            uploadsCourses: { CourseUploadPolicy.uploadsCourses }
+            uploadsCourses: { CourseUploadPolicy.uploadsCourses },
+            loginGeneration: { authService.loginGeneration }
         )
         CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
 

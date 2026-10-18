@@ -63,6 +63,8 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private let uploadsCourses: @MainActor () -> Bool
     /// Behind the lock screen the cached course list reads as empty, so a course add would look gone.
     @ObservationIgnored private let isProtectedDataAvailable: @MainActor () -> Bool
+    /// `AuthService.loginGeneration`, which a course add compares before it goes.
+    @ObservationIgnored private let loginGeneration: @MainActor () -> Int
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -116,11 +118,13 @@ final class CloudSyncCoordinator {
             #else
             true
             #endif
-        }
+        },
+        loginGeneration: @escaping @MainActor () -> Int = { 0 }
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
         self.isProtectedDataAvailable = isProtectedDataAvailable
+        self.loginGeneration = loginGeneration
         self.syncsAssignmentMarks = syncsAssignmentMarks
         self.syncsCourseIgnores = syncsCourseIgnores
         self.addedCourseUpload = addedCourseUpload
@@ -557,10 +561,13 @@ final class CloudSyncCoordinator {
             case .courseAdd(let semester, let courseNo):
                 // The lock can land while an earlier op of the pass is out; the add then waits for a later drain.
                 guard isProtectedDataAvailable() else { throw CancellationError() }
+                let generation = loginGeneration()
                 guard let request = addedCourseUpload(semester, courseNo) else { return }
-                // In the term's upload chain, so an edit or a refresh queued after it lands after it.
+                // In the term's upload chain, so an edit or a refresh queued after it lands after it. A
+                // sign-out while it waits there drops it: the list is the departing account's.
                 guard try await pushCoordinator.uploadCoursesIfChanged(
-                    request, semester: semester, isCurrent: uploadsCourses
+                    request, semester: semester,
+                    isCurrent: { [uploadsCourses, loginGeneration] in uploadsCourses() && loginGeneration() == generation }
                 ) else { return }
                 courseAddsLanded[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
             }
