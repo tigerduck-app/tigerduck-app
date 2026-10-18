@@ -49,13 +49,14 @@ struct CourseAddSyncTests {
     /// No colours go up, so a list's fingerprint does not follow the real Defaults.
     private static func makeCoordinator(
         _ backend: Backend, cache: DataCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
-        push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true }
+        push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true },
+        isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true }
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: push ?? makePush(backend), outbox: outbox, isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
             addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:]) },
-            uploadsCourses: uploadsCourses
+            uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable
         )
     }
 
@@ -123,6 +124,42 @@ struct CourseAddSyncTests {
 
         await coordinator.discardEdits(of: ["courses"], courseIgnores: false)
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
+    }
+
+    /// Behind the lock screen the course list reads as empty, and the add would be dropped as gone.
+    @Test("A course add waits in the outbox while protected data is locked, and goes after unlock")
+    func addWaitsBehindTheLock() async {
+        let backend = Backend()
+        let unlocked = Switch()
+        unlocked.isOn = false
+        let coordinator = Self.makeCoordinator(
+            backend, cache: Self.makeCache(userAdded: [Self.art()]), isProtectedDataAvailable: { unlocked.isOn }
+        )
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        #expect(backend.uploads.isEmpty)
+        #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast) == ["1151:GE1010001"])
+
+        unlocked.isOn = true
+        await coordinator.syncTick()
+        #expect(backend.uploads.count == 1)
+    }
+
+    /// The drain samples the lock once per pass, and the lock can land before the add's turn comes.
+    @Test("A course add waits when the lock lands during the drain's pass")
+    func addWaitsWhenTheLockLandsMidPass() async {
+        let backend = Backend()
+        let unlocked = Switch()
+        let coordinator = Self.makeCoordinator(
+            backend, cache: Self.makeCache(userAdded: [Self.art()]),
+            isProtectedDataAvailable: { defer { unlocked.isOn = false }; return unlocked.isOn }
+        )
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        #expect(backend.uploads.isEmpty)
+        #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast) == ["1151:GE1010001"])
     }
 
     /// The course is saved here before its add reaches the outbox, which a full sync can read meanwhile.

@@ -61,6 +61,8 @@ final class CloudSyncCoordinator {
     /// Whether this device may upload its course list (`CourseUploadPolicy.uploadsCourses`), read
     /// right before a course add goes: one that comes due with it false is dropped unsent.
     @ObservationIgnored private let uploadsCourses: @MainActor () -> Bool
+    /// Behind the lock screen the cached course list reads as empty, so a course add would look gone.
+    @ObservationIgnored private let isProtectedDataAvailable: @MainActor () -> Bool
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -107,10 +109,18 @@ final class CloudSyncCoordinator {
         },
         addedCourseUpload: @escaping @MainActor (_ semester: String, _ courseNo: String)
             -> PushAPI.CourseUploadRequest? = { _, _ in nil },
-        uploadsCourses: @escaping @MainActor () -> Bool = { false }
+        uploadsCourses: @escaping @MainActor () -> Bool = { false },
+        isProtectedDataAvailable: @escaping @MainActor () -> Bool = {
+            #if canImport(UIKit)
+            UIApplication.shared.isProtectedDataAvailable
+            #else
+            true
+            #endif
+        }
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
+        self.isProtectedDataAvailable = isProtectedDataAvailable
         self.syncsAssignmentMarks = syncsAssignmentMarks
         self.syncsCourseIgnores = syncsCourseIgnores
         self.addedCourseUpload = addedCourseUpload
@@ -248,11 +258,7 @@ final class CloudSyncCoordinator {
     }
 
     private func drainOnce() async {
-        #if canImport(UIKit)
-        let protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable
-        #else
-        let protectedDataAvailable = true
-        #endif
+        let protectedDataAvailable = isProtectedDataAvailable()
         await outbox.loadOrGiveUp(protectedDataAvailable: protectedDataAvailable)
         guard await outbox.pendingCount() > 0 else { return }
 
@@ -262,7 +268,8 @@ final class CloudSyncCoordinator {
             switch op {
             case .assignmentOverride: return !syncsMarks()
             case .courseIgnore: return !syncsIgnores()
-            case .courseOverride, .courseDelete, .courseAdd: return false
+            case .courseAdd: return !protectedDataAvailable
+            case .courseOverride, .courseDelete: return false
             }
         }) { [weak self] op in
             guard let self else { throw CancellationError() }
@@ -548,6 +555,8 @@ final class CloudSyncCoordinator {
                 try await pushCoordinator.deleteCourse(courseKey: courseKey)
 
             case .courseAdd(let semester, let courseNo):
+                // The lock can land while an earlier op of the pass is out; the add then waits for a later drain.
+                guard isProtectedDataAvailable() else { throw CancellationError() }
                 guard let request = addedCourseUpload(semester, courseNo) else { return }
                 // In the term's upload chain, so an edit or a refresh queued after it lands after it.
                 guard try await pushCoordinator.uploadCoursesIfChanged(
