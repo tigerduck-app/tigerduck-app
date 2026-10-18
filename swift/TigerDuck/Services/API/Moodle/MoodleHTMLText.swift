@@ -8,9 +8,7 @@ nonisolated enum MoodleHTMLText {
     /// The text of `html` with every run of whitespace, line breaks included, as one space.
     static func plainText(fromHTML html: String) -> String {
         guard let body = try? SwiftSoup.parseBodyFragment(html).body() else { return collapsed(html) }
-        var text = ""
-        appendPlainText(of: body, depth: 0, to: &text)
-        return collapsed(text)
+        return collapsed(visibleText(of: body))
     }
 
     /// CommonMark for `html`: paragraphs, line breaks, headings, lists, quotes, emphasis and
@@ -48,30 +46,29 @@ nonisolated enum MoodleHTMLText {
 
     // MARK: Plain text
 
-    /// Deeper than `AppConstants.maximumHTMLDepth`, an element's text is taken whole, which keeps
-    /// the recursion far inside a thread's stack however deep the HTML nests.
-    private static func appendPlainText(of element: Element, depth: Int, to text: inout String) {
-        guard depth <= AppConstants.maximumHTMLDepth else {
-            text += rawText(of: element)
-            return
-        }
-        for child in element.getChildNodes() {
-            if let textNode = child as? TextNode {
+    /// The text inside `element` without the skipped elements', and with a space around a block or
+    /// a break, which ends a word even where the HTML has no space around it. It walks a stack
+    /// instead of recursing, so HTML of any depth fits on a thread's stack.
+    fileprivate static func visibleText(of element: Element) -> String {
+        var text = ""
+        // An entry that `closes` puts its element's closing space after the element's children.
+        var stack = element.getChildNodes().reversed().map { (node: $0, closes: false) }
+        while let (node, closes) = stack.popLast() {
+            if closes {
+                text += " "
+            } else if let textNode = node as? TextNode {
                 text += textNode.getWholeText()
-            } else if let element = child as? Element {
-                let tag = element.tagName().lowercased()
+            } else if let child = node as? Element {
+                let tag = child.tagName().lowercased()
                 if skippedTags.contains(tag) { continue }
-                // A block or a break ends a word even where the HTML has no space around it.
-                let separates = tag == "br" || MarkdownWriter.separatesText(tag)
-                if separates { text += " " }
-                appendPlainText(of: element, depth: depth + 1, to: &text)
-                if separates { text += " " }
+                if tag == "br" || MarkdownWriter.separatesText(tag) {
+                    text += " "
+                    stack.append((node: child, closes: true))
+                }
+                stack += child.getChildNodes().reversed().map { (node: $0, closes: false) }
             }
         }
-    }
-
-    fileprivate static func rawText(of element: Element) -> String {
-        (try? element.text(trimAndNormaliseWhitespace: false)) ?? ""
+        return text
     }
 
     private static func collapsed(_ text: String) -> String {
@@ -203,7 +200,7 @@ private nonisolated struct MarkdownWriter {
 
     private func paragraphs(ofTextIn element: Element) -> [String] {
         var paragraph = ""
-        appendText(MoodleHTMLText.rawText(of: element), to: &paragraph)
+        appendText(MoodleHTMLText.visibleText(of: element), to: &paragraph)
         let text = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? [] : [text]
     }
@@ -256,7 +253,7 @@ private nonisolated struct MarkdownWriter {
     }
 
     private static func text(of element: Element) -> String {
-        MoodleHTMLText.escaped(MoodleHTMLText.collapsedKeepingEdges(MoodleHTMLText.rawText(of: element)))
+        MoodleHTMLText.escaped(MoodleHTMLText.collapsedKeepingEdges(MoodleHTMLText.visibleText(of: element)))
     }
 
     /// `**text**` with the spaces at its edges moved outside, which emphasis needs to open and close.
