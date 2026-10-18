@@ -49,7 +49,7 @@ extension Date {
     /// A Moodle list's time stamp: `HH:mm` today, else ``moodleDateString(now:)``. Zero-padded,
     /// so the stamps of a list line up.
     func moodleListDateString(now: Date = AppClock.now()) -> String {
-        if isSameDay(as: now) { return Self.moodleTimeFormatter.string(from: self) }
+        if isSameDay(as: now) { return timeString }
         return moodleDateString(now: now)
     }
 
@@ -72,7 +72,6 @@ extension Date {
         return (thisYear ? Self.moodleMonthDayTimeFormatter : Self.moodleDateTimeFormatter).string(from: self)
     }
 
-    private static let moodleTimeFormatter = posixFormatter("HH:mm")
     private static let moodleMonthDayFormatter = posixFormatter("MM/dd")
     private static let moodleMonthDayTimeFormatter = posixFormatter("MM/dd HH:mm")
     private static let moodleDateTimeFormatter = posixFormatter("yyyy/MM/dd HH:mm")
