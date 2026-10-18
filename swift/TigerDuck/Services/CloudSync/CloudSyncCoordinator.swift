@@ -58,6 +58,9 @@ final class CloudSyncCoordinator {
     /// it is gone or hidden, which drops the add unsent (`AppState.addedCourseUpload`).
     @ObservationIgnored private let addedCourseUpload: @MainActor (_ semester: String, _ courseNo: String)
         -> PushAPI.CourseUploadRequest?
+    /// Whether this device may upload its course list (`CourseUploadPolicy.uploadsCourses`), read
+    /// right before a course add goes: one that comes due with it false is dropped unsent.
+    @ObservationIgnored private let uploadsCourses: @MainActor () -> Bool
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -103,13 +106,15 @@ final class CloudSyncCoordinator {
             )
         },
         addedCourseUpload: @escaping @MainActor (_ semester: String, _ courseNo: String)
-            -> PushAPI.CourseUploadRequest? = { _, _ in nil }
+            -> PushAPI.CourseUploadRequest? = { _, _ in nil },
+        uploadsCourses: @escaping @MainActor () -> Bool = { false }
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
         self.syncsAssignmentMarks = syncsAssignmentMarks
         self.syncsCourseIgnores = syncsCourseIgnores
         self.addedCourseUpload = addedCourseUpload
+        self.uploadsCourses = uploadsCourses
 
         if isEnabled {
             state = .active
@@ -542,7 +547,10 @@ final class CloudSyncCoordinator {
 
             case .courseAdd(let semester, let courseNo):
                 guard let request = addedCourseUpload(semester, courseNo) else { return }
-                try await pushCoordinator.uploadCourses(request)
+                // In the term's upload chain, so an edit or a refresh queued after it lands after it.
+                guard try await pushCoordinator.uploadCoursesIfChanged(
+                    request, semester: semester, isCurrent: uploadsCourses
+                ) else { return }
                 courseAddsLanded[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
             }
         } catch {

@@ -942,12 +942,14 @@ extension AppState {
     /// not reached the server would otherwise hold this course alone, and the next full sync would
     /// hide the rest as deleted elsewhere.
     static func addedCourseUpload(
-        semester: String, courseNo: String, cache: DataCache = .shared
+        semester: String, courseNo: String, cache: DataCache = .shared,
+        colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
     ) -> PushAPI.CourseUploadRequest? {
         let shown = CanonicalCourseProvider(cache: cache).currentCourses(semester: semester)
         guard shown.contains(where: { $0.courseNo == courseNo }) else { return nil }
         return courseUploadRequest(
-            shown, semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)]
+            shown, semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)],
+            colors: colors
         )
     }
 

@@ -35,9 +35,7 @@ struct CourseAddSyncTests {
         return cache
     }
 
-    private static func makeCoordinator(
-        _ backend: Backend, cache: DataCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory())
-    ) -> CloudSyncCoordinator {
+    private static func makePush(_ backend: Backend) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
@@ -45,12 +43,25 @@ struct CourseAddSyncTests {
             session: URLSession(configuration: config),
             authHeaderProvider: { "Bearer test" }
         )
-        let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
-        return CloudSyncCoordinator(
-            pushCoordinator: push, outbox: outbox, isEnabled: true,
+        return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
+    }
+
+    /// No colours go up, so a list's fingerprint does not follow the real Defaults.
+    private static func makeCoordinator(
+        _ backend: Backend, cache: DataCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
+        push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true }
+    ) -> CloudSyncCoordinator {
+        CloudSyncCoordinator(
+            pushCoordinator: push ?? makePush(backend), outbox: outbox, isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache) }
+            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:]) },
+            uploadsCourses: uploadsCourses
         )
+    }
+
+    @MainActor
+    private final class Switch {
+        var isOn = true
     }
 
     private static func art() -> SDCourse {
@@ -204,6 +215,41 @@ struct CourseAddSyncTests {
         #expect(backend.uploads.count == SyncOutbox.maxAttempts)
         #expect(await coordinator.outbox.pendingCount() == 0)
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()) == ["1151:GE1010001"])
+    }
+
+    /// As when the Mac's "All courses" switch goes off while an add waits offline.
+    @Test("An add that comes due once course uploads are off is dropped unsent")
+    func addAfterAnOptOutIsDropped() async {
+        let backend = Backend()
+        backend.answer(503)
+        let uploads = Switch()
+        let coordinator = Self.makeCoordinator(
+            backend, cache: Self.makeCache(userAdded: [Self.art()]), uploadsCourses: { uploads.isOn }
+        )
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        uploads.isOn = false
+        await coordinator.syncTick()
+
+        #expect(backend.uploads.count == 1)
+        #expect(!(await coordinator.holdsUnsentEdits()))
+    }
+
+    /// The chain every upload of the term takes, so the one queued last lands last. It notes the list
+    /// as taken, which lets an edit that sends the same list after it skip it.
+    @Test("An add goes up through its term's upload chain")
+    func addGoesThroughItsTermsUploadChain() async throws {
+        let backend = Backend()
+        backend.answer(200)
+        backend.answer(200)
+        let push = Self.makePush(backend)
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]), push: push)
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        let sameList = AppState.courseUploadRequest([Self.art()], semester: "1151", forceKeys: [], colors: [:])
+        #expect(try await !push.uploadCoursesIfChanged(sameList, semester: "1151", isCurrent: { true }))
+        #expect(backend.uploads.count == 1)
     }
 
     /// Sent beside the delete, the upload could land first and the delete remove the course again.

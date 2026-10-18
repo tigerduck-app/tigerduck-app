@@ -90,7 +90,8 @@ final class AppState {
         )
         self.cloudSyncCoordinator = CloudSyncCoordinator(
             pushCoordinator: self.pushCoordinator,
-            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1) }
+            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1) },
+            uploadsCourses: { CourseUploadPolicy.uploadsCourses }
         )
         CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
 
