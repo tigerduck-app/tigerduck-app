@@ -937,17 +937,14 @@ extension AppState {
     }
 
     /// The outbox's upload of course `courseNo` added here in `semester`, its key forced past a
-    /// tombstone: the term's courses `cache` shows now, or nil once that one is gone or hidden here.
-    /// The whole term goes, as a term whose roster had not reached the server would otherwise hold
-    /// this course alone, and the next full sync would hide the rest as deleted elsewhere.
+    /// tombstone: the term's courses as the class table shows them now (`CanonicalCourseProvider`),
+    /// or nil once that one is gone or hidden here. The whole term goes, as a term whose roster had
+    /// not reached the server would otherwise hold this course alone, and the next full sync would
+    /// hide the rest as deleted elsewhere.
     static func addedCourseUpload(
         semester: String, courseNo: String, cache: DataCache = .shared
     ) -> PushAPI.CourseUploadRequest? {
-        let hidden = Set(cache.loadDeletedCourseNos())
-        let portal = cache.loadCourses(semester: semester)
-        let portalNos = Set(portal.map(\.courseNo))
-        let shown = (portal + cache.loadUserAddedCourses(semester: semester).filter { !portalNos.contains($0.courseNo) })
-            .filter { !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden) }
+        let shown = CanonicalCourseProvider(cache: cache).currentCourses(semester: semester)
         guard shown.contains(where: { $0.courseNo == courseNo }) else { return nil }
         return courseUploadRequest(
             shown, semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)]
