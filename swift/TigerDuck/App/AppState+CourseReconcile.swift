@@ -11,11 +11,14 @@ extension AppState {
     /// Applies the server's course list to the local caches, one semester
     /// at a time. `serverRows` is the `courses` array of `/sync/full`,
     /// `tombstones` its `course_tombstones`, `deleting` the keys of the course
-    /// deletes queued here, `fetchedAt` when the request went out, which is what
-    /// the snapshot is as of. Returns whether it changed the caches.
+    /// deletes queued here, `adding` those of the courses added here whose upload
+    /// had not landed by the fetch (`unlistedCourses`), `fetchedAt` when the
+    /// request went out, which is what the snapshot is as of. Returns whether it
+    /// changed the caches.
     @discardableResult
     func reconcileCourses(
-        serverRows: [[String: Any]], tombstones: [[String: Any]], deleting queuedDeletes: Set<String>, fetchedAt: Date
+        serverRows: [[String: Any]], tombstones: [[String: Any]], deleting queuedDeletes: Set<String>,
+        adding: Set<String>, fetchedAt: Date
     ) -> Bool {
         // Client-uploaded rows carry the term they belong to. The server's
         // own Moodle mirror rows ("moodle:" keys) carry "" and are not a
@@ -73,17 +76,21 @@ extension AppState {
             // Apply tombstones before any emptiness check: a reset empties the term and tombstones
             // each course, and reading the silence first would keep the old roster.
             // See docs/decisions/0005-course-tombstones.md.
-            for tombstone in tombstonesBySemester[semester] ?? [] {
-                guard let courseNo = tombstone["course_no"] as? String,
-                      !serverNos.contains(courseNo), !isHidden(courseNo) else { continue }
+            let tombstoned = (tombstonesBySemester[semester] ?? []).compactMap { tombstone -> String? in
                 // This device's own reset tombstones are skipped: its next upload releases them.
                 // Hiding the courses would leave the reset's refetch, which filters by the
                 // tombstone store, nothing to upload, so the tombstones would never be released.
                 let ownReset = (tombstone["deleted_by_reset"] as? Bool ?? false)
                     && (tombstone["deleted_by_this_device"] as? Bool ?? false)
-                if ownReset { continue }
-                hide(courseNo)
+                return ownReset ? nil : tombstone["course_no"] as? String
             }
+            let unlisted = Self.unlistedCourses(
+                in: semester, listed: serverNos, tombstoned: Set(tombstoned),
+                fetched: Set(localCourses.map(\.courseNo)),
+                handAdded: Set(userAdded.filter { DataCache.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo)),
+                hidden: deletedNos, adding: adding
+            )
+            for courseNo in unlisted.hide { hide(courseNo) }
 
             // Empty term on the server (first sync, or another device mid-reset): upload what the
             // tombstones leave visible instead of treating every local course as deleted elsewhere.
@@ -103,13 +110,9 @@ extension AppState {
                 continue
             }
 
-            // Portal course absent from the server → deleted on another device.
-            for course in localCourses where !serverNos.contains(course.courseNo) && !isHidden(course.courseNo) {
-                hide(course.courseNo)
-            }
             // Manual additions the server no longer lists.
             let manualBefore = userAdded.count
-            userAdded.removeAll { DataCache.userAddedCourse($0, belongsTo: semester) && !serverNos.contains($0.courseNo) }
+            userAdded.removeAll { DataCache.userAddedCourse($0, belongsTo: semester) && unlisted.drop.contains($0.courseNo) }
             if userAdded.count != manualBefore { mergedSemesters.insert(semester) }
 
             // Hidden here but back on the server → un-hide, unless our own
@@ -187,6 +190,31 @@ extension AppState {
     ) -> Bool {
         !CourseTombstone.isHidden(courseNo, semester: semester, in: hidden)
             && !CourseTombstone.isHidden(courseNo, semester: semester, in: deleting)
+    }
+
+    /// What a snapshot that does not list them says of the courses this device holds in `semester`:
+    /// the ones to hide (`hide`) for another device's tombstone (`tombstoned`, course numbers) or, in
+    /// a term it lists courses of (`listed`), for a fetched course's absence, which another device's
+    /// delete leaves (`fetched`), and the hand-added ones to drop (`drop`, of `handAdded`) in such a
+    /// term. `hide` leaves out what is hidden here already (`hidden`). Both leave out a course whose
+    /// add from here had not landed by the fetch (`adding`, `CourseTombstone` keys from
+    /// `CloudSyncCoordinator.courseAddKeys`), as the snapshot can predate the add.
+    nonisolated static func unlistedCourses(
+        in semester: String,
+        listed: Set<String>,
+        tombstoned: Set<String>,
+        fetched: Set<String>,
+        handAdded: Set<String>,
+        hidden: Set<String>,
+        adding: Set<String>
+    ) -> (hide: Set<String>, drop: Set<String>) {
+        let isGone = { (courseNo: String) in
+            !listed.contains(courseNo) && !adding.contains(CourseTombstone.key(semester: semester, courseNo: courseNo))
+        }
+        let isShown = { (courseNo: String) in !CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
+        let byTombstone = tombstoned.filter { isGone($0) && isShown($0) }
+        guard !listed.isEmpty else { return (byTombstone, []) }
+        return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
     }
 
     /// Whether a server row really belongs to `semester`. A row whose Moodle id names

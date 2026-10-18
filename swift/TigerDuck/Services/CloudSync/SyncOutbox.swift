@@ -17,9 +17,12 @@ nonisolated enum SyncOp: Codable, Sendable {
     case courseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, stamp: Date)
     /// Deletes a course hidden here from the server, which keeps listing it until this lands.
     case courseDelete(semester: String, courseNo: String, stamp: Date)
+    /// Uploads a course added here, its key forced past a tombstone, as this device holds it when
+    /// it goes. The server lacks the course until this lands.
+    case courseAdd(semester: String, courseNo: String, stamp: Date)
 
     private enum CodingKeys: String, CodingKey {
-        case courseOverride, assignmentOverride, courseIgnore, courseDelete
+        case courseOverride, assignmentOverride, courseIgnore, courseDelete, courseAdd
     }
     private enum CourseOverrideKeys: String, CodingKey {
         case semester, moodleId, courseKey, customName, colorHex, locale, stamp
@@ -30,7 +33,7 @@ nonisolated enum SyncOp: Codable, Sendable {
     private enum CourseIgnoreKeys: String, CodingKey {
         case semester, courseNo, moodleId, moodleCourseId, ignore, stamp
     }
-    private enum CourseDeleteKeys: String, CodingKey {
+    private enum CourseKeys: String, CodingKey {
         case semester, courseNo, stamp
     }
 
@@ -67,8 +70,14 @@ nonisolated enum SyncOp: Codable, Sendable {
                 ignore: try c.decodeIfPresent(Bool.self, forKey: .ignore),
                 stamp: try c.decode(Date.self, forKey: .stamp))
         } else if container.contains(.courseDelete) {
-            let c = try container.nestedContainer(keyedBy: CourseDeleteKeys.self, forKey: .courseDelete)
+            let c = try container.nestedContainer(keyedBy: CourseKeys.self, forKey: .courseDelete)
             self = .courseDelete(
+                semester: try c.decode(String.self, forKey: .semester),
+                courseNo: try c.decode(String.self, forKey: .courseNo),
+                stamp: try c.decode(Date.self, forKey: .stamp))
+        } else if container.contains(.courseAdd) {
+            let c = try container.nestedContainer(keyedBy: CourseKeys.self, forKey: .courseAdd)
+            self = .courseAdd(
                 semester: try c.decode(String.self, forKey: .semester),
                 courseNo: try c.decode(String.self, forKey: .courseNo),
                 stamp: try c.decode(Date.self, forKey: .stamp))
@@ -97,6 +106,8 @@ nonisolated enum SyncOp: Codable, Sendable {
             return "ci|\(semester)|\(moodleId)"
         case .courseDelete(let semester, let courseNo, _):
             return "cd|\(semester)|\(courseNo)"
+        case .courseAdd(let semester, let courseNo, _):
+            return "ca|\(semester)|\(courseNo)"
         }
     }
 }
@@ -110,6 +121,7 @@ nonisolated enum ResolvedSyncOp: Sendable {
     case assignmentOverride(assignmentId: Int, localStatus: String)
     case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?)
     case courseDelete(courseKey: String)
+    case courseAdd(semester: String, courseNo: String)
 }
 
 // MARK: - OutboxEntry
@@ -129,9 +141,10 @@ actor SyncOutbox {
     private let directory: URL
     private let read: @Sendable (URL) throws -> Data
     private var entries: [OutboxEntry] = []
-    /// Marks the server refused `maxAttempts` times. A pull still treats each as an edit on its
-    /// way up, so the local status stands, and `requeueParked()` gives it one more try per full
-    /// sync until it lands, as `AcademicCalendarStore.unacknowledgedHolidayIDs` does for holidays.
+    /// Marks, course settings and course adds the server refused `maxAttempts` times. A pull still
+    /// treats each as an edit on its way up, so the local state stands, and `requeueParked()` gives
+    /// it one more try per full sync until it lands, as `AcademicCalendarStore.unacknowledgedHolidayIDs`
+    /// does for holidays.
     private var parked: [OutboxEntry] = []
     /// Bumped by `clearAll()`. A drain suspended at `await execute` when the
     /// queue is cleared must not merge its retained entries back afterwards.
@@ -253,6 +266,14 @@ actor SyncOutbox {
         persist()
     }
 
+    /// `keepsWithoutAttempt` for `op`. A course add spends an attempt on any answer from the server,
+    /// 5xx included: its whole-term upload can fail there for its payload alone, and waiting without
+    /// one would hold every op behind it. After `maxAttempts` it parks, out of the queue's way.
+    static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {
+        if case .courseAdd = op, case PushAPIError.httpStatus(_, _) = error { return false }
+        return keepsWithoutAttempt(error)
+    }
+
     /// Errors that say nothing about the edit: no network, a cancelled drain, a session to renew,
     /// or a server that is down or busy. The entry waits for a later drain without an attempt.
     static func keepsWithoutAttempt(_ error: Error) -> Bool {
@@ -322,7 +343,7 @@ actor SyncOutbox {
                 // A `clearAll()` during the request removed the entry; keeping or parking
                 // it now would bring it back.
                 guard generation == startGeneration else { return entries.isEmpty }
-                if Self.keepsWithoutAttempt(error) {
+                if Self.keepsWithoutAttempt(error, for: entry.op) {
                     mergeAndStore(retainRemainder: index)
                     return false
                 }
@@ -343,9 +364,10 @@ actor SyncOutbox {
         return entries.isEmpty
     }
 
-    /// Reports an entry the server refused `maxAttempts` times. A mark or a course's ignore
-    /// setting is parked; a course override, a course delete, or a numeric course id sent alone,
-    /// is dropped: the next full sync applies the server's colour, name or course over it, and
+    /// Reports an entry the server refused `maxAttempts` times. A mark, a course's ignore setting
+    /// or a course added here is parked, as dropping the add would let the next full sync drop
+    /// the course; a course override, a course delete, or a numeric course id sent alone, is
+    /// dropped: the next full sync applies the server's colour, name or course over it, and
     /// sends the id again.
     private func giveUp(on entry: OutboxEntry, after error: Error) {
         let kind: String
@@ -355,6 +377,7 @@ actor SyncOutbox {
         case .assignmentOverride: (kind, parks) = ("assignmentOverride", true)
         case .courseIgnore(_, _, _, _, let ignore, _): (kind, parks) = ("courseIgnore", ignore != nil)
         case .courseDelete: (kind, parks) = ("courseDelete", false)
+        case .courseAdd: (kind, parks) = ("courseAdd", true)
         }
         logger.warning("Outbox: gave up on \(kind, privacy: .public) after \(Self.maxAttempts) attempts")
         AppLogger.captureError(error, context: ["phase": "cloudSync.outbox.giveUp", "op": kind])
@@ -386,6 +409,9 @@ actor SyncOutbox {
         case .courseDelete(let semester, let courseNo, _):
             // The Moodle idnumber, which PATCH .../override takes, deletes nothing.
             return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
+
+        case .courseAdd(let semester, let courseNo, _):
+            return .courseAdd(semester: semester, courseNo: courseNo)
         }
     }
 

@@ -208,9 +208,8 @@ extension ClassTableViewModel {
         courses.removeAll { $0.courseNo == courseNo }
         persistUserAddedCourses()
         broadcastLocalChange()
-        // The add already uploaded the row, so delete it server-side or the next full
-        // sync brings it back. ponytail: the POST and this DELETE are independent tasks,
-        // so a tap-tap within one round trip can leave the row; a reset clears it.
+        // The add's upload may have landed, so delete the row server-side or the next full sync
+        // brings it back. The outbox sends this after that upload, or drops the upload unsent.
         onCourseDeleted?(courseNo, currentSemester)
     }
 
