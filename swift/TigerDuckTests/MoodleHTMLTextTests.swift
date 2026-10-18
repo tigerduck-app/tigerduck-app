@@ -126,4 +126,16 @@ struct MoodleHTMLTextTests {
             #expect(MoodleHTMLText.markdown(fromHTML: html) == written, "\(wrappers) wrappers")
         }
     }
+
+    /// The innermost wrapper is past the cap, where its text still leaves out what the writers
+    /// skip (https://github.com/tigerduck-app/tigerduck-app/pull/759).
+    @Test("past the cap, a template's or a noscript's text stays out",
+          arguments: ["div", "span"], ["template", "noscript"])
+    func skippedPastTheCap(wrapper: String, skipped: String) {
+        let wrappers = AppConstants.maximumHTMLDepth + 1
+        let html = String(repeating: "<\(wrapper)>", count: wrappers) + "<\(skipped)>hidden</\(skipped)>visible"
+            + String(repeating: "</\(wrapper)>", count: wrappers)
+        #expect(MoodleHTMLText.plainText(fromHTML: html) == "visible")
+        #expect(MoodleHTMLText.markdown(fromHTML: html) == "visible")
+    }
 }
