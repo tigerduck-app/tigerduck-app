@@ -152,25 +152,17 @@ private nonisolated struct MarkdownWriter {
                 result += blocks(in: child, depth: depth + 1)
             } else if let level = Self.headingLevel(tag) {
                 endParagraph()
-                let text = inline(of: child, depth: depth + 1).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !text.isEmpty { result.append(String(repeating: "#", count: level) + " " + text) }
+                if let heading = Self.heading(level, inline(of: child, depth: depth + 1)) { result.append(heading) }
             } else if tag == "ul" || tag == "ol" {
                 endParagraph()
                 let list = self.list(child, ordered: tag == "ol", depth: depth + 1)
                 if !list.isEmpty { result.append(list) }
             } else if tag == "blockquote" {
                 endParagraph()
-                let quoted = blocks(in: child, depth: depth + 1).joined(separator: "\n\n")
-                if !quoted.isEmpty {
-                    result.append(quoted.split(separator: "\n", omittingEmptySubsequences: false)
-                        .map { $0.isEmpty ? ">" : "> " + $0 }.joined(separator: "\n"))
-                }
+                if let quote = Self.quote(blocks(in: child, depth: depth + 1)) { result.append(quote) }
             } else if tag == "pre" {
                 endParagraph()
-                let code = (try? child.text(trimAndNormaliseWhitespace: false)) ?? ""
-                if !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    result.append("```\n" + code.trimmingCharacters(in: .newlines) + "\n```")
-                }
+                if let code = Self.codeBlock(child) { result.append(code) }
             } else if tag == "hr" {
                 endParagraph()
                 result.append("---")
@@ -182,6 +174,31 @@ private nonisolated struct MarkdownWriter {
         }
         endParagraph()
         return result
+    }
+
+    // Outside blocks(in:depth:) and inline(of:depth:), these keep each level of their recursion
+    // small: in a Debug build, 256 levels of a 2 KB frame nearly fill a 512 KB thread stack.
+    private static func heading(_ level: Int, _ inline: String) -> String? {
+        let text = inline.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : String(repeating: "#", count: level) + " " + text
+    }
+
+    private static func quote(_ blocks: [String]) -> String? {
+        let quoted = blocks.joined(separator: "\n\n")
+        guard !quoted.isEmpty else { return nil }
+        return quoted.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.isEmpty ? ">" : "> " + $0 }.joined(separator: "\n")
+    }
+
+    private static func codeBlock(_ element: Element) -> String? {
+        let code = (try? element.text(trimAndNormaliseWhitespace: false)) ?? ""
+        guard !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return "```\n" + code.trimmingCharacters(in: .newlines) + "\n```"
+    }
+
+    private static func codeSpan(_ element: Element) -> String {
+        let code = MoodleHTMLText.collapsedKeepingEdges((try? element.text()) ?? "")
+        return code.trimmingCharacters(in: .whitespaces).isEmpty || code.contains("`") ? MoodleHTMLText.escaped(code) : "`\(code)`"
     }
 
     private func paragraphs(ofTextIn element: Element) -> [String] {
@@ -214,8 +231,7 @@ private nonisolated struct MarkdownWriter {
         case "img":
             return image(element)
         case "code", "kbd", "samp", "tt":
-            let code = MoodleHTMLText.collapsedKeepingEdges((try? element.text()) ?? "")
-            return code.trimmingCharacters(in: .whitespaces).isEmpty || code.contains("`") ? MoodleHTMLText.escaped(code) : "`\(code)`"
+            return Self.codeSpan(element)
         default:
             break
         }
