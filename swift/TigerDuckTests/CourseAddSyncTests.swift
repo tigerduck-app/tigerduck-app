@@ -21,13 +21,15 @@ struct CourseAddSyncTests {
             .appendingPathComponent("CourseAddSyncTests-\(UUID().uuidString)", isDirectory: true)
     }
 
-    /// A device holding `userAdded` as its hand-added courses, with `hidden` hidden.
-    private static func makeCache(userAdded: [SDCourse], hidden: [String] = []) -> DataCache {
+    /// A device holding `portal` as 1151's fetched courses and `userAdded` as its hand-added ones,
+    /// with `hidden` hidden.
+    private static func makeCache(userAdded: [SDCourse], portal: [SDCourse] = [], hidden: [String] = []) -> DataCache {
         let root = freshDirectory()
         let cache = DataCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
+        cache.saveCourses(portal, semester: "1151")
         cache.saveUserAddedCourses(userAdded)
         cache.saveDeletedCourseNos(hidden)
         return cache
@@ -60,7 +62,12 @@ struct CourseAddSyncTests {
         let backend = Backend()
         backend.answer(503)
         backend.answer(200)
-        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
+        let portal = [
+            SDCourse(courseNo: "CS1001301", courseName: "Programming", moodleIdNumber: "1151CS1001301", semester: "1151"),
+            SDCourse(courseNo: "EE2005301", courseName: "Circuits", moodleIdNumber: "1151EE2005301", semester: "1151"),
+        ]
+        let cache = Self.makeCache(userAdded: [Self.art()], portal: portal, hidden: ["1151:EE2005301"])
+        let coordinator = Self.makeCoordinator(backend, cache: cache)
         let fetchedAt = Date()
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
@@ -81,7 +88,9 @@ struct CourseAddSyncTests {
         let body = try #require(SettingsAPIStub.bodyData(from: upload))
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["force_keys"] as? [String] == ["client:1151:GE1010001"])
-        #expect((json["courses"] as? [[String: Any]])?.compactMap { $0["course_no"] as? String } == ["GE1010001"])
+        // The term as shown here: a term whose roster had not reached the server gets all of it.
+        let sent = (json["courses"] as? [[String: Any]])?.compactMap { $0["course_no"] as? String }
+        #expect(sent?.sorted() == ["CS1001301", "GE1010001"])
         // A snapshot fetched before the upload landed may still lack the course; a later one has it.
         #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)

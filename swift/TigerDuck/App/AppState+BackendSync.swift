@@ -909,8 +909,8 @@ extension AppState {
 
     /// Uploads one term's course list: a course refresh, a class table edit, the reconcile.
     /// A list the server already took is skipped (`PushCoordinator.uploadCoursesIfChanged`);
-    /// `resend` sends it anyway, for a term the server has emptied. The courses added here, which
-    /// `forceKeys` names, go alone through the outbox instead, which sends each until it lands.
+    /// `resend` sends it anyway, for a term the server has emptied. A course added here, which
+    /// `forceKeys` names, goes through the outbox instead, which sends it until it lands.
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
         // A course added back here: its delete still queued would remove it again.
         if !forceKeys.isEmpty {
@@ -936,17 +936,21 @@ extension AppState {
         }
     }
 
-    /// The upload of course `courseNo` added here in `semester`, its key forced past a tombstone, as
-    /// `cache` holds it now, for the outbox to send: nil once the course is gone or hidden here.
+    /// The outbox's upload of course `courseNo` added here in `semester`, its key forced past a
+    /// tombstone: the term's courses `cache` shows now, or nil once that one is gone or hidden here.
+    /// The whole term goes, as a term whose roster had not reached the server would otherwise hold
+    /// this course alone, and the next full sync would hide the rest as deleted elsewhere.
     static func addedCourseUpload(
         semester: String, courseNo: String, cache: DataCache = .shared
     ) -> PushAPI.CourseUploadRequest? {
-        guard !CourseTombstone.isHidden(courseNo, semester: semester, in: Set(cache.loadDeletedCourseNos())),
-              let course = (cache.loadCourses(semester: semester) + cache.loadUserAddedCourses(semester: semester))
-                .first(where: { $0.courseNo == courseNo })
-        else { return nil }
+        let hidden = Set(cache.loadDeletedCourseNos())
+        let portal = cache.loadCourses(semester: semester)
+        let portalNos = Set(portal.map(\.courseNo))
+        let shown = (portal + cache.loadUserAddedCourses(semester: semester).filter { !portalNos.contains($0.courseNo) })
+            .filter { !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden) }
+        guard shown.contains(where: { $0.courseNo == courseNo }) else { return nil }
         return courseUploadRequest(
-            [course], semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)]
+            shown, semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)]
         )
     }
 
