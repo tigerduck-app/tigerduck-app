@@ -76,9 +76,12 @@ struct CourseAddSyncTests {
         // The sign-out warning counts it, and a snapshot that lists the term without it keeps it.
         #expect(await coordinator.holdsUnsentEdits())
         let adding = await coordinator.courseAddKeys(unlandedAt: fetchedAt)
-        #expect(AppState.keepsUnlistedCourse("GE1010001", semester: "1151", adding: adding))
-        #expect(!AppState.keepsUnlistedCourse("GE1010001", semester: "1142", adding: adding))
-        #expect(!AppState.keepsUnlistedCourse("CS1001301", semester: "1151", adding: adding))
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: ["CS1001301"], tombstoned: ["GE1010001"], fetched: ["CS1001301"],
+            handAdded: ["GE1010001"], hidden: [], adding: adding
+        )
+        #expect(unlisted.hide.isEmpty)
+        #expect(unlisted.drop.isEmpty)
 
         await coordinator.syncTick()
 
@@ -154,6 +157,34 @@ struct CourseAddSyncTests {
         }
         #expect(semester == "1151")
         #expect(courseNo == "GE1010001")
+    }
+
+    /// The other course keys name the same courses in another term, which an add here does not cover.
+    @Test("A course a filled term's snapshot does not list goes, by tombstone, by absence or as hand-added, unless its add from here had not landed",
+          arguments: [false, true])
+    func unlistedCourseStaysWhileItsAddIsOut(adding: Bool) {
+        let keys = adding
+            ? ["1151:GE1010001", "1151:EE2005301", "1151:MA1010003"]
+            : ["1142:GE1010001", "1142:EE2005301", "1142:MA1010003"]
+
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: ["CS1001301"], tombstoned: ["GE1010001"], fetched: ["CS1001301", "EE2005301"],
+            handAdded: ["MA1010003"], hidden: [], adding: Set(keys)
+        )
+
+        #expect(unlisted.hide == (adding ? [] : ["GE1010001", "EE2005301"]))
+        #expect(unlisted.drop == (adding ? [] : ["MA1010003"]))
+    }
+
+    @Test("An empty term's snapshot hides only by tombstone, and a course hidden already is not hidden again")
+    func emptyTermHidesOnlyByTombstone() {
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: [], tombstoned: ["GE1010001", "PE1010002"], fetched: ["CS1001301"],
+            handAdded: ["MA1010003"], hidden: ["1151:PE1010002"], adding: []
+        )
+
+        #expect(unlisted.hide == ["GE1010001"])
+        #expect(unlisted.drop.isEmpty)
     }
 
     /// A 5xx says nothing about most edits, but a whole-term upload can fail on its payload alone.
