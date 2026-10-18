@@ -9,7 +9,7 @@ nonisolated enum MoodleHTMLText {
     static func plainText(fromHTML html: String) -> String {
         guard let body = try? SwiftSoup.parseBodyFragment(html).body() else { return collapsed(html) }
         var text = ""
-        appendPlainText(of: body, to: &text)
+        appendPlainText(of: body, depth: 0, to: &text)
         return collapsed(text)
     }
 
@@ -18,7 +18,7 @@ nonisolated enum MoodleHTMLText {
     /// Links resolve against `baseURL`, and only http, https and mailto ones stay links.
     static func markdown(fromHTML html: String, baseURL: URL = AppConstants.moodleBaseURL) -> String {
         guard let body = try? SwiftSoup.parseBodyFragment(html).body() else { return escaped(collapsed(html)) }
-        return MarkdownWriter(baseURL: baseURL).blocks(in: body).joined(separator: "\n\n")
+        return MarkdownWriter(baseURL: baseURL).blocks(in: body, depth: 0).joined(separator: "\n\n")
     }
 
     /// `html` with each file Moodle keeps in the text's own area, written `@@PLUGINFILE@@/<path>`,
@@ -48,8 +48,14 @@ nonisolated enum MoodleHTMLText {
 
     // MARK: Plain text
 
-    private static func appendPlainText(of node: Node, to text: inout String) {
-        for child in node.getChildNodes() {
+    /// Deeper than `AppConstants.maximumHTMLDepth`, an element's text is taken whole, which keeps
+    /// the recursion far inside a thread's stack however deep the HTML nests.
+    private static func appendPlainText(of element: Element, depth: Int, to text: inout String) {
+        guard depth <= AppConstants.maximumHTMLDepth else {
+            text += rawText(of: element)
+            return
+        }
+        for child in element.getChildNodes() {
             if let textNode = child as? TextNode {
                 text += textNode.getWholeText()
             } else if let element = child as? Element {
@@ -58,10 +64,14 @@ nonisolated enum MoodleHTMLText {
                 // A block or a break ends a word even where the HTML has no space around it.
                 let separates = tag == "br" || MarkdownWriter.separatesText(tag)
                 if separates { text += " " }
-                appendPlainText(of: element, to: &text)
+                appendPlainText(of: element, depth: depth + 1, to: &text)
                 if separates { text += " " }
             }
         }
+    }
+
+    fileprivate static func rawText(of element: Element) -> String {
+        (try? element.text(trimAndNormaliseWhitespace: false)) ?? ""
     }
 
     private static func collapsed(_ text: String) -> String {
@@ -119,7 +129,9 @@ private nonisolated struct MarkdownWriter {
     ]
 
     /// The Markdown blocks of `element`'s children; inline runs between blocks become paragraphs.
-    func blocks(in element: Element) -> [String] {
+    /// Deeper than `AppConstants.maximumHTMLDepth`, the element is one paragraph of its text.
+    func blocks(in element: Element, depth: Int) -> [String] {
+        guard depth <= AppConstants.maximumHTMLDepth else { return paragraphs(ofTextIn: element) }
         var result: [String] = []
         var paragraph = ""
         func endParagraph() {
@@ -137,18 +149,18 @@ private nonisolated struct MarkdownWriter {
             if MoodleHTMLText.skippedTags.contains(tag) { continue }
             if Self.blockTags.contains(tag) {
                 endParagraph()
-                result += blocks(in: child)
+                result += blocks(in: child, depth: depth + 1)
             } else if let level = Self.headingLevel(tag) {
                 endParagraph()
-                let text = inline(of: child).trimmingCharacters(in: .whitespacesAndNewlines)
+                let text = inline(of: child, depth: depth + 1).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !text.isEmpty { result.append(String(repeating: "#", count: level) + " " + text) }
             } else if tag == "ul" || tag == "ol" {
                 endParagraph()
-                let list = self.list(child, ordered: tag == "ol")
+                let list = self.list(child, ordered: tag == "ol", depth: depth + 1)
                 if !list.isEmpty { result.append(list) }
             } else if tag == "blockquote" {
                 endParagraph()
-                let quoted = blocks(in: child).joined(separator: "\n\n")
+                let quoted = blocks(in: child, depth: depth + 1).joined(separator: "\n\n")
                 if !quoted.isEmpty {
                     result.append(quoted.split(separator: "\n", omittingEmptySubsequences: false)
                         .map { $0.isEmpty ? ">" : "> " + $0 }.joined(separator: "\n"))
@@ -165,11 +177,18 @@ private nonisolated struct MarkdownWriter {
             } else if tag == "br" {
                 paragraph += "  \n"
             } else {
-                paragraph += inline(of: child)
+                paragraph += inline(of: child, depth: depth + 1)
             }
         }
         endParagraph()
         return result
+    }
+
+    private func paragraphs(ofTextIn element: Element) -> [String] {
+        var paragraph = ""
+        appendText(MoodleHTMLText.rawText(of: element), to: &paragraph)
+        let text = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? [] : [text]
     }
 
     /// Text in a paragraph: collapsed, escaped, and escaped again where it opens a line.
@@ -185,7 +204,9 @@ private nonisolated struct MarkdownWriter {
         }
     }
 
-    private func inline(of element: Element) -> String {
+    /// Deeper than `AppConstants.maximumHTMLDepth`, the element is its text.
+    private func inline(of element: Element, depth: Int) -> String {
+        guard depth <= AppConstants.maximumHTMLDepth else { return Self.text(of: element) }
         let tag = element.tagName().lowercased()
         switch tag {
         case "br":
@@ -203,7 +224,7 @@ private nonisolated struct MarkdownWriter {
             if let textNode = child as? TextNode {
                 content += MoodleHTMLText.escaped(MoodleHTMLText.collapsedKeepingEdges(textNode.getWholeText()))
             } else if let child = child as? Element, !MoodleHTMLText.skippedTags.contains(child.tagName().lowercased()) {
-                content += inline(of: child)
+                content += inline(of: child, depth: depth + 1)
             }
         }
         switch tag {
@@ -216,6 +237,10 @@ private nonisolated struct MarkdownWriter {
         default:
             return content
         }
+    }
+
+    private static func text(of element: Element) -> String {
+        MoodleHTMLText.escaped(MoodleHTMLText.collapsedKeepingEdges(MoodleHTMLText.rawText(of: element)))
     }
 
     /// `**text**` with the spaces at its edges moved outside, which emphasis needs to open and close.
@@ -242,13 +267,13 @@ private nonisolated struct MarkdownWriter {
         return "[\(MoodleHTMLText.escaped(name.isEmpty ? url.absoluteString : name))](<\(url.absoluteString)>)"
     }
 
-    private func list(_ element: Element, ordered: Bool) -> String {
+    private func list(_ element: Element, ordered: Bool, depth: Int) -> String {
         var lines: [String] = []
         // CommonMark numbers a list with at most nine digits, and a bound keeps `+= 1` from overflowing.
         var number = min(max(Int((try? element.attr("start")) ?? "") ?? 1, 0), 999_999_000)
         for item in element.children().array() where item.tagName().lowercased() == "li" {
             let marker = ordered ? "\(number). " : "- "
-            let content = blocks(in: item).joined(separator: "\n")
+            let content = blocks(in: item, depth: depth + 1).joined(separator: "\n")
             let pad = String(repeating: " ", count: marker.count)
             for (index, line) in content.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
                 if index == 0 {

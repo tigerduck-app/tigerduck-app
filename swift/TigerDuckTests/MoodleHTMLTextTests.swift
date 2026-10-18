@@ -79,4 +79,51 @@ struct MoodleHTMLTextTests {
         let html = "<p>Exam&nbsp;on <b>11/4</b>.</p><ul><li>Room TR-412</li><li>Bring&nbsp;&nbsp;ID</li></ul><script>x()</script>"
         #expect(MoodleHTMLText.plainText(fromHTML: html) == "Exam on 11/4. Room TR-412 Bring ID")
     }
+
+    /// A writer that recursed once per level would overflow the stack thousands of levels down
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/705).
+    @Test("HTML nested far deeper than the cap keeps its text",
+          arguments: [("<div>", "</div>"), ("<span>", "</span>"), ("<blockquote>", "</blockquote>"), ("<ul><li>", "</li></ul>")])
+    func deepNesting(open: String, close: String) {
+        let html = String(repeating: open, count: 10_000) + "deep" + String(repeating: close, count: 10_000)
+        #expect(MoodleHTMLText.markdown(fromHTML: html).hasSuffix("deep"))
+        #expect(MoodleHTMLText.plainText(fromHTML: html) == "deep")
+    }
+
+    /// Quotes, code, links and nested inline runs come out as they did before the depth cap.
+    @Test("ordinary nesting is written as before")
+    func ordinaryNesting() {
+        let html = "<h4>Week 3</h4><blockquote><p>Quoted <em>note</em></p><ul><li>one</li>"
+            + "<li>two <a href=\"/mod/forum/view.php?id=7\">forum</a></li></ul></blockquote>"
+            + "<pre>  let x = 1\n  print(x)</pre><p>Run <code>make test</code> before <strong>Friday</strong>.</p>"
+            + "<div><div><p>Nested <span><b>bold <i>both</i></b></span> text</p></div></div>"
+        #expect(MoodleHTMLText.markdown(fromHTML: html) == """
+        #### Week 3
+
+        > Quoted *note*
+        >
+        > - one
+        > - two [forum](<https://moodle2.ntust.edu.tw/mod/forum/view.php?id=7>)
+
+        ```
+          let x = 1
+          print(x)
+        ```
+
+        Run `make test` before **Friday**.
+
+        Nested **bold *both*** text
+        """)
+        #expect(MoodleHTMLText.plainText(fromHTML: html)
+            == "Week 3 Quoted note one two forum let x = 1 print(x) Run make test before Friday. Nested bold both text")
+    }
+
+    /// The bold run sits at the deepest depth written, then one deeper, where it is plain text.
+    @Test("an element deeper than the cap is written as its plain text")
+    func pastTheCap() {
+        for (wrappers, written) in [(AppConstants.maximumHTMLDepth - 1, "**x** y"), (AppConstants.maximumHTMLDepth, "x y")] {
+            let html = String(repeating: "<div>", count: wrappers) + "<b>x</b> y" + String(repeating: "</div>", count: wrappers)
+            #expect(MoodleHTMLText.markdown(fromHTML: html) == written, "\(wrappers) wrappers")
+        }
+    }
 }
