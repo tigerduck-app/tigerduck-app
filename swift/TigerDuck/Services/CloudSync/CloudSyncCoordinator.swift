@@ -555,6 +555,8 @@ final class CloudSyncCoordinator {
                 try await pushCoordinator.deleteCourse(courseKey: courseKey)
 
             case .courseAdd(let semester, let courseNo):
+                // The lock can land while an earlier op of the pass is out; the add then waits for a later drain.
+                guard isProtectedDataAvailable() else { throw CancellationError() }
                 guard let request = addedCourseUpload(semester, courseNo) else { return }
                 // In the term's upload chain, so an edit or a refresh queued after it lands after it.
                 guard try await pushCoordinator.uploadCoursesIfChanged(

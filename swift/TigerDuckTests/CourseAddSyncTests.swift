@@ -146,6 +146,22 @@ struct CourseAddSyncTests {
         #expect(backend.uploads.count == 1)
     }
 
+    /// The drain samples the lock once per pass, and the lock can land before the add's turn comes.
+    @Test("A course add waits when the lock lands during the drain's pass")
+    func addWaitsWhenTheLockLandsMidPass() async {
+        let backend = Backend()
+        let unlocked = Switch()
+        let coordinator = Self.makeCoordinator(
+            backend, cache: Self.makeCache(userAdded: [Self.art()]),
+            isProtectedDataAvailable: { defer { unlocked.isOn = false }; return unlocked.isOn }
+        )
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        #expect(backend.uploads.isEmpty)
+        #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast) == ["1151:GE1010001"])
+    }
+
     /// The course is saved here before its add reaches the outbox, which a full sync can read meanwhile.
     @Test("An add on its way into the outbox already counts for a full sync and for the sign-out warning")
     func addOnItsWayInCounts() async {
