@@ -34,16 +34,22 @@ extension Date {
         return f
     }()
 
+    /// `HH:mm` in Taipei time, on a 24-hour clock in every locale as the class times are; a
+    /// 12-hour locale's hour cycle without its AM or PM would show 20:03 as 08:03.
     var timeString: String {
-        var style = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
-        style.timeZone = AppConstants.taipeiTimeZone
-        return formatted(style)
+        formatted(Self.timeStyle)
     }
+
+    static let timeStyle = Date.VerbatimFormatStyle(
+        format: "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits)",
+        timeZone: AppConstants.taipeiTimeZone,
+        calendar: AppConstants.taipeiCalendar
+    )
 
     /// A Moodle list's time stamp: `HH:mm` today, else ``moodleDateString(now:)``. Zero-padded,
     /// so the stamps of a list line up.
     func moodleListDateString(now: Date = AppClock.now()) -> String {
-        if isSameDay(as: now) { return Self.moodleTimeFormatter.string(from: self) }
+        if isSameDay(as: now) { return timeString }
         return moodleDateString(now: now)
     }
 
@@ -66,7 +72,6 @@ extension Date {
         return (thisYear ? Self.moodleMonthDayTimeFormatter : Self.moodleDateTimeFormatter).string(from: self)
     }
 
-    private static let moodleTimeFormatter = posixFormatter("HH:mm")
     private static let moodleMonthDayFormatter = posixFormatter("MM/dd")
     private static let moodleMonthDayTimeFormatter = posixFormatter("MM/dd HH:mm")
     private static let moodleDateTimeFormatter = posixFormatter("yyyy/MM/dd HH:mm")

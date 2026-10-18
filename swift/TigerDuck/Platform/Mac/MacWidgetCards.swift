@@ -86,7 +86,7 @@ private struct TodayScheduleWidgetCard: View {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(isLive ? Color.white.opacity(0.9) : color)
                 .frame(width: 3, height: 22)
-            Text(slot.start, format: .dateTime.hour().minute())
+            Text(slot.start.timeString)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(secondary)
                 .frame(width: 48, alignment: .leading)
