@@ -88,7 +88,10 @@ final class AppState {
             identity: identity,
             authTokenManager: atm
         )
-        self.cloudSyncCoordinator = CloudSyncCoordinator(pushCoordinator: self.pushCoordinator)
+        self.cloudSyncCoordinator = CloudSyncCoordinator(
+            pushCoordinator: self.pushCoordinator,
+            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1) }
+        )
         CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
 
         librarySignInObserver = NotificationCenter.default.addObserver(
