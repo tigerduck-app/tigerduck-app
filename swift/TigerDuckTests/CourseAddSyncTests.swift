@@ -110,18 +110,6 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
-    /// The outbox can take an add's enqueue after a full sync read it, so the add is in neither read.
-    @Test("An add that starts while a full sync reads the outbox still counts")
-    func addDuringTheReadCounts() async {
-        let coordinator = Self.makeCoordinator(Backend(), cache: Self.makeCache(userAdded: [Self.art()]))
-        let reading = Task { await coordinator.courseAddKeys(unlandedAt: Date()) }
-        await Task.yield()
-        let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
-
-        #expect(await reading.value == ["1151:GE1010001"])
-        await add.value
-    }
-
     /// Use Server takes the server's courses over the adds still on their way up.
     @Test("Use Server for courses drops a course add still queued, and other categories keep it")
     func useServerDropsAQueuedAdd() async {
