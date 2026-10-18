@@ -322,7 +322,7 @@ struct MailReadableHTMLTests {
 
     /// The font sits at the deepest depth read, then one deeper.
     @Test func coloursDeeperThanTheCapStayAsSent() {
-        for (wrappers, fixed) in [(MailReadableHTML.maximumDepth - 1, true), (MailReadableHTML.maximumDepth, false)] {
+        for (wrappers, fixed) in [(AppConstants.maximumHTMLDepth - 1, true), (AppConstants.maximumHTMLDepth, false)] {
             let html = String(repeating: "<div>", count: wrappers) + ##"<font color="#333333">x</font>"## + String(repeating: "</div>", count: wrappers)
             #expect(MailReadableHTML(html).html(on: .app).contains(##"color="#959595""##) == fixed, "\(wrappers) wrappers")
         }

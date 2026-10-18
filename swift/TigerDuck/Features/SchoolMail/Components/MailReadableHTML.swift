@@ -13,9 +13,6 @@ import os
 /// as `#rrggbb`.
 nonisolated struct MailReadableHTML {
     static let minimumContrast = 7.0
-    /// Far deeper than mail nests, and short of the depth where WebKit stops nesting elements, so
-    /// the tree read here is the one the page draws. Deeper, colours stay as sent.
-    static let maximumDepth = 256
     /// Distinct colours a page searches a fix for. A search costs a tenth of a millisecond or so,
     /// and a mail can carry thousands of colours; past these, the better of white and black.
     static let maximumSearches = 2_000
@@ -54,7 +51,7 @@ nonisolated struct MailReadableHTML {
                 let style = Style(try visit.element.attr("style"))
                 if try Self.setsColor(visit.element, style: style) { setsColors = true }
                 var (backdrop, parent) = (visit.backdrop, visit.parent)
-                if visit.depth <= Self.maximumDepth {
+                if visit.depth <= AppConstants.maximumHTMLDepth {
                     let layer = try Self.layer(of: visit.element, style: style)
                     backdrop = visit.backdrop.adding(layer)
                     if let node = try Self.node(visit.element, style: style, layer: layer, backdrop: backdrop, parent: parent) {

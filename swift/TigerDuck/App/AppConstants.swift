@@ -121,6 +121,12 @@ nonisolated enum AppConstants {
     /// the full visible window (current + 3 prior) without scanning archives.
     static let cachedSemesterRelabelDepth = 4
 
+    /// How deep the app follows HTML nesting: far deeper than mail or Moodle nests, and short of
+    /// the depth where WebKit stops nesting elements, so the tree `MailReadableHTML` reads is the
+    /// one the page draws. Deeper, it leaves colours as sent and a text writer takes an element's
+    /// plain text, which keeps a writer's recursion well inside a thread's stack.
+    static let maximumHTMLDepth = 256
+
     /// Slack added to a scenario boundary deadline before re-resolving the
     /// Live Activity, so the timer fires after the boundary instant rather
     /// than racing against it. Keeps `time >= slot.start` checks stable.
