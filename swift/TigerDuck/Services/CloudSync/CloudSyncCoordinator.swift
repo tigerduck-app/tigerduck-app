@@ -489,11 +489,14 @@ final class CloudSyncCoordinator {
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> {
         // On their way in first: an add that reaches the outbox meanwhile is in the snapshot.
         var keys = Set(courseAddsEnqueuing.values)
-        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
+        for entry in await outbox.everyEntry() {
             if case .courseAdd(let semester, let courseNo, _) = entry.op {
                 keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
             }
         }
+        // And again: an add the outbox takes after that read resumes on the main actor after this
+        // does, so it is still on its way in here.
+        keys.formUnion(courseAddsEnqueuing.values)
         return keys.union(courseAddsLanded.filter { $0.value >= date }.keys)
     }
 

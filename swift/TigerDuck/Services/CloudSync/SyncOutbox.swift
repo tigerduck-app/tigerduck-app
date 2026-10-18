@@ -229,6 +229,12 @@ actor SyncOutbox {
         return parked
     }
 
+    /// The queued and the parked entries, read in one step.
+    func everyEntry() -> [OutboxEntry] {
+        loadIfNeeded()
+        return entries + parked
+    }
+
     func clearAll() {
         entries = []
         parked = []
