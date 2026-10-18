@@ -1,0 +1,55 @@
+name: Licences for Dependabot
+
+# Dependabot bumps Package.resolved but cannot run the generator, so every
+# Swift update failed "Licences up to date" until someone regenerated the list
+# by hand. This regenerates it on the pull request branch and commits it.
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          # name-abbr's LICENSE is listed from the submodule checkout.
+          submodules: true
+          # Resolving packages evaluates their manifests; keep the write
+          # token out of .git/config so none of them can read it.
+          persist-credentials: false
+
+      - name: Regenerate the licence list
+        run: |
+          python3 tools/generate_licenses.py
+          # Resolving can rewrite pins; only the list is this job's to commit.
+          git checkout -- swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          python3 tools/generate_licenses.py --check
+
+      - name: Commit the list to the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          list=swift/TigerDuck/licenses.json
+          if git diff --quiet -- "$list"; then exit 0; fi
+          # createCommitOnBranch commits as GitHub, so the commit is signed.
+          # shortcut: a commit made with this token starts no workflow runs, so
+          # the new head shows no checks; its only change is the list checked
+          # above. Use an app token here if required checks are ever enforced.
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg branch "$BRANCH" \
+            --arg head "$(git rev-parse HEAD)" --arg path "$list" --rawfile raw "$list" \
+            '{query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                expectedHeadOid: $head,
+                message: {headline: "chore(licenses): regenerate the licence list"},
+                fileChanges: {additions: [{path: $path, contents: ($raw | @base64)}]}}}}' \
+            | gh api graphql --input -

@@ -117,6 +117,7 @@ extension AppState {
             // are not cross-device conflicts.
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
+            let courseAdds = await cloudSyncCoordinator.courseAddKeys(unlandedAt: fetchedAt)
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
@@ -251,7 +252,8 @@ extension AppState {
 
             if taken.contains("courses") {
                 changed = reconcileCourses(
-                    serverRows: coursesArray, tombstones: tombstoneArray, deleting: courseDeletes, fetchedAt: fetchedAt
+                    serverRows: coursesArray, tombstones: tombstoneArray, deleting: courseDeletes,
+                    adding: courseAdds, fetchedAt: fetchedAt
                 ) || changed
             } else if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
@@ -907,13 +909,21 @@ extension AppState {
 
     /// Uploads one term's course list: a course refresh, a class table edit, the reconcile.
     /// A list the server already took is skipped (`PushCoordinator.uploadCoursesIfChanged`);
-    /// `resend` sends it anyway, for a term the server has emptied.
+    /// `resend` sends it anyway, for a term the server has emptied. A course added here, which
+    /// `forceKeys` names, goes through the outbox instead, which sends it until it lands.
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
         // A course added back here: its delete still queued would remove it again.
         if !forceKeys.isEmpty {
             Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys)) }
         }
         guard CourseUploadPolicy.uploadsCourses else { return }
+        guard forceKeys.isEmpty else {
+            let prefix = CourseTombstone.serverKey(semester: semester, courseNo: "")
+            for key in forceKeys where key.hasPrefix(prefix) {
+                cloudSyncCoordinator.addCourse(semester: semester, courseNo: String(key.dropFirst(prefix.count)))
+            }
+            return
+        }
         let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         let generation = authService.loginGeneration
         let coordinator = pushCoordinator
@@ -924,6 +934,23 @@ extension AppState {
                 )
             }
         }
+    }
+
+    /// The outbox's upload of course `courseNo` added here in `semester`, its key forced past a
+    /// tombstone: the term's courses as the class table shows them now (`CanonicalCourseProvider`),
+    /// or nil once that one is gone or hidden here. The whole term goes, as a term whose roster had
+    /// not reached the server would otherwise hold this course alone, and the next full sync would
+    /// hide the rest as deleted elsewhere.
+    static func addedCourseUpload(
+        semester: String, courseNo: String, cache: DataCache = .shared,
+        colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
+    ) -> PushAPI.CourseUploadRequest? {
+        let shown = CanonicalCourseProvider(cache: cache).currentCourses(semester: semester)
+        guard shown.contains(where: { $0.courseNo == courseNo }) else { return nil }
+        return courseUploadRequest(
+            shown, semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)],
+            colors: colors
+        )
     }
 
     /// Uploads an assignment round's list, which the backend's reminders are built from.

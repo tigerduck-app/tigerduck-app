@@ -54,6 +54,17 @@ final class CloudSyncCoordinator {
     /// `sendsCourseIgnores`, read before each course's ignore setting goes out. A setting queued
     /// while it is false waits.
     @ObservationIgnored private let syncsCourseIgnores: @Sendable () -> Bool
+    /// The upload of a course added here, as the device holds it when its add goes, or nil once
+    /// it is gone or hidden, which drops the add unsent (`AppState.addedCourseUpload`).
+    @ObservationIgnored private let addedCourseUpload: @MainActor (_ semester: String, _ courseNo: String)
+        -> PushAPI.CourseUploadRequest?
+    /// Whether this device may upload its course list (`CourseUploadPolicy.uploadsCourses`), read
+    /// right before a course add goes: one that comes due with it false is dropped unsent.
+    @ObservationIgnored private let uploadsCourses: @MainActor () -> Bool
+    /// Behind the lock screen the cached course list reads as empty, so a course add would look gone.
+    @ObservationIgnored private let isProtectedDataAvailable: @MainActor () -> Bool
+    /// `AuthService.loginGeneration`, which a course add compares before it goes.
+    @ObservationIgnored private let loginGeneration: @MainActor () -> Int
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -70,6 +81,10 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private var courseOverrideEdits = 0
     @ObservationIgnored private var lastColorEdit: [String: Int] = [:]
     @ObservationIgnored private var lastNameEdit: [String: Int] = [:]
+    /// Course adds on their way into the outbox, by `CourseTombstone` key.
+    @ObservationIgnored private var courseAddsEnqueuing: [UUID: String] = [:]
+    /// When each course added here last landed, by `CourseTombstone` key.
+    @ObservationIgnored private var courseAddsLanded: [String: Date] = [:]
 
     // Observer plumbing
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
@@ -93,12 +108,27 @@ final class CloudSyncCoordinator {
                 courses: Defaults[.syncCourses],
                 pendingChecks: Defaults[.pendingConflictCategories]
             )
-        }
+        },
+        addedCourseUpload: @escaping @MainActor (_ semester: String, _ courseNo: String)
+            -> PushAPI.CourseUploadRequest? = { _, _ in nil },
+        uploadsCourses: @escaping @MainActor () -> Bool = { false },
+        isProtectedDataAvailable: @escaping @MainActor () -> Bool = {
+            #if canImport(UIKit)
+            UIApplication.shared.isProtectedDataAvailable
+            #else
+            true
+            #endif
+        },
+        loginGeneration: @escaping @MainActor () -> Int = { 0 }
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
+        self.isProtectedDataAvailable = isProtectedDataAvailable
+        self.loginGeneration = loginGeneration
         self.syncsAssignmentMarks = syncsAssignmentMarks
         self.syncsCourseIgnores = syncsCourseIgnores
+        self.addedCourseUpload = addedCourseUpload
+        self.uploadsCourses = uploadsCourses
 
         if isEnabled {
             state = .active
@@ -232,11 +262,7 @@ final class CloudSyncCoordinator {
     }
 
     private func drainOnce() async {
-        #if canImport(UIKit)
-        let protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable
-        #else
-        let protectedDataAvailable = true
-        #endif
+        let protectedDataAvailable = isProtectedDataAvailable()
         await outbox.loadOrGiveUp(protectedDataAvailable: protectedDataAvailable)
         guard await outbox.pendingCount() > 0 else { return }
 
@@ -246,6 +272,7 @@ final class CloudSyncCoordinator {
             switch op {
             case .assignmentOverride: return !syncsMarks()
             case .courseIgnore: return !syncsIgnores()
+            case .courseAdd: return !protectedDataAvailable
             case .courseOverride, .courseDelete: return false
             }
         }) { [weak self] op in
@@ -331,7 +358,7 @@ final class CloudSyncCoordinator {
     /// on their way in are read first and the outbox in one call, so an edit that reaches the outbox
     /// meanwhile is seen there.
     func holdsUnsentEdits() async -> Bool {
-        if !courseOverridesEnqueuing.isEmpty { return true }
+        if !courseOverridesEnqueuing.isEmpty || !courseAddsEnqueuing.isEmpty { return true }
         return await outbox.holdsEntries()
     }
 
@@ -366,9 +393,9 @@ final class CloudSyncCoordinator {
     }
 
     /// For Use Server in the re-enable dialog, which takes the server's data of `categories` over
-    /// the edits of them still on their way up: the marks for "assignments", with the course
-    /// settings when its check compared them (`courseIgnores`), and the colours and the names for
-    /// "course_colors" and "course_names".
+    /// the edits of them still on their way up: the course adds for "courses", the marks for
+    /// "assignments", with the course settings when its check compared them (`courseIgnores`), and
+    /// the colours and the names for "course_colors" and "course_names".
     func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
         await outbox.discard { op in
             switch op {
@@ -379,6 +406,8 @@ final class CloudSyncCoordinator {
             case .courseOverride(_, _, let customName, let colorHex, _, _):
                 return (colorHex != nil && categories.contains("course_colors"))
                     || (customName != nil && categories.contains("course_names"))
+            case .courseAdd:
+                return categories.contains("courses")
             case .courseDelete:
                 return false
             }
@@ -451,6 +480,34 @@ final class CloudSyncCoordinator {
         return keys
     }
 
+    /// Queues the upload of a course added here and sends it; the outbox keeps it until it lands.
+    /// Queued in every state, as `AppState` sends an add only with sync on: one made while this is
+    /// still enabling goes once it is active. The task ends after the outbox has had a try at it.
+    @discardableResult
+    func addCourse(semester: String, courseNo: String) -> Task<Void, Never> {
+        let id = UUID()
+        courseAddsEnqueuing[id] = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        return Task {
+            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: Date()))
+            courseAddsEnqueuing[id] = nil
+            await syncTick()
+        }
+    }
+
+    /// `CourseTombstone` keys of the courses added here whose upload had not landed by `date`: on
+    /// their way into the outbox, queued or parked in it, or landed since. A snapshot fetched at
+    /// `date` can predate each, so a full sync keeps them.
+    func courseAddKeys(unlandedAt date: Date) async -> Set<String> {
+        // On their way in first: an add that reaches the outbox meanwhile is in the snapshot.
+        var keys = Set(courseAddsEnqueuing.values)
+        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
+            if case .courseAdd(let semester, let courseNo, _) = entry.op {
+                keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
+            }
+        }
+        return keys.union(courseAddsLanded.filter { $0.value >= date }.keys)
+    }
+
     /// Drops the course deletes still queued: every one, or `semester`'s, for a reset, which
     /// deletes the courses itself and shows them again here, and those of the courses `courseKeys`
     /// names, which were added back here.
@@ -500,6 +557,19 @@ final class CloudSyncCoordinator {
 
             case .courseDelete(let courseKey):
                 try await pushCoordinator.deleteCourse(courseKey: courseKey)
+
+            case .courseAdd(let semester, let courseNo):
+                // The lock can land while an earlier op of the pass is out; the add then waits for a later drain.
+                guard isProtectedDataAvailable() else { throw CancellationError() }
+                let generation = loginGeneration()
+                guard let request = addedCourseUpload(semester, courseNo) else { return }
+                // In the term's upload chain, so an edit or a refresh queued after it lands after it. A
+                // sign-out while it waits there drops it: the list is the departing account's.
+                guard try await pushCoordinator.uploadCoursesIfChanged(
+                    request, semester: semester,
+                    isCurrent: { [uploadsCourses, loginGeneration] in uploadsCourses() && loginGeneration() == generation }
+                ) else { return }
+                courseAddsLanded[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
             }
         } catch {
             if isUnauthorized(error) {

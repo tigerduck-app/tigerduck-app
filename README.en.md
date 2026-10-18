@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.6.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.6.1)
+[![Version](https://img.shields.io/badge/Version-v2.6.2-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.6.2)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -115,6 +115,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| `v2.6.2` | 2026-10-18 | Times on a 24-hour clock everywhere, courses added offline upload once back online, a fix for a crash on deeply nested text |
 | `v2.6.1` | 2026-10-18 | Redesigned assignment page, departments and picture previews in course members, a note when a Moodle refresh fails, a sign-out warning for unsynced data, a confirmation and sign-out before the API endpoint changes, fixes for images in Moodle text and more |
 | `v2.6.0` | 2026-10-17 | In-app assignment page and course assignment list, readable mail in dark mode, sync conflict answers and background sync pushes, background launches before the first unlock after a restart, fixes |
 | `v2.5.3` | 2026-10-16 | Fixes the keyboard closing in a course's member search |

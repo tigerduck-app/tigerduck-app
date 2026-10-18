@@ -250,7 +250,7 @@ nonisolated enum MailHTMLSanitizer {
     static func plainText(fromHTML html: String) -> String {
         guard let document = try? SwiftSoup.parse(html, ""), let body = document.body() else { return html }
         var output = ""
-        appendText(of: body, to: &output)
+        appendText(of: body, depth: 0, to: &output)
         return output
             .replacingOccurrences(of: "[ \\t]+\\n", with: "\n", options: .regularExpression)
             .replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
@@ -262,8 +262,14 @@ nonisolated enum MailHTMLSanitizer {
         "ul", "ol", "dl", "dt", "dd", "hr", "center",
     ]
 
-    private static func appendText(of node: Node, to output: inout String) {
-        for child in node.getChildNodes() {
+    /// Deeper than `AppConstants.maximumHTMLDepth`, an element's text is taken whole, which keeps
+    /// the recursion far inside the stack of the detached task that runs this.
+    private static func appendText(of element: Element, depth: Int, to output: inout String) {
+        guard depth <= AppConstants.maximumHTMLDepth else {
+            output += (try? element.text()) ?? ""
+            return
+        }
+        for child in element.getChildNodes() {
             if let text = child as? TextNode {
                 output += text.text()
             } else if let element = child as? Element {
@@ -274,7 +280,7 @@ nonisolated enum MailHTMLSanitizer {
                 }
                 let isBlock = blockTags.contains(tag)
                 if isBlock, !output.isEmpty, !output.hasSuffix("\n") { output += "\n" }
-                appendText(of: element, to: &output)
+                appendText(of: element, depth: depth + 1, to: &output)
                 if isBlock, !output.hasSuffix("\n") { output += "\n" }
             }
         }

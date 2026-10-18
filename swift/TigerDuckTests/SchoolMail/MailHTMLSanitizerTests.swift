@@ -232,6 +232,21 @@ struct MailHTMLSanitizerTests {
         #expect(MailHTMLSanitizer.plainText(fromHTML: "<p>a</p><p>b<br>c</p><ul><li>d</li><li>e</li></ul>") == "a\nb\nc\nd\ne")
     }
 
+    /// An HTML-only mail's plain text, written on a detached task, whose stack a writer that
+    /// recursed once per level would overflow (https://github.com/tigerduck-app/tigerduck-app/issues/705).
+    @Test func plainTextOfHTMLNestedFarDeeperThanTheCapKeepsItsText() {
+        let html = String(repeating: "<div>", count: 10_000) + "deep" + String(repeating: "</div>", count: 10_000)
+        #expect(MailHTMLSanitizer.plainText(fromHTML: html) == "deep")
+    }
+
+    /// The paragraph sits at the deepest depth written, then one deeper, where its text runs on.
+    @Test func plainTextPastTheCapIsTheElementsText() {
+        for (wrappers, written) in [(AppConstants.maximumHTMLDepth - 1, "a\nb"), (AppConstants.maximumHTMLDepth, "a b")] {
+            let html = String(repeating: "<div>", count: wrappers) + "<p>a<br>b</p>" + String(repeating: "</div>", count: wrappers)
+            #expect(MailHTMLSanitizer.plainText(fromHTML: html) == written, "\(wrappers) wrappers")
+        }
+    }
+
     @Test func cssFilterKeepsOnlyTheAllowlist() {
         #expect(MailCSSFilter.filter("color: red; margin-left: 4px; position: absolute") == "color: red; margin-left: 4px")
         #expect(MailCSSFilter.filter("background-image: url(x)") == nil)

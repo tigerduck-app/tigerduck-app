@@ -382,5 +382,23 @@
         { "symbol": "wrench.and.screwdriver", "title": "Improvements and fixes", "body": "A note when a Moodle refresh fails, a reminder about unsynced data when you sign out, and a fix for images in Moodle text." }
       ]
     }
+  },
+  "2.6.2": {
+    "zh-TW": {
+      "title": "2.6.2 更新內容",
+      "items": [
+        { "symbol": "clock", "title": "時間顯示", "body": "時間一律以 24 小時制顯示。" },
+        { "symbol": "plus.rectangle.on.rectangle", "title": "手動加入的課程", "body": "沒有網路時加入的課程，會在連線後自動上傳，同步時不再遺失。" },
+        { "symbol": "wrench.and.screwdriver", "title": "改進與修正", "body": "修正巢狀過深的 Moodle 內文與信件可能造成閃退。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.6.2",
+      "items": [
+        { "symbol": "clock", "title": "Time display", "body": "Times now always show on a 24-hour clock." },
+        { "symbol": "plus.rectangle.on.rectangle", "title": "Added courses", "body": "A course added while offline uploads once you are back online, and a sync no longer drops it." },
+        { "symbol": "wrench.and.screwdriver", "title": "Improvements and fixes", "body": "A fix for a crash on deeply nested Moodle text and mail." }
+      ]
+    }
   }
 }
