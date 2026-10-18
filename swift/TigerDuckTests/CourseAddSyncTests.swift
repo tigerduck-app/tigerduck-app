@@ -156,6 +156,25 @@ struct CourseAddSyncTests {
         #expect(courseNo == "GE1010001")
     }
 
+    /// A 5xx says nothing about most edits, but a whole-term upload can fail on its payload alone.
+    @Test("An add the server keeps failing with 5xx spends its attempts and parks, so the ops behind it still go")
+    func failingAddDoesNotHoldTheQueue() async {
+        let backend = Backend()
+        for _ in 0..<SyncOutbox.maxAttempts { backend.answer(503) }
+        let deleteURL = backend.baseURL.appendingPathComponent("sync/courses/client:1151:CS1001301")
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"deleted": 1}"#.utf8)), for: deleteURL)
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+
+        #expect(SettingsAPIStub.requests(for: deleteURL).count == 1)
+        for _ in 2..<SyncOutbox.maxAttempts { await coordinator.syncTick() }
+        #expect(backend.uploads.count == SyncOutbox.maxAttempts)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+        #expect(await coordinator.courseAddKeys(unlandedAt: Date()) == ["1151:GE1010001"])
+    }
+
     /// Sent beside the delete, the upload could land first and the delete remove the course again.
     @Test("A course added back while its delete is being sent goes up once that delete has landed")
     func addGoesAfterAnInFlightDelete() async throws {

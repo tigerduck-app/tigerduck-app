@@ -266,6 +266,14 @@ actor SyncOutbox {
         persist()
     }
 
+    /// `keepsWithoutAttempt` for `op`. A course add spends an attempt on any answer from the server,
+    /// 5xx included: its whole-term upload can fail there for its payload alone, and waiting without
+    /// one would hold every op behind it. After `maxAttempts` it parks, out of the queue's way.
+    static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {
+        if case .courseAdd = op, case PushAPIError.httpStatus(_, _) = error { return false }
+        return keepsWithoutAttempt(error)
+    }
+
     /// Errors that say nothing about the edit: no network, a cancelled drain, a session to renew,
     /// or a server that is down or busy. The entry waits for a later drain without an attempt.
     static func keepsWithoutAttempt(_ error: Error) -> Bool {
@@ -335,7 +343,7 @@ actor SyncOutbox {
                 // A `clearAll()` during the request removed the entry; keeping or parking
                 // it now would bring it back.
                 guard generation == startGeneration else { return entries.isEmpty }
-                if Self.keepsWithoutAttempt(error) {
+                if Self.keepsWithoutAttempt(error, for: entry.op) {
                     mergeAndStore(retainRemainder: index)
                     return false
                 }
