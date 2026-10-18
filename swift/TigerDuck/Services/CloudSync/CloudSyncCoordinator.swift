@@ -382,9 +382,9 @@ final class CloudSyncCoordinator {
     }
 
     /// For Use Server in the re-enable dialog, which takes the server's data of `categories` over
-    /// the edits of them still on their way up: the marks for "assignments", with the course
-    /// settings when its check compared them (`courseIgnores`), and the colours and the names for
-    /// "course_colors" and "course_names".
+    /// the edits of them still on their way up: the course adds for "courses", the marks for
+    /// "assignments", with the course settings when its check compared them (`courseIgnores`), and
+    /// the colours and the names for "course_colors" and "course_names".
     func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
         await outbox.discard { op in
             switch op {
@@ -395,7 +395,9 @@ final class CloudSyncCoordinator {
             case .courseOverride(_, _, let customName, let colorHex, _, _):
                 return (colorHex != nil && categories.contains("course_colors"))
                     || (customName != nil && categories.contains("course_names"))
-            case .courseDelete, .courseAdd:
+            case .courseAdd:
+                return categories.contains("courses")
+            case .courseDelete:
                 return false
             }
         }

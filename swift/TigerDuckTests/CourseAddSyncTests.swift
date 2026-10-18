@@ -110,6 +110,21 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
+    /// Use Server takes the server's courses over the adds still on their way up.
+    @Test("Use Server for courses drops a course add still queued, and other categories keep it")
+    func useServerDropsAQueuedAdd() async {
+        let backend = Backend()
+        backend.answer(503)
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        await coordinator.discardEdits(of: ["course_colors", "course_names", "assignments"], courseIgnores: true)
+        #expect(await coordinator.courseAddKeys(unlandedAt: Date()) == ["1151:GE1010001"])
+
+        await coordinator.discardEdits(of: ["courses"], courseIgnores: false)
+        #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
+    }
+
     /// The course is saved here before its add reaches the outbox, which a full sync can read meanwhile.
     @Test("An add on its way into the outbox already counts for a full sync and for the sign-out warning")
     func addOnItsWayInCounts() async {
