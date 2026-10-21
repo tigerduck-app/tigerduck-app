@@ -400,5 +400,27 @@
         { "symbol": "wrench.and.screwdriver", "title": "Improvements and fixes", "body": "A fix for a crash on deeply nested Moodle text and mail." }
       ]
     }
+  },
+  "2.6.3": {
+    "zh-TW": {
+      "title": "2.6.3 更新內容",
+      "items": [
+        {
+          "symbol": "key",
+          "title": "自動登入",
+          "body": "自動登入被拒後會稍後再試，不再一直停在未登入。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.6.3",
+      "items": [
+        {
+          "symbol": "key",
+          "title": "Automatic sign-in",
+          "body": "After a refused sign-in, automatic sign-in tries again later instead of stopping for good."
+        }
+      ]
+    }
   }
 }

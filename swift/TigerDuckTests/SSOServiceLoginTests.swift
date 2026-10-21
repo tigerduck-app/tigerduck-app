@@ -6,7 +6,7 @@ import Testing
 
 /// School sign-ins against stand-ins: `SSOLoginService.ensureServiceLogin` against
 /// `SSOServerStub`, and the Moodle token renewal with a stub harvest. Serialized: the SSO probe
-/// asks one fixed URL, the stub's queues are shared, and so is the stored-password latch.
+/// asks one fixed URL, the stub's queues are shared, and so are the stored password's refusals.
 @MainActor
 @Suite(.serialized)
 struct SSOServiceLoginTests {
@@ -21,6 +21,9 @@ struct SSOServiceLoginTests {
         string: "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback"
     )!
     static let servicePage = "<html><body><table><tr><td>CS1001301</td></tr></table></body></html>"
+    /// The clock of the stored password's refusals in these sign-ins: a hold of seconds would run
+    /// out on the real one while a starved runner waits.
+    nonisolated static let now = Date(timeIntervalSince1970: 1_500_000)
     private static let notSignedIn = SSOServerStub.Answer.redirect(to: "/account/login?ReturnUrl=%2F")
 
     static func serviceURL() -> URL {
@@ -35,30 +38,33 @@ struct SSOServiceLoginTests {
 
     struct Outcome {
         let result: Result<Bool, Error>
-        /// `SSOLoginService.storedPasswordRejected` when the sign-in ended.
-        let rejected: Bool
+        /// `SSOLoginService.storedPasswordRefusals` when the sign-in ended.
+        let refusals: (count: Int, last: Date?)
     }
 
-    /// Runs `body` with the latch set to `rejected`, then puts the latch and the login stamp back.
-    /// Both are real `Defaults` keys, which `BackendSessionTests` reads too.
-    func withLatch<T>(_ rejected: Bool, _ body: () async -> T) async -> T {
+    /// Runs `body` after `count` refusals in a row, the last at `last`, then puts the refusals and
+    /// the login stamp back. They are real `Defaults` keys, which `BackendSessionTests` reads too.
+    func withRefusals<T>(_ count: Int, last: Date? = nil, _ body: () async -> T) async -> T {
         await withExclusiveRealDefaults {
-            let saved = (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp])
-            SSOLoginService.storedPasswordRejected = rejected
-            defer { (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp]) = saved }
+            let saved = (SSOLoginService.storedPasswordRefusals, Defaults[.ssoLoginTimestamp])
+            SSOLoginService.storedPasswordRefusals = (count, last)
+            defer { (SSOLoginService.storedPasswordRefusals, Defaults[.ssoLoginTimestamp]) = saved }
             return await body()
         }
     }
 
+    /// An automatic sign-in unless `interactive`, after `refusals` refusals in a row, the last at
+    /// `lastRefusal`: by default ``now``, so they hold an automatic post back.
     func signIn(
         _ serviceURL: URL,
         interactive: Bool = false,
-        rejectedBefore: Bool = false,
+        refusals: Int = 0,
+        lastRefusal: Date = SSOServiceLoginTests.now,
         setUp: () -> Void
     ) async -> Outcome {
         SSOServerStub.reset()
         setUp()
-        return await withLatch(rejectedBefore) {
+        return await withRefusals(refusals, last: refusals > 0 ? lastRefusal : nil) {
             let result: Result<Bool, Error>
             do {
                 result = .success(try await SSOLoginService.ensureServiceLogin(
@@ -67,12 +73,13 @@ struct SSOServiceLoginTests {
                     studentId: "B00000000",
                     password: "unused",
                     generation: NTUSTSessionManager.shared.generation,
-                    interactive: interactive
+                    interactive: interactive,
+                    now: { Self.now }
                 ))
             } catch {
                 result = .failure(error)
             }
-            return Outcome(result: result, rejected: SSOLoginService.storedPasswordRejected)
+            return Outcome(result: result, refusals: SSOLoginService.storedPasswordRefusals)
         }
     }
 
@@ -97,7 +104,7 @@ struct SSOServiceLoginTests {
         }
         #expect(posts.isEmpty)
         #expect(SSOServerStub.requests.filter { $0.url == service }.count == 2)
-        #expect(!outcome.rejected)
+        #expect(outcome.refusals.count == 0)
     }
 
     @Test("ssoam's NetIQ form asks for a browser sign-in")
@@ -161,7 +168,7 @@ struct SSOServiceLoginTests {
             return
         }
         #expect(posts.count == 1)
-        #expect(!outcome.rejected)
+        #expect(outcome.refusals.count == 0)
     }
 
     @Test("a visit sent to the campus portal reaches the sign-in form once the service's cookies are gone")
@@ -197,15 +204,15 @@ struct SSOServiceLoginTests {
             Issue.record("expected invalidResponse, got \(outcome.result)")
             return
         }
-        #expect(!outcome.rejected)
+        #expect(outcome.refusals.count == 0)
     }
 
-    // MARK: - A rejected stored password
+    // MARK: - A rejected stored password (https://github.com/tigerduck-app/tigerduck-app/issues/768)
 
-    @Test("a sign-in the user did not start posts no password the school rejected")
-    func rejectedPasswordIsNotPostedAgain() async {
+    @Test("a sign-in the user did not start posts no password while a refusal holds it back")
+    func refusedPasswordWaitsOutItsRefusal() async {
         let service = Self.serviceURL()
-        let outcome = await signIn(service, rejectedBefore: true) {
+        let outcome = await signIn(service, refusals: 1) {
             Self.enqueueSignInForm(for: service)
         }
         guard case .failure(SSOLoginError.loginFailed) = outcome.result else {
@@ -213,11 +220,11 @@ struct SSOServiceLoginTests {
             return
         }
         #expect(SSOServerStub.requests.map(\.url) == [service, Self.loginURL])
-        #expect(outcome.rejected)
+        #expect(outcome.refusals.count == 1)
     }
 
-    @Test("a rejection in a sign-in the user did not start stops the next ones")
-    func silentRejectionLatches() async {
+    @Test("a refusal in a sign-in the user did not start is counted")
+    func silentRefusalIsCounted() async {
         let service = Self.serviceURL()
         let outcome = await signIn(service) {
             Self.enqueueSignInForm(for: service)
@@ -229,13 +236,15 @@ struct SSOServiceLoginTests {
             return
         }
         #expect(posts.count == 1)
-        #expect(outcome.rejected)
+        #expect(outcome.refusals.count == 1)
+        #expect(outcome.refusals.last == Self.now)
     }
 
-    @Test("a sign-in the user starts posts after a rejection and lifts it")
-    func interactiveSignInLiftsTheLatch() async {
+    @Test("once a refusal's wait is over, a sign-in the user did not start posts again, and its success clears the refusals")
+    func silentSignInPostsAgainAfterTheWait() async {
         let service = Self.serviceURL()
-        let outcome = await signIn(service, interactive: true, rejectedBefore: true) {
+        let wait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+        let outcome = await signIn(service, refusals: 1, lastRefusal: Self.now.addingTimeInterval(-wait)) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
             SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
@@ -246,7 +255,75 @@ struct SSOServiceLoginTests {
             return
         }
         #expect(posts.count == 1)
-        #expect(!outcome.rejected)
+        #expect(outcome.refusals.count == 0)
+    }
+
+    @Test("a refusal after the three quick tries is counted on, so the next waits six hours")
+    func refusalAfterTheQuickTriesCountsOn() async {
+        let service = Self.serviceURL()
+        let quickTries = SSOLoginService.storedPasswordQuickRetries.count
+        let wait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries)
+        let outcome = await signIn(service, refusals: quickTries, lastRefusal: Self.now.addingTimeInterval(-wait)) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: Self.postURL)
+        }
+        guard case .failure(SSOLoginError.loginFailed) = outcome.result else {
+            Issue.record("expected loginFailed, got \(outcome.result)")
+            return
+        }
+        #expect(outcome.refusals.count == quickTries + 1)
+        #expect(SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries + 1) == 6 * 60 * 60)
+    }
+
+    /// Passing on a live session says nothing of the password; were it to clear the refusals, a
+    /// retry would post a refused password every ten seconds while the session lasts.
+    @Test("a sign-in the user did not start that a live session lets through leaves the refusals")
+    func liveSessionLeavesTheRefusals() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, refusals: 1, lastRefusal: .distantPast) {
+            SSOServerStub.enqueue(.page(Self.servicePage), for: service)
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
+        }
+        guard case .success(true) = outcome.result else {
+            Issue.record("expected a sign-in, got \(outcome.result)")
+            return
+        }
+        #expect(posts.isEmpty)
+        #expect(outcome.refusals.count == 1)
+    }
+
+    @Test("a password POST that fails on the network is no refusal")
+    func networkFailureIsNoRefusal() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.failure(.notConnectedToInternet), for: Self.postURL)
+        }
+        guard case .failure = outcome.result else {
+            Issue.record("expected a failure, got \(outcome.result)")
+            return
+        }
+        #expect(posts.count == 1)
+        #expect(outcome.refusals.count == 0)
+    }
+
+    @Test("a sign-in the user starts posts at once while refusals hold the others back, and clears them")
+    func interactiveSignInClearsTheRefusals() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, interactive: true, refusals: 4) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
+        }
+        guard case .success(true) = outcome.result else {
+            Issue.record("expected a sign-in, got \(outcome.result)")
+            return
+        }
+        #expect(posts.count == 1)
+        #expect(outcome.refusals.count == 0)
     }
 
     @Test("a rejected password fails with the school's reason, shown in the sign-in's message")
@@ -284,8 +361,8 @@ struct SSOServiceLoginTests {
         #expect(SSOLoginError.loginFailed(reason: "").localizedDescription == generic)
     }
 
-    @Test("a mistyped password in a sign-in the user starts sets no latch")
-    func interactiveRejectionDoesNotLatch() async {
+    @Test("a mistyped password in a sign-in the user starts is not counted")
+    func interactiveRejectionIsNotCounted() async {
         let service = Self.serviceURL()
         let outcome = await signIn(service, interactive: true) {
             Self.enqueueSignInForm(for: service)
@@ -296,7 +373,7 @@ struct SSOServiceLoginTests {
             Issue.record("expected loginFailed, got \(outcome.result)")
             return
         }
-        #expect(!outcome.rejected)
+        #expect(outcome.refusals.count == 0)
     }
 
     @MainActor
@@ -324,9 +401,9 @@ struct SSOServiceLoginTests {
             }
         }
 
-        let ended = await withLatch(false) { await loggedSignIn(cancelled) }
+        let ended = await withRefusals(0) { await loggedSignIn(cancelled) }
         #expect(log.errors.isEmpty)
-        let timedOut = await withLatch(false) { await loggedSignIn(failed) }
+        let timedOut = await withRefusals(0) { await loggedSignIn(failed) }
 
         guard case .failure(let endedError) = ended, case .failure = timedOut else {
             Issue.record("expected two failures, got \(ended) and \(timedOut)")
@@ -357,10 +434,12 @@ struct SSOServiceLoginTests {
         }
     }
 
-    /// A harvest without `failure` hands out the token "new". `token` stands in for the keychain.
+    /// A harvest without `failure` hands out the token "new", as the answer to a post of the
+    /// password unless `posted` is false. `token` stands in for the keychain.
     private func tokenService(
         log: HarvestLog,
         failure: MoodleWebserviceError?,
+        posted: Bool = true,
         stored: StoredPassword = StoredPassword("unused"),
         token: OSAllocatedUnfairLock<String?> = OSAllocatedUnfairLock(initialState: nil),
         now: @escaping @Sendable () -> Date = { Date() },
@@ -377,53 +456,98 @@ struct SSOServiceLoginTests {
                 await log.record()
                 await duringHarvest()
                 if let failure { throw failure }
-                return MoodleTokenService.TokenTriple(signature: "", wstoken: "new", privatetoken: nil)
+                return MoodleTokenService.TokenTriple(signature: "", wstoken: "new", privatetoken: nil, postedPassword: posted)
             },
             now: now
         )
     }
 
-    @Test("a renewal the school rejected stops the next one")
-    func rejectedRenewalLatches() async {
+    @Test("a renewal the school refused holds back the next until its wait is over")
+    func refusedRenewalWaits() async {
         let log = HarvestLog()
-        let service = tokenService(log: log, failure: .ssoLoginRejected(reason: "帳號或密碼錯誤"))
-        let rejected = await withLatch(false) {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let clock = OSAllocatedUnfairLock(initialState: start)
+        let service = tokenService(
+            log: log, failure: .ssoLoginRejected(reason: "帳號或密碼錯誤"), now: { clock.withLock { $0 } }
+        )
+        let refusals = await withRefusals(0) { () async -> (count: Int, last: Date?) in
             await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: "帳號或密碼錯誤")) {
                 try await service.refreshTokenIfNeeded()
             }
+            clock.withLock { $0 += SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1) - 1 }
             await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: nil)) {
                 try await service.refreshTokenIfNeeded()
             }
-            return SSOLoginService.storedPasswordRejected
+            #expect(await log.calls == 1)
+            clock.withLock { $0 += 1 }
+            _ = try? await service.refreshTokenIfNeeded()
+            return SSOLoginService.storedPasswordRefusals
         }
-        #expect(rejected)
-        #expect(await log.calls == 1)
+        #expect(await log.calls == 2)
+        #expect(refusals.count == 2)
+        #expect(refusals.last == start.addingTimeInterval(SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)))
     }
 
-    @Test("a renewal that ran on a password replaced meanwhile sets no latch")
-    func renewalOnAReplacedPasswordDoesNotLatch() async {
+    /// The decision accepts four posts of a changed password a day, past the first three retries.
+    @Test("after the three quick tries were refused, a renewal waits six hours")
+    func renewalAfterTheQuickTriesWaitsSixHours() async {
+        let log = HarvestLog()
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let clock = OSAllocatedUnfairLock(initialState: start)
+        let service = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), now: { clock.withLock { $0 } })
+        let quickTries = SSOLoginService.storedPasswordQuickRetries.count
+        let lastQuickWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries)
+        let refusals = await withRefusals(quickTries, last: start.addingTimeInterval(-lastQuickWait)) {
+            () async -> (count: Int, last: Date?) in
+            _ = try? await service.refreshTokenIfNeeded()
+            clock.withLock { $0 += 6 * 60 * 60 - 1 }
+            _ = try? await service.refreshTokenIfNeeded()
+            #expect(await log.calls == 1)
+            clock.withLock { $0 += 1 }
+            _ = try? await service.refreshTokenIfNeeded()
+            return SSOLoginService.storedPasswordRefusals
+        }
+        #expect(await log.calls == 2)
+        #expect(refusals.count == quickTries + 2)
+    }
+
+    @Test("a renewal the school accepts once the wait is over clears the refusals")
+    func acceptedRenewalClearsTheRefusals() async {
+        let log = HarvestLog()
+        let service = tokenService(log: log, failure: nil)
+        let (token, refusals) = await withRefusals(2, last: .distantPast) {
+            () async -> (String?, (count: Int, last: Date?)) in
+            (try? await service.refreshTokenIfNeeded(), SSOLoginService.storedPasswordRefusals)
+        }
+        #expect(token == "new")
+        #expect(refusals.count == 0)
+        #expect(refusals.last == nil)
+    }
+
+    @Test("a renewal that ran on a password replaced meanwhile is not counted")
+    func renewalOnAReplacedPasswordIsNotCounted() async {
         let log = HarvestLog()
         let stored = StoredPassword("old")
         let service = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), stored: stored) {
             stored.current = "new"
         }
-        let rejected = await withLatch(false) {
+        let refusals = await withRefusals(0) {
             await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: nil)) {
                 try await service.refreshTokenIfNeeded()
             }
-            return SSOLoginService.storedPasswordRejected
+            return SSOLoginService.storedPasswordRefusals.count
         }
-        #expect(!rejected)
+        #expect(refusals == 0)
     }
 
     /// Each Moodle page that appears without a token asks for one, and each harvest sends the
     /// password.
-    @Test("a renewal that fails for another reason sets no latch, and the next waits out a pause")
+    @Test("a renewal that fails for another reason is not counted, and the next waits out a pause")
     func otherRenewalFailuresPause() async {
         let log = HarvestLog()
         let clock = OSAllocatedUnfairLock(initialState: Date(timeIntervalSince1970: 1_000_000))
         let service = tokenService(log: log, failure: .httpStatus(code: 503), now: { clock.withLock { $0 } })
-        let rejected = await withLatch(false) {
+        let refusals = await withRefusals(0) {
             for _ in 0..<2 {
                 await #expect(throws: MoodleWebserviceError.httpStatus(code: 503)) {
                     try await service.refreshTokenIfNeeded()
@@ -432,19 +556,21 @@ struct SSOServiceLoginTests {
             #expect(await log.calls == 1)
             clock.withLock { $0 += MoodleTokenService.harvestPause }
             _ = try? await service.refreshTokenIfNeeded()
-            return SSOLoginService.storedPasswordRejected
+            return SSOLoginService.storedPasswordRefusals.count
         }
-        #expect(!rejected)
+        #expect(refusals == 0)
         #expect(await log.calls == 2)
     }
 
-    @Test("a renewal that failed on the network starts no pause")
+    @Test("a renewal that failed on the network starts no pause and is not counted")
     func networkFailureStartsNoPause() async {
         let log = HarvestLog()
         let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"))
-        _ = await withLatch(false) {
+        let refusals = await withRefusals(0) {
             for _ in 0..<2 { _ = try? await service.refreshTokenIfNeeded() }
+            return SSOLoginService.storedPasswordRefusals.count
         }
+        #expect(refusals == 0)
         #expect(await log.calls == 2)
     }
 
@@ -452,7 +578,7 @@ struct SSOServiceLoginTests {
     func signOutEndsThePause() async {
         let log = HarvestLog()
         let service = tokenService(log: log, failure: .httpStatus(code: 503))
-        _ = await withLatch(false) {
+        _ = await withRefusals(0) {
             _ = try? await service.refreshTokenIfNeeded()
             await service.signOut()
             _ = try? await service.refreshTokenIfNeeded()
@@ -468,7 +594,7 @@ struct SSOServiceLoginTests {
         let service = tokenService(log: log, failure: nil, token: token) {
             while !released.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
         }
-        let answers = await withLatch(false) { () async -> [String?] in
+        let answers = await withRefusals(0) { () async -> [String?] in
             async let first = try? service.refreshTokenIfNeeded(replacing: "old")
             while await log.calls == 0 { try? await Task.sleep(for: .milliseconds(5)) }
             // The held harvest has dropped the old token, so a second call that did not join it
@@ -508,7 +634,7 @@ struct SSOServiceLoginTests {
             },
             harvestDeadline: .milliseconds(100)
         )
-        _ = await withLatch(false) {
+        _ = await withRefusals(0) {
             let started = ContinuousClock.now
             await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: URLError(.timedOut).localizedDescription)) {
                 try await service.refreshTokenIfNeeded()
@@ -522,7 +648,7 @@ struct SSOServiceLoginTests {
         let log = HarvestLog()
         let token = OSAllocatedUnfairLock<String?>(initialState: "old")
         let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"), token: token)
-        _ = await withLatch(false) {
+        _ = await withRefusals(0) {
             await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: "offline")) {
                 try await service.refreshTokenIfNeeded(replacing: "old")
             }
@@ -555,7 +681,8 @@ struct SSOServiceLoginTests {
                 serviceURL: serviceURL,
                 studentId: "B00000000",
                 password: "unused",
-                generation: NTUSTSessionManager.shared.generation
+                generation: NTUSTSessionManager.shared.generation,
+                now: { Self.now }
             )
         }
     }
@@ -571,10 +698,10 @@ struct SSOServiceLoginTests {
         SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: Self.postURL)
         let log = HarvestLog()
         let answered = OSAllocatedUnfairLock(initialState: false)
-        let renewal = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), duringHarvest: {
+        let renewal = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), now: { Self.now }, duringHarvest: {
             while !answered.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
         })
-        let (signIn, rejected) = await withLatch(false) { () async -> (Result<Bool, Error>, Bool) in
+        let (signIn, refusals) = await withRefusals(0) { () async -> (Result<Bool, Error>, Int) in
             async let renewing = try? renewal.refreshTokenIfNeeded()
             while await log.calls == 0 { try? await Task.sleep(for: .milliseconds(5)) }
             async let signingIn = automaticSignIn(service)
@@ -582,7 +709,7 @@ struct SSOServiceLoginTests {
             for _ in 0..<100 where posts.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
             answered.withLock { $0 = true }
             _ = await renewing
-            return (await signingIn, SSOLoginService.storedPasswordRejected)
+            return (await signingIn, SSOLoginService.storedPasswordRefusals.count)
         }
         guard case .failure(SSOLoginError.loginFailed) = signIn else {
             Issue.record("expected loginFailed, got \(signIn)")
@@ -590,20 +717,20 @@ struct SSOServiceLoginTests {
         }
         #expect(posts.isEmpty)
         #expect(await log.calls == 1)
-        #expect(rejected)
+        #expect(refusals == 1)
     }
 
     @Test("a renewal waits while an automatic sign-in posts the stored password, and harvests nothing once it is refused", .timeLimit(.minutes(1)))
     func renewalWaitsForAnAutomaticSignInsPost() async {
         let log = HarvestLog()
-        let renewal = tokenService(log: log, failure: nil)
-        let (outcome, harvests) = await withLatch(false) { () async -> (Result<String, Error>, Int) in
+        let renewal = tokenService(log: log, failure: nil, now: { Self.now })
+        let (outcome, harvests) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
             // The test holds the lock as an automatic sign-in does while the school answers its post.
             let renewing = await SSOLoginService.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
-                // Queued for the lock, so past its first check of the latch.
+                // Queued for the lock, so past its first check of the refusals.
                 await Self.waitForAQueuedPost()
-                SSOLoginService.storedPasswordRejected = true
+                SSOLoginService.storedPasswordRefusals = (1, Self.now)
                 return renewing
             }
             return (await renewing.value, await log.calls)
@@ -620,7 +747,7 @@ struct SSOServiceLoginTests {
     func renewalASignOutOvertookHarvestsNothing() async {
         let log = HarvestLog()
         let renewal = tokenService(log: log, failure: nil)
-        let (outcome, harvests) = await withLatch(false) { () async -> (Result<String, Error>, Int) in
+        let (outcome, harvests) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
             let renewing = await SSOLoginService.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
                 await Self.waitForAQueuedPost()
@@ -648,7 +775,7 @@ struct SSOServiceLoginTests {
         SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
         let log = HarvestLog()
         let tokens = tokenService(log: log, failure: nil)
-        let (signedIn, token) = await withLatch(false) { () async -> (Result<Bool, Error>, String?) in
+        let (signedIn, token) = await withRefusals(0) { () async -> (Result<Bool, Error>, String?) in
             await SSOLoginService.postingStoredPassword {
                 let signedIn = await Self.result {
                     try await SSOLoginService.ensureServiceLogin(
@@ -670,7 +797,7 @@ struct SSOServiceLoginTests {
         #expect(token == "new")
     }
 
-    // MARK: - What a renewal latches (https://github.com/tigerduck-app/tigerduck-app/issues/575)
+    // MARK: - What a renewal counts as a refusal (https://github.com/tigerduck-app/tigerduck-app/issues/575)
 
     /// A renewal whose harvest walks the school's pages from `page` at `url`, against `SSOServerStub`.
     func pageWalk(log: HarvestLog, from page: String, at url: URL) -> MoodleTokenService {
@@ -692,41 +819,84 @@ struct SSOServiceLoginTests {
     }
 
     /// A maintenance or error page served at the sign-in path has no form, so no password went out.
-    @Test("a sign-in page without its form pauses the renewal and sets no latch")
-    func signInPageWithoutItsFormSetsNoLatch() async {
+    @Test("a sign-in page without its form pauses the renewal and is not counted")
+    func signInPageWithoutItsFormIsNotCounted() async {
         SSOServerStub.reset()
         let log = HarvestLog()
         let renewal = pageWalk(log: log, from: Pages.maintenance, at: Self.loginURL)
-        let (first, rejected) = await withLatch(false) { () async -> (Result<String, Error>, Bool) in
+        let (first, refusals) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
             let first = await Self.result { try await renewal.refreshTokenIfNeeded() }
             _ = try? await renewal.refreshTokenIfNeeded()
-            return (first, SSOLoginService.storedPasswordRejected)
+            return (first, SSOLoginService.storedPasswordRefusals.count)
         }
         guard case .failure(MoodleWebserviceError.malformedResponse) = first else {
             Issue.record("expected malformedResponse, got \(first)")
             return
         }
-        #expect(!rejected)
+        #expect(refusals == 0)
         #expect(posts.isEmpty)
         // Paused as other failures are: the second renewal sent nothing.
         #expect(await log.calls == 1)
     }
 
-    @Test("the school's refusal of a password the renewal posted still latches")
-    func refusalOfAPostedPasswordLatches() async {
+    @Test("the school's refusal of a password the renewal posted is counted")
+    func refusalOfAPostedPasswordIsCounted() async {
         SSOServerStub.reset()
         SSOServerStub.enqueue(.page(Pages.ssoam2LoginRejected), for: Self.postURL)
         let log = HarvestLog()
         let renewal = pageWalk(log: log, from: Pages.ssoam2Login, at: Self.loginURL)
-        let (outcome, rejected) = await withLatch(false) { () async -> (Result<String, Error>, Bool) in
-            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRejected)
+        let (outcome, refusals) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRefusals.count)
         }
         guard case .failure(MoodleWebserviceError.ssoLoginRejected(let reason)) = outcome else {
             Issue.record("expected ssoLoginRejected, got \(outcome)")
             return
         }
         #expect(reason == "帳號或密碼錯誤")
-        #expect(rejected)
+        #expect(refusals == 1)
         #expect(posts.map(\.url) == [Self.postURL])
+    }
+
+    /// The page that hands Moodle Mobile its token, `token` among the triple's three parts.
+    static func tokenPage(_ token: String) -> String {
+        let triple = Data("signature:::\(token):::private-token".utf8).base64EncodedString()
+        return #"<script>window.location = "moodlemobile://token=\#(triple)";</script>"#
+    }
+
+    /// A live SSO or Moodle session in the shared cookie jar lets `launch.php` hand the token out
+    /// at once, which says nothing of the password: clearing the refusals there would let the next
+    /// SSO sign-in post a refused password at once, and the quick retries after it.
+    @Test("a renewal whose token comes without a post of the password leaves the refusals")
+    func tokenWithoutAPostLeavesTheRefusals() async throws {
+        SSOServerStub.reset()
+        let log = HarvestLog()
+        let launch = try #require(URL(string: "https://moodle.stub.invalid/admin/tool/mobile/launch.php"))
+        let renewal = pageWalk(log: log, from: Self.tokenPage("live-session-token"), at: launch)
+        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<String, Error>, Int) in
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRefusals.count)
+        }
+        guard case .success("live-session-token") = outcome else {
+            Issue.record("expected the token, got \(outcome)")
+            return
+        }
+        #expect(posts.isEmpty)
+        #expect(refusals == 1)
+    }
+
+    @Test("a renewal whose posted password the school takes clears the refusals")
+    func acceptedPostOfARenewalClearsTheRefusals() async {
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.page(Self.tokenPage("posted-token")), for: Self.postURL)
+        let log = HarvestLog()
+        let renewal = pageWalk(log: log, from: Pages.ssoam2Login, at: Self.loginURL)
+        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<String, Error>, Int) in
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRefusals.count)
+        }
+        guard case .success("posted-token") = outcome else {
+            Issue.record("expected the token, got \(outcome)")
+            return
+        }
+        #expect(posts.map(\.url) == [Self.postURL])
+        #expect(refusals == 0)
     }
 }
