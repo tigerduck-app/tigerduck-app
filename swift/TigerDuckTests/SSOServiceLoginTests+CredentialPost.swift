@@ -1,6 +1,6 @@
 // Where a POST carrying a password or a token may go: sign-in forms, forms passing a sign-in on,
 // and the library's and backend's sign-ins. An extension of `SSOServiceLoginTests`, so these run
-// in its serialized order: they share the stub's queues, the SSO probe's URL and the latch.
+// in its serialized order: they share the stub's queues, the SSO probe's URL and the refusals.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -57,7 +57,7 @@ extension SSOServiceLoginTests {
             Issue.record("expected invalidResponse, got \(outcome.result)")
             return
         }
-        #expect(!outcome.rejected)
+        #expect(outcome.refusals.count == 0)
     }
 
     @Test("a sign-in whose password POST is redirected as a GET over HTTPS signs in", arguments: [301, 302, 303])
@@ -95,22 +95,22 @@ extension SSOServiceLoginTests {
             Issue.record("expected invalidResponse, got \(outcome.result)")
             return
         }
-        #expect(!outcome.rejected)
+        #expect(outcome.refusals.count == 0)
     }
 
     // MARK: - Moodle token renewal
 
     /// A renewal from `page`, and after a failure one more, which the pause should keep from
     /// harvesting. `harvests` counts both.
-    private func renewal(from page: String) async -> (Result<String, Error>, rejected: Bool, harvests: Int) {
+    private func renewal(from page: String) async -> (Result<String, Error>, refusals: Int, harvests: Int) {
         let log = HarvestLog()
         let renewal = pageWalk(log: log, from: page, at: Self.loginURL)
-        let (outcome, rejected) = await withLatch(false) { () async -> (Result<String, Error>, Bool) in
+        let (outcome, refusals) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
             let outcome = await Self.result { try await renewal.refreshTokenIfNeeded() }
             if case .failure = outcome { _ = try? await renewal.refreshTokenIfNeeded() }
-            return (outcome, SSOLoginService.storedPasswordRejected)
+            return (outcome, SSOLoginService.storedPasswordRefusals.count)
         }
-        return (outcome, rejected, await log.calls)
+        return (outcome, refusals, await log.calls)
     }
 
     @Test(
@@ -121,14 +121,14 @@ extension SSOServiceLoginTests {
         let target = try #require(URL(string: location))
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: target), for: Self.postURL)
-        let (outcome, rejected, harvests) = await renewal(from: Pages.ssoam2Login)
+        let (outcome, refusals, harvests) = await renewal(from: Pages.ssoam2Login)
         #expect(requests(to: target).isEmpty)
         #expect(posts.map(\.url) == [Self.postURL])
         guard case .failure(MoodleWebserviceError.httpStatus(code: status)) = outcome else {
             Issue.record("expected httpStatus(\(status)), got \(outcome)")
             return
         }
-        #expect(!rejected)
+        #expect(refusals == 0)
         // Paused as other failures are: the second renewal sent nothing.
         #expect(harvests == 1)
     }
@@ -156,13 +156,13 @@ extension SSOServiceLoginTests {
     func renewalPostsNoPasswordOffTheSignInHost(action: String) async throws {
         let page = try Self.signInForm(postingTo: action)
         SSOServerStub.reset()
-        let (outcome, rejected, harvests) = await renewal(from: page)
+        let (outcome, refusals, harvests) = await renewal(from: page)
         #expect(SSOServerStub.requests.isEmpty)
         guard case .failure(MoodleWebserviceError.malformedResponse) = outcome else {
             Issue.record("expected malformedResponse, got \(outcome)")
             return
         }
-        #expect(!rejected)
+        #expect(refusals == 0)
         #expect(harvests == 1)
     }
 
@@ -197,7 +197,7 @@ extension SSOServiceLoginTests {
             Issue.record("expected invalidResponse, got \(outcome.result)")
             return
         }
-        #expect(!outcome.rejected)
+        #expect(outcome.refusals.count == 0)
     }
 
     @Test("a sign-in whose form passing it on meets a 307 or a 308 ends there", arguments: [307, 308])
@@ -235,13 +235,13 @@ extension SSOServiceLoginTests {
             <input type="hidden" name="iss" value="https://ssoam2.ntust.edu.tw">
             </form></body></html>
             """), for: Self.postURL)
-        let (outcome, rejected, harvests) = await renewal(from: Pages.ssoam2Login)
+        let (outcome, refusals, harvests) = await renewal(from: Pages.ssoam2Login)
         #expect(requests(to: target).isEmpty)
         guard case .failure(MoodleWebserviceError.malformedResponse) = outcome else {
             Issue.record("expected malformedResponse, got \(outcome)")
             return
         }
-        #expect(!rejected)
+        #expect(refusals == 0)
         #expect(harvests == 1)
     }
 
@@ -257,14 +257,14 @@ extension SSOServiceLoginTests {
             </form></body></html>
             """), for: Self.postURL)
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: target)
-        let (outcome, rejected, _) = await renewal(from: Pages.ssoam2Login)
+        let (outcome, refusals, _) = await renewal(from: Pages.ssoam2Login)
         #expect(requests(to: target).map(\.method) == ["POST"])
         #expect(requests(to: elsewhere).isEmpty)
         guard case .failure(MoodleWebserviceError.httpStatus(code: status)) = outcome else {
             Issue.record("expected httpStatus(\(status)), got \(outcome)")
             return
         }
-        #expect(!rejected)
+        #expect(refusals == 0)
     }
 
     // MARK: - The library's and the backend's sign-in

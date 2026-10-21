@@ -188,8 +188,9 @@ nonisolated extension Defaults.Keys {
         "ntustCredentialsPresent",
         default: false
     )
-    /// See `SSOLoginService.storedPasswordRejected`.
-    static let ntustStoredPasswordRejected = Key<Bool>("ntustStoredPasswordRejected", default: false)
+    /// See `SSOLoginService.storedPasswordRefusals`.
+    static let ntustStoredPasswordRefusals = Key<Int>("ntustStoredPasswordRefusals", default: 0)
+    static let ntustStoredPasswordRefusedAt = Key<Date?>("ntustStoredPasswordRefusedAt")
     /// See `LibraryService.storedPasswordRejected`.
     static let libraryStoredPasswordRejected = Key<Bool>("libraryStoredPasswordRejected", default: false)
     static let syncCourses = Key<Bool>("syncCourses", default: true)

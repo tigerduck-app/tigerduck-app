@@ -23,6 +23,8 @@ extension AppState {
         SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)
         // Inline, so a sign-out right after the update asks about the colours from before it.
         CourseColorPickSeedMigration.runIfNeeded()
+        // Inline, so this launch's first automatic sign-in finds the retry schedule, not the latch.
+        StoredPasswordLatchRetryMigration.runIfNeeded()
         #if os(iOS)
         // Inline because it costs three UserDefaults reads, not for order: the preferences it
         // repairs are read as each register request is built, so a late write self-heals.

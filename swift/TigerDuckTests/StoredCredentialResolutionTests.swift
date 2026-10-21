@@ -43,7 +43,7 @@ struct StoredCredentialResolutionTests {
         let auth = AuthService(keychainHasCredentials: {
             reads.count += 1
             return false
-        })
+        }, notificationCenter: NotificationCenter())
 
         for _ in 0..<5 { _ = auth.hasStoredCredentials }
 
