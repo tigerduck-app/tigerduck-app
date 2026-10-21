@@ -21,6 +21,9 @@ struct SSOServiceLoginTests {
         string: "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback"
     )!
     static let servicePage = "<html><body><table><tr><td>CS1001301</td></tr></table></body></html>"
+    /// The clock of the stored password's refusals in these sign-ins: a hold of seconds would run
+    /// out on the real one while a starved runner waits.
+    nonisolated static let now = Date(timeIntervalSince1970: 1_500_000)
     private static let notSignedIn = SSOServerStub.Answer.redirect(to: "/account/login?ReturnUrl=%2F")
 
     static func serviceURL() -> URL {
@@ -51,12 +54,12 @@ struct SSOServiceLoginTests {
     }
 
     /// An automatic sign-in unless `interactive`, after `refusals` refusals in a row, the last at
-    /// `lastRefusal`: by default just now, so they hold an automatic post back.
+    /// `lastRefusal`: by default ``now``, so they hold an automatic post back.
     func signIn(
         _ serviceURL: URL,
         interactive: Bool = false,
         refusals: Int = 0,
-        lastRefusal: Date = Date(),
+        lastRefusal: Date = SSOServiceLoginTests.now,
         setUp: () -> Void
     ) async -> Outcome {
         SSOServerStub.reset()
@@ -70,7 +73,8 @@ struct SSOServiceLoginTests {
                     studentId: "B00000000",
                     password: "unused",
                     generation: NTUSTSessionManager.shared.generation,
-                    interactive: interactive
+                    interactive: interactive,
+                    now: { Self.now }
                 ))
             } catch {
                 result = .failure(error)
@@ -222,7 +226,6 @@ struct SSOServiceLoginTests {
     @Test("a refusal in a sign-in the user did not start is counted")
     func silentRefusalIsCounted() async {
         let service = Self.serviceURL()
-        let started = Date()
         let outcome = await signIn(service) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
@@ -234,14 +237,14 @@ struct SSOServiceLoginTests {
         }
         #expect(posts.count == 1)
         #expect(outcome.refusals.count == 1)
-        #expect(outcome.refusals.last.map { $0 >= started } == true)
+        #expect(outcome.refusals.last == Self.now)
     }
 
     @Test("once a refusal's wait is over, a sign-in the user did not start posts again, and its success clears the refusals")
     func silentSignInPostsAgainAfterTheWait() async {
         let service = Self.serviceURL()
         let wait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
-        let outcome = await signIn(service, refusals: 1, lastRefusal: Date().addingTimeInterval(-wait)) {
+        let outcome = await signIn(service, refusals: 1, lastRefusal: Self.now.addingTimeInterval(-wait)) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
             SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
@@ -260,7 +263,7 @@ struct SSOServiceLoginTests {
         let service = Self.serviceURL()
         let quickTries = SSOLoginService.storedPasswordQuickRetries.count
         let wait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries)
-        let outcome = await signIn(service, refusals: quickTries, lastRefusal: Date().addingTimeInterval(-wait)) {
+        let outcome = await signIn(service, refusals: quickTries, lastRefusal: Self.now.addingTimeInterval(-wait)) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
             SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: Self.postURL)
@@ -676,7 +679,8 @@ struct SSOServiceLoginTests {
                 serviceURL: serviceURL,
                 studentId: "B00000000",
                 password: "unused",
-                generation: NTUSTSessionManager.shared.generation
+                generation: NTUSTSessionManager.shared.generation,
+                now: { Self.now }
             )
         }
     }
@@ -692,7 +696,7 @@ struct SSOServiceLoginTests {
         SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: Self.postURL)
         let log = HarvestLog()
         let answered = OSAllocatedUnfairLock(initialState: false)
-        let renewal = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), duringHarvest: {
+        let renewal = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), now: { Self.now }, duringHarvest: {
             while !answered.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
         })
         let (signIn, refusals) = await withRefusals(0) { () async -> (Result<Bool, Error>, Int) in
@@ -717,14 +721,14 @@ struct SSOServiceLoginTests {
     @Test("a renewal waits while an automatic sign-in posts the stored password, and harvests nothing once it is refused", .timeLimit(.minutes(1)))
     func renewalWaitsForAnAutomaticSignInsPost() async {
         let log = HarvestLog()
-        let renewal = tokenService(log: log, failure: nil)
+        let renewal = tokenService(log: log, failure: nil, now: { Self.now })
         let (outcome, harvests) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
             // The test holds the lock as an automatic sign-in does while the school answers its post.
             let renewing = await SSOLoginService.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
                 // Queued for the lock, so past its first check of the refusals.
                 await Self.waitForAQueuedPost()
-                SSOLoginService.storedPasswordRefusals = (1, Date())
+                SSOLoginService.storedPasswordRefusals = (1, Self.now)
                 return renewing
             }
             return (await renewing.value, await log.calls)

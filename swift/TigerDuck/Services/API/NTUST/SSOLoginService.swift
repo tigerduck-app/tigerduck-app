@@ -65,8 +65,10 @@ enum SSOLoginService {
 
     /// Posted on `NotificationCenter.default` when automatic posts of the stored password have to
     /// wait: at each refusal ``storedPasswordRefusals`` counts and at each post one holds back, so
-    /// `AuthService` arms a try for when the wait is over, after a relaunch too.
+    /// `AuthService` arms a try for when the wait is over, after a relaunch too. Its `userInfo`
+    /// holds that time under ``storedPasswordRetryAtKey``.
     nonisolated static let storedPasswordPostWaits = Notification.Name("TigerDuck.storedPasswordPostWaits")
+    nonisolated static let storedPasswordRetryAtKey = "retryAt"
 
     /// The waits after the first refusals in a row. Every later wait is
     /// ``storedPasswordRetryInterval``, so a password changed elsewhere then goes out four times a day.
@@ -96,19 +98,24 @@ enum SSOLoginService {
     /// ``storedPasswordPostWaits`` announces.
     nonisolated static func storedPasswordPostMustWait(now: Date = Date()) -> Bool {
         guard let retryAt = storedPasswordRetryAt(now: now), retryAt > now else { return false }
-        announceStoredPasswordWait()
+        announceStoredPasswordWait(until: retryAt)
         return true
     }
 
     nonisolated static func noteStoredPasswordRefused(at now: Date = Date()) {
-        storedPasswordRefusals = (storedPasswordRefusals.count + 1, now)
-        announceStoredPasswordWait()
+        let count = storedPasswordRefusals.count + 1
+        storedPasswordRefusals = (count, now)
+        announceStoredPasswordWait(until: now.addingTimeInterval(storedPasswordRetryDelay(afterRefusals: count)))
     }
 
     /// From the main actor: off it, the post would hold this thread until the main queue ran the
     /// observer.
-    private nonisolated static func announceStoredPasswordWait() {
-        Task { @MainActor in NotificationCenter.default.post(name: storedPasswordPostWaits, object: nil) }
+    private nonisolated static func announceStoredPasswordWait(until retryAt: Date) {
+        Task { @MainActor in
+            NotificationCenter.default.post(
+                name: storedPasswordPostWaits, object: nil, userInfo: [storedPasswordRetryAtKey: retryAt]
+            )
+        }
     }
 
     nonisolated static func forgetStoredPasswordRefusals() {
@@ -164,14 +171,13 @@ enum SSOLoginService {
         return try await body()
     }
 
-    /// Ensure the user is logged in to the given service via NTUST SSO.
-    /// Mirrors the Python `NtustSsoBridge.ensure_service_login` flow.
-    ///
-    /// `generation` is ``NTUSTSessionManager/generation`` when the credentials were read. Once
-    /// a sign-out moves it, the login throws `CancellationError` before its next request.
-    /// `interactive` marks a sign-in the user started; any other posts no password while the
-    /// school's refusals hold it back (``storedPasswordRefusals``), and runs under
-    /// ``postingStoredPassword(_:)``. `logFailure` gets each failure but a cancellation.
+    /// Ensures the user is signed in to `serviceURL` through NTUST SSO, as the Python
+    /// `NtustSsoBridge.ensure_service_login` flow does. `generation` is
+    /// ``NTUSTSessionManager/generation`` when the credentials were read; once a sign-out moves
+    /// it, the login throws `CancellationError` before its next request. `interactive` marks a
+    /// sign-in the user started; any other posts no password while the school's refusals hold it
+    /// back (``storedPasswordRefusals``), and runs under ``postingStoredPassword(_:)``. `now`
+    /// times the refusals, and `logFailure` gets each failure but a cancellation.
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
@@ -179,6 +185,7 @@ enum SSOLoginService {
         password: String,
         generation: Int,
         interactive: Bool = false,
+        now: () -> Date = { Date() },
         logFailure: @escaping @MainActor (any Error) -> Void = {
             AppLogger.captureError($0, context: ["service": "ssoEnsureServiceLogin"])
         }
@@ -186,13 +193,13 @@ enum SSOLoginService {
         guard !interactive else {
             return try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: true, logFailure: logFailure
+                generation: generation, interactive: true, now: now, logFailure: logFailure
             )
         }
         return try await postingStoredPassword {
             try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: false, logFailure: logFailure
+                generation: generation, interactive: false, now: now, logFailure: logFailure
             )
         }
     }
@@ -204,13 +211,14 @@ enum SSOLoginService {
         password: String,
         generation: Int,
         interactive: Bool,
+        now: () -> Date,
         logFailure: @escaping @MainActor (any Error) -> Void
     ) async throws -> Bool {
         try await oneAtATime {
             try checkSignedIn(generation)
             let signedIn = try await performServiceLogin(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: interactive, logFailure: logFailure
+                generation: generation, interactive: interactive, now: now, logFailure: logFailure
             )
             if interactive, signedIn { forgetStoredPasswordRefusals() }
             return signedIn
@@ -228,6 +236,7 @@ enum SSOLoginService {
         password: String,
         generation: Int,
         interactive: Bool,
+        now: () -> Date,
         logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
@@ -254,7 +263,7 @@ enum SSOLoginService {
                 }
             }
 
-            if !interactive, storedPasswordPostMustWait() { throw SSOLoginError.loginFailed(reason: nil) }
+            if !interactive, storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
 
             // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
             // device-change warnings. They are in the session's jar, the NTUST-private one:
@@ -325,7 +334,7 @@ enum SSOLoginService {
             // Step 7: Check if still on SSO page → login failed
             if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if !interactive, NTUSTSessionManager.shared.generation == generation {
-                    noteStoredPasswordRefused()
+                    noteStoredPasswordRefused(at: now())
                 }
                 throw SSOLoginError.loginFailed(reason: HTMLParser.loginErrorMessage(in: currentHTML))
             }

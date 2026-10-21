@@ -254,25 +254,29 @@ struct StoredPasswordRetryTests {
 
     @MainActor
     final class Announcements {
-        var count = 0
+        var retryTimes: [Date] = []
     }
 
-    @Test("a refusal and each automatic post it holds back are announced, so a try can be armed")
+    /// Each announcement carries when the next post may go, so a stray one of another test, with a
+    /// time of its own, does not pass for this test's.
+    @Test("a refusal and each automatic post it holds back are announced with when the next post may go")
     func waitsAreAnnounced() async throws {
+        let refused = Date(timeIntervalSince1970: 3_000_000 + Double(Int.random(in: 0..<1_000_000)))
+        let retryAt = refused.addingTimeInterval(SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1))
         try await signedIn(refusals: 0, last: nil) { _ in
             let heard = Announcements()
             let observer = NotificationCenter.default.addObserver(
                 forName: SSOLoginService.storedPasswordPostWaits, object: nil, queue: .main
-            ) { _ in
-                MainActor.assumeIsolated { heard.count += 1 }
+            ) { note in
+                guard let at = note.userInfo?[SSOLoginService.storedPasswordRetryAtKey] as? Date else { return }
+                MainActor.assumeIsolated { heard.retryTimes.append(at) }
             }
             defer { NotificationCenter.default.removeObserver(observer) }
 
-            SSOLoginService.noteStoredPasswordRefused()
-            try await waitUntil { heard.count >= 1 }
-            let afterTheRefusal = heard.count
-            #expect(SSOLoginService.storedPasswordPostMustWait())
-            try await waitUntil { heard.count > afterTheRefusal }
+            SSOLoginService.noteStoredPasswordRefused(at: refused)
+            try await waitUntil { heard.retryTimes.contains(retryAt) }
+            #expect(SSOLoginService.storedPasswordPostMustWait(now: refused.addingTimeInterval(1)))
+            try await waitUntil { heard.retryTimes.filter { $0 == retryAt }.count == 2 }
         }
     }
 
