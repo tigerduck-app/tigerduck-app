@@ -628,7 +628,10 @@ final class AuthService {
     /// out: the school's sign-in when its session is gone, then the Moodle token, then the
     /// backend. A sign-in or a sign-out that cleared the refusals meanwhile leaves it nothing to do.
     private func retryStoredPassword() async {
-        guard let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else { return }
+        // Leaves a sign-in under way, typed or not, to the school's answer, which clears the
+        // refusals or counts one and so arms the next try. The sign-in sheet reads `isLoggingIn`,
+        // which this try's school sign-in would reset.
+        guard !isLoggingIn, let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else { return }
         guard retryAt <= now() else {
             armStoredPasswordRetry()
             return

@@ -300,6 +300,28 @@ struct StoredPasswordRetryTests {
         #expect(device.harvests.count == 0)
     }
 
+    /// The sign-in sheet reads `isLoggingIn` and `loginError`, which a try's school sign-in would
+    /// reset under it.
+    @Test("a try that comes while a sign-in is under way leaves that sign-in alone")
+    func tryWhileASignInRunsLeavesItAlone() async throws {
+        let device = Device(harvests: Harvests(refusing: 0))
+
+        try await signedIn(refusals: 1, last: Self.start) { _ in
+            device.handOnTheWait()
+            try await device.sleeper.waitUntilArmed()
+            let waiting = try #require(device.auth.storedPasswordRetry)
+
+            device.auth.isLoggingIn = true
+            device.advance(by: 10)
+            await device.sleeper.fire()
+            await waiting.value
+            #expect(device.auth.isLoggingIn)
+        }
+
+        #expect(device.probes.count == 0)
+        #expect(device.harvests.count == 0)
+    }
+
     @Test("a try that finds the refusals cleared, as a sign-in the user typed leaves them, sends nothing")
     func tryAfterATypedSignInSendsNothing() async throws {
         let device = Device(harvests: Harvests(refusing: 0))
