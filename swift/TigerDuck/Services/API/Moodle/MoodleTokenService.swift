@@ -189,7 +189,7 @@ actor MoodleTokenService {
             tokens.drop()
         }
         // The harvest posts the stored password, so it waits out a refusal as the SSO sign-ins do.
-        guard SSOLoginService.mayPostStoredPassword(now: now()) else {
+        guard !SSOLoginService.storedPasswordPostMustWait(now: now()) else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
         }
         // Measured from the failure, so a clock set back does not stretch the pause.
@@ -220,7 +220,7 @@ actor MoodleTokenService {
     private func harvestWithStoredCredentials(generation: Int) async throws -> TokenTriple {
         // Signed out while this waited for the lock: the stored account may be the next one's.
         guard signInGeneration == generation else { throw CancellationError() }
-        guard SSOLoginService.mayPostStoredPassword(now: now()) else {
+        guard !SSOLoginService.storedPasswordPostMustWait(now: now()) else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
         }
         guard let creds = storedCredentials() else {

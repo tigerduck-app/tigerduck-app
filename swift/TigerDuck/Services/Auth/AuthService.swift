@@ -37,6 +37,17 @@ final class AuthService {
     /// The interactive SSO sign-in. Tests pass a stand-in, so no request reaches the school.
     private let schoolSignIn: (_ studentId: String, _ password: String) async throws -> Bool
 
+    /// The SSO session probe and the automatic sign-in that renews the session with the stored
+    /// credentials. Tests pass stand-ins, so no request reaches the school.
+    private let schoolSessionIsLive: () async -> Bool
+    private let renewSchoolSignIn: (_ studentId: String, _ password: String, _ generation: Int) async throws -> Bool
+
+    /// The clock and the wait of the next try of a refused stored password; tests pass their own.
+    private let now: () -> Date
+    private let retrySleep: @Sendable (Duration) async -> Void
+    /// That next try while it waits.
+    @ObservationIgnored private(set) var storedPasswordRetry: Task<Void, Never>?
+
     /// The library's sign-in request after the school's. Tests pass a stand-in, so no request
     /// reaches the library.
     private let librarySignIn: @MainActor (_ username: String, _ password: String) async throws -> LibraryLoginData
@@ -60,16 +71,25 @@ final class AuthService {
         moodleTokens: MoodleTokenService = .shared,
         schoolSignIn: @escaping (_ studentId: String, _ password: String) async throws -> Bool
             = AuthService.signInToSchool,
+        schoolSessionIsLive: @escaping () async -> Bool = { await NTUSTSessionManager.shared.probeCookiesValid() },
+        renewSchoolSignIn: @escaping (_ studentId: String, _ password: String, _ generation: Int) async throws -> Bool
+            = AuthService.renewSignInToSchool,
         librarySignIn: @escaping @MainActor (_ username: String, _ password: String) async throws -> LibraryLoginData
             = LibraryService.requestToken(username:password:),
         endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
-            = AuthService.endSchoolSession(departing:)
+            = AuthService.endSchoolSession(departing:),
+        now: @escaping () -> Date = { Date() },
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.keychainHasCredentials = keychainHasCredentials
         self.moodleTokens = moodleTokens
         self.schoolSignIn = schoolSignIn
+        self.schoolSessionIsLive = schoolSessionIsLive
+        self.renewSchoolSignIn = renewSchoolSignIn
         self.librarySignIn = librarySignIn
         self.endSchoolSession = endSchoolSession
+        self.now = now
+        self.retrySleep = retrySleep
         let present = keychainHasCredentials()
         lastKnownHasCredentials = present
         // Only ever raised here. A false read at this point may just mean the
@@ -98,7 +118,7 @@ final class AuthService {
         credentialObservers.append(center.addObserver(
             forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.signInAfterUnlock() }
+            Task { @MainActor in await self?.signInToBackendAgain() }
         })
         let returnToApp = UIApplication.didBecomeActiveNotification
         #elseif os(macOS)
@@ -112,6 +132,13 @@ final class AuthService {
             Task { @MainActor in await self?.ensureBackendSignedIn() }
         })
         #endif
+        // A refused stored password is tried again once its wait is over. After a relaunch, which
+        // loses the try armed before, the first automatic sign-in held back arms it again.
+        credentialObservers.append(center.addObserver(
+            forName: SSOLoginService.storedPasswordPostWaits, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.armStoredPasswordRetry() }
+        })
     }
 
     /// Re-read the keychain and invalidate only if its answer changed, so a
@@ -301,6 +328,18 @@ final class AuthService {
         )
     }
 
+    /// The automatic sign-in that renews the session, with the stored credentials and the session
+    /// generation read with them.
+    static func renewSignInToSchool(studentId: String, password: String, generation: Int) async throws -> Bool {
+        try await SSOLoginService.ensureServiceLogin(
+            session: NTUSTSessionManager.shared.session,
+            serviceURL: ssoServiceURL,
+            studentId: studentId,
+            password: password,
+            generation: generation
+        )
+    }
+
     func login(studentId: String, password: String) async -> Bool {
         isLoggingIn = true
         loginError = nil
@@ -481,7 +520,7 @@ final class AuthService {
         // Ask the server whether the cookies still unlock the SSO home (~30ms warm). The
         // local 1h TTL errs both ways: it drops working cookies after an hour and trusts
         // ones the server has already evicted.
-        if await NTUSTSessionManager.shared.probeCookiesValid() {
+        if await schoolSessionIsLive() {
             NTUSTSessionManager.shared.markLoginSuccess()
             reauthErrorMessage = nil
             await ensureBackendSignedIn()
@@ -514,13 +553,7 @@ final class AuthService {
         loginError = nil
         defer { isLoggingIn = false }
         do {
-            guard try await SSOLoginService.ensureServiceLogin(
-                session: NTUSTSessionManager.shared.session,
-                serviceURL: Self.ssoServiceURL,
-                studentId: studentId,
-                password: password,
-                generation: generation
-            ) else { return false }
+            guard try await renewSchoolSignIn(studentId, password, generation) else { return false }
         } catch is CancellationError {
             // The account signed out meanwhile; the login screen shows no error for it.
             return false
@@ -549,14 +582,15 @@ final class AuthService {
     }
 
     /// A sign-in already running may have begun behind the locked screen, where the credentials
-    /// could not be read, so the unlock waits for it and then tries on its own.
-    private func signInAfterUnlock() async {
+    /// could not be read, or before a retry of the stored password had a Moodle token to send,
+    /// so this waits for it and then tries on its own.
+    private func signInToBackendAgain() async {
         if let running = backendSignIn {
             await running.value
             if backendSignIn == running { backendSignIn = nil }
         }
-        // A sign-in that failed around the lock may have lost the keychain or the network to it,
-        // so the unlock does not wait out its pause.
+        // A sign-in that failed around the lock or the refusal may have lost the keychain, the
+        // network or the token to it, so this does not wait out its pause.
         backendSignInFailedAt = nil
         await ensureBackendSignedIn()
     }
@@ -571,6 +605,38 @@ final class AuthService {
         if await !performV3Login(studentId: studentId, harvesting: true) {
             noteFailedBackendSignIn(since: generation)
         }
+    }
+
+    /// Arms the next try of a stored password the school refused, for when the refusals let it
+    /// go, in place of one armed before. A sign-out cancels it.
+    private func armStoredPasswordRetry() {
+        storedPasswordRetry?.cancel()
+        storedPasswordRetry = nil
+        guard let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else { return }
+        let wait = max(0, retryAt.timeIntervalSince(now()))
+        let generation = loginGeneration
+        storedPasswordRetry = Task { [weak self, retrySleep] in
+            await retrySleep(.seconds(wait))
+            guard !Task.isCancelled, let self, self.loginGeneration == generation else { return }
+            // Under way: arming the next try leaves this one running.
+            self.storedPasswordRetry = nil
+            await self.retryStoredPassword()
+        }
+    }
+
+    /// Sends the stored password once more down the chain a typed sign-in runs, and signs nothing
+    /// out: the school's sign-in when its session is gone, then the Moodle token, then the
+    /// backend. A sign-in or a sign-out that cleared the refusals meanwhile leaves it nothing to do.
+    private func retryStoredPassword() async {
+        guard let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else { return }
+        guard retryAt <= now() else {
+            armStoredPasswordRetry()
+            return
+        }
+        let generation = loginGeneration
+        guard await ensureAuthenticated(), loginGeneration == generation else { return }
+        guard (try? await moodleTokens.refreshTokenIfNeeded()) != nil, loginGeneration == generation else { return }
+        await signInToBackendAgain()
     }
 
     /// Best-effort: the library account signs in with the same NTUST credentials. A library
@@ -605,6 +671,10 @@ final class AuthService {
         backendSignIn?.cancel()
         backendSignIn = nil
         backendSignInFailedAt = nil
+        // The refusals were of the departing account's password.
+        SSOLoginService.forgetStoredPasswordRefusals()
+        storedPasswordRetry?.cancel()
+        storedPasswordRetry = nil
         markCredentialsChanged()
         #if os(iOS)
         Task { [accountNotifications] in await Self.removeAccountNotifications(from: accountNotifications) }

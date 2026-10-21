@@ -63,9 +63,10 @@ enum SSOLoginService {
         }
     }
 
-    /// Posted on `NotificationCenter.default` for each refusal ``storedPasswordRefusals`` counts, so
-    /// `AuthService` can arm the next try.
-    nonisolated static let storedPasswordRefused = Notification.Name("TigerDuck.storedPasswordRefused")
+    /// Posted on `NotificationCenter.default` when automatic posts of the stored password have to
+    /// wait: at each refusal ``storedPasswordRefusals`` counts and at each post one holds back, so
+    /// `AuthService` arms a try for when the wait is over, after a relaunch too.
+    nonisolated static let storedPasswordPostWaits = Notification.Name("TigerDuck.storedPasswordPostWaits")
 
     /// The waits after the first refusals in a row. Every later wait is
     /// ``storedPasswordRetryInterval``, so a password changed elsewhere then goes out four times a day.
@@ -91,15 +92,23 @@ enum SSOLoginService {
         return storedPasswordRetryAt(refusals: refusals.count, lastRefusal: refusals.last, now: now)
     }
 
-    nonisolated static func mayPostStoredPassword(now: Date = Date()) -> Bool {
-        storedPasswordRetryAt(now: now).map { $0 <= now } ?? true
+    /// Whether an automatic post of the stored password has to wait at `now`, which
+    /// ``storedPasswordPostWaits`` announces.
+    nonisolated static func storedPasswordPostMustWait(now: Date = Date()) -> Bool {
+        guard let retryAt = storedPasswordRetryAt(now: now), retryAt > now else { return false }
+        announceStoredPasswordWait()
+        return true
     }
 
     nonisolated static func noteStoredPasswordRefused(at now: Date = Date()) {
         storedPasswordRefusals = (storedPasswordRefusals.count + 1, now)
-        // Posted from the main actor: off it, the post would hold this thread until the main
-        // queue ran the observer.
-        Task { @MainActor in NotificationCenter.default.post(name: storedPasswordRefused, object: nil) }
+        announceStoredPasswordWait()
+    }
+
+    /// From the main actor: off it, the post would hold this thread until the main queue ran the
+    /// observer.
+    private nonisolated static func announceStoredPasswordWait() {
+        Task { @MainActor in NotificationCenter.default.post(name: storedPasswordPostWaits, object: nil) }
     }
 
     nonisolated static func forgetStoredPasswordRefusals() {
@@ -116,8 +125,8 @@ enum SSOLoginService {
     /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
     /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
     /// refused before either counted the refusal, and the school counts both toward the lockout.
-    /// `body` checks ``mayPostStoredPassword(now:)``, posts, reads the answer and counts a refusal
-    /// before it returns. A sign-in the user typed posts what was typed, so it does not wait.
+    /// `body` checks ``storedPasswordPostMustWait(now:)``, posts, reads the answer and counts a
+    /// refusal before it returns. A sign-in the user typed posts what was typed, so it does not wait.
     nonisolated(nonsending) static func postingStoredPassword<T>(
         _ body: nonisolated(nonsending) () async throws -> T
     ) async rethrows -> T {
@@ -245,7 +254,7 @@ enum SSOLoginService {
                 }
             }
 
-            if !interactive, !mayPostStoredPassword() { throw SSOLoginError.loginFailed(reason: nil) }
+            if !interactive, storedPasswordPostMustWait() { throw SSOLoginError.loginFailed(reason: nil) }
 
             // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
             // device-change warnings. They are in the session's jar, the NTUST-private one:

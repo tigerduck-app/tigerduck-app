@@ -1564,7 +1564,7 @@ struct BackendSignInTests {
 
 /// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next
 /// `validAccessToken()` refreshes with refresh token R0.
-private struct BackendFixture {
+struct BackendFixture {
     let manager: AuthTokenManager
     let recorder: Recorder
     let baseURL: URL
@@ -1740,7 +1740,7 @@ private struct RegistrationFixture {
 
 /// The Keychain and the UIKit background task in one, so it can tell whether a token write
 /// happened while a background task ran.
-private nonisolated final class Recorder: @unchecked Sendable {
+nonisolated final class Recorder: @unchecked Sendable {
     struct BackgroundTasks {
         var begun = 0
         var ended = 0
