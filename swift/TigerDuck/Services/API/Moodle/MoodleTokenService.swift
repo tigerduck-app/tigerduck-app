@@ -205,7 +205,8 @@ actor MoodleTokenService {
             guard signInGeneration == generation else { throw CancellationError() }
             tokens.save(triple)
             lastHarvestFailure = nil
-            SSOLoginService.forgetStoredPasswordRefusals()
+            // A token a live session handed out without a post says nothing of the password.
+            if triple.postedPassword { SSOLoginService.forgetStoredPasswordRefusals() }
             return triple.wstoken
         }
         inFlightRefreshTask = task
@@ -291,6 +292,9 @@ actor MoodleTokenService {
         let signature: String
         let wstoken: String
         let privatetoken: String?
+        /// Whether the harvest posted the password on its way to the token. A live SSO or Moodle
+        /// session in the shared cookie jar lets `launch.php` hand the token out without one.
+        var postedPassword = false
     }
 
     /// The harvest's session. The shared cookie store keeps SSO anti-forgery and correlation
@@ -539,7 +543,7 @@ actor MoodleTokenService {
                     reason: HTMLParser.loginErrorMessage(in: nextHTML),
                 )
             }
-            return try await resolveTokenTriple(
+            var triple = try await resolveTokenTriple(
                 session: session,
                 data: nextData,
                 responseURL: nextURL,
@@ -547,6 +551,8 @@ actor MoodleTokenService {
                 password: password,
                 remainingSteps: remainingSteps - 1,
             )
+            triple.postedPassword = true
+            return triple
         }
 
         throw MoodleWebserviceError.malformedResponse(

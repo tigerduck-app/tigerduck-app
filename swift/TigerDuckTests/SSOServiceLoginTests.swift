@@ -434,10 +434,12 @@ struct SSOServiceLoginTests {
         }
     }
 
-    /// A harvest without `failure` hands out the token "new". `token` stands in for the keychain.
+    /// A harvest without `failure` hands out the token "new", as the answer to a post of the
+    /// password unless `posted` is false. `token` stands in for the keychain.
     private func tokenService(
         log: HarvestLog,
         failure: MoodleWebserviceError?,
+        posted: Bool = true,
         stored: StoredPassword = StoredPassword("unused"),
         token: OSAllocatedUnfairLock<String?> = OSAllocatedUnfairLock(initialState: nil),
         now: @escaping @Sendable () -> Date = { Date() },
@@ -454,7 +456,7 @@ struct SSOServiceLoginTests {
                 await log.record()
                 await duringHarvest()
                 if let failure { throw failure }
-                return MoodleTokenService.TokenTriple(signature: "", wstoken: "new", privatetoken: nil)
+                return MoodleTokenService.TokenTriple(signature: "", wstoken: "new", privatetoken: nil, postedPassword: posted)
             },
             now: now
         )
@@ -853,5 +855,48 @@ struct SSOServiceLoginTests {
         #expect(reason == "帳號或密碼錯誤")
         #expect(refusals == 1)
         #expect(posts.map(\.url) == [Self.postURL])
+    }
+
+    /// The page that hands Moodle Mobile its token, `token` among the triple's three parts.
+    static func tokenPage(_ token: String) -> String {
+        let triple = Data("signature:::\(token):::private-token".utf8).base64EncodedString()
+        return #"<script>window.location = "moodlemobile://token=\#(triple)";</script>"#
+    }
+
+    /// A live SSO or Moodle session in the shared cookie jar lets `launch.php` hand the token out
+    /// at once, which says nothing of the password: clearing the refusals there would let the next
+    /// SSO sign-in post a refused password at once, and the quick retries after it.
+    @Test("a renewal whose token comes without a post of the password leaves the refusals")
+    func tokenWithoutAPostLeavesTheRefusals() async throws {
+        SSOServerStub.reset()
+        let log = HarvestLog()
+        let launch = try #require(URL(string: "https://moodle.stub.invalid/admin/tool/mobile/launch.php"))
+        let renewal = pageWalk(log: log, from: Self.tokenPage("live-session-token"), at: launch)
+        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<String, Error>, Int) in
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRefusals.count)
+        }
+        guard case .success("live-session-token") = outcome else {
+            Issue.record("expected the token, got \(outcome)")
+            return
+        }
+        #expect(posts.isEmpty)
+        #expect(refusals == 1)
+    }
+
+    @Test("a renewal whose posted password the school takes clears the refusals")
+    func acceptedPostOfARenewalClearsTheRefusals() async {
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.page(Self.tokenPage("posted-token")), for: Self.postURL)
+        let log = HarvestLog()
+        let renewal = pageWalk(log: log, from: Pages.ssoam2Login, at: Self.loginURL)
+        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<String, Error>, Int) in
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRefusals.count)
+        }
+        guard case .success("posted-token") = outcome else {
+            Issue.record("expected the token, got \(outcome)")
+            return
+        }
+        #expect(posts.map(\.url) == [Self.postURL])
+        #expect(refusals == 0)
     }
 }

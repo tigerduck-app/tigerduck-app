@@ -60,7 +60,9 @@ struct StoredPasswordRetryTests {
                     refusalsLeft -= 1
                     throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
                 }
-                return MoodleTokenService.TokenTriple(signature: "", wstoken: "harvested", privatetoken: nil)
+                return MoodleTokenService.TokenTriple(
+                    signature: "", wstoken: "harvested", privatetoken: nil, postedPassword: true
+                )
             }
         }
 
