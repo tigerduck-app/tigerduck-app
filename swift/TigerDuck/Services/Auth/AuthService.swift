@@ -665,8 +665,8 @@ final class AuthService {
     }
 
     /// The chain of ``retryStoredPassword()``, true once it has run to the end. It leaves a
-    /// sign-in under way, typed or not, to the school's answer, and writes none of `isLoggingIn`,
-    /// `loginError` and `reauthErrorMessage`, which the sign-in sheet and the banners show.
+    /// sign-in under way, typed or not, to the school's answer, and writes neither `isLoggingIn`
+    /// nor `loginError`, which the sign-in sheet shows.
     private func runStoredPasswordRetry() async -> Bool {
         guard !isLoggingIn, let studentId = storedStudentId, let password = storedPassword else { return false }
         let generation = loginGeneration
@@ -677,9 +677,10 @@ final class AuthService {
                   (try? await renewSchoolSignIn(studentId, password, sessionGeneration)) == true else { return false }
             _revision &+= 1
         }
-        guard loginGeneration == generation,
-              (try? await moodleTokens.refreshTokenIfNeeded()) != nil,
-              loginGeneration == generation else { return false }
+        guard loginGeneration == generation else { return false }
+        // As a successful automatic sign-in does, this clears the banner a failed one left.
+        reauthErrorMessage = nil
+        guard (try? await moodleTokens.refreshTokenIfNeeded()) != nil, loginGeneration == generation else { return false }
         await signInToBackendAgain()
         return true
     }

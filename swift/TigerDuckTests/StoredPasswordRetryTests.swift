@@ -275,6 +275,29 @@ struct StoredPasswordRetryTests {
         #expect(device.harvests.count == 1)
     }
 
+    /// The banner's error is of an automatic sign-in that failed, which a try that signs in to the
+    /// school makes stale; the sign-in sheet's state is the user's own sign-in's.
+    @Test("a try that signs in to the school clears the banner a failed automatic sign-in left, and nothing of the sheet's",
+          arguments: [true, false])
+    func signedInTryClearsTheBanner(sessionIsLive: Bool) async throws {
+        let device = Device(harvests: Harvests(refusing: 0))
+        device.school.sessionIsLive = sessionIsLive
+        device.answerTheBackendSignIn()
+        device.auth.reauthErrorMessage = "automatic sign-in failed"
+        device.auth.loginError = "typed earlier"
+
+        try await signedIn(refusals: 1, last: Self.start) { _ in
+            _ = try await device.armTheTry()
+            device.advance(by: 10)
+            await device.sleeper.fire()
+            try await waitUntil { device.isSignedInToTheBackend }
+        }
+
+        #expect(device.auth.reauthErrorMessage == nil)
+        #expect(device.auth.loginError == "typed earlier")
+        #expect(!device.auth.isLoggingIn)
+    }
+
     /// The sign-in sheet shows `isLoggingIn` and `loginError` and the banners `reauthErrorMessage`,
     /// so a try that wrote them would show a spinner and an error nobody asked for.
     @Test("a try whose school sign-in is refused stops there, and leaves the sign-in sheet and the banners alone")
