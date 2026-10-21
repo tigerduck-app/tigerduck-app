@@ -47,6 +47,9 @@ final class AuthService {
     private let retrySleep: @Sendable (Duration) async -> Void
     /// That next try while it waits.
     @ObservationIgnored private(set) var storedPasswordRetry: Task<Void, Never>?
+    /// Tries in a row that ended for another reason than a refusal, such as the network or a
+    /// locked keychain. Each sends the next a step further down the schedule.
+    @ObservationIgnored private var storedPasswordRetryMisses = 0
 
     /// The library's sign-in request after the school's. Tests pass a stand-in, so no request
     /// reaches the library.
@@ -610,10 +613,29 @@ final class AuthService {
     /// Arms the next try of a stored password the school refused, for when the refusals let it
     /// go, in place of one armed before. A sign-out cancels it.
     private func armStoredPasswordRetry() {
+        storedPasswordRetryMisses = 0
+        guard let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else {
+            storedPasswordRetry?.cancel()
+            storedPasswordRetry = nil
+            return
+        }
+        startStoredPasswordRetry(after: max(0, retryAt.timeIntervalSince(now())))
+    }
+
+    /// Arms the try again after one that ended for another reason than a refusal, a step further
+    /// down the schedule each time, so a try lost to a network switch does not wait for the next
+    /// use of the app.
+    private func armStoredPasswordRetryAfterAMiss() {
+        let refusals = SSOLoginService.storedPasswordRefusals.count
+        guard refusals > 0 else { return }
+        storedPasswordRetryMisses += 1
+        startStoredPasswordRetry(
+            after: SSOLoginService.storedPasswordRetryDelay(afterRefusals: refusals + storedPasswordRetryMisses)
+        )
+    }
+
+    private func startStoredPasswordRetry(after wait: TimeInterval) {
         storedPasswordRetry?.cancel()
-        storedPasswordRetry = nil
-        guard let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else { return }
-        let wait = max(0, retryAt.timeIntervalSince(now()))
         let generation = loginGeneration
         storedPasswordRetry = Task { [weak self, retrySleep] in
             await retrySleep(.seconds(wait))
@@ -628,18 +650,38 @@ final class AuthService {
     /// out: the school's sign-in when its session is gone, then the Moodle token, then the
     /// backend. A sign-in or a sign-out that cleared the refusals meanwhile leaves it nothing to do.
     private func retryStoredPassword() async {
-        // Leaves a sign-in under way, typed or not, to the school's answer, which clears the
-        // refusals or counts one and so arms the next try. The sign-in sheet reads `isLoggingIn`,
-        // which this try's school sign-in would reset.
-        guard !isLoggingIn, let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else { return }
+        guard let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else { return }
         guard retryAt <= now() else {
             armStoredPasswordRetry()
             return
         }
+        let refusals = SSOLoginService.storedPasswordRefusals.count
+        // A refusal arms the next try as it is announced, and a sign-in that went through or a
+        // sign-out leaves no try to arm.
+        guard await !runStoredPasswordRetry(), SSOLoginService.storedPasswordRefusals.count == refusals else {
+            return
+        }
+        armStoredPasswordRetryAfterAMiss()
+    }
+
+    /// The chain of ``retryStoredPassword()``, true once it has run to the end. It leaves a
+    /// sign-in under way, typed or not, to the school's answer, and writes none of `isLoggingIn`,
+    /// `loginError` and `reauthErrorMessage`, which the sign-in sheet and the banners show.
+    private func runStoredPasswordRetry() async -> Bool {
+        guard !isLoggingIn, let studentId = storedStudentId, let password = storedPassword else { return false }
         let generation = loginGeneration
-        guard await ensureAuthenticated(), loginGeneration == generation else { return }
-        guard (try? await moodleTokens.refreshTokenIfNeeded()) != nil, loginGeneration == generation else { return }
+        let sessionGeneration = NTUSTSessionManager.shared.generation
+        if await !schoolSessionIsLive() {
+            // A sign-in typed while the probe was out posts what was typed instead.
+            guard !isLoggingIn,
+                  (try? await renewSchoolSignIn(studentId, password, sessionGeneration)) == true else { return false }
+            _revision &+= 1
+        }
+        guard loginGeneration == generation,
+              (try? await moodleTokens.refreshTokenIfNeeded()) != nil,
+              loginGeneration == generation else { return false }
         await signInToBackendAgain()
+        return true
     }
 
     /// Best-effort: the library account signs in with the same NTUST credentials. A library
