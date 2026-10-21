@@ -134,6 +134,10 @@ struct StoredPasswordRetryTests {
             center.post(name: SSOLoginService.storedPasswordPostWaits, object: nil)
         }
 
+        func returnToTheApp() {
+            center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        }
+
         var isSignedInToTheBackend: Bool {
             backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9"
         }
@@ -225,6 +229,27 @@ struct StoredPasswordRetryTests {
 
         #expect(device.harvests.count == 1)
         #expect(SettingsAPIStub.requests(for: device.backend.loginURL).count == 1)
+    }
+
+    /// The device of the issue: signed in, its backend session revoked, no Moodle token stored and
+    /// the latch of 2.6.2 up.
+    @Test("a device the latch held gets a backend session at the first return to the app after the update")
+    func latchedDeviceSignsInAfterTheUpdate() async throws {
+        let device = Device(harvests: Harvests(refusing: 0))
+        device.answerTheBackendSignIn()
+
+        try await signedIn(refusals: 0, last: nil) { _ in
+            try await StoredPasswordLatchRetryMigrationTests.withLatch(true) {
+                StoredPasswordLatchRetryMigration.runIfNeeded()
+                device.returnToTheApp()
+                try await waitUntil { device.isSignedInToTheBackend }
+                #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+            }
+        }
+
+        #expect(device.harvests.count == 1)
+        #expect(SettingsAPIStub.requests(for: device.backend.loginURL).count == 1)
+        #expect(await device.sleeper.armedCount == 0)
     }
 
     @MainActor
