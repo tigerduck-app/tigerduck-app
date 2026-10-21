@@ -71,8 +71,9 @@ actor MoodleTokenService {
     /// Moved by ``signOut()``: a harvest that started before a sign-out stores nothing, or
     /// the departing account's token would be back in the keychain for the next one.
     private var signInGeneration = 0
-    /// The last renewal's failure, other than a refused password, which latches instead, or the
-    /// network. Each Moodle screen that appears without a token asks for one, so for
+    /// The last renewal's failure, other than a refused password, which
+    /// `SSOLoginService.storedPasswordRefusals` counts instead, or the network. Each Moodle screen
+    /// that appears without a token asks for one, so for
     /// ``harvestPause`` they get this error back and the password is not sent again.
     private var lastHarvestFailure: (at: Date, error: any Error)?
     nonisolated static let harvestPause: TimeInterval = 5 * 60
@@ -187,8 +188,8 @@ actor MoodleTokenService {
             guard current == rejected else { return current }
             tokens.drop()
         }
-        // The harvest posts the stored password, so it stops as the SSO sign-ins do.
-        guard !SSOLoginService.storedPasswordRejected else {
+        // The harvest posts the stored password, so it waits out a refusal as the SSO sign-ins do.
+        guard SSOLoginService.mayPostStoredPassword(now: now()) else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
         }
         // Measured from the failure, so a clock set back does not stretch the pause.
@@ -204,6 +205,7 @@ actor MoodleTokenService {
             guard signInGeneration == generation else { throw CancellationError() }
             tokens.save(triple)
             lastHarvestFailure = nil
+            SSOLoginService.forgetStoredPasswordRefusals()
             return triple.wstoken
         }
         inFlightRefreshTask = task
@@ -214,11 +216,11 @@ actor MoodleTokenService {
     }
 
     /// The harvest with the stored password, run under `SSOLoginService.postingStoredPassword`, so
-    /// the latch is checked again here: an SSO sign-in that held it first may have latched a refusal.
+    /// the refusals are checked again here: an SSO sign-in that held it first may have counted one.
     private func harvestWithStoredCredentials(generation: Int) async throws -> TokenTriple {
         // Signed out while this waited for the lock: the stored account may be the next one's.
         guard signInGeneration == generation else { throw CancellationError() }
-        guard !SSOLoginService.storedPasswordRejected else {
+        guard SSOLoginService.mayPostStoredPassword(now: now()) else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
         }
         guard let creds = storedCredentials() else {
@@ -233,7 +235,7 @@ actor MoodleTokenService {
             if case MoodleWebserviceError.ssoLoginRejected = error {
                 // A sign-in with a new password can finish while this harvest runs on the old one.
                 if signInGeneration == generation, storedCredentials()?.password == creds.password {
-                    SSOLoginService.storedPasswordRejected = true
+                    SSOLoginService.noteStoredPasswordRefused(at: now())
                 }
             } else if signInGeneration == generation, !Self.isNetworkFailure(error) {
                 lastHarvestFailure = (now(), error)

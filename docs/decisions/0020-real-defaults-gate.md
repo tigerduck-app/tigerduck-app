@@ -22,10 +22,10 @@ under test reads and writes directly, not through a seam:
   `AppState.markForReenableCheck`, which reads `categoriesSyncedOnce` and
   writes the pending categories; and `CloudSyncCoordinator`'s default holds on marks and course
   settings, which read the pending categories and the Assignments and Courses switches.
-- `SSOLoginService.storedPasswordRejected`, the latch that stops a school sign-in or a Moodle
-  token harvest from posting a rejected password, and `ssoLoginTimestamp`.
-- `LibraryService.storedPasswordRejected`, the same latch for the library sign-in with the
-  stored credentials.
+- `SSOLoginService.storedPasswordRefusals`, which holds a school sign-in or a Moodle token harvest
+  back from posting a refused password until its wait is over, and `ssoLoginTimestamp`.
+- `LibraryService.storedPasswordRejected`, the latch that stops the library sign-in with the
+  stored credentials once the library refused them.
 - `ntustCredentialsPresent`, which `AuthService.login(studentId:password:)` and `logout()` write
   once they have changed the keychain.
 

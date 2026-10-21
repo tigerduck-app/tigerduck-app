@@ -1262,7 +1262,7 @@ struct BackendSignInTests {
 
     @Test("with no Moodle token stored, a sign-in harvests one and signs in with it", arguments: SignInPath.allCases)
     func signInHarvestsAMissingMoodleToken(path: SignInPath) async throws {
-        try await withPasswordLatchCleared {
+        try await withNoPasswordRefusals {
             let backend = BackendFixture(signedIn: path == .relogin)
             let harvests = CallCount()
             let auth = AuthService(
@@ -1292,7 +1292,7 @@ struct BackendSignInTests {
 
     @Test("a backend sign-in sends the Moodle token and no password", arguments: SignInPath.allCases)
     func backendSignInSendsNoPassword(path: SignInPath) async throws {
-        try await withPasswordLatchCleared {
+        try await withNoPasswordRefusals {
             let backend = BackendFixture(signedIn: path == .relogin)
             let auth = AuthService(
                 keychainHasCredentials: { false }, notificationCenter: NotificationCenter(),
@@ -1833,13 +1833,13 @@ private func withNoSyncPreferencesPending<T>(_ body: () async throws -> T) async
     }
 }
 
-/// Runs `body` with the stored-password latch, which stops a harvest before it starts, cleared,
-/// then puts it back. The latch is a real `Defaults` key, so this takes the shared gate.
-private func withPasswordLatchCleared<T>(_ body: () async throws -> T) async rethrows -> T {
+/// Runs `body` with no refusals of the stored password, which can hold a harvest back, then puts
+/// them back. They are real `Defaults` keys, so this takes the shared gate.
+private func withNoPasswordRefusals<T>(_ body: () async throws -> T) async rethrows -> T {
     try await withExclusiveRealDefaults {
-        let saved = SSOLoginService.storedPasswordRejected
-        SSOLoginService.storedPasswordRejected = false
-        defer { SSOLoginService.storedPasswordRejected = saved }
+        let saved = SSOLoginService.storedPasswordRefusals
+        SSOLoginService.forgetStoredPasswordRefusals()
+        defer { SSOLoginService.storedPasswordRefusals = saved }
         return try await body()
     }
 }

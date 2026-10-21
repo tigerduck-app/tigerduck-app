@@ -50,12 +50,60 @@ enum SSOLoginService {
         return String(data: data, encoding: big5)
     }
 
-    /// The school rejected the stored password in a sign-in the user did not start. Each
-    /// rejection counts toward the account's lockout, so those sign-ins stop posting it until
-    /// the user signs in again.
-    nonisolated static var storedPasswordRejected: Bool {
-        get { Defaults[.ntustStoredPasswordRejected] }
-        set { Defaults[.ntustStoredPasswordRejected] = newValue }
+    /// How many times in a row the school refused the stored password in sign-ins the user did not
+    /// start, and when it last did. Each refusal counts toward the account's lockout, so the next
+    /// such sign-in waits ``storedPasswordRetryDelay(afterRefusals:)`` before it posts the password
+    /// again. A sign-in the user typed never waits and clears the count, as a post the school
+    /// accepts and a sign-out do.
+    nonisolated static var storedPasswordRefusals: (count: Int, last: Date?) {
+        get { (Defaults[.ntustStoredPasswordRefusals], Defaults[.ntustStoredPasswordRefusedAt]) }
+        set {
+            Defaults[.ntustStoredPasswordRefusals] = newValue.count
+            Defaults[.ntustStoredPasswordRefusedAt] = newValue.last
+        }
+    }
+
+    /// Posted on `NotificationCenter.default` for each refusal ``storedPasswordRefusals`` counts, so
+    /// `AuthService` can arm the next try.
+    nonisolated static let storedPasswordRefused = Notification.Name("TigerDuck.storedPasswordRefused")
+
+    /// The waits after the first refusals in a row. Every later wait is
+    /// ``storedPasswordRetryInterval``, so a password changed elsewhere then goes out four times a day.
+    nonisolated static let storedPasswordQuickRetries: [TimeInterval] = [10, 60, 5 * 60]
+    nonisolated static let storedPasswordRetryInterval: TimeInterval = 6 * 60 * 60
+
+    nonisolated static func storedPasswordRetryDelay(afterRefusals refusals: Int) -> TimeInterval {
+        refusals > storedPasswordQuickRetries.count
+            ? storedPasswordRetryInterval
+            : storedPasswordQuickRetries[max(refusals, 1) - 1]
+    }
+
+    /// When an automatic post of the stored password may go next, or nil when no refusal holds one
+    /// back. Measured from the last refusal, so a clock set back does not stretch the wait.
+    nonisolated static func storedPasswordRetryAt(refusals: Int, lastRefusal: Date?, now: Date) -> Date? {
+        guard refusals > 0 else { return nil }
+        guard let lastRefusal, lastRefusal <= now else { return now }
+        return lastRefusal.addingTimeInterval(storedPasswordRetryDelay(afterRefusals: refusals))
+    }
+
+    nonisolated static func storedPasswordRetryAt(now: Date = Date()) -> Date? {
+        let refusals = storedPasswordRefusals
+        return storedPasswordRetryAt(refusals: refusals.count, lastRefusal: refusals.last, now: now)
+    }
+
+    nonisolated static func mayPostStoredPassword(now: Date = Date()) -> Bool {
+        storedPasswordRetryAt(now: now).map { $0 <= now } ?? true
+    }
+
+    nonisolated static func noteStoredPasswordRefused(at now: Date = Date()) {
+        storedPasswordRefusals = (storedPasswordRefusals.count + 1, now)
+        // Posted from the main actor: off it, the post would hold this thread until the main
+        // queue ran the observer.
+        Task { @MainActor in NotificationCenter.default.post(name: storedPasswordRefused, object: nil) }
+    }
+
+    nonisolated static func forgetStoredPasswordRefusals() {
+        storedPasswordRefusals = (0, nil)
     }
 
     private nonisolated static let storedPasswordPosts = AsyncSerialLock()
@@ -67,9 +115,9 @@ enum SSOLoginService {
 
     /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
     /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
-    /// refused before either latched it, and the school counts both toward the lockout. `body`
-    /// checks ``storedPasswordRejected``, posts, reads the answer and latches a refusal before it
-    /// returns. A sign-in the user typed posts what was typed, so it does not wait.
+    /// refused before either counted the refusal, and the school counts both toward the lockout.
+    /// `body` checks ``mayPostStoredPassword(now:)``, posts, reads the answer and counts a refusal
+    /// before it returns. A sign-in the user typed posts what was typed, so it does not wait.
     nonisolated(nonsending) static func postingStoredPassword<T>(
         _ body: nonisolated(nonsending) () async throws -> T
     ) async rethrows -> T {
@@ -112,8 +160,8 @@ enum SSOLoginService {
     ///
     /// `generation` is ``NTUSTSessionManager/generation`` when the credentials were read. Once
     /// a sign-out moves it, the login throws `CancellationError` before its next request.
-    /// `interactive` marks a sign-in the user started; any other posts no password once the
-    /// school has rejected it (``storedPasswordRejected``), and runs under
+    /// `interactive` marks a sign-in the user started; any other posts no password while the
+    /// school's refusals hold it back (``storedPasswordRefusals``), and runs under
     /// ``postingStoredPassword(_:)``. `logFailure` gets each failure but a cancellation.
     static func ensureServiceLogin(
         session: URLSession,
@@ -155,7 +203,7 @@ enum SSOLoginService {
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
                 generation: generation, interactive: interactive, logFailure: logFailure
             )
-            if interactive, signedIn { storedPasswordRejected = false }
+            if interactive, signedIn { forgetStoredPasswordRefusals() }
             return signedIn
         }
     }
@@ -197,7 +245,7 @@ enum SSOLoginService {
                 }
             }
 
-            if !interactive, storedPasswordRejected { throw SSOLoginError.loginFailed(reason: nil) }
+            if !interactive, !mayPostStoredPassword() { throw SSOLoginError.loginFailed(reason: nil) }
 
             // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
             // device-change warnings. They are in the session's jar, the NTUST-private one:
@@ -268,7 +316,7 @@ enum SSOLoginService {
             // Step 7: Check if still on SSO page → login failed
             if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if !interactive, NTUSTSessionManager.shared.generation == generation {
-                    storedPasswordRejected = true
+                    noteStoredPasswordRefused()
                 }
                 throw SSOLoginError.loginFailed(reason: HTMLParser.loginErrorMessage(in: currentHTML))
             }
@@ -276,6 +324,9 @@ enum SSOLoginService {
             guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                 throw SSOLoginError.invalidResponse
             }
+            // The school took the stored password. A live session that lets a sign-in through
+            // without a post says nothing of the password, so those returns leave the refusals.
+            if !interactive { forgetStoredPasswordRefusals() }
             return true
         } catch SSOLoginError.loginFailed(let reason) {
             throw SSOLoginError.loginFailed(reason: reason)
