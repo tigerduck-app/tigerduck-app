@@ -62,3 +62,5 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   `LibrarySignInTests`, `SchoolSignInStepsTests`, `BackendSessionTests`,
   `SignOutNotificationTests`, `SharedAssignmentRoundTests`, `AfterFirstUnlockTests`,
   `StoredPasswordRetryTests` and `StoredPasswordLatchRetryMigrationTests`.
+- A test's `AuthService` takes a `NotificationCenter` of its own: on the default one it hears the
+  waits that refusals in these keys make `SSOLoginService` announce, and arms a real retry.
