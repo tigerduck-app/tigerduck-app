@@ -3,25 +3,10 @@ import SwiftUI
 import MetalKit
 import UIKit
 
-/// Renders a black/white QR `UIImage` into a `CAMetalLayer` with
-/// `wantsExtendedDynamicRangeContent` enabled, so the white modules emit
-/// luminance above the SDR clip point on EDR displays (iPhone XS and newer).
-///
-/// Metal, not `Image(...).allowedDynamicRange(.high)`, which does not reliably
-/// promote synthetic UIImages: CoreImage clamps to `0...1` in non-extended
-/// working spaces, and SwiftUI does not always tag even an extended-range one as HDR.
-/// Bypassing `Image` is the supported path in Apple's EDR and Core Animation HDR sessions.
 struct HDRQRCodeImage: UIViewRepresentable {
-    /// `true` when this device exposes a Metal device — i.e. the EDR-backed
-    /// renderer can run. When `false`, callers should fall back to the
-    /// SDR `Image` plus a `UIScreen.brightness` boost so the scanner has
-    /// something readable.
     static let isSupported: Bool = MTLCreateSystemDefaultDevice() != nil
 
     let image: UIImage
-    /// Multiplier applied to "white" QR cells. 5.0 sits comfortably inside
-    /// the EDR headroom on modern iPhones without dipping into the OS's
-    /// thermal-throttle band; bump higher if scanners report contrast loss.
     let brightness: Float
 
     init(image: UIImage, brightness: Float = 5.0) {
@@ -39,37 +24,15 @@ struct HDRQRCodeImage: UIViewRepresentable {
     }
 }
 
-/// UIView backed by a `CAMetalLayer` configured for EDR output. Renders a
-/// single full-screen triangle that samples the QR texture and multiplies
-/// its luminance by `brightness`, producing pixels with values >1.0 that
-/// the EDR compositor maps to higher panel nits.
 final class EDRMetalQRView: UIView {
 
     override class var layerClass: AnyClass { CAMetalLayer.self }
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
-    /// Device, queue, pipeline and texture loader — nil until the shared
-    /// stack has finished building. `redraw` already bails on a missing
-    /// pipeline, the same path the no-Metal fallback takes, so the SDR
-    /// image the caller stacks underneath stays visible until it lands.
     private var stack: EDRMetalStack?
-    /// Held when `setImage` runs before the stack exists; uploaded on
-    /// arrival. Without it the first QR would never reach the GPU, because
-    /// SwiftUI has no reason to call `updateUIView` again.
     private var pendingImage: UIImage?
     private var texture: MTLTexture?
-    /// Reference-identity key for the most recently uploaded QR. The
-    /// SwiftUI parent observes a 1 Hz countdown, so `updateUIView` fires
-    /// every tick even when `viewModel.qrCodeImage` hasn't actually
-    /// changed — re-uploading the same texture each second would waste
-    /// IOSurface allocations and burn battery.
     private var lastUploadedImage: UIImage?
-    /// Coalesces every `redraw()` request made in one run-loop turn into a
-    /// single draw. `updateUIView` + `setImage` + `layoutSubviews` used to
-    /// each grab a drawable synchronously; the layer only has three and
-    /// none is returned until the frame is presented, so the fourth
-    /// `nextDrawable()` blocked the main thread for its 1 s timeout —
-    /// the "whole app freezes when the QR refreshes" report.
     private var redrawScheduled = false
 
     var brightness: Float = 5.0 {
@@ -87,24 +50,17 @@ final class EDRMetalQRView: UIView {
     }
 
     private func commonInit() {
-        // Transparency is set unconditionally: the Metal stack may never arrive (no
-        // device, or a shader that fails to compile), and the SDR fallback the
-        // caller stacks underneath must stay visible then.
         backgroundColor = .clear
         metalLayer.isOpaque = false
         metalLayer.pixelFormat = .rgba16Float
         metalLayer.framebufferOnly = true
         metalLayer.wantsExtendedDynamicRangeContent = true
-        // extendedLinearDisplayP3 keeps pixel values in linear light, which
-        // is what the EDR compositor expects when it scales above 1.0.
         metalLayer.colorspace = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)
         EDRMetalStack.load { [weak self] stack in
             self?.attach(stack)
         }
     }
 
-    /// Adopts the shared stack once it is ready, uploading whatever QR
-    /// arrived while we were waiting.
     private func attach(_ stack: EDRMetalStack?) {
         guard let stack else { return }
         self.stack = stack
@@ -117,14 +73,8 @@ final class EDRMetalQRView: UIView {
     }
 
     func setImage(_ image: UIImage) {
-        // Reference-equality dedupe — `LibraryViewModel` only allocates a
-        // new UIImage on the 30 s QR refresh, so identity is a reliable
-        // signal that we genuinely need to re-upload.
         if lastUploadedImage === image { return }
         guard let stack else {
-            // Stack still building. Remember the QR so `attach` can upload
-            // it; this is the first-launch path, where the shader compile
-            // has not finished by the time the first image arrives.
             pendingImage = image
             return
         }
@@ -170,8 +120,6 @@ final class EDRMetalQRView: UIView {
     }
 
     private func redraw() {
-        // Off-window layers never present, so their drawables never come
-        // back — asking for one would just burn the timeout.
         guard
             window != nil,
             let stack,
@@ -201,14 +149,6 @@ final class EDRMetalQRView: UIView {
         cmd.commit()
     }
 }
-/// The Metal objects, built once per process instead of once per view.
-///
-/// `makeLibrary(source:)` runs the Metal compiler. From `commonInit`, reached
-/// through `makeUIView` on the main thread, it would stall the whole UI on every
-/// Library visit, since the view is recreated each time. Built on a background
-/// queue and shared, at most one visit per launch waits, off the main thread.
-/// `MTKTextureLoader` lives here too: it is stateless, cheap to keep, not to make.
-/// The mutable statics are only touched on the main queue, so they need no lock.
 final class EDRMetalStack {
     let device: MTLDevice
     let commandQueue: MTLCommandQueue
@@ -223,13 +163,10 @@ final class EDRMetalStack {
     }
 
     private static var shared: EDRMetalStack?
-    /// Set once a build has failed, so a device without Metal — or a shader
-    /// that will not compile — is asked once and not on every appearance.
     private static var didFail = false
     private static var isBuilding = false
     private static var waiting: [(EDRMetalStack?) -> Void] = []
 
-    /// Calls back on the main queue, immediately if the stack is already up.
     static func load(_ completion: @escaping (EDRMetalStack?) -> Void) {
         if let shared { completion(shared); return }
         if didFail { completion(nil); return }
@@ -298,8 +235,6 @@ final class EDRMetalStack {
             let pipeline = try device.makeRenderPipelineState(descriptor: desc)
             return EDRMetalStack(device: device, commandQueue: commandQueue, pipeline: pipeline)
         } catch {
-            // Compile or link failure leaves the caller with nil: the view
-            // draws nothing and the SDR fallback stays visible.
             return nil
         }
     }

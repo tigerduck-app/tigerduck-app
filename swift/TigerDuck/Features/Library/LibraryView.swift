@@ -16,18 +16,8 @@ struct LibraryView: View {
 
     private enum LoginField { case username, password }
     #if os(iOS)
-    /// Token returned by `PKPassLibrary.requestAutomaticPassPresentationSuppression`.
-    /// Held only while the QR page is on-screen so a side-button double-press
-    /// can't fire up Apple Pay / Express Transit and cover the library QR.
     @State private var passSuppressionToken: PKSuppressionRequestToken?
-    /// The screen hosting this view right now, from ``HostScreenReader``.
-    /// Empty until the view is in a window, and weak because the panel can
-    /// go away underneath us.
     @State private var hostScreen = WeakScreen()
-    /// This instance's claim on the brightness override. Several
-    /// `LibraryView`s can be alive at once — the tab plus the embedded
-    /// copies Home and More push — so the override itself is owned by
-    /// ``LibraryBrightnessCoordinator`` and each view only holds a ticket.
     @State private var brightnessToken = UUID()
     #endif
 
@@ -42,8 +32,6 @@ struct LibraryView: View {
                 NavigationStack { content }
             }
         }
-        // Here, not on `content`, whose layout branch can change at a sign-in and would leave
-        // and rejoin the count in between.
         .onAppear { LibraryPagePresence.shared.appear(presenceID) }
         .onDisappear { LibraryPagePresence.shared.disappear(presenceID) }
     }
@@ -58,8 +46,6 @@ struct LibraryView: View {
         }
         .background(Color.backgroundPrimary)
         .onAppear {
-            // Wired before `load()`/`onAppear()`, both of which can already
-            // discover an expired token and flip the stored state.
             viewModel.onLibraryStateChanged = { appState.notifyLibraryStateChanged() }
             viewModel.load()
             viewModel.onAppear()
@@ -73,18 +59,10 @@ struct LibraryView: View {
             releaseExpressTransit()
             restoreBrightness()
         }
-        // A fold moves the window to the other display. The QR must arrive there
-        // boosted and the display left behind must get its brightness back, or a
-        // fold leaves a dim code at the scanner or the inner panel at 100% until quit.
         #if os(iOS)
         .onHostScreenChange { screen in
             hostScreen = WeakScreen(screen)
-            // Leaving the window is as much a reason to let go of the panel
-            // as leaving the page is.
             guard screen != nil else { return restoreBrightness() }
-            // A screen change while the scene is inactive or backgrounded
-            // must not take back the claim the scene-phase handler just
-            // released; `.active` boosts the new screen on the way back.
             guard viewModel.isLoggedIn, scenePhase == .active else { return }
             boostBrightnessForQR()
         }
@@ -108,17 +86,9 @@ struct LibraryView: View {
                 }
             case .background, .inactive:
                 viewModel.stopTimers()
-                // Re-enable Express Transit as soon as the QR leaves the
-                // foreground — a backgrounded app should not keep the
-                // user's transit card globally suppressed.
                 releaseExpressTransit()
-                // Same reasoning for brightness: don't pin the screen at
-                // 1.0 if the user is no longer looking at the QR.
                 restoreBrightness()
             @unknown default:
-                // A phase we do not know about is not a reason to keep the
-                // user's transit card suppressed or their panel pinned at
-                // full. Tear down exactly as the known non-active cases do.
                 viewModel.stopTimers()
                 releaseExpressTransit()
                 restoreBrightness()
@@ -126,12 +96,7 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - Express Transit suppression
-
     #if os(iOS)
-    // TODO: Request `com.apple.developer.passkit.pass-presentation-suppression` from
-    // Apple. Until granted, production signing strips it from `TigerDuck.entitlements`,
-    // so the call gets `.notSupported` and the side button still opens Express Transit.
     private func suppressExpressTransit() {
         guard passSuppressionToken == nil else { return }
         let token = PKPassLibrary.requestAutomaticPassPresentationSuppression { _ in }
@@ -148,40 +113,20 @@ struct LibraryView: View {
     private func releaseExpressTransit() {}
     #endif
 
-    // MARK: - Brightness boost (scanner readability)
-
     #if os(iOS)
-    /// `true` when this display can drive EDR at all, so the Metal renderer's
-    /// local highlight carries the QR and global brightness is left alone.
-    ///
-    /// Reads `potentialEDRHeadroom`, which Apple documents as queryable before any
-    /// EDR content is shown, and which is `1.0` on SDR panels. `currentEDRHeadroom`
-    /// reads `1.0` until the Metal layer draws, so it would boost every device. A
-    /// thermally throttled EDR panel shows the QR at SDR white, which still scans.
-    /// See docs/decisions/0009-library-qr-brightness.md.
     private var edrIsAvailable: Bool {
         guard let screen = hostScreen.screen else { return false }
         return HDRQRCodeImage.isSupported && screen.potentialEDRHeadroom > 1.0
     }
 
-    /// Pin the screen at full brightness while the QR is on-screen — the
-    /// fallback Apple Wallet-style behaviour for displays that can't drive
-    /// EDR. When EDR is genuinely active the Metal renderer already makes
-    /// the QR pop locally, so the global brightness override is skipped to
-    /// preserve the local-highlight behaviour this view is built around.
     private func boostBrightnessForQR() {
         guard let screen = hostScreen.screen, !edrIsAvailable else {
-            // Not boosting means this view must not hold the override at all. After a
-            // move to an EDR display, a bare `return` would leave the SDR panel behind
-            // pinned at 1.0 with nothing on it until teardown.
             restoreBrightness()
             return
         }
         LibraryBrightnessCoordinator.shared.boost(screen, token: brightnessToken)
     }
 
-    /// Safe to call unconditionally: the coordinator ignores a token it is
-    /// not holding, and only restores the panel once every claim is gone.
     private func restoreBrightness() {
         LibraryBrightnessCoordinator.shared.release(token: brightnessToken)
     }
@@ -190,14 +135,6 @@ struct LibraryView: View {
     private func restoreBrightness() {}
     #endif
 
-    /// A wide canvas rotates freely, so anchor the QR to vertical center to keep
-    /// its on-screen position stable across orientation changes. A compact one is
-    /// portrait in practice and keeps the regular top-aligned scroll layout.
-    ///
-    /// Keyed on size class, not idiom: a foldable's inner display ignores the
-    /// app's supported orientations and reports the `.phone` idiom while regular
-    /// in both dimensions, so "iPhone is portrait-locked" does not hold. macOS has
-    /// no size class here but does not show LibraryView, so it falls through.
     private var shouldCenterQRForRotation: Bool {
         #if os(iOS)
         horizontalSizeClass == .regular && viewModel.isLoggedIn
@@ -232,8 +169,6 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - Header
-
     private var headerSection: some View {
         HStack {
             Text(String(localized: "feature_library"))
@@ -255,8 +190,6 @@ struct LibraryView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    // MARK: - Error
-
     @ViewBuilder
     private var errorBanner: some View {
         if let error = viewModel.errorMessage {
@@ -275,8 +208,6 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - QR Code Section
-
     private var qrSection: some View {
         LibraryQRCodeView(
             qrImage: viewModel.qrCodeImage,
@@ -285,8 +216,6 @@ struct LibraryView: View {
             username: viewModel.signedInUsername
         )
     }
-
-    // MARK: - Login Prompt
 
     private var loginPrompt: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
@@ -314,9 +243,6 @@ struct LibraryView: View {
                     .padding(TigerDuckTheme.Spacing.md)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
 
-                // `PasswordField`, not a bare `SecureField`: it adds the reveal toggle
-                // and a `.screenCaptureProtected` wrapper that hides the revealed
-                // plaintext from screenshots and screen recording.
                 PasswordField(
                     placeholder: String(localized: "library_sign_in_password"),
                     text: $viewModel.libPassword,
@@ -379,9 +305,6 @@ struct LibraryView: View {
     }
 }
 
-/// The Library pages on screen. Flip-to-library holds its offer while one is up, since the sheet
-/// would cover the code someone just signed in to show. Each page counts once however often it
-/// appears, and a tab switch can show one page before it hides another.
 @Observable
 final class LibraryPagePresence {
     static let shared = LibraryPagePresence()
