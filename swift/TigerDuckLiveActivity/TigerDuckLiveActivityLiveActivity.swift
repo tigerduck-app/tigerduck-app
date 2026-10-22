@@ -61,16 +61,11 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
     }
 }
 
-// MARK: - Lock screen layout
-
 private struct LockScreenView: View {
     let snapshot: LiveActivitySnapshot
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Row 1: status and countdown at intrinsic width, with the Spacer taking
-            // all the slack between them. Do not apply .fixedSize() to the timer or its
-            // container: it breaks the widget reservation of Text(timerInterval:).
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
                     Circle()
@@ -91,7 +86,6 @@ private struct LockScreenView: View {
             }
             .frame(maxWidth: .infinity)
 
-            // Row 2: title
             Text(snapshot.title)
                 .font(.title2.bold())
                 .foregroundStyle(.primary)
@@ -101,10 +95,8 @@ private struct LockScreenView: View {
                 .allowsTightening(true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Row 3: progress bar (only when provided)
             AutoProgressBar(snapshot: snapshot)
 
-            // Row 4: metadata — layout depends on scenario
             MetadataRowView(snapshot: snapshot)
         }
         .padding(.horizontal, 16)
@@ -112,8 +104,6 @@ private struct LockScreenView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
-
-// MARK: - Dynamic Island expanded bottom (mirrors LockScreen rows 2-4)
 
 private struct ExpandedBottomView: View {
     let snapshot: LiveActivitySnapshot
@@ -139,15 +129,6 @@ private struct ExpandedBottomView: View {
     }
 }
 
-// MARK: - Progress bar (system-driven auto-interpolation)
-
-/// OS-driven progress bar.
-///
-/// Live Activity views are snapshots: `ProgressView(value:)` redraws only on
-/// each `Activity.update(...)`, and updating by push alone drains battery and
-/// gets throttled, so the bar looks stuck. `ProgressView(timerInterval:countsDown:)`
-/// hands the system a time interval that the OS interpolates inside the widget
-/// extension with no CPU or push cost, the mechanism `Text(timerInterval:)` uses.
 private struct AutoProgressBar: View {
     let snapshot: LiveActivitySnapshot
 
@@ -155,9 +136,6 @@ private struct AutoProgressBar: View {
         if let start = snapshot.progressStart,
            let target = snapshot.countdownTarget,
            start < target {
-            // `ProgressView(timerInterval:)` interpolates against the real wall clock,
-            // but snapshot dates are app-clock time (possibly fake), so translate the
-            // endpoints to animate over the matching real-time span.
             let realStart = AppClock.realTime(forApp: start)
             let realTarget = AppClock.realTime(forApp: target)
             ProgressView(timerInterval: realStart...realTarget, countsDown: false) {
@@ -172,14 +150,6 @@ private struct AutoProgressBar: View {
     }
 }
 
-// MARK: - Metadata row (shared by lock screen + dynamic island)
-
-/// Scenario-aware bottom metadata row.
-///
-/// - inClass / classPreparing: location | time | teacher
-/// - assignmentUrgent: course name (book icon) | blank | instructor
-///   For assignments `subtitle` holds the course name. `instructor` can be
-///   nil, and a blank right side is acceptable.
 private struct MetadataRowView: View {
     let snapshot: LiveActivitySnapshot
 
@@ -241,16 +211,6 @@ private struct MetadataRowView: View {
     }
 }
 
-// MARK: - File-scope helpers (shared by lock screen + dynamic island)
-
-/// The mark in the island's two small slots.
-///
-/// In class it is the app icon: these slots answer "which app is this?", and
-/// an SF Symbol such as a mortarboard reads as any school app. The other two
-/// scenarios keep a glyph, which tells a class about to start from an
-/// assignment about to be due; the countdown alone cannot. The full-colour
-/// artwork is not accent-tinted and needs its fixed 20pt frame, or the widget
-/// lays the asset-catalog image out at natural size and blows the slot open.
 @ViewBuilder
 private func scenarioIcon(_ snapshot: LiveActivitySnapshot) -> some View {
     switch snapshot.scenario {
@@ -283,9 +243,6 @@ private func statusLabel(for scenario: LiveActivityScenarioKind) -> String {
 
 @ViewBuilder
 private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
-    // Compare in app-clock space (fake time aware), but hand SwiftUI a
-    // real-time range — `Text(timerInterval:)` ticks against the system
-    // clock and would otherwise show ~a day off when fake time is set.
     if let target = snapshot.countdownTarget, target > AppClock.now() {
         Text(timerInterval: Date()...AppClock.realTime(forApp: target), countsDown: true)
     } else {
@@ -293,14 +250,6 @@ private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
     }
 }
 
-/// What the countdown slot reads once its target has passed.
-///
-/// The activity can outlive its target: an end push is the only remote
-/// removal (ActivityKit has no expire-at-date API, and `staleDate` does not
-/// dismiss; see `LiveActivityCoordinator`), and the local end timer and the
-/// foreground prune need the app running. A down server, a phone offline past
-/// the push TTL, a dropped push or a force-quit all land here, and a dash would
-/// read as a broken app, so the label names the finished state instead.
 private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
     switch scenario {
     case .inClass:
@@ -312,11 +261,7 @@ private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
     }
 }
 
-/// Local helper (named `hexColor` not `accentColor` to avoid clashing with
-/// the deprecated `View.accentColor(_:)` modifier during overload resolution).
 private func hexColor(_ hex: Int) -> Color {
-    // Clamp to a 24-bit RGB range so a corrupted snapshot (negative Int from
-    // a buggy decoder, or a future >0xFFFFFF accent) can't drift channels.
     let masked = UInt32(bitPattern: Int32(truncatingIfNeeded: hex)) & 0xFFFFFF
     let r = Double((masked >> 16) & 0xFF) / 255.0
     let g = Double((masked >> 8) & 0xFF) / 255.0

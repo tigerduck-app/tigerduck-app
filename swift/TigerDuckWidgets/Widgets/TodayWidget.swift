@@ -2,12 +2,7 @@ import WidgetKit
 import SwiftUI
 
 struct TodayEntry: TimelineEntry {
-    /// Real wall-clock instant WidgetKit treats this entry as current.
     let date: Date
-    /// App-clock "now" used to render the row state (which class is
-    /// current, next, past). Diverges from `date` only when the debug
-    /// clock is overridden — kept separate so WidgetKit's scheduling
-    /// stays on the real clock while the UI follows the fake one.
     let appNow: Date
     let snapshot: WidgetSnapshot
 }
@@ -31,9 +26,6 @@ struct TodayProvider: TimelineProvider {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
         let now = AppClock.now()
         let dates = WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
-        // `entryDates` are app-clock boundaries, but WidgetKit schedules entries on the real
-        // clock. Stamp each entry with the real-time equivalent and carry the app-clock boundary
-        // in `appNow` so the rows at that moment render against fake time.
         let entries = dates.map { appDate in
             TodayEntry(
                 date: AppClock.realTime(forApp: appDate),
@@ -41,8 +33,6 @@ struct TodayProvider: TimelineProvider {
                 snapshot: snap
             )
         }
-        // With no courses or no signed-in user, `.atEnd` would make WidgetKit reload the single
-        // placeholder entry in an immediate loop. Refreshing at midnight retries once a day.
         let hasCourses = snap.isLoggedIn && !snap.courses.isEmpty
         let policy: TimelineReloadPolicy
         if hasCourses {

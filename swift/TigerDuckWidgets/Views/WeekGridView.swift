@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// Week-at-a-glance grid for the Schedule widget. Mirrors the in-app
-/// `TimetableGridView` design: consecutive periods of the same course collapse
-/// into a single tall block with a soft tinted fill + matching stroke, empty
-/// slots show a neutral surface, and the period/weekday rails use the same
-/// secondary-text treatment. Dimensions are scaled down for the widget canvas
-/// and derived from `GeometryReader` so a course spanning N periods knows the
-/// exact height to overlay.
 struct WeekGridView: View {
     let snapshot: WidgetSnapshot
     let now: Date
@@ -18,19 +11,8 @@ struct WeekGridView: View {
     private let periodWidth: CGFloat = 12
     private let cornerRadius: CGFloat = 4
 
-    /// User-chosen multiplier for course-name font, read from the App
-    /// Group at struct init. Multiplied into the cell-height-driven
-    /// `fontScale` so the user override stacks on top of the widget's
-    /// own size adaptation (small iPhone widget vs. iPad systemExtraLarge).
-    /// Only the course-name labels in `courseBlock` / `conflictHalf`
-    /// consume this; period/weekday rails stay un-scaled.
     private let userCourseNameScale: CGFloat = CGFloat(CourseCardFontScale.renderScale(CourseCardFontScaleStore().read()))
 
-    /// Dynamic Type baselines for the course-name labels in `courseBlock` (one course) and
-    /// `conflictHalf` (overlapping courses). Anchoring to `.caption2` lets the system Display &
-    /// Text Size setting scale these labels with the surrounding rails, with
-    /// `userCourseNameScale` stacked on top, as in the Next Class and Today widgets. Without
-    /// these, the per-app scale would replace Dynamic Type instead of stacking on it.
     @ScaledMetric(relativeTo: .caption2) private var soloCourseNameBase: CGFloat = 9
     @ScaledMetric(relativeTo: .caption2) private var conflictCourseNameBase: CGFloat = 8
 
@@ -56,15 +38,9 @@ struct WeekGridView: View {
         GeometryReader { geom in
             let totalRowSpacing = CGFloat(max(0, periods.count - 1)) * rowSpacing
             let available = max(0, geom.size.height - headerHeight - rowSpacing - totalRowSpacing)
-            // A nonzero floor keeps the edit-mode drag preview from shrinking every cell to 0
-            // and showing a blank widget; the grid would rather overflow than disappear. At the
-            // supported family sizes `available` is large enough that the floor never applies.
             let minCellHeight: CGFloat = 6
             let computed = periods.isEmpty ? 0 : available / CGFloat(periods.count)
             let cellHeight = periods.isEmpty ? 0 : max(minCellHeight, computed)
-            // Scale text with cell height so systemExtraLarge (iPad, ~38pt
-            // cells) doesn't render the same 9pt text as systemLarge (iPhone,
-            // ~17pt cells). Clamped so the small-widget case stays compact.
             let fontScale = min(1.6, max(1.0, cellHeight / 17.0))
 
             VStack(spacing: rowSpacing) {
@@ -145,9 +121,6 @@ struct WeekGridView: View {
             )
 
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
-            // Two overlapping courses: each half is a column sized to its course's span and
-            // placed at its offset in the cluster, so a partial overlap (A on periods 1-3, B
-            // only on 2) does not extend either course into rows where they do not meet.
             let totalHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
             Color.clear
                 .overlay(alignment: .top) {
@@ -160,8 +133,6 @@ struct WeekGridView: View {
                 .zIndex(1)
 
         case let .conflictMany(segments, combinedSpan, laneCount):
-            // Same offset-aware columns as the two-course case, one per lane: a chain like
-            // A (rows 0-1), B (1-2), C (2-3) puts A and C, which never meet, in one column.
             let totalHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
             Color.clear
                 .overlay(alignment: .top) {
@@ -226,8 +197,6 @@ struct WeekGridView: View {
             .zIndex(1)
     }
 
-    /// One column of a cluster of overlapping courses, sized to the course's own span and
-    /// positioned at its offset within the cluster via empty spacers.
     @ViewBuilder
     private func conflictColumn(
         _ course: SnapshotCourse,
