@@ -10,12 +10,6 @@ enum CalendarService {
     )
     private static let yearRegex = try! NSRegularExpression(pattern: "(\\d{3})")
 
-    /// URLSession with browser-like User-Agent (NTUST server returns 403 without one).
-    /// Pinned because the ICS download URL scraped from r.xinshou.tw can
-    /// resolve to an *.ntust.edu.tw host (covered by the pin set); the
-    /// delegate's host-matcher falls through to system trust for the
-    /// non-NTUST r.xinshou.tw fetch itself, so this is safe to install
-    /// on a mixed-host session.
     private static let browserSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = [
@@ -28,8 +22,6 @@ enum CalendarService {
         )
     }()
 
-    /// Fetch NTUST academic calendar ICS download URLs (public, no auth)
-    /// Returns mapping of ROC year → ICS URL
     static func fetchCalendarURLs(session: URLSession, pageURL: URL) async throws -> [Int: URL] {
         let (data, response) = try await session.data(from: pageURL)
         guard let html = String(data: data, encoding: .utf8),
@@ -46,7 +38,6 @@ enum CalendarService {
 
             let href = String(html[hrefRange])
             let rawText = String(html[textRange])
-            // Strip tags: the link text can wrap its year label in a <span>.
             let text = rawText.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
 
             guard href.lowercased().hasSuffix(".ics") else { continue }
@@ -63,16 +54,12 @@ enum CalendarService {
         return result
     }
 
-    /// The ROC academic year `date` falls in, e.g. 114 from August 2025 to July 2026.
     nonisolated static func rocAcademicYear(at date: Date) -> Int {
         let calendar = AppConstants.taipeiCalendar
         let year = calendar.component(.year, from: date) - 1911
-        // Academic year starts in August
         return calendar.component(.month, from: date) >= 8 ? year : year - 1
     }
 
-    /// Fetch the current academic year's ICS file, parse it into calendar events. Nil when that
-    /// fails, so callers keep the school events they have.
     static func fetchAndParseICS() async -> [SDCalendarEvent]? {
         await fetchAndParseICS(session: browserSession, pageURL: calendarPageURL, now: AppClock.now())
     }
@@ -87,7 +74,6 @@ enum CalendarService {
             guard (response as? HTTPURLResponse)?.statusCode == 200,
                   let icsString = String(data: data, encoding: .utf8) else { return nil }
 
-            // A school year always has events, so a file with none is not the calendar.
             let events = parseICS(icsString)
             return events.isEmpty ? nil : events
         } catch {
@@ -99,9 +85,7 @@ enum CalendarService {
         }
     }
 
-    /// Parse ICS string into SDCalendarEvent array
     static func parseICS(_ ics: String) -> [SDCalendarEvent] {
-        // Unfold ICS line continuations (lines starting with space or tab are continuations)
         let unfolded = ics
             .replacingOccurrences(of: "\r\n ", with: "")
             .replacingOccurrences(of: "\r\n\t", with: "")
@@ -129,11 +113,8 @@ enum CalendarService {
                         ?? "school-\(title)-\(start.timeIntervalSince1970)"
 
                     if let end = dtEnd, !Self.icsCalendar.isDate(start, inSameDayAs: end.addingTimeInterval(-1)) {
-                        // Multi-day event: one event per day, stepped with
-                        // `icsCalendar` so ROC or Buddhist device calendars
-                        // don't shift day boundaries against the ICS data.
                         var current = start
-                        let lastDay = end.addingTimeInterval(-1) // ICS DTEND is exclusive
+                        let lastDay = end.addingTimeInterval(-1)
                         while current <= lastDay {
                             events.append(SDCalendarEvent(
                                 eventId: "\(eventId)-\(Self.icsCalendar.startOfDay(for: current).timeIntervalSince1970)",
@@ -142,9 +123,6 @@ enum CalendarService {
                                 source: .school
                             ))
                             guard let next = Self.icsCalendar.date(byAdding: .day, value: 1, to: current) else {
-                                // Calendar arithmetic should never fail for
-                                // a +1 day step, but if it does, abort the
-                                // expansion rather than crashing the parser.
                                 break
                             }
                             current = next
@@ -179,8 +157,6 @@ enum CalendarService {
     static let icsDateTime = icsFormatter("yyyyMMdd'T'HHmmss", timeZone: TimeZone(identifier: "Asia/Taipei"))
     static let icsDateTimeZ = icsFormatter("yyyyMMdd'T'HHmmss'Z'", timeZone: TimeZone(identifier: "UTC"))
 
-    /// ICS dates are Gregorian. A formatter left on the device's locale reads them in its
-    /// calendar, and on the ROC calendar `20250901` becomes the year 3936.
     private static func icsFormatter(_ format: String, timeZone: TimeZone?) -> DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -190,20 +166,12 @@ enum CalendarService {
         return f
     }
 
-    /// Gregorian + Asia/Taipei calendar for ICS day arithmetic.
-    /// `Calendar.current` follows the device locale and would shift
-    /// day boundaries on ROC / Buddhist-calendar devices against the
-    /// gregorian source data the school publishes.
     private static let icsCalendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
         return cal
     }()
 
-    /// Unescape ICS TEXT-typed values per RFC 5545:
-    /// `\,` → `,`, `\;` → `;`, `\n` / `\N` → newline, `\\` → `\`.
-    /// Without this, raw escape sequences leak into the UI as
-    /// `Final Exam\, MA1`.
     nonisolated static func unescapeICSText(_ raw: String) -> String {
         var out = ""
         out.reserveCapacity(raw.count)
@@ -230,10 +198,6 @@ enum CalendarService {
         return out
     }
 
-    /// Parse ICS date formats: DTSTART;VALUE=DATE:20250901 or DTSTART:20250901T080000Z
-    /// Honors `TZID=…` parameters when present and the identifier is
-    /// recognised by the system; falls back to Asia/Taipei (the school
-    /// calendar's authoring zone) otherwise.
     private static func parseICSDate(_ line: String) -> Date? {
         guard let colonIndex = line.lastIndex(of: ":") else { return nil }
         let value = String(line[line.index(after: colonIndex)...])
@@ -248,7 +212,6 @@ enum CalendarService {
                 localFormatter = icsFormatter("yyyyMMdd'T'HHmmss", timeZone: tz)
             }
         }
-        // The UTC formatter also takes a time without its trailing `Z`, which is a local time.
         if value.hasSuffix("Z") { return icsDateTimeZ.date(from: value) }
         return localFormatter.date(from: value) ?? icsDateOnly.date(from: value)
     }

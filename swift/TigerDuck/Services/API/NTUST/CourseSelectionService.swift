@@ -29,8 +29,6 @@ enum CourseSelectionService {
         forceRefresh: Bool = false,
         persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> [String] {
-        // The D01 page returns whichever term course selection is open for, which runs ahead
-        // of the term in session, so cache under that term, not the month heuristic's guess.
         let semester = SemesterCatalog.selectionSemesterCode()
         if !forceRefresh, let cached = loadEnrolledCoursesCache(studentId: studentId, semester: semester) {
             return cached
@@ -53,9 +51,6 @@ enum CourseSelectionService {
             throw CourseServiceError.noCourseData
         }
 
-        // Re-auth silently when the list came from another host (ssoam2, or the campus portal a
-        // lapsed course-selection session is sent to) or as an SSO login body served inline
-        // with HTTP 200. Either way the regex would fall through to "no courses".
         let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != courseListURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
         if landedElsewhere || bodyIsSSO {
@@ -78,9 +73,6 @@ enum CourseSelectionService {
                 throw CourseServiceError.redirectedToSSO
             }
             let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }
-            // Guarded write: see persistGuard rationale on
-            // NTUSTScoreService.fetchScoreReport — same in-flight
-            // logout / account-swap protection.
             if persistGuard?() ?? true {
                 saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
             }
@@ -94,8 +86,6 @@ enum CourseSelectionService {
         return courseNos
     }
 
-    /// Whether fetching `semester` would scrape the course-selection list, the one sync fetch
-    /// that needs the SSO session. The list serves a single term, and a day-long cache covers it.
     nonisolated static func needsSchoolSession(studentId: String, semester: String) -> Bool {
         semester == SemesterCatalog.selectionSemesterCode()
             && loadEnrolledCoursesCache(studentId: studentId, semester: semester) == nil
@@ -105,8 +95,6 @@ enum CourseSelectionService {
 
     nonisolated private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"
 
-    // Serializes read-modify-write of the per-(studentId,semester) cache dict
-    // so concurrent fetches/invalidations cannot lose updates.
     nonisolated private static let cacheLock = OSAllocatedUnfairLock()
 
     nonisolated private struct CachedCourseNos: Codable {
@@ -164,39 +152,23 @@ enum CourseSelectionService {
         }
     }
 
-    /// Approximation of NTUST's academic-calendar boundaries based on the
-    /// gregorian month. Note this is a heuristic — actual term cutovers
-    /// vary year-to-year, especially in late August (fall registration
-    /// hasn't opened yet) and early February (spring courses not posted).
-    /// During those windows callers may briefly see the previous term's
-    /// data; if precision is required, prefer a server-driven term code.
     nonisolated static func currentSemesterCode() -> String {
         semesterCode(on: Date())
     }
 
-    /// The term the app takes as current on `day`.
     nonisolated static func semesterCode(on day: Date, calendar: AcademicCalendar = .cached) -> String {
-        // The school's published calendar comes first, not a guess or a pinned constant. The
-        // month heuristic mislabels a term the school opens early, so it is only the last
-        // resort for a device that has never reached the backend.
         calendar.currentTerm(on: day)?.code ?? heuristicSemesterCode(on: day)
     }
 
-    /// The month-based guess, used only until the published calendar has
-    /// been fetched once.
     nonisolated static func heuristicSemesterCode(on day: Date) -> String {
-        // Gregorian in Taipei: Calendar.current returns ROC or Buddhist-era years on a TW device,
-        // which would shift the rocYear math, and the days this is asked about are Taipei days.
         let cal = AcademicCalendar.calendar
         let year = cal.component(.year, from: day)
         let month = cal.component(.month, from: day)
         let rocYear = year - 1911
 
         if month >= 2 && month <= 7 {
-            // Feb 1 – Jul 31 → spring semester
             return "\(rocYear - 1)2"
         } else {
-            // Aug 1 – Jan 31 → fall semester
             let academicYear = month >= 8 ? rocYear : rocYear - 1
             return "\(academicYear)1"
         }

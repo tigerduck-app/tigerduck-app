@@ -1,7 +1,6 @@
 import Defaults
 import Foundation
 
-/// One published term, with the inclusive days classes run between.
 nonisolated struct SemesterTerm: Codable, Equatable, Sendable {
     let code: String
     let start: Date
@@ -13,7 +12,6 @@ nonisolated struct SemesterTerm: Codable, Equatable, Sendable {
     }
 }
 
-/// A named range on which classes do not meet. Single-day: `start == end`.
 nonisolated struct Holiday: Codable, Equatable, Sendable, Identifiable {
     let id: Int
     let nameZh: String
@@ -26,8 +24,6 @@ nonisolated struct Holiday: Codable, Equatable, Sendable, Identifiable {
         return d >= start && d <= end
     }
 
-    /// Chinese for any `zh-*` locale, English otherwise — matching how the
-    /// backend authors the pair.
     func name(for locale: Locale = .current) -> String {
         (locale.identifier.hasPrefix("zh") || locale.language.languageCode?.identifier == "zh")
             ? nameZh
@@ -35,14 +31,6 @@ nonisolated struct Holiday: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// The school's calendar, as the app reasons about it. A value type so
-/// the widget extension, Live Activity coordinator and views share one
-/// answer without coordinating. `AcademicCalendarStore` owns network and disk.
-///
-/// Every predicate fails open on `empty`, the state before the first
-/// successful fetch: nothing is suppressed and the term falls back to the
-/// caller's own guess. Silencing every class reminder because a server was
-/// unreachable is far worse than ringing once on a holiday.
 nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
     let revision: Int
     let terms: [SemesterTerm]
@@ -50,22 +38,12 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
 
     static let empty = AcademicCalendar(revision: 0, terms: [], holidays: [])
 
-    /// The cached calendar, readable from any isolation.
-    ///
-    /// `AcademicCalendarStore` is `@MainActor` because it owns the refresh
-    /// task, but `CourseSelectionService.currentSemesterCode()` is
-    /// `nonisolated` and runs in background work; both read one `Defaults`
-    /// entry with no actor hop. That needs the type's `nonisolated`: the target
-    /// builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so without it
-    /// this read would be main-actor isolated, an error in Swift 6 mode.
     static var cached: AcademicCalendar {
         let data = Defaults[.academicCalendarCache]
         guard !data.isEmpty else { return .empty }
         return (try? JSONDecoder().decode(AcademicCalendar.self, from: data)) ?? .empty
     }
 
-    /// Taipei, always — every date in this calendar is a Taiwan school day,
-    /// not an instant, so the device's own zone must not enter into it.
     static let calendar: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
@@ -74,26 +52,14 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
 
     static func startOfDay(_ date: Date) -> Date { calendar.startOfDay(for: date) }
 
-    /// The term whose timetable the app should be showing.
-    ///
-    /// The most recently *begun* term, not the one containing `day`: between
-    /// terms there is no containing term, and the app has always kept showing
-    /// the last timetable rather than emptying itself. Suppression is the
-    /// holidays' job, so this stays deliberately permissive.
     func currentTerm(on day: Date = Date()) -> SemesterTerm? {
         guard !terms.isEmpty else { return nil }
         let d = Self.startOfDay(day)
         let begun = terms.filter { $0.start <= d }
-        // Before the earliest published term — a new student in August, say.
         return begun.max(by: { $0.start < $1.start })
             ?? terms.min(by: { $0.start < $1.start })
     }
 
-    /// True while classes are in session, gating the "today"-scoped surfaces.
-    ///
-    /// Unknown reads as in-session: with no calendar the app would otherwise
-    /// hide Home's time slider and the today carousel forever on a device
-    /// that has never reached the backend.
     func isInSession(on day: Date = Date()) -> Bool {
         terms.isEmpty || terms.contains { $0.contains(day) }
     }
@@ -102,32 +68,17 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
         holidays.filter { $0.contains(day) }
     }
 
-    /// Whether a school holiday keeps classes quiet on `day`. A surface that hides classes asks
-    /// `isClassDay`, which also counts the days outside the term.
-    ///
-    /// Opting in to *any* holiday covering the day un-suppresses it: the user
-    /// is saying "I have class that day", and a second overlapping holiday
-    /// they never saw should not overrule that.
     func suppressesClasses(on day: Date, optedIn: Set<Int>) -> Bool {
         let covering = holidays(on: day)
         guard !covering.isEmpty else { return false }
         return !covering.contains { optedIn.contains($0.id) }
     }
 
-    /// Whether `day` is a class day: in term, and not a holiday the user has
-    /// left quiet. What the "today" surfaces list courses for.
     func isClassDay(_ day: Date, optedIn: Set<Int>) -> Bool {
         isInSession(on: day) && !suppressesClasses(on: day, optedIn: optedIn)
     }
 }
 
-// MARK: - Wire format
-
-/// The payload of `GET /v3/calendar/semesters`.
-///
-/// Dates arrive as `YYYY-MM-DD` with no time and no zone, because every
-/// consumer asks "is today in this range" — handing the clients an instant
-/// would invite each platform to pick its own idea of when a day begins.
 nonisolated struct AcademicCalendarDTO: Decodable, Sendable {
     struct Semester: Decodable, Sendable {
         let code: String
@@ -149,12 +100,6 @@ nonisolated struct AcademicCalendarDTO: Decodable, Sendable {
 }
 
 nonisolated extension AcademicCalendar {
-    /// Build from a decoded payload, dropping rows this build cannot make
-    /// sense of.
-    ///
-    /// A malformed row costs that row, not the whole calendar: losing the
-    /// calendar would silently turn suppression off everywhere, which is the
-    /// failure this feature exists to prevent.
     init(dto: AcademicCalendarDTO) {
         let terms: [SemesterTerm] = (dto.semesters ?? []).compactMap { row in
             guard !row.code.isEmpty,
@@ -169,8 +114,6 @@ nonisolated extension AcademicCalendar {
                   let end = AcademicCalendar.day(from: row.end),
                   end >= start
             else { return nil }
-            // A nameless holiday would render as a blank calendar row and an
-            // unexplained silence, which is worse than not having it.
             let zh = row.name_zh?.isEmpty == false ? row.name_zh : nil
             let en = row.name_en?.isEmpty == false ? row.name_en : nil
             guard zh != nil || en != nil else { return nil }

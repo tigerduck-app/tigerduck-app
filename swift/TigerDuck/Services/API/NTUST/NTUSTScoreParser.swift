@@ -1,29 +1,15 @@
 import Foundation
 import SwiftSoup
 
-/// Parses the NTUST StuScoreQueryServ DisplayAll HTML into a ``ScoreReport``.
-///
-/// Swift port of `api-poc/api/ntust/html_score_parser.py`. Selectors and regexes stay 1:1
-/// with it so each is a drop-in for the other; mirror any schema-drift fix in both.
-///
-/// `nonisolated` so the parse runs off the main actor. Under the module's MainActor
-/// default, parsing a multi-year transcript on the UI thread stutters the score page
-/// on older phones during a refresh.
 nonisolated enum NTUSTScoreParser {
 
-    // MARK: - Credit pattern registry
-    //
-    // Order matters — `^(\d+)$` matches everything else so it must run last.
     private static let creditPatterns: [(Regex<AnyRegexOutput>, CreditType)] = {
-        // The fraction is optional and matters: NTUST issues half credits,
-        // and `\d+` alone matched nothing for "0.5", which fell through to
-        // `.unknown` with no credit at all.
         let raw: [(String, CreditType)] = [
-            (#"^\[\s*(\d+(?:\.\d+)?)\s*\]$"#, .educationProgram),   // [3] / [0.5]
-            (#"^<\s*(\d+(?:\.\d+)?)\s*>$"#,   .notCounted),         // <3>
-            (#"^#\s*(\d+(?:\.\d+)?)\s*$"#,    .notRequired),        // #3
-            (#"^\(\s*(\d+(?:\.\d+)?)\s*\)$"#, .notEarned),          // (3) failed
-            (#"^(\d+(?:\.\d+)?)$"#,           .normal),             // 3
+            (#"^\[\s*(\d+(?:\.\d+)?)\s*\]$"#, .educationProgram),
+            (#"^<\s*(\d+(?:\.\d+)?)\s*>$"#,   .notCounted),
+            (#"^#\s*(\d+(?:\.\d+)?)\s*$"#,    .notRequired),
+            (#"^\(\s*(\d+(?:\.\d+)?)\s*\)$"#, .notEarned),
+            (#"^(\d+(?:\.\d+)?)$"#,           .normal),
         ]
         return raw.compactMap { pattern, type in
             guard let regex = try? Regex(pattern) else { return nil }
@@ -35,13 +21,6 @@ nonisolated enum NTUSTScoreParser {
         try? Regex(#"期末評量時間\s*(\d{4})"#)
     }()
 
-    // MARK: - Public API
-
-    /// Parse raw HTML into a `ScoreReport`. Never throws — on failure returns
-    /// `.empty`; individual sections gracefully degrade to empty arrays. The
-    /// caller is expected to distinguish "parsed but empty" from "truly no
-    /// content" via higher-level heuristics (e.g. also checking whether the
-    /// session redirected to SSO).
     static func parse(html: String) -> ScoreReport {
         guard let doc = try? SwiftSoup.parse(html) else {
             return .empty
@@ -55,11 +34,7 @@ nonisolated enum NTUSTScoreParser {
         )
     }
 
-    // MARK: - Section parsers
-
     private static func parseStudent(_ doc: Document) -> String {
-        // Localized navigation links the navbar may render across language
-        // toggles. Add new entries here when NTUST adds a UI language.
         let excluded: Set<String> = [
             "登出", "登出系統",
             "Logout", "Log out", "Sign out",
@@ -163,7 +138,6 @@ nonisolated enum NTUSTScoreParser {
         let rows = rowsOf(info)
         guard rows.count > 1 else { return .empty }
 
-        // Label → key mapping mirrors Python `label_to_key`
         var earned = CreditBreakdown.zero
         var enrolled = CreditBreakdown.zero
         var total = CreditBreakdown.zero
@@ -186,9 +160,6 @@ nonisolated enum NTUSTScoreParser {
         return CreditSummary(earned: earned, enrolled: enrolled, total: total)
     }
 
-    // MARK: - Shared helpers
-
-    /// Text of an element with whitespace collapsed; mirrors Python `_text`.
     private static func cleanText(_ element: Element) -> String {
         let raw = (try? element.text()) ?? ""
         return raw
@@ -230,9 +201,6 @@ nonisolated enum NTUSTScoreParser {
         return .graded
     }
 
-    /// Locate the `<div class="box">` whose `.box-header h2` contains the
-    /// given title. More tolerant to layout reshuffles than hard-coded
-    /// positional indexing.
     private static func findBox(_ doc: Document, byTitle title: String) -> Element? {
         let boxes: [Element] = (try? doc.select("div.box").array()) ?? []
         for box in boxes {
@@ -244,8 +212,6 @@ nonisolated enum NTUSTScoreParser {
         return nil
     }
 
-    /// Flatten a `<table>` into rows of cell elements, dropping empty rows.
-    /// Mirrors Python `_rows_of`.
     private static func rowsOf(_ table: Element) -> [[Element]] {
         let trs: [Element] = (try? table.select("tr").array()) ?? []
         return trs.compactMap { tr in
