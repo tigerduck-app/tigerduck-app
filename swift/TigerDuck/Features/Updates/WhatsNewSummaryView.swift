@@ -1,19 +1,8 @@
 #if os(iOS)
 import SwiftUI
 
-/// The last page of the What's New flow: the release title and its
-/// highlights as rows — tinted SF Symbol, headline, a line of detail —
-/// the layout Apple's own apps use for What's New. Its Continue button
-/// lives in ``WhatsNewFlowView``'s footer with every other page's.
-///
-/// Content comes from `whatsnew.json` via ``WhatsNewRepository``. An
-/// entry written before rows had symbols and headlines (`highlights`)
-/// renders each sentence as a bulleted body-only row.
 struct WhatsNewSummaryContent: View {
     let entry: WhatsNewRepository.ResolvedWhatsNew
-    /// True once the flow has paged onto the summary. The pager builds
-    /// a neighbouring step ahead of time, offscreen, so the rows wait
-    /// for this rather than `onAppear` to settle in where they're seen.
     let isActive: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -33,9 +22,6 @@ struct WhatsNewSummaryContent: View {
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xl) {
                     ForEach(Array(entry.items.enumerated()), id: \.offset) { offset, item in
                         WhatsNewSummaryRow(item: item)
-                            // Rows settle in one after another on first
-                            // show; Reduce Motion keeps the fade, drops
-                            // the slide.
                             .opacity(hasAppeared ? 1 : 0)
                             .offset(y: hasAppeared || reduceMotion ? 0 : 12)
                             .animation(
@@ -55,8 +41,6 @@ struct WhatsNewSummaryContent: View {
         .onChange(of: isActive) { _, active in
             guard active else { return }
             hasAppeared = true
-            // Paged onto from a feature page: take VoiceOver focus off
-            // the footer button and onto the summary's heading.
             isTitleFocused = true
         }
     }
@@ -79,9 +63,6 @@ private struct WhatsNewSummaryRow: View {
             .accessibilityElement(children: .combine)
         } else {
             HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.md) {
-                // Filled-circle bullet lined up with the first text
-                // baseline, so wrapped lines indent under the text
-                // rather than the bullet.
                 Image(systemName: "circle.fill")
                     .font(.system(size: 6))
                     .foregroundStyle(.tint)
@@ -100,8 +81,6 @@ private struct WhatsNewSummaryRow: View {
                     .font(.headline)
             }
             if let body = item.body {
-                // A body under a headline is the detail line; a body on
-                // its own is the whole row and reads at full strength.
                 Text(body)
                     .font(item.title == nil ? .body : .subheadline)
                     .foregroundStyle(item.title == nil ? .primary : .secondary)

@@ -1,9 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// The scrolling body of one feature page — everything above the page
-/// dots. The buttons below belong to ``WhatsNewFlowView``, which keeps
-/// them in place while pages slide.
 struct WhatsNewPageContentView: View {
     let page: WhatsNewPage
     let context: WhatsNewPageContext
@@ -30,8 +27,6 @@ struct WhatsNewPageContentView: View {
     }
 }
 
-/// Demo, title and body, centred — the shared shape of every template —
-/// with a slot underneath for the template's own control.
 private struct WhatsNewTemplateBody<Accessory: View>: View {
     let content: WhatsNewPage.Content
     @ViewBuilder let accessory: Accessory
@@ -62,16 +57,10 @@ private struct WhatsNewTemplateBody<Accessory: View>: View {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, TigerDuckTheme.Spacing.xl)
                 .padding(.vertical, TigerDuckTheme.Spacing.lg)
-                // Centred in the page while it fits, so a short page
-                // doesn't leave its gap all above the buttons; once
-                // Dynamic Type outgrows the page it scrolls from the top.
                 .frame(minHeight: proxy.size.height)
             }
             .scrollBounceBehavior(.basedOnSize)
         }
-        // The Next button stays put while pages slide, so VoiceOver focus
-        // would sit on it and never hear the new page; move it to the
-        // heading as the page becomes current.
         .onChange(of: isCurrent) { _, current in
             if current { isTitleFocused = true }
         }
@@ -92,7 +81,6 @@ struct WhatsNewVisualView: View {
                 .frame(height: 120)
                 .accessibilityHidden(true)
         case .view(let demo):
-            // The demos are drawn to fit this height; VoiceOver reads their labels at any size.
             demo()
                 .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .frame(maxWidth: .infinity)
@@ -101,8 +89,6 @@ struct WhatsNewVisualView: View {
     }
 }
 
-/// Loops the page's symbol effect. Reduce Motion stills the symbol
-/// rather than swapping in a subtler effect — the text carries the page.
 private struct WhatsNewSymbolEffectModifier: ViewModifier {
     let effect: WhatsNewSymbolEffect
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -131,13 +117,8 @@ private struct WhatsNewSymbolEffectModifier: ViewModifier {
     }
 }
 
-/// Side-by-side cards, one per look. A tap applies the pick at once, so
-/// leaving the page by any route keeps it.
 private struct WhatsNewChoicePicker: View {
     let options: [WhatsNewPage.ChoiceOption]
-    /// The live setting. Followed after the first build too: the pager
-    /// builds this page while its neighbour is on screen, and that
-    /// neighbour may change the setting before the user gets here.
     let initial: String
     let select: (String) -> Void
     @State private var selection: String
@@ -189,11 +170,8 @@ private struct WhatsNewChoicePicker: View {
     }
 }
 
-/// A switch under the demo, applied live as it flips.
 private struct WhatsNewToggleRow: View {
     let label: String
-    /// The live setting, followed for the same reason as
-    /// ``WhatsNewChoicePicker/initial``.
     let initial: Bool
     let set: (Bool) -> Void
     @State private var isOn: Bool
@@ -241,9 +219,6 @@ struct WhatsNewPageDots: View {
 }
 
 extension EnvironmentValues {
-    /// Whether the What's New page this view sits in is the one on
-    /// screen. The pager builds the pages either side ahead of time, so a
-    /// page can't tell from `onAppear` alone.
     @Entry var whatsNewPageIsCurrent: Bool = true
 }
 #endif

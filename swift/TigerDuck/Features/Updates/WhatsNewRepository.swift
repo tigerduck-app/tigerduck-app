@@ -1,26 +1,11 @@
 import Foundation
 
-/// Loads the maintainer-written summaries in the bundled `whatsnew.json`
-/// (version → per-locale map) and returns the block that best matches the
-/// app language as a ``ResolvedWhatsNew``, the page that ends the What's New
-/// flow. Counterpart of the Android `WhatsNewRepository`. Every marketing
-/// version gets an entry before it is tagged; with neither an entry nor a
-/// ``WhatsNewCatalog`` page, nothing shows. Sinitic tags fall back to `zh-TW`
-/// before `en` so Chinese readers get Chinese text, and Simplified-script tags
-/// try `zh-Hans` first. Other languages fall back to `en`.
 struct WhatsNewRepository {
-    /// Resolved entry for the current locale — what the UI actually
-    /// renders. Decoupled from the on-disk ``WhatsNewEntry`` so the
-    /// view doesn't have to deal with the optional/empty edge cases the
-    /// repo already filters out.
     struct ResolvedWhatsNew: Equatable {
         let version: String
         let title: String
         let items: [Item]
 
-        /// A summary row with its blanks already filtered out: at least
-        /// one of `title` / `body` is non-nil. A legacy `highlights`
-        /// sentence arrives as a body-only row with no symbol.
         struct Item: Equatable {
             let symbol: String?
             let title: String?
@@ -31,18 +16,11 @@ struct WhatsNewRepository {
     private let bundle: Bundle
     private let resourceName: String
 
-    /// Nonisolated so `UpdateNotifyCoordinator`'s (also nonisolated)
-    /// `init` can construct one without a MainActor hop. The struct
-    /// only reads bundle resources and never touches actor-isolated
-    /// state, so there's no isolation to preserve here.
     nonisolated init(bundle: Bundle = .main, resourceName: String = "whatsnew") {
         self.bundle = bundle
         self.resourceName = resourceName
     }
 
-    /// Resolved entry for `version` in the locale implied by
-    /// `languageTag`, or `nil` if the asset is missing/malformed, has no
-    /// entry for that version, or the entry is empty after filtering.
     func entry(forVersion version: String, languageTag: String) -> ResolvedWhatsNew? {
         guard let byVersion = loadByVersion() else { return nil }
         return Self.select(
@@ -52,15 +30,8 @@ struct WhatsNewRepository {
         )
     }
 
-    /// Resolved entry for the newest registered version — at most
-    /// `upTo` when given. Backs the Settings → What's New entry, which
-    /// passes the running version so a build carrying the next release's
-    /// summary ahead of its bump keeps replaying its own.
     func latestEntry(languageTag: String, upTo: AppVersion? = nil) -> ResolvedWhatsNew? {
         guard let byVersion = loadByVersion(), !byVersion.isEmpty else { return nil }
-        // Compare parsed versions so "1.10.0" outranks "1.9.0". If no key
-        // parses (a typo), showing something beats nothing, so fall back to
-        // lexical order; not under a ceiling, which can't check such keys.
         let pairs = byVersion.keys.compactMap { key -> (String, AppVersion)? in
             guard let v = AppVersion(key) else { return nil }
             if let upTo, upTo < v { return nil }
@@ -77,8 +48,6 @@ struct WhatsNewRepository {
         )
     }
 
-    // MARK: - Internal
-
     private typealias ByVersion = [String: [String: WhatsNewEntry]]
 
     private func loadByVersion() -> ByVersion? {
@@ -91,17 +60,12 @@ struct WhatsNewRepository {
         return Self.decodeByVersion(data)
     }
 
-    /// Decodes each version on its own, so one malformed entry — `items`
-    /// written as an object, say — drops only that version's summary
-    /// rather than every one. Kept static for tests; the strict check that
-    /// the shipped file decodes whole lives in `WhatsNewRepositoryTests`.
     static func decodeByVersion(_ data: Data) -> [String: [String: WhatsNewEntry]]? {
         try? JSONDecoder()
             .decode([String: Lenient<[String: WhatsNewEntry]>].self, from: data)
             .compactMapValues(\.value)
     }
 
-    /// A value that decodes to `nil` instead of failing its container.
     private struct Lenient<Value: Decodable>: Decodable {
         let value: Value?
 
@@ -110,8 +74,6 @@ struct WhatsNewRepository {
         }
     }
 
-    /// Pure selector — kept static so tests can drive it without mounting
-    /// a bundle. See the type doc comment for the locale fallback policy.
     static func select(
         versionEntry: [String: WhatsNewEntry]?,
         version: String,
@@ -132,10 +94,6 @@ struct WhatsNewRepository {
         return ResolvedWhatsNew(version: version, title: title, items: items)
     }
 
-    /// `items` when the entry authors any usable row, otherwise the
-    /// legacy `highlights` sentences as body-only rows. Rows left with
-    /// neither a title nor a body are dropped rather than rendered as
-    /// an empty line.
     private static func resolvedItems(of entry: WhatsNewEntry) -> [ResolvedWhatsNew.Item] {
         let items: [ResolvedWhatsNew.Item] = (entry.items ?? []).compactMap { item in
             let title = nonBlank(item.title)
@@ -156,17 +114,9 @@ struct WhatsNewRepository {
         return trimmed
     }
 
-    /// Ordered list of `whatsnew.json` locale keys to try for a given
-    /// language tag. The lookup walks this until it finds an authored
-    /// block; only the universal `en` tail catches non-Sinitic locales.
     private static func localeCandidates(for languageTag: String) -> [String] {
-        // A Chinese-family reader (``WhatsNewLanguage/isChineseFamily(_:)``)
-        // prefers Traditional Chinese over English when no closer block exists.
         guard WhatsNewLanguage.isChineseFamily(languageTag) else { return ["en"] }
         let locale = Locale(identifier: languageTag)
-        // Simplified-script readers (`zh-Hans*`, `zh-CN`, `zh-SG`) prefer an
-        // authored Simplified block; every Sinitic reader (Cantonese, Wu and
-        // Hakka included) falls back to `zh-TW` before English.
         let isSimplified: Bool = {
             if let script = locale.language.script?.identifier { return script == "Hans" }
             if let region = locale.region?.identifier { return region == "CN" || region == "SG" }
