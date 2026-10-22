@@ -2,41 +2,18 @@ import Defaults
 import SwiftUI
 import UserNotifications
 
-/// Per-device bulletin notification settings. Turning bulletin push on or off PATCHes
-/// `bulletin_push_enabled` on this device's row before writing the `bulletinPushEnabled` Default,
-/// so a failed request leaves the page agreeing with the server, and the section footer reports the
-/// failure, since the page has no sign-in check and the PATCH needs a Bearer. The device stays
-/// registered either way: the server gates only bulletin delivery, not assignment reminders, Live
-/// Activities or sync triggers. Rules have no Save button: they persist on the editor's Done and
-/// Delete rule, and on leaving the page with unsaved changes. A new rule stays a draft in view
-/// state until Done, so swiping back out of the editor discards it.
 struct BulletinNotificationSettingsView: View {
     let taxonomy: BulletinTaxonomyStore
 
     @Environment(AppState.self) private var appState
     @State private var store = BulletinSubscriptionsStore()
     @State private var authStatus: UNAuthorizationStatus = .notDetermined
-    /// In-flight for the whole enable path — the permission prompt and the
-    /// PATCH behind it.
     @State private var isAskingPermission: Bool = false
-    /// In-flight for the destructive "Turn off bulletin push" button, which is only the PATCH.
     @State private var isDisablingPush: Bool = false
-    /// Set when the bulletin PATCH throws — offline, or signed out. Reuses
-    /// TigerSync's wording for the same kind of failure. Cleared by the
-    /// next attempt that lands. The page keeps showing the pre-tap state
-    /// on its own: the actor writes the Default only after a 2xx, so
-    /// `pushEnabled` below never moved.
     @State private var pushUpdateFailed: Bool = false
     @State private var editingClientId: UUID?
-    /// Unpersisted rule that lives only while the editor is on screen. Tapping Done moves it into
-    /// `store.pending` via `upsert`. Replaced or cleared whenever the user navigates back out.
     @State private var draftRule: BulletinAPI.SubscriptionRule?
     @State private var saveErrorMessage: String?
-    /// Ensures the initial network load fires exactly once per view
-    /// instance. Without this guard, SwiftUI's `.task` re-firing on
-    /// view re-appearance can issue a redundant GET /subscriptions
-    /// right after the user edits — which in the previous iteration
-    /// clobbered the user's in-flight pending array.
     @State private var didInitialLoad: Bool = false
 
     @Default(.bulletinPushEnabled) private var pushEnabled
@@ -56,13 +33,7 @@ struct BulletinNotificationSettingsView: View {
         .navigationTitle(String(localized: "bulletin_notifications_title"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            // Give the store the app's v3 auth before any GET/PUT so the
-            // Bearer-protected subscription endpoints don't 401. Cheap and
-            // idempotent, so run it on every appear (before onDisappear save).
             store.configure(authTokenManager: appState.authTokenManager)
-            // Taxonomy + auth status refresh every time; only the
-            // subscription GET is gated so it doesn't re-fire on
-            // re-appearance.
             await taxonomy.loadIfNeeded()
             await refreshAuthStatus()
             if pushEnabled, !didInitialLoad {
@@ -71,8 +42,6 @@ struct BulletinNotificationSettingsView: View {
             }
         }
         .onDisappear {
-            // Auto-save on leaving the page (swipe back, tab switch). Pushing the editor also
-            // fires `onDisappear`; a non-nil `editingClientId` means the page is only covered.
             if editingClientId == nil, store.isDirty {
                 Task { await store.save() }
             }
@@ -97,8 +66,6 @@ struct BulletinNotificationSettingsView: View {
             ruleEditor(for: clientId)
         }
     }
-
-    // MARK: - Sections
 
     @ViewBuilder
     private var pushStatusSection: some View {
@@ -211,9 +178,6 @@ struct BulletinNotificationSettingsView: View {
                 .onDelete(perform: deleteRules)
 
                 Button {
-                    // Create a draft rule locally; don't touch `pending`
-                    // until Done. Setting both state fields in the same
-                    // tick so SwiftUI batches a single render pass.
                     let draft = store.makeNewRule()
                     draftRule = draft
                     editingClientId = draft.clientId
@@ -243,8 +207,6 @@ struct BulletinNotificationSettingsView: View {
         }
     }
 
-    // MARK: - Editor routing
-
     @ViewBuilder
     private func ruleEditor(for clientId: UUID) -> some View {
         if let existing = store.pending.first(where: { $0.clientId == clientId }) {
@@ -261,9 +223,6 @@ struct BulletinNotificationSettingsView: View {
                 }
             )
         } else if let draft = draftRule, draft.clientId == clientId {
-            // New rule: the draft lives in view state until Done moves it into `pending`. Swiping
-            // back discards it; the draft stays in state until the next Add rule replaces it. No
-            // onDelete: nothing is on the server yet, and swiping back is the discard.
             SubscriptionRuleEditorView(
                 rule: draft,
                 taxonomy: taxonomy,
@@ -275,14 +234,10 @@ struct BulletinNotificationSettingsView: View {
                 onDelete: nil
             )
         } else {
-            // Neither pending nor draft — rule vanished under us
-            // (e.g. swipe-delete on a different path). Pop back.
             Color.clear
                 .onAppear { editingClientId = nil }
         }
     }
-
-    // MARK: - Row rendering
 
     private func ruleRow(_ rule: BulletinAPI.SubscriptionRule) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -307,8 +262,6 @@ struct BulletinNotificationSettingsView: View {
         }
         .contentShape(Rectangle())
     }
-
-    // MARK: - Actions
 
     private func deleteRules(at offsets: IndexSet) {
         for index in offsets {
@@ -344,7 +297,6 @@ struct BulletinNotificationSettingsView: View {
         do {
             try await appState.updateBulletinPushEnabled(false)
             pushUpdateFailed = false
-            // pushEnabled flips reactively via @Default; no manual refresh.
         } catch {
             pushUpdateFailed = true
         }
@@ -360,16 +312,6 @@ struct BulletinNotificationSettingsView: View {
         UIApplication.shared.open(url)
     }
 
-    // MARK: - Permission routing
-
-    /// Whether the off-state section must explain the permission problem and offer iOS Settings,
-    /// instead of leaving "Turn on bulletin push" as the only control. `.denied` is the one status
-    /// the enable button cannot move: iOS never re-prompts after a refusal, so
-    /// `requestAuthorization` returns `false` silently and `enablePush()` stops at its guard. The
-    /// on-state branch's status row and Settings button are unreachable from here, so this section
-    /// carries both. An unknown future status errs toward the route, matching
-    /// `NotificationPermissionSettingsView.notificationPermissionStatus(for:)`, which maps it to
-    /// `.notGranted`. `static` over a plain value so a test needs no view or `AppState`.
     static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
         switch status {
         case .denied: return true
@@ -377,8 +319,6 @@ struct BulletinNotificationSettingsView: View {
         @unknown default: return true
         }
     }
-
-    // MARK: - Text helpers
 
     private var authStatusText: String {
         switch authStatus {

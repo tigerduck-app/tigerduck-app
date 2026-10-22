@@ -2,18 +2,9 @@ import MarkdownUI
 import SwiftUI
 import os
 
-/// Full-screen bulletin reader. The parent pushes this via
-/// `.navigationDestination`; the nav bar stays in place (with just
-/// the back-button chevron hidden) because
-/// `toolbar(.hidden, for: .navigationBar)` disables the
-/// interactivePopGesture on iOS — which the user explicitly needs.
-/// A transparent toolbar background lets the masthead feel edge-to-
-/// edge without sacrificing the system swipe-from-left-edge dismissal.
 struct BulletinDetailView: View {
     let bulletin: BulletinAPI.BulletinSummary
     let taxonomy: BulletinTaxonomyStore
-    /// Optional — when supplied, opening this view marks the bulletin as
-    /// read so the parent list can drop the unread dot + bold weight.
     var readState: BulletinReadStateStore? = nil
 
     @Environment(AppState.self) private var appState
@@ -23,10 +14,6 @@ struct BulletinDetailView: View {
     @State private var isLoading: Bool = false
     @State private var showInAppBrowser: Bool = false
 
-    /// Hoisted to a static so the bulletin-detail nav push doesn't build a
-    /// new client and URLSession on every appearance. The base URL is
-    /// resolved per request through the default provider, so a Debug
-    /// endpoint override picks up immediately without an app relaunch.
     private static let apiClient: BulletinAPIClient = BulletinAPIClient()
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Detail")
 
@@ -67,11 +54,6 @@ struct BulletinDetailView: View {
         }
     }
 
-    // MARK: - Subviews
-
-    /// Meta row: understated "department · date" text, so the department reads
-    /// as attribution rather than a tag. Category labels sit at the article foot
-    /// as hashtags.
     @ViewBuilder
     private var metaRow: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -195,13 +177,8 @@ struct BulletinDetailView: View {
         .bulletin(accent: appState.accentColor)
     }
 
-    // MARK: - Loading
-
     private func loadDetail() async {
         guard detail == nil else { return }
-        // Cache-first: the stored body is eventually replaced by a fresh
-        // server fetch below, but showing the cache immediately means a
-        // re-opened bulletin has no spinner at all.
         if let cached = DataCache.shared.loadBulletinDetail(id: bulletin.id) {
             detail = cached
         }
@@ -215,8 +192,6 @@ struct BulletinDetailView: View {
             DataCache.shared.saveBulletinDetail(fresh)
         } catch {
             logger.error("detail load failed id=\(bulletin.id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
-            // Don't surface the error when we have cached content —
-            // offline-first behaviour means the user keeps reading.
             if !hadCached {
                 loadError = error.localizedDescription
             }
@@ -224,9 +199,6 @@ struct BulletinDetailView: View {
     }
 }
 
-/// Minimal flow layout used for the article-foot tag strip. iOS 16+ ships
-/// `Layout`, which we use to wrap tags across multiple lines without
-/// reaching for a horizontal ScrollView.
 private struct WrappingHStack<Item: Hashable, Content: View>: View {
     let items: [Item]
     let spacing: CGFloat

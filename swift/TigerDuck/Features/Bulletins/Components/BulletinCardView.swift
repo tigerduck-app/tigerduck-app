@@ -3,9 +3,6 @@ import SwiftUI
 struct BulletinCardView: View {
     let bulletin: BulletinAPI.BulletinSummary
     let taxonomy: BulletinTaxonomyStore
-    /// Local read state — shows an unread dot in the org row + bolder title
-    /// when false. Defaults to true so callers without a read store don't
-    /// render "everything unread" by accident.
     var isRead: Bool = true
 
     @Environment(AppState.self) private var appState
@@ -25,12 +22,6 @@ struct BulletinCardView: View {
         .opacity(bulletin.isDeleted ? 0.55 : 1)
     }
 
-    // MARK: - Rows
-
-    /// Top row: the filled org badge, then importance, withdrawn and the date.
-    /// The badge is a solid accent pill, the card's main metadata anchor, while
-    /// the category strip at the bottom uses a lighter hashtag style so the two
-    /// do not compete for attention.
     private var topRow: some View {
         HStack(alignment: .center, spacing: TigerDuckTheme.Spacing.sm) {
             if !isRead {
@@ -82,9 +73,6 @@ struct BulletinCardView: View {
         }
     }
 
-    /// Filled capsule with theme accent fill and white text. Larger than the
-    /// previous plain caption so it asserts itself as the card's primary
-    /// source signal.
     private func orgBadge(label: String) -> some View {
         Text(label)
             .font(.subheadline.weight(.semibold))
@@ -94,9 +82,6 @@ struct BulletinCardView: View {
             .background(.tint, in: Capsule())
     }
 
-    /// Hashtag-style inline strip. Pairs intentionally with the filled org
-    /// badge above — plain `#tag` text in the secondary color reads as
-    /// metadata rather than a second competing chip set.
     private var tagStrip: some View {
         HStack(spacing: 6) {
             Spacer(minLength: 0)
@@ -116,8 +101,6 @@ struct BulletinCardView: View {
         .lineLimit(1)
     }
 
-    /// "Important" badge: the org badge's capsule, tinted orange so it reads as a
-    /// priority signal rather than a source.
     private var importanceBadge: some View {
         Text(String(localized: "bulletin_importance_high_badge"))
             .font(TigerDuckTheme.Typography.caption2)

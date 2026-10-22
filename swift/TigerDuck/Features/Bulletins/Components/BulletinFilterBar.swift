@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Horizontal scrollable bar of org/tag filter chips. Taxonomy is supplied
-/// by the caller so the same bar can render either dimension.
 struct BulletinFilterBar: View {
     let title: String
     let options: [(id: String, label: String)]
