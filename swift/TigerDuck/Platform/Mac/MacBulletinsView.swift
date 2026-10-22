@@ -4,19 +4,11 @@ import SwiftUI
 import MarkdownUI
 import os
 
-/// macOS bulletins surface — Mail-style list/detail split.
-///
-/// Leans on the cross-platform `BulletinsViewModel` for fetch +
-/// pagination + cache merge, and `BulletinReadStateStore` for the
-/// device-local read state. The view itself just owns the selection
-/// and the on-demand `BulletinDetail` fetch for the right pane.
 struct MacBulletinsView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = BulletinsViewModel()
     @Default(.bulletinsSyncedAt) private var bulletinsSyncedAt
     @State private var readStore = BulletinReadStateStore()
-    // Shared with iPhone: same fetch-once taxonomy cache, so org/tag rawIds
-    // resolve to localized labels instead of leaking the raw SQL key.
     private let taxonomy = BulletinTaxonomyStore.shared
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.MacView")
 
@@ -44,9 +36,6 @@ struct MacBulletinsView: View {
             viewModel.searchText = searchText
             await viewModel.loadIfNeeded()
             await taxonomy.loadIfNeeded()
-            // `loadState` is `.private`: `.failed(String)` holds `BulletinAPIError`'s description,
-            // which for `.httpStatus` embeds up to 512 bytes of server-controlled body, the payload
-            // `execute(_:)` also marks `.private` (correlation tokens, echoed headers).
             logger.info("MacBulletinsView .task done — items=\(viewModel.filteredItems.count, privacy: .public) state=\(String(describing: viewModel.loadState), privacy: .private)")
         }
         .onDisappear { viewModel.pausePrefetch() }
@@ -82,8 +71,6 @@ struct MacBulletinsView: View {
             Task { await loadDetail(id: id) }
         }
     }
-
-    // MARK: - List pane
 
     private var listPane: some View {
         VStack(spacing: 0) {
@@ -165,9 +152,6 @@ struct MacBulletinsView: View {
 
     @ViewBuilder
     private var emptyListPlaceholder: some View {
-        // Failed-fetch state was previously indistinguishable from
-        // successful-but-empty — both rendered the tray icon. Split them
-        // so a network failure surfaces the actual error.
         if case let .failed(message) = viewModel.loadState {
             VStack(spacing: 10) {
                 Spacer()
@@ -203,8 +187,6 @@ struct MacBulletinsView: View {
         }
     }
 
-    // MARK: - Detail pane
-
     @ViewBuilder
     private var detailPane: some View {
         if selectedId == nil {
@@ -227,9 +209,6 @@ struct MacBulletinsView: View {
         }
     }
 
-    /// Error pane keeps the list-row `summary` visible — the bulletin's
-    /// curated headline + abstract is still useful while the detail fetch
-    /// is down. Mirrors `BulletinDetailView`'s offline-first behaviour.
     private func detailErrorPane(message: String) -> some View {
         let fallback = viewModel.filteredItems.first(where: { $0.id == selectedId })?.summary
         return VStack(alignment: .leading, spacing: 16) {
@@ -304,8 +283,6 @@ struct MacBulletinsView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
-
-    // MARK: - Detail fetch
 
     private func loadDetail(id: Int) async {
         isLoadingDetail = true

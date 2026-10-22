@@ -1,17 +1,11 @@
 import Foundation
 import Security
 
-/// Minimal keychain wrapper for the watch app. Generic-password items
 /// scoped to this app's bundle, `.whenUnlockedThisDeviceOnly` so the
 /// secret stays on the device (no iCloud restore) and is unreadable
 /// while the watch is locked.
-///
-/// Raw `SecItem*` rather than Valet, a phone-only Swift package: a small
-/// wrapper beats adding a watch package dependency in `project.pbxproj`.
 nonisolated enum WatchKeychain {
 
-    /// Per-app service name — distinct from the phone keychain's service.
-    /// Two devices, two stores; this just keeps watch items grouped.
     private static let service = "org.ntust.app.TigerDuck.watch"
 
     @discardableResult
@@ -22,8 +16,6 @@ nonisolated enum WatchKeychain {
 
     @discardableResult
     static func set(_ data: Data, forKey key: String) -> Bool {
-        // Update if exists, add otherwise. We never want two items for the
-        // same key to coexist (would cause non-deterministic reads).
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

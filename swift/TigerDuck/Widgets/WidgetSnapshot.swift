@@ -10,19 +10,7 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let periodOrder: [String]
     let activeWeekdays: [Int]
     let activePeriodIds: [String]
-    /// `yyyy-MM-dd` keys on which classes do not meet: school holidays the
-    /// user has not opted back into, and days outside the term.
-    ///
-    /// Carried here rather than read by the extension: the calendar cache lives in
-    /// the app's own `UserDefaults`, and this file is already the app→extension channel.
-    ///
-    /// Optional so a snapshot from an older build still decodes; a missing
-    /// non-optional field fails the whole decode and leaves only the placeholder.
     var quietDayKeys: [String]? = nil
-
-    // The empty-state snapshots each widget falls back to predate this
-    // field and have no calendar to consult, so it defaults to nil there —
-    // which the derivation reads as "no quiet days".
 
     static let currentVersion = 1
     static let storeKey = "Widget-snapshot-v1"
@@ -35,12 +23,7 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
     let classroom: String
     let schedule: [Int: [String]]
     let colorHex: UInt32
-    /// `yyyy-MM-dd` keys (Gregorian / en_US_POSIX / device time zone) matching
-    /// `SDCourse.isoFormatter`. The widget filters scheduled periods through
-    /// this set so toggling skip in the app removes the class from "ongoing"
-    /// and "next" without waiting for a data refresh.
     let skippedDates: Set<String>
-    /// Room per `"weekday-period"`, as `SDCourse.classroomMap`; `classroom` joins them all.
     let classroomMap: [String: String]
 
     init(
@@ -86,6 +69,6 @@ nonisolated extension SnapshotCourse {
 }
 
 nonisolated struct PeriodTime: Codable, Equatable, Hashable, Sendable {
-    let start: String   // "HH:mm"
-    let end: String     // "HH:mm"
+    let start: String
+    let end: String
 }

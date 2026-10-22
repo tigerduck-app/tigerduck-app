@@ -1,14 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// Other settings tab — the settings that belong to no other tab.
-///
-/// Today that is the API endpoint override, which used to be reachable
-/// only from the DEBUG-only Developer tab. It is not a debug affordance:
-/// a user running their own backend, or one told to point at a fallback
-/// while the default host is down, needs it in a shipping build. The
-/// iPhone has had it in Settings → Other settings for exactly that
-/// reason; this is the Mac half of the same idea.
 struct MacOtherSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var endpointVM = DebugEndpointViewModel()
@@ -23,9 +15,6 @@ struct MacOtherSettingsView: View {
                 Text(String(localized: "settings_api_endpoint_effective_title"))
             }
 
-            // Shows a saved override that fails the allowlist (a later build can tighten it), as
-            // iOS DebugEndpointView does. Without it the effective URL silently falls through to
-            // the next priority, with no hint why the saved override stopped taking effect.
             if let stale = endpointVM.staleOverride {
                 Section {
                     Text(stale)

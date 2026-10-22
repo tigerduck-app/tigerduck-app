@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// Watch counterpart to the phone's `VisualStylePolicy`. Resolves a `VisualPreset` (synced
-/// from the phone via `WatchSnapshot`) into what the watch course cards need: whether the
-/// course colour fills the card (TigerDuck) or appears as a slim accent stripe beside a
-/// neutral card (Apple).
-///
-/// Watch surfaces are simpler than the phone's (no glass material, no per-platform
-/// branching), so this carries only what the watch UI consumes. A new preset extends this
-/// resolver instead of every view branching on the raw enum.
 struct WatchVisualStylePolicy {
     let preset: VisualPreset
 
@@ -15,9 +7,6 @@ struct WatchVisualStylePolicy {
         self.preset = preset
     }
 
-    /// Whether the card surface should be tinted with the course colour
-    /// (`true`) or stay neutral with the colour shown only as a small
-    /// accent stripe (`false`).
     var usesTintedCardSurface: Bool {
         switch preset {
         case .default, .tat: return true
@@ -25,10 +14,6 @@ struct WatchVisualStylePolicy {
         }
     }
 
-    /// Background fill for a course card. In TigerDuck mode this is a
-    /// muted wash of the course colour; in Apple mode it's a neutral
-    /// gray surface that lets the accent stripe and text carry the
-    /// course identity.
     func cardBackground(for courseColor: Color) -> Color {
         switch preset {
         case .default, .tat:

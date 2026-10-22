@@ -4,18 +4,9 @@ import Network
 import Security
 import SwiftMail
 
-/// One stage of a connection attempt, and what happened in it.
 nonisolated enum DevMailProbeOutcome: Equatable, Sendable {
-    /// The stage completed. The text is what it found — the addresses a name resolved to, the
-    /// negotiated TLS version, the fact that the server accepted the credentials.
     case passed(String)
-    /// The stage was not run, and why: an earlier one failed, the transport makes it meaningless,
-    /// or there is nothing to authenticate with.
     case notRun(String)
-    /// The stage failed. The text is the **underlying** error — the `NWError` case with its POSIX
-    /// errno, DNS code or TLS `OSStatus`, or the SwiftMail error as it was thrown. Never a
-    /// friendly summary: five sentences that cover every failure are what this screen exists to
-    /// get behind.
     case failed(String)
 }
 
@@ -30,7 +21,6 @@ nonisolated enum DevMailProbeStage: String, CaseIterable, Sendable {
 nonisolated struct DevMailProbeStep: Equatable, Sendable {
     let stage: DevMailProbeStage
     let outcome: DevMailProbeOutcome
-    /// How long the stage took. Nil for a stage that never ran — "0 ms" would read as a result.
     let milliseconds: Int?
 
     var line: String {
@@ -46,7 +36,6 @@ nonisolated struct DevMailProbeStep: Equatable, Sendable {
     }
 }
 
-/// One endpoint's result: what was tried, against what, and how far it got.
 nonisolated struct DevMailProbeReport: Equatable, Sendable {
     let service: DevMailProbeService
     let host: String
@@ -64,34 +53,16 @@ nonisolated enum DevMailProbeService: String, CaseIterable, Sendable {
     case smtp = "SMTP"
 }
 
-/// What the probe may sign in with, or why it will not try.
 nonisolated enum DevMailProbeCredentials: Equatable, Sendable {
     case use(username: String, password: String)
     case unavailable(String)
 }
 
-/// The Test connection diagnostic behind `Settings → Developer → Email`. School Mail shows an
-/// unresolvable name, a refused or filtered port and a handshake failure naming no certificate all
-/// as "Can't reach the mail server", so each stage reports the error thrown: DNS (`getaddrinfo`,
-/// addresses shown), TCP and implicit TLS (`NWConnection`, system trust), CONNECT (SwiftMail with
-/// `MailTLSVerifier` as `LiveMailClient` installs it, covering STARTTLS) and AUTH. It never
-/// connects to the school server (`refusal(for:)`), never sends the school password elsewhere
-/// (`credentials(username:password:appliedIsOverridden:)`) and never touches `MailAccountManager`,
-/// the cache or the credential store. See docs/decisions/0007-dev-mail-server-override.md.
 nonisolated enum DevMailConnectionProbe {
-    /// How long any one stage may take before it is reported as a hang. A filtered port is the
-    /// case this bounds: left alone, the socket sits there for a minute or more, and "it hung" is
-    /// the diagnosis rather than something to keep waiting for.
     static let stageTimeout: Duration = .seconds(10)
 
     private static let queue = DispatchQueue(label: "org.ntust.app.TigerDuck.DevMailConnectionProbe")
 
-    // MARK: What may be tested, and with what
-
-    /// Why this draft must not be tested, or nil when it may be.
-    ///
-    /// The draft, deliberately — the point is to diagnose a server *before* applying it, since
-    /// applying signs the account out.
     static func refusal(for draft: MailServerOverrideSettings) -> String? {
         guard draft.isEnabled else {
             return """
@@ -116,10 +87,6 @@ nonisolated enum DevMailConnectionProbe {
         return nil
     }
 
-    /// Whether a host is the school's. Both the configured school host and the pin table are
-    /// consulted — the table is what `MailServerConfig.transportScheme(for:requested:)` already
-    /// clamps against, so a host it knows is one this app treats as NTUST's however the screen
-    /// spells it.
     static func isSchoolHost(_ host: String) -> Bool {
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !host.isEmpty else { return false }
@@ -127,14 +94,6 @@ nonisolated enum DevMailConnectionProbe {
         return MailServerConfig.isPinnedHost(host)
     }
 
-    /// Whether the saved password may be sent to the server under test.
-    ///
-    /// Without one, the probe still connects and handshakes and reports that it did not try to
-    /// authenticate. That is the common case: `MailAccountManager.login` saves a password only
-    /// after the server accepts it, so a server that will not connect has nothing saved for it.
-    /// `appliedIsOverridden` is the safety rule: while the applied configuration is the school's,
-    /// the saved password is the school account's and must not go to anyone else's server. Apply
-    /// the override and sign in to the test account to make it testable.
     static func credentials(
         username: String?,
         password: String?,
@@ -154,25 +113,16 @@ nonisolated enum DevMailConnectionProbe {
         return .use(username: username, password: password)
     }
 
-    /// What can be said about a username without putting it on a screen that will be screenshotted
-    /// or pasted into a bug report. The length, and whether it carries a domain — which is the part
-    /// that matters, since a third-party server usually wants the full address as the username and
-    /// the school's never does.
     static func describeUsername(_ username: String) -> String {
         "username: \(username.count) characters, \(username.contains("@") ? "with" : "no") \"@\""
     }
 
-    /// The reason the stages after the ones already run are not worth running, or nil to carry on.
-    /// A failed stage stops that endpoint: everything below it fails for the same reason and says
-    /// nothing new.
     static func haltReason(_ steps: [DevMailProbeStep]) -> String? {
         for step in steps {
             if case .failed = step.outcome { return "\(step.stage.rawValue) failed" }
         }
         return nil
     }
-
-    // MARK: Running
 
     static func run(config: MailServerConfig, credentials: DevMailProbeCredentials) async -> [DevMailProbeReport] {
         var reports: [DevMailProbeReport] = []
@@ -219,11 +169,7 @@ nonisolated enum DevMailConnectionProbe {
         !Task.isCancelled && haltReason(steps) == nil
     }
 
-    /// Every stage appears in the report, including the ones that were never reached — a stage
-    /// missing from the output would read as a stage that passed.
     private static func filledOut(_ steps: [DevMailProbeStep]) -> [DevMailProbeStep] {
-        // A failure that already happened is the better answer: a run cancelled *after* something
-        // failed should still say what failed.
         let reason = haltReason(steps) ?? (Task.isCancelled ? "cancelled" : nil)
         guard let reason else { return steps }
         var steps = steps
@@ -232,8 +178,6 @@ nonisolated enum DevMailConnectionProbe {
         }
         return steps
     }
-
-    // MARK: DNS
 
     private static func dnsStep(host: String, port: Int) async -> DevMailProbeStep {
         let start = ContinuousClock.now
@@ -297,8 +241,6 @@ nonisolated enum DevMailConnectionProbe {
         return .addresses(addresses)
     }
 
-    // MARK: TCP and TLS
-
     private static func transportStep(
         _ stage: DevMailProbeStage,
         host: String,
@@ -342,8 +284,6 @@ nonisolated enum DevMailConnectionProbe {
         let parameters: NWParameters
         if tls {
             let options = NWProtocolTLS.Options()
-            // The same floor `LiveMailClient` gives SwiftMail, so a server that only offers
-            // something older fails here the way it would fail there.
             sec_protocol_options_set_min_tls_protocol_version(options.securityProtocolOptions, .TLSv12)
             parameters = NWParameters(tls: options, tcp: NWProtocolTCP.Options())
         } else {
@@ -355,8 +295,6 @@ nonisolated enum DevMailConnectionProbe {
         return result
     }
 
-    /// The connection, held somewhere it can be closed whatever the race between the handshake and
-    /// the timeout did — including when the timeout won and nothing else will ever touch it.
     private final class ProbeConnection: @unchecked Sendable {
         private let connection: NWConnection
 
@@ -402,7 +340,6 @@ nonisolated enum DevMailConnectionProbe {
         return parts.isEmpty ? "connected" : parts.joined(separator: ", ")
     }
 
-    /// The negotiated version, by its wire number rather than by `tls_protocol_version_t`'s cases:
     /// the two cases worth *reporting* most loudly — 1.0 and 1.1 — are the two the SDK deprecates
     /// naming, and a diagnostic that cannot say "this server negotiated TLS 1.0" is no use. The
     /// numbers are the TLS `ProtocolVersion` values themselves and do not move.
@@ -418,16 +355,6 @@ nonisolated enum DevMailConnectionProbe {
         }
     }
 
-    // MARK: The app's own client path
-
-    /// `CONNECT` and `AUTH`, through SwiftMail with `MailTLSVerifier` installed exactly as
-    /// `LiveMailClient` installs it — the same transport mapping, the same custom verification
-    /// policy, the same TLS floor.
-    ///
-    /// Built here rather than borrowed from `LiveMailClient` for one reason: that type maps every
-    /// error it throws through `MailClientError`, which is the classification this whole feature
-    /// exists to get behind. Its SMTP side is also only reachable by actually sending a message.
-    /// The connections below are this probe's own, are used once, and are closed before it returns.
     private static func sessionSteps(
         service: DevMailProbeService,
         host: String,
@@ -516,8 +443,6 @@ nonisolated enum DevMailConnectionProbe {
             }
         }
 
-        // Closing is bounded too: a server that accepted the credentials and then stopped
-        // answering must not leave this screen spinning on a LOGOUT.
         let didLogIn = loggedIn
         _ = await withTimeout(stageTimeout) { () -> StepResult in
             await close(didLogIn)
@@ -552,9 +477,6 @@ nonisolated enum DevMailConnectionProbe {
         }
     }
 
-    // MARK: Describing errors
-
-    /// An error as close to the wire as one line can put it.
     static func describe(_ error: any Error) -> String {
         if let network = error as? NWError { return describe(network) }
         let bridged = error as NSError
@@ -571,23 +493,17 @@ nonisolated enum DevMailConnectionProbe {
             return "NWError.dns(\(code)) — \(dnsErrorName(code))"
         case .tls(let status):
             return "NWError.tls(\(status)) — \(securityMessage(status))"
-        // Plain `default`, not `@unknown default`: `NWError` keeps gaining cases (`.wifiAware`
-        // is one), and a case this probe has no special reading of is still best reported as
-        // whatever Network calls it.
         default:
             return String(describing: error)
         }
     }
 
-    /// Whether an `NSError` domain carries a code worth printing beside the error itself. A Swift
     /// enum bridges to a domain that is its own mangled type name and a code that is its case
     /// index, which says nothing the description does not.
     static func carriesReadableCode(domain: String) -> Bool {
         [NSURLErrorDomain, NSPOSIXErrorDomain, NSOSStatusErrorDomain, "kCFErrorDomainCFNetwork"].contains(domain)
     }
 
-    /// `<dns_sd.h>`'s `kDNSServiceErr_*` values, for the ones a mail host actually produces.
-    /// Hard-coded rather than imported so this stays a plain value mapping a test can pin.
     static func dnsErrorName(_ code: DNSServiceErrorType) -> String {
         switch code {
         case -65537: "kDNSServiceErr_Unknown"
@@ -608,16 +524,11 @@ nonisolated enum DevMailConnectionProbe {
         (SecCopyErrorMessageString(status, nil) as String?) ?? "no message for this OSStatus"
     }
 
-    // MARK: Timing out
-
-    /// Runs `work`, answering nil when it has not finished within `timeout`.
-    ///
     /// Not a task group: a group does not return until every child has finished, and not waiting
     /// for work that has not finished is the whole point here. SwiftMail's IMAP and SMTP commands
     /// ignore task cancellation, and a filtered port is exactly the case where a socket sits for a
     /// minute or more — so the unfinished work is left to end on its own, with nobody reading it,
     /// while the stage reports the hang. Every connection this probe opens is held by its caller
-    /// and closed regardless of which side of the race won.
     static func withTimeout<T: Sendable>(
         _ timeout: Duration,
         _ work: @escaping @Sendable () async -> T
@@ -632,7 +543,6 @@ nonisolated enum DevMailConnectionProbe {
         }
     }
 
-    /// A continuation two racing callers may both try to resume, and exactly one does.
     private final class OneShotResumer<T: Sendable>: @unchecked Sendable {
         private let lock = NSLock()
         private var continuation: CheckedContinuation<T, Never>?
@@ -656,11 +566,7 @@ nonisolated enum DevMailConnectionProbe {
     }
 }
 
-/// `nonisolated` explicitly: this target's default actor isolation is `MainActor`, and the report
-/// is built off the main actor.
 nonisolated private extension String {
-    /// Column padding for the report, which is read in a monospaced font. Never truncates: a stage
-    /// name is worth more than the alignment of the line it is on.
     func padded(to width: Int) -> String {
         count >= width ? self + " " : self + String(repeating: " ", count: width - count)
     }

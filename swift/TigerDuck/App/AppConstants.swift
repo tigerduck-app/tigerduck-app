@@ -1,14 +1,6 @@
 import Foundation
 
 extension URL {
-    /// Force-construct a URL from a static string literal that the
-    /// caller treats as compile-time-known-good. The `URL(string:)!`
-    /// pattern crashes on first access for an opaque "fatal error: nil"
-    /// — almost always a typo, leading whitespace, or accidental
-    /// Unicode in a future edit. `knownGood` traps with the offending
-    /// string in the diagnostic so the regression is obvious in crash
-    /// reports. Also throws at the type-load site so static service
-    /// URLs cannot ship with a malformed literal.
     nonisolated static func knownGood(_ string: StaticString) -> URL {
         let raw = "\(string)"
         guard let url = URL(string: raw) else {
@@ -21,15 +13,8 @@ extension URL {
 nonisolated enum AppConstants {
     static let appName = "TigerDuck"
 
-    /// All "what day/time is it?" logic must read this, not the device
-    /// timezone — NTUST's class table, ICS feed, and Moodle deadlines are
-    /// all authored in Taipei wall time, so a student abroad must still
-    /// see "Monday 08:10" when the schedule says Monday 08:10.
     static let taipeiTimeZone: TimeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
 
-    /// Gregorian + Asia/Taipei. Use everywhere `Calendar.current` would
-    /// otherwise drift the displayed weekday/day on a device set to a
-    /// non-Taiwan timezone or a non-gregorian calendar (ROC, Buddhist).
     static let taipeiCalendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = taipeiTimeZone
@@ -38,39 +23,12 @@ nonisolated enum AppConstants {
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
-    /// `userInfo` flag on `liveActivityPreferencesDidChange` marking a post
-    /// whose values came from the `notification` settings document rather
-    /// than from a local edit.
-    ///
-    /// The Live Activity refresh and the push schedule sync must still run for
-    /// it; the outgoing settings push must not, or applying a pull would queue a
-    /// push of the data it just received. See the observer in `AppState.init()`
-    /// and `LiveActivityPreferencesStore.applyFromNotificationSettingsDocument`.
     static let liveActivityPreferencesRemoteOriginKey = "TigerDuck.liveActivityPreferencesRemoteOrigin"
-    /// `userInfo` flag on `liveActivityPreferencesDidChange` marking a post
-    /// for a preference the `notification` settings document does not
-    /// carry — `isLiveActivityEnabled`, a per-device switch. The Live
-    /// Activity refresh and the push schedule sync still run for it; the
-    /// settings push does not, since there is nothing for it to write.
     static let liveActivityPreferencesDeviceOnlyKey = "TigerDuck.liveActivityPreferencesDeviceOnly"
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
-    /// Posted when a course's per-date skip state mutates. Drives the
-    /// Live Activity refresh so a user marking the current class as
-    /// skipped sees the lock-screen activity update without waiting
-    /// for the next sync tick.
     static let courseSkipStateDidChange = Notification.Name("TigerDuck.courseSkipStateDidChange")
-    /// Posted when the user flips a holiday's "still have class" switch on
-    /// this device. Drives the widget snapshot, which draws quiet days from
-    /// the same set, in its own writer.
     static let holidayNotifyDidChange = Notification.Name("TigerDuck.holidayNotifyDidChange")
-    /// Posted when the per-course color assignment map mutates (user
-    /// picked a custom color, reassigned all, or a course got displaced
-    /// during a setColor uniqueness rebalance). Drives the widget
-    /// snapshot rewrite so home-screen widgets follow in-app colors
-    /// without waiting for the next data sync.
     static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
-    /// Posted when the user picks another accent colour. The widget snapshot carries the accent,
-    /// so its writer rewrites the snapshot on this.
     static let accentColorDidChange = Notification.Name("TigerDuck.accentColorDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
@@ -104,32 +62,16 @@ nonisolated enum AppConstants {
         static let pushDeviceId = "push_device_id"
     }
 
-    /// Production push/bulletin backend. Release builds always resolve here.
-    /// Debug builds resolve through ``PushCoordinator/resolveServerURL()``,
-    /// which reads per-developer `Secrets.plist["DebugServerURL"]` (gitignored)
-    /// or falls back to ``fallbackDebugPushServerURL`` for Simulator setups.
     static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v3")
 
-    /// Default Debug-build endpoint when `Secrets.plist` has no `DebugServerURL`.
-    /// Works on Simulator (localhost = host Mac); on a physical device this
-    /// resolves to the device itself and will fail to connect — physical-device
-    /// contributors must set `DebugServerURL` to their Mac's LAN IP.
     static let fallbackDebugPushServerURL = URL.knownGood("http://localhost:40000/v3")
 
-    /// How many semesters back the relabel sweep walks when display-toggle
-    /// settings change. NTUST keeps ~2 active semesters in flight; 4 covers
-    /// the full visible window (current + 3 prior) without scanning archives.
     static let cachedSemesterRelabelDepth = 4
 
     /// How deep the app follows HTML nesting: far deeper than mail or Moodle nests, and short of
     /// the depth where WebKit stops nesting elements, so the tree `MailReadableHTML` reads is the
-    /// one the page draws. Deeper, it leaves colours as sent and a text writer takes an element's
-    /// plain text, which keeps a writer's recursion well inside a thread's stack.
     static let maximumHTMLDepth = 256
 
-    /// Slack added to a scenario boundary deadline before re-resolving the
-    /// Live Activity, so the timer fires after the boundary instant rather
-    /// than racing against it. Keeps `time >= slot.start` checks stable.
     static let scenarioBoundarySlackSeconds: TimeInterval = 1
 
     enum UserDefaultsKeys {
@@ -139,8 +81,6 @@ nonisolated enum AppConstants {
         static let browserPreference = "browserPreference"
         static let macMoodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
-        /// Stored name predates the rename from "always show A/B/C" to
-        /// "always show every period" — keeping it carries the setting over.
         static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"
         static let showClassroomInClassTable = "showClassroomInClassTable"
         static let pinTodayCoursesOnClassTable = "pinTodayCoursesOnClassTable"
@@ -149,16 +89,10 @@ nonisolated enum AppConstants {
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"
         static let flipToLibraryEnabled = "flipToLibraryEnabled"
-        /// Multiplier (0.8…1.6) applied to the course-name font in the
-        /// class table and widget course-name labels. Stored in the App
-        /// Group `UserDefaults` suite (NOT `.standard`) so the widget
-        /// extension reads the same value — see `CourseCardFontScaleStore`.
-        /// Listed here for discoverability; the literal lives on the store.
         static let courseCardFontScale = "courseCardFontScaleV2"
         static let homeSectionLayout = "homeSectionLayout"
         static let visualPreset = "visualPreset"
 
-        // MARK: Live Activity / reminders
         static let assignmentReminderOffsets = "assignmentReminderOffsets"
         static let isAssignmentReminderEnabled = "isAssignmentReminderEnabled"
         static let isClassReminderEnabled = "isClassReminderEnabled"
@@ -174,75 +108,32 @@ nonisolated enum AppConstants {
         static let classTableSelectedSemester = "classTableSelectedSemester"
         static let homeAssignmentFilter = "homeAssignmentFilter"
 
-        // MARK: Cloud sync
         static let cloudSyncEnabled = "cloudSyncEnabled"
-        /// Set when a reminder/Live Activity preference changes, cleared
-        /// only once the `notification` settings document write has landed.
-        /// Persisted so a suspend, a kill, an expired session or an offline
-        /// stretch inside that window is repaired at the next full sync
-        /// rather than leaving the cloud copy stale forever.
         static let notificationSettingsPushPending = "notificationSettingsPushPending"
 
-        // MARK: Push server
         static let pushServerEnabled = "pushServerEnabled"
         static let bulletinPushEnabled = "bulletinPushEnabled"
         static let pushServerURLOverride = "pushServerURLOverride"
         static let serverPushUserOptOut = "serverPushUserOptOut"
         static let shownServerPopupIds = "shownServerPopupIds"
 
-        // MARK: Bulletins
         static let bulletinReadIds = "bulletinReadIds"
 
-        // MARK: Language & Abbreviations
         static let appLanguage = "appLanguage"
         static let useEnglishCourseAbbreviation = "useEnglishCourseAbbreviation"
         static let useEnglishClassroomAbbreviation = "useEnglishClassroomAbbreviation"
         static let classroomMandarinDisplay = "classroomMandarinDisplay"
 
-        // MARK: App-update prompt + What's New (iOS only)
-        /// App Store version recorded by the "Skip This Version" action.
-        /// While the iTunes Lookup `version` matches this string the
-        /// prompt is suppressed; a newer version on the store re-arms it.
         static let skippedUpdateVersion = "skippedUpdateVersion"
-        /// Wall-clock timestamp of the last successful iTunes Lookup. The
-        /// scene-active trigger throttles to once per
-        /// ``AppConstants/updateCheckThrottle`` so rapid foreground
-        /// returns don't hammer Apple's endpoint.
         static let lastUpdateCheckAt = "lastUpdateCheckAt"
-        /// App Store version that last failed to parse and was reported.
-        /// Manual checks skip ``updateCheckThrottle``, so this is what
-        /// keeps an unreadable store version to one report per install
-        /// rather than one per "Check for Updates" tap.
         static let lastReportedUnparseableStoreVersion = "lastReportedUnparseableStoreVersion"
-        /// App Store version most recently surfaced via the prompt sheet.
-        /// Paired with ``lastPromptedUpdateAt`` to implement the
-        /// "don't nag" cooldown ported from Android's
-        /// `UpdatePromptGate.COOLDOWN_MS` — re-prompting for the same
-        /// version inside ``updatePromptCooldown`` is suppressed.
         static let lastPromptedUpdateVersion = "lastPromptedUpdateVersion"
         static let lastPromptedUpdateAt = "lastPromptedUpdateAt"
-        /// Last app version the What's New gate handled — in effect the
-        /// last version opened, since it advances on every launch past
-        /// it whether or not a sheet shows (the key name predates that).
-        /// When the running bundle's `CFBundleShortVersionString` is
-        /// greater, the sheet auto-presents with every release's
-        /// feature pages since this version plus the running version's
-        /// `whatsnew.json` summary, if any of that exists.
         static let lastShownWhatsNewVersion = "lastShownWhatsNewVersion"
     }
 
-    /// Minimum interval between automatic update checks. Manual taps on
-    /// "Check for Updates" in Settings bypass this. Kept at 24h so the
-    /// scene-active trigger has no perceptible cost during normal app
-    /// use while still catching a same-day post-launch hotfix on the
-    /// next foreground.
     static let updateCheckThrottle: TimeInterval = 24 * 60 * 60
 
-    /// "Don't nag" cooldown on a single available version. After the
-    /// prompt is dismissed with "Later" the same version is suppressed
-    /// for this long; a newer version landing on the App Store re-arms
-    /// the prompt immediately regardless. Mirrors the Android port's
-    /// 7-day `UpdatePromptGate.COOLDOWN_MS`.
     static let updatePromptCooldown: TimeInterval = 7 * 24 * 60 * 60
 
     /// iTunes Lookup storefront for App Store version checks. Pinned to
@@ -254,14 +145,7 @@ nonisolated enum AppConstants {
     static let appStoreLookupStorefront = "tw"
 
     enum Periods {
-        /// Rows the timetable shows before any course asks for more. Ends at
-        /// 10 (17:30-18:20), which is an ordinary teaching slot — leaving it
-        /// out meant a 5th-period-free student saw their day stop at 17:20 and
-        /// had to take on faith that nothing followed. 5 stays out because it
-        /// is the lunch break: a course scheduled there widens the grid on its
-        /// own, via `ClassTableViewModel.activePeriods`.
         static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9", "10"]
-        /// Chronological order of all periods (for sorting)
         static let chronologicalOrder = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "B", "C", "D"]
         static var weekdays: [String] {
             [
@@ -279,7 +163,6 @@ nonisolated enum AppConstants {
             ]
         }
 
-        /// `weekdays` and `weekendDays` by schedule weekday, 1 = Monday to 7 = Sunday.
         static func shortWeekdayLabel(_ weekday: Int) -> String {
             let labels = weekdays + weekendDays
             return labels.indices.contains(weekday - 1) ? labels[weekday - 1] : "\(weekday)"

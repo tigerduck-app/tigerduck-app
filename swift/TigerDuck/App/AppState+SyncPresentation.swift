@@ -1,7 +1,3 @@
-// Types behind the stored `syncConflicts` and `lastSyncSource`, which must stay on the
-// class for Observation tracking (extensions cannot hold stored properties). Conflict
-// resolution lives in AppState+Conflicts.swift.
-
 import Foundation
 import Defaults
 

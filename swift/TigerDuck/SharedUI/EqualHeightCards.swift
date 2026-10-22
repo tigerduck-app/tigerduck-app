@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Preference key shared by the equal-height row's hidden measurement
-/// layer. Reduce uses `max` so the tallest natural-height card wins.
 struct MaxCardHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -9,14 +7,8 @@ struct MaxCardHeightKey: PreferenceKey {
     }
 }
 
-/// Horizontal row that pins every child to the tallest natural height seen so
-/// far. The height only grows during one on-screen visit and resets on
 /// `.onDisappear`, because `TabView` keeps `@State` across tab switches and a
 /// once-tall child, like the "current class" card, would otherwise keep it.
-///
-/// A hidden copy of `content()` at natural height reports the max through
-/// `MaxCardHeightKey`, the simplest measure short of a custom Layout; the visible
-/// row cannot measure itself, as its `.frame(height:)` echoes the locked value.
 struct EqualHeightHStack<Content: View>: View {
     var alignment: VerticalAlignment = .top
     var spacing: CGFloat? = nil
@@ -40,9 +32,6 @@ struct EqualHeightHStack<Content: View>: View {
         HStack(alignment: alignment, spacing: spacing) {
             content()
         }
-        // `.fixedSize(vertical: true)` lets each child report its intrinsic height
-        // whatever `.frame(height:)` proposes, so the measurement does not depend
-        // on the visible layer's lock.
         .fixedSize(horizontal: false, vertical: true)
         .background(
             GeometryReader { proxy in

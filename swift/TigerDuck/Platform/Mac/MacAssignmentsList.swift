@@ -2,19 +2,7 @@
 import SwiftUI
 import AppKit
 
-/// Mac analogue of the iPhone `UpcomingAssignmentsView`.
-///
-/// Same data + same DataCache writes (archive / locally-complete / undo),
-/// but the swipe gesture is replaced with a right-click context menu —
-/// the natural Mac equivalent — plus a hover toolbar with the same
-/// actions for trackpad users who'd rather not right-click. The
-/// segmented filter (Incomplete / All / Ignored) on top mirrors the
-/// iPhone picker so muscle memory carries across.
 struct MacAssignmentsList: View {
-    /// In-memory course roster so the secondary line on each row reflects
-    /// the user's rename and the canonical NTUST course code (same contract
-    /// as the iPhone `UpcomingAssignmentsView`). Without this, the row falls
-    /// back to the cached `assignment.courseName`.
     var courses: [SDCourse] = []
 
     @Environment(AppState.self) private var appState
@@ -24,9 +12,6 @@ struct MacAssignmentsList: View {
     }
 
     var body: some View {
-        // TimelineView re-renders the "due in 2h" labels and the "All" tab's past/present split
-        // on real wall time; the content reads `AppClock`, as on iPhone, so a debug clock
-        // override flows through to both.
         TimelineView(.periodic(from: .now, by: 60)) { _ in
             content(now: AppClock.now())
         }
@@ -123,7 +108,6 @@ struct MacAssignmentsList: View {
                 Divider()
             }
         }
-        // A row its course's setting ignores takes no mark of its own; the class table undoes it.
         if !assignment.isIgnoredByCourse {
             markItems(for: assignment, status: status)
         }
@@ -166,8 +150,6 @@ struct MacAssignmentsList: View {
             EmptyView()
         }
     }
-
-    // MARK: - Pieces
 
     private func statusDot(for status: AssignmentStatus) -> some View {
         Circle()
@@ -220,14 +202,6 @@ struct MacAssignmentsList: View {
     }
 }
 
-/// Shared in-memory store backed by `DataCache`.
-///
-/// `MacHomeView` re-derives `assignments` per render from this store so
-/// archive / complete actions taken from a context menu show up
-/// immediately — the store invalidates AppState's observation token by
-/// calling `appState.bumpDataVersion()` after each mutation (which is
-/// what the iOS HomeViewModel does indirectly via `withAnimation` +
-/// `recomputeUpcomingAssignments`).
 @MainActor
 @Observable
 final class AssignmentStore {
@@ -238,14 +212,7 @@ final class AssignmentStore {
 
     private init() {}
 
-    /// Returns the assignments matching `filter`, ordered the way the
-    /// iPhone home page orders them: incomplete sorted by due date,
-    /// archived list sorted reverse-chronological, all-tab partitioned
-    /// past-vs-future like the iPhone view does.
     func visibleAssignments(filter: AssignmentFilter, now: Date) -> [SDAssignment] {
-        // Reading `version` makes SwiftUI re-run the body when a mutation bumps it. Without it,
-        // archive or complete from the context menu updates the cache but not the visible list
-        // until the next AppState data notification.
         _ = version
         let all = DataCache.shared.loadAssignments()
         switch filter {

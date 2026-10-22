@@ -6,24 +6,11 @@ import UIKit
 import AppKit
 #endif
 
-/// DEBUG-only switch that turns off every `.screenCaptureProtected(...)`, set from
-/// Settings → Developer → "Disable screen-capture protection". Use it when the secure-canvas
-/// wrap interferes with SwiftUI sizing during a layout investigation, or when a demo recording
-/// must show the password or QR code. Stored in `UserDefaults`, so it survives restarts; release
-/// builds compile the check out.
 enum ScreenCaptureProtectionDebugFlag {
     static let userDefaultsKey = "debug.disableScreenCaptureProtection"
 }
 
 extension View {
-    /// Excludes this view from screenshots, screen recording and mirroring.
-    ///
-    /// iOS hosts it on a secure-entry `UITextField`'s canvas, which the system keeps out of
-    /// captures, and ignores `active`: unwrapping rebuilds the hosted views and drops the keyboard
-    /// mid-typing. The `UIHostingController` host drops the parent's `@Environment` values, so wrap
-    /// small sensitive leaves, not whole screens. On macOS `active` toggles `NSWindow.sharingType`,
-    /// ref-counted per window; watchOS has no API and does nothing.
-    /// See docs/decisions/0021-screen-capture-protection.md.
     func screenCaptureProtected(_ active: Bool = true) -> some View {
         modifier(ScreenCaptureProtectedModifier(active: active))
     }
@@ -33,8 +20,6 @@ private struct ScreenCaptureProtectedModifier: ViewModifier {
     let active: Bool
 
     #if DEBUG
-    // `@AppStorage` so flipping the Settings → Developer switch re-evaluates the modifier, adding
-    // or removing the secure wrap, without a restart. Release builds compile the flag out.
     @AppStorage(ScreenCaptureProtectionDebugFlag.userDefaultsKey) private var debugDisabled = false
     #endif
 
@@ -54,15 +39,9 @@ private struct ScreenCaptureProtectedModifier: ViewModifier {
             // the keyboard closes mid-typing. Over-protecting is harmless.
             SecureCaptureContainer(content: content)
         } else {
-            // DEBUG developer toggle: skip the entire secure-canvas
-            // pipeline so the protected view renders natively (and shows
-            // up in screenshots / screen recordings).
             content
         }
         #elseif os(macOS)
-        // Unlike iOS, honoring `active` is safe: the `.background` marker updates in place without
-        // touching the content tree, and lets `sharingType` revert. The DEBUG bypass goes through
-        // the same marker as `active: false` so the per-window ref-count stays balanced.
         content.background(MacSecureWindowMarker(active: active && protectionEnabled))
         #else
         content
@@ -70,18 +49,8 @@ private struct ScreenCaptureProtectedModifier: ViewModifier {
     }
 }
 
-// MARK: - iOS / iPadOS: UITextField secure-canvas host
-
 #if os(iOS)
 
-/// `UIViewRepresentable` that parents the SwiftUI `content` inside the
-/// secure-text-entry canvas layer of a sacrificial `UITextField`.
-///
-/// The text field is fully covered by the hosted content (its own caret /
-/// placeholder / first-responder behavior is intentionally suppressed). The
-/// canvas view is only created after the text field is attached to a window
-/// and laid out at least once, so subview parenting and constraint setup
-/// run from `layoutSubviews` on the first non-zero size.
 private struct SecureCaptureContainer<Content: View>: UIViewRepresentable {
     let content: Content
 
@@ -98,8 +67,6 @@ private struct SecureCaptureContainer<Content: View>: UIViewRepresentable {
     // Forwarding `context.environment` into the hosted tree does not fix screen-level wraps: the
     // crash on OnboardingView's login page comes from SwiftUI-in-UIKit-in-SwiftUI bridging depth,
     // notably under TabView's lazy pages, not environment loss. Wrap small leaves only.
-
-    /// SwiftUI sizing for the wrapper; `fitting(_:)` below has the rules and their reasons.
     func sizeThatFits(
         _ proposal: ProposedViewSize,
         uiView: SecureCaptureHostView,
@@ -131,13 +98,7 @@ private final class SecureCaptureHostView: UIView {
         }
         return controller
     }()
-    /// The `UIView` we last parented `hostingController.view` onto — used to
-    /// detect when UIKit has replaced the secure canvas (e.g. on trait/locale
-    /// rebuild) so we can re-parent onto the new one. `nil` means the hosted
-    /// content has not been installed yet.
     private weak var currentHost: UIView?
-    /// Cached so we can deactivate when we re-parent. `nil` before first
-    /// install or after explicit deactivation.
     private var hostingConstraints: [NSLayoutConstraint] = []
     /// Natural height of the hosted SwiftUI content, computed eagerly when
     /// `setRootView` is called. Used as the intrinsic height before UIKit
@@ -189,10 +150,6 @@ private final class SecureCaptureHostView: UIView {
         }
     }
 
-    /// Walks the `next` responder chain to find the nearest enclosing
-    /// `UIViewController`. SwiftUI parents `UIViewRepresentable` content
-    /// via a hosting controller, so this is usually reachable in one or
-    /// two hops once the view is in a window.
     private func nearestParentViewController() -> UIViewController? {
         var responder: UIResponder? = self.next
         while let current = responder {
@@ -227,8 +184,6 @@ private final class SecureCaptureHostView: UIView {
     /// The hosting controller's intrinsic height gives the SwiftUI tree's natural size. Width
     /// stays `noIntrinsicMetric` so HStacks still flex-fill.
     override var intrinsicContentSize: CGSize {
-        // Prefer the live intrinsic size, kept fresh by `sizingOptions` once mounted; before the
-        // hosted view is in any hierarchy, fall back to the pre-measurement from `setRootView`.
         let inner = hostingController.view.intrinsicContentSize.height
         let height: CGFloat
         if inner > 0 {
@@ -322,16 +277,11 @@ private final class SecureCaptureHostView: UIView {
             desiredHost = self
         }
 
-        // Already parented on the right host? Nothing to do — avoids a
-        // pointless detach/reattach churn on every layout pass.
         if hostingController.view.superview === desiredHost,
            currentHost === desiredHost {
             return
         }
 
-        // Re-parent: drop old constraints and superview link first so
-        // autolayout doesn't try to simultaneously satisfy stale and
-        // fresh constraints across two superviews.
         if !hostingConstraints.isEmpty {
             NSLayoutConstraint.deactivate(hostingConstraints)
             hostingConstraints = []
@@ -343,9 +293,6 @@ private final class SecureCaptureHostView: UIView {
         desiredHost.addSubview(hostingController.view)
         currentHost = desiredHost
 
-        // Anchor to `self` whichever host was picked, so the hosted view fills the frame SwiftUI
-        // allocated. On the canvas this is a legal cross-hierarchy constraint that bypasses the
-        // canvas's text-driven size.
         let newConstraints = [
             hostingController.view.topAnchor.constraint(equalTo: topAnchor),
             hostingController.view.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -388,8 +335,6 @@ private final class SecureCaptureHostView: UIView {
         return nil
     }
 
-    /// Replaces the text of the first text field in the hosted content, as AutoFill replaces a
-    /// field's text, so that field's own change handling runs. Content without one drops it.
     private func fillHostedTextField(with text: String) {
         var queue: [UIView] = hostingController.view.subviews
         while !queue.isEmpty {
@@ -433,15 +378,8 @@ private final class SecureCanvasHostingTextField: UITextField {
 
 #endif
 
-// MARK: - macOS: NSWindow.sharingType ref-count
-
 #if os(macOS)
 
-/// Empty view whose lifecycle is used purely to flip `NSWindow.sharingType`
-/// on the hosting window. Multiple concurrent callers (e.g. password reveal
-/// inside a login sheet that itself sits inside a protected card) are
-/// reference-counted by `MacSecureWindowRegistry` so the first release does
-/// not clear the flag while another holder still needs it.
 private struct MacSecureWindowMarker: NSViewRepresentable {
     let active: Bool
 
@@ -461,9 +399,6 @@ private final class MacSecureWindowMarkerView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        // Re-evaluate when the marker moves between windows (e.g. a sheet
-        // is presented, then dismissed). `release` is a no-op if the
-        // previous window had no acquire on it.
         if active, heldWindow !== window {
             if let previous = heldWindow {
                 MacSecureWindowRegistry.release(previous)
@@ -501,13 +436,6 @@ private final class MacSecureWindowMarkerView: NSView {
     }
 }
 
-/// Per-window reference count for `NSWindow.sharingType = .none`, like Android's
-/// `SecureWindowRegistry`. It remembers whether the window was already restricted before the
-/// first acquire, so the last release does not strip protection another caller installed.
-///
-/// `@MainActor` because a plain dictionary is mutated from both the view lifecycle and the
-/// marker's `deinit`. One actor serializes them, so a race during a sheet dismissal cannot
-/// corrupt it or strand `sharingType = .none` on a recycled window.
 @MainActor
 private enum MacSecureWindowRegistry {
     private final class Entry {
@@ -540,9 +468,6 @@ private enum MacSecureWindowRegistry {
         entry.count -= 1
         guard entry.count <= 0 else { return }
         holders.removeValue(forKey: key)
-        // Only restore the preexisting value if we changed it. If another
-        // unrelated caller had already set `.none` before us, leave it
-        // alone — they own that restriction.
         if entry.preexisting != .none {
             window.sharingType = entry.preexisting
         }

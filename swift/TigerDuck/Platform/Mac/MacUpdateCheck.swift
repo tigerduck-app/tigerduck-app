@@ -1,13 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// The Mac's side of `UpdateNotifyCoordinator`: an alert when the App Store
-/// has a newer version, and TigerDuck ▸ Check for Updates….
-///
-/// An alert rather than the iPhone's sheet: Update / Later / Skip is the
-/// Mac's own update-alert shape, and the choice needs no more room than the
-/// version number. The same alert answers a manual check with "up to date"
-/// or "couldn't reach the App Store".
 private struct MacUpdatePrompt: ViewModifier {
     @Environment(AppState.self) private var appState
 
@@ -19,9 +12,6 @@ private struct MacUpdatePrompt: ViewModifier {
             isPresented: Binding(
                 get: { notice != nil },
                 set: { presented in
-                    // Runs after a button's own action, or alone when the alert closes without
-                    // one. Clearing without the Later stamp lets the next throttled check offer
-                    // the version again, as on the iPhone.
                     guard !presented else { return }
                     coordinator.pendingUpdate = nil
                     coordinator.lastManualCheckResult = nil
@@ -49,9 +39,6 @@ private struct MacUpdatePrompt: ViewModifier {
     }
 }
 
-/// What the alert says: an update on offer, or a manual check's answer when
-/// there is none. An offer wins, so a manual check that finds one shows
-/// that rather than its own result.
 private enum MacUpdateNotice {
     case update(UpdateNotifyCoordinator.PendingUpdate)
     case upToDate
@@ -90,9 +77,6 @@ private enum MacUpdateNotice {
     }
 }
 
-/// TigerDuck ▸ Check for Updates… — the manual check, which skips the daily
-/// throttle and the Later / Skip memory. Its answer comes back through
-/// `macUpdatePrompt()`.
 struct MacCheckForUpdatesCommand: View {
     let coordinator: UpdateNotifyCoordinator
 
@@ -105,8 +89,6 @@ struct MacCheckForUpdatesCommand: View {
 }
 
 extension View {
-    /// Mount the Mac update alert. Apply once, at the root of the main
-    /// window — applied per screen it would stack one alert per view.
     func macUpdatePrompt() -> some View {
         modifier(MacUpdatePrompt())
     }

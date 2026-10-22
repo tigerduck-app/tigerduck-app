@@ -11,12 +11,7 @@ import UserNotifications
 extension AppState {
 
     #if os(iOS)
-    // MARK: - Live Activity refresh & notification authorization (iOS only)
 
-    /// Whether Live Activity is available on this device right now: the user's own switch
-    /// and cloud sync must both be on (`effectiveLiveActivityEnabled`).
-    /// `LiveActivityCoordinator` checks this before keeping, or registering the update
-    /// token of, any activity, including the ones the server starts.
     var isLiveActivityAvailable: Bool {
         effectiveLiveActivityEnabled(
             isLiveActivityEnabled: liveActivityPreferences.isLiveActivityEnabled,
@@ -24,9 +19,6 @@ extension AppState {
         )
     }
 
-    /// Recomputes the scenario and pushes it to the coordinator. Safe to call
-    /// frequently — the coordinator only issues ActivityKit calls when the
-    /// snapshot actually changes.
     func refreshLiveActivity() async {
         let now = AppClock.now()
         let courses = courseProvider.currentCourses()
@@ -50,12 +42,8 @@ extension AppState {
         )
     }
 
-    /// While the app is in the foreground, fire a one-shot refresh as soon as
-    /// the next meaningful scenario boundary elapses so the Live Activity does
     /// not sit on a stale scenario. When the app is backgrounded the Task is
     /// suspended by iOS; `scenePhase == .active` on return triggers another
-    /// refresh, which reschedules this task. This is a best-effort foreground
-    /// improvement — true background correctness needs push updates.
     private func scheduleBoundaryRefresh(
         snapshot: LiveActivitySnapshot?,
         courses: [SDCourse],
@@ -69,9 +57,6 @@ extension AppState {
             assignments: assignments,
             now: now
         ) else { return }
-        // `boundary` is an app-clock instant and `Task.sleep` uses the real clock; under a
-        // frozen override the app-clock delta never elapses and the refresh would re-arm
-        // forever. Sleep to the real instant it maps to, as the activity end task does.
         let realBoundary = AppClock.realTime(forApp: boundary)
         let delay = realBoundary.timeIntervalSinceNow + AppConstants.scenarioBoundarySlackSeconds
         guard delay > 0 else { return }
@@ -114,11 +99,6 @@ extension AppState {
         return candidates.filter { $0 > now }.min()
     }
 
-    /// Prompts the user for notification authorization when, and only when,
-    /// they reach an explicit notification-related entry point. Assignment
-    /// reminders are scheduled server-side now, but the permission is still
-    /// needed — Live Activity push updates and the backend's own reminder
-    /// pushes both require it.
     func requestNotificationAuthorization() async {
         let center = UNUserNotificationCenter.current()
         switch await center.notificationSettings().authorizationStatus {
@@ -135,8 +115,6 @@ extension AppState {
         }
     }
 
-    /// Debounces multiple change events (e.g. slider drags or quick toggles)
-    /// into a single Live Activity refresh pass.
     func scheduleLiveActivityRefresh() {
         pendingRefreshTask?.cancel()
         pendingRefreshTask = Task { @MainActor in
@@ -146,5 +124,5 @@ extension AppState {
             requestPushScheduleSync()
         }
     }
-    #endif // os(iOS) — Live Activity refresh & notification authorization
+    #endif
 }

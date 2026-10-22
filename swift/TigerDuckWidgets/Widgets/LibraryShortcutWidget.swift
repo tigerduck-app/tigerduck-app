@@ -23,9 +23,6 @@ struct LibraryShortcutProvider: TimelineProvider {
         // date is real time: WidgetKit schedules by it, and a fake future stamp defers rendering.
         let snapshot = store.readSnapshot()
         let entry = LibraryShortcutEntry(date: Date(), snapshot: snapshot)
-        // Pin to Taipei — even with no time-of-day content here, day
-        // rollover is computed in the same frame the rest of the widget
-        // surface uses, so the refresh cadence stays consistent.
         let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps

@@ -1,9 +1,6 @@
 import SwiftUI
 import WidgetKit
 
-/// Color tokens for the widget extension. Light and dark variants follow `colorScheme` at
-/// render time; `highlight` comes from the snapshot's accent color to follow the user's theme.
-///
 /// Outside `.fullColor` the system composites the widget over its own material (a tinted home
 /// screen, clear glass) and expects content, not surfaces. It strips only `containerBackground`;
 /// a `.fill()` or `.background()` in a view is drawing it cannot see, so an opaque token there
@@ -16,9 +13,6 @@ struct WidgetPalette {
     let onSurfaceVariant: Color
     let emptyCell: Color
     let highlight: Color
-    /// Views that build their own fills (rather than reading a token) branch on
-    /// this — see `TodayListView.row`, whose ongoing row is painted from the
-    /// course color rather than from `surface`.
     let isFullColor: Bool
 
     static func resolve(
@@ -33,9 +27,6 @@ struct WidgetPalette {
             surface: isFullColor ? base.surface : .clear,
             onSurface: base.onSurface,
             onSurfaceVariant: base.onSurfaceVariant,
-            // Not clear: without cells a timetable is a field of floating labels, and the grid
-            // is most of what makes it readable at a glance. A low-alpha wash keeps the ruling
-            // visible, lets the material through, and is tinted by the system like the rest.
             emptyCell: isFullColor ? base.emptyCell : Color.white.opacity(0.10),
             highlight: Color(widgetHex: snapshot.accentColorHex),
             isFullColor: isFullColor
@@ -48,8 +39,8 @@ struct WidgetPalette {
         onSurface: Color(widgetHex: 0x1C1C1E),
         onSurfaceVariant: Color(widgetHex: 0x6E6E73),
         emptyCell: Color(widgetHex: 0xECECEC),
-        highlight: .blue,  // overridden by resolve()
-        isFullColor: true  // ditto
+        highlight: .blue,
+        isFullColor: true
     )
 
     private static let dark = WidgetPalette(
@@ -58,20 +49,12 @@ struct WidgetPalette {
         onSurface: Color(widgetHex: 0xF5F5F5),
         onSurfaceVariant: Color(widgetHex: 0x8E8E93),
         emptyCell: Color(widgetHex: 0x2C2C2E),
-        highlight: .blue,  // overridden by resolve()
-        isFullColor: true  // ditto
+        highlight: .blue,
+        isFullColor: true
     )
 }
 
 extension Color {
-    /// 24-bit RGB initializer scoped to the widget extension.
-    /// The main app has `Color(hex: UInt, alpha: Double = 1.0)` in
-    /// `Theme/Color+Extensions.swift` but that file is not (and should not be)
-    /// a member of the widget target — adding the whole theme would drag in
-    /// the app's domain types. We define a `UInt32` overload here under a
-    /// distinct argument label (`widgetHex`) so the call sites in this file
-    /// resolve unambiguously and any future addition of the theme file to
-    /// the widget target won't conflict on overload resolution.
     init(widgetHex: UInt32) {
         let masked = widgetHex & 0xFFFFFF
         self.init(

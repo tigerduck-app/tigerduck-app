@@ -7,7 +7,7 @@ final class SDCalendarEvent {
     @Attribute(.unique) var eventId: String
     var title: String
     var date: Date
-    var sourceRaw: String // "moodle", "school", "exam", "holiday"
+    var sourceRaw: String
 
     init(
         eventId: String,
@@ -23,9 +23,6 @@ final class SDCalendarEvent {
 
     var source: EventSource {
         if let s = EventSource(rawValue: sourceRaw) { return s }
-        // Future-case raw values silently coerced to `.school` are
-        // indistinguishable from real school events; surface as a
-        // breadcrumb so we notice on next data migration.
         AppLogger.breadcrumb(
             "SDCalendarEvent: unknown sourceRaw '\(sourceRaw)' coerced to .school",
             category: "model.calendar"
@@ -33,12 +30,6 @@ final class SDCalendarEvent {
         return .school
     }
 
-    /// Whether this row is a whole day rather than a moment, so a time on
-    /// it ("00:00", or "12:00 AM" on a 12-hour clock) says nothing.
-    /// Holidays and term boundaries are days by construction. A school
-    /// calendar row is one when the feed gave a date with no time, which
-    /// `CalendarService` parses to midnight in Taipei. A Moodle deadline at
-    /// midnight is a real deadline and keeps its time.
     var isAllDay: Bool {
         switch source {
         case .holiday, .semester:
@@ -55,17 +46,8 @@ enum EventSource: String, Codable {
     case moodle
     case school
     case exam
-    /// A school holiday, from the published academic calendar. Distinct from
-    /// `.school` because these are the only rows the user can act on — a
-    /// holiday offers the "still remind me" toggle — and because they are the
-    /// ones that silence class reminders.
     case holiday
 
-    /// The first or last day of a term, from the same feed.
-    ///
-    /// Not `.holiday`: a term boundary is an announcement, there is still
-    /// class that day, and nothing is silenced. Sharing `.holiday` would
-    /// label these rows "Holiday", which is wrong.
     case semester
 
     var color: Color {
@@ -73,11 +55,7 @@ enum EventSource: String, Codable {
         case .moodle: .moodleBlue
         case .school: .schoolOrange
         case .exam: .examRed
-        // Green reads as "no class" against school orange and exam red, and
-        // is the one colour not already spoken for.
         case .holiday: .green
-        // Neither a day off nor a deadline, so it borrows neither holiday
-        // green nor exam red.
         case .semester: .indigo
         }
     }

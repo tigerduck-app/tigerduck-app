@@ -1,8 +1,6 @@
 import SwiftUI
 
 extension View {
-    /// Shadow lives on the background shape so it is one offscreen pass
-    /// per card instead of one per text leaf (see View+SurfaceStyle).
     func glassCard(cornerRadius: CGFloat = TigerDuckTheme.CornerRadius.lg) -> some View {
         self
             .background(

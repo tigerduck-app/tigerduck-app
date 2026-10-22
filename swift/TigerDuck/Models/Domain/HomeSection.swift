@@ -6,7 +6,7 @@ struct HomeSection: Identifiable, Equatable, Codable {
     var title: String
     var sortOrder: Int
     var isVisible: Bool
-    var widgets: [WidgetItem] // only used for .quickWidgets and .custom sections
+    var widgets: [WidgetItem]
 
     enum HomeSectionType: String, Codable, CaseIterable {
         case todayCourses

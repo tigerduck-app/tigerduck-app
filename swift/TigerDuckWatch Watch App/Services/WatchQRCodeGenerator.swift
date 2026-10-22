@@ -1,16 +1,8 @@
 import Foundation
 
-/// Pure-Swift QR Code matrix generator (ISO/IEC 18004, Model 2).
-///
 /// CoreImage's `CIFilter.qrCodeGenerator()` is unavailable on watchOS. This file
 /// builds the boolean module matrix; `LibraryQRViewModel.makeQRImage` draws it
 /// into a `UIImage` with CoreGraphics. Byte mode only, ECC levels L/M/Q/H,
-/// versions 1–40: the library payload is arbitrary bytes, so no other mode is
-/// needed. The algorithm follows Project Nayuki's QR-Code-generator reference
-/// implementation (MIT), cross-checked against the ISO QR matrix examples.
-
-// MARK: - Public API
-
 public struct WatchQRMatrix: Equatable, Sendable {
     public let size: Int
     private let modules: [Bool]
@@ -50,7 +42,6 @@ public enum WatchQRCodeGenerator {
     }
 
     public static func encode(bytes: [UInt8], ecc: WatchQRECC = .medium) -> WatchQRMatrix? {
-        // Pick smallest version (1–40) whose byte-mode capacity fits the data.
         for version in 1...40 {
             let bitsNeeded = 4 + characterCountBits(version: version) + bytes.count * 8
             let capacity = numDataCodewords(version: version, ecc: ecc) * 8
@@ -62,17 +53,12 @@ public enum WatchQRCodeGenerator {
     }
 }
 
-// MARK: - Internal encoder
-
 private final class Encoder {
     let version: Int
     let ecc: WatchQRECC
     let data: [UInt8]
     let size: Int
 
-    /// `nil` means "no module placed yet" — used by the function-pattern
-    /// reservation pass so the data-snake placement can skip those cells.
-    /// At the end we compress to `[Bool]` for the public matrix.
     var grid: [[Bool?]]
 
     init(version: Int, ecc: WatchQRECC, data: [UInt8]) {
@@ -92,31 +78,23 @@ private final class Encoder {
         return materializeMatrix()
     }
 
-    // MARK: Function patterns (finders, separators, timing, alignment, dark module, reserved format/version)
-
     private func drawFunctionPatterns() {
-        // Timing patterns
         for i in 0..<size {
             setFunc(x: 6, y: i, dark: i % 2 == 0)
             setFunc(x: i, y: 6, dark: i % 2 == 0)
         }
-        // Finder patterns at (0,0), (size-7,0), (0,size-7)
         drawFinder(centerX: 3, centerY: 3)
         drawFinder(centerX: size - 4, centerY: 3)
         drawFinder(centerX: 3, centerY: size - 4)
-        // Alignment patterns
         let alignPositions = alignmentPatternPositions(version: version)
         let count = alignPositions.count
         for i in 0..<count {
             for j in 0..<count {
-                // Skip the three corners where finder patterns live.
                 if (i == 0 && j == 0) || (i == 0 && j == count - 1) || (i == count - 1 && j == 0) { continue }
                 drawAlignment(centerX: alignPositions[i], centerY: alignPositions[j])
             }
         }
-        // Reserve format-info area (filled with zeros now; final bits drawn after masking).
         drawFormatBits(mask: 0)
-        // Reserve version-info area for v7+.
         drawVersion()
     }
 
@@ -140,24 +118,22 @@ private final class Encoder {
     }
 
     private func drawFormatBits(mask: Int) {
-        let data = (ecc.formatBits << 3) | mask  // 5 bits
+        let data = (ecc.formatBits << 3) | mask
         var rem = data
         for _ in 0..<10 {
             rem = (rem << 1) ^ ((rem >> 9) * 0x537)
         }
-        let bits = ((data << 10) | rem) ^ 0x5412  // 15 bits XOR mask
+        let bits = ((data << 10) | rem) ^ 0x5412
 
-        // First copy
         for i in 0...5 { setFunc(x: 8, y: i, dark: getBit(bits, i)) }
         setFunc(x: 8, y: 7, dark: getBit(bits, 6))
         setFunc(x: 8, y: 8, dark: getBit(bits, 7))
         setFunc(x: 7, y: 8, dark: getBit(bits, 8))
         for i in 9..<15 { setFunc(x: 14 - i, y: 8, dark: getBit(bits, i)) }
 
-        // Second copy
         for i in 0..<8 { setFunc(x: size - 1 - i, y: 8, dark: getBit(bits, i)) }
         for i in 8..<15 { setFunc(x: 8, y: size - 15 + i, dark: getBit(bits, i)) }
-        setFunc(x: 8, y: size - 8, dark: true)  // Dark module
+        setFunc(x: 8, y: size - 8, dark: true)
     }
 
     private func drawVersion() {
@@ -166,7 +142,7 @@ private final class Encoder {
         for _ in 0..<12 {
             rem = (rem << 1) ^ ((rem >> 11) * 0x1F25)
         }
-        let bits = (version << 12) | rem  // 18 bits
+        let bits = (version << 12) | rem
 
         for i in 0..<18 {
             let dark = getBit(bits, i)
@@ -182,22 +158,17 @@ private final class Encoder {
         grid[y][x] = dark
     }
 
-    // MARK: Data codewords
-
     private func buildDataCodewords() -> [UInt8] {
         let dataCapacityBits = numDataCodewords(version: version, ecc: ecc) * 8
         var bits = BitBuffer()
-        // Mode indicator: 0100 = byte mode
         bits.append(value: 0b0100, length: 4)
         bits.append(value: data.count, length: characterCountBits(version: version))
         for byte in data {
             bits.append(value: Int(byte), length: 8)
         }
-        // Terminator + byte alignment
         let remaining = dataCapacityBits - bits.count
         bits.append(value: 0, length: min(4, remaining))
         bits.append(value: 0, length: (8 - bits.count % 8) % 8)
-        // Padding 0xEC, 0x11 alternating
         var pad = 0xEC
         while bits.count < dataCapacityBits {
             bits.append(value: pad, length: 8)
@@ -205,8 +176,6 @@ private final class Encoder {
         }
         return bits.bytes
     }
-
-    // MARK: Reed-Solomon ECC + interleaving
 
     private func addEcc(_ data: [UInt8]) -> [UInt8] {
         let numBlocks = numErrorCorrectionBlocks(version: version, ecc: ecc)
@@ -216,7 +185,6 @@ private final class Encoder {
         let shortBlockLen = rawCodewords / numBlocks
         let generator = reedSolomonGenerator(degree: blockEccLen)
 
-        // Split data + compute ECC per block
         var blocks: [[UInt8]] = []
         var k = 0
         for i in 0..<numBlocks {
@@ -225,17 +193,15 @@ private final class Encoder {
             k += dataLen
             let ecc = reedSolomonRemainder(data: dataChunk, generator: generator)
             var block = dataChunk
-            if i < numShortBlocks { block.append(0) }  // placeholder for interleaving
+            if i < numShortBlocks { block.append(0) }
             block.append(contentsOf: ecc)
             blocks.append(block)
         }
 
-        // Interleave columns: first all data column 0, then column 1, ... then ECC.
         var result: [UInt8] = []
         let maxLen = blocks.map { $0.count }.max() ?? 0
         for col in 0..<maxLen {
             for (bi, block) in blocks.enumerated() {
-                // Skip the placeholder slot in short blocks at the data-tail column.
                 if col == shortBlockLen - blockEccLen && bi < numShortBlocks { continue }
                 if col < block.count { result.append(block[col]) }
             }
@@ -281,8 +247,6 @@ private final class Encoder {
         return z
     }
 
-    // MARK: Codeword placement (snake) + masking + scoring
-
     private func drawCodewords(_ codewords: [UInt8]) {
         var i = 0
         let total = codewords.count * 8
@@ -318,19 +282,16 @@ private final class Encoder {
                 bestMask = m
                 bestSnapshot = grid
             }
-            applyMask(m)  // unapply (XOR is involution)
+            applyMask(m)
         }
         grid = bestSnapshot
-        _ = bestMask  // already baked into bestSnapshot via drawFormatBits
+        _ = bestMask
     }
 
     private func applyMask(_ mask: Int) {
         for y in 0..<size {
             for x in 0..<size {
                 guard let cell = grid[y][x] else { continue }
-                // Skip function-pattern cells (we used `nil` for unset cells before
-                // function patterns were placed, but function patterns also yield
-                // non-nil values — we need a separate "is function" mask).
                 if isFunctionModule(x: x, y: y) { continue }
                 let invert: Bool
                 switch mask {
@@ -350,19 +311,14 @@ private final class Encoder {
     }
 
     private func isFunctionModule(x: Int, y: Int) -> Bool {
-        // Recompute by structural test rather than tracking a separate "function" mask.
-        // Finder + separator
         if (x <= 8 && y <= 8) ||
             (x >= size - 8 && y <= 8) ||
             (x <= 8 && y >= size - 8) { return true }
-        // Timing patterns
         if x == 6 || y == 6 { return true }
-        // Version info (v7+)
         if version >= 7 {
             if x >= size - 11 && x <= size - 9 && y <= 5 { return true }
             if y >= size - 11 && y <= size - 9 && x <= 5 { return true }
         }
-        // Alignment patterns
         let alignPositions = alignmentPatternPositions(version: version)
         let cnt = alignPositions.count
         for i in 0..<cnt {
@@ -377,7 +333,6 @@ private final class Encoder {
 
     private func penaltyScore() -> Int {
         var result = 0
-        // Rule 1: runs of 5+ same-color modules
         for y in 0..<size {
             var runLen = 0
             var runColor: Bool? = nil
@@ -408,7 +363,6 @@ private final class Encoder {
                 }
             }
         }
-        // Rule 2: 2×2 blocks of same color
         for y in 0..<size - 1 {
             for x in 0..<size - 1 {
                 let c = grid[y][x] ?? false
@@ -419,7 +373,6 @@ private final class Encoder {
                 }
             }
         }
-        // Rule 3: finder-like patterns 1:1:3:1:1 with 4-module run on either side
         for y in 0..<size {
             for x in 0..<size - 10 {
                 let pattern: [Bool] = (0..<11).map { (grid[y][x + $0] ?? false) }
@@ -432,7 +385,6 @@ private final class Encoder {
                 if matchesFinderRule3(pattern) { result += 40 }
             }
         }
-        // Rule 4: proportion of dark modules
         var dark = 0
         for y in 0..<size {
             for x in 0..<size {
@@ -441,14 +393,12 @@ private final class Encoder {
         }
         let total = size * size
         let percent = (dark * 100 + total / 2) / total
-        let k = (abs(percent - 50) + 4) / 5  // floor(|pct-50|/5)
+        let k = (abs(percent - 50) + 4) / 5
         result += k * 10
         return result
     }
 
     private func matchesFinderRule3(_ p: [Bool]) -> Bool {
-        // Pattern: D-L-D-D-D-L-D where the dark center is 3 modules wide and there's
-        // a 4-module light run on one side. QR spec rule N3.
         let a: [Bool] = [true, false, true, true, true, false, true, false, false, false, false]
         let b: [Bool] = [false, false, false, false, true, false, true, true, true, false, true]
         return p == a || p == b
@@ -463,8 +413,6 @@ private final class Encoder {
         }
         return WatchQRMatrix(size: size, modules: flat)
     }
-
-    // MARK: Lookup tables (per ISO/IEC 18004:2015 tables)
 
     private func numRawDataModules(version: Int) -> Int {
         var result = (16 * version + 128) * version + 64
@@ -514,8 +462,6 @@ private final class Encoder {
     }
 }
 
-// MARK: - File-scope helpers (shared with capacity check in `WatchQRCodeGenerator.encode`)
-
 private func characterCountBits(version: Int) -> Int {
     return version <= 9 ? 8 : 16
 }
@@ -540,40 +486,25 @@ private func getBit(_ x: Int, _ i: Int) -> Bool {
     return ((x >> i) & 1) != 0
 }
 
-// MARK: - Lookup tables (ISO/IEC 18004:2015)
-
 private enum QRTables {
-    /// ECC codewords per block, indexed by `[ecc.rawValue][version]`. Index 0
-    /// in the inner array is a `-1` placeholder so `version` (1-40) maps directly.
     static let eccCodewords: [[Int]] = [
-        // L
         [-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
-        // M
         [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28],
-        // Q
         [-1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
-        // H
         [-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
     ]
 
-    /// Number of error-correction blocks, indexed by `[ecc.rawValue][version]`.
     static let numBlocks: [[Int]] = [
-        // L
         [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25],
-        // M
         [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49],
-        // Q
         [-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68],
-        // H
         [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81],
     ]
 }
 
-// MARK: - Bit buffer
-
 private struct BitBuffer {
     private(set) var bytes: [UInt8] = []
-    private(set) var count = 0  // bit count
+    private(set) var count = 0
 
     mutating func append(value: Int, length: Int) {
         precondition(length >= 0 && length <= 32)

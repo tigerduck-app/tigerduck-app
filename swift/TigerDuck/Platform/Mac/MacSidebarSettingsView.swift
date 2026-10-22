@@ -1,13 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// Pin / unpin / reorder the features that appear in the Mac sidebar.
-///
-/// Writes straight through to `AppState.macConfiguredTabs`, which is a
-/// Mac-only preference. The iOS tab bar uses `configuredTabs` and is
-/// capped at four user tabs — Mac sidebar edits must not leak into it.
-/// Library-related features are filtered out — they don't exist on Mac
-/// per `AppFeature.macHiddenFeatures`.
 struct MacSidebarSettingsView: View {
     @Environment(AppState.self) private var appState
 
@@ -155,10 +148,6 @@ struct MacSidebarSettingsView: View {
         }
     }
 
-    /// Reorder pinned features one step. `visible` index space; any
-    /// Mac-hidden pins (e.g. a Library item previously pinned on
-    /// iPhone) ride along unchanged at the tail so a Mac reorder
-    /// doesn't disturb non-Mac entries.
     private func rearrange(_ mutate: (inout [AppFeature]) -> Void) {
         var visible = appState.macConfiguredTabs.filter { $0.isAvailableOnMac }
         let hidden = appState.macConfiguredTabs.filter { !$0.isAvailableOnMac }
