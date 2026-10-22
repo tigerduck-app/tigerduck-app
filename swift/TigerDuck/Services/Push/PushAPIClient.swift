@@ -1,32 +1,13 @@
 import Foundation
 import os
 
-/// URLSession-based client for the TigerDuck push server.
-///
-/// Stateless helpers — safe to recreate per call. Uses a shared ephemeral
-/// session so cookies / caches do not leak across app launches. JSON uses
-/// ISO-8601 with fractional seconds for Date, matching what the Python
-/// server emits from `datetime.isoformat()`.
 final class PushAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    /// Returns a `Bearer <token>` string for the v3 JWT auth flow, or `nil` with no usable
-    /// session; `AuthTokenManager` first signs in when there is none. A request that needs a
-    /// session is then not sent (`PushAPIError.notSignedIn`): it could only be refused.
     private let authHeaderProvider: @Sendable () async -> String?
-    /// Where failure statuses go. A test that answers 410 passes its own gate, since the shared
-    /// one latches for the whole process.
     private let versionGate: APIVersionGate
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
-    /// `baseURLProvider` is re-evaluated on every request, so an endpoint
-    /// switched at runtime (`DebugEndpointView`) applies to the next push
-    /// call without an app relaunch.
-    ///
-    /// `authHeaderProvider` is async so callers can pass the
-    /// `AuthTokenManager.authorizationHeader()` actor method directly. The
-    /// default returns `nil`, so only the requests that need no session go
-    /// out, for builds that have no `AuthTokenManager`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
@@ -39,32 +20,19 @@ final class PushAPIClient: Sendable {
         self.versionGate = versionGate ?? .shared
     }
 
-    // MARK: - Public surface
-
     func registerDevice(_ request: PushAPI.DeviceRegisterRequest) async throws -> PushAPI.DeviceRegisterResponse {
         try await post(path: "/devices/register", body: request, returning: PushAPI.DeviceRegisterResponse.self)
     }
 
-    /// Register the device itself, with no account attached.
-    ///
-    /// Unauthenticated by design — there is no session to authenticate with
-    /// when this matters. It goes without a Bearer header, so it never waits
-    /// for a sign-in; the server keys purely on `device_id`, which is what
-    /// lets the same call be made on every launch regardless of sign-in state.
     func registerAnonymousDevice(_ request: PushAPI.AnonymousDeviceRequest) async throws {
         _ = try await postExpectingNoBody(path: "/devices/anonymous", body: request, authenticated: false)
     }
 
-    /// To `baseURL` when given, in place of the current endpoint.
     func unregisterDevice(deviceId: String, at baseURL: URL? = nil) async throws {
         let safeDevice = Self.percentEncoded(deviceId)
         try await delete(path: "/devices/\(safeDevice)", at: baseURL)
     }
 
-    /// PUT the user's "notify me anyway" exception for one holiday.
-    ///
-    /// Authenticated: the holiday itself is public and comes from
-    /// `/v3/calendar/semesters`, but the exception belongs to an account.
     func putHolidayOverride(holidayID: Int, notify: Bool) async throws {
         var request = try await makePostRequest(
             path: "/sync/holiday-overrides/\(holidayID)",
@@ -75,21 +43,10 @@ final class PushAPIClient: Sendable {
         _ = try await execute(request)
     }
 
-    /// Whether there is a session to authenticate a request with, after the sign-in
-    /// `authHeaderProvider` tries when there is none.
-    ///
-    /// Callers that have both an authenticated and an unauthenticated way
-    /// to do the same thing need to pick one up front rather than firing
-    /// the authenticated call and reading a 401 as the answer — a 401 is
-    /// also what a revoked or expired session looks like, and those two
-    /// deserve different handling.
     func hasAuthSession() async -> Bool {
         await authHeaderProvider() != nil
     }
 
-    /// PATCH the user-facing server-push opt-out. Called from the Settings
-    /// toggle so the change propagates without waiting for the next
-    /// `/devices/register` call.
     func updateDevicePreferences(
         deviceId: String,
         serverPushEnabled: Bool? = nil,
@@ -137,8 +94,6 @@ final class PushAPIClient: Sendable {
     }
     #endif
 
-    // MARK: - Credential refresh
-
     func updateCredentials(
         moodleToken: String,
         moodlePrivateToken: String?
@@ -154,10 +109,6 @@ final class PushAPIClient: Sendable {
         )
     }
 
-    // MARK: - Override sync
-
-    /// The reply is not read: the backend answers a cleared mark (`"none"`) with
-    /// `{"deleted": true}` rather than the override row, and no caller needs either.
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String
@@ -171,8 +122,6 @@ final class PushAPIClient: Sendable {
         _ = try await execute(request)
     }
 
-    /// `moodleId` is the course's Moodle idnumber, or `{semester}{courseNo}` for a hand-added
-    /// course; `moodleCourseId` is its numeric Moodle id.
     func patchCourseOverride(
         moodleId: String,
         colorHex: String? = nil,
@@ -195,17 +144,10 @@ final class PushAPIClient: Sendable {
         )
     }
 
-    // MARK: - Course upload
-
-    /// Fire-and-forget upload of the user's enrolled course list so the
-    /// backend can populate its `courses` table for cross-device sync,
-    /// analytics, and course-search indexing.
     func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
         _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
     }
 
-    /// `semester` nil wipes every term (full reset); otherwise only that
-    /// term's rows and tombstones go.
     func deleteAllCourses(semester: String? = nil) async throws {
         var components = URLComponents()
         components.path = "/sync/courses"
@@ -219,19 +161,10 @@ final class PushAPIClient: Sendable {
         try await delete(path: "/sync/courses/\(courseKey)")
     }
 
-    // MARK: - Assignment upload
-
-    /// Fire-and-forget upload of the user's current assignment list so the
-    /// backend can populate its `assignments` table for cross-device sync
-    /// and notification scheduling.
     func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {
         _ = try await postExpectingNoBody(path: "/sync/assignments/upload", body: request)
     }
 
-    // MARK: - Sync
-
-    /// Lightweight revision check. Returns the current server-side revision
-    /// number so the caller can decide whether a full sync is needed.
     func fetchRevision() async throws -> Int {
         let baseURL = baseURLProvider()
         let url = baseURL.appendingPathComponent("sync/revision")
@@ -264,9 +197,6 @@ final class PushAPIClient: Sendable {
         return json
     }
 
-    /// The changes after `sinceRevision`. Once the server has compacted them it answers 410
-    /// `sync_revision_expired`, thrown as `syncRevisionExpired` and kept from `versionGate`,
-    /// which would read it as a retired API and latch the update-required screen.
     func fetchChanges(sinceRevision: Int) async throws -> PushAPI.SyncChangesPage {
         let url = baseURLProvider().appendingPathComponent("sync")
             .appending(queryItems: [URLQueryItem(name: "since_revision", value: String(sinceRevision))])
@@ -291,14 +221,10 @@ final class PushAPIClient: Sendable {
         return .syncRevisionExpired
     }
 
-    /// Health check, sent without auth: the push server's `/ping` is public
-    /// so connectivity, TLS and DNS can be diagnosed without a Bearer token.
     func ping() async throws {
         let url = baseURLProvider().appendingPathComponent("ping")
         _ = try await execute(URLRequest(url: url))
     }
-
-    // MARK: - Internals
 
     private func post<Request: Encodable, Response: Decodable>(
         path: String,
@@ -344,8 +270,6 @@ final class PushAPIClient: Sendable {
 
     private func delete(path: String, at baseURL: URL? = nil) async throws {
         let baseURL = baseURL ?? baseURLProvider()
-        // `path` may carry a query string; appendingPathComponent would
-        // percent-escape the `?`, so splice it back on after the join.
         let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
         var url = baseURL.appendingPathComponent(parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         if parts.count == 2, let withQuery = URL(string: url.absoluteString + "?" + parts[1]) {
@@ -401,8 +325,6 @@ final class PushAPIClient: Sendable {
         return data
     }
 
-    // MARK: - Factory helpers
-
     private static func defaultSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 15
@@ -427,13 +349,7 @@ final class PushAPIClient: Sendable {
     }()
 
     private static func percentEncoded(_ value: String) -> String {
-        // Not `urlPathAllowed`: it keeps `; , : @ & = + $`, and some parsers
-        // read `;` as matrix params or `&` as a query separator. `-_.~` stay
-        // because RFC 3986 marks them unreserved; source ids often use dashes.
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
-        // On failure (a rare UTF-16 surrogate-pair case) return "", not the
-        // raw value: unencoded bytes in the URL path could path-inject, while
-        // an empty segment yields a clean 404.
         guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
             assertionFailure("percentEncoded failed for value of length \(value.count)")
             return ""
@@ -447,9 +363,7 @@ enum PushAPIError: Error, LocalizedError {
     case decodingFailed(Error)
     case invalidResponse
     case httpStatus(Int, body: String)
-    /// The change feed no longer holds the changes asked for; only a full sync catches up.
     case syncRevisionExpired
-    /// A request that needs a session got no access token, so it was not sent.
     case notSignedIn
 
     var errorDescription: String? {
@@ -463,6 +377,3 @@ enum PushAPIError: Error, LocalizedError {
         }
     }
 }
-
-// ISO-8601 decoding helpers live in `Extensions/JSONDecoder+ISO8601.swift`
-// so every HTTP client in the app shares the same parsing behaviour.

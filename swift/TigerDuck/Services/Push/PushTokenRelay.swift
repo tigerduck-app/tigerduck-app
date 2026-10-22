@@ -3,20 +3,9 @@ import ActivityKit
 import Foundation
 import os
 
-/// Observes `Activity<TigerDuckActivityAttributes>.pushToStartTokenUpdates`
-/// and hands each new token to `PushRegistrationService`. iOS rotates the
-/// token, so the latest value wins. Per-activity update tokens
-/// (`activity.pushTokenUpdates`) are not observed here.
-///
-/// A PTS token exists only while Live Activities are enabled, which the user
-/// can change in iOS Settings at any time, so `start()` waits for that rather
-/// than returning: `PushCoordinator` starts the relay once per process.
 @MainActor
 final class PushTokenRelay {
     private let registration: PushRegistrationService
-    // nonisolated(unsafe) so deinit (non-isolated) can cancel without
-    // violating Swift 6 strict concurrency. Mutations stay on MainActor
-    // through start()/stop(), and Task is itself thread-safe.
     private nonisolated(unsafe) var task: Task<Void, Never>?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Relay")
 
@@ -38,9 +27,6 @@ final class PushTokenRelay {
                     enabled = true
                     break
                 }
-                // Ending without a `true` means `stop()` cancelled this task
-                // or the sequence finished; either way there is nothing to
-                // relay.
                 guard enabled else { return }
                 logger.info("Live Activities enabled; starting PTS token relay")
             }
