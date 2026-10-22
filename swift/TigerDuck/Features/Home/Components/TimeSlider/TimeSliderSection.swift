@@ -14,9 +14,6 @@ struct TimeSliderSection: View {
         .onAppear {
             viewModel.configure(courses: courses)
         }
-        // Reconfigure on every field a slot renders, not only on enrolment: a sync
-        // can give the same courseNo a new schedule, classroom map or name, and the
-        // detail sheet shows whatever `CourseTimeSlot` the tapped slot holds.
         .onChange(of: courses.map { course in
             "\(course.courseNo)|\(course.scheduleJSON)|\(course.classroomMapJSON)|\(course.displayName)"
         }) {
@@ -38,9 +35,6 @@ struct TimeSliderSection: View {
             sliderContent
                 .padding(.horizontal, 16)
         case .empty:
-            // Logged in (or has credentials pending re-auth) but currently
-            // no cached courses — keep the existing in-surface hint rather
-            // than the login gate.
             emptyState
                 .padding(.horizontal, 16)
         }
@@ -59,9 +53,6 @@ struct TimeSliderSection: View {
                     viewModel.returnToNow()
                 }
                 .font(.caption.weight(.semibold))
-                // No padding here: the modifier pads the pre-26 branch itself,
-                // and more would make this button larger than Calendar's
-                // "Today", which uses the same modifier bare.
                 .modifier(GlassTextButtonModifier())
                 .transition(.opacity.combined(with: .scale(0.85, anchor: .trailing)))
             }
@@ -73,7 +64,6 @@ struct TimeSliderSection: View {
 
     private var sliderContent: some View {
         let policy = appState.visualStylePolicy
-        // Once a minute: the track moves under a point a minute and the label shows minutes.
         return TimelineView(.everyMinute) { context in
             VStack(spacing: 12) {
                 CourseTimeCard(
@@ -82,7 +72,6 @@ struct TimeSliderSection: View {
                     policy: policy
                 )
 
-                // Time label + track
                 VStack(spacing: 6) {
                     timeLabel
                         .accessibilityHidden(true)
@@ -149,6 +138,4 @@ struct TimeSliderSection: View {
         return f
     }()
 }
-
-// MARK: - Availability Helpers
 

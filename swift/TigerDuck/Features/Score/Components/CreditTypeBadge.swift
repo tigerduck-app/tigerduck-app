@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Small text badge describing how a credit contributes toward graduation.
-/// ``CreditType/normal`` is the unmarked default and renders nothing so the
-/// list stays visually quiet for the common case.
 struct CreditTypeBadge: View {
     let creditType: CreditType
 

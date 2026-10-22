@@ -1,13 +1,9 @@
 #if os(iOS)
 import SwiftUI
 
-/// What the assignment page says of the deadline, the hand-in and the grade, and how it writes
-/// lengths of time and times.
 extension MoodleAssignmentView {
-    /// The badge beside the submission's heading.
     enum Badge: Equatable {
         case notSubmitted
-        /// Handed in, with no due date or no time to measure against it.
         case submitted
         case early(TimeInterval)
         case late(TimeInterval)
@@ -23,7 +19,6 @@ extension MoodleAssignmentView {
             }
         }
 
-        /// The text and its icon.
         var tint: Color {
             switch self {
             case .notSubmitted: Color.textSecondary
@@ -32,8 +27,6 @@ extension MoodleAssignmentView {
             }
         }
 
-        /// A faint wash of the text's colour, and for a late hand-in of ``Color/badgeRed``, as the
-        /// overdue tile's.
         var fill: Color {
             switch self {
             case .late: Color.badgeRed.opacity(0.16)
@@ -44,13 +37,9 @@ extension MoodleAssignmentView {
         var symbol: String { self == .notSubmitted ? "circle" : "checkmark" }
     }
 
-    /// The line under the due time.
     enum Deadline: Equatable {
-        /// `urgent` while the account has not handed it in.
         case left(TimeInterval, urgent: Bool)
-        /// Passed, with the assignment handed in or not one Moodle takes online.
         case passed
-        /// Passed without the account handing it in.
         case overdue(TimeInterval)
 
         var text: String {
@@ -82,7 +71,6 @@ extension MoodleAssignmentView {
         }
     }
 
-    /// A grade split for the grade card.
     struct Score: Equatable {
         let value: String
         let max: String?
@@ -93,8 +81,6 @@ extension MoodleAssignmentView {
         }
     }
 
-    /// Whether the account handed it in: the fetched submission says, else Home's row. Nil while
-    /// neither has answered, and for an assignment Moodle takes nothing online for.
     static func isSubmitted(
         record: MoodleAssignmentRecord, listed: SDAssignment?, submission: MoodleAssignmentSubmission?
     ) -> Bool? {
@@ -102,7 +88,6 @@ extension MoodleAssignmentView {
         return submission?.isSubmitted ?? listed?.isCompleted
     }
 
-    /// Nil while nothing says whether it is handed in.
     static func badge(isSubmitted: Bool?, submittedAt: Date?, due: Date?) -> Badge? {
         guard let isSubmitted else { return nil }
         guard isSubmitted else { return .notSubmitted }
@@ -115,7 +100,6 @@ extension MoodleAssignmentView {
         return isSubmitted == false ? .overdue(now.timeIntervalSince(due)) : .passed
     }
 
-    /// The card shows what was handed in, or a draft's files and text, under its time.
     static func showsCard(_ submission: MoodleAssignmentSubmission) -> Bool {
         !submission.files.isEmpty || submission.onlineText != nil || submission.submittedAt != nil
     }
@@ -140,8 +124,6 @@ extension MoodleAssignmentView {
         return trimmed
     }
 
-    /// At most two units, rounded down so the time left never reads longer than it is; under a
-    /// minute reads as one minute.
     static func durationText(_ seconds: TimeInterval, locale: Locale = .autoupdatingCurrent) -> String {
         Duration.seconds(max(seconds, 60)).formatted(
             .units(allowed: [.days, .hours, .minutes], width: .abbreviated, maximumUnitCount: 2,
@@ -150,12 +132,10 @@ extension MoodleAssignmentView {
         )
     }
 
-    /// "Thu, Oct 15 at 20:03": the month, day, weekday and time, in Taipei.
     static func timeText(_ date: Date, locale: Locale = .autoupdatingCurrent) -> String {
         formatted(date, template: "MMMdEEEHHmm", locale: locale)
     }
 
-    /// "Tue 23:59", with the app's weekday captions.
     static func weekdayTimeText(_ date: Date, locale: Locale = .autoupdatingCurrent) -> String {
         "\(NextClassResolver.Day.later(weekday: date.scheduleWeekday).headline) \(formatted(date, template: "HHmm", locale: locale))"
     }
@@ -164,7 +144,6 @@ extension MoodleAssignmentView {
         formatted(date, template: "MMM", locale: locale)
     }
 
-    /// A page with many comments writes a time for each, so each template's formatter is kept.
     private static var formatters: [String: DateFormatter] = [:]
 
     private static func formatted(_ date: Date, template: String, locale: Locale) -> String {

@@ -1,9 +1,6 @@
 import MarkdownUI
 import SwiftUI
 
-/// Sub-page behind Open-source licences on `AboutOthersView`: TigerDuck's own
-/// licence and anything else it publishes, then every Swift package the app
-/// links. Android has the same page, fed by its own build's dependency list.
 struct OpenSourceLicensesView: View {
     private let catalog = LicenseCatalog.bundled
 
@@ -64,8 +61,6 @@ struct OpenSourceLicensesView: View {
     }
 }
 
-/// TigerDuck's own licence in full, with the way to its source that the
-/// AGPL is about.
 private struct AppLicenseView: View {
     let license: LicenseCatalog.AppLicense
 
@@ -85,9 +80,6 @@ private struct AppLicenseView: View {
     }
 }
 
-/// One package: why it ships when that isn't obvious, who holds the
-/// copyright, where it lives, and every licence and notice file it ships,
-/// verbatim.
 private struct PackageLicenseView: View {
     let package: LicenseCatalog.Package
 
@@ -124,9 +116,6 @@ private struct PackageLicenseView: View {
     }
 }
 
-/// A licence or notice file. Markdown ones are rendered, since their headings
-/// and code fences are how they separate one notice from the next; plain text
-/// is reflowed to the screen.
 private struct LicenseTextView: View {
     let file: String
     let text: String
@@ -144,8 +133,6 @@ private struct LicenseTextView: View {
     }
 }
 
-/// A row that leaves the app for `url`, honouring the in-app / external
-/// browser preference and drawn like the other links out of Settings.
 private struct LicenseLinkRow: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL

@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// Two-card bento showing earned and enrolled credits.
-///
-/// Only `CreditBreakdown.total` is surfaced. The `inPerson` / `distance`
-/// split the model also carries was written alongside this view in dbcad1d
-/// but committed already commented out, with its labels as bare English
-/// literals rather than `String(localized:)` — which is what it would need
-/// before it could ship in a 67-locale app.
 struct CreditSummaryBento: View {
     @Environment(AppState.self) private var appState
 

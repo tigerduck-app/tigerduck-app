@@ -1,14 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// "Synced content" submenu of TigerSync settings. Its switches, in three groups:
-/// Assignments and Assignment due reminders; Live Activity; All courses, Course
-/// colours and Custom course names. Course colours turns on and off with All courses
-/// (`AppState.courseColorsAfterCoursesChange`) and is greyed out without All courses.
-///
-/// With `cloudSyncEnabled` off, the reminder and Live Activity rows stay visible but
-/// greyed out. Assignments and the course group are hidden, as on the Mac account tab,
-/// so a hidden category never picks up a re-enable mark while sync is off.
 struct SyncContentSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
@@ -23,7 +15,6 @@ struct SyncContentSettingsView: View {
         Form {
             Section {
                 if cloudSyncEnabled {
-                    // The assignment list and its done / ignored marks.
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
                         .onChange(of: syncAssignments) { old, new in
                             if new && !old {
@@ -38,9 +29,6 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncAssignmentReminders) { old, new in
                         appState.pushSyncPreferences()
-                        // Turning this on ungates its section in `NotificationSettingsSync.push`, and nothing
-                        // else uploads it until this push: the PATCH above sends just the switch. Queued and
-                        // marked like any edit, it cannot overlap another push, and a failure stays marked.
                         if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
                             appState.scheduleNotificationSettingsPush()
                         }
@@ -66,8 +54,6 @@ struct SyncContentSettingsView: View {
                                 appState.markCategoryReenabled("courses")
                                 appState.checkPendingConflicts()
                             }
-                            // Colours' own `onChange` then marks and pushes
-                            // them the way a tap on their row would.
                             syncCourseColors = AppState.courseColorsAfterCoursesChange(coursesNowOn: new)
                             appState.pushSyncPreferences()
                         }

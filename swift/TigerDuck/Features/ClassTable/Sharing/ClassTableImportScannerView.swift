@@ -5,9 +5,6 @@ import SwiftUI
 import Vision
 import VisionKit
 
-/// The import's first screen, full screen: the camera reading QR codes, and a button that reads
-/// one from a photo instead. VisionKit's scanner runs where the device supports it, AVFoundation
-/// elsewhere.
 struct ClassTableImportScannerView: View {
     @Bindable var model: ClassTableImportModel
     @Environment(\.dismiss) private var dismiss
@@ -25,7 +22,6 @@ struct ClassTableImportScannerView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 cameraView
-                // An update has no confirm screen to wait on, so it waits here.
                 if model.isLookingUp && model.pending == nil {
                     ProgressView().controlSize(.large)
                 }
@@ -62,7 +58,6 @@ struct ClassTableImportScannerView: View {
             }
         }
         .task { camera = await Self.cameraState() }
-        // Back from Go to Settings, access may have been granted.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, camera == .denied else { return }
             Task { camera = await Self.cameraState() }
@@ -131,7 +126,6 @@ private struct QRDataScanner: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> DataScannerViewController {
         let scanner = DataScannerViewController(
             recognizedDataTypes: [.barcode(symbologies: [.qr])],
-            // A code of several terms is a dense QR code, often shown on another phone's screen.
             qualityLevel: .accurate,
             recognizesMultipleItems: true,
             isHighFrameRateTrackingEnabled: false,
@@ -185,7 +179,6 @@ private struct QRDataScanner: UIViewControllerRepresentable {
     }
 }
 
-/// The camera through AVFoundation, for the devices VisionKit's scanner does not support.
 private struct QRCaptureScanner: UIViewRepresentable {
     let onCode: (String) -> Bool
 
@@ -273,7 +266,6 @@ private struct QRCaptureScanner: UIViewRepresentable {
             from connection: AVCaptureConnection
         ) {
             let payloads = metadataObjects.compactMap { ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue }
-            // The delegate queue set above is the main queue.
             MainActor.assumeIsolated { take(payloads, at: Date()) }
         }
 
@@ -289,7 +281,6 @@ private struct QRCaptureScanner: UIViewRepresentable {
 /// that shows it, and without this a code still in front of the camera would open its confirm
 /// screen again the moment it was cancelled.
 struct RepeatedCodeFilter {
-    /// Longer than the time between two frames that show the same code.
     static let gap: TimeInterval = 1
 
     private var lastSeen: [String: Date] = [:]

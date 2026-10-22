@@ -1,13 +1,6 @@
 import SwiftUI
 
-/// "Current class" card — surfaces a course whose period block contains
-/// the current minute. Renders in the course's own slot in the today
-/// carousel, which scrolls itself so this card leads; it is not lifted to
-/// the head of the row. Mirrors the Android `CurrentClassCard` (red dot +
-/// label, course name, classroom, progress bar, time range).
 struct CurrentClassCard: View {
-    /// Named because `carouselScrollTarget` measures the row with it — a
-    /// resized card must not silently desync the self-scroll from the layout.
     static let defaultWidth: CGFloat = 200
 
     let info: OngoingCourseInfo
@@ -16,8 +9,6 @@ struct CurrentClassCard: View {
     var onTap: (() -> Void)? = nil
 
     var body: some View {
-        // Like other clock-derived views, re-subscribe to debug-time
-        // flips so the progress bar updates when the override changes.
         let _ = AppClockState.shared.version
 
         let card = VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
@@ -53,9 +44,6 @@ struct CurrentClassCard: View {
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
         }
-        // The inner frame fixes the width; the outer `maxHeight: .infinity` lets the
-        // surface stretch to the row height `EqualHeightHStack` settled on, so a
-        // shorter card grows to match its siblings, as in `TodayCourseCard`.
         .frame(width: width, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .cardPadding()

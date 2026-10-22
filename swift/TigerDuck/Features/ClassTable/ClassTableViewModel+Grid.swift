@@ -1,7 +1,3 @@
-// The class table's cell roles, from the `ClassTableLayout` the Mac grid and the week widget
-// use too, and the conflict picker. Tapping a two-course cluster opens the picker rather than
-// guessing which course was meant.
-
 import Defaults
 import SwiftUI
 
@@ -40,9 +36,6 @@ extension ClassTableViewModel {
         let existingB: SDCourse
     }
 
-    /// Scans every slot the candidate would occupy and returns the first
-    /// slot that already has two courses — adding the candidate there would
-    /// push it to three. Returns nil when the add is safe.
     func wouldCauseTripleConflict(_ candidate: SDCourse) -> TripleConflictError? {
         for (weekday, periodIds) in candidate.schedule {
             for pid in periodIds {
@@ -61,8 +54,6 @@ extension ClassTableViewModel {
         return nil
     }
 
-    /// The L shape draws a cluster of exactly two courses, so those two are the whole cluster;
-    /// three or more are drawn apart, each a button of its own.
     func presentConflictPicker(courseA: SDCourse, courseB: SDCourse, weekday: Int, periodId: String) {
         conflictPickerTarget = ConflictPickerTarget(
             courses: [courseA, courseB],
@@ -86,8 +77,6 @@ extension ClassTableViewModel {
         selectedCourse = course
     }
 
-    /// Carousel "Current class" card tap, which opens the running block: periods 3-4 show
-    /// "10:20 - 12:10" and their room, where `course.timeRange(for:)` spans the whole day.
     func selectOngoing(_ info: OngoingCourseInfo) {
         selectedWeekday = info.weekday
         selectedPeriodId = info.firstPeriodId
@@ -95,5 +84,4 @@ extension ClassTableViewModel {
         selectedCourse = info.course
     }
 
-    /// Returns `true` iff `course` was newly appended to `courses`. The
 }

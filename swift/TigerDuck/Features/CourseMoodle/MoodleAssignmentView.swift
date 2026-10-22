@@ -2,10 +2,6 @@
 import MarkdownUI
 import SwiftUI
 
-/// One assignment: its course and title, a card with the due time and the group, its description
-/// and attachments, then what the account handed in with the comments on it, and the grade. The
-/// app submits nothing, so the button at the foot opens the assignment on Moodle. The page fetches
-/// the submission when it opens and on each return to the app, and shows the last copy meanwhile.
 struct MoodleAssignmentView: View {
     let store: MoodleCourseStore
     let entry: MoodleCourseAssignments.Entry
@@ -17,7 +13,6 @@ struct MoodleAssignmentView: View {
     @Environment(\.openMoodleLink) private var openMoodleLink
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
-    /// Coming back from a preview or a pushed screen is not another opening.
     @State private var didOpen = false
     @State private var files = MoodleFileOpener()
     @ScaledMetric(relativeTo: .title) private var tileWidth: CGFloat = 56
@@ -72,7 +67,6 @@ struct MoodleAssignmentView: View {
             didOpen = true
             await store.assignments.refreshSubmission(of: record)
         }
-        // A submission made on Moodle shows once the app is back.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await store.assignments.refreshSubmission(of: record) }
@@ -80,8 +74,6 @@ struct MoodleAssignmentView: View {
         .moodleFilePresentation(files)
     }
 
-    /// The submission's time, and before the first fetch answers, the one the assignment round
-    /// found.
     static func submittedAt(of listed: SDAssignment?, submission: MoodleAssignmentSubmission?) -> Date? {
         guard let submission else { return listed?.isCompleted == true ? listed?.submittedAt : nil }
         return submission.submittedAt
@@ -100,14 +92,11 @@ struct MoodleAssignmentView: View {
         }
     }
 
-    // MARK: - Due time and group
-
     @ViewBuilder
     private func summaryCard(isSubmitted: Bool?, group: String?) -> some View {
         if record.dueDate != nil || group != nil {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
                 if let due = record.dueDate {
-                    // The time left moves on while the page stays open.
                     TimelineView(.everyMinute) { _ in
                         deadline(due, Self.deadline(due: due, isSubmitted: isSubmitted, now: AppClock.now()))
                     }
@@ -123,7 +112,6 @@ struct MoodleAssignmentView: View {
         }
     }
 
-    /// At accessibility sizes the tile goes above the times, which beside it would have no room.
     private func deadline(_ due: Date, _ deadline: Deadline) -> some View {
         let layout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.md))
@@ -150,7 +138,6 @@ struct MoodleAssignmentView: View {
         .accessibilityValue("\(Self.timeText(due)), \(deadline.text)")
     }
 
-    /// Grows with the text instead of clipping it.
     private func calendarTile(_ due: Date, isOverdue: Bool) -> some View {
         VStack(spacing: 0) {
             Text(Self.monthText(due))
@@ -170,7 +157,6 @@ struct MoodleAssignmentView: View {
         )
     }
 
-    /// At accessibility sizes the group's name goes under its label, which would leave it no room.
     private func groupRow(_ group: String) -> some View {
         let layout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
@@ -194,11 +180,8 @@ struct MoodleAssignmentView: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - Submission
-
     private func submissionSection(_ feed: MoodleFeed<MoodleAssignmentSubmission>, badge: Badge?) -> some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-            // The badge goes under the heading when it does not fit beside it.
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: TigerDuckTheme.Spacing.md) {
                     sectionTitle(String(localized: "assignment_detail_submission"))
@@ -239,7 +222,6 @@ struct MoodleAssignmentView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The time it was handed in, or a draft's, over the files and the text.
     private func submissionCard(_ submission: MoodleAssignmentSubmission) -> some View {
         let refs = submission.files.map { MoodleFileRef(file: $0, owner: .submission(record.assignId)) }
         let text = submission.onlineText
@@ -295,8 +277,6 @@ struct MoodleAssignmentView: View {
         .padding(.top, TigerDuckTheme.Spacing.xs)
     }
 
-    // MARK: - Grade
-
     private func gradeSection(_ grade: MoodleAssignmentGrade) -> some View {
         section(String(localized: "assignment_detail_grade")) {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
@@ -339,10 +319,6 @@ struct MoodleAssignmentView: View {
         .accessibilityLabel(score.spoken)
     }
 
-    // MARK: - Shared pieces
-
-    /// A label and its time in small grey type. At accessibility sizes the time goes under its
-    /// label, which would leave it no room.
     private func timeRow(_ label: String, _ time: String?) -> some View {
         let layout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
@@ -421,14 +397,12 @@ struct MoodleAssignmentView: View {
         .padding(.bottom, TigerDuckTheme.Spacing.sm)
     }
 
-    /// The Moodle app where it is installed, else the web page, signed in.
     private func openOnMoodle() {
         files.forgetPendingOpen()
         Task { await openURL(MoodlePage.module("assign", cmid: record.cmId)) }
     }
 }
 
-/// An assignment's page opened outside a course detail, with the store of its course.
 struct MoodleAssignmentPage: Hashable {
     let entry: MoodleCourseAssignments.Entry
     let store: MoodleCourseStore

@@ -3,14 +3,6 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Sub-page for the course-name font scale used in the class table and the
-/// home-screen widgets. The value flows through `AppState.courseCardFontScale`
-/// to `CourseCardFontScaleStore` (App Group `UserDefaults`) and is applied to
-/// the course-name `Text` in `TimetableGridView` and the widget labels, which
-/// read it on the render after `AppState`'s `didSet` reloads their timelines.
-///
-/// The preview mocks a solo cell and a two-course conflict cluster, so it
-/// covers both rendering modes of the real timetable.
 struct FontSizeSettingsView: View {
     @Environment(AppState.self) private var appState
     #if os(iOS)
@@ -20,12 +12,6 @@ struct FontSizeSettingsView: View {
     /// the first selection feels delayed.
     @State private var hapticGenerator = UISelectionFeedbackGenerator()
     #endif
-    /// Tracks the most recent snapped scale we've fired a haptic for, so
-    /// the slider's high-frequency `onChange` callbacks only buzz when
-    /// the value crosses a step boundary instead of on every drag tick.
-    /// `nil` is the "no baseline yet" state — the first observation
-    /// silently records the baseline so a layout-pass tick before
-    /// `onAppear` can never fire a spurious haptic.
     @State private var lastHapticScale: Double?
 
     var body: some View {
@@ -44,9 +30,6 @@ struct FontSizeSettingsView: View {
             Section {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        // Tap to nudge by one step, hold the slider to
-                        // drag freely. The two "A" anchors mirror the
-                        // iOS Settings → Display & Text Size pattern.
                         Text("A")
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
@@ -69,14 +52,9 @@ struct FontSizeSettingsView: View {
                 }
                 .padding(.vertical, 4)
                 #if os(iOS)
-                // `onChange` fires on every snapped tick; gating the haptic on the
-                // normalized value buzzes once per 0.05× boundary, not per render frame,
-                // matching the `TimeSliderViewModel` cadence the user knows from Home.
                 .onChange(of: appState.courseCardFontScale) { _, newValue in
                     let snapped = CourseCardFontScale.normalize(newValue)
                     defer { lastHapticScale = snapped }
-                    // First observation establishes the baseline
-                    // silently — only subsequent boundary crossings buzz.
                     guard let last = lastHapticScale, snapped != last else { return }
                     hapticGenerator.selectionChanged()
                     // Re-prime for the next tick so the kernel keeps the
@@ -85,8 +63,6 @@ struct FontSizeSettingsView: View {
                     hapticGenerator.prepare()
                 }
                 .onAppear {
-                    // Warm the engine up front so the first drag doesn't
-                    // eat the priming latency.
                     hapticGenerator.prepare()
                     if lastHapticScale == nil {
                         lastHapticScale = CourseCardFontScale.normalize(appState.courseCardFontScale)
@@ -114,22 +90,12 @@ struct FontSizeSettingsView: View {
         #endif
     }
 
-    /// Format: `1.20×` (en) / `1,20×` (de/fr/...). Uses
-    /// `.formatted(.number...)` so the decimal separator follows
-    /// `Locale.current`. `.monospacedDigit()` is applied at the call
-    /// site for stable column width during drags.
     private func scaleLabel(_ scale: Double) -> String {
         let normalized = CourseCardFontScale.normalize(scale)
         return normalized.formatted(.number.precision(.fractionLength(2))) + "×"
     }
 }
 
-/// Mock class-table preview that mirrors `TimetableGridView`'s solo-cell
-/// and 2-course conflict-cluster geometry at a small scale, so the user
-/// sees the slider's effect against the same visual surface they're
-/// adjusting for. Strings are localizable mock course names — they
-/// should read as realistic course titles in every locale, not stand
-/// in as English-only placeholders.
 private struct ClassCardPreview: View {
     let scale: Double
 
@@ -169,11 +135,6 @@ private struct ClassCardPreview: View {
             }
     }
 
-    /// Stacked two-cell stand-in for a conflict cluster. The real
-    /// renderer interlocks two L shapes; mocking that here would drag in
-    /// `ConflictLShape` for a preview. A simple two-row stack is enough
-    /// to communicate "course names in adjacent cells stay readable
-    /// after rescaling".
     private var conflictCluster: some View {
         VStack(spacing: rowSpacing) {
             RoundedRectangle(cornerRadius: cornerRadius)

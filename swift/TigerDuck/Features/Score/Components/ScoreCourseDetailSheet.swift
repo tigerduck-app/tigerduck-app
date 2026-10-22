@@ -1,20 +1,10 @@
 import SwiftUI
 
-/// Modal detail for a single course row. Reuses the ClassTable cache —
-/// searched first by semester, then falling back to the user-added course
-/// list — so returning users see instructor, enrollment, and schedule
-/// metadata that the score-query HTML itself never exposes. Administrative
-/// fields (status / credit type / delivery mode) have been dropped in favor
-/// of this richer roster context.
 struct ScoreCourseDetailSheet: View {
     @Environment(AppState.self) private var appState
 
     let course: CourseGrade
 
-    /// Resolved lazily from DataCache the first time the sheet renders. Nil
-    /// means we have no roster record for this term — common for graduating
-    /// seniors pulling years-old transcripts from before the class-table
-    /// cache even existed.
     @State private var rosterCourse: SDCourse?
 
     var body: some View {
@@ -42,8 +32,6 @@ struct ScoreCourseDetailSheet: View {
         .onAppear(perform: resolveRosterCourse)
     }
 
-    // MARK: - Header (unchanged card-style)
-
     private var headerCard: some View {
         HStack(alignment: .center, spacing: TigerDuckTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 4) {
@@ -68,8 +56,6 @@ struct ScoreCourseDetailSheet: View {
         .presetCard(policy: appState.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
-
-    // MARK: - Roster section (ClassTable-style flat InfoRow list)
 
     @ViewBuilder
     private func rosterSection(_ roster: SDCourse) -> some View {
@@ -109,8 +95,6 @@ struct ScoreCourseDetailSheet: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    // MARK: - Remark
-
     private var remarkSection: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             SectionHeader(title: String(localized: "score_info_note"))
@@ -124,8 +108,6 @@ struct ScoreCourseDetailSheet: View {
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
     }
-
-    // MARK: - Resolution
 
     private func resolveRosterCourse() {
         guard rosterCourse == nil else { return }
@@ -142,8 +124,6 @@ struct ScoreCourseDetailSheet: View {
         }
     }
 
-    // MARK: - Schedule formatting
-
     /// Day-code mapping aligned with `CourseLookupService.parseNodeToSchedule`:
     ///   M=Mon · T=Tue · W=Wed · R=Thu · F=Fri · S=Sat · U=Sun
     /// Inverse direction here — turn `[weekday: [periods]]` back into the
@@ -152,10 +132,6 @@ struct ScoreCourseDetailSheet: View {
         1: "M", 2: "T", 3: "W", 4: "R", 5: "F", 6: "S", 7: "U"
     ]
 
-    /// Renders the schedule as the original NTUST node code, e.g.
-    /// `"M3, M4, T1, W5, MA, MB"`. Periods within a weekday follow the
-    /// chronological order (handling A/B/C/D evening slots after 10), and
-    /// weekdays are emitted Mon→Sun so the string reads naturally.
     private func formatScheduleCode(_ schedule: [Int: [String]]) -> String {
         let order = AppConstants.Periods.chronologicalOrder
         let entries = schedule
@@ -171,8 +147,6 @@ struct ScoreCourseDetailSheet: View {
             }
         return entries.joined(separator: ", ")
     }
-
-    // MARK: - Display formatters (grade chip + term label)
 
     private var displayTerm: String {
         guard course.term.count == 4 else { return course.term }
@@ -218,9 +192,6 @@ struct ScoreCourseDetailSheet: View {
     }
 }
 
-/// Label / value row matching the ClassTable detail sheet style — flat layout
-/// with no surface background so multiple rows stack into a clean vertical
-/// rhythm controlled by the parent's VStack spacing.
 private struct InfoRow: View {
     let label: String
     let value: String

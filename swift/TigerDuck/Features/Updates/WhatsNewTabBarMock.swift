@@ -1,14 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// Demo for a page that offers to change the tab bar: the user's bar above
-/// the one they'd get, both on screen. Leaving tabs are tinted in Before,
-/// arriving ones in After. `after` maps the bar the user sees to the offered
-/// one; when they match (a replay on the offered bar, or Back after
-/// confirming) only one bar shows. Before is read from the live setting each
-/// time the page becomes current, then held, so confirming doesn't redraw it
-/// as the page slides away. VoiceOver reads one element listing both bars, so
-/// the tab a change would remove is heard, not just seen.
 struct WhatsNewTabBarChangeDemo: View {
     let after: @MainActor ([AppFeature]) -> [AppFeature]
 
@@ -56,8 +48,6 @@ struct WhatsNewTabBarChangeDemo: View {
         .accessibilityLabel(spokenDescription(before: before, after: offered))
     }
 
-    /// "Before: Home, Class table, Calendar, More. After: Home, Class
-    /// table, Mail, More." — or just the one bar when nothing changes.
     private func spokenDescription(before: [AppFeature], after: [AppFeature]) -> String {
         guard before != after else { return spoken(Self.yoursCaption, before) }
         let sentences = [spoken(Self.beforeCaption, before), spoken(Self.afterCaption, after)]
@@ -72,8 +62,6 @@ struct WhatsNewTabBarChangeDemo: View {
     }
 }
 
-/// A captioned mock of the tab bar: `tabs` then More, with `highlighted`
-/// drawn in the tint and the rest in secondary.
 struct WhatsNewTabBarMock: View {
     let caption: WhatsNewText
     let tabs: [AppFeature]

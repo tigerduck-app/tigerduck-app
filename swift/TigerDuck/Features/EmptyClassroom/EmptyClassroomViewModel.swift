@@ -2,12 +2,9 @@ import Defaults
 import Foundation
 import Observation
 
-/// The finder's state: the chosen day and period, that day's rooms, the user's classes that
-/// day, and the building the user picked. Everything else on the screen derives from these.
 @Observable
 @MainActor
 final class EmptyClassroomViewModel {
-    /// Today and the 13 days after it.
     static let dayCount = 14
 
     enum Content: Equatable {
@@ -20,7 +17,6 @@ final class EmptyClassroomViewModel {
         case failed(offline: Bool)
     }
 
-    /// Whom the screen reads for, and whether that is still the signed-in account.
     struct Reader {
         let credentials: ClassroomUsageService.Credentials
         let isCurrent: @MainActor () -> Bool
@@ -33,20 +29,13 @@ final class EmptyClassroomViewModel {
     private(set) var content = Content.loading {
         didSet { if openRoomName != nil, openRoom == nil { openRoomName = nil } }
     }
-    /// `ClassroomUsageService.siteStatus`, copied here so the dot redraws: a new screen shows how
-    /// the site last answered, and a read that fails keeps the day on screen while the dot says so.
     private(set) var siteStatus = ServerStatus.unknown
-    /// When the day on screen was read, for the dot's last sync; nil for a day nothing was read for.
     private(set) var syncedAt: Date?
-    /// A read of the day shown is under way.
     private(set) var isReading = false
     private(set) var classes: [ClassStop] = []
     private(set) var pickedBuilding: String?
-    /// The room whose sheet is open. Only its name is kept, so the sheet shows the room as the
-    /// latest read has it; another day, or rooms without it, close the sheet.
     private(set) var openRoomName: String?
 
-    /// Nil while no one is signed in. ``connect(_:)`` sets it from the app's account.
     @ObservationIgnored var reader: @MainActor () -> Reader? = { nil }
 
     @ObservationIgnored private let service: ClassroomUsageService
@@ -60,7 +49,6 @@ final class EmptyClassroomViewModel {
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var isOnScreen = false
     @ObservationIgnored private var loadTask: Task<Void, Never>?
-    /// The day the load in flight reads, and which load it is.
     @ObservationIgnored private var running: (day: Date, id: Int)?
     @ObservationIgnored private var loads = 0
     private let minuteTicker: MinuteTicker
@@ -103,9 +91,6 @@ final class EmptyClassroomViewModel {
         }
     }
 
-    // MARK: - Time
-
-    /// The app clock, read again as each minute passes.
     var now: Date {
         _ = minuteTicker.tick
         return clock()
@@ -124,17 +109,14 @@ final class EmptyClassroomViewModel {
         AppConstants.taipeiCalendar.isDate(selectedDay, inSameDayAs: now)
     }
 
-    /// Periods already over on the day shown: none on a later day.
     var endedPeriods: Int {
         isShowingToday ? EmptyClassroomSchedule.endedPeriods(at: now) : 0
     }
 
-    /// The period the dot marks: the one in progress, or the next in a break, today only.
     var currentPeriod: Int? {
         isShowingToday ? EmptyClassroomSchedule.upcomingPeriod(at: now) : nil
     }
 
-    /// The next teaching day after the one shown, within the days the menu offers.
     var nextTeachingDay: Date? {
         guard let last = days.last else { return nil }
         let remaining = AppConstants.taipeiCalendar.dateComponents([.day], from: selectedDay, to: last).day ?? 0
@@ -148,8 +130,6 @@ final class EmptyClassroomViewModel {
     private func isTeachingDay(_ day: Date) -> Bool {
         dayOff(day) == nil
     }
-
-    // MARK: - Derived from the day's rooms
 
     var usage: CampusUsage? {
         if case .rooms(let usage) = content { return usage }
@@ -176,16 +156,10 @@ final class EmptyClassroomViewModel {
         )
     }
 
-    /// The app's name for the building, else the one the site gives it, else its code.
     func buildingName(_ code: String) -> String {
         CampusBuildingName.of(code) ?? usage?.buildingNames[code] ?? code
     }
 
-    // MARK: - Actions
-
-    /// Opens on the current period, or the next teaching day's first, the first time, after the
-    /// day shown has passed and once the period chosen today has ended; then loads the day. A
-    /// pinned tab keeps this model, so a morning's period would otherwise stay into the afternoon.
     func appear() {
         isOnScreen = true
         if !hasOpened || selectedDay < today || selectedPeriod < endedPeriods {
@@ -207,14 +181,10 @@ final class EmptyClassroomViewModel {
         appear()
     }
 
-    /// The screen went away. A read it started goes on, as a day takes long to read: a return to
-    /// the day shows it, and so does a new screen, whose read waits for it in the shared service.
     func disappear() {
         isOnScreen = false
     }
 
-    /// The signed-in account changed: what the screen holds belonged to the one before. Off
-    /// screen the site is not read until the next ``appear()``.
     func accountChanged() {
         stopLoading()
         show(.loading)
@@ -225,15 +195,11 @@ final class EmptyClassroomViewModel {
         load(force: false)
     }
 
-    /// The user's classes come from the class table, which a sync can change while the screen
-    /// is open.
     func reloadCourses() {
         courses = loadCourses()
         refreshClasses()
     }
 
-    /// A sync or the academic calendar changed the app's data. The calendar can arrive after the
-    /// day was read, as on a first launch, so a day it takes off stops showing rooms.
     func dataDidUpdate() {
         reloadCourses()
         guard let off = dayOff(selectedDay) else { return }
@@ -267,7 +233,6 @@ final class EmptyClassroomViewModel {
         openRoomName = nil
     }
 
-    /// A pull: reads the day again even when it was read moments ago.
     func refresh() async {
         load(force: true)
         await loadTask?.value
@@ -290,7 +255,6 @@ final class EmptyClassroomViewModel {
         isReading = false
     }
 
-    /// Puts `content` on screen with the time it was read, nil for content read from nowhere.
     private func show(_ content: Content, readAt: Date? = nil) {
         self.content = content
         syncedAt = readAt
@@ -298,8 +262,6 @@ final class EmptyClassroomViewModel {
 
     private func load(force: Bool) {
         let day = selectedDay
-        // A repeated appear() while this day loads keeps that load, and so does a return after
-        // disappear().
         if !force, running?.day == day { return }
         stopLoading()
         if let off = dayOff(day) {
@@ -340,7 +302,6 @@ final class EmptyClassroomViewModel {
                 show(Self.content(for: read.usage), readAt: read.fetchedAt)
             case .failure(let error):
                 guard !(error is CancellationError) else { return }
-                // A day already on screen stays when reading it again fails.
                 guard content == .loading else { return }
                 content = .failed(offline: Self.isOffline(error))
             }
@@ -366,9 +327,6 @@ final class EmptyClassroomViewModel {
         ].contains(code)
     }
 
-    // MARK: - Labels
-
-    /// Today and tomorrow say so before the date, as in "Today Wed, 10/14".
     func dayLabel(_ day: Date) -> String {
         let calendar = AppConstants.taipeiCalendar
         let date = Self.dateText(day)
@@ -382,8 +340,6 @@ final class EmptyClassroomViewModel {
         return date
     }
 
-    /// The locale's short date with its weekday, one letter long where the locale's one-letter
-    /// weekdays are all different, as Chinese ones are.
     static func dateText(_ day: Date) -> String {
         var symbols = Calendar(identifier: .gregorian)
         symbols.locale = .autoupdatingCurrent

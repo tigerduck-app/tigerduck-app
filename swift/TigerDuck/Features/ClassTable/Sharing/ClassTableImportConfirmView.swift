@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The step before a new person is saved: their nickname and what the share code holds. Import
-/// waits on the course lookup.
 struct ClassTableImportConfirmView: View {
     @Bindable var model: ClassTableImportModel
     let code: ClassTableShareCode
@@ -59,8 +57,6 @@ struct ClassTableImportConfirmView: View {
 }
 
 extension View {
-    /// The import's alerts. Only the screen in front can present one: the confirm screen while
-    /// it is up, otherwise the scanner or the Mac class table.
     func classTableImportPrompts(_ model: ClassTableImportModel?, onConfirmScreen: Bool) -> some View {
         modifier(ClassTableImportPrompts(model: model, onConfirmScreen: onConfirmScreen))
     }

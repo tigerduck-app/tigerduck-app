@@ -1,29 +1,14 @@
 #if os(iOS)
 import SwiftUI
 
-/// The What's New sheet: feature pages from ``WhatsNewCatalog`` one at a
-/// time, then the Apple-style summary list from `whatsnew.json`. Shown after
-/// an upgrade (``UpdateNotifySheetHost``) and from Settings → What's New.
-///
-/// Pages move by button (Next or the page's answer forward, the chevron
-/// back), not horizontal swipe: a stray swipe can't skip a question, and a
-/// page's vertical scrolling never competes with paging. Swiping the sheet
-/// down closes the flow anywhere; unreached questions keep the current setting.
 struct WhatsNewFlowView: View {
     let presentation: WhatsNewPresentation
-    /// Called by the last page's button. Swipe-to-dismiss goes through
-    /// the presenter's sheet binding instead.
     let onFinish: () -> Void
 
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var index = 0
-    /// True while a permission page awaits its system prompt; holds the
-    /// buttons so a second tap can't stack another request.
     @State private var isRequesting = false
-    /// The in-flight permission request, cancelled when the sheet goes
-    /// away so a prompt answered after a swipe-down can't advance — or
-    /// finish — a flow that's no longer on screen.
     @State private var requestTask: Task<Void, Never>?
 
     private var stepCount: Int {
@@ -39,8 +24,6 @@ struct WhatsNewFlowView: View {
         .environment(\.whatsNewLanguage, presentation.language)
         .onDisappear { requestTask?.cancel() }
     }
-
-    // MARK: - Layout
 
     private var header: some View {
         HStack {
@@ -64,11 +47,6 @@ struct WhatsNewFlowView: View {
         .padding(.top, TigerDuckTheme.Spacing.sm)
     }
 
-    /// Steps laid side by side and slid by offset, so moving back slides
-    /// the other way without any per-direction transition bookkeeping.
-    /// Only the current step and its neighbours are built; the rest are
-    /// placeholders, which also resets a revisited question to the live
-    /// setting.
     private var pager: some View {
         GeometryReader { proxy in
             HStack(spacing: 0) {
@@ -107,8 +85,6 @@ struct WhatsNewFlowView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
         .padding(.bottom, TigerDuckTheme.Spacing.xl)
     }
-
-    // MARK: - Steps
 
     private func content(at step: Int) -> some View {
         stepContent(at: step)
@@ -179,8 +155,6 @@ struct WhatsNewFlowView: View {
     private func primaryButton(_ title: String, isBusy: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             ZStack {
-                // The title keeps its space while the spinner shows, so
-                // the button doesn't change size mid-request.
                 Text(title).opacity(isBusy ? 0 : 1)
                 if isBusy { ProgressView() }
             }
@@ -202,8 +176,6 @@ struct WhatsNewFlowView: View {
         .buttonStyle(.borderless)
     }
 
-    // MARK: - Navigation
-
     private func advance() {
         if index + 1 < stepCount {
             go(to: index + 1)
@@ -221,9 +193,6 @@ struct WhatsNewFlowView: View {
 }
 
 extension View {
-    /// Sheet chrome shared by every place that presents ``WhatsNewFlowView``.
-    /// Full height because a page carries a demo, text and up to two
-    /// buttons; the grabber advertises that a swipe down closes it.
     func whatsNewSheetPresentation() -> some View {
         presentationDetents([.large])
             .presentationDragIndicator(.visible)

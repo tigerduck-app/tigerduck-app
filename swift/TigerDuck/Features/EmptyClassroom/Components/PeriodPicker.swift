@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The date menu, offering today and the 13 days after it, with the chosen period's times.
 struct ClassroomTimeBar: View {
     let days: [Date]
     let selectedDay: Date
@@ -21,7 +20,6 @@ struct ClassroomTimeBar: View {
         }
     }
 
-    /// Glass on iOS 26 and a filled capsule below it, as the class table's header menu.
     @ViewBuilder
     private var dayMenu: some View {
         let menu = Menu {
@@ -55,9 +53,6 @@ struct ClassroomTimeBar: View {
     }
 }
 
-/// The 14 periods as chips, each its label over its start time. The current period's label is in
-/// the tint, as a calendar marks today, and the periods already over are dimmed but can still be
-/// chosen. The row opens on the current period, since the ones before it rarely matter.
 struct PeriodChipRow: View {
     let selected: Int
     let current: Int?
@@ -115,7 +110,6 @@ struct PeriodChipRow: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    /// The times, and for the current period, that it is now.
     private func accessibilityValue(_ index: Int) -> String {
         let times = EmptyClassroomViewModel.timeRange(of: index)
         guard index == current else { return times }

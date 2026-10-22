@@ -82,7 +82,6 @@ nonisolated extension ClassTableShareCode {
         return "." + String(weekday) + String(indices.map { tatPeriodCodes[$0] })
     }
 
-    /// A weekday part: the weekday and at least one period.
     private static func isTATDay(_ part: Substring) -> Bool {
         guard let weekday = part.first, ("1"..."7").contains(weekday), part.count > 1 else { return false }
         return part.dropFirst().allSatisfy(tatPeriodCodes.contains)

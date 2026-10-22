@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Editor for a single subscription rule. Takes a `rule` copy so edits stay
-/// local until the caller persists via `onCommit`. The parent store
-/// handles persistence in one shot when the user saves the page.
 struct SubscriptionRuleEditorView: View {
     let taxonomy: BulletinTaxonomyStore
     let onCommit: (BulletinAPI.SubscriptionRule) -> Void
@@ -127,8 +124,6 @@ struct SubscriptionRuleEditorView: View {
             }
         }
     }
-
-    // MARK: - Helpers
 
     private var orgOptions: [(id: String, label: String)] {
         taxonomy.state.taxonomy?.orgs.map { (id: $0.rawId, label: $0.label) } ?? []

@@ -24,7 +24,6 @@ struct MonthCalendarView: View {
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.md) {
-            // Month navigation
             HStack {
                 Button(action: viewModel.previousMonth) {
                     Image(systemName: "chevron.left")
@@ -46,7 +45,6 @@ struct MonthCalendarView: View {
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
-            // Weekday header
             LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.sm) {
                 ForEach(weekdaySymbols, id: \.self) { symbol in
                     Text(symbol)
@@ -58,7 +56,6 @@ struct MonthCalendarView: View {
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
-            // Days grid
             LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.sm) {
                 ForEach(Array(calendarDays.enumerated()), id: \.offset) { _, date in
                     if let date {
@@ -88,11 +85,6 @@ private struct DayCellView: View {
     let events: [SDCalendarEvent]
     let onTap: () -> Void
 
-    /// `a11y_calendar_day`'s date argument, pinned to the app's
-    /// Taipei/Gregorian calendar. The grid and the visible day-of-month label
-    /// both use `AppConstants.taipeiCalendar`; formatting with the device
-    /// default could announce the previous local day for a user west of
-    /// Taiwan, so the spoken date would disagree with the cell.
     private var accessibleDateString: String {
         date.formatted(Date.FormatStyle(
             date: .complete,
@@ -108,8 +100,6 @@ private struct DayCellView: View {
                 Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(isSelected ? AnyShapeStyle(.white) : isToday ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textPrimary))
-                    // The row keeps its height, so at accessibility sizes the number shrinks
-                    // to fit instead of truncating to "2…", which names no day.
                     .lineLimit(1)
                     .minimumScaleFactor(0.4)
                     .frame(minWidth: 32, minHeight: 32)
@@ -121,7 +111,6 @@ private struct DayCellView: View {
                         }
                     }
 
-                // Event dots
                 HStack(spacing: 2) {
                     let sourceOrder: [String] = ["moodle", "school", "exam"]
                     let sources = events.map(\.sourceRaw)

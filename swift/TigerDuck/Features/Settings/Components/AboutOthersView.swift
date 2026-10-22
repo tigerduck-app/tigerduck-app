@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Sub-page behind the "Others" row under Official website in
-/// `SettingsView`'s About section: the links about the project rather than
-/// the app's own settings — feedback, privacy policy, account deletion,
-/// licence and source code. The settings themselves are on
-/// `OtherSettingsView`. Android has the same page; the Mac lists these
-/// links on its own About tab instead.
 struct AboutOthersView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL

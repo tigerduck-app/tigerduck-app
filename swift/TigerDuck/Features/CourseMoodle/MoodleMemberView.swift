@@ -1,10 +1,6 @@
 import QuickLook
 import SwiftUI
 
-/// One member of a course, pushed from the members list: their profile, their own picture opening
-/// full screen in Quick Look, whose share menu saves it, "Open in Moodle" for their page in the
-/// course, and their email opening a new School Mail message where the account has School Mail,
-/// else the system's mail.
 struct MoodleMemberView: View {
     let store: MoodleCourseStore
     let member: MoodleMember
@@ -12,8 +8,6 @@ struct MoodleMemberView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @State private var picturePreview: URL?
-    /// Set while the full-size picture downloads, so a second tap starts no second download that
-    /// would open Quick Look again after the first is closed.
     @State private var isOpeningPicture = false
     #if os(iOS)
     @State private var mail: MemberMail?
@@ -85,15 +79,11 @@ struct MoodleMemberView: View {
     }
 }
 
-/// A member as Moodle shows them to the course: picture, name and role, then their student ID and
-/// the department it names, and whichever of their email, groups and custom fields Moodle gives,
-/// each a row only when there is one, and their own description and interests.
 struct MoodleMemberProfile: View {
     let member: MoodleMember
     let picture: CGImage?
     let policy: VisualStylePolicy
     let writeTo: (String) -> Void
-    /// The full-size picture is on its way, so the picture shows a spinner and takes no tap.
     var isOpeningPicture = false
     let openPicture: () -> Void
 
@@ -137,7 +127,6 @@ struct MoodleMemberProfile: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Moodle's default picture, or none, has nothing to open.
     @ViewBuilder
     private var avatar: some View {
         let image = MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
@@ -153,7 +142,6 @@ struct MoodleMemberProfile: View {
         }
     }
 
-    /// What the card lists, in order: a field shows only when there is one.
     nonisolated struct Row: Equatable {
         enum Value: Equatable {
             case text(String)
@@ -199,7 +187,6 @@ struct MoodleMemberProfile: View {
                         .font(TigerDuckTheme.Typography.body)
                         .multilineTextAlignment(.trailing)
                 }
-                // The email stays apart from its label, so VoiceOver can still follow its link.
                 .accessibilityElement(children: row.value.isEmail ? .contain : .combine)
             }
         }
@@ -208,7 +195,6 @@ struct MoodleMemberProfile: View {
         .presetCard(policy: policy)
     }
 
-    /// The email is a link, so a long press offers the system's own copy.
     @ViewBuilder
     private func value(_ value: Row.Value) -> some View {
         switch value {
@@ -249,8 +235,6 @@ struct MoodleMemberProfile: View {
 }
 
 #if os(iOS)
-/// A new School Mail message to a member, on a connection of its own that closes with the
-/// message's sheet.
 private struct MemberMail: Identifiable {
     let context: MailComposeContext
     let session = MailPageSession()

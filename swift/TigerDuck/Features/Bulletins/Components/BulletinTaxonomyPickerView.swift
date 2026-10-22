@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Reusable multi-select picker. Used for both org and tag selection in
-/// the subscription rule editor. Items are sourced from the live taxonomy
-/// so this view stays agnostic of which dimension it is picking.
 struct BulletinTaxonomyPickerView: View {
     let title: String
     let options: [(id: String, label: String)]

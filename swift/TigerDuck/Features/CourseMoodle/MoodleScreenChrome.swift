@@ -1,11 +1,7 @@
 import Defaults
 import SwiftUI
 
-/// A page on the Moodle site, opened as every "Open in Moodle" opens one: in the Moodle app where
-/// it is installed (on the Mac, where the setting asks for it), else in the browser, signed in
-/// through `MoodleAutologinService`.
 struct MoodlePage: Hashable {
-    /// Site-relative, such as `/mod/forum/view.php?id=5`.
     let path: String
 
     static func forum(cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/view.php?id=\(cmid)") }
@@ -13,12 +9,10 @@ struct MoodlePage: Hashable {
     static func forums(courseId: Int) -> MoodlePage { MoodlePage(path: "/mod/forum/index.php?id=\(courseId)") }
     static func assignments(courseId: Int) -> MoodlePage { MoodlePage(path: "/mod/assign/index.php?id=\(courseId)") }
     static func course(_ id: Int) -> MoodlePage { MoodlePage(path: "/course/view.php?id=\(id)") }
-    /// A module's page, such as `/mod/resource/view.php?id=5` for the module `resource`.
     static func module(_ module: String, cmid: Int) -> MoodlePage { MoodlePage(path: "/mod/\(module)/view.php?id=\(cmid)") }
 
     var webURL: URL? { URL(string: path, relativeTo: AppConstants.moodleBaseURL)?.absoluteURL }
 
-    /// The link to open, and the one to open when nothing on the device takes it.
     var links: (open: URL?, fallback: URL?) {
         #if os(macOS)
         switch Defaults[.macMoodleOpenTarget] {
@@ -39,9 +33,6 @@ extension OpenURLAction {
     }
 }
 
-/// Opens a link from Moodle content where the reader expects it: a Moodle page in the browser
-/// signed in, any other web page in the app's browser when the setting asks for it, else as the
-/// system opens it. Signing in goes no further than the Moodle site.
 struct MoodleLinkAction {
     fileprivate let open: (URL) -> Void
 
@@ -53,7 +44,6 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Set where a screen is pushed, so the screen itself can read ``EnvironmentValues/openMoodleLink``.
     func moodleLinkOpening() -> some View {
         modifier(MoodleLinkOpening())
     }
@@ -100,9 +90,6 @@ private struct InAppPage: Identifiable {
 #endif
 
 extension View {
-    /// The bar of a pushed Moodle list: the title and "Open in Moodle". On the Mac the course detail
-    /// is an overlay in the window, so the bar is drawn in it, not left to the window's toolbar,
-    /// and ⌘R runs `refresh`.
     func moodleListChrome(
         title: String,
         page: MoodlePage?,
@@ -112,14 +99,10 @@ extension View {
         modifier(MoodleListChrome(title: title, page: page, willOpenPage: willOpenPage, refresh: refresh))
     }
 
-    /// The bar of a pushed Moodle article: the back button over the content and "Open in Moodle"
-    /// for `page`.
     func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
         modifier(MoodleArticleChrome(page: page))
     }
 
-    /// ⌘R on the Mac for a pushed screen that fetches its own data; the class table hands the
-    /// shortcut over while such a screen shows.
     func moodleRefreshShortcut(_ refresh: @escaping () async -> Void) -> some View {
         #if os(macOS)
         return background {
@@ -208,7 +191,6 @@ private struct MoodleOpenButton: View {
 }
 
 #if os(macOS)
-/// The title bar a pushed Moodle screen draws in the course detail overlay.
 private struct MacMoodleTitleBar<Trailing: View>: View {
     let title: String?
     @ViewBuilder let trailing: Trailing
@@ -244,8 +226,6 @@ private struct MacMoodleTitleBar<Trailing: View>: View {
 }
 #endif
 
-/// A Moodle list with nothing to show yet: a spinner while the first fetch runs, else its error
-/// in Moodle's own words and a retry.
 struct MoodleFirstLoadView: View {
     let failure: (any Error)?
     let retry: () async -> Void
@@ -289,10 +269,6 @@ struct MoodleFirstLoadView: View {
 }
 
 extension View {
-    /// A short note at the top when a refresh fails while the page still shows what it had
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/432); with nothing to show, the
-    /// page's `MoodleFirstLoadView` says it instead. `hasContent` is the page's own check, since a
-    /// cached value can be one the page does not show.
     func moodleRefreshFailureNote<Value>(
         _ feed: MoodleFeed<Value>,
         hasContent: Bool,
@@ -304,7 +280,6 @@ extension View {
     }
 }
 
-/// Whether the refresh-failure note is up, and for how long; the view hands it its events.
 @MainActor
 @Observable
 final class MoodleRefreshFailureNoteModel {
@@ -326,7 +301,6 @@ final class MoodleRefreshFailureNoteModel {
         note = nil
     }
 
-    /// Puts up the note for a failed refresh, if it gets one, and returns it.
     func failed(_ failure: (any Error)?, hasContent: Bool) -> MoodleRefreshFailureNote.Note? {
         guard let next = MoodleRefreshFailureNote.note(for: failure, hasContent: hasContent, isShown: isShown) else {
             return nil
@@ -342,8 +316,6 @@ final class MoodleRefreshFailureNoteModel {
         return next
     }
 
-    /// Takes down the note once its time is up, unless a later failure put up its own, which
-    /// waits for itself. Notes count from 1.
     func hide(ifStill shown: Int) {
         guard notesShown == shown else { return }
         note = nil
@@ -371,8 +343,6 @@ struct MoodleRefreshFailureNote: ViewModifier {
         _model = State(initialValue: MoodleRefreshFailureNoteModel(sleep: sleep))
     }
 
-    /// The note a failed refresh shows: none when the page kept nothing or is off screen, as under
-    /// a page pushed over it.
     static func note(for failure: (any Error)?, hasContent: Bool, isShown: Bool) -> Note? {
         guard let failure, hasContent, isShown else { return nil }
         if MoodleFirstLoadView.isNetworkError(failure) {
@@ -415,7 +385,6 @@ struct MoodleRefreshFailureNote: ViewModifier {
             .font(.subheadline.weight(.semibold))
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             .padding(.vertical, TigerDuckTheme.Spacing.md)
-            // A rounded rectangle, not a capsule: a long message wraps, and a capsule's ends cut it.
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
             .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
         }
@@ -425,8 +394,6 @@ struct MoodleRefreshFailureNote: ViewModifier {
     }
 }
 
-/// The floating "Open in Moodle" capsule at the foot of a Moodle article, styled as the school
-/// bulletin's source button.
 struct MoodleOpenCapsule: View {
     let page: MoodlePage
     var willOpen: () -> Void = {}
@@ -468,8 +435,6 @@ nonisolated enum MoodlePersonName {
     }
 }
 
-/// A user's own picture where the screen has one, else the first character of their name in a
-/// circle.
 struct MoodleAvatar: View {
     let name: String
     let size: CGFloat

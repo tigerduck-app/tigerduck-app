@@ -45,8 +45,6 @@ struct WidgetGridView: View {
         }
     }
 
-    // MARK: - Cell
-
     @ViewBuilder
     private func widgetCell(_ widget: WidgetItem) -> some View {
         let card = cardContent(widget)
@@ -145,8 +143,6 @@ private struct WidgetDragPreview: View {
         )
     }
 }
-
-// MARK: - Wiggle modifier
 
 extension View {
     func wiggling(_ isWiggling: Bool) -> some View {

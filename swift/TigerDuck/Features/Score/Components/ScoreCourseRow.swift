@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Single row for one graded course inside a semester disclosure group.
-/// Tapping invokes `onTap` so the parent can present a detail sheet.
 struct ScoreCourseRow: View {
     @Environment(AppState.self) private var appState
 
@@ -62,8 +60,6 @@ struct ScoreCourseRow: View {
     }
 }
 
-/// Right-aligned grade pill. Color and glyph both key off the combined grade and status, so a
-/// pass on a pass/fail course and a "D" both read at a glance.
 private struct GradeChip: View {
     let course: CourseGrade
 

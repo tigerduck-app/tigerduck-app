@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Collapsible group of all courses from a single semester. The header shows
-/// the term's GPA + class/dept rank from `GPATrendPoint` — keeping the
-/// derived stat line here (instead of a separate tab) ties academic
-/// context to the course list that produced it. Before the school posts
-/// the ranking the GPA is the live estimate from the grades so far, and
-/// says so.
 struct SemesterSection: View {
     @Environment(AppState.self) private var appState
 
