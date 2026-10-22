@@ -1,14 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The mail page's single IMAP connection: opened on first use, shared by the list and the open
-/// message, closed ~30 s after the page goes away.
-///
-/// Server work goes through `use(_:)`, which counts the call as in flight while its body runs, so
-/// the idle-close timer never acts mid-command. A network or certificate error drops the
-/// connection so the next call reconnects, but only once every other concurrent `use(_:)` has
-/// finished. There is no bare `client()`: every caller, `MailListViewModel` included, uses
-/// `use(_:)`, which keeps `inFlight` counting every call that holds or is resolving a client.
 @MainActor
 final class MailPageSession {
     private let open: () async throws -> any MailClient
@@ -16,33 +8,15 @@ final class MailPageSession {
     private var client: (any MailClient)?
     private var opening: Task<any MailClient, Error>?
     private var closeTask: Task<Void, Never>?
-    /// Bumped every time a close is armed or cancelled, so a close task that fires after its
-    /// own arming was superseded can tell it's stale and do nothing — belt and suspenders
-    /// alongside `Task.cancel()`, which a `Task.sleep` can race past by a tick.
     private var closeGeneration = 0
-    /// Number of `use(_:)` bodies currently running (including the time spent resolving the
-    /// client, before `body` even starts). The idle-close timer only ever fires while this is
-    /// zero, and a network/certificate error only closes once this reaches zero.
     private var inFlight = 0
-    /// True from `releaseSoon()` until the next `use(_:)` call (or an actual close) cancels
-    /// it. A `use(_:)` that ends while this is still true re-arms the close it had to defer.
     private var isReleased = false
-    /// Set when a `use(_:)` body throws a network/certificate error while another `use(_:)`
-    /// is still in flight on the same connection: closing right away would pull the
-    /// connection out from under that other call, so the drop is deferred until `inFlight`
-    /// reaches zero instead.
     private var pendingDrop = false
 
-    /// Reports an authentication rejection thrown by any command run through `use(_:)`.
     private let onAuthFailure: @MainActor () -> Void
 
-    /// The idle-close wait, injectable so a test can drive the timer instead of waiting for it
-    /// — the same seam `MailComposeViewModel` takes for its sent-copy dedupe delay. Nothing in
-    /// this type's tests then depends on wall-clock scheduling.
     private let sleep: @Sendable (Duration) async -> Void
 
-    /// Bumped by every sign-out. A client opened under an earlier value belongs to a student who
-    /// is no longer signed in, so `resolveClient` never hands one out.
     private var signOutEpoch = 0
     nonisolated(unsafe) private var signOutObserver: (any NSObjectProtocol)?
     private let signOutEvents: NotificationCenter
@@ -59,9 +33,6 @@ final class MailPageSession {
         self.onAuthFailure = onAuthFailure
         self.sleep = sleep
         self.signOutEvents = signOutEvents
-        // Registered here, before anything can use the session, and delivered synchronously
-        // (`queue: nil`) on the main actor `MailAccountManager.logout()` posts from — so no
-        // sign-out can land between two looks and be missed.
         signOutObserver = signOutEvents.addObserver(forName: MailAccountManager.didSignOut, object: nil, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.invalidateForSignOut() }
         }
@@ -71,12 +42,6 @@ final class MailPageSession {
         if let signOutObserver { signOutEvents.removeObserver(signOutObserver) }
     }
 
-    /// Runs `body` with the session's client, counting the whole call — including resolving
-    /// the client — as in flight so the idle-close timer can't act until every concurrent
-    /// `use(_:)` is done. A network or certificate error marks the connection for dropping;
-    /// the drop itself waits until `inFlight` reaches zero, so it can never yank the
-    /// connection out from under a sibling call still in progress. A `searchUnsupported`,
-    /// `folderChanged` or other protocol error leaves the connection in place.
     func use<T>(_ body: (any MailClient) async throws -> T) async throws -> T {
         cancelClose()
         inFlight += 1
@@ -100,38 +65,20 @@ final class MailPageSession {
         }
     }
 
-    /// The choke point that keeps a rejected password from being sent again covers everything
-    /// the page does, not only the sign-in that opened the connection. SMTP `AUTH LOGIN` and the
-    /// held connection's own relogin run inside a `use(_:)` body, never through
-    /// `MailAccountManager.openSession()`, so without this they would leave `authFailed` unset
-    /// and the next tap would send the rejected password again. NTUST locks the account (and
-    /// its Wi-Fi) after repeated failures, so every layer reports here.
     private func reportIfAuthenticationRejected(_ error: any Error) {
         guard (error as? MailClientError) == .authenticationFailed else { return }
         reportAuthenticationRejection()
     }
 
-    /// Reports a rejected password a `use(_:)` body caught and did not rethrow.
-    ///
-    /// `use(_:)` only hears about a rejection thrown as an error, and filing the sent copy is
-    /// best-effort: it must never fail a send that already succeeded (`SentCopyFiler`), so its
-    /// `.authenticationFailed` is caught and turned into an outcome. NTUST locks the account (and
-    /// its Wi-Fi) after repeated failures, so that caller reports here, reaching the same choke
-    /// point a thrown error would. Nothing else in `use(_:)`'s error path is skipped: an
-    /// authentication failure never drops the connection either way (`dropsConnection`).
     func reportAuthenticationRejection() {
         onAuthFailure()
     }
 
-    /// Arms the ~30 s close. Deferred while a `use(_:)` is still in flight — its `defer`
-    /// re-arms this once it finishes.
     func releaseSoon() {
         isReleased = true
         if inFlight == 0 { armClose() }
     }
 
-    /// Drops the connection — also called after every `use(_:)` finishes once `inFlight`
-    /// reaches zero, if any of them marked the connection for dropping.
     func close() async {
         closeTask?.cancel()
         closeTask = nil
@@ -143,14 +90,6 @@ final class MailPageSession {
         await current?.logout()
     }
 
-    /// Closes the connection the moment its student signs out, instead of leaving it for the
-    /// idle timer. The timer is not enough: `use(_:)` cancels it, `resolveClient` reuses a held
-    /// client as-is, and the client carries the credentials it logged in with. A different
-    /// student who signs in within the idle window and opens the mail tab would get the previous
-    /// student's session: their mailbox on screen, and a compose that sends as them.
-    ///
-    /// Synchronous so it completes inside the sign-out itself; the `LOGOUT` round trip runs
-    /// after. A call still in flight keeps the client it already has, and finishes against it.
     func invalidateForSignOut() {
         signOutEpoch += 1
         closeTask?.cancel()
@@ -164,12 +103,6 @@ final class MailPageSession {
         if let stale { Task { await stale.logout() } }
     }
 
-    // MARK: Internals
-
-    /// Ends one `use(_:)` call's accounting. Once `inFlight` reaches zero, a connection some
-    /// concurrent call marked for dropping is closed (taking priority over a deferred
-    /// `releaseSoon()`, since there's no point re-arming a close for a connection that's
-    /// about to be dropped anyway); otherwise a deferred `releaseSoon()` is re-armed.
     private func endUse() async {
         inFlight -= 1
         guard inFlight == 0 else { return }
@@ -180,21 +113,16 @@ final class MailPageSession {
         }
     }
 
-    /// An open that a sign-out overtook is thrown away rather than adopted: the connection it
-    /// made was logged in with the credentials of whoever was signed in when it started.
     private func resolveClient() async throws -> any MailClient {
         if let client { return client }
         let epoch = signOutEpoch
         if let opening {
             let opened = try await opening.value
-            // Whoever started that open closes it; this caller only must not use it.
             guard epoch == signOutEpoch else { throw CancellationError() }
             return opened
         }
         let task = Task { try await open() }
         opening = task
-        // Only this epoch's own open is cleared: after a sign-out, `opening` may already be a
-        // newer call's, made for the next student.
         defer { if epoch == signOutEpoch { opening = nil } }
         let opened = try await task.value
         guard epoch == signOutEpoch else {
@@ -225,17 +153,11 @@ final class MailPageSession {
         }
     }
 
-    /// Only closes if nothing raced this timer: the generation it was armed with is still
-    /// current (no cancel/re-arm happened since) and no `use(_:)` is in flight.
     private func fireClose(generation: Int) async {
         guard generation == closeGeneration, inFlight == 0 else { return }
         await close()
     }
 
-    /// Mirrors `LiveMailClient.closesConnectionOnFailure`: only a network or certificate
-    /// failure means the connection itself is dead. Every other `MailClientError` (including
-    /// `searchUnsupported` and `folderChanged`) is the server saying no to one command, not a
-    /// broken pipe, so the connection is kept for the next call.
     private static func dropsConnection(_ error: any Error) -> Bool {
         guard let mailError = error as? MailClientError else { return false }
         switch mailError {

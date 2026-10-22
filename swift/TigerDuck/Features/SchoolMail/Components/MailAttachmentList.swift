@@ -6,7 +6,6 @@ struct MailFileItem: Identifiable {
     var id: URL { url }
 }
 
-/// Attachments are never downloaded or opened automatically.
 struct MailAttachmentList: View {
     let parts: [MailBodyPart]
     let downloading: Set<String>

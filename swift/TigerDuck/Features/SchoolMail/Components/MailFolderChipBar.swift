@@ -1,12 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// Single-select folder chips: All mail · Inbox · Sent · Drafts · Junk · Trash · More…
-/// Roles the server lacks are hidden (Appendix A.1), and All mail appears only when there
-/// are at least two folders for it to merge.
-///
-/// All mail leads, because it is the selection the list opens on: the chip standing for what
-/// is on screen should be the first one read, not one found by scrolling past five others.
 struct MailFolderChipBar: View {
     let roles: [MailFolderRole: String]
     let others: [String]
@@ -14,20 +8,12 @@ struct MailFolderChipBar: View {
     let selected: MailFolderSelection
     let onSelect: (MailFolderSelection) -> Void
 
-    /// One chip. `nonisolated` so the synthesized `Hashable` conformance is too — the enclosing
-    /// `View` is main-actor isolated by default in this module, and a main-actor `==`/`hash`
-    /// cannot satisfy a nonisolated protocol requirement.
     nonisolated enum Entry: Hashable {
         case allMail
-        /// The role and the name `LIST` actually reported for it — the chip selects the latter,
-        /// never `role.imapName`, which is only ever the fallback used to *find* the folder.
         case role(MailFolderRole, folder: String)
-        /// The More… menu, with the folders it lists.
         case more([String])
     }
 
-    /// The chips, in the order they are drawn. Kept apart from `body` so the order is something
-    /// a test can state, rather than something only a screenshot can.
     nonisolated static func entries(roles: [MailFolderRole: String], others: [String],
                                     showsAllMail: Bool) -> [Entry] {
         var entries: [Entry] = []
@@ -70,8 +56,6 @@ struct MailFolderChipBar: View {
                     Button(ModifiedUTF7.decode(folder)) { onSelect(.real(folder)) }
                 }
             } label: {
-                // All mail is never one of `others` — it is no folder at all — so the
-                // "More…" chip is highlighted only for a real folder from that list.
                 chip(String(localized: "school_mail_folder_more"),
                      isSelected: selected.realFolder.map(folders.contains) ?? false)
             }
