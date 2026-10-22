@@ -2,13 +2,7 @@
 import MarkdownUI
 import SwiftUI
 
-/// The licences window, opened from the About tab's Open-source licences
-/// row. A window of its own rather than a page inside Settings: that window
-/// is fixed at 580×480 with no navigation stack to push onto, and a licence
-/// runs to thousands of words. The list on the left is the same one the
-/// iPhone shows on `OpenSourceLicensesView`.
 struct MacLicensesView: View {
-    /// The window's scene id, shared with `TigerDuckApp`'s `openWindow`.
     static let windowID = "licenses"
 
     @Environment(\.openURL) private var openURL
@@ -28,8 +22,6 @@ struct MacLicensesView: View {
                     Section {
                         row(title: String(localized: "app_name"), subtitle: catalog.app.license)
                             .tag(Selection.app)
-                        // TigerDuck's own, published separately — MIT, not
-                        // the app's AGPL, so not a third party either.
                         ForEach(catalog.firstParty) { package in
                             row(title: package.name, subtitle: package.license)
                                 .tag(Selection.package(package.id))
@@ -65,8 +57,6 @@ struct MacLicensesView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
             }
-            // Each licence scrolls from its own top, rather than keeping the
-            // offset of the one before it.
             .id(selection)
         }
         .navigationTitle(String(localized: "settings_open_source_licenses"))
@@ -115,13 +105,6 @@ struct MacLicensesView: View {
         }
     }
 
-    /// The list did not load, and `LicenseCatalog.load` has already logged
-    /// why. The sidebar has nothing to list and nothing to select,
-    /// so the whole of what is left to say goes in the detail pane: an
-    /// empty window would quietly drop the attribution MIT and BSD ask
-    /// for and the offer of source the AGPL makes, and the repository
-    /// carries both. Same two strings as the iPhone's page, so the two
-    /// read alike.
     @ViewBuilder
     private func unavailableDetail() -> some View {
         Text(String(localized: "settings_licenses_unavailable"))
@@ -144,8 +127,6 @@ struct MacLicensesView: View {
         .textSelection(.enabled)
     }
 
-    /// Markdown notice files are rendered; plain text is reflowed to the
-    /// window's width. Same split as the iPhone's page.
     @ViewBuilder
     private func licenseText(file: String, text: String) -> some View {
         if file.lowercased().hasSuffix(".md") {
@@ -159,8 +140,6 @@ struct MacLicensesView: View {
         }
     }
 
-    /// Every link here hands off to the default browser, as the About tab's
-    /// do — the Mac has no in-app browser.
     private func linkRow(_ key: String.LocalizationValue, url: URL) -> some View {
         Button {
             openURL(url)

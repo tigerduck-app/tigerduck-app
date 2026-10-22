@@ -1,8 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// Appearance tab — accent colour swatches and the course palette.
-/// One of the tabs assembled by `MacSettingsScene`.
 struct MacAppearanceSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var isConfirmingReassign = false
@@ -18,9 +16,6 @@ struct MacAppearanceSettingsView: View {
                 .padding(.vertical, 4)
             }
 
-            // Course colours are assigned automatically and can drift into near-neighbours as
-            // courses come and go across semesters; this restores a clean spread. It asks first,
-            // as it discards every colour the user picked by hand.
             Section {
                 Button(String(localized: "settings_reset_course_colors")) {
                     isConfirmingReassign = true

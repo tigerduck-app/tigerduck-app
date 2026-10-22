@@ -3,44 +3,25 @@ import SwiftUI
 import Defaults
 import UniformTypeIdentifiers
 
-/// macOS Class Table: a weekday × period grid matching the iPhone's look, with the same
-/// glassy cells (`.ultraThinMaterial`, `course.color.opacity(0.4)`, a thin tinted stroke)
-/// and consecutive periods of one course drawn as a single block.
-///
-/// Drawing and schedule edits live in MacClassTableView+Grid.swift and
-/// MacClassTableView+Editing.swift. The state below is `internal` only so those files can
-/// reach it, since `private` is file-scoped. Nothing outside the three files should touch it,
-/// and nothing should set it through the memberwise init, which would defeat `@State`.
 struct MacClassTableView: View {
     @Environment(AppState.self) var appState
 
-    /// Read through `@Default` rather than `Defaults[...]` so toggling the
-    /// setting redraws the grid — a raw read registers no SwiftUI dependency.
     @Default(.alwaysShowAllPeriods) private var showsAllPeriods
     @Default(.outlineRequiredCourses) var outlineRequiredCourses
 
     @State var selectedSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
     )
-    /// Set while the screen moves the selection itself, to the newest term or to the term of the
-    /// class table shown, so that assignment doesn't get recorded as a user pick.
     @State private var isFollowingNewestSemester = false
     @State var selectedSlot: SelectedSlot?
-    /// The Moodle screens pushed in the course detail overlay, which Escape leaves first.
     @State private var detailMoodlePath: [MoodleCourseRoute] = []
     @State private var showAddCourse: Bool = false
     @State private var shareModel: ClassTableShareModel?
     @State private var shareAvailability = ClassTableShareModel.AvailabilityMemo()
     @State private var showImportPicker = false
     @State private var importModel: ClassTableImportModel?
-    /// Non-nil while the macOS color picker sheet is presented. Set from the
-    /// per-cell context menu; the iOS path stores this on its view-model, but
-    /// the Mac classtable is a plain View so it lives in @State here.
     @State var courseToRecolor: SDCourse?
 
-    /// Rename state — mirrors the iOS `ClassTableViewModel` triple
-    /// (`courseToRename`, `renameText`, `showRenameAlert`). Mac has no
-    /// view-model so it lives on the view directly.
     @State var courseToRename: SDCourse?
     @State var renameText: String = ""
     @State var showRenameAlert: Bool = false
@@ -49,27 +30,15 @@ struct MacClassTableView: View {
     @State private var nicknameDraft = ""
     @State private var isDeletingPerson = false
     @State private var showsSaveFailed = false
-    /// The person the open rename or delete alert names, who may no longer show by the time the
-    /// user answers it.
     @State private var personInAlert: ImportedPerson?
 
-    /// Carries the weekday alongside the tapped course so the detail sheet
-    /// can render the concrete slot's classroom + time range. Without the
-    /// weekday context, `CourseDetailSheet` falls back to the aggregate
-    /// classroom and shows `—` for the time card.
     struct SelectedSlot: Identifiable {
         let course: SDCourse
         let weekday: Int
-        /// The clicked cell's first period, which picks the block's time and room.
         let periodId: String
         var id: String { "\(course.courseNo)-\(weekday)-\(periodId)" }
     }
-    /// Bumps whenever an async fetch lands new cache; the body's
-    /// `courses` computed read includes this to trigger re-render
-    /// (Observation can't see plain `DataCache` mutations).
     @State var cacheRevision: Int = 0
-    /// The term's merged courses per `cacheRevision`. A memo, not state a `.task` rebuilds, so
-    /// the edits, which bump the revision and read `courses` at once, see the new list.
     @State private var coursesMemo = ViewMemo<CoursesKey, [SDCourse]>()
 
     private struct CoursesKey: Equatable {
@@ -78,23 +47,16 @@ struct MacClassTableView: View {
     }
     @State private var ignoredCoursesMemo = ViewMemo<Int, Set<String>>()
 
-    /// `CourseTombstone` keys of the courses whose assignments are all ignored, read once per
-    /// `cacheRevision` like `courses`, since every cell asks.
     var ignoredAssignmentCourses: Set<String> {
         guard shownPerson == nil else { return [] }
         return ignoredCoursesMemo.value(for: cacheRevision) { DataCache.shared.loadIgnoredAssignmentCourses() }
     }
 
-    /// Whose class table this is, nil for the user's own. Another person's is read-only, and
-    /// nothing of the user's, such as assignments or Moodle, is shown on it.
     var shownPerson: ImportedPerson? { ImportedClassTableStore.shared.shownPerson }
     @State private var hasWarmedCaches = false
     @State private var isLoadingSemester = false
     @State var tripleConflictError: TripleConflictError?
 
-    /// Identifies a slot the add path tried to push into when it would
-    /// have become a 3-course slot. `existing` is the two courses already
-    /// scheduled there so the alert can name them.
     struct TripleConflictError: Identifiable {
         let id = UUID()
         let weekday: Int
@@ -104,9 +66,6 @@ struct MacClassTableView: View {
         let existingB: SDCourse
     }
 
-    /// Mon–Fri by default; weekend columns appear only when a loaded
-    /// schedule actually places a course on Sat/Sun, matching the
-    /// iPhone `activeWeekdays` behavior.
     var weekdays: [Int] {
         let occupied = Set(courses.flatMap { $0.schedule.keys })
         var days = Array(1...5)
@@ -119,27 +78,16 @@ struct MacClassTableView: View {
     let rowSpacing: CGFloat = 4
     let periodLabelWidth: CGFloat = 56
 
-    /// Computed, not stored: `SemesterCatalog.refresh()` runs inside the
-    /// cache warm below, so a term published mid-session has to be able to
-    /// appear without rebuilding the view. `selectedSemester` is folded in so
-    /// a persisted selection that aged out of the window still renders its label.
     private var availableSemesters: [String] {
         if let shownPerson { return shownPerson.semesters }
         let options = SemesterCatalog.availableSemesters()
         return options.contains(selectedSemester) ? options : options + [selectedSemester]
     }
 
-    /// Every cell reads this, and the merge decodes four cache files, so it is built once per
-    /// term and `cacheRevision`.
     var courses: [SDCourse] {
         let semester = selectedSemester
-        // Someone else's courses stay as shared: the user's tombstones and custom names are keyed
-        // by course number alone and would hide or rename theirs.
         if let shownPerson { return shownPerson.courses(in: semester) }
         return coursesMemo.value(for: CoursesKey(semester: semester, revision: cacheRevision)) {
-            // Use the canonical merge so the deletedCourseNos tombstones and customNames overlay
-            // apply. Not `currentCourses()`: it is pinned to the live `CourseSelectionService`
-            // semester, and the Mac picker can show a past one, so feed `merge` per-semester inputs.
             CanonicalCourseProvider.merge(
                 primary: DataCache.shared.loadCourses(semester: semester),
                 userAdded: DataCache.shared.loadUserAddedCourses(semester: semester),
@@ -194,9 +142,6 @@ struct MacClassTableView: View {
                     Button {
                         showAddCourse = true
                     } label: {
-                        // A bare `Label` in a macOS toolbar draws the glyph on a higher baseline than
-                        // the title. The HStack matches the semester picker's row geometry, and
-                        // `.fixedSize` stops AppKit squeezing it to an icon when the picker widens.
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
                             Text(String(localized: "add_course_title"))
@@ -228,7 +173,6 @@ struct MacClassTableView: View {
             }
             ToolbarItem(placement: .automatic) {
                 if let importModel, importModel.isLookingUp, importModel.pending == nil {
-                    // An update has no screen of its own, so it spins, and can be stopped, here.
                     Button {
                         importModel.cancel()
                     } label: {
@@ -254,7 +198,6 @@ struct MacClassTableView: View {
                 }
             }
         }
-        // The switcher's Import entry asks for the import this screen presents.
         .environment(\.requestClassTableImport, requestImport)
         .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.image]) { result in
             let model = ClassTableImportModel.live(authService: appState.authService)
@@ -263,7 +206,6 @@ struct MacClassTableView: View {
             case .success(let url):
                 Task { await model.readImage(fileAt: url) }
             case .failure(let error):
-                // A file that cannot be opened gives the same answer as one with no code in it.
                 AppLogger.captureError(error, context: ["phase": "classTableImport.pickFile"])
                 Task { await model.readImage(nil) }
             }
@@ -285,9 +227,6 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
-            // The conflict alert sits on the sheet's content: on iPhone, an alert on the parent
-            // makes SwiftUI dismiss the sheet to present it. macOS does not, but anchoring to the
-            // sheet keeps the alert attached to the search results on both platforms.
             .alert(
                 String(localized: "class_table_conflict_add_failed_title"),
                 isPresented: Binding(
@@ -379,12 +318,8 @@ struct MacClassTableView: View {
             }
             Task { await ensureCurrentSemesterFetched() }
         }
-        // Someone else's class table keeps the term on screen when they shared it and otherwise
-        // opens on their latest term; the user's own opens on its own term, as at launch.
         .onChange(of: ImportedClassTableStore.shared.shownTable, initial: true) { _, _ in
             if shownPerson != nil {
-                // An import finishing in the background can switch while one of the user's own
-                // edits is open, and it must not save into someone else's.
                 showAddCourse = false
                 showRenameAlert = false
                 courseToRename = nil
@@ -399,9 +334,6 @@ struct MacClassTableView: View {
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             cacheRevision &+= 1
         }
-        // Course detail uses a custom overlay (not `.sheet`) so the user can
-        // dismiss by clicking the backdrop — macOS sheets are window-modal
-        // and swallow all outside clicks, leaving ESC as the only escape.
         .overlay {
             if let slot = selectedSlot {
                 courseDetailOverlay(slot: slot)
@@ -433,18 +365,11 @@ struct MacClassTableView: View {
                 moodlePath: $detailMoodlePath,
                 showsMoodle: shownPerson == nil
             )
-            // Max bounds, not a fixed size: a small window shrinks the overlay to fit, and a
-            // large one gives the inner ScrollView more room before it scrolls.
-            // `CourseDetailSheet` sets its own minWidth 460 and minHeight 360 for the lower bound.
             .frame(maxWidth: 560, maxHeight: 620)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
-            // Swallow taps on the content so they don't reach the backdrop.
             .onTapGesture { }
 
-            // Restore ESC dismissal: custom overlays don't inherit a sheet's automatic
-            // cancel handling. Hidden button keeps the shortcut active without affecting
-            // the visible layout. A Moodle screen pushed in the overlay goes back first.
             Button("") {
                 if detailMoodlePath.isEmpty {
                     selectedSlot = nil
@@ -461,13 +386,6 @@ struct MacClassTableView: View {
         .transition(.opacity)
     }
 
-    // MARK: - Async fetch
-
-    /// One-shot warm of historical semester caches when the view first
-    /// appears. iPhone runs the same warm inside `ClassTableViewModel`;
-    /// the Mac picker can offer the past 4 semesters but only the
-    /// current one ships in the day-zero cache, so without this the
-    /// picker silently shows an empty grid for previous terms.
     private func warmCachesIfNeeded() async {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
@@ -478,8 +396,6 @@ struct MacClassTableView: View {
         }
     }
 
-    /// The catalogue can land after the view is built on a cold launch, so
-    /// re-apply the "never picked → newest term" rule once it does.
     private func followNewestSemesterIfUnpicked() {
         guard shownPerson == nil,
               Defaults[.classTableSelectedSemester] == nil,
@@ -489,11 +405,6 @@ struct MacClassTableView: View {
         selectedSemester = newest
     }
 
-    /// Fetch the currently-selected semester if its cache is empty.
-    /// Covers the case where the user picked a semester before
-    /// `warmCachesIfNeeded` finished (or where the warm skipped it
-    /// because cache was empty for a different reason than "never
-    /// fetched").
     private func ensureCurrentSemesterFetched() async {
         let target = selectedSemester
         guard shownPerson == nil, DataCache.shared.loadCourses(semester: target).isEmpty else { return }
@@ -509,8 +420,6 @@ struct MacClassTableView: View {
             cacheRevision &+= 1
         }
     }
-
-    // MARK: - Header / empty state
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -531,8 +440,6 @@ struct MacClassTableView: View {
         }
     }
 
-    /// Whose class table this is, a menu of the class tables to switch to once any has been
-    /// imported. The Mac has no tab bar to long-press, so this is its only switcher.
     @ViewBuilder
     private var switcher: some View {
         let store = ImportedClassTableStore.shared
@@ -551,7 +458,6 @@ struct MacClassTableView: View {
         }
     }
 
-    /// The Mac exports no screenshot, so it offers the rest of what someone else's class table does.
     private var otherPersonActions: some View {
         let sections = ClassTableOtherPersonAction.sections
             .map { $0.filter { $0 != .exportScreenshot } }
@@ -625,8 +531,6 @@ struct MacClassTableView: View {
     }
 
 
-    // MARK: - Helpers
-
     private func openShareSheet() {
         guard let studentId = appState.authService.storedStudentId else { return }
         let terms = ClassTableShareModel.terms(
@@ -649,12 +553,6 @@ struct MacClassTableView: View {
         return String(code.dropLast()) + "-" + String(code.last!)
     }
 
-    /// True when the Mac picker is on the currently-enrolled semester.
-    /// Rename is gated on this because `courseCustomNames` is keyed by
-    /// `courseNo` only — a rename made while viewing a past term would
-    /// leak into the current schedule, widgets, and Live Activity for any
-    /// course that reuses the same code. Delete tombstones are semester-
-    /// scoped (`CourseTombstone`) and keep the gate only for symmetry.
     var isViewingCurrentSemester: Bool {
         selectedSemester == CourseSelectionService.currentSemesterCode()
     }

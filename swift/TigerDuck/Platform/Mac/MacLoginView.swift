@@ -1,29 +1,12 @@
 #if os(macOS)
 import SwiftUI
 
-/// macOS-native NTUST SSO login form.
-///
-/// Same contract as the iOS login sheet: it calls `AuthService.login(studentId:password:)`
-/// and shows `authService.loginError` inline. It renders as a centered card in the main
-/// window, not a sheet, because Mac apps don't expect a modal sheet on launch. On success,
-/// `AppState.backgroundSync()` runs a follow-on sync so cached data is fresh by the time
-/// the user reaches the sidebar.
 struct MacLoginView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
 
-    /// Whether to surface the "Skip for now" escape hatch.
-    ///
-    /// `true` for the root login wall — first-launch users without
-    /// NTUST credentials need a way past it. `false` when presented
-    /// from inside the app (e.g. the Account settings re-login sheet):
-    /// the user is already past the wall, so skip would only flip the
-    /// already-true `didSkipMacLogin` flag and leave the sheet stuck
-    /// with no visible state change.
     let showsSkipButton: Bool
 
-    /// Runs after a sign-in that went through, so a sheet shown over a signed-in account can
-    /// close; signing in again leaves `hasStoredCredentials` as it was.
     private let onSignedIn: () -> Void
 
     @State private var studentId = ""
@@ -79,7 +62,6 @@ struct MacLoginView: View {
                     Button {
                         isPasswordVisible.toggle()
                     } label: {
-                        // Open eye = currently visible; eye.slash = hidden.
                         Image(systemName: isPasswordVisible ? "eye" : "eye.slash")
                             .foregroundStyle(.secondary)
                     }
@@ -87,9 +69,6 @@ struct MacLoginView: View {
                     .accessibilityLabel(String(localized: isPasswordVisible ? "password_hide" : "password_show"))
                 }
                 .frame(maxWidth: 340)
-                // SecureField masks at the OS layer; TextField does not. While the password is
-                // revealed, the window's sharingType is .none so a concurrent screen share or
-                // recording cannot capture the plaintext.
                 .screenCaptureProtected(isPasswordVisible)
             }
 
@@ -117,7 +96,6 @@ struct MacLoginView: View {
             .keyboardShortcut(.defaultAction)
             .disabled(!canSubmit)
 
-            // Cross-device sync toggle
             VStack(spacing: 4) {
                 Toggle(
                     String(localized: "settings_sync_toggle_label"),
@@ -133,18 +111,12 @@ struct MacLoginView: View {
             }
             .padding(.top, 8)
 
-            // Shown with or without the skip button, and never disabled during a login. A hanging
-            // or failing sign-in is when it answers what the form cannot, and this view is also
-            // the Account re-login sheet, which has no skip button.
             Button(String(localized: "settings_check_server_status")) {
                 openURL(AppURLs.serverStatus)
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
 
-            // A low-key escape hatch so users without NTUST credentials can still browse the
-            // public surfaces. The flag lives in memory only: like other desktop apps, the login
-            // form returns on each launch and after logout until credentials are saved.
             if showsSkipButton {
                 Button(String(localized: "onboarding_skip_for_now")) {
                     appState.didSkipMacLogin = true
@@ -165,13 +137,9 @@ struct MacLoginView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            // As the iOS sheet does: signing in as another account first wipes the stored one's data.
             if studentId.isEmpty, let stored = appState.authService.storedStudentId { studentId = stored }
             focused = studentId.isEmpty ? .studentId : .password
         }
-        // Whole-view capture protection. NSWindow.sharingType = .none
-        // is reference-counted so the per-row reveal wrap nested inside
-        // composes safely (release-order independent).
         .screenCaptureProtected()
     }
 

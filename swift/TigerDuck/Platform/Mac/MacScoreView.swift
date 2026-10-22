@@ -1,13 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// macOS Score (GPA) surface.
-///
-/// Reuses the cross-platform `ScoreViewModel` directly — its dependencies
-/// (NTUSTScoreService, AuthService, ScoreReport models) are all
-/// platform-agnostic. The Mac shell renders the same GPA trend chart
-/// (`GPATrendChart`) and per-term grouping the iPhone uses, expanded into
-/// wider cards with the per-row table columns Mac users expect.
 struct MacScoreView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = ScoreViewModel()
@@ -68,8 +61,6 @@ struct MacScoreView: View {
         }
     }
 
-    // MARK: - Sections
-
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 24) {
             VStack(alignment: .leading, spacing: 2) {
@@ -85,10 +76,6 @@ struct MacScoreView: View {
         }
     }
 
-    /// The GPA line and its readout, scoped by the toolbar picker. Every
-    /// term with grades has a point: the school's ranking once it is
-    /// posted, and until then the GPA worked out from the grades in so far,
-    /// marked as an estimate.
     @ViewBuilder
     private var trendCard: some View {
         if !viewModel.gpaTrend.isEmpty {
@@ -150,8 +137,6 @@ struct MacScoreView: View {
                 Text(displayTerm(term))
                     .font(.title3.bold())
                 Spacer()
-                // The ranking's GPA once it is posted, the estimate from the
-                // grades so far until then.
                 if let point = viewModel.gpaPoint(for: term) {
                     let stats = viewModel.rankingScope == .semester ? point.semester : point.cumulative
                     HStack(spacing: 12) {
@@ -236,7 +221,6 @@ struct MacScoreView: View {
         .padding(.vertical, 10)
     }
 
-    /// Map NTUST term codes ("1131") to a friendlier "academic year 113, semester 1".
     private func displayTerm(_ raw: String) -> String {
         guard raw.count == 4 else { return raw }
         let year = String(raw.prefix(3))

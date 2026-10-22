@@ -1,12 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// About tab — identity, the project links, and where the source lives.
-/// One of the tabs assembled by `MacSettingsScene`.
-///
-/// The links are the same set the iPhone carries, minus its in-app
-/// browser: on the Mac every one of them hands off to the default
-/// browser, so every one of them is drawn as a link and says so.
 struct MacAboutSettingsView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.openWindow) private var openWindow
@@ -40,9 +34,6 @@ struct MacAboutSettingsView: View {
                 .buttonStyle(.plain)
             }
 
-            // A disclosure rather than a second window: five repositories
-            // is a list worth reading in place, and the Settings window is
-            // fixed-size with no navigation stack to push onto.
             Section {
                 DisclosureGroup(isExpanded: $isShowingRepositories) {
                     repoRow(.organization)
@@ -68,8 +59,6 @@ struct MacAboutSettingsView: View {
 
     private var identity: some View {
         VStack(spacing: 10) {
-            // The app's own logo, not a generic mortarboard — this is the
-            // one place in the app that answers "what am I looking at".
             Image("AppLogo")
                 .resizable()
                 .scaledToFit()
@@ -90,11 +79,6 @@ struct MacAboutSettingsView: View {
         .padding(.vertical, 8)
     }
 
-    /// Tinted rather than primary-coloured: these rows leave the app, and
-    /// a plain-styled Button gives back the label's own colour, so without
-    /// this they read as ordinary settings text that happens to have a
-    /// glyph next to it. The tint is the user's accent colour, which the
-    /// Settings scene sets on the whole window.
     private func linkRow(_ key: String.LocalizationValue, url: URL) -> some View {
         Button {
             openURL(url)
@@ -107,9 +91,6 @@ struct MacAboutSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.tint)
             }
-            // Without this the row is only hittable on the glyphs
-            // themselves, since a plain-styled Button takes its label's
-            // shape and the Spacer is not part of it.
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
