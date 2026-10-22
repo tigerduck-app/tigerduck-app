@@ -2,25 +2,10 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Identifier
-
-/// Strongly-typed identifier for every one-shot "first time you did X, want
-/// us to keep doing it?" prompt in the app. Adding a new prompt = add a case.
-///
-/// The `rawValue` is appended to a fixed `firstTriggerPromptSeen.` prefix and
-/// stored in `UserDefaults`, so renaming a case is a one-way migration: the
-/// new key reverts to "unseen" for upgrading users. Pick names that read well
-/// in user-facing analytics ("flipToLibrary"), not implementation details.
 enum FirstTriggerPromptKey: String {
     case flipToLibrary
 }
 
-// MARK: - Content model
-
-/// A single "first trigger" prompt's content. Constructed lazily by the
-/// caller via `FirstTriggerPromptCenter.requestIfFirstTime(_:build:)` so the
-/// closures (and the strings they pull from localization) are not evaluated
-/// when the prompt has already been seen.
 struct FirstTriggerPromptContent {
     let title: String
     let message: String
@@ -31,29 +16,14 @@ struct FirstTriggerPromptContent {
     let onDecline: () -> Void
 }
 
-/// Animation variants available for the prompt's hero illustration. Add cases
-/// as new features adopt the prompt — each case gets a small SwiftUI sub-view
-/// inside `FirstTriggerAnimationView`.
 enum FirstTriggerAnimation {
     case phoneFlip
 }
 
-// MARK: - Center (state holder)
-
-/// Process-wide queue of pending first-trigger prompts. The root view binds a
-/// `.sheet(item:)` to `pending` via `.firstTriggerPromptHost()`. At most one
-/// prompt is visible at a time; rapid `requestIfFirstTime(...)` calls past
-/// the first are dropped silently.
-///
-/// Persistence is plain `UserDefaults` (not the `Defaults` library) because
-/// keys are constructed dynamically from the enum's `rawValue` and the set of
-/// known keys grows organically as features are added.
 @Observable
 final class FirstTriggerPromptCenter {
     static let shared = FirstTriggerPromptCenter()
 
-    /// Wraps the content with an Identifiable shell so SwiftUI's
-    /// `.sheet(item:)` can drive present/dismiss directly off this property.
     struct Pending: Identifiable {
         let id = UUID()
         let key: FirstTriggerPromptKey
@@ -68,9 +38,6 @@ final class FirstTriggerPromptCenter {
         UserDefaults.standard.bool(forKey: Self.storageKey(key))
     }
 
-    /// Show the prompt iff it hasn't been seen and nothing else is currently
-    /// pending. `build` is invoked only when the prompt will actually be
-    /// shown — cheap to call from a hot path (e.g. a sensor callback).
     func requestIfFirstTime(
         _ key: FirstTriggerPromptKey,
         build: () -> FirstTriggerPromptContent
@@ -79,14 +46,6 @@ final class FirstTriggerPromptCenter {
         pending = Pending(key: key, content: build())
     }
 
-    /// Called by the sheet's buttons. Marks the prompt seen and clears
-    /// `pending`, dismissing the sheet, before running the closure, so any
-    /// synchronous SwiftUI work it triggers (an `AppState` change fanning out
-    /// to `onChange` observers) sees the presentation already cleared.
-    ///
-    /// Seen is written here, not on `.onAppear`: a sheet dismissed any other
-    /// way (app backgrounded, root view recreated) is not a choice, and counting
-    /// it as one would answer for the user; the next trigger shows it again.
     func finish(accept: Bool) {
         guard let p = pending else { return }
         markSeen(p.key)
@@ -102,10 +61,6 @@ final class FirstTriggerPromptCenter {
         UserDefaults.standard.set(true, forKey: Self.storageKey(key))
     }
 
-    /// Re-arm a previously-seen prompt so the next ``requestIfFirstTime``
-    /// call for the same key surfaces it again. Used by the debug
-    /// "Triggers" page to re-test the first-flip experience; also a clean
-    /// hook for any future user-facing "reset onboarding" surface.
     func reset(_ key: FirstTriggerPromptKey) {
         UserDefaults.standard.removeObject(forKey: Self.storageKey(key))
     }
@@ -114,8 +69,6 @@ final class FirstTriggerPromptCenter {
         "firstTriggerPromptSeen.\(key.rawValue)"
     }
 }
-
-// MARK: - Sheet
 
 private struct FirstTriggerPromptSheet: View {
     let promptKey: FirstTriggerPromptKey
@@ -166,17 +119,11 @@ private struct FirstTriggerPromptSheet: View {
     }
 }
 
-// MARK: - Animation
-
 private struct FirstTriggerAnimationView: View {
     let animation: FirstTriggerAnimation
     @State private var flipped = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// SF Symbol switches between iPhone and iPad glyph based on idiom so the
-    /// same reusable prompt looks right on either device when future features
-    /// adopt this animation. Flip-to-Library itself is iPhone-only, but the
-    /// prompt system is feature-agnostic.
     private var deviceSymbol: String {
         UIDevice.current.userInterfaceIdiom == .pad ? "ipad.gen2" : "iphone.gen3"
     }
@@ -187,9 +134,6 @@ private struct FirstTriggerAnimationView: View {
             Image(systemName: deviceSymbol)
                 .font(.system(size: 96, weight: .regular))
                 .foregroundStyle(.tint)
-                // Rotate around the device's long edge (Y axis in portrait):
-                // the phone "tips over sideways" the way you'd naturally flip
-                // it to lay it face-down on a table.
                 .rotation3DEffect(
                     .degrees(flipped ? 180 : 0),
                     axis: (x: 0, y: 1, z: 0),
@@ -208,8 +152,6 @@ private struct FirstTriggerAnimationView: View {
     }
 }
 
-// MARK: - Host modifier
-
 private struct FirstTriggerPromptHost: ViewModifier {
     @State private var center = FirstTriggerPromptCenter.shared
 
@@ -218,8 +160,6 @@ private struct FirstTriggerPromptHost: ViewModifier {
         return content.sheet(
             item: $center.pending,
             onDismiss: {
-                // Any close but a tap on one of its buttons leaves the prompt unseen. Clear a
-                // stranded `pending`, or the next trigger could not show it again.
                 if let stranded = center.pending,
                    !center.hasSeen(stranded.key) {
                     center.pending = nil
@@ -227,9 +167,6 @@ private struct FirstTriggerPromptHost: ViewModifier {
             }
         ) { pending in
             FirstTriggerPromptSheet(promptKey: pending.key, content: pending.content)
-                // `.medium` clips the animation and both buttons on standard phones, and
-                // full screen is too much for an opt-in question. No drag indicator: the
-                // user can close it only with its two buttons, so a grab handle does nothing.
                 .presentationDetents([.fraction(0.7)])
                 .interactiveDismissDisabled()
         }
@@ -237,7 +174,6 @@ private struct FirstTriggerPromptHost: ViewModifier {
 }
 
 extension View {
-    /// Install the first-trigger prompt sheet host. Apply once near the root.
     func firstTriggerPromptHost() -> some View {
         modifier(FirstTriggerPromptHost())
     }

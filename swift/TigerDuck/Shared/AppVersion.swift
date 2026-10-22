@@ -1,19 +1,8 @@
 import Foundation
 
-/// Dotted-numeric app-version comparison used by the in-app update prompt
-/// and the What's New gate. Stays semver-shaped on purpose — both surfaces
-/// only ever compare release versions sourced from `MARKETING_VERSION` and
-/// iTunes Lookup's `version` field, neither of which carries pre-release
-/// or build metadata. Anything richer (e.g. `1.7.0-beta.1+sha`) is treated
-/// as malformed and returned as `nil`.
 struct AppVersion: Comparable, Equatable {
     let components: [Int]
 
-    /// Parse a dotted-numeric string into ordered components. Returns `nil`
-    /// for anything that isn't a non-empty sequence of integers separated
-    /// by `.` — guarding the update prompt against a future App Store
-    /// response that ships build metadata we'd otherwise sort lexically
-    /// and mis-rank ("1.10.0" < "1.9.0" under string comparison).
     init?(_ raw: String) {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -21,9 +10,6 @@ struct AppVersion: Comparable, Equatable {
         var parsed: [Int] = []
         parsed.reserveCapacity(parts.count)
         for part in parts {
-            // `Int(_:)` accepts a sign, so `Int("+1")` is 1 and passes `n >= 0`. Require plain
-            // digits so a sign in a `whatsnew.json` key or an iTunes Lookup response gives
-            // `nil` instead of collapsing to the unsigned version.
             guard !part.isEmpty, part.allSatisfy(\.isASCII), part.allSatisfy(\.isNumber) else {
                 return nil
             }
@@ -34,8 +20,6 @@ struct AppVersion: Comparable, Equatable {
         self.components = parsed
     }
 
-    /// Compare component-wise, padding the shorter side with zeros so
-    /// `1.7` and `1.7.0` are equal and `1.7.0 < 1.7.1`.
     static func < (lhs: AppVersion, rhs: AppVersion) -> Bool {
         let width = max(lhs.components.count, rhs.components.count)
         for i in 0..<width {
@@ -46,18 +30,10 @@ struct AppVersion: Comparable, Equatable {
         return false
     }
 
-    /// Equal under the same zero padding as `<`, so `1.7 == 1.7.0`. The
-    /// synthesized member-wise `==` would call those unequal while `<`
-    /// orders neither before the other, breaking `Comparable`'s contract.
     static func == (lhs: AppVersion, rhs: AppVersion) -> Bool {
         !(lhs < rhs) && !(rhs < lhs)
     }
 
-    /// Current marketing version baked into the app bundle. Falls back to
-    /// `"0.0.0"` so the update check fails closed (newer-on-store wins)
-    /// rather than treating a missing key as "infinitely new"; a DEBUG
-    /// assertion surfaces the underlying bundle misconfiguration so the
-    /// fallback does not silently inert the feature in development.
     static var current: AppVersion {
         if let raw = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
            let parsed = AppVersion(raw) {
