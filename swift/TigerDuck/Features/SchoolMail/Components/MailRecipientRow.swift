@@ -24,6 +24,9 @@ nonisolated struct MailRecipient: Hashable, Sendable {
             return MailRecipient(name: parsed?.name?.mailNonEmpty, address: address, raw: raw,
                                  isSelf: own != nil && address?.lowercased() == own)
         }
+    /// Each entry of a `MailSummary.to`/`cc` list — `"Name" <mailbox@host>` or `mailbox@host` —
+    /// as a recipient. Blank entries are dropped. `ownAddress` is compared case-insensitively:
+    /// Mail2000 writes addresses lowercase, a sender may not.
     }
 }
 
@@ -72,3 +75,4 @@ struct MailRecipientRow: View {
     }
 }
 #endif
+            // On each piece: the modifier on the finished line does not reach inside these.

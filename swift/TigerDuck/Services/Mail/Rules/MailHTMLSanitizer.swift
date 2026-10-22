@@ -158,6 +158,9 @@ nonisolated enum MailHTMLSanitizer {
         }
         var links: [MailLink] = []
         for (index, anchor) in anchors.array().enumerated() {
+                // Trim and write back, as for `src`: SwiftSoup's Whitelist checks a trimmed URL but
+                // keeps the original, so a space or decoded `&#x0a;` stays in the HTML and `href`:
+                // `URL(string:)` fails, so no mismatch warning shows, yet WebKit follows the link.
             let text = (try? anchor.text()) ?? ""
             let href = (try? anchor.attr("href")) ?? ""
             links.append(MailLink(text: MailTextCleaner.clean(text), href: href))
@@ -179,6 +182,14 @@ nonisolated enum MailHTMLSanitizer {
     static let hrefAttributePattern = try! NSRegularExpression(
         pattern: #"(?:[\s/]+|(?<=["']))href\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)"#, options: .caseInsensitive
     )
+    /// Rewrites every `<a href>` in sanitized `html` to `https://link.invalid/<n>`; `links[n]`
+    /// holds anchor `n`'s text and original href, read off the tree this rewrites, never off
+    /// `SanitizedHTML.links`. The cleaner can drop an element but keep its children, a tree no
+    /// parser builds, so a reparse can shift an index. The web view reparses this output, so it
+    /// is reparsed here and must yield the same anchors, href and text, in order. On a mismatch
+    /// or any failure, every `href` is stripped and `links` is empty: live links never pair with
+    /// `links: []`. The navigation delegate answers a tap with the index alone, never a URL, so
+    /// no WebKit canonicalization quirk can misroute a tap. `.invalid` never resolves (RFC 2606).
 
     static func stripHrefsWithRegex(_ html: String) -> String {
         let range = NSRange(html.startIndex..., in: html)
@@ -208,6 +219,14 @@ nonisolated enum MailHTMLSanitizer {
     private static let blockTags: Set<String> = [
         "p", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "table",
         "ul", "ol", "dl", "dt", "dd", "hr", "center",
+    /// Last resort when `SwiftSoup.parseBodyFragment` failed and no tree is left to strip: removes
+    /// every `href` as text, double-quoted, single-quoted or unquoted (HTML5 allows all three).
+    /// HTML5's "before attribute name" state also takes `/` as a separator, so `<a/href="…">`
+    /// carries a live `href`. After a quoted value no separator is needed (`<a href="a"href="b">`
+    /// is two attributes), so a quote also starts a match, via a zero-width lookbehind that keeps
+    /// the previous closing quote. Over-stripping is the safe side: removing an `href=` that was
+    /// only text costs a few characters, missing one costs a tappable phishing link. Not `private`:
+    /// unit-tested directly, since no input makes SwiftSoup's own parser fail on demand.
     ]
 
     private static func appendText(of element: Element, depth: Int, to output: inout String) {

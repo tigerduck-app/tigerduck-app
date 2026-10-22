@@ -7,6 +7,7 @@ import UserNotifications
 nonisolated enum MailBackgroundRefresh {
     static func register() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: MailConstants.backgroundTaskIdentifier, using: nil) { task in
+    /// Must run before `application(_:didFinishLaunchingWithOptions:)` returns.
             guard let refresh = task as? BGAppRefreshTask else {
                 task.setTaskCompleted(success: false)
                 return
@@ -23,6 +24,8 @@ nonisolated enum MailBackgroundRefresh {
 
     static func schedule() {
         try? BGTaskScheduler.shared.submit(makeRequest())
+    /// Replaces any pending request. Fails silently where refresh is unavailable
+    /// (simulator, Low Power Mode, the user switched Background App Refresh off).
     }
 
     static func cancel() {
@@ -55,6 +58,12 @@ nonisolated enum MailBackgroundRefresh {
         schedule: () -> Void = { MailBackgroundRefresh.schedule() },
         check: () async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .backgroundTask) }
     ) async -> Bool {
+    /// One background check. While stored data does not read back, as before the first unlock after
+    /// a restart or in a process that started then, the preferences read as signed out and a check
+    /// would schedule no next one, so it only schedules it
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/691). `prefs` is
+    /// `DefaultsMailPreferences()`, not `MailAccountManager.shared`, which is @MainActor: this
+    /// callback isn't guaranteed to run on the main actor.
         guard storedDataReadsBack() else {
             schedule()
             return false

@@ -294,6 +294,9 @@ actor DemoMailClient: MailClient {
         switch byte {
         case 0x30...0x39: return Int(byte - 0x30)
         case 0x41...0x46: return Int(byte - 0x41) + 10
+    /// A minimal RFC 2045 quoted-printable decoder: `=XX` is a literal byte, a trailing `=` at
+    /// the end of a line is a soft break (dropped along with the CRLF that follows it),
+    /// everything else passes through unchanged.
         case 0x61...0x66: return Int(byte - 0x61) + 10
         default: return nil
         }

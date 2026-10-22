@@ -8,6 +8,14 @@ nonisolated struct MailFolderUnavailable: Error, Equatable {
 nonisolated enum MailFolderProvisioner {
     struct Ensured: Equatable, Sendable {
         var name: String
+/// Creates a missing role folder when an operation needs one, then re-resolves the role map from a
+/// fresh `LIST`. Mail2000 accounts need not have Sent, Drafts or Trash. Three rules: (1) only
+/// those three are ever created: `.junk` belongs to the server's spam filter, and RFC 3501
+/// guarantees `INBOX`. (2) Nothing is created speculatively, as a new folder is a visible change
+/// to the account. (3) The map is re-resolved from the server, not patched, because the caller's
+/// map cannot see the new folder. Roles resolve by name, so the same names are created on any
+/// server. `createFolder` gets the raw modified UTF-7 `MailFolderRole.imapName`, which nothing
+/// below re-encodes. See docs/decisions/0016-mail-role-folder-provisioning.md.
         var roles: [MailFolderRole: String]
     }
 
@@ -21,6 +29,14 @@ nonisolated enum MailFolderProvisioner {
         try? await client.createFolder(role.imapName)
         guard let available = try? await client.listFolders() else { return nil }
         let refreshed = MailFolderMap.resolve(available: available)
+    /// The folder for `role`, creating it if the account has none. Returns nil, and the caller
+    /// falls back, when the role must never be created or a fresh `LIST` does not resolve it back.
+    /// Never throws: no caller may fail its own operation because a folder could not be made.
+    ///
+    /// The list decides, not the `CREATE` result: Mail2000 has no RFC 5530 `[ALREADYEXISTS]`, and
+    /// two operations, or another client, can race to the same folder. The re-resolve also proves
+    /// the name went out in a form the server understood: a mangled or double-encoded name never
+    /// resolves to this role, and handing it back would make the next operation create another.
         guard let created = refreshed[role] else { return nil }
         return Ensured(name: created, roles: refreshed)
     }

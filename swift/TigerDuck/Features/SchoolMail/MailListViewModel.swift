@@ -95,6 +95,9 @@ final class MailListViewModel {
         isRefreshing = true
         defer { if isCurrent(selection, epoch), loadingSelection == selection { isRefreshing = false } }
         do {
+        // Resolved in the body, not the parameter list: a default-argument expression runs outside
+        // the init's MainActor isolation, where `MailPageSession()` and `MailAccountManager.shared`
+        // warn in Swift 6 mode and the checker's closure would be isolated to `MailChecker`.
             if folderRoles.isEmpty {
                 let available = try await session.use { client in try await client.listFolders() }
                 guard epoch == accountEpoch else { return }
@@ -136,6 +139,16 @@ final class MailListViewModel {
                 await save(merged)
             }
             rebuildRows()
+    // MARK: Loading
+
+    /// Paints each covered folder's cached page first, then refreshes the newest page of each
+    /// from the server. The refresh is merged into what is already loaded, not swapped in: new
+    /// mail is added, and mail the user paginated to beyond this first page is kept.
+    ///
+    /// One page per real folder: one round trip for an ordinary folder, two for All mail,
+    /// however far the merged list has been scrolled. That bound is why the merged view refreshes
+    /// only the newest page per folder: Mail2000 caps connections and starts answering
+    /// "The mail server is busy" under load.
             serverStatus = .ok
             loadState = .loaded
         } catch {
@@ -216,6 +229,14 @@ final class MailListViewModel {
         guard targets != before else { return }
         Task { await load() }
     }
+    /// A load the user asked for (the screen opening, a pull, Retry, the compose sheet closing),
+    /// with the warm stopped first and started again once the list is up.
+    ///
+    /// The warm shares the one connection and `AsyncSerialLock` is FIFO, so a running warm would
+    /// queue this load behind every folder still waiting. A page in flight cannot be aborted
+    /// (SwiftMail commands run to completion), so this waits at most one page, and the warm's
+    /// start delay makes even that unlikely. Without the restart the first pull would end warming
+    /// for the visit. The 60 s poll calls `load()` alone: re-warming each minute is not its job.
 
     func reportSentCopyNotice(_ message: String) {
         sentCopyNotice = message
@@ -693,6 +714,16 @@ final class MailListViewModel {
     func recoverFromFolderChange(_ folder: String) async {
         await dropFolder(folder)
         guard targets.contains(folder) else { return }
+    // MARK: Warm
+
+    /// Warms the folders the user is not looking at, so a chip tap paints from cache, not a
+    /// spinner: the role folders in chip order, minus what the selection shows, at
+    /// `MailConstants.warmPageSize` rows each. One at a time on the page's own connection, since
+    /// Mail2000 caps connections and answers "server busy" under load, and the screen being
+    /// read would pay for a fan-out. Silent: it writes only the cache, never `loadState`,
+    /// `serverStatus`, `rows` or `pages`, and never shortens a cache the user paged further into
+    /// (`warmShouldWrite`). Failures are swallowed, except a lost connection, which stops the
+    /// queue rather than logging in again per folder: NTUST counts failed logins towards a lockout.
         pages[folder] = nil
         rebuildRows()
         await load()
@@ -707,6 +738,8 @@ final class MailListViewModel {
     nonisolated private static func cachedPage(cache: MailCache, folder: String) async -> MailFolderPage? {
         await Task.detached { cache.loadPage(folder: folder) }.value
     }
+            // Cancelling cannot abort a page already on the wire, so the only way to spare the
+            // refresh that follows a paint straight away is for the warm not to have started yet.
 
     private func save(_ page: MailFolderPage) async {
         let cache = self.cache

@@ -3,15 +3,31 @@ import Foundation
 import Security
 import os
 
+/// Certificate check for the School Mail IMAP and SMTP connections. Same rules as
+/// `TLSPinningDelegate`: the system chain and hostname must pass, then some certificate's SPKI
+/// must be in the host's pin set; after the pin set expires, system trust alone decides
+/// (fail-soft, issue #92). A failure cannot be bypassed. The `SecTrust` evaluation below is the
+/// connection's only validation: a custom NIOSSL callback replaces all of BoringSSL's checks,
+/// hostname included, and on Darwin also the Security.framework callback NIOSSL installs;
+/// `.fullVerification` in `MailTransportSecurity` only keeps it from being skipped. Without the
+/// evaluation, any chain passes for any name. See docs/decisions/0001-tls-pinning.md.
 nonisolated enum MailTLSVerifier {
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.TLS")
 
+    /// - Parameter pinPolicy: test seam; `nil` reads `TLSPinningDelegate`'s table. Never pass
+    ///   `.notPinned` from production code — it exists only so tests can force the unpinned path.
+    /// - Note: Runs `SecTrustEvaluateWithError`, which can block; SwiftMail's custom
+    ///   verification callback (the only production caller, via `swiftMailVerifier`) already
+    ///   invokes this off the main thread, on the IMAP/SMTP connection's own NIO event loop.
     static func verify(
         derChain: [[UInt8]],
         host: String,
         now: Date = Date(),
         pinPolicy: TLSPinningDelegate.PinPolicy? = nil
     ) -> Bool {
+        // NIOSSL hands the peer chain leaf-first (TLS wire order), and the order matters:
+        // `SecTrustCreateWithCertificates` takes the first certificate as the leaf, so anything
+        // else first would evaluate trust against the wrong certificate.
         let certificates = derChain.compactMap { SecCertificateCreateWithData(nil, Data($0) as CFData) }
         guard !certificates.isEmpty, certificates.count == derChain.count else {
             logger.error("Mail TLS certificate parsing failed for \(host, privacy: .public)")

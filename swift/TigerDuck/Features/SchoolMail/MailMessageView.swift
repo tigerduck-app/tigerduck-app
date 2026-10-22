@@ -88,6 +88,9 @@ struct MailMessageView: View {
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: { pending in
+            // HTML/SVG must never reach Quick Look, which renders it in-process with WebKit
+            // (JavaScript on, remote loads allowed). Whatever the user asked for, the confirm
+            // button for those says "share" and shares.
             Text(String(format: String(localized: "school_mail_risky_message"), pending.part.filename ?? ""))
         }
         .confirmationDialog(String(localized: "school_mail_delete_forever_title"),
@@ -431,3 +434,6 @@ struct MailMessageView: View {
     }
 }
 #endif
+    /// Resumes whichever action (open or share) the risky confirmation was raised for, except
+    /// that an HTML/SVG part always goes to the share sheet, never Quick Look, which renders it
+    /// in-process with WebKit (JavaScript on, remote loads allowed).

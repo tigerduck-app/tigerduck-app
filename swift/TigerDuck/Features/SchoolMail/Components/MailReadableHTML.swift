@@ -20,6 +20,8 @@ nonisolated struct MailReadableHTML {
         targets = Self.targets(in: html)
         var setsColors = false
         var nodes: [Node] = []
+    /// Held whole: a node finds its output settings through its document, which a node alone
+    /// does not keep alive.
         var document: Document?
         do {
             let parsed = try SwiftSoup.parseBodyFragment(html)
@@ -57,6 +59,8 @@ nonisolated struct MailReadableHTML {
         }
         self.setsColors = setsColors
         self.document = document
+                // WebKit paints a table's background and border over its grid only, not its caption,
+                // while both keep their table display.
         self.nodes = nodes
     }
 
@@ -296,6 +300,9 @@ nonisolated struct MailReadableHTML {
         if let declaration = style.effective("color") {
             return Sent(color: parse(declaration.value, legacy: false), attribute: "style", value: style.text,
                         range: declaration.value.startIndex..<declaration.value.endIndex)
+    /// Keywords that set no colour of their own. Not `initial`: on `color` it is the initial colour,
+    /// which WebKit has drawn black under a dark `color-scheme`
+    /// (https://github.com/w3c/csswg-drafts/issues/9274), so it counts as a colour.
         }
         guard element.tagName() == "font", let value = try legacyValue("color", of: element) else { return nil }
         return Sent(color: parse(value, legacy: true), attribute: "color", value: String(value.base),
@@ -351,6 +358,8 @@ nonisolated struct MailReadableHTML {
     private static func function(_ value: String) -> RGBA? {
         guard let open = value.firstIndex(of: "("), value.hasSuffix(")"), ["rgb", "rgba"].contains(value[..<open]) else { return nil }
         let arguments = value[value.index(after: open)..<value.index(before: value.endIndex)]
+    /// Every double-quoted `href` and `src` in `html`, in order. That is all of them: `html` is
+    /// SwiftSoup's output, which quotes so, and a page reuses those bytes for what it leaves alone.
         var channels: [Substring]
         var alpha: Substring?
         if arguments.contains(",") {
@@ -431,6 +440,8 @@ nonisolated struct MailReadableHTML {
 
     private nonisolated struct Fixes {
         private nonisolated struct Pair: Hashable {
+    /// A number out of `scale` or a percentage, clamped to 0...1 as CSS does. Only digits, signs,
+    /// points and exponents: `Double(_:)` alone also takes `nan`, `inf` and hex floats.
             let text: RGBA
             let background: RGBA
         }

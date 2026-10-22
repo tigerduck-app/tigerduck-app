@@ -1,6 +1,14 @@
 #if os(iOS)
 import Foundation
 
+/// What the sent-copy dedupe probe established. Three values, because the server can also
+/// refuse to answer.
+///
+/// Mail2000's measured CAPABILITY banner is `IMAP4 IMAP4rev1 AUTH=LOGIN LITERAL+ ID NAMESPACE
+/// STARTTLS`, and nothing in it promises that `SEARCH HEADER "Message-ID"` is honoured, so
+/// "the probe failed" needs its own case. Flattening it into "not saved", as
+/// `(try? await client.containsMessageID(…)) ?? false` would, makes a server that refuses that
+/// search key duplicate every sent mail.
 nonisolated enum SentCopyProbe: Equatable, Sendable {
     case found
     case notFound

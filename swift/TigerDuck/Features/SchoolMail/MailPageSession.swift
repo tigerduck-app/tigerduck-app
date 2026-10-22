@@ -100,11 +100,25 @@ final class MailPageSession {
         opening = nil
         let stale = client
         client = nil
+    /// The choke point that keeps a rejected password from being sent again covers everything
+    /// the page does, not only the sign-in that opened the connection. SMTP `AUTH LOGIN` and the
+    /// held connection's own relogin run inside a `use(_:)` body, never through
+    /// `MailAccountManager.openSession()`, so without this they would leave `authFailed` unset
+    /// and the next tap would send the rejected password again. NTUST locks the account (and
+    /// its Wi-Fi) after repeated failures, so every layer reports here.
         if let stale { Task { await stale.logout() } }
     }
 
     private func endUse() async {
         inFlight -= 1
+    /// Reports a rejected password a `use(_:)` body caught and did not rethrow.
+    ///
+    /// `use(_:)` only hears about a rejection thrown as an error, and filing the sent copy is
+    /// best-effort: it must never fail a send that already succeeded (`SentCopyFiler`), so its
+    /// `.authenticationFailed` is caught and turned into an outcome. NTUST locks the account (and
+    /// its Wi-Fi) after repeated failures, so that caller reports here, reaching the same choke
+    /// point a thrown error would. Nothing else in `use(_:)`'s error path is skipped: an
+    /// authentication failure never drops the connection either way (`dropsConnection`).
         guard inFlight == 0 else { return }
         if pendingDrop {
             await close()

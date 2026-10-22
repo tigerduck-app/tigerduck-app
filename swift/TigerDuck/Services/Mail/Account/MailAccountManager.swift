@@ -206,6 +206,14 @@ final class MailAccountManager {
         let performClear = clearCache
         let prefs = self.prefs
         prefs.cacheWipePending = true
+    /// The username as it goes to `LOGIN`: trimmed, and upper-cased — Mail2000 wants
+    /// `B10000000`, which is also how the student ID is printed everywhere else in the app.
+    ///
+    /// A username that is an email address keeps the case it was typed in. RFC 5321 §2.3.11
+    /// makes the local part case-*sensitive* and leaves the choice to the receiving server, so
+    /// folding it is the one thing this must not do to an address; a school student ID never
+    /// contains `@`, so the real path is upper-cased exactly as before. This exists so the
+    /// DEBUG developer override can sign in to a server whose usernames are addresses.
         pendingCacheClear = Task.detached {
             await performClear()
             prefs.cacheWipePending = false

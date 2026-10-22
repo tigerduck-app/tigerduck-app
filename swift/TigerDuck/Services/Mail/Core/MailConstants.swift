@@ -41,3 +41,11 @@ nonisolated enum MailConstants {
     }
 }
 #endif
+    /// `B10000000` → `b10000000@mail.ntust.edu.tw` (Mail2000 writes the address lowercase).
+    ///
+    /// The domain is the effective one, so a DEBUG override reaches the `From` address the
+    /// compose screen sends with and the address `MailAccountManager` shows in Settings.
+    ///
+    /// A username that already carries a domain gets no second one. A school student ID never
+    /// contains `@`, so the real path is unchanged; this lets the override sign in to a server
+    /// whose username is an email address without producing `user@example.com@example.com`.

@@ -49,6 +49,11 @@ enum MailWebViewFactory {
         return configuration
     }
 
+    /// Matches only the form `MailHTMLSanitizer.rewriteLinks` emits: `https://link.invalid/<decimal
+    /// index>`, no leading zeros, no userinfo, port, query or fragment. Anything else fails
+    /// closed rather than being treated as some link. `\z` (absolute end), not `$`: ICU's `$`
+    /// also matches before a trailing line terminator, which would let
+    /// `"https://link.invalid/0\n"` slip through as index 0.
     static func contentRules(allowRemoteImages: Bool) -> String {
         var rules: [[String: Any]] = [
             ["trigger": ["url-filter": ".*"], "action": ["type": "block"]],
@@ -102,6 +107,9 @@ final class MailCIDSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
+    /// Replaces whatever rule list the web view had with `list`. Every list goes first: a
+    /// `block-all` list left installed beside an `images` one keeps blocking, because
+    /// `ignore-previous-rules` does not reach across lists.
         guard let url = task.request.url else {
             task.didFailWithError(URLError(.badURL))
             return

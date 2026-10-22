@@ -353,6 +353,9 @@ final class MailComposeViewModel {
     func saveDraft() async -> Bool {
         guard !isSending else { return false }
         guard !prefs.authFailed else {
+        // A password the server rejected is never sent again: repeated failures lock the school
+        // account and its Wi-Fi. SMTP `AUTH LOGIN` runs outside `MailAccountManager.openSession()`,
+        // and a failed send keeps the sheet open, so each Send tap would be another login attempt.
             error = MailAccountManager.LoginError.credentials.message
             return false
         }
@@ -494,6 +497,8 @@ final class MailComposeViewModel {
                 escaped = false
                 continue
             }
+        // Saving a draft is an IMAP APPEND, which needs the saved password, and a password the
+        // server rejected is never sent again: repeated failures lock the account and its Wi-Fi.
             if character == "\\", inQuotes {
                 current.append(character)
                 escaped = true
@@ -514,3 +519,13 @@ final class MailComposeViewModel {
     }
 }
 #endif
+            // The STORE may already have landed; an unclaimed `\Deleted` UID blocks every later
+            // EXPUNGE in Drafts for good, so the same recovery the message screen runs applies
+            // here.
+    /// Splits on top-level commas and semicolons, mirroring `MailAddress.parseList`'s quote- and
+    /// angle-bracket-aware algorithm. It is duplicated because that call silently drops a token it
+    /// can't parse, and compose needs the raw token back to report it. A token's original text is
+    /// kept as invalid when it doesn't parse to a plausible address, or its local part or domain
+    /// carries a non-ASCII character. The school SMTP server has no SMTPUTF8, so such a token is
+    /// rejected only here, in compose validation, never in the shared address parser incoming mail
+    /// uses to show a "From".

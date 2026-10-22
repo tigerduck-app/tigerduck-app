@@ -1,6 +1,8 @@
 #if os(iOS)
 import Foundation
 
+/// Header lookup on a raw RFC 822 message, for the one field SwiftMail's envelope
+/// parsing drops (Reply-To). Unfolds continuation lines and RFC 2047-decodes the value.
 nonisolated enum MailRawHeaders {
     static func value(named name: String, in raw: Data) -> String? {
         let separator = raw.range(of: Data("\r\n\r\n".utf8)) ?? raw.range(of: Data("\n\n".utf8))

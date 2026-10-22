@@ -23,6 +23,14 @@ nonisolated enum MailTextCleaner {
                 continue
             }
             if pendingSpace {
+    /// Java's `\s`, which is ASCII-only (space, tab, newline, vertical tab, form feed and
+    /// carriage return), not Unicode whitespace.
+    ///
+    /// Spelled out rather than taken from Foundation: `CharacterSet.whitespaces` contains
+    /// U+200B ZERO WIDTH SPACE on Darwin, so collapsing with it would turn `ntust.e<U+200B>du.tw`
+    /// into `ntust.e du.tw`: two words where Android keeps one host, a different wrong answer to
+    /// an invisible-character attack. Removing U+200B is `visibleText`'s job. U+000B and U+000C
+    /// never reach this step; `controls` removed them already.
                 scalars.append(" ")
                 pendingSpace = false
             }

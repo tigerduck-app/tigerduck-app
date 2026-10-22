@@ -16,10 +16,23 @@ struct MailNotificationSettingsView: View {
     static func notificationsToggleIsEnabled(isLoggedIn: Bool, authFailed: Bool) -> Bool {
         isLoggedIn && !authFailed
     }
+    /// Injectable purely so tests can drive a throwaway account instead of the app's real
+    /// singleton (which reaches the real `UserDefaults`). Every caller in the app uses the
+    /// default.
+    ///
+    /// Optional-defaulted-to-`nil` rather than `= .shared`: a default argument expression is
+    /// type-checked in a nonisolated context, and `MailAccountManager.shared` is main-actor
+    /// isolated, so spelling the singleton there is an isolation violation in the Swift 6
+    /// language mode. Resolving it in this (main-actor) body keeps the seam identical.
 
     static func settingsRowIsEnabled(isLoggedIn: Bool) -> Bool {
         isLoggedIn
     }
+    /// Turning notifications on schedules a background refresh. After a rejected password
+    /// `MailBackgroundRefresh.shouldRescheduleAfterHandling` refuses to reschedule, and the
+    /// password is never retried (repeated failures lock the school account and its Wi-Fi), so
+    /// the switch would offer something the app will not do. Signed out, there is nothing to
+    /// check either.
 
     @MainActor
     static func notificationsBinding(for account: MailAccountManager) -> Binding<Bool> {

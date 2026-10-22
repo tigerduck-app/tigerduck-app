@@ -59,6 +59,14 @@ struct SchoolMailView: View {
             } icon: {
                 Image(systemName: "wrench.and.screwdriver.fill")
                     .foregroundStyle(Color.orange)
+    /// The page itself has to say when it is not showing school mail.
+    ///
+    /// Its own row, not a suffix inside `titleBar`: that row's height is matched against Home and
+    /// Class table so the three titles sit at the same height, and nothing that could change its
+    /// size belongs in it. It reads the whole effective configuration (a host and a domain say
+    /// more than "override on") and is absent when the override is off and from Release builds.
+    /// Call sites decide whether to show it: in a `List`, a conditional that resolves to nothing
+    /// still carries its row modifiers and can leave an empty row and separator in debug builds.
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(TigerDuckTheme.Spacing.md)
@@ -141,6 +149,14 @@ struct SchoolMailView: View {
             row.glassEffect(.regular.interactive(), in: .capsule)
         } else {
             row.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
+    /// Unread-only filter, guide and compose, sharing one capsule — the backing the toolbar
+    /// used to supply on iOS 26. The status dot stays outside it: it reports on the server,
+    /// it does not act on the mailbox.
+    ///
+    /// Each button is `.borderless` because the row is a `List` row now: the default style
+    /// there gives the whole row one tap target and drops the tint, so three `.automatic`
+    /// buttons would render untinted and fire as one. `MailFolderChipBar` and `SyncStatusDot`
+    /// take `.plain` in the same situation, for the same reason.
         }
     }
 
@@ -159,6 +175,9 @@ struct SchoolMailView: View {
                 Button { viewModel.searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(Color.textSecondary)
+                    // Optical centring, keep it: `square.and.pencil` draws its rounded square
+                    // 1.5pt below the centre of its 21pt box (the pencil takes the room above),
+                    // so it hangs low beside the centred circled glyphs. Already centred on x.
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "action_clear_text"))
@@ -174,6 +193,14 @@ struct SchoolMailView: View {
         Image(systemName: systemName)
             .font(.body)
             .frame(width: Self.headerActionWidth, height: Self.headerActionHeight)
+    /// Search, in the list's own content rather than `.searchable`.
+    ///
+    /// `.searchable` puts its field in the navigation bar, which hides it at rest only under a
+    /// large `.navigationTitle`. This page has no navigation title (its title is content, so it
+    /// and the buttons sit where Home's and Class table's do), so the field would sit alone in
+    /// the bar and hold the header a full bar's height lower than those pages. As a row it
+    /// scrolls with everything else and, like the drawer on Announcements, stays hidden until
+    /// the list is pulled down past its top (`pullToRevealSearch`).
             .contentShape(.rect)
     }
 

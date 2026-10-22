@@ -255,3 +255,4 @@ actor MailChecker {
     }
 }
 #endif
+        // `marker:*` always includes the last message, even when its UID is below marker.
