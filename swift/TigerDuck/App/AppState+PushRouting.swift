@@ -1,28 +1,15 @@
-// Custom-push tap routing, iOS only: `NotificationDelegate` resolves an operator push tap
-// into one of these targets and writes the paired stored property on `AppState`, since an
-// extension cannot hold one. Registration and preferences are in AppState+PushServer.swift.
-
 import SwiftUI
 import Defaults
 
 extension AppState {
 
     #if os(iOS)
-    /// In-process deep-link targets resolved from a custom-push tap. The
-    /// `NotificationDelegate` writes here; the destination view observes
-    /// and clears the value once it has acted on it.
     enum DeepLink: Equatable {
         case bulletin(Int)
-        /// A School Mail notification. `uid == nil` (the "N new mails" summary, the sign-in
-        /// failure notice) opens the folder list. `uidValidity` is the generation `uid` was
-        /// minted under, so a folder recreated before the tap cannot hand it to another mail.
         case schoolMail(folder: String, uid: UInt32?, uidValidity: UInt32? = nil)
-        /// An assignment reminder or the "due soon" Live Activity, by `SDAssignment.assignmentId`.
         case assignment(String)
     }
 
-    /// Parses a bulletin notification tap into a `DeepLink`: an operator's custom push and a
-    /// subscription match both carry `bulletin_id`. Returns `nil` for any other `kind`.
     static func bulletinDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
         switch userInfo["kind"] as? String {
         case "custom_push_bulletin", "bulletin":
@@ -32,8 +19,6 @@ extension AppState {
         }
     }
 
-    /// The reminder's `moodle_assignment_id` is the Moodle assign id `SDAssignment.assignmentId`
-    /// holds, so the cached row is found by it; an assignment not fetched here yet has none.
     static func remindedAssignment(
         from userInfo: [AnyHashable: Any],
         in assignments: [SDAssignment]
@@ -43,9 +28,6 @@ extension AppState {
         return assignments.first { $0.assignmentId == String(id) }
     }
 
-    /// Decodes an id from a JSON-bridged userInfo value as `Int`, `NSNumber.intValue` or
-    /// `String → Int`: APNs, FCM and relays bridge JSON numbers inconsistently. An int-tagged
-    /// NSNumber passes `as? Int`, a Double-tagged one fails it, and some relays send a string.
     private static func pushInteger(from raw: Any?) -> Int? {
         if let n = raw as? Int { return n }
         if let n = raw as? NSNumber { return n.intValue }
@@ -53,9 +35,6 @@ extension AppState {
         return nil
     }
 
-    /// Parses a School Mail notification tap into a `DeepLink`. Returns `nil` for any
-    /// other `kind` (bulletin, popup, or unrecognized) so callers can chain it after
-    /// their own routing without misclassifying unrelated pushes.
     static func schoolMailDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
         guard userInfo["kind"] as? String == MailConstants.notificationKind else { return nil }
         let folder = userInfo["folder"] as? String ?? MailConstants.inbox
@@ -63,13 +42,6 @@ extension AppState {
                            uidValidity: schoolMailUID(from: userInfo["uidValidity"]))
     }
 
-    /// Decode `uid` from a JSON-bridged userInfo value the same tolerant way
-    /// `pushInteger(from:)` decodes `bulletin_id`: APNs / FCM / intermediate
-    /// relays bridge JSON numbers inconsistently — some land as an Int-tagged NSNumber that
-    /// succeeds `as? Int`, others as a Double-tagged NSNumber where `as? Int` fails, and a few
-    /// re-encode the value as a quoted string. `UInt32(exactly:)` (rather than a truncating or
-    /// trapping initializer) also turns a negative or too-large value into `nil` instead of
-    /// wrapping or crashing — `schoolMailDeepLink` already treats `nil` as "open the folder list".
     private static func schoolMailUID(from raw: Any?) -> UInt32? {
         if let n = raw as? Int { return UInt32(exactly: n) }
         if let n = raw as? NSNumber { return UInt32(exactly: n.int64Value) }
@@ -77,31 +49,17 @@ extension AppState {
         return nil
     }
 
-    /// Payload for an operator-issued popup push. `id` is the server-side
-    /// notification id and is also used by SwiftUI's `.alert(_:isPresented:
-    /// presenting:)` for view identity, so re-tapping the same notification
-    /// while the previous alert is still on screen does not double-present.
     struct ServerPopupPayload: Equatable, Identifiable {
-        let id: String   // notification_id
+        let id: String
         let title: String
         let body: String
     }
 
-    /// Has the user already been shown the popup for this notification id?
-    /// Persisted via `Defaults[.shownServerPopupIds]` as a FIFO list
-    /// capped at 100 entries. Read-only — call `markServerPopupShown`
-    /// from the alert's dismiss action so an alert that was suppressed
-    /// (e.g. by a competing onboarding sheet) isn't permanently deduped.
     @MainActor
     func isServerPopupShown(_ id: String) -> Bool {
         Defaults[.shownServerPopupIds].contains(id)
     }
 
-    /// Record that the user has actually seen the popup for `id`. Only
-    /// call this from the alert dismiss path — calling it at routing
-    /// time risks marking a popup as seen when its alert never rendered
-    /// (mid-onboarding, modal collision, etc.), permanently suppressing
-    /// it on future taps.
     @MainActor
     func markServerPopupShown(_ id: String) {
         var seen = Defaults[.shownServerPopupIds]

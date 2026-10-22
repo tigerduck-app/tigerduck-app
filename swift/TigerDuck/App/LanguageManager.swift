@@ -5,18 +5,10 @@ nonisolated enum LanguageManager {
     private static let zhHant = "zh-Hant"
     private static let zhHans = "zh-Hans"
 
-    // MARK: - Language resolution
-
-    /// Language codes that should be treated as Chinese for the course API.
-    /// Covers every Sinitic language iOS exposes as a system language:
-    /// Mandarin (zh, incl. Hans/Hant/HK), Cantonese (yue), Min Nan / Hokkien
-    /// (nan), Hakka (hak), Wu (wuu), and Classical / Literary Chinese (lzh).
     private static let chineseLanguageCodes: Set<String> = [
         "zh", "yue", "nan", "hak", "wuu", "lzh"
     ]
 
-    /// Resolves the language tag to use for NTUST course API calls.
-    /// The API only supports "zh" and "en".
     static func resolvedCourseApiLanguage(appLanguage: String) -> String {
         let tag = appLanguage == system ? resolvedSystemLanguage() : appLanguage
         let locale = Locale(identifier: tag)
@@ -28,14 +20,6 @@ nonisolated enum LanguageManager {
         resolvedCourseApiLanguage(appLanguage: appLanguage) == "en"
     }
 
-    /// Whether the active UI language is non-Chinese. Gates UI that only makes
-    /// sense outside Chinese locales, such as the course-name abbreviation
-    /// settings, which transform Mandarin display strings.
-    ///
-    /// An explicit `appLanguage` tag is trusted. For "system" this reads
-    /// `Bundle.main.preferredLocalizations`: the lproj iOS resolved at launch,
-    /// which `String(localized:)` uses and which stays stable for the process,
-    /// unlike `Locale.current`, which re-resolves when `AppleLanguages` changes.
     static func isCurrentLanguageNonChinese(appLanguage: String) -> Bool {
         let tag: String
         if appLanguage == system {
@@ -47,8 +31,6 @@ nonisolated enum LanguageManager {
         return !chineseLanguageCodes.contains(code)
     }
 
-    /// Returns the device's primary language code for use when appLanguage == "system".
-    /// Falls back to "en" for unsupported device languages.
     static func resolvedSystemLanguage() -> String {
         let preferred = Locale.preferredLanguages.first ?? "en"
         let locale = Locale(identifier: preferred)
@@ -56,13 +38,6 @@ nonisolated enum LanguageManager {
         return chineseLanguageCodes.contains(code) ? "zh" : "en"
     }
 
-    // MARK: - Supported locale tags
-
-    /// Returns the BCP-47 tags that correspond to `.lproj` bundles baked into the app.
-    /// `tools/localization/sync_localizations.py` surfaces each generated lproj as
-    /// a top-level symlink under the synchronized group, so Xcode copies them to
-    /// the bundle root (`<App>.app/<lang>.lproj`), not into a `Localization/`
-    /// subfolder. We enumerate the resource URL directly.
     static func supportedLocaleTags() -> [String] {
         guard let resourceURL = Bundle.main.resourceURL else { return [] }
         let urls = (try? FileManager.default.contentsOfDirectory(
@@ -77,10 +52,6 @@ nonisolated enum LanguageManager {
             .sorted()
     }
 
-    /// `tag`'s name in its own language, so a list of them reads right to a
-    /// speaker of each, whatever the app is showing. The first letter is
-    /// capitalized the way that language does it ("français" → "Français").
-    /// Falls back to the tag itself.
     static func displayName(for tag: String) -> String {
         let locale = Locale(identifier: tag)
         guard let name = locale.localizedString(forIdentifier: tag),
@@ -89,11 +60,6 @@ nonisolated enum LanguageManager {
         return String(first).capitalized(with: locale) + name.dropFirst()
     }
 
-    // MARK: - Apply
-
-    /// Applies the selected language by writing `AppleLanguages` to UserDefaults.
-    /// The caller is responsible for forcing a root-view rebuild so SwiftUI
-    /// re-resolves all `String(localized:)` calls with the new locale.
     static func apply(_ appLanguage: String) {
         if appLanguage == system {
             UserDefaults.standard.removeObject(forKey: "AppleLanguages")

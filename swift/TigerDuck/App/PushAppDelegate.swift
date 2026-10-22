@@ -2,20 +2,7 @@ import UIKit
 import UserNotifications
 import os
 
-/// UIKit hook that captures the standard APNs device token.
-///
-/// SwiftUI's `@main App` doesn't expose `didRegisterForRemoteNotifications`
-/// directly, so we bolt on a tiny `UIApplicationDelegate` via
-/// `@UIApplicationDelegateAdaptor`. The single responsibility is to forward
-/// the token to a `forwardTo` closure, which `TigerDuckApp` wires to the
-/// shared `PushRegistrationService`.
 final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
-    /// Set at launch and again in `TigerDuckApp`'s `.onAppear` through
-    /// `PushCoordinator.bindTokenForwarding`, and called on the main thread with the raw token
-    /// data. This delegate, the app and the coordinator live for the whole process, so the
-    /// closure's weak capture of the coordinator never drops a token. APNs can deliver a token
-    /// or error before it is set; `bufferedToken` and `bufferedError` hold it until the
-    /// `didSet`s below replay it.
     var forwardToken: ((Data) -> Void)? {
         didSet {
             guard let forward = forwardToken, let token = bufferedToken else { return }
@@ -23,8 +10,6 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
             forward(token)
         }
     }
-    /// Called when APNs registration fails (e.g. no entitlement, no network).
-    /// Same app-lifetime contract as ``forwardToken``.
     var forwardError: ((Error) -> Void)? {
         didSet {
             guard let forward = forwardError, let error = bufferedError else { return }
@@ -36,19 +21,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
     private var bufferedToken: Data?
     private var bufferedError: Error?
 
-    /// Owns the `UNUserNotificationCenterDelegate` for the lifetime of the
-    /// app. `UNUserNotificationCenter` retains the delegate weakly, so this
-    /// strong reference is what keeps it alive — without it the singleton
-    /// would silently drop taps the moment ARC reclaimed the local variable
-    /// set in `didFinishLaunchingWithOptions`.
     var notificationDelegate: NotificationDelegate?
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Delegate")
 
-    /// Wiring that cannot wait for a scene, which `didFinishLaunching` runs once: iOS can launch the
-    /// app in the background for a silent push or a Watch message, and then no `.onAppear` runs.
-    /// `TigerDuckApp.init` sets it, as SwiftUI builds the app before it creates this delegate, and
-    /// what it wires waits for the launch's ``AfterFirstUnlock`` build.
     static var launchWork: ((PushAppDelegate) -> Void)?
 
     func application(
@@ -58,15 +34,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         launchLogger.notice(
             "Launched in the background: \(application.applicationState == .background, privacy: .public), protected data available: \(application.isProtectedDataAvailable, privacy: .public)"
         )
-        // Install the notification delegate before any push can arrive, so a tap
-        // that cold-launches the app goes through `routeTap` instead of the OS
-        // default open behaviour.
         let nd = NotificationDelegate()
         UNUserNotificationCenter.current().delegate = nd
         self.notificationDelegate = nd
         #if os(iOS)
-        // School Mail's refresh task must be registered before launch finishes. Its checks decode
-        // with the charset hook, which a held-back launch's School Mail bootstrap installs late.
         if SchoolMailAvailability.isEnabled {
             SchoolMailCharsetHook.install()
             MailBackgroundRefresh.register()
@@ -85,8 +56,6 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         if let forward = forwardToken {
             forward(deviceToken)
         } else {
-            // `.onAppear` hasn't wired the forwarder yet — hold the token
-            // until it does so the launch registration isn't lost.
             bufferedToken = deviceToken
         }
     }
@@ -105,24 +74,14 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     var onSyncTrigger: (() async -> FullSyncOutcome)?
 
-    /// Runs after a sync trigger's sync and before its answer. Once the push is answered iOS may
-    /// suspend the app, so what the sync left on a timer, such as the widgets' reload, goes out here.
     var beforeAnsweringSyncTrigger: (@MainActor () -> Void)?
 
-    /// Runs after `beforeAnsweringSyncTrigger` with the sync's outcome, for a request that must go
-    /// out before the answer, such as the Live Activity schedule's. The handler waits for it until
-    /// `syncTriggerSendLimit` after the push arrived, so the answer still reports the sync.
     var sendBeforeAnsweringSyncTrigger: (@MainActor (FullSyncOutcome) async -> Void)?
 
-    /// iOS allows a background push 30 seconds to call its completion handler, and ends an app that
-    /// takes longer (Apple's documentation for this delegate method).
     static let syncTriggerTimeLimit: Duration = .seconds(25)
 
-    /// A few seconds before `syncTriggerTimeLimit`, so a slow send still leaves time to answer.
     static let syncTriggerSendLimit: Duration = syncTriggerTimeLimit - .seconds(3)
 
-    /// The limits a sync trigger runs under. A test widens them: other tests running beside it can
-    /// hold the main actor for longer than either.
     var syncTriggerLimits = (answer: syncTriggerTimeLimit, send: syncTriggerSendLimit)
 
     func application(
@@ -147,8 +106,6 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         )
     }
 
-    /// A sync trigger's work: the sync, `beforeAnswering`, then `send` with the sync's outcome,
-    /// waited for until `sendDeadline` at most, and the sync's outcome as the answer.
     static func syncTriggerWork(
         sync: @escaping () async -> FullSyncOutcome,
         beforeAnswering: (@MainActor () -> Void)?,
@@ -163,8 +120,6 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         }
     }
 
-    /// Runs `step` and returns once it has ended or `deadline` has passed, whichever comes first;
-    /// a step still running goes on, and one whose deadline has already passed is not started.
     static func wait(for step: @escaping @MainActor () async -> Void, until deadline: ContinuousClock.Instant) async {
         guard ContinuousClock.now < deadline else { return }
         await withCheckedContinuation { (waiting: CheckedContinuation<Void, Never>) in
@@ -187,10 +142,6 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         }
     }
 
-    /// Runs `work` and calls `completion` once with its result, or, when `limit` passes first,
-    /// calls `completion` with `.failed` and then cancels `work` unless `appIsActive`: the open app
-    /// shows what it fetches, and the app's own sync may be waiting for it. The limit runs off the
-    /// main actor, which the work shares, so a busy main actor cannot hold the answer back.
     static func run(
         _ work: @escaping () async -> UIBackgroundFetchResult,
         within limit: Duration,
@@ -199,7 +150,6 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
     ) {
         let answer = OSAllocatedUnfairLock<((UIBackgroundFetchResult) -> Void)?>(uncheckedState: completion)
         let finish: @Sendable (UIBackgroundFetchResult) -> Void = { result in
-            // Cleared before the call, so whichever side comes second finds nothing to call.
             let call = answer.withLockUnchecked { stored in
                 defer { stored = nil }
                 return stored

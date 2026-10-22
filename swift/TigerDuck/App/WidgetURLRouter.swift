@@ -17,9 +17,6 @@ enum WidgetURLRouter {
         }
     }
 
-    /// The "due soon" Live Activity's tap target. A Live Activity's `widgetURL` is a deep link
-    /// into the app that owns it (Apple's `DynamicIsland.widgetURL(_:)` documentation), so the
-    /// activity links to TigerDuck, and `TigerDuckApp` opens the assignment from the link.
     static func assignmentURL(id: String) -> URL? {
         var components = URLComponents()
         components.scheme = "tigerduck"
