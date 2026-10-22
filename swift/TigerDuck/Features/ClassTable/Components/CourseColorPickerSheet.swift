@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// Color picker for a single course. Surfaces the 20-color preset palette
-/// alongside a SwiftUI `ColorPicker` so users can dial in any 24-bit RGB
-/// hex — the active swatch (preset or custom) is ringed for confirmation,
-/// and the model layer enforces uniqueness across the roster so picking a
-/// color another class already uses displaces *that* class to a new one.
 struct CourseColorPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -13,18 +8,9 @@ struct CourseColorPickerSheet: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
 
     @State private var customColor: Color
-    /// Set by the preset-button path so the next `.onChange(of: customColor)`
-    /// tick is skipped: preset taps already apply their colour, and
-    /// the change observer would otherwise double-apply on macOS (where the
-    /// sheet stays open) because `currentHex` can still be stale for that
-    /// render pass.
     @State private var suppressNextColorChange = false
     @State private var customPicks: CustomColorPickDebouncer
 
-    /// `isCurrent` says whether the account that opened the sheet is still signed in. A sheet in
-    /// another window can stay open across a sign-out, and a pick from it then saves nothing.
-    /// Every pick goes through `customPicks`, whose state keeps the first init's closures: the
-    /// sign-out re-renders the presenter, and its new check would pass for the next account.
     init(course: SDCourse, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
@@ -36,9 +22,6 @@ struct CourseColorPickerSheet: View {
         ))
     }
 
-    /// Index of the preset that matches the course's currently-assigned hex,
-    /// or `nil` when the user has dialed in a fully custom color via the
-    /// `ColorPicker`. Drives the "ringed swatch" affordance.
     private var activePresetIndex: Int? {
         TigerDuckTheme.paletteIndex(for: course.courseNo)
     }
@@ -69,7 +52,6 @@ struct CourseColorPickerSheet: View {
                 }
             }
         }
-        // Closing mid-pause still applies the colour the drag ended on.
         .onDisappear { customPicks.flush() }
     }
 
@@ -100,9 +82,6 @@ struct CourseColorPickerSheet: View {
                     suppressNextColorChange = true
                     customColor = Color(hex: UInt(hex))
                     customPicks.select(hex)
-                    // A preset tap is a one-shot pick, so close the sheet now. The
-                    // custom ColorPicker does not dismiss: its `.onChange` fires on
-                    // every drag tick.
                     dismiss()
                 } label: {
                     swatch(color: color, isSelected: index == activePresetIndex)
@@ -123,9 +102,6 @@ struct CourseColorPickerSheet: View {
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
             HStack(spacing: TigerDuckTheme.Spacing.md) {
-                // The label is hidden: the section header above labels the picker,
-                // leaving the row for the swatch and readout. `supportsOpacity: false`
-                // because the renderer and the on-disk hex map are 24-bit only.
                 ColorPicker(
                     String(localized: "course_color_picker_custom_label"),
                     selection: $customColor,
@@ -156,9 +132,6 @@ struct CourseColorPickerSheet: View {
                     suppressNextColorChange = false
                     return
                 }
-                // This also sees the no-op tick SwiftUI emits when the picker first shows
-                // the current course color; the debouncer applies nothing for it, so just
-                // opening the sheet issues no setColor call and broadcast.
                 customPicks.pick(hexFrom(color: newValue))
             }
         }
@@ -179,9 +152,6 @@ struct CourseColorPickerSheet: View {
                 }
             if isSelected {
                 Image(systemName: "checkmark")
-                    // Fixed size: the swatch circle (42pt) and row (50pt) are
-                    // fixed, so a dynamic font would let the checkmark grow
-                    // past the swatch at accessibility text sizes.
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.25), radius: 1)
@@ -191,14 +161,6 @@ struct CourseColorPickerSheet: View {
         .contentShape(Circle())
     }
 
-    /// Extract a 24-bit RGB hex from a SwiftUI `Color`. The picker's `Color`
-    /// resolves through the active environment.
-    ///
-    /// On macOS, `NSColor(color)` may land in a color space with no direct
-    /// `cgColor`: the API is declared non-optional but documented to return
-    /// nil then, and the picker's catalog colors trip this. Converting through
-    /// `.sRGB` first reads RGBA from a well-defined space, and an unresolved
-    /// CGColor becomes black (0) instead of a crash.
     private func hexFrom(color: Color) -> UInt32 {
         #if canImport(UIKit)
         let resolved: CGColor? = UIColor(color).cgColor
@@ -216,18 +178,12 @@ struct CourseColorPickerSheet: View {
     }
 }
 
-/// Holds a custom colour back until the drag pauses. The `ColorPicker` reports every
-/// step of a drag, and each applied pick writes the colour map, posts `dataDidUpdate`,
-/// which reloads Home, Class Table, Calendar and the Live Activity, and queues a sync.
 @MainActor
 final class CustomColorPickDebouncer {
     static let pause: Duration = .milliseconds(300)
 
     private let apply: (UInt32) -> Void
-    /// The course's colour now, which a pick back on it leaves as it is.
     private let appliedHex: () -> UInt32
-    /// False once the account that picked has signed out: sign-out clears the colour map,
-    /// and a late pick would write the departing account's colour into the next one's.
     private let isCurrent: () -> Bool
     private let sleep: @Sendable (Duration) async -> Void
     private var pendingHex: UInt32?
@@ -260,7 +216,6 @@ final class CustomColorPickDebouncer {
         }
     }
 
-    /// Applies the pick still waiting, if any, now.
     func flush() {
         pendingTask?.cancel()
         pendingTask = nil
@@ -270,14 +225,12 @@ final class CustomColorPickDebouncer {
         apply(hex)
     }
 
-    /// Applies a preset now, in place of the pick still waiting.
     func select(_ hex: UInt32) {
         cancel()
         guard isCurrent() else { return }
         apply(hex)
     }
 
-    /// Drops the pick still waiting.
     func cancel() {
         pendingTask?.cancel()
         pendingTask = nil

@@ -2,17 +2,11 @@ import SwiftUI
 import UIKit
 import UIKit.UIGestureRecognizerSubclass
 
-/// The class table tab's long press, which opens the switcher next to the tab, and double tap,
-/// which goes back to the class table shown before, or within 3 s of the last double tap shows
-/// the next one. `TabView` has no gesture API for its items, so both go on the
-/// system tab bar, where the tab is found by its title. Put it behind the `TabView`.
 struct ClassTableTabBarGestures: UIViewRepresentable {
-    /// Nil while the class table tab is under More.
     let tabTitle: String?
     let isShowingClassTable: Bool
     let store: ImportedClassTableStore
     let userName: String
-    /// For a row picked while another tab shows.
     let showClassTable: () -> Void
 
     func makeCoordinator() -> ClassTableTabBarHandler {
@@ -42,8 +36,6 @@ struct ClassTableTabBarGestures: UIViewRepresentable {
     }
 }
 
-/// Hands the handler the window's tab bar controller, which the `TabView` may add after this view
-/// joins the window.
 final class TabBarFinder: UIView {
     let handler: ClassTableTabBarHandler
 
@@ -87,22 +79,18 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
     var showClassTable: () -> Void = {}
     var requestImport: () -> Void = {}
 
-    /// The view that draws the tabs, which the gestures are on.
     private(set) weak var bar: UIView?
     private var menuInteraction: UIContextMenuInteraction?
     private var doubleTap: ClassTableTabDoubleTap?
     private var hasLoggedMissingTab = false
     private var lastDoubleTap: ContinuousClock.Instant?
 
-    /// Double taps this close together step through the list; one after a pause swaps back.
     static let cyclingWindow: Duration = .seconds(3)
 
     init(store: ImportedClassTableStore) {
         self.store = store
     }
 
-    /// The controller's tab bar, or on iPad, where that bar stays out of the window, the list of
-    /// tabs in the floating bar at the top.
     func attach(to controller: UITabBarController) {
         let tabBar = controller.tabBar
         let shown: UIView? = tabBar.window != nil ? tabBar : floatingTabs(in: controller)
@@ -116,7 +104,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         let doubleTap = ClassTableTabDoubleTap(target: self, action: #selector(didDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
         doubleTap.isShowingClassTable = { [weak self] in self?.isShowingClassTable ?? false }
-        // The tab switches on the first tap without waiting to see whether a second one follows.
         doubleTap.delaysTouchesEnded = false
         doubleTap.cancelsTouchesInView = false
         doubleTap.delegate = self
@@ -132,7 +119,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         bar = nil
     }
 
-    /// The class table tab in the bar's coordinates.
     func classTableTabFrame() -> CGRect? {
         guard let bar, let item = classTableItem(in: bar) else { return nil }
         return item.convert(item.bounds, to: bar)
@@ -142,23 +128,18 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         tabTitle.flatMap { Self.item(titled: $0, in: view, skipping: skipped) }
     }
 
-    /// The search skips the pages, whose labels could show a tab's title.
     private func floatingTabs(in controller: UITabBarController) -> UIView? {
         let pages = Set(controller.children.compactMap(\.viewIfLoaded).map(ObjectIdentifier.init))
         let item = classTableItem(in: controller.view, skipping: pages)
         return item.flatMap { sequence(first: $0, next: \.superview).first { $0 is UICollectionView } }
     }
 
-    /// Finding the tab leans on how UIKit draws its bar, so a miss while the class table tab is
-    /// selected, when the bar must show it, is logged once.
     func logIfTabMissing() {
         guard tabTitle != nil, classTableTabFrame() == nil, !hasLoggedMissingTab else { return }
         hasLoggedMissingTab = true
         AppLogger.breadcrumb("class table tab not found", category: "classTableTabBar")
     }
 
-    /// Switches only when the class table was showing before the double tap: from another tab, its
-    /// first tap has just opened the class table.
     func doubleTapped(at location: CGPoint, startedOnClassTable: Bool, now: ContinuousClock.Instant = .now) {
         guard startedOnClassTable, classTableTabFrame()?.contains(location) == true else { return }
         defer { lastDoubleTap = now }
@@ -169,8 +150,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         }
     }
 
-    /// The user's own row stays next to the tab: above a bar at the bottom the rows read in their
-    /// order, and below one at the top, as on iPad, in reverse.
     static func menu(
         _ sections: [[ClassTableSwitcherEntry]],
         opensUpward: Bool,
@@ -193,8 +172,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         doubleTapped(at: recognizer.location(in: bar), startedOnClassTable: recognizer.startedOnClassTable)
     }
 
-    /// The bar's items have no public view, so a tab is the view whose label shows its title. iOS 26
-    /// draws an iPhone tab twice, a selected look under the plain one, and the last match is plain.
     private static func item(titled title: String, in view: UIView, skipping skipped: Set<ObjectIdentifier>) -> UIView? {
         var found: UIView?
         for subview in view.subviews where !subview.isHidden && !skipped.contains(ObjectIdentifier(subview)) {
@@ -212,8 +189,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         let parameters = UIPreviewParameters()
         parameters.backgroundColor = .clear
         guard Self.isAtBottom(bar) else { return UITargetedPreview(view: item, parameters: parameters) }
-        // The system lifts a preview clear of the home indicator, which would draw the tab a second
-        // time above the bar, so a clear stand-in anchors the menu on the tab instead.
         parameters.shadowPath = UIBezierPath()
         let frame = item.convert(item.bounds, to: bar)
         return UITargetedPreview(
@@ -227,8 +202,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         let window = bar.window
         return bar.convert(bar.bounds, to: window).midY > (window?.bounds.midY ?? 0)
     }
-
-    // MARK: - UIContextMenuInteractionDelegate
 
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
@@ -244,7 +217,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
             ) { [weak self] entry in
                 guard let self else { return }
                 self.showClassTable()
-                // The class table's page may not exist until its tab has shown.
                 DispatchQueue.main.async { entry.choose(in: self.store, requestImport: self.requestImport) }
             }
         }
@@ -268,9 +240,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         preview()
     }
 
-    // MARK: - UIGestureRecognizerDelegate
-
-    /// The bar's own recognizers select and drag between tabs; the double tap only watches.
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
@@ -279,8 +248,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
     }
 }
 
-/// A double tap that keeps whether the class table was showing when its first tap came down: by
-/// the second tap the first one has switched to it.
 final class ClassTableTabDoubleTap: UITapGestureRecognizer {
     var isShowingClassTable: () -> Bool = { false }
     private(set) var startedOnClassTable = false

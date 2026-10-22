@@ -4,14 +4,9 @@ struct ClassTableShareSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var model: ClassTableShareModel
 
-    /// Big enough to scan from a phone's screenshot, three pixels a point, after a chat app has
-    /// halved it: the code for 8 terms of 10 courses, a version 18 symbol, still gets about four
-    /// pixels a module there.
     private static let codeSide: CGFloat = 260
 
     #if os(iOS)
-    /// About half a phone's screen. `.medium` cuts the code off on a 375 by 667 phone, and this
-    /// height still shows it and its caption there.
     static let openingDetent = PresentationDetent.height(440)
     #endif
 
@@ -29,7 +24,6 @@ struct ClassTableShareSheet: View {
                 Spacer()
                 Button(String(localized: "action_done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
-                // A sheet takes Escape only through a cancel button, and Done keeps Return.
                 Button("") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .opacity(0)
@@ -73,7 +67,6 @@ struct ClassTableShareSheet: View {
                             .multilineTextAlignment(.center)
                             .frame(width: Self.codeSide, height: Self.codeSide)
                     }
-                    // Not `Color.textSecondary`, which is white for the dark iOS app: the Mac can be light.
                     Text(model.caption)
                         .font(TigerDuckTheme.Typography.body)
                         .foregroundStyle(.secondary)

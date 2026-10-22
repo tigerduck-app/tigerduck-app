@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The step before a new person is saved: their nickname and what the share code holds. Import
-/// waits on the course lookup.
 struct ClassTableImportConfirmView: View {
     @Bindable var model: ClassTableImportModel
     let code: ClassTableShareCode
@@ -12,8 +10,6 @@ struct ClassTableImportConfirmView: View {
                 Section(String(localized: "class_table_nickname")) {
                     TextField(String(localized: "class_table_nickname"), text: $model.nickname)
                         #if os(macOS)
-                        // A grouped Mac form puts the label beside the field, under the same
-                        // words in the section header.
                         .labelsHidden()
                         #endif
                 }
@@ -25,7 +21,6 @@ struct ClassTableImportConfirmView: View {
             }
             .formStyle(.grouped)
             #if os(macOS)
-            // A Mac sheet has no title bar to show the navigation title in.
             .safeAreaInset(edge: .top) {
                 Text(String(localized: "class_table_import"))
                     .font(.headline)
@@ -59,8 +54,6 @@ struct ClassTableImportConfirmView: View {
 }
 
 extension View {
-    /// The import's alerts. Only the screen in front can present one: the confirm screen while
-    /// it is up, otherwise the scanner or the Mac class table.
     func classTableImportPrompts(_ model: ClassTableImportModel?, onConfirmScreen: Bool) -> some View {
         modifier(ClassTableImportPrompts(model: model, onConfirmScreen: onConfirmScreen))
     }

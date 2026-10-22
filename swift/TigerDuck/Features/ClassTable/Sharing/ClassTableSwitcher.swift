@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// One row of the class table switcher. The tab bar's menu and the class table's top-right menu
-/// both list `sections(in:userName:)`: "Import class table", the people in import order, then the
-/// user's own class table under their student ID.
 enum ClassTableSwitcherEntry: Equatable, Identifiable {
     case importClassTable
     case person(id: UUID, nickname: String, isShown: Bool)
@@ -16,7 +13,6 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
             .filter { !$0.isEmpty }
     }
 
-    /// The user's own row: their student ID, which is what the class table shows for them.
     static func userName(studentId: String?) -> String {
         guard let studentId, !studentId.isEmpty else { return String(localized: "common_not_signed_in") }
         return studentId
@@ -58,13 +54,9 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
 }
 
 extension EnvironmentValues {
-    /// Opens the class table import over the window that asks. Its presenter sets this for the
-    /// views under it, so with several iPad windows only the one asking presents the import.
     @Entry var requestClassTableImport: () -> Void = {}
 }
 
-/// The ⋯ menu of someone else's class table, which is read-only: export and import as on the
-/// user's own, then what applies to the person.
 enum ClassTableOtherPersonAction: Hashable {
     case exportScreenshot
     case importClassTable
@@ -100,7 +92,6 @@ enum ClassTableOtherPersonAction: Hashable {
     }
 }
 
-/// The switcher's rows as the items of a SwiftUI `Menu`, a checkmark on the class table shown.
 struct ClassTableSwitcherMenuItems: View {
     let store: ImportedClassTableStore
     let userName: String
@@ -130,7 +121,6 @@ struct ClassTableSwitcherMenuItems: View {
 }
 
 extension View {
-    /// A course's edit menu. Someone else's class table is read-only, so its courses get none.
     @ViewBuilder
     func courseEditMenu(isEditable: Bool, @ViewBuilder items: () -> some View) -> some View {
         if isEditable {
