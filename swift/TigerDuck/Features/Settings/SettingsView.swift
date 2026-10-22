@@ -5,14 +5,6 @@ import UserNotifications
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
-    /// Observed, not read through `Defaults[...]`: a bare subscript is a
-    /// plain read that SwiftUI never subscribes to, so this screen kept
-    /// rendering "On" after the switch inside `CloudSyncSettingsView` had
-    /// already turned it off -- popping back does not re-evaluate a parent
-    /// body on its own.
-    ///
-    /// The preference is the flag's only copy -- `appState.cloudSyncEnabled`
-    /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @Default(.pinTodayCoursesOnClassTable) private var pinTodayCoursesOnClassTable
@@ -32,19 +24,7 @@ struct SettingsView: View {
     @State private var showOfficialWebsite = false
     @State private var showServerStatus = false
     #if os(iOS)
-    /// Drives the "you're up to date" / "couldn't reach the App Store"
-    /// feedback alert that fires after the manual Check for Updates row.
-    /// Only true when the coordinator emitted a result that isn't already
-    /// surfaced through the auto-presented update sheet — an `.offered`
-    /// result is shown via that sheet path, not this alert.
     @State private var showManualUpdateCheckResultAlert = false
-    /// Item for the Settings → What's New row, allowing repeat
-    /// presentation of the latest release's flow independent of the
-    /// auto-launch gate's seen-state. Driven by `.sheet(item:)` rather
-    /// than `.sheet(isPresented:)` so the entry is captured at present
-    /// time — a stale `latestWhatsNew == nil` between the row tap and
-    /// the sheet body evaluation cannot leak an empty sheet onto
-    /// screen.
     @State private var manualWhatsNewItem: WhatsNewPresentation?
     #endif
     @Environment(\.scenePhase) private var scenePhase
@@ -65,7 +45,6 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var appState = appState
         List {
-            // MARK: - Account
             Section(String(localized: "settings_section_account")) {
                 ntustAccountRow
                 libraryAccountRow
@@ -76,7 +55,6 @@ struct SettingsView: View {
                 #endif
             }
 
-            // MARK: - Customization
             Section(String(localized: "settings_section_custom")) {
                 Button(String(localized: "tab_editor_title")) {
                     showingTabEditor = true
@@ -109,7 +87,6 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Display
             Section(String(localized: "settings_section_display")) {
                 Picker(String(localized: "settings_visual_preset_label"), selection: $appState.visualPreset) {
                     ForEach(VisualPreset.allCases) { preset in
@@ -133,8 +110,6 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Abbreviations (only when UI is non-Chinese, since the
-            // toggles transform Mandarin display strings)
             if LanguageManager.isCurrentLanguageNonChinese(appLanguage: appState.appLanguage) {
                 Section(String(localized: "settings_section_abbreviation")) {
                     Toggle(
@@ -146,9 +121,6 @@ struct SettingsView: View {
                         isOn: $appState.useEnglishClassroomAbbreviation
                     )
                     if appState.useEnglishClassroomAbbreviation {
-                        // The Form default, `.menu`, sizes the row for one line, so a long
-                        // localized label wraps to two lines and is clipped at the bottom.
-                        // `.navigationLink` renders a real NavigationLink whose row fits the label.
                         Picker(
                             String(localized: "settings_classroom_mandarin_display"),
                             selection: $appState.classroomMandarinDisplay
@@ -165,7 +137,6 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Cloud Sync
             Section(String(localized: "cloud_sync_title")) {
                 NavigationLink {
                     CloudSyncSettingsView()
@@ -181,7 +152,6 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
                 if !cloudSyncEnabled {
                     Label(
@@ -212,28 +182,18 @@ struct SettingsView: View {
                     NavigationLink(String(localized: "settings_class_reminder")) {
                         ClassReminderSettingsView(store: appState.liveActivityPreferences)
                     }
-                    // The backend schedules class reminders from the courses a device
-                    // uploads, so with course sync off nothing set here would take effect.
                     .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
                         AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
                     }
-                    // Greyed out with course sync off: the backend sends
-                    // assignment reminders only to devices that sync, so
-                    // nothing set here would take effect.
                     .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                         LiveActivitySettingsView(store: appState.liveActivityPreferences)
                     }
-                    // Same reason as the row above: Live Activity is unavailable
-                    // with course sync off, so nothing on this screen would take effect.
                     .disabled(!cloudSyncEnabled)
                 }
                 #if os(iOS)
                 if SchoolMailAvailability.isEnabled {
-                    // The School Mail switch and its check log live here, not in School Mail
-                    // settings, so one screen owns them. Disabled while signed out (no mailbox to
-                    // notify about); the account row above shows that, so this row has no subtitle.
                     NavigationLink(String(localized: "school_mail_notification_settings_title")) {
                         MailNotificationSettingsView()
                     }
@@ -242,17 +202,11 @@ struct SettingsView: View {
                 }
                 #endif
 
-                // The last row, always enabled: it reads OS-level permission state,
-                // which stays meaningful whether or not course sync is on.
-                // iPhone/iPad only; macOS has no equivalent.
                 NavigationLink(String(localized: "notification_permission_settings_nav_title")) {
                     NotificationPermissionSettingsView()
                 }
             }
 
-            // MARK: - Other settings
-            // Sub-pages: flip-to-library on a phone that can sense the flip, School Mail's account
-            // and the rest of the miscellany.
             Section(String(localized: "settings_section_other_settings")) {
                 if LibrarySettingsView.isAvailable {
                     NavigationLink(String(localized: "settings_library_related_features")) {
@@ -271,9 +225,6 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Language
-            // No in-app picker: the user picks the app language in the per-app
-            // picker in iOS Settings, and iOS restarts the process on selection.
             Section(String(localized: "feature_category_language")) {
                 Button {
                     #if os(iOS)
@@ -293,7 +244,6 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - About
             Section(String(localized: "settings_section_about")) {
                 LabeledContent(String(localized: "settings_version"), value: appVersion)
                 #if os(iOS)
@@ -342,14 +292,10 @@ struct SettingsView: View {
                 NavigationLink("TigerSync status") {
                     TigerSyncStatusView()
                 }
-                // School Mail is iOS-only, so its server override is too.
                 NavigationLink("Email") {
                     DevMailServerView()
                 }
                 #endif
-                // Bypasses `.screenCaptureProtected(...)` everywhere, for demo recordings
-                // and layout debugging. `@AppStorage` makes a toggle re-evaluate every
-                // protected view at once. Compiled out of release builds.
                 Toggle("Disable screen-capture protection", isOn: $disableScreenCaptureProtection)
 
                 Button {} label: {
@@ -373,9 +319,6 @@ struct SettingsView: View {
         .navigationTitle(String(localized: "feature_settings"))
         .task { await refreshNotificationsAuthorization() }
         .onChange(of: scenePhase) { _, newPhase in
-            // Reflect a System Settings round-trip the moment the user
-            // comes back so the warning row updates without the user
-            // having to leave and re-enter Settings.
             if newPhase == .active {
                 Task { await refreshNotificationsAuthorization() }
             }
@@ -435,9 +378,6 @@ struct SettingsView: View {
         .sheet(isPresented: $showSchoolMailLogin) {
             MailLoginSheet(isPresented: $showSchoolMailLogin)
         }
-        // Result of a manual update check: up to date, or the App Store could not be
-        // reached. `.updateNotifySheetHost()` handles `.offered`, so the row's Task
-        // never raises this alert for it.
         .alert(
             manualCheckResultAlertTitle,
             isPresented: $showManualUpdateCheckResultAlert,
@@ -452,9 +392,6 @@ struct SettingsView: View {
         )
         .sheet(item: $manualWhatsNewItem) { presentation in
             WhatsNewFlowView(presentation: presentation) {
-                // A manual open leaves `lastShownWhatsNewVersion` alone: this entry is
-                // for re-reading, and stamping the seen marker here would suppress the
-                // next automatic prompt.
                 manualWhatsNewItem = nil
             }
             .whatsNewSheetPresentation()
@@ -463,8 +400,6 @@ struct SettingsView: View {
     }
 
     #if os(iOS)
-    /// Title for the manual update-check result alert. Mirrors iOS App
-    /// Store style: "You're Up to Date" vs "Update Check Failed".
     private var manualCheckResultAlertTitle: String {
         switch appState.updateNotifyCoordinator.lastManualCheckResult {
         case .upToDate: return String(localized: "update_up_to_date_title")
@@ -489,19 +424,11 @@ struct SettingsView: View {
     #endif
 
     #if os(iOS)
-    /// "Check for Updates" row. Tapping forces an iTunes Lookup ignoring
-    /// the 24h throttle. When the lookup succeeds and an update is
-    /// available the existing `.updateNotifySheetHost()` modifier surfaces
-    /// the regular prompt sheet — this row only handles the "already up
-    /// to date" and "couldn't reach the App Store" feedback paths.
     @ViewBuilder
     private var checkForUpdatesRow: some View {
         Button {
             Task {
                 await appState.updateNotifyCoordinator.checkManually()
-                // Alert only when the coordinator will not show the sheet (`.upToDate`,
-                // `.failed`). An `.offered` result goes to the sheet host, and a duplicate
-                // alert here would stack on top of the sheet.
                 let result = appState.updateNotifyCoordinator.lastManualCheckResult
                 if case .offered = result { return }
                 if result != nil { showManualUpdateCheckResultAlert = true }
@@ -520,14 +447,6 @@ struct SettingsView: View {
         .disabled(appState.updateNotifyCoordinator.isCheckingForUpdate)
     }
 
-    /// "Check Server Status" row. It sits under Check for Updates because that row asks
-    /// whether this app is current, and this one whether the services behind it are up.
-    ///
-    /// Honours the in-app or external browser preference like every other link in
-    /// Settings. In-app it uses `SFSafariViewController`, which follows the status URL's
-    /// current 302 to another origin in place. A `WKWebView` with a host allowlist would
-    /// dead-end there, and an `openURL` hand-off would eject the user into Safari
-    /// mid-redirect.
     private var serverStatusRow: some View {
         Button {
             if appState.browserPreference == .inApp {
@@ -547,18 +466,10 @@ struct SettingsView: View {
         }
     }
 
-    /// "What's New" entry — always opens the newest release's flow
-    /// (``WhatsNewCatalog`` pages plus its `whatsnew.json` summary),
-    /// independent of the `lastShownWhatsNewVersion` gate. Hidden when
-    /// neither has anything for the resolved locale (e.g. during early
-    /// bring-up of a release where the JSON hasn't been filled in yet).
     @ViewBuilder
     private var whatsNewRow: some View {
         if appState.updateNotifyCoordinator.hasWhatsNewContent(in: appState) {
             Button {
-                // Capture the entry at tap time and hand it to `.sheet(item:)`. Read in
-                // the sheet body, `latestWhatsNew` can be nil though the row was visible,
-                // as after a language change between render and tap, leaving the sheet empty.
                 manualWhatsNewItem = appState.updateNotifyCoordinator.latestWhatsNew(in: appState)
             } label: {
                 HStack {
@@ -583,7 +494,6 @@ struct SettingsView: View {
             onLogout: {
                 Task {
                     let unsynced = await appState.signOutDeletesUnsyncedData()
-                    // Another tap may have signed out while this one looked.
                     guard appState.authService.hasStoredCredentials else { return }
                     ImportedClassTableStore.shared.requestSignOut(
                         unsyncedData: unsynced,
@@ -606,7 +516,6 @@ struct SettingsView: View {
     }
 
     #if os(iOS)
-    /// Red when signed out or when the server rejected the saved password.
     private var schoolMailAccountRow: some View {
         let mail = MailAccountManager.shared
         return accountRow(
@@ -669,37 +578,18 @@ struct SettingsView: View {
     }
 
     #if DEBUG
-    /// Factory-resets the app in place, without an uninstall.
-    ///
-    /// The two logouts run first. Only they unwind live state: in-flight sync tasks,
-    /// the Live Activity, scheduled reminders, the push registration and the watch's
-    /// library credentials. Wiping the stores under them would strand a Live Activity
-    /// on the Lock Screen and a library login on the paired watch. Then come the stores
-    /// a logout leaves alone, as an account change rather than a reset: the whole cache
-    /// tree, every Keychain secret, the SwiftData store, both defaults domains, the outbox.
     private func eraseEverything() {
         appState.logoutNTUST()
         appState.logoutLibrary()
         #if os(iOS)
-        // The mail password lives in its own Valet, which `SecureStore.removeAll` does
-        // not reach; logging out wipes it with the mail caches and markers.
         MailAccountManager.shared.logout()
-        // The developer mail-server override is in `UserDefaults`, which is wiped below, but
-        // this process caches it in memory and would keep using that server until the next
-        // launch. Unlike the API endpoint, kept in the Keychain, it does not survive a reset.
         DevMailServerSettings.shared.resetToSchoolServer()
         #endif
 
         DataCache.shared.clearEverything()
 
-        // Everything except the endpoint: that override lives in the
-        // Keychain precisely so it outlives a wipe, and a developer
-        // resetting the app still wants to point at the same backend.
         SecureStore.removeAll(preserving: [DebugEndpointStore.keychainKey])
 
-        // Batch-delete through the live container rather than removing the
-        // store file — the container is still mounted and every view is
-        // holding queries against it.
         try? modelContext.delete(model: SDCourse.self)
         try? modelContext.delete(model: SDAssignment.self)
         try? modelContext.delete(model: SDAnnouncement.self)
@@ -711,7 +601,6 @@ struct SettingsView: View {
         )
         Defaults.removeAll()
 
-        // Removes outbox.json and any legacy id_map.json.
         try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
 
         appState.hasCompletedOnboarding = false
@@ -719,11 +608,6 @@ struct SettingsView: View {
     }
     #endif
 
-    /// Read the current system-level notification authorization so the
-    /// warning row appears whenever the user has revoked permission
-    /// (.denied) or has yet to grant it (.notDetermined). Re-runs on
-    /// every `scenePhase == .active` so a System Settings round-trip
-    /// updates the row without the user leaving Settings.
     private func refreshNotificationsAuthorization() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         let status = settings.authorizationStatus

@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Sub-page behind the "Others" row under Official website in
-/// `SettingsView`'s About section: the links about the project rather than
-/// the app's own settings — feedback, privacy policy, account deletion,
-/// licence and source code. The settings themselves are on
-/// `OtherSettingsView`. Android has the same page; the Mac lists these
-/// links on its own About tab instead.
 struct AboutOthersView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
@@ -73,14 +67,6 @@ struct AboutOthersView: View {
         }
     }
 
-    /// A row that leaves this page: tinted, with the same trailing glyph
-    /// `SettingsView` puts on Official website and Check server status.
-    ///
-    /// Not `.foregroundStyle(.primary)`, which renders a Button's label as
-    /// ordinary settings text, so nothing would mark the row as tappable or as
-    /// a web link. Like that glyph, this one follows the browser preference: an
-    /// arrow out of a box when the link hands off to the browser, an arrow into
-    /// a card when it opens as a sheet over the app.
     private func linkLabel(_ key: String.LocalizationValue) -> some View {
         HStack {
             Text(String(localized: key))

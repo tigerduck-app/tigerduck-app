@@ -18,14 +18,12 @@ struct ClassReminderSettingsView: View {
                         Text(offset.label).tag(Int(offset.timeInterval / 60))
                     }
                 }
-                // The Form default, `.menu`, clips a label that wraps; see SettingsView.
                 .pickerStyle(.navigationLink)
             }
             .disabled(!store.isClassReminderEnabled)
         }
         .navigationTitle(String(localized: "settings_class_reminder"))
         .task {
-            // Show what another device last saved. Queued, so it does not wait for the prompt.
             appState.reconcileNotificationSettings()
             await appState.requestNotificationAuthorization()
         }

@@ -1,9 +1,6 @@
 import SwiftUI
 
 struct LoginSheet: View {
-    /// A link under the fields, e.g. School Mail's "Forgot your password? Go to
-    /// mail.ntust.edu.tw".
-    /// Opens the way bulletins do: in-app when the user prefers it, otherwise the browser.
     struct FooterLink {
         let title: String
         let url: URL
@@ -18,13 +15,6 @@ struct LoginSheet: View {
     let onLogin: (String, String) -> Void
     let onDismiss: () -> Void
     let footerLink: FooterLink?
-    /// Whether the username field collects an email address rather than an NTUST-style ID.
-    ///
-    /// Defaults to `false`, which is every caller in a Release build: NTUST, the library and
-    /// School Mail all take an ID that is conventionally upper-case, so the field upper-cases as
-    /// it is typed. An address must not be treated that way — `.characters` would turn
-    /// `user@example.com` into `USER@EXAMPLE.COM`, and an address's local part is case-sensitive
-    /// (RFC 5321 §2.3.11), so the upper-cased form is what would be sent to `LOGIN`.
     let usernameIsAnAddress: Bool
 
     @Environment(AppState.self) private var appState
@@ -122,8 +112,6 @@ struct LoginSheet: View {
                     .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
                 }
             }
-            // Shared by the NTUST, library and School Mail sign-ins, so all three get the
-            // drag-to-dismiss gesture rather than only whichever one prompted it.
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -133,8 +121,6 @@ struct LoginSheet: View {
                 }
             }
             .onAppear {
-                // With both fields prefilled there is nothing to type, so focus nothing and
-                // leave the keyboard down rather than opening it over a filled-in form.
                 focusedField = username.isEmpty ? .username : (password.isEmpty ? .password : nil)
             }
             .interactiveDismissDisabled(isLoggingIn)

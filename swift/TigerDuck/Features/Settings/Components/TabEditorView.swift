@@ -12,9 +12,6 @@ struct TabEditorView: View {
 
     private var availableFeatures: [AppFeature] {
         AppFeature.pinnableFeatures
-            // .more is the navigation root; never expose it as a tab the
-            // user can pin / re-add or navigation breaks. Defensive even
-            // when pinnableFeatures already excludes it.
             .filter { $0 != .more }
             .filter { !tabs.contains($0) }
     }
@@ -23,7 +20,6 @@ struct TabEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.xl) {
-                    // Tab bar preview with drag-to-reorder
                     VStack(spacing: TigerDuckTheme.Spacing.md) {
                         Text(String(localized: "tab_editor_drag_reorder"))
                             .font(TigerDuckTheme.Typography.caption)
@@ -69,7 +65,6 @@ struct TabEditorView: View {
                                     )
                                 }
 
-                                // Fixed "more" tab
                                 VStack(spacing: 4) {
                                     Image(systemName: AppFeature.more.iconName)
                                         .font(.title3)
@@ -109,7 +104,6 @@ struct TabEditorView: View {
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     }
 
-                    // Available features to add
                     if tabs.count < AppFeature.maxTabs && !availableFeatures.isEmpty {
                         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
                             Text(String(localized: "tab_editor_section_available_tabs"))
@@ -179,8 +173,6 @@ struct TabEditorView: View {
         }
     }
 
-    // MARK: - Reorder tabs
-
     private func reorderTabsIfNeeded(at point: CGPoint) {
         guard let dragging = draggingTab,
               let fromIndex = tabs.firstIndex(of: dragging) else { return }
@@ -189,9 +181,6 @@ struct TabEditorView: View {
             if frame.contains(point),
                let feature = AppFeature(rawValue: rawValue),
                let toIndex = tabs.firstIndex(of: feature) {
-                // onChanged fires on every gesture tick, and animating here stacks
-                // animations that shimmer. Move without animation during the drag;
-                // the gesture itself gives visual continuity.
                 tabs.move(fromOffsets: IndexSet(integer: fromIndex),
                           toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
                 return
@@ -200,16 +189,12 @@ struct TabEditorView: View {
     }
 }
 
-// MARK: - Tab frame tracking
-
 private struct TabFrameKey: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
 }
-
-// MARK: - Tab preview item
 
 private struct TabPreviewItem: View {
     let feature: AppFeature

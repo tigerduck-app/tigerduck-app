@@ -1,9 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// TigerSync settings: essential-info notice, the course-sync toggle with its
-/// "Synced content" drill-down, the server-push opt-out, and an inline status
-/// section. See `SyncContentSettingsView` for the six-toggle drill-down.
 struct CloudSyncSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.cloudSyncEnabled) private var syncEnabled
@@ -12,17 +9,8 @@ struct CloudSyncSettingsView: View {
     @Default(.syncCourseNames) private var syncCourseNames
     @Default(.syncAssignments) private var syncAssignments
     @Default(.serverPushUserOptOut) private var serverPushOptOut
-    /// Tracks whether the last server-push opt-out PATCH failed. Set inside
-    /// `serverPushBinding`'s setter; the footer reads it to show the
-    /// failure notice. The Toggle itself binds to `serverPushBinding`, not
-    /// to this — the visual state reverts because that binding's getter
-    /// re-reads the stored Default, which a failed PATCH never changed.
     @State private var serverPushOptOutFailed: Bool = false
-    /// In-flight server-push opt-out PATCH, held so a rapid second tap can
-    /// cancel the prior request before starting a new one.
     @State private var serverPushOptOutTask: Task<Void, Never>?
-    /// Backs the inline TigerSync-status section below. Owned here because the
-    /// section lives in this screen, not in a pushed destination.
     @State private var statusSnapshot: PushDiagnostic?
     @State private var asksToSignInAgain = false
     @State private var statusRefreshTimer: Timer?
@@ -37,8 +25,6 @@ struct CloudSyncSettingsView: View {
             }
 
             Section {
-                // Writes the preference itself; `AppState` acts on that the
-                // way it acts on every change to it, whichever writer made it.
                 Toggle(String(localized: "sync_courses_toggle"), isOn: $syncEnabled)
                     .onChange(of: syncEnabled) { old, newValue in
                         if newValue && !old {
@@ -68,18 +54,12 @@ struct CloudSyncSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "settings_server_push_footer"))
                     if serverPushOptOutFailed {
-                        // Tells the user the tap didn't take. The Toggle has already
-                        // snapped back to the server-agreeing value, because the actor
-                        // only writes Defaults on success.
                         Text(String(localized: "settings_server_push_update_failed"))
                             .foregroundStyle(.orange)
                     }
                 }
             }
 
-            // Always shown: registration status, the latest error and the device ID are
-            // what a user needs when investigating why sync isn't working, which is
-            // disproportionately likely while course sync is off.
             Section(String(localized: "sync_status_nav_label")) {
                 if let s = statusSnapshot {
                     syncStatusRow(
@@ -122,12 +102,6 @@ struct CloudSyncSettingsView: View {
         .reenableConflictAlert()
     }
 
-    /// User-facing opt-out for operator-issued "server" pushes. Bound as
-    /// `isOn` (ON = user wants them); inverted into `serverPushUserOptOut`
-    /// for storage. The setter awaits the actor, which PATCHes first and
-    /// only writes the local Default on success — a throw trips
-    /// `serverPushOptOutFailed` so the footer surfaces the failure and the
-    /// Toggle stays at the prior, server-agreeing value.
     private var serverPushBinding: Binding<Bool> {
         Binding(
             get: { !serverPushOptOut },
@@ -147,10 +121,6 @@ struct CloudSyncSettingsView: View {
         )
     }
 
-    /// Registered means the server accepted this device, which is what
-    /// `lastRegisteredAt` records — the Mac account tab reads the same. A
-    /// push-to-start token only exists while Live Activities are on, so its
-    /// length said nothing about whether reminders can reach here.
     @ViewBuilder
     private func syncStatusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
         LabeledContent(label) {
@@ -185,10 +155,6 @@ struct CloudSyncSettingsView: View {
         statusSnapshot = snapshot
     }
 
-    /// Keeps the inline status section current while this screen is the one
-    /// on screen — the behaviour `SyncStatusPage` used to own as its own
-    /// destination. Started from `onAppear` and invalidated from
-    /// `onDisappear` so leaving this screen never leaves it running.
     private func startStatusRefreshTimer() {
         statusRefreshTimer?.invalidate()
         statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
@@ -202,8 +168,6 @@ struct CloudSyncSettingsView: View {
     }
 }
 
-/// TigerSync's pages on the web, opened as "Open links with" asks, like Settings' other links: in
-/// the app's browser, else by the system through `Link`, which keeps its long-press menu.
 struct TigerSyncLinksSection: View {
     let browserPreference: BrowserPreference
 
@@ -245,11 +209,6 @@ struct TigerSyncLinksSection: View {
     }
 }
 
-/// Re-enable conflict prompt (`AppState.reenableConflict`), shared by every
-/// screen where a sync category can be switched back on: this screen's own
-/// "Sync course information" toggle, and `SyncContentSettingsView`'s
-/// per-category toggles. Not used by the Mac equivalent, which keeps its
-/// own copy in `MacTigerSyncSettingsView`.
 struct ReenableConflictAlert: ViewModifier {
     @Environment(AppState.self) private var appState
 

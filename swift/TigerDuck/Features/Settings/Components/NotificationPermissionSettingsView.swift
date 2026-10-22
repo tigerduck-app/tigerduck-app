@@ -2,14 +2,6 @@ import ActivityKit
 import SwiftUI
 import UserNotifications
 
-/// Notification permission settings: the system authorization for
-/// Notifications and for Live Activities, each row opening system Settings to
-/// change it. iPhone and iPad only: the SettingsView link that reaches it has
-/// no macOS equivalent, so `tools/macos-excluded-sources.txt` drops it from
-/// that build instead of an `#if`, like `BulletinNotificationSettingsView`.
-/// Reads the same sources as `LiveActivityCoordinator` and `PushCoordinator`:
-/// `UNUserNotificationCenter.current().notificationSettings()` and
-/// `ActivityAuthorizationInfo().areActivitiesEnabled`.
 struct NotificationPermissionSettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
@@ -31,20 +23,12 @@ struct NotificationPermissionSettingsView: View {
         .navigationTitle(String(localized: "notification_permission_settings_nav_title"))
         .task { await refreshStatuses() }
         .onChange(of: scenePhase) { _, newPhase in
-            // Same round-trip-from-Settings refresh SettingsView's own
-            // notification row uses: these two rows are stale the moment
-            // the user backgrounds this app to flip either switch.
             if newPhase == .active {
                 Task { await refreshStatuses() }
             }
         }
     }
 
-    /// Internal rather than `private`, and the two mappings below are
-    /// `static` functions of plain values rather than instance-computed
-    /// properties, so `NotificationPermissionSettingsViewTests` can pin the
-    /// decision without constructing a view, environment, or `AppState` —
-    /// the same move `LiveActivitySettingsView.formatHoursAndMinutes` made.
     enum RowStatus {
         case granted
         case notGranted
@@ -71,10 +55,6 @@ struct NotificationPermissionSettingsView: View {
         }
     }
 
-    /// Same authorized/not split as `SettingsView.refreshNotificationsAuthorization()`:
-    /// `.authorized`, `.provisional`, and `.ephemeral` all count as granted.
-    /// Granted or not is the whole answer: every iPhone and iPad this app
-    /// deploys to has a real notification-authorization concept.
     static func notificationPermissionStatus(for status: UNAuthorizationStatus) -> RowStatus {
         switch status {
         case .authorized, .provisional, .ephemeral: return .granted
@@ -83,9 +63,6 @@ struct NotificationPermissionSettingsView: View {
         }
     }
 
-    /// `ActivityAuthorizationInfo().areActivitiesEnabled` is a plain Bool on
-    /// this app's deployment target, so this row is granted or not, the same
-    /// as the notification row above.
     static func liveActivityPermissionStatus(enabled: Bool) -> RowStatus {
         enabled ? .granted : .notGranted
     }

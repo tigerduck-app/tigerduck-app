@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Settings page for assignment due reminders: a master on/off switch and the
-/// per-offset opt-ins. Lives behind a NavigationLink in SettingsView, sibling
-/// to LiveActivitySettingsView — mirroring the Android app's separate
-/// "Assignment notifications" screen.
 struct AssignmentReminderSettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
     @Environment(AppState.self) private var appState
@@ -28,12 +24,7 @@ struct AssignmentReminderSettingsView: View {
         }
         .navigationTitle(String(localized: "live_activity_settings_assignment_notification_header"))
         .task {
-            // Show what another device last saved, not only this one's
-            // copy. Queued, so it does not wait behind the prompt below.
             appState.reconcileNotificationSettings()
-            // This screen is the assignment-reminder feature's explicit entry point,
-            // so the notification permission prompt lives here. Refresh paths (theme
-            // tweaks, foreground transitions, background syncs) never prompt.
             await appState.requestNotificationAuthorization()
         }
     }
