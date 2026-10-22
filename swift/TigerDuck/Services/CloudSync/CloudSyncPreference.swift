@@ -40,8 +40,6 @@ final class CloudSyncPreference {
         set { Defaults[key] = newValue }
     }
 
-    /// Installs the handler for every change. `AppState` does, at the end of
-    /// its `init`.
     func onChange(_ handler: @escaping (Bool) -> Void) {
         self.handler = handler
     }

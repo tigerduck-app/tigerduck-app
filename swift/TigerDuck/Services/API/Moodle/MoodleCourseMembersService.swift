@@ -1,26 +1,19 @@
 import Foundation
 
-/// A person in a course, from `core_enrol_get_enrolled_users`, as the course's other members may
-/// see them. Every field but the id and the name is missing where Moodle hides it.
 nonisolated struct MoodleMember: Codable, Sendable, Hashable, Identifiable {
     let id: Int
-    /// As Moodle spells it, which at NTUST is "student ID @ name".
     let fullName: String
     let idNumber: String?
     let email: String?
     let groups: [String]
     let roles: [Role]
-    /// The member's own picture; nil for Moodle's default one, which is never downloaded.
     let pictureURL: URL?
-    /// The profile description as plain text, empty when there is none.
     let description: String
     let interests: [String]
-    /// The custom profile fields Moodle shows course members, by Moodle's own label.
     let fields: [Field]
 
     nonisolated struct Role: Codable, Sendable, Hashable {
         let shortName: String
-        /// Empty for Moodle's standard roles, which take their names from Moodle's language pack.
         let name: String
         let sortOrder: Int
     }
@@ -31,15 +24,10 @@ nonisolated struct MoodleMember: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// The course members call of Moodle's mobile web service. The call takes the token, so the
-/// caller runs it inside `MoodleWebserviceClient.withToken`.
 nonisolated enum MoodleCourseMembersService {
     static let membersFunction = "core_enrol_get_enrolled_users"
-    /// Moodle's error code where a course does not let the account view its participants.
     static let hiddenCode = "nopermissions"
 
-    /// Only what the members screens show, so Moodle sends no other personal data, such as last
-    /// access times or other courses.
     static let userFields = "id,fullname,idnumber,email,groups,roles,profileimageurl,description,interests,customfields"
 
     static func members(
@@ -62,8 +50,6 @@ nonisolated enum MoodleCourseMembersService {
         ).map { $0.model(siteURL: siteURL) }
     }
 
-    /// A picture the member uploaded is a file of theirs under `pluginfile.php`; Moodle's default
-    /// picture is a theme image, such as `/theme/image.php/moove/core/1/u/f1`.
     static func isOwnPicture(_ url: URL, siteURL: URL) -> Bool {
         guard url.scheme?.lowercased() == "https", url.host?.lowercased() == siteURL.host?.lowercased() else {
             return false
@@ -73,23 +59,23 @@ nonisolated enum MoodleCourseMembersService {
             && path.contains("/user/icon/")
     }
 
-    /// The 512 px size of a member's own picture: Moodle names it `f3` where `profileimageurl`
-    /// names the 100 px `f1`, and sends `f1` for a picture uploaded before Moodle kept `f3`. Nil
-    /// for a URL that names another size.
     static func largePicture(_ url: URL) -> URL? {
         guard url.lastPathComponent == "f1",
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+    /// A picture the member uploaded is a file of theirs under `pluginfile.php`; Moodle's default
+    /// picture is a theme image, such as `/theme/image.php/moove/core/1/u/f1`.
         components.percentEncodedPath = String(components.percentEncodedPath.dropLast(2)) + "f3"
         return components.url
     }
 
-    /// A member's own picture, under the file URL every Moodle file downloads from. An answer that
-    /// is not an image, such as a sign-in page standing in for a file the key does not open, throws.
     static func picture(
         _ url: URL,
         accessKey: String?,
         token: String,
         session: URLSession = MoodleWebserviceClient.session,
+    /// The 512 px size of a member's own picture: Moodle names it `f3` where `profileimageurl`
+    /// names the 100 px `f1`, and sends `f1` for a picture uploaded before Moodle kept `f3`. Nil
+    /// for a URL that names another size.
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> Data {
         guard isOwnPicture(url, siteURL: siteURL),
@@ -109,8 +95,6 @@ nonisolated enum MoodleCourseMembersService {
         return data
     }
 }
-
-// MARK: - Answers
 
 private nonisolated struct RawMember: Decodable, Sendable {
     let id: Int
@@ -161,7 +145,6 @@ private nonisolated struct RawField: Decodable, Sendable {
     let name: String
     let value: String?
 
-    /// A checkbox's or a date's raw value, `1` or a Unix time, does not read as text.
     var model: MoodleMember.Field? {
         guard !["checkbox", "datetime"].contains(type),
               let label = RawMember.nonEmpty(MoodleHTMLText.plainText(fromHTML: name)),

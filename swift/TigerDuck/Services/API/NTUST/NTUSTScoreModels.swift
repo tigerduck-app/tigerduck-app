@@ -1,10 +1,5 @@
 import Foundation
 
-// MARK: - Score Report (root)
-
-/// Structured representation of the NTUST StuScoreQueryServ "DisplayAll"
-/// page. Mirrors the Python reference parser (`html_score_parser.py`) 1:1 so
-/// server-side and on-device output stay swappable.
 struct ScoreReport: Codable, Equatable, Sendable {
     var student: String
     var currentTerm: String
@@ -12,10 +7,6 @@ struct ScoreReport: Codable, Equatable, Sendable {
     var courses: [CourseGrade]
     var creditSummary: CreditSummary
 
-    /// `nonisolated` because `NTUSTScoreParser` is, and it returns this on
-    /// every failure path. Without it the module's MainActor default
-    /// isolation puts the constant on the main actor and the off-main parse
-    /// can't reach it. Safe: an immutable `let` of a `Sendable` type.
     nonisolated static let empty = ScoreReport(
         student: "",
         currentTerm: "",
@@ -24,8 +15,6 @@ struct ScoreReport: Codable, Equatable, Sendable {
         creditSummary: .empty
     )
 }
-
-// MARK: - Rankings
 
 struct SemesterRanking: Codable, Equatable, Sendable, Identifiable {
     var term: String
@@ -41,10 +30,6 @@ struct RankingStats: Codable, Equatable, Sendable {
     var gpa: Double?
 }
 
-/// One term on the GPA trend: the school's published ranking, or — while
-/// the ranking is not out yet — a GPA computed from the grades that have
-/// arrived so far. Grades land course by course, so a provisional point
-/// moves until the ranking replaces it.
 struct GPATrendPoint: Equatable, Sendable, Identifiable {
     var term: String
     var semester: RankingStats
@@ -67,9 +52,6 @@ struct GPATrendPoint: Equatable, Sendable, Identifiable {
         isProvisional = true
     }
 
-    /// Chronological trend for `report`: every published ranking, plus a
-    /// provisional point for each term that has graded courses but no
-    /// ranking (or a ranking without a GPA) yet.
     static func trend(for report: ScoreReport) -> [GPATrendPoint] {
         let coursesByTerm = Dictionary(grouping: report.courses, by: \.term)
         let rankings = Dictionary(report.rankings.map { ($0.term, $0) }, uniquingKeysWith: { first, _ in first })
@@ -87,14 +69,11 @@ struct GPATrendPoint: Equatable, Sendable, Identifiable {
     }
 }
 
-// MARK: - Courses
-
 struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
     var index: Int?
     var term: String
     var code: String
     var name: String
-    /// Fractional: NTUST issues half credits.
     var credits: Double?
     var creditType: CreditType
     var grade: String
@@ -103,13 +82,8 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
     var geDimension: String?
     var distanceLearning: Bool
 
-    /// Composite key — NTUST can legitimately reissue the same code across
-    /// terms when a student retakes, so `code` alone is not unique.
     var id: String { "\(term)-\(code)-\(index ?? -1)" }
 
-    /// The school backend returns pass/fail as Chinese text whatever the UI
-    /// language, so this must be derived from raw payload values rather than
-    /// UI localization.
     var isPassStatusPassed: Bool {
         let normalized = grade.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.isEmpty { return true }
@@ -120,6 +94,7 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
         }
         return true
     }
+    /// Fractional: NTUST issues half credits.
 }
 
 enum CreditType: String, Codable, Equatable, Sendable, CaseIterable {
@@ -132,6 +107,9 @@ enum CreditType: String, Codable, Equatable, Sendable, CaseIterable {
 }
 
 enum GradeStatus: String, Codable, Equatable, Sendable, CaseIterable {
+    /// The school backend returns pass/fail as Chinese text whatever the UI
+    /// language, so this must be derived from raw payload values rather than
+    /// UI localization.
     case graded
     case pending
     case passed
@@ -140,14 +118,11 @@ enum GradeStatus: String, Codable, Equatable, Sendable, CaseIterable {
     case unknown
 }
 
-// MARK: - Credit Summary
-
 struct CreditSummary: Codable, Equatable, Sendable {
     var earned: CreditBreakdown
     var enrolled: CreditBreakdown
     var total: CreditBreakdown
 
-    /// `nonisolated` for the same reason as ``ScoreReport/empty``.
     nonisolated static let empty = CreditSummary(
         earned: .zero, enrolled: .zero, total: .zero
     )
@@ -158,6 +133,5 @@ struct CreditBreakdown: Codable, Equatable, Sendable {
     var distance: Double
     var total: Double
 
-    /// `nonisolated` for the same reason as ``ScoreReport/empty``.
     nonisolated static let zero = CreditBreakdown(inPerson: 0, distance: 0, total: 0)
 }

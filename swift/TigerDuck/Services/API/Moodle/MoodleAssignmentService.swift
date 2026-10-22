@@ -28,13 +28,10 @@ nonisolated enum MoodleAssignmentService {
         }
     }
 
-    // MARK: - mod_assign_get_submission_status
-
     static func fetchSubmissionStatus(assignId: Int) async throws -> MoodleSubmissionStatus {
         try await submissionStatus(assignId: assignId).toMoodleSubmissionStatus(assignId: assignId)
     }
 
-    /// The account's submission as the assignment's page shows it.
     static func submission(assignId: Int) async throws -> MoodleAssignmentSubmission {
         try await submissionStatus(assignId: assignId).submission
     }
@@ -51,16 +48,8 @@ nonisolated enum MoodleAssignmentService {
         }
     }
 
-    // MARK: - Comments and groups
-
-    /// A bound on the pages asked for one submission's comments, which stay far fewer than this
-    /// many pages hold.
     static let commentPageLimit = 10
 
-    /// Moodle keeps a submission's comments on the assignment's module, under the submission's
-    /// record, and answers a page at a time, newest first, with the total in `count`. Paging ends
-    /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
-    /// or at ``commentPageLimit``. Oldest first, as a conversation reads.
     static func comments(
         cmid: Int,
         submissionId: Int,
@@ -68,6 +57,10 @@ nonisolated enum MoodleAssignmentService {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> [MoodleSubmissionComment] {
+    /// Moodle keeps a submission's comments on the assignment's module, under the submission's
+    /// record, and answers a page at a time, newest first, with the total in `count`. Paging ends
+    /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
+    /// or at ``commentPageLimit``. Oldest first, as a conversation reads.
         func page(_ number: Int) async throws -> RawComments {
             try await MoodleWebserviceClient.call(
                 commentsFunction,
@@ -94,15 +87,12 @@ nonisolated enum MoodleAssignmentService {
             total = answer.count ?? 0
             guard byId.count > known, byId.count < total else { break }
         }
-        // A comment posted while paging pushes one already fetched onto the next page and is on
-        // none of those asked for, so the first page is asked for once more.
         if byId.count < total {
             for comment in try await page(0).comments { byId[comment.id] = comment.model }
         }
         return byId.values.sorted { ($0.created, $0.id) < ($1.created, $1.id) }
     }
 
-    /// The groups the account is in on the course, by id.
     static func groups(
         courseId: Int,
         userId: Int,
@@ -188,8 +178,6 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
             let plugins: [Plugin]?
         }
 
-        /// A submission plugin's part of the record: `file` lists files, `onlinetext` keeps its
-        /// text in an editor field, and `comments` is there when the assignment takes them.
         struct Plugin: Decodable {
             let type: String?
             let fileareas: [FileArea]?
@@ -208,8 +196,6 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
     let lastattempt: LastAttempt?
     let feedback: Feedback?
 
-    /// Moodle sends `gradefordisplay` and `gradeddate` as null without a grade, and the plugins
-    /// only with the grader's record.
     struct Feedback: Decodable {
         let gradefordisplay: String?
         let gradeddate: Int?
@@ -220,16 +206,14 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         case lastattempt, feedback
     }
 
-    /// The assignment round reads this answer for Home and the reminders, so feedback in a shape
-    /// the app does not expect is left out instead of failing the whole answer.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+    /// Moodle sends `gradefordisplay` and `gradeddate` as null without a grade, and the plugins
+    /// only with the grader's record.
         lastattempt = try container.decodeIfPresent(LastAttempt.self, forKey: .lastattempt)
         feedback = try? container.decodeIfPresent(Feedback.self, forKey: .feedback)
     }
 
-    /// A team assignment reports the group's status in `teamsubmission`, so a teammate's
-    /// submission leaves the student's own `submission` unsubmitted or without a status.
     private var attempt: LastAttempt.Submission? {
         let own = lastattempt?.submission
         let team = lastattempt?.teamsubmission
@@ -244,12 +228,13 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         return MoodleSubmissionStatus(
             assignId: assignId,
             submissionStatus: attempt?.status,
+    /// A team assignment reports the group's status in `teamsubmission`, so a teammate's
+    /// submission leaves the student's own `submission` unsubmitted or without a status.
             gradingStatus: lastattempt?.gradingstatus,
             submittedAt: submittedAt
         )
     }
 
-    /// From the record the round's status comes from, so the page and Home agree.
     var submission: MoodleAssignmentSubmission {
         let record = attempt
         let plugins = record?.plugins ?? []
@@ -268,7 +253,6 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         )
     }
 
-    /// Moodle writes "-" for no grade.
     private var grade: MoodleAssignmentGrade? {
         guard let feedback else { return nil }
         let shown = MoodleHTMLText.plainText(fromHTML: feedback.gradefordisplay ?? "")
@@ -278,13 +262,13 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         return MoodleAssignmentGrade(grade: grade, gradedAt: feedback.gradeddate.flatMap(Self.date), feedback: comments)
     }
 
-    /// A plugin's editor text pointing at its own files; nil for text that shows nothing.
     private static func text(of plugin: LastAttempt.Plugin?) -> String? {
         guard let text = plugin?.editorfields?.first?.text else { return nil }
         let html = MoodleHTMLText.resolvingPluginFiles(
             in: text, files: (plugin?.fileareas ?? []).flatMap { $0.files ?? [] }.compactMap(\.model)
         )
         return MoodleHTMLText.markdown(fromHTML: html).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : html
+    /// Moodle writes "-" for no grade.
     }
 
     private static func date(_ seconds: Int) -> Date? {
@@ -310,7 +294,6 @@ nonisolated private struct RawComments: Decodable, Sendable {
     }
 
     let comments: [Comment]
-    /// All the submission's comments, not this page's; Moodle may leave it out.
     let count: Int?
 }
 

@@ -9,9 +9,6 @@ enum CourseLookupService {
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = false
-        // querycourse.ntust.edu.tw is in the *.ntust.edu.tw pin scope —
-        // course search bodies and responses ride the SSO trust chain,
-        // so MITM defence here matches the rest of the NTUST surface.
         return URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
@@ -19,9 +16,6 @@ enum CourseLookupService {
         )
     }()
 
-    /// Every course fetch and class-table appearance looks each course up, and the times and
-    /// rooms they read seldom change, so an answer is kept this long. Seat counts move during
-    /// add and drop, so the searches in Add Course pass `fresh`.
     static let lookupLifetime: TimeInterval = 30 * 60
 
     struct LookupKey: Hashable {
@@ -32,7 +26,6 @@ enum CourseLookupService {
 
     private static var lookups: [LookupKey: (at: Date, results: [CourseSearchResult])] = [:]
 
-    /// `fresh` skips the kept answer; a class-table pull and Add Course pass it.
     static func lookupCourse(
         semester: String,
         courseNo: String,
@@ -80,9 +73,6 @@ enum CourseLookupService {
     nonisolated static func parseNodeToSchedule(_ node: String?) -> [Int: [String]] {
         guard let node, !node.isEmpty else { return [:] }
 
-        // M-F = weekday 1..5; S/U = Sat/Sun; X is the legacy NTUST code for
-        // Saturday makeup classes (predates the S/U pair). Other letters get
-        // logged so unknown future codes don't silently disappear.
         let dayMap: [Character: Int] = [
             "M": 1, "T": 2, "W": 3, "R": 4, "F": 5,
             "S": 6, "U": 7, "X": 6
@@ -90,6 +80,9 @@ enum CourseLookupService {
         var schedule: [Int: [String]] = [:]
 
         for item in node.split(separator: ",") {
+        // M-F = weekday 1..5; S/U = Sat/Sun; X is the legacy NTUST code for
+        // Saturday makeup classes (predates the S/U pair). Other letters get
+        // logged so unknown future codes don't silently disappear.
             let trimmed = item.trimmingCharacters(in: .whitespaces)
             guard let first = trimmed.first else { continue }
             guard let day = dayMap[first] else {

@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Course Search API Response
-
 struct CourseSearchResult: Codable {
     let Semester: String
     let CourseNo: String
@@ -20,8 +18,6 @@ struct CourseSearchResult: Codable {
     let Node: String?
     let Contents: String?
 }
-
-// MARK: - Course Search Request
 
 struct CourseSearchRequest: Codable {
     let Semester: String

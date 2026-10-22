@@ -15,11 +15,7 @@ nonisolated enum NTUSTGradePoints {
         "D": 1.0, "E": 0.0, "X": 0.0,
     ]
 
-    /// Grade points for a transcript grade cell, or nil when the cell is
-    /// not a grade (pass/fail, a grade not yet posted, empty).
     static func points(forGrade raw: String) -> Double? {
-        // Full-width letters and signs ("Ｂ＋") come through some exports;
-        // fold them to ASCII before matching.
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let grade = (trimmed.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? trimmed).uppercased()
         if let points = byLetter[grade] { return points }
@@ -39,12 +35,6 @@ nonisolated enum NTUSTGradePoints {
         }
     }
 
-    /// Credit-weighted average over the courses that already have a
-    /// grade; nil while nothing is gradable yet. Pass/fail, exempted,
-    /// withdrawn and pending rows carry no grade points and drop out.
-    /// ponytail: every graded course counts, including `.notCounted` credits.
-    /// The school's inclusion rule is unpublished; adjust here if the
-    /// official figure disagrees.
     static func gpa(of courses: [CourseGrade]) -> Double? {
         var weighted = 0.0
         var credits = 0.0

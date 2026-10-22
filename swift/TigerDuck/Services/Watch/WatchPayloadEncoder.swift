@@ -1,10 +1,5 @@
 import Foundation
 
-/// Phone-side flattener: takes the user's `SDCourse[]` and per-feature
-/// preferences and produces a `WatchSnapshot` ready for `WatchPayloadCodec`.
-///
-/// A course meeting twice a week becomes two `WatchCourse` rows — each
-/// row represents one concrete weekday session.
 enum WatchPayloadEncoder {
 
     static func encode(
@@ -17,9 +12,6 @@ enum WatchPayloadEncoder {
         visualPreset: VisualPreset,
         quietDays: Set<String> = []
     ) -> WatchSnapshot {
-        // No courses when logged out: the previous user's may still be cached when this push
-        // fires, and the watch's NowNextView checks `courses` before `loggedIn`, so it would
-        // keep showing their schedule on a signed-out watch.
         let watchCourses = loggedIn
             ? courses.flatMap { flatten($0, customNames: customNames) }
             : []
@@ -36,9 +28,6 @@ enum WatchPayloadEncoder {
         )
     }
 
-    /// Serialises the current debug time override (if any) for transport
-    /// to the watch. `#if DEBUG`-gated: Release builds never emit the
-    /// field, so the watch receives `nil` and stays on real wall time.
     private static func encodedClockOverride() -> String? {
         #if DEBUG
         guard let override = AppClock.currentOverride() else { return nil }
@@ -51,9 +40,6 @@ enum WatchPayloadEncoder {
     }
 
     private static func flatten(_ course: SDCourse, customNames: [String: String]) -> [WatchCourse] {
-        // Split non-contiguous periods on one weekday (3,4,6,7) into runs, or the watch and
-        // complication show one block across the gap and call it "current" during the free
-        // period. Mirrors `WidgetTimelineDerivation.contiguousRuns` in the iOS widget.
         let order = AppConstants.Periods.chronologicalOrder
         let skipped = Set(course.skippedDates)
         return course.schedule.flatMap { weekday, periodIds -> [WatchCourse] in
@@ -100,11 +86,6 @@ enum WatchPayloadEncoder {
         return runs
     }
 
-    /// Mirror of `WidgetSnapshotBuilder.resolveDisplayName` — prefer the
-    /// persisted alias overlay (canonical store) over the SDCourse
-    /// `@Transient customName` (which may not be hydrated on every
-    /// instance returned by SwiftData `@Query`), then fall back to the
-    /// canonical API name.
     private static func resolveDisplayName(
         course: SDCourse,
         customNames: [String: String]
@@ -114,9 +95,6 @@ enum WatchPayloadEncoder {
         return course.courseName
     }
 
-    /// Phone keeps the user's per-course color override in
-    /// `TigerDuckTheme`'s palette + custom-overrides cache. We surface the
-    /// hex form so the watch can render the same swatch the user picked.
     private static func courseColorHex(_ course: SDCourse) -> String {
         TigerDuckTheme.courseColorHex(for: course.courseNo)
     }

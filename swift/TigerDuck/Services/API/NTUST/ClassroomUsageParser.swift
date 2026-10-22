@@ -1,15 +1,12 @@
 import Foundation
 import SwiftSoup
 
-/// What a room is doing in one period.
 nonisolated enum RoomSlotUse: Equatable, Sendable {
     case free
-    /// Lent through the booking system. The booker is a person, so the name is never kept.
     case booked
     case course(name: String, teacher: String)
 }
 
-/// One room's day: the use of each period, 1-10 then A-D.
 nonisolated struct RoomUsage: Equatable, Sendable, Identifiable {
     let room: String
     let slots: [RoomSlotUse]
@@ -20,8 +17,6 @@ nonisolated struct RoomUsage: Equatable, Sendable, Identifiable {
         slots.indices.contains(period) && slots[period] == .free
     }
 
-    /// The last period of the free run that starts at `period`, or nil when the room is in use
-    /// then.
     func freeUntil(from period: Int) -> Int? {
         guard isFree(at: period) else { return nil }
         var last = period
@@ -30,41 +25,36 @@ nonisolated struct RoomUsage: Equatable, Sendable, Identifiable {
     }
 }
 
-/// The main campus's rooms on one date, with the building names the site gives each code.
 nonisolated struct CampusUsage: Equatable, Sendable {
     let rooms: [RoomUsage]
     let buildingNames: [String: String]
 }
 
-/// Reads cour01's room-use page, an ASP.NET WebForms page: the form state each postback sends
-/// back, the date calendar's links, the room grid and its pager.
 nonisolated enum ClassroomUsageParser {
     static let periodCount = 14
     static let campusField = "DropdownCampusListID"
     static let calendarTarget = "date_cal"
 
     struct Postback: Equatable, Sendable {
+/// Reads cour01's room-use page, an ASP.NET WebForms page: the form state each postback sends
+/// back, the date calendar's links, the room grid and its pager.
         let target: String
         let argument: String
     }
 
     struct Grid: Equatable, Sendable {
         let rooms: [RoomUsage]
-        /// The page shown, which the pager writes without a link.
         let page: Int
         let pageLinks: [Int: Postback]
     }
 
     struct Page: Sendable {
         let fields: [FormField]
-        /// Day numbers the calendar links, and the day numbers of the months it steps to.
         let calendarDays: Set<Int>
         let monthSteps: [Int]
-        /// Nil when the page has no grid: a sign-in page, the bridge to one or an error page.
         let grid: Grid?
         let buildingNames: [String: String]
 
-        /// The campus the page's list has chosen.
         var campus: String? {
             fields.first { $0.name == ClassroomUsageParser.campusField }?.value
         }
@@ -93,8 +83,6 @@ nonisolated enum ClassroomUsageParser {
         )
     }
 
-    /// The calendar's argument for a date: days since 2000-01-01, counted in UTC so a time-zone
-    /// offset cannot move it by a day.
     static func dayNumber(of date: Date, in calendar: Calendar = AppConstants.taipeiCalendar) -> Int {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         var utc = Calendar(identifier: .gregorian)
@@ -104,8 +92,6 @@ nonisolated enum ClassroomUsageParser {
         return utc.dateComponents([.day], from: epoch, to: day).day ?? 0
     }
 
-    /// The postback that brings `day` closer: the day itself once the calendar links it, else
-    /// the month step toward it. The site answers a day it does not link with an error page.
     static func calendarStep(toward day: Int, days: Set<Int>, monthSteps: [Int]) -> Postback? {
         if days.contains(day) {
             return Postback(target: calendarTarget, argument: String(day))
@@ -118,15 +104,13 @@ nonisolated enum ClassroomUsageParser {
         }
         return step.map { Postback(target: calendarTarget, argument: "V\($0)") }
     }
-
-    // MARK: - Grid
+    /// The postback that brings `day` closer: the day itself once the calendar links it, else
+    /// the month step toward it. The site answers a day it does not link with an error page.
 
     private static func grid(in doc: Document) -> Grid? {
         guard let table = try? doc.getElementById("showinfo_grd") else { return nil }
         let rows = directRows(of: table)
         var rooms: [RoomUsage] = []
-        // The first row heads the columns. A row of one cell is the pager or a no-data line; any
-        // other count means the grid changed shape, which must not read as rooms all free or none.
         for row in rows.dropFirst() {
             let cells = row.children().array().filter { $0.tagName() == "td" }
             if cells.count <= 1 { continue }
@@ -138,7 +122,6 @@ nonisolated enum ClassroomUsageParser {
         return Grid(rooms: rooms, page: pager.page, pageLinks: pager.links)
     }
 
-    /// Rows of the grid itself, not of the small table inside every cell.
     private static func directRows(of table: Element) -> [Element] {
         table.children().array().flatMap { child -> [Element] in
             switch child.tagName() {
@@ -149,10 +132,6 @@ nonisolated enum ClassroomUsageParser {
         }
     }
 
-    /// A cell's text, split where the site writes `</br>`, which the parser reads as `<br>`, and
-    /// read through every other element but the tables a cell holds, such as its small one.
-    /// A booking is told by its marker line, not by the cell colour, which the site puts on the
-    /// wrong cells of a second page.
     private static func slotUse(_ cell: Element) -> RoomSlotUse {
         var parts = [""]
         func read(_ node: Node) {
@@ -170,6 +149,10 @@ nonisolated enum ClassroomUsageParser {
         }
         read(cell)
         let lines = parts
+    /// A cell's text, split where the site writes `</br>`, which the parser reads as `<br>`, and
+    /// read through every other element but the tables a cell holds, such as its small one.
+    /// A booking is told by its marker line, not by the cell colour, which the site puts on the
+    /// wrong cells of a second page.
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard let first = lines.first else { return .free }
@@ -179,8 +162,6 @@ nonisolated enum ClassroomUsageParser {
         return .course(name: first, teacher: lines.dropFirst().joined(separator: " "))
     }
 
-    /// Parts of the words for a booking: confirmed, pending, applied for, under review or held.
-    /// A course whose name holds one shows as booked, which still keeps the room taken.
     private static let bookingMarks = ["借用", "預約", "申請", "審核", "核准", "保留"]
 
     private static func pager(in row: Element?) -> (page: Int, links: [Int: Postback]) {
@@ -199,8 +180,6 @@ nonisolated enum ClassroomUsageParser {
         }
         return (page, links)
     }
-
-    // MARK: - Form
 
     private static func postback(in link: Element) -> Postback? {
         guard let href = try? link.attr("href"),
@@ -222,8 +201,6 @@ nonisolated enum ClassroomUsageParser {
         return (days, months)
     }
 
-    /// What a browser would submit: every named input except buttons and unticked boxes, and
-    /// each list's chosen option.
     private static func formFields(in doc: Document) -> [FormField] {
         guard let form = try? doc.select("form").first() else { return [] }
         var fields: [FormField] = []
