@@ -2,26 +2,12 @@
 import SwiftUI
 import UIKit
 
-/// Developer-only screen for pointing School Mail at a mail server that is not the school's.
-/// Reached from `Settings → Developer → Email`; the row, this file and the store behind it are
-/// all `#if DEBUG`, so a Release build has no override to read and no screen to reach.
-///
-/// Nothing here takes effect until **Apply**. Applying an actual change signs the mail account
-/// out and wipes its caches, markers and notifications — see `DevMailServerSettings`, which
-/// explains why — so the screen says so up front rather than surprising anyone.
 struct DevMailServerView: View {
     private let settings = DevMailServerSettings.shared
     @State private var status: String?
     @State private var probeOutput: String?
     @State private var probeTask: Task<Void, Never>?
 
-    /// Credentials typed for a test run, held in memory for as long as this screen is on screen
-    /// and **never** written to the Keychain, `MailAccountManager` or anywhere else.
-    ///
-    /// Without these the diagnostic could not answer the question it exists for. AUTH reads the
-    /// *saved* password, and a sign-in that fails never saves one — so the very situation that
-    /// sends someone to this screen ("it says wrong password") is the one situation where the
-    /// stage that would explain it is skipped for want of a password to try.
     @State private var testUsername = ""
     @State private var testPassword = ""
 
@@ -126,8 +112,6 @@ struct DevMailServerView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    // Selectable and monospaced: the whole point of this output is that it can be
-                    // copied somewhere else, column-aligned, exactly as it reads here.
                     Text(probeOutput)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
@@ -145,9 +129,6 @@ struct DevMailServerView: View {
             }
         }
         .navigationTitle("Email")
-        // Swiping the form down dismisses the keyboard, the gesture people try first. The Done
-        // button is the one required: the port fields use `.numberPad`, which has no return key,
-        // so without it a tap into a port field traps the keyboard open.
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -160,21 +141,13 @@ struct DevMailServerView: View {
 
     private var active: MailServerConfig { settings.effectiveConfig }
 
-    /// Apply is offered only for a configuration that is complete, actually different from the
-    /// one in force, and allowed — a disabled button says "nothing would happen" more clearly
-    /// than a button that does nothing. The refusal itself is shown above the buttons, since a
-    /// disabled Apply with no explanation reads as a bug.
     private var canApply: Bool {
         guard settings.draft != settings.stored, applyRefusal == nil else { return false }
         return !settings.draft.isEnabled || settings.draft.normalized != nil
     }
 
-    /// Why this draft may not be applied. `DevMailServerSettings` owns the rule and refuses the
-    /// commit as well, so this is only how the screen says so.
     private var applyRefusal: String? { DevMailServerSettings.applyRefusal(for: settings.draft) }
 
-    /// The hosts on this screen that `MailServerConfig.transportScheme(for:requested:)` will
-    /// hold at implicit TLS however the pickers are set.
     private var clampedHosts: String? {
         let hosts = [settings.draft.imapHost, settings.draft.smtpHost]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -218,14 +191,6 @@ struct DevMailServerView: View {
 
     private var isTesting: Bool { probeTask != nil }
 
-    /// Tests the **draft** — what is on screen — rather than what is applied. Diagnosing a server
-    /// before committing to it is the point: applying signs the account out, so a developer who
-    /// has to apply first in order to find out why a server will not connect has already paid for
-    /// the answer before getting it.
-    ///
-    /// The credentials are read here, at the call site, so nothing below the UI reaches into
-    /// `MailAccountManager` or the Keychain on its own. Both reads are reads: this button does not
-    /// sign in, sign out, clear anything or write anything.
     private func test() {
         probeTask?.cancel()
         probeTask = nil
@@ -234,9 +199,6 @@ struct DevMailServerView: View {
             return
         }
         let config = MailServerConfig.resolve(override: settings.draft)
-        // Typed credentials win and skip the scoping rule, which keeps the saved school password
-        // from reaching a third-party server by accident; a password typed here for this test is
-        // neither saved nor an accident. Blank falls back to the saved password, still scoped.
         let typedName = testUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         let credentials: DevMailProbeCredentials = if !testPassword.isEmpty, !typedName.isEmpty {
             .use(username: typedName, password: testPassword)
@@ -258,8 +220,6 @@ struct DevMailServerView: View {
         }
     }
 
-    /// Stops waiting. A stage already in flight is bounded by its own timeout and ends on its own
-    /// — SwiftMail's commands ignore cancellation — but nothing reads its result once this ran.
     private func cancelTest() {
         probeTask?.cancel()
         probeTask = nil
