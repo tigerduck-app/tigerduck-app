@@ -14,18 +14,11 @@ nonisolated struct SanitizedHTML: Equatable, Sendable {
     var links: [MailLink]
 }
 
-/// HTML for the web view in which every `<a href>` is `https://link.invalid/<n>`, with
-/// `links[n]` holding the text and href that anchor had. Mirrors Android's
-/// `LinkedHtml`/`MailHtmlDocument.rewriteLinks`. When the anchors cannot be kept in lockstep
-/// with `links`, `links` is empty and no anchor has an `href` at all; see
-/// `MailHTMLSanitizer.rewriteLinks`.
 nonisolated struct LinkedHTML: Equatable, Sendable {
     var html: String
     var links: [MailLink]
 }
 
-/// Appendix A.2. The sanitizer is the second line of defence; the first is the web view
-/// with JavaScript off and network loads blocked (`MailWebViewFactory`).
 nonisolated enum MailHTMLSanitizer {
     static let cidScheme = "tdcid"
     static let remoteImageAttribute = "data-remote-src"
@@ -58,9 +51,6 @@ nonisolated enum MailHTMLSanitizer {
         "ul": ["type"],
         "li": ["value"],
     ]
-    /// Same pattern as Android's `DATA_IMAGE` regex. The MIME subtype must be followed
-    /// immediately by `;` or `,` (the start of `;base64,` or of a raw `,`-separated payload),
-    /// so `data:image/pngx,AAAA`, which a plain prefix check would accept, is rejected.
     private static let dataImagePattern = try! NSRegularExpression(
         pattern: "^data:image/(png|jpeg|gif|webp)[;,]",
         options: .caseInsensitive
@@ -71,27 +61,15 @@ nonisolated enum MailHTMLSanitizer {
         return dataImagePattern.firstMatch(in: source, options: [], range: range) != nil
     }
 
-    /// `width: 5.6875in` or `height: 772px !important`, written the way `MailCSSFilter.filter`
-    /// writes a declaration, in a CSS length unit. `%`, `auto`, unitless numbers and made-up
-    /// units don't match.
     private static let fixedLengthPattern = try! NSRegularExpression(
         pattern: #"^(?:width|height): ([0-9]*\.?[0-9]+)(px|pt|pc|in|cm|mm|em|rem|ex|ch|vw|vh|vmin|vmax)\s*(?:!\s*important)?$"#,
         options: .caseInsensitive
     )
 
-    /// An image's filtered `style` with a fixed `width` and `height` in one unit rewritten as
-    /// that width and their `aspect-ratio`, or nil to leave it alone (#226). Not `private`:
-    /// unit-tested directly. The page's `img{max-width:100%;height:auto}` narrows a wide image,
-    /// but a fixed inline height outranks `height:auto`, so it would keep its height and stretch;
-    /// Outlook sizes inline images this way (`width:6.25in;height:8.84in`). With the ratio, a
-    /// narrowed image keeps its shape and any other keeps the sender's box, even while held back.
-    /// ponytail: `546px` by `8in` still stretches, and so does an inline height beside a `width`
-    /// attribute; converting absolute units to px, and reading the attribute, would cover them.
     static func keepingAspectRatio(_ style: String) -> String? {
         let declarations = style.components(separatedBy: "; ")
         let widths = declarations.filter { $0.hasPrefix("width:") }
         let heights = declarations.filter { $0.hasPrefix("height:") }
-        // Exactly one of each: given two, `!important` decides which one applies.
         guard widths.count == 1, heights.count == 1,
               let width = fixedLength(widths[0]), let height = fixedLength(heights[0]),
               width.unit == height.unit else { return nil }
@@ -126,18 +104,12 @@ nonisolated enum MailHTMLSanitizer {
 
             var blocked = 0
             for image in try clean.select("img") {
-                // Only this loop ever writes `data-remote-src`. The Cleaner already strips a
-                // sender's copy, since the whitelist lacks it; removing it here keeps that true if
-                // the whitelist changes. Mirrors Android's `img.removeAttr(REMOTE_SRC_ATTR)`.
                 try image.removeAttr(remoteImageAttribute)
 
                 if let style = keepingAspectRatio(try image.attr("style")) {
                     try image.attr("style", style)
                 }
 
-                // Trim and write the value back before inspecting it, so a source like
-                // `src=" data:image/png;..."` is still recognised (controller ruling,
-                // 2026-09-16; mirrors Android's `img.attr("src", img.attr("src").trim())`).
                 let source = try image.attr("src").trimmingCharacters(in: .whitespacesAndNewlines)
                 try image.attr("src", source)
                 let lowered = source.lowercased()
@@ -158,21 +130,14 @@ nonisolated enum MailHTMLSanitizer {
 
             var links: [MailLink] = []
             for anchor in try clean.select("a[href]") {
-                // Trim and write back, as for `src`: SwiftSoup's Whitelist checks a trimmed URL but
-                // keeps the original, so a space or decoded `&#x0a;` stays in the HTML and `href`:
-                // `URL(string:)` fails, so no mismatch warning shows, yet WebKit follows the link.
                 let href = try anchor.attr("href").trimmingCharacters(in: .whitespacesAndNewlines)
                 try anchor.attr("href", href)
-                // A.3: link text loses bidi controls too, same as sender names/subjects,
-                // so a bidi override can't disguise what a link's visible text says.
                 let text = MailTextCleaner.clean(try anchor.text())
                 links.append(MailLink(text: text, href: href))
             }
 
             return SanitizedHTML(html: try clean.body()?.html() ?? "", blockedRemoteImages: blocked, links: links)
         } catch {
-            // Fail closed: fall back to escaped plain text. Log only the error's type, never its
-            // message or the mail content: mail content never leaves the device or reaches a log.
             logger.error("HTML sanitize failed, falling back to escaped plain text: \(String(describing: type(of: error)), privacy: .public)")
             let escaped = html
                 .replacingOccurrences(of: "&", with: "&amp;")
@@ -182,14 +147,6 @@ nonisolated enum MailHTMLSanitizer {
         }
     }
 
-    /// Rewrites every `<a href>` in sanitized `html` to `https://link.invalid/<n>`; `links[n]`
-    /// holds anchor `n`'s text and original href, read off the tree this rewrites, never off
-    /// `SanitizedHTML.links`. The cleaner can drop an element but keep its children, a tree no
-    /// parser builds, so a reparse can shift an index. The web view reparses this output, so it
-    /// is reparsed here and must yield the same anchors, href and text, in order. On a mismatch
-    /// or any failure, every `href` is stripped and `links` is empty: live links never pair with
-    /// `links: []`. The navigation delegate answers a tap with the index alone, never a URL, so
-    /// no WebKit canonicalization quirk can misroute a tap. `.invalid` never resolves (RFC 2606).
     static func rewriteLinks(_ html: String) -> LinkedHTML {
         guard let doc = try? SwiftSoup.parseBodyFragment(html) else {
             return LinkedHTML(html: stripHrefsWithRegex(html), links: [])
@@ -219,14 +176,6 @@ nonisolated enum MailHTMLSanitizer {
         anchors.array().map { [((try? $0.attr("href")) ?? ""), ((try? $0.text()) ?? "")] }
     }
 
-    /// Last resort when `SwiftSoup.parseBodyFragment` failed and no tree is left to strip: removes
-    /// every `href` as text, double-quoted, single-quoted or unquoted (HTML5 allows all three).
-    /// HTML5's "before attribute name" state also takes `/` as a separator, so `<a/href="…">`
-    /// carries a live `href`. After a quoted value no separator is needed (`<a href="a"href="b">`
-    /// is two attributes), so a quote also starts a match, via a zero-width lookbehind that keeps
-    /// the previous closing quote. Over-stripping is the safe side: removing an `href=` that was
-    /// only text costs a few characters, missing one costs a tappable phishing link. Not `private`:
-    /// unit-tested directly, since no input makes SwiftSoup's own parser fail on demand.
     static let hrefAttributePattern = try! NSRegularExpression(
         pattern: #"(?:[\s/]+|(?<=["']))href\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)"#, options: .caseInsensitive
     )
@@ -246,7 +195,6 @@ nonisolated enum MailHTMLSanitizer {
         return whitelist
     }
 
-    /// The plain-text view of an HTML-only mail: block elements become line breaks.
     static func plainText(fromHTML html: String) -> String {
         guard let document = try? SwiftSoup.parse(html, ""), let body = document.body() else { return html }
         var output = ""
@@ -262,8 +210,6 @@ nonisolated enum MailHTMLSanitizer {
         "ul", "ol", "dl", "dt", "dd", "hr", "center",
     ]
 
-    /// Deeper than `AppConstants.maximumHTMLDepth`, an element's text is taken whole, which keeps
-    /// the recursion far inside the stack of the detached task that runs this.
     private static func appendText(of element: Element, depth: Int, to output: inout String) {
         guard depth <= AppConstants.maximumHTMLDepth else {
             output += (try? element.text()) ?? ""

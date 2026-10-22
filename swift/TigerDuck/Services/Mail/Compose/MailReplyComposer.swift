@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The parts of an opened mail that reply and forward need.
 nonisolated struct MailOriginal: Sendable {
     var from: MailAddress?
     var to: [MailAddress]
@@ -11,15 +10,10 @@ nonisolated struct MailOriginal: Sendable {
     var messageID: String?
     var references: [String]
     var bodyText: String
-    /// Nil when the opened mail does not say whether it has one (`MailMessageDetail.replyTo`).
     var replyTo: [MailAddress]? = nil
 }
 
-/// Reply and forward rules.
 nonisolated enum MailReplyComposer {
-    /// RFC 5322 specials: a display name containing any of these must be quoted so the
-    /// formatted address round-trips through `MailAddress.parseList`. Matches Android's
-    /// `ComposeRules.formatOne`.
     private static let nameSpecials = CharacterSet(charactersIn: ",;\"<>():@\\")
 
     static func replySubject(_ subject: String) -> String {
@@ -30,16 +24,11 @@ nonisolated enum MailReplyComposer {
         hasPrefix(subject, ["fwd:", "fw:"]) ? subject : "Fwd: \(subject)"
     }
 
-    /// Blank lines, then "On {date}, {sender} wrote:" and the original with `> ` on every line.
     static func quotedBody(of original: MailOriginal, dateText: String) -> String {
         let quoted = normalizedLines(original.bodyText).map { "> \($0)" }.joined(separator: "\n")
         return "\n\n\(header(original, dateText: dateText))\n\(quoted)"
     }
 
-    /// Forwards carry a structured header block: blank line, blank line, the forwarded-message
-    /// marker, From/Date/Subject/To, blank line, then the original text unquoted underneath
-    /// (matches Android's `ComposePrefill.forward`). The four header keys and
-    /// `school_mail_details_to` are `shared`-group keys, not `apple`-group ones.
     static func forwardBody(of original: MailOriginal, dateText: String) -> String {
         let block = [
             String(localized: "school_mail_forwarded_header"),
@@ -51,16 +40,8 @@ nonisolated enum MailReplyComposer {
         return "\n\n\(block)\n\n\(normalizedLines(original.bodyText).joined(separator: "\n"))"
     }
 
-    /// "Name <address>" when a name is present, else the bare address — for the
-    /// human-readable From/To lines in a forward's header block (not a MIME header) and
-    /// for a compose recipient field. A name containing an RFC 5322 special is quoted with
-    /// `"` and has `\` and `"` backslash-escaped so it parses back through
-    /// `MailAddress.parseList`. Matches Android's `ComposeRules.formatOne`.
     static func formatted(_ address: MailAddress) -> String {
         guard let name = address.name?.mailNonEmpty else { return address.address }
-        // A sender kept for its name alone has no address (`MailAddress.parseSender`), and
-        // a forward header block reading `From: Mail Deliver System <>` would be worse than
-        // the bare name.
         guard !address.address.isEmpty else { return name }
         guard name.unicodeScalars.contains(where: nameSpecials.contains) else {
             return "\(name) <\(address.address)>"
@@ -77,14 +58,6 @@ nonisolated enum MailReplyComposer {
         addresses.map(formatted).joined(separator: ", ")
     }
 
-    /// Reply goes to Reply-To (else From). Reply all also copies the original To and Cc,
-    /// minus my own address and anything already addressed (case-insensitive).
-    ///
-    /// A sender the From header only named — `"Mail Deliver System" <MAILER-DAEMON>`, kept
-    /// for its display name by `MailAddress.parseSender` and so carrying no address — is
-    /// dropped here rather than prefilled as `Mail Deliver System <>`. The reply opens with
-    /// an empty To field and compose refuses to send it (`school_mail_no_recipient`); nothing
-    /// downstream ever sees a recipient this app could not parse.
     static func replyRecipients(
         to original: MailOriginal,
         replyTo: [MailAddress],

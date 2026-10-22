@@ -1,13 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// Mail2000's own folders (Appendix A.1). The server has no SPECIAL-USE, so roles are found by
-/// name — never by a `\Sent`/`\Drafts`/`\Trash` attribute, which this server never sends.
-///
-/// Resolution itself never creates anything: an absent role stays absent here and its chip stays
-/// hidden. Sent, Drafts and Trash are created on demand by `MailFolderProvisioner`, but only from
-/// inside the operation that needs one, and the result is adopted by re-running `resolve` over a
-/// fresh folder list rather than by patching the map.
 nonisolated enum MailFolderRole: String, CaseIterable, Sendable {
     case inbox, sent, drafts, junk, trash
 
@@ -43,8 +36,6 @@ nonisolated enum MailFolderRole: String, CaseIterable, Sendable {
 }
 
 nonisolated enum MailFolderMap {
-    /// Exact IMAP-name match first, then one exact match on the decoded name. A role with
-    /// neither is absent, and its chip is hidden.
     static func resolve(available: [String]) -> [MailFolderRole: String] {
         var result: [MailFolderRole: String] = [:]
         for role in MailFolderRole.allCases {
@@ -57,7 +48,6 @@ nonisolated enum MailFolderMap {
         return result
     }
 
-    /// Everything not mapped to a role, sorted by decoded name — the "More…" list.
     static func otherFolders(available: [String]) -> [String] {
         let mapped = Set(resolve(available: available).values)
         return available

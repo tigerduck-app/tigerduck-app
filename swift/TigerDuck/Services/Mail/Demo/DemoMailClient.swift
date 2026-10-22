@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The store-review mailbox (`mail-demo.json`). Made-up data; no real student.
 nonisolated struct MailDemoFixture: Decodable, Sendable {
     struct Attachment: Decodable, Sendable {
         var filename: String
@@ -43,8 +42,6 @@ nonisolated struct MailDemoFixture: Decodable, Sendable {
     }
 }
 
-/// `MailClient` over the demo fixture. Never opens a socket. State lives for the app's
-/// lifetime so read/move actions stick while a reviewer explores.
 actor DemoMailClient: MailClient {
     static let shared: DemoMailClient? = MailDemoFixture.shared.map { DemoMailClient(fixture: $0) }
 
@@ -53,9 +50,6 @@ actor DemoMailClient: MailClient {
         var text: String
         var html: String?
         var attachments: [MailBodyPart: Data]
-        /// The `Message-ID` header of a message this app appended, kept so `containsMessageID`
-        /// can answer the sent-copy dedupe probe truthfully. Fixture mail has none: it was never
-        /// sent from here, so no probe may ever match it.
         var messageID: String?
     }
 
@@ -208,20 +202,11 @@ actor DemoMailClient: MailClient {
         folders[folder]?.removeAll { $0.summary.isDeleted }
     }
 
-    /// The demo mailbox has exactly one UIDVALIDITY generation and never recreates a folder, so
-    /// this only ever refuses a caller that pinned something else — it is here so the demo client
-    /// upholds the same contract the live one does rather than quietly accepting any pin.
     private func assertUIDValidity(_ expected: UInt32?) throws {
         guard let expected, expected != fixture.uidValidity else { return }
         throw MailClientError.folderChanged
     }
 
-    /// The demo mailbox never creates anything. Its fixture already has all five role folders, so
-    /// nothing reaches this in practice; it refuses rather than quietly succeeding so that the
-    /// "never create against the demo client" rule is upheld by the client itself and not merely
-    /// by every caller remembering to check. A refusal is exactly the shape callers already
-    /// handle — the same one a server that says no produces — so the demo keeps behaving as it
-    /// always has.
     func createFolder(_ name: String) async throws {
         throw MailClientError.protocolError("the demo mailbox does not create folders")
     }
@@ -243,14 +228,6 @@ actor DemoMailClient: MailClient {
         folders[folder] = messages
     }
 
-    /// Re-derives the plain-text body TigerDuck itself built, decoded by its own
-    /// Content-Transfer-Encoding rather than kept as the raw wire bytes. Without this, a saved
-    /// non-ASCII draft reopens as its literal quoted-printable escapes (`=E9=82=84...`). Only
-    /// ever applied to messages this app built with `MailMessageBuilder.build`, never to real
-    /// incoming mail, which SwiftMail decodes before the app sees it. That builder always writes
-    /// the text/plain part first, multipart or not, so finding the first blank line (and, for
-    /// multipart, the text part's header block right after the opening boundary) is enough;
-    /// nothing here needs a general MIME parser.
     private static func decodedTextBody(from message: Data) -> String {
         guard let firstBlank = message.range(of: Data("\r\n\r\n".utf8)) else { return "" }
         let headerText = String(decoding: message[message.startIndex..<firstBlank.lowerBound], as: UTF8.self)
@@ -262,8 +239,6 @@ actor DemoMailClient: MailClient {
             return decodedBody(Data(body), encoding: headerValue(named: "Content-Transfer-Encoding", in: headerText))
         }
 
-        // Multipart: skip the opening "--boundary\r\n" line, then read the text part's own
-        // header block (its Content-Transfer-Encoding), then its body up to the next boundary.
         guard let boundaryLineEnd = rest.range(of: Data("\r\n".utf8)) else { return "" }
         let afterBoundary = rest[boundaryLineEnd.upperBound...]
         guard let partBlank = afterBoundary.range(of: Data("\r\n\r\n".utf8)) else { return "" }
@@ -275,8 +250,6 @@ actor DemoMailClient: MailClient {
         return decodedBody(Data(body), encoding: headerValue(named: "Content-Transfer-Encoding", in: partHeaderText))
     }
 
-    /// Reuses `MailRawHeaders.value` (which reads up to the first blank line) by handing it just
-    /// the header block with a synthetic blank line appended.
     private static func headerValue(named name: String, in headerBlock: String) -> String? {
         MailRawHeaders.value(named: name, in: Data((headerBlock + "\r\n\r\n").utf8))
     }
@@ -294,9 +267,6 @@ actor DemoMailClient: MailClient {
         }
     }
 
-    /// A minimal RFC 2045 quoted-printable decoder: `=XX` is a literal byte, a trailing `=` at
-    /// the end of a line is a soft break (dropped along with the CRLF that follows it),
-    /// everything else passes through unchanged.
     private static func decodeQuotedPrintable(_ data: Data) -> String {
         var output = [UInt8]()
         let bytes = Array(data)
@@ -329,15 +299,10 @@ actor DemoMailClient: MailClient {
         }
     }
 
-    /// Answers from what is actually in the folder, rather than always saying "no". The demo
-    /// mailbox is the only place the sent-copy path can be exercised without a socket, and a
-    /// hard-coded `false` made it the one shape the dedupe can never be wrong about — it always
-    /// appended, so a demo run proved nothing about the real decision.
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool {
         (folders[folder] ?? []).contains { $0.messageID == messageID }
     }
 
-    /// The demo never sends anything; compose then saves the copy into Sent itself.
     func send(_ message: Data, from sender: String, to recipients: [String]) async throws {}
 
     private func find(folder: String, uid: UInt32) throws -> Stored {

@@ -1,17 +1,8 @@
 #if os(iOS)
 import Foundation
 
-/// Launch-time wiring for School Mail, called from `TigerDuckApp`.
 @MainActor
 enum SchoolMailBootstrap {
-    /// `account` and `notifier` are parameters so a test can install the hooks on its own
-    /// instances and run them. Asserting that the singleton's five closures are non-nil passes
-    /// with every hook body empty, and touches the app's real `UserDefaults` and cache directory.
-    ///
-    /// `account` defaults to `nil`, not `.shared`: a default argument is type-checked in a
-    /// nonisolated context, and naming the main-actor `MailAccountManager.shared` there is an
-    /// isolation error in Swift 6 mode. This `@MainActor` body resolves it instead, so a passed
-    /// instance is used and every other caller still gets the singleton.
     static func install(
         account: MailAccountManager? = nil,
         notifier: MailNotifier = MailChecker.shared.notifier
@@ -19,12 +10,7 @@ enum SchoolMailBootstrap {
         let account = account ?? .shared
         guard SchoolMailAvailability.isEnabled else { return }
         SchoolMailCharsetHook.install()
-        // Read now for `sceneDidEnterBackground`: the first activation after a launch does not
-        // reach `sceneDidBecomeActive`.
         Task { _ = await MailNotificationPermission.isDenied() }
-        // A sign-out whose cache wipe never finished (the app was killed part-way through a
-        // directory delete) leaves the previous student's mail on disk; finish it now, before
-        // anything can sign in.
         account.resumeInterruptedCacheWipe()
         account.onSignedIn = {
             MailBackgroundRefresh.schedule()
@@ -50,13 +36,10 @@ enum SchoolMailBootstrap {
 
     static func sceneDidBecomeActive() {
         guard SchoolMailAvailability.isEnabled else { return }
-        // The permission may have changed in Settings while the app was away.
         Task { _ = await MailNotificationPermission.isDenied() }
         Task { await MailForegroundCheck.runIfDue() }
     }
 
-    /// iOS expects the next refresh to be requested as the app leaves the foreground, and can
-    /// suspend it before an `await` returns, so this decides at once from the last permission read.
     static func sceneDidEnterBackground() {
         let account = MailAccountManager.shared
         guard MailBackgroundRefresh.shouldRescheduleAfterHandling(

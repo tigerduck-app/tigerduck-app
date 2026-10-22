@@ -18,20 +18,13 @@ nonisolated struct OutgoingMail: Sendable {
     var references: [String]
     var attachments: [OutgoingAttachment]
 
-    /// SMTP `RCPT TO` list: To, Cc and Bcc, deduplicated case-insensitively. Bcc never
-    /// appears in the headers.
     var envelopeRecipients: [String] {
         var seen = Set<String>()
         return (to + cc + bcc).map(\.address).filter { seen.insert($0.lowercased()).inserted }
     }
 }
 
-/// Builds the 7-bit RFC 5322 message TigerDuck sends: UTF-8 plain text in quoted-printable,
-/// RFC 2047 headers, RFC 2231 attachment names.
 nonisolated enum MailMessageBuilder {
-    /// The effective domain, not the school constant: the sent-copy dedupe searches Sent for
-    /// this exact Message-ID, so it has to be a value that makes sense on whichever server the
-    /// message was actually submitted to.
     static func makeMessageID() -> String {
         "<\(UUID().uuidString.lowercased())@\(MailServerConfig.effective.addressDomain)>"
     }
@@ -85,14 +78,6 @@ nonisolated enum MailMessageBuilder {
         return Data((lines.joined(separator: "\r\n") + "\r\n").utf8)
     }
 
-    // MARK: Headers
-
-    /// `address.address` is sanitized here as defense in depth: `MailAddress.isPlausible`
-    /// (used by the compose screen before send) and `MailAddress.parseList` already
-    /// reject a value with a plain-shape violation, but a `MailAddress` can also be
-    /// constructed directly (a cache, a demo fixture, a future call site) without going
-    /// through either gate, so this must never emit a raw control character regardless of
-    /// how the address got here.
     static func header(for address: MailAddress) -> String {
         let sanitizedAddress = sanitizedHeaderValue(address.address)
         guard let name = address.name?.mailNonEmpty else { return sanitizedAddress }
@@ -103,8 +88,6 @@ nonisolated enum MailMessageBuilder {
         return "\(encodedWords(name)) <\(sanitizedAddress)>"
     }
 
-    /// ASCII text stays as is; anything else becomes UTF-8 base64 encoded words of at most
-    /// 45 bytes each (72 characters, under RFC 2047's 75), folded with CRLF + space.
     static func encodedWords(_ text: String) -> String {
         guard !isPlainASCII(text) else { return text }
         var words: [String] = []
@@ -139,36 +122,16 @@ nonisolated enum MailMessageBuilder {
         return formatter.string(from: date)
     }
 
-    /// A header value (an address, a Message-ID token, a References chain) never
-    /// legitimately contains a control character; stripping every one (not just CR/LF)
-    /// defangs a CRLF header-injection attempt smuggled in through a hostile address,
-    /// Message-ID, In-Reply-To or References value. Bcc is never written as a header at
-    /// all (see `OutgoingMail.envelopeRecipients`), so this only has to keep every other
-    /// header from growing an extra line.
     private static func sanitizedHeaderValue(_ raw: String) -> String {
         String(raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
     }
 
-    /// One `In-Reply-To`/`References` `msg-id`, or `nil` for one that must not be written. These
-    /// are the only header values this builder echoes from a received mail, where `Message-ID`
-    /// is attacker-controlled free text. RFC 5322 makes `msg-id` ASCII and Mail2000 announces
-    /// neither SMTPUTF8 nor 8BITMIME, so this is the one way raw 8-bit data could reach the 7-bit
-    /// wire. Everything else is RFC 2047-encoded (subject, display name), quoted-printable (body)
-    /// or validated ASCII (recipients, in `MailComposeViewModel.parseRecipients`). A non-ASCII
-    /// value is dropped whole, not stripped: a mangled `msg-id` identifies no message on any
-    /// server yet still claims to thread. Losing the threading reference is the lesser failure.
     private static func threadingToken(_ raw: String) -> String? {
         let sanitized = sanitizedHeaderValue(raw)
         guard !sanitized.isEmpty, isPlainASCII(sanitized) else { return nil }
         return sanitized
     }
 
-    // MARK: Attachment names
-
-    /// RFC 2045 `type/subtype`, restricted to token characters (no whitespace, no
-    /// control character, no `/` beyond the one separator). Anything else — including a
-    /// value carrying a smuggled CRLF — falls back to a safe default rather than being
-    /// written into the header verbatim.
     private static let mimeTypePattern = try! NSRegularExpression(
         pattern: #"^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"#
     )
@@ -190,14 +153,6 @@ nonisolated enum MailMessageBuilder {
         return "filename*=UTF-8''\(filename.addingPercentEncoding(withAllowedCharacters: attrChars) ?? filename)"
     }
 
-    // MARK: Body
-
-    /// RFC 2045 §6.7's line-length cap the quoted-printable encoder wraps at — shared by
-    /// the real encoder (`encodeLine`) and its size estimate (`quotedPrintableUpperBound`)
-    /// so the two can never drift apart. A gap here (the estimate wrapping later than the
-    /// encoder actually does) undercounts every soft break past the first for a long
-    /// unbroken run, which is exactly the kind of gap that turns an "upper bound" into one
-    /// that isn't.
     private static let qpLineLength = 75
 
     static func quotedPrintable(_ text: String) -> String {
@@ -234,16 +189,6 @@ nonisolated enum MailMessageBuilder {
         return output
     }
 
-    // MARK: Size estimate
-
-    /// A true upper bound on the bytes `build(_:messageID:date:boundary:)` would produce for this
-    /// body and these attachment sizes, checked against the SMTP SIZE limit
-    /// (`MailConstants.maxEncodedMessageBytes`) before compose touches the network. It simulates
-    /// quoted-printable on the UTF-8 bytes, not UTF-16 code units: a printable ASCII byte (33-126,
-    /// except `=`) costs 1, any other byte 3 (`=XX`), and a soft line break (`=CRLF`, 3 bytes) is
-    /// charged at the `qpLineLength` column `encodeLine` wraps at. Every rule rounds toward the
-    /// encoder's worst case, so this can only over-count. A `characters * 3` estimate undercounts
-    /// CJK bodies: about 3 UTF-8 bytes per character, each tripled by quoted-printable.
     static func estimateEncodedSize(body: String, attachmentByteCounts: [Int] = []) -> Int {
         let text = quotedPrintableUpperBound(body)
         let attachments = attachmentByteCounts.reduce(0) { total, bytes in
