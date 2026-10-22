@@ -8,58 +8,33 @@ final class SDCourse: Identifiable {
     @Attribute(.unique) var courseNo: String
     var courseName: String
     var instructor: String
-    /// NTUST issues half credits, so this is fractional. See `creditsText`.
     var credits: Double
     var classroom: String
     var enrolledCount: Int
     var maxCount: Int
 
-    /// User-supplied alias for `courseName`. Kept transient because the
-    /// canonical store is `DataCache.loadCourseCustomNames()`; persisting it
-    /// here would let SwiftData round-trip the override through cache rebuilds
-    /// and bypass the rename mechanism (see `CanonicalCourseProvider.merge`).
-    /// Read via `displayName`.
     @Transient var customName: String? = nil
 
-    /// What to show to the user — custom name when set, otherwise the
-    /// canonical API name. Use this anywhere a course label is rendered
-    /// (UI / widget / Live Activity / notification body); keep
-    /// `courseName` for matching, persistence, and search.
     var displayName: String { customName ?? courseName }
 
-    /// Schedule stored as JSON: {"1":["3","4"],"3":["6","7"]}
-    /// Keys = weekday (1=Mon..7=Sun), Values = period IDs
     var scheduleJSON: String {
         didSet { _cachedSchedule = nil }
     }
 
-    /// Classroom per (weekday, period) as JSON: {"1-3":"TR-313","1-4":"TR-313","4-10":"TR-409"}
-    /// Key format: "weekday-period"
     var classroomMapJSON: String = "{}" {
         didSet { _cachedClassroomMap = nil }
     }
 
-    /// Moodle course ID number (e.g. "1142EC1013701")
     var moodleIdNumber: String?
 
-    /// General-education dimension from QueryCourse (`Dimension`), e.g. "C".
-    /// Empty for every course that carries none — which is most of them.
     var dimension: String = ""
 
-    /// Term span from QueryCourse (`AllYear`): "F" = full academic year,
-    /// "H" = a single semester. Empty when the portal reported neither,
-    /// which is how a row cached before this field existed reads.
     var allYear: String = ""
 
-    /// Required or elective from QueryCourse (`RequireOption`): "R" required, "E" elective, as
-    /// the public course search answers. Empty when unknown, as for a row merged from another
-    /// device or cached before this field existed.
     var requireOption: String = ""
 
     var isRequired: Bool { requireOption.uppercased() == "R" }
 
-    /// Semester code for which this course was enrolled (e.g. "1142").
-    /// Empty string = unknown / pre-feature cache; treated as current semester.
     var semester: String = ""
 
     var skippedDatesJSON: String = "[]"
@@ -119,7 +94,6 @@ final class SDCourse: Identifiable {
         return decoded
     }
 
-    /// Parsed classroom map: "weekday-period" → classroom name
     var classroomMap: [String: String] {
         if let cached = _cachedClassroomMap { return cached }
         guard let data = classroomMapJSON.data(using: .utf8),
@@ -131,41 +105,23 @@ final class SDCourse: Identifiable {
         return dict
     }
 
-    /// Update the per-period classroom map and its JSON backing in one shot.
-    /// Use this instead of writing ``classroomMapJSON`` directly: SwiftData's
-    /// ``@Model`` macro rewrites stored-property accessors, so the ``didSet``
-    /// that should reset ``_cachedClassroomMap`` does not fire reliably for
-    /// in-memory mutations and stale reads leak through ``classroom(for:)``.
     func setClassroomMap(_ map: [String: String]) {
         if let data = try? JSONEncoder().encode(map),
            let str = String(data: data, encoding: .utf8) {
             classroomMapJSON = str
         }
-        // On encode failure, keep the persisted JSON instead of writing "{}",
-        // as `setSchedule` does: SwiftData re-hydrating "{}" would silently
-        // drop every per-period classroom entry on the next launch.
         _cachedClassroomMap = map
     }
 
-    /// Update the per-weekday schedule map and its JSON backing in one shot.
-    /// Use this instead of assigning ``scheduleJSON`` directly: SwiftData's
-    /// ``@Model`` macro rewrites stored-property accessors, so the
-    /// ``didSet`` that should reset ``_cachedSchedule`` does not fire
-    /// reliably for in-memory mutations and stale reads leak through.
     func setSchedule(_ schedule: [Int: [String]]) {
         let stringKeyDict = Dictionary(uniqueKeysWithValues: schedule.map { ("\($0.key)", $0.value) })
         if let data = try? JSONEncoder().encode(stringKeyDict),
            let str = String(data: data, encoding: .utf8) {
             scheduleJSON = str
         }
-        // On encode failure, keep the persisted `scheduleJSON` over "{}": a
-        // stale schedule beats every period vanishing when SwiftData
-        // re-hydrates "{}" next launch. The in-memory cache still updates.
         _cachedSchedule = schedule
     }
 
-    /// Returns the classroom(s) for a specific weekday, deduped.
-    /// Falls back to the flat `classroom` string if no map data.
     func classroom(for weekday: Int) -> String {
         let map = classroomMap
         guard !map.isEmpty else { return Self.dedup(classroom) }
@@ -186,28 +142,20 @@ final class SDCourse: Identifiable {
         return rooms.isEmpty ? Self.dedup(classroom) : rooms.joined(separator: ", ")
     }
 
-    /// The room recorded for exactly one `(weekday, period)` slot, or ""
-    /// when the map holds none. Unlike ``classroom(for:)`` this never joins
-    /// a day's rooms into a list, so a course that meets twice in one day
-    /// in two different rooms still reports one room per block.
     func classroom(weekday: Int, period: String) -> String {
         classroomMap["\(weekday)-\(period)"] ?? ""
     }
 
-    /// The room of one block of periods on `weekday`, where ``classroom(for:)`` joins every
-    /// room of the day. Falls back to the flat `classroom` when the map has none for the block.
     func classroom(weekday: Int, periods: [String]) -> String {
         CourseBlockRoom.room(
             weekday: weekday, periods: periods, map: classroomMap, fallback: Self.dedup(classroom)
         )
     }
 
-    /// Split a classroom string by common separators, trim, drop empties.
     static func splitRoom(_ raw: String) -> [String] {
         CourseBlockRoom.split(raw)
     }
 
-    /// Dedup a raw classroom string that may contain separator-joined duplicates.
     static func dedup(_ raw: String) -> String {
         var seen = Set<String>()
         var result: [String] = []
@@ -222,14 +170,6 @@ final class SDCourse: Identifiable {
         TigerDuckTheme.courseColor(for: courseNo)
     }
 
-    /// The 4-character term prefix of a Moodle `idnumber`, normalised, or
-    /// `nil` when the id carries none.
-    ///
-    /// A regular term is four digits (`1151`). A summer term ends in a letter,
-    /// `114H` in NTUST's `api/semestersinfo` but `114h` in Moodle. Downstream
-    /// term checks compare with NTUST's spelling, so the prefix is upper-cased
-    /// here once. Requiring four digits would give summer courses an empty
-    /// `courseNo` and `semester`, and the assignment pipeline would drop them.
     static func semesterPrefix(ofMoodleId moodleId: String) -> String? {
         guard moodleId.count > 4 else { return nil }
         let prefix = moodleId.prefix(4)
@@ -244,20 +184,11 @@ final class SDCourse: Identifiable {
         return String(moodleId.dropFirst(4))
     }
 
-    /// A Moodle `idnumber` with its term prefix normalised, so an id spelled
-    /// by one system is found under a key written by the other:
-    /// `"114hGD3115301"` and `"114HGD3115301"` both become the latter. An id
-    /// with no term prefix is returned unchanged, and a regular all-digit
-    /// term is already its own normal form.
-    ///
-    /// Used on both sides of the Moodle course-id map, which is the only
-    /// thing standing between a course row and its "open in Moodle" button.
     static func normalizedMoodleId(_ moodleId: String) -> String {
         guard let prefix = semesterPrefix(ofMoodleId: moodleId) else { return moodleId }
         return prefix + moodleId.dropFirst(4)
     }
 
-    /// Returns the formatted time range string for this course on the given weekday, e.g. "08:10 - 12:10"
     func timeRange(for weekday: Int) -> String? {
         guard let periods = schedule[weekday], !periods.isEmpty else { return nil }
         return Self.timeRange(periods: periods)
@@ -272,10 +203,6 @@ final class SDCourse: Identifiable {
         return "\(firstTime.start) - \(lastTime.end)"
     }
 
-    /// The run of this course's periods on `weekday`, consecutive in `order`, that `period` falls
-    /// in, or else the first after it: a conflict cluster is picked by its first period, where a
-    /// course may start later. A grid passes the rows it draws, which leave out a period no course
-    /// uses, so two blocks around it are one cell.
     func block(
         weekday: Int, at period: String, in order: [String] = AppConstants.Periods.chronologicalOrder
     ) -> [String]? {
@@ -295,7 +222,6 @@ final class SDCourse: Identifiable {
 }
 
 extension Array where Element == SDCourse {
-    /// Courses that have a schedule entry for today's weekday.
     func coursesForToday() -> [SDCourse] {
         let today = AppClock.now().scheduleWeekday
         return filter { $0.schedule[today] != nil }
@@ -307,9 +233,6 @@ extension SDCourse {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        // Pinned to Taipei so a traveler skipping "today" hits the day the
-        // widget and timeline compute: if they disagree on what `yyyy-MM-dd`
-        // resolves to, the skip silently misses.
         f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "yyyy-MM-dd"
         return f
@@ -343,22 +266,11 @@ extension SDCourse {
             dates.append(key)
         }
         skippedDates = dates
-        // Wake the Live Activity refresh path: the resolver re-evaluates skip
-        // state only on a new resolve, so a skipped in-progress class would
-        // stay on the lock screen until the next sync tick or other refresh.
         NotificationCenter.default.post(name: AppConstants.courseSkipStateDidChange, object: nil)
     }
 }
 
 extension SDCourse {
-    /// Deep link into the Moodle Mobile app for this course, in the same
-    /// `moodlemobile://https://<host>?redirect=…` envelope as
-    /// ``SDAssignment/moodleDeepLink``, pointing at `/course/view.php?id=<N>`.
-    /// The numeric id comes from ``DataCache/lookupMoodleCourseId(idnumber:)``,
-    /// which ``AppServiceBridge`` keeps fresh off the enrolled-courses fetch.
-    /// `nil` with no idnumber (user-added courses) or before the id map fills
-    /// (cold launch before the first sync); the UI then hides the button, so
-    /// no tap lands on an "app cannot open this URL" sheet.
     var moodleDeepLink: URL? {
         guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {
@@ -368,9 +280,6 @@ extension SDCourse {
         return AppConstants.moodleDeepLink(redirectingTo: "/course/view.php?id=\(numericId)")
     }
 
-    /// HTTPS equivalent of ``moodleDeepLink``. No Moodle Mac app exists, so
-    /// the deep link's `moodlemobile://` scheme resolves to an unhandled-URL
-    /// error there; macOS callers open this directly in the default browser.
     var moodleWebURL: URL? {
         guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {
@@ -385,12 +294,6 @@ extension SDCourse {
         return components.url
     }
 
-    /// Platform-appropriate URL for "open in Moodle" actions. iOS uses the
-    /// deep link so Moodle Mobile picks it up when installed; macOS reads
-    /// the user's `macMoodleOpenTarget` preference — the iPad Moodle app
-    /// installed via Mac App Store also registers `moodlemobile://`, so
-    /// users who opted in get the deep link too. Default is `.browser`
-    /// (HTTPS) since the iPad app isn't installed by default.
     var moodleOpenURL: URL? {
         #if os(macOS)
         switch Defaults[.macMoodleOpenTarget] {

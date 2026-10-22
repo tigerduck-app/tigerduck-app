@@ -1,25 +1,14 @@
 import Foundation
 
-/// Hidden-course ("deleted") tombstone keys, persisted as plain strings in
-/// `deleted_courses.json`.
-///
-/// A key is `"<semester>:<courseNo>"`, so hiding a course in 115-1 leaves
-/// that number alone in other terms (a retaken course reuses its number).
-/// A legacy bare course number means hidden in every semester. It is not
-/// migrated: the per-term cache needed to attribute it may be missing at
-/// upgrade time. Un-hiding or resetting drops both shapes; every write is scoped.
 nonisolated enum CourseTombstone {
     static func key(semester: String, courseNo: String) -> String {
         "\(semester):\(courseNo)"
     }
 
-    /// The server's `course_key` for a course this app uploads, which its deletes and forced
-    /// uploads name: the key here, after "client:".
     static func serverKey(semester: String, courseNo: String) -> String {
         "client:" + key(semester: semester, courseNo: courseNo)
     }
 
-    /// The term and course number of a scoped key, or nil for a legacy bare entry.
     static func parts(of key: String) -> (semester: String, courseNo: String)? {
         guard let colon = key.firstIndex(of: ":") else { return nil }
         return (String(key[..<colon]), String(key[key.index(after: colon)...]))
@@ -30,8 +19,6 @@ nonisolated enum CourseTombstone {
             || tombstones.contains(key(semester: semester, courseNo: courseNo))
     }
 
-    /// Removes the scoped key and any legacy bare entry for `courseNo`.
-    /// Returns whether anything was removed.
     @discardableResult
     static func unhide(_ courseNo: String, semester: String, from tombstones: inout Set<String>) -> Bool {
         let scoped = tombstones.remove(key(semester: semester, courseNo: courseNo)) != nil
@@ -39,13 +26,10 @@ nonisolated enum CourseTombstone {
         return scoped || legacy
     }
 
-    /// What a reset of `semester` drops: its scoped keys plus every legacy
-    /// bare entry (those hide in all terms, so a reset has to lift them).
     static func entries(resetting semester: String, in tombstones: Set<String>) -> Set<String> {
         tombstones.filter { $0.hasPrefix("\(semester):") || !$0.contains(":") }
     }
 
-    /// The course numbers `isHidden` hides in `semester`: its scoped keys plus every legacy bare entry.
     static func courseNos(hiddenIn semester: String, in tombstones: Set<String>) -> Set<String> {
         let prefix = key(semester: semester, courseNo: "")
         return Set(entries(resetting: semester, in: tombstones).map {
@@ -53,11 +37,6 @@ nonisolated enum CourseTombstone {
         })
     }
 
-    /// Upgrade path for stores written before the semester scope: a bare
-    /// entry is pinned to every term whose roster carries the course, so
-    /// the per-semester sync sees one scoped key per term instead of a
-    /// global wildcard. An entry no roster knows stays bare (still hidden
-    /// everywhere) until a roster turns up. Order is not significant.
     static func migratingLegacyEntries(_ entries: [String], rosters: [String: Set<String>]) -> [String] {
         var result = Set(entries)
         for courseNo in entries where !courseNo.contains(":") {

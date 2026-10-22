@@ -1,33 +1,27 @@
 import SwiftUI
 
 enum AppFeature: String, CaseIterable, Identifiable, Codable {
-    // Core pages
     case home
     case classTable
     case calendar
     case announcements
 
-    // Academic
     case gpa
     case courseSelection
     case graduationRequirements
     case schoolMail
 
-    // Library
     case library
     case discussionRoom
     case libraryLecture
 
-    // Life
     case freeLunch
     case clubs
     case emptyClassroom
     case scholarship
 
-    // Language
     case englishVocab
 
-    // System
     case more
     case settings
 
@@ -56,10 +50,6 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Tab-bar label. English locales otherwise truncate long labels (e.g.
-    /// "Course selection") unevenly across tabs; the `_short` variants are
-    /// hand-tuned in the localization repo. Settings has no short form
-    /// because it never appears in the tab bar.
     var tabBarDisplayName: String {
         switch self {
         case .home: String(localized: "feature_home_short")
@@ -106,14 +96,6 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// `nonisolated` so the pure-decode seam that filters on it —
-    /// `AppState.decodeConfiguredTabs(_:isShown:)`, itself deliberately `nonisolated` and
-    /// testable without `Defaults` — can keep `{ $0.isImplemented }` as its default argument.
-    /// A default argument expression is type-checked in a nonisolated context, and the module
-    /// builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, which would otherwise put this
-    /// property on the main actor. Nothing here needs it: the switch reads only `self`, and the
-    /// one case that consults anything external reads `SchoolMailAvailability.isEnabled`, which
-    /// is already `nonisolated` (a compile-time flag, no state).
     nonisolated var isImplemented: Bool {
         switch self {
         case .home, .classTable, .calendar, .library, .announcements, .gpa, .emptyClassroom:
@@ -137,13 +119,6 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Features that can be pinned to tab bar (positions 1-4)
-    ///
-    /// Listed in display order including features that have not shipped;
-    /// `isImplemented` is what excludes them. Keeping the unshipped names
-    /// here rather than commented out means `isImplemented` stays the single
-    /// place that decides, and a feature appears in the right position the
-    /// moment it flips there.
     static let pinnableFeatures: [AppFeature] = [
         .home,
         .classTable,
@@ -163,11 +138,8 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .englishVocab,
     ].filter(\.isImplemented)
 
-    /// The library's features, which the Mac does not show (`macHiddenFeatures`).
     static let libraryRelatedFeatures: Set<AppFeature> = [.library, .discussionRoom, .libraryLecture]
 
-    /// Where opening `feature` lands: its own tab when the bar shows one, otherwise More, which
-    /// pushes `moreDeepLink`. A selection no `Tab` matches breaks the `TabView`.
     static func tabRoute(
         to feature: AppFeature,
         visibleTabs: [AppFeature]
@@ -175,28 +147,17 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         visibleTabs.contains(feature) ? (feature, nil) : (.more, feature)
     }
 
-    /// The tab to keep selected once the bar shows `visibleTabs`: the current one while it is
-    /// still there, else the first tab, else More, the one tab every bar has.
     static func selection(_ selected: AppFeature, keptOn visibleTabs: [AppFeature]) -> AppFeature {
         if selected == .more || visibleTabs.contains(selected) { return selected }
         return visibleTabs.first ?? .more
     }
 
-    /// The bar a new install starts with, and what the tab editor's Reset
-    /// restores. Calendar until 2.3.0, when Mail took its place — an
-    /// existing user who never customized keeps Calendar
-    /// (`DefaultTabsPinMigration`) and is asked about Mail in What's New.
-    /// Library joined at 2.4.0; `LibraryTabAddMigration` adds it to a stored
-    /// bar with room.
     static let defaultTabs: [AppFeature] = [
         .home, .classTable, .schoolMail, .library,
     ].filter(\.isImplemented)
 
-    /// The most tabs a user can pin; the tab bar adds "More" after them.
     static let maxTabs = 4
 
-    /// Features displayed in the "More" page, grouped by category.
-    /// Same convention as ``pinnableFeatures``.
     static let moreFeatures: [AppFeature] = [
         .home,
         .classTable,
@@ -216,8 +177,6 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .englishVocab,
     ].filter(\.isImplemented)
 
-    /// Features available as home screen widgets. A deliberate subset — the
-    /// core pages are reachable from the tab bar and are not offered here.
     static let widgetFeatures: [AppFeature] = [
         .announcements,
         .freeLunch,

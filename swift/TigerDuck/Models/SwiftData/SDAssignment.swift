@@ -13,21 +13,9 @@ final class SDAssignment {
     var isArchived: Bool
     var isLocallyCompleted: Bool
     var moodleUrl: String?
-    /// Final cutoff from Moodle. When `nil`, the assignment keeps accepting
-    /// late submissions indefinitely; when non-`nil`, submissions past this
-    /// instant are rejected (``AssignmentStatus/overdueRejected``).
     var cutoffDate: Date?
-    /// Time the submission was last modified on Moodle. When `isCompleted`
-    /// is true and this is greater than `dueDate`, the submission was late
-    /// (``AssignmentStatus/submittedLate``).
     var submittedAt: Date?
-    /// Set with `isArchived` while the user ignores every assignment of the course
-    /// (`AssignmentMarks`). Not stored: the course setting is applied on each load, so the
-    /// assignment's own marks come back once the course is no longer ignored.
     @Transient var isIgnoredByCourse = false
-    /// The term the assignment was fetched for, which decides the course setting it falls under:
-    /// the cache keeps an earlier term's assignments while Moodle has no course for the new one.
-    /// Nil in a cache written before it was kept, which stands for the term in session.
     @Transient var semester: String? = nil
 
     init(
@@ -62,10 +50,6 @@ final class SDAssignment {
         !isCompleted && dueDate < AppClock.now()
     }
 
-    /// Resolves the presentation status against a given reference time.
-    /// Centralising this rule here keeps the UI, tests, and Live Activity
-    /// views consistent; they all read the same enum instead of each
-    /// re-deriving rules from raw dates.
     func status(now: Date = AppClock.now()) -> AssignmentStatus {
         if !isCompleted {
             if isArchived { return .archived }
@@ -74,7 +58,6 @@ final class SDAssignment {
         return moodleStatus(now: now)
     }
 
-    /// ``status(now:)`` without the user's own marks, as Moodle sees the assignment.
     func moodleStatus(now: Date = AppClock.now()) -> AssignmentStatus {
         if isCompleted {
             if let submittedAt, submittedAt > dueDate {
@@ -99,18 +82,11 @@ final class SDAssignment {
         return AppConstants.moodleDeepLink(redirectingTo: redirectTarget)
     }
 
-    /// HTTPS equivalent of ``moodleDeepLink``. Mirrors `SDCourse.moodleWebURL`
-    /// — macOS has no Moodle app, so the deep link fails there; this opens
-    /// the same page directly in the default browser.
     var moodleWebURL: URL? {
         guard let moodleUrl else { return nil }
         return URL(string: moodleUrl)
     }
 
-    /// Platform-appropriate URL for opening this assignment in Moodle.
-    /// macOS reads `Defaults[.macMoodleOpenTarget]` so users with the
-    /// iPad Moodle app installed can opt into the deep link instead of
-    /// the HTTPS fallback.
     var moodleOpenURL: URL? {
         #if os(macOS)
         switch Defaults[.macMoodleOpenTarget] {
