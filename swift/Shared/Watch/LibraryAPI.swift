@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Login
-
 public struct LibraryLoginRequest: Encodable, Sendable {
     public let username: String
     public let password: String
@@ -16,8 +14,6 @@ public struct LibraryLoginRequest: Encodable, Sendable {
 
 public struct LibraryLoginResponse: Decodable, Sendable {
     public let data: LibraryLoginData?
-    /// Optional: success responses may omit `error`. Decoding it as
-    /// non-optional made every successful response fail decoding.
     public let error: LibraryAPIError?
 }
 
@@ -26,8 +22,6 @@ public struct LibraryLoginData: Decodable, Sendable {
     public let token: String
     public let expirationTimeStamp: Int64
 }
-
-// MARK: - QR Code Generation
 
 public struct LibraryQRRequest: Encodable, Sendable {
     public let token: String
@@ -41,12 +35,8 @@ public struct LibraryQRRequest: Encodable, Sendable {
 
 public struct LibraryQRResponse: Decodable, Sendable {
     public let data: String?
-    /// Optional: success responses may omit `error`. Decoding it as
-    /// non-optional made every successful response fail decoding.
     public let error: LibraryAPIError?
 }
-
-// MARK: - Shared Error
 
 public struct LibraryAPIError: Decodable, Sendable {
     public let code: Int

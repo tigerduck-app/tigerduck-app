@@ -1,8 +1,5 @@
 import Foundation
 
-/// Lossless `[String: Any]` <-> `WatchSnapshot` codec for the
-/// WatchConnectivity applicationContext payload. Wire keys are defined in
-/// `WatchWireFormat`.
 public enum WatchPayloadCodec {
 
     public enum DecodingError: Swift.Error, Equatable {
@@ -23,8 +20,6 @@ public enum WatchPayloadCodec {
         static let periodLabel  = "periodLabel"
         static let skippedDates = "skippedDates"
     }
-
-    // MARK: Encode
 
     public static func encode(_ snapshot: WatchSnapshot) throws -> [String: Any] {
         var dict: [String: Any] = [
@@ -65,8 +60,6 @@ public enum WatchPayloadCodec {
         }
         return dict
     }
-
-    // MARK: Decode
 
     public static func decode(_ dict: [String: Any]) throws -> WatchSnapshot {
         guard let raw = dict[WatchWireFormat.Key.courses] else {
@@ -121,7 +114,6 @@ public enum WatchPayloadCodec {
         )
     }
 
-    // Survives plist/NSNumber round-tripping that WCSession performs.
     private static func int64(_ any: Any?) -> Int64? {
         if let n = any as? Int64    { return n }
         if let n = any as? Int      { return Int64(n) }
