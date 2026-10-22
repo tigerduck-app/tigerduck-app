@@ -38,6 +38,13 @@ nonisolated enum MoodleWebserviceClient {
         let token = if let stored = await tokens.stored() { stored } else { try await tokens.renew(nil) }
         do {
             do {
+    /// Runs `body` with the stored token, or a renewed one when none is stored. Once Moodle calls
+    /// that token invalid, a renewed one replaces it and `body` runs once more. A call that needs
+    /// the token's user id asks for it inside `body`, so a stale token there is renewed too.
+    ///
+    /// An access error gets one more try with the same token: Moodle answers an expired token
+    /// with `accessexception` once and deletes it, then answers `invalidtoken`. A function the
+    /// site does not allow fails the same way twice and starts no renewal.
                 return try await body(token)
             } catch MoodleWebserviceError.accessDenied {
                 return try await body(token)
@@ -54,6 +61,9 @@ nonisolated enum MoodleWebserviceClient {
         as type: T.Type,
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
+    /// The answer is decoded off the main actor. A Moodle error body throws its case whatever
+    /// the HTTP status, since Moodle sends most errors with a 200. A 503 with `Retry-After` is
+    /// Moodle's CLI maintenance page, which an upgrade shows for every request.
     ) async throws -> T {
         guard var components = URLComponents(url: siteURL, resolvingAgainstBaseURL: false) else {
             throw MoodleWebserviceError.malformedResponse(detail: "invalid base URL")
@@ -194,6 +204,9 @@ struct MoodleSubmissionStatus: Sendable {
     let submissionStatus: String?
     let gradingStatus: String?
     let submittedAt: Date?
+    /// Final cutoff after which submissions are rejected. `nil` when Moodle
+    /// sets `cutoffdate == 0`, meaning the assignment keeps accepting late
+    /// submissions indefinitely.
 
     var isSubmitted: Bool {
         submissionStatus == "submitted"

@@ -2,6 +2,14 @@
 import Foundation
 import os
 
+/// Reports main-thread stalls and how long they last. DEBUG-only scaffolding, cheap at one
+/// timer and one empty main-queue block per tick; delete once the Library freeze is understood.
+///
+/// A `ProgressView` spinner is a CoreAnimation animation the render server drives, so it keeps
+/// turning while the main thread is blocked. A frozen screen with a moving spinner fits a
+/// blocked main thread and touches swallowed in the view hierarchy alike, and the two need
+/// unrelated fixes. A long wait for the empty block means the main thread was busy at least
+/// that long; silence during a freeze means it was healthy and the touches went elsewhere.
 enum MainThreadWatchdog {
     private static let log = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "Hang"

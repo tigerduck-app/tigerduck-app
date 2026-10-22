@@ -30,6 +30,8 @@ nonisolated enum MoodleGradeService {
     ) async throws -> [MoodleGradeItem] {
         do {
             let answer = try await MoodleWebserviceClient.call(
+    /// What Moodle answers when a course keeps its grade report from the student, by a course
+    /// setting or a permission: the course has no grades to show, and the fetch did not fail.
                 gradeItemsFunction,
                 params: [("courseid", String(courseId)), ("userid", String(userId))],
                 token: token,
@@ -79,4 +81,7 @@ private nonisolated struct RawGradeItem: Decodable, Sendable {
             feedback: BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: feedback ?? ""))
         )
     }
+    /// Moodle writes "-" for an item not graded yet, puts a pass mark's icon as HTML before a
+    /// grade, and sends no `graderaw` for a grade it keeps from the student, such as one hidden
+    /// until a date.
 }

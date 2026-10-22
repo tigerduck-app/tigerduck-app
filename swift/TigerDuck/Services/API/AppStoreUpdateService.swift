@@ -73,3 +73,9 @@ enum AppStoreUpdateService {
         let releaseNotes: String?
     }
 }
+    /// The store version without a leading `v`. App Store Connect takes the
+    /// version as free text and hands it back verbatim: 2.2.0 was entered
+    /// as "v2.2.0", which ``AppVersion`` rejects, so the check read every
+    /// installed build as current. Dropped here, where the string enters
+    /// the app, so the comparison, the prompt's text and the Skip / Later
+    /// markers all see the same bare number.

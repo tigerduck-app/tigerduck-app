@@ -3,6 +3,14 @@ import ActivityKit
 import Foundation
 import os
 
+/// Observes `Activity<TigerDuckActivityAttributes>.pushToStartTokenUpdates`
+/// and hands each new token to `PushRegistrationService`. iOS rotates the
+/// token, so the latest value wins. Per-activity update tokens
+/// (`activity.pushTokenUpdates`) are not observed here.
+///
+/// A PTS token exists only while Live Activities are enabled, which the user
+/// can change in iOS Settings at any time, so `start()` waits for that rather
+/// than returning: `PushCoordinator` starts the relay once per process.
 @MainActor
 final class PushTokenRelay {
     private let registration: PushRegistrationService

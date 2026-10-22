@@ -47,6 +47,7 @@ enum PushAPI {
         var serverPushEnabled: Bool?
         var syncCourses: Bool?
         var syncCourseColors: Bool?
+        /// "development" or "production" — must match the build configuration.
         var syncCourseNames: Bool?
         var syncAssignments: Bool?
         var syncAssignmentReminders: Bool?

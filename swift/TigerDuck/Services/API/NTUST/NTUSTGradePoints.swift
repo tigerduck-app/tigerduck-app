@@ -1,5 +1,12 @@
 import Foundation
 
+/// NTUST letter-grade points from Appendix Table 1 of the school's student academic grade
+/// guidelines: the column for students admitted from academic year 105 on (A+ = 4.3).
+/// Transcripts have carried letter grades since academic year 100; the percentage bands
+/// below are the same table's percentage ranges, for the odd numeric entry.
+///
+/// ponytail: students admitted 100–104 had A+ = 4.0. They have long
+/// graduated; if one ever shows up, key the table off the student id year.
 nonisolated enum NTUSTGradePoints {
     static let byLetter: [String: Double] = [
         "A+": 4.3, "A": 4.0, "A-": 3.7,

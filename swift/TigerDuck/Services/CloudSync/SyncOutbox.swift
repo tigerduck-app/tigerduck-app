@@ -149,6 +149,9 @@ actor SyncOutbox {
     func pendingCount() -> Int {
         loadIfNeeded()
         return entries.count
+    /// False while a queue file exists but could not be read, as at a launch behind the lock
+    /// screen (`completeFileProtectionUnlessOpen`). Until it is read, or `loadOrGiveUp` gives up
+    /// on it, nothing is written over the files, and what was queued meanwhile joins what they hold.
     }
 
     static let unreadableLoadLimit = 3
@@ -295,6 +298,9 @@ actor SyncOutbox {
         return entries.isEmpty
     }
 
+        // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
+        // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
+        // mid-drain bumps `generation`: stop and never merge back, or cleared entries resurrect.
     private func giveUp(on entry: OutboxEntry, after error: Error) {
         let kind: String
         let parks: Bool

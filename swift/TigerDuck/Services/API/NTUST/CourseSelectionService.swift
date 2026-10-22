@@ -29,6 +29,8 @@ enum CourseSelectionService {
         forceRefresh: Bool = false,
         persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> [String] {
+        // The D01 page returns whichever term course selection is open for, which runs ahead
+        // of the term in session, so cache under that term, not the month heuristic's guess.
         let semester = SemesterCatalog.selectionSemesterCode()
         if !forceRefresh, let cached = loadEnrolledCoursesCache(studentId: studentId, semester: semester) {
             return cached
@@ -51,6 +53,9 @@ enum CourseSelectionService {
             throw CourseServiceError.noCourseData
         }
 
+        // Re-auth silently when the list came from another host (ssoam2, or the campus portal a
+        // lapsed course-selection session is sent to) or as an SSO login body served inline
+        // with HTTP 200. Either way the regex would fall through to "no courses".
         let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != courseListURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
         if landedElsewhere || bodyIsSSO {

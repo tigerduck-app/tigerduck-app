@@ -23,6 +23,10 @@ final class NTUSTSessionManager {
     static let shared = NTUSTSessionManager()
 
     static let browserUserAgent: String = {
+    /// Browser-like User-Agent built from actual OS info so SSO/Moodle sees a
+    /// consistent device fingerprint. On Mac we pretend to be an iPhone so
+    /// NTUST renders the same mobile-friendly templates Sam's iOS app sees;
+    /// the SSO and Moodle endpoints already serve those layouts everywhere.
         #if os(iOS)
         let osVersion = UIDevice.current.systemVersion.replacingOccurrences(of: ".", with: "_")
         let majorVersion = UIDevice.current.systemVersion.components(separatedBy: ".").first ?? "18"
@@ -49,6 +53,13 @@ final class NTUSTSessionManager {
 
     private static let cookieTTL: TimeInterval = 3600
 
+    /// NTUST-only cookie jar. In `HTTPCookieStorage.shared`, NTUST SSO cookies would leak into
+    /// every other URLSession in the process that does not opt out of shared storage (Library,
+    /// WKWebViews, third-party SDKs). Every NTUST cookie lives here, so logout and explicit
+    /// purges need only touch this jar.
+    ///
+    /// The identifier must be an App Group in `TigerDuck.entitlements`. Any other gives a store
+    /// kept only in memory, which loses the SSO session on every relaunch.
     var cookiesValid: Bool {
         guard let timestamp = Defaults[.ssoLoginTimestamp] else {
             return false
@@ -64,6 +75,13 @@ final class NTUSTSessionManager {
         var req = URLRequest(url: URL.knownGood("https://ssoam2.ntust.edu.tw/"))
         req.httpMethod = "GET"
         req.timeoutInterval = 8
+    /// Server-side probe (~30ms warm): GET `ssoam2.ntust.edu.tw/` and look for a
+    /// `302 Location: /Home/Index`, which only happens while the cookie jar still
+    /// authenticates the user. Any other response (302 to `/account/login`, 200 with
+    /// the login page, a network error) counts as expired.
+    ///
+    /// Use this from any async auth path instead of ``cookiesValid``: the 1h timestamp
+    /// TTL trusts cookies the server already evicted and expires ones it still honors.
         req.cachePolicy = .reloadIgnoringLocalCacheData
         req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         do {
@@ -98,6 +116,9 @@ final class NTUSTSessionManager {
         config.timeoutIntervalForResource = 60
         config.httpAdditionalHeaders = [
             "User-Agent": Self.browserUserAgent,
+        // A service keeps its server session behind a cookie that ends with the app, and a visit
+        // with only its persisted sign-in cookie signs the account out of SSO. Dropping those at
+        // launch lets the next visit sign the service in again through the SSO session.
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9",
         ]
@@ -106,6 +127,9 @@ final class NTUSTSessionManager {
             delegate: TLSPinningDelegate.shared,
             delegateQueue: nil,
         )
+        // The default `timeoutIntervalForResource` is 7 days, far too long for an interactive
+        // SSO login. Capping the whole request at 60 s keeps a stalled or partly responsive
+        // server from wedging a Task forever.
     }
 
     private static func isSSOCookie(_ cookie: HTTPCookie) -> Bool {
@@ -144,11 +168,17 @@ private final class NoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate,
         _ session: URLSession,
         task: URLSessionTask,
         willPerformHTTPRedirection response: HTTPURLResponse,
+        // Flows keep this session, and a request on an invalidated one ends the app with an
+        // exception, so its tasks are cancelled instead.
         newRequest request: URLRequest,
         completionHandler: @escaping @Sendable (URLRequest?) -> Void
     ) {
         completionHandler(nil)
     }
+    /// Empties `jar` now and again once `session`'s tasks are cancelled: `getAllTasks` answers
+    /// after this returns, and a response that lands before its task is cancelled stores the
+    /// departing account's cookies in between. The jar holds only NTUST cookies, so Moodle,
+    /// Library and WebView state in `HTTPCookieStorage.shared` is untouched.
 
     func urlSession(
         _ session: URLSession,
@@ -158,8 +188,22 @@ private final class NoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate,
     ) {
         TLSPinningDelegate.shared.urlSession(
             session,
+/// Stops URLSession from auto-following 3xx redirects on a single task,
+/// so callers can inspect the raw 302 `Location` header (e.g. the
+/// ``NTUSTSessionManager.probeCookiesValid()`` /Home/Index signal).
+///
+/// Also forwards server-trust challenges to ``TLSPinningDelegate.shared``
+/// — see the auth-challenge method below.
             didReceive: challenge,
             completionHandler: completionHandler,
         )
     }
 }
+    /// Forward server-trust challenges to the session's pinning delegate explicitly.
+    ///
+    /// URLSession documents a fallthrough to the session delegate for task callbacks the
+    /// per-task delegate does not implement, but that is fragile in practice: Apple has
+    /// changed the rules across iOS versions, and a task-level method added here without
+    /// `didReceive challenge` would silently drop this probe to system trust. Forwarding
+    /// keeps SPKI pinning on `ssoam2.ntust.edu.tw` unconditional, whatever task delegate
+    /// methods get added later.

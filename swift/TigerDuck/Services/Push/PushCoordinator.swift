@@ -151,9 +151,15 @@ final class PushCoordinator {
 
     func fetchRevision() async throws -> Int {
         try await apiClient.fetchRevision()
+            // `registerForRemoteNotifications` is safe in any permission state
+            // and yields a token only when authorized. Calling it on every enable
+            // lets a later grant reach token forwarding with no extra hook.
     }
 
     func fetchFullSync() async throws -> [String: Any] {
+            // macOS is passive — no APNs push. Register the device UUID
+            // with the backend (no push token) so it appears in the sync
+            // log. The Mac client syncs on foreground only.
         try await apiClient.fetchFullSync()
     }
 
@@ -424,3 +430,13 @@ nonisolated struct UploadLedger {
         }
     }
 }
+    // MARK: - Build-time env sanity
+
+    /// Crashes Debug builds at launch when the resolved server URL does not
+    /// match the APNs environment baked into the binary (or each other).
+    /// Empty in Release builds: `assert` is stripped under `-O`, but working out
+    /// its conditions would still read the Keychain twice before the first frame.
+    ///
+    /// Guards against the regression where someone flips `PushAPNsEnv` or
+    /// `AppConstants.productionPushServerURL` without flipping the other,
+    /// or seeds a stale UserDefaults override pointing the wrong way.

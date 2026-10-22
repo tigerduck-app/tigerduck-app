@@ -1,6 +1,12 @@
 import Foundation
 import os
 
+/// URLSession-based client for the TigerDuck push server.
+///
+/// Stateless helpers — safe to recreate per call. Uses a shared ephemeral
+/// session so cookies / caches do not leak across app launches. JSON uses
+/// ISO-8601 with fractional seconds for Date, matching what the Python
+/// server emits from `datetime.isoformat()`.
 final class PushAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
@@ -148,6 +154,10 @@ final class PushAPIClient: Sendable {
         _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
     }
 
+    // MARK: - Override sync
+
+    /// The reply is not read: the backend answers a cleared mark (`"none"`) with
+    /// `{"deleted": true}` rather than the override row, and no caller needs either.
     func deleteAllCourses(semester: String? = nil) async throws {
         var components = URLComponents()
         components.path = "/sync/courses"
@@ -254,6 +264,9 @@ final class PushAPIClient: Sendable {
     private func patch<Request: Encodable, Response: Decodable>(
         path: String,
         body: Request,
+    /// The changes after `sinceRevision`. Once the server has compacted them it answers 410
+    /// `sync_revision_expired`, thrown as `syncRevisionExpired` and kept from `versionGate`,
+    /// which would read it as a retired API and latch the update-required screen.
         returning: Response.Type
     ) async throws -> Response {
         var request = try await makePostRequest(path: path, body: body)
@@ -331,6 +344,8 @@ final class PushAPIClient: Sendable {
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = false
         config.httpAdditionalHeaders = [
+        // `path` may carry a query string; appendingPathComponent would
+        // percent-escape the `?`, so splice it back on after the join.
             "User-Agent": "TigerDuck-iOS/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")"
         ]
         return URLSession(configuration: config)
@@ -377,3 +392,6 @@ enum PushAPIError: Error, LocalizedError {
         }
     }
 }
+        // Not `urlPathAllowed`: it keeps `; , : @ & = + $`, and some parsers
+        // read `;` as matrix params or `&` as a query separator. `-_.~` stay
+        // because RFC 3986 marks them unreserved; source ids often use dashes.

@@ -10,6 +10,12 @@ enum CalendarService {
     )
     private static let yearRegex = try! NSRegularExpression(pattern: "(\\d{3})")
 
+    /// URLSession with browser-like User-Agent (NTUST server returns 403 without one).
+    /// Pinned because the ICS download URL scraped from r.xinshou.tw can
+    /// resolve to an *.ntust.edu.tw host (covered by the pin set); the
+    /// delegate's host-matcher falls through to system trust for the
+    /// non-NTUST r.xinshou.tw fetch itself, so this is safe to install
+    /// on a mixed-host session.
     private static let browserSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = [
@@ -95,6 +101,7 @@ enum CalendarService {
         var events: [SDCalendarEvent] = []
         let lines = unfolded.components(separatedBy: .newlines)
 
+        // Unfold ICS line continuations (lines starting with space or tab are continuations)
         var inEvent = false
         var summary: String?
         var dtStart: Date?
@@ -114,7 +121,7 @@ enum CalendarService {
 
                     if let end = dtEnd, !Self.icsCalendar.isDate(start, inSameDayAs: end.addingTimeInterval(-1)) {
                         var current = start
-                        let lastDay = end.addingTimeInterval(-1)
+                        let lastDay = end.addingTimeInterval(-1) // ICS DTEND is exclusive
                         while current <= lastDay {
                             events.append(SDCalendarEvent(
                                 eventId: "\(eventId)-\(Self.icsCalendar.startOfDay(for: current).timeIntervalSince1970)",
@@ -193,6 +200,10 @@ enum CalendarService {
                 }
             } else {
                 out.append(ch)
+    /// Unescape ICS TEXT-typed values per RFC 5545:
+    /// `\,` → `,`, `\;` → `;`, `\n` / `\N` → newline, `\\` → `\`.
+    /// Without this, raw escape sequences leak into the UI as
+    /// `Final Exam\, MA1`.
             }
         }
         return out

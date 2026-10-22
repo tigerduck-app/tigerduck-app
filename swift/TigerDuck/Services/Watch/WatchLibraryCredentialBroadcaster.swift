@@ -102,3 +102,8 @@ final class WatchLibraryCredentialBroadcaster {
         }
     }
 }
+        // Always queue transferUserInfo (durable, FIFO), so an apply that fails on the watch,
+        // like a wipe on a locked keychain, runs again; sendMessage confirms transport only. If
+        // reachable, also sendMessage for speed; the epoch guard drops the duplicate.
+                // sendMessage's error handler fires on a background queue;
+                // hop to MainActor so we don't cross self's actor isolation.

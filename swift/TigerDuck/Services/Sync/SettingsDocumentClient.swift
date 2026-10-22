@@ -29,6 +29,14 @@ actor SettingsDocumentClient {
         }
         guard (200..<300).contains(statusCode) else {
             throw httpStatusError(statusCode, data: data, context: "GET \(namespace)")
+    // MARK: - Public surface
+
+    /// GET the current document for `namespace`.
+    ///
+    /// `nil` means the user has never written to this namespace — the
+    /// backend 404s (`settings_docs.py:read_document`), and that is the
+    /// normal state for a fresh account, not an error the caller needs to
+    /// handle specially.
         }
         return try Self.parseDocumentEnvelope(data)
     }
@@ -45,6 +53,14 @@ actor SettingsDocumentClient {
             "schema_version": 1,
             "document": documentObject,
         ]
+    /// PUT `document` to `namespace`.
+    ///
+    /// `baseRevision: nil` asks the backend to create the document; it
+    /// 409s if one already exists. A non-nil value does a compare-and-swap
+    /// and 409s if the server's revision has moved on since. Either way a
+    /// 409 is not thrown as an error — the response carries the winning
+    /// document and revision (`settings_docs.py:_conflict_response`) so
+    /// the caller can merge and retry instead of just failing.
         if let baseRevision {
             envelope["base_revision"] = baseRevision
         } else {

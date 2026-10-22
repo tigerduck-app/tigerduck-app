@@ -4,6 +4,7 @@ import os
 
 enum SSOLoginError: LocalizedError {
     case loginFormNotFound
+    /// The service sent the sign-in to ssoam's NetIQ form, which only a browser can submit.
     case interactiveLoginRequired
     case loginFailed(reason: String?)
     case networkError(Error)
@@ -24,6 +25,10 @@ enum SSOLoginError: LocalizedError {
 
 enum SSOLoginService {
 
+    /// Decode an HTML response respecting `Content-Type` charset. Older NTUST
+    /// endpoints occasionally serve Big5 (or windows-1252 for ASCII-only
+    /// pages); a hard UTF-8 decode would return nil on those and surface as
+    /// `invalidResponse` for what is otherwise a recoverable response.
     private static func decodeHTML(_ data: Data, response: URLResponse?) -> String? {
         let charset = (response as? HTTPURLResponse)?
             .value(forHTTPHeaderField: "Content-Type")?
@@ -124,6 +129,11 @@ enum SSOLoginService {
 
     static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
         if isLoginRunning {
+    /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
+    /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
+    /// refused before either counted the refusal, and the school counts both toward the lockout.
+    /// `body` checks ``storedPasswordPostMustWait(now:)``, posts, reads the answer and counts a
+    /// refusal before it returns. A sign-in the user typed posts what was typed, so it does not wait.
             await withCheckedContinuation { waitingLogins.append($0) }
         } else {
             isLoginRunning = true
@@ -141,6 +151,10 @@ enum SSOLoginService {
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
+    /// Runs `body` once every login started before it has finished. A login that meets the
+    /// SSO page clears the ssoam2 cookies, so two at once break each other. An automatic login
+    /// that waited then finds the session signed in and posts no password; one the user typed
+    /// still posts what was typed.
         studentId: String,
         password: String,
         generation: Int,
@@ -230,10 +244,15 @@ enum SSOLoginService {
             }
             currentURL = resp2.url ?? serviceURL
             currentHTML = html2
+            // Step 3: Check if we're on the SSO login page. A live session would let a password the
+            // user typed through unchecked, so that sign-in drops the service's cookies and goes on to
+            // step 4, which ends the SSO session: the visit after it reaches the form.
 
             if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
                     session: session, html: currentHTML, baseURL: currentURL, generation: generation
+                // A service whose own session lapsed sends the visit to the campus portal, not to
+                // the sign-in form; without its cookies the next visit goes through SSO.
                 )
                 guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                     throw SSOLoginError.loginFormNotFound
@@ -246,6 +265,9 @@ enum SSOLoginService {
             }
 
             var payload: [(String, String)] = form.inputs
+            // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
+            // device-change warnings. They are in the session's jar, the NTUST-private one:
+            // clearing `HTTPCookieStorage.shared` would miss them and only hurt unrelated callers.
             replaceOrAppend(&payload, name: "Username", value: studentId)
             replaceOrAppend(&payload, name: "Password", value: password)
             if !payload.contains(where: { $0.0 == "captcha" }) {
@@ -408,3 +430,11 @@ enum SSOLoginService {
         }
     }
 }
+        // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
+        // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
+        // timeout, so a stalled SSO server could hang the login Task indefinitely.
+    /// Form-encode a single name or value per
+    /// `application/x-www-form-urlencoded` rules:
+    /// percent-encode every byte outside RFC-3986 unreserved, then map
+    /// space → `+`. This keeps passwords containing `+ & = / ; %` and
+    /// CJK characters from being silently corrupted.

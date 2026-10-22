@@ -3,6 +3,14 @@ import Security
 import Valet
 
 nonisolated enum SecureStore {
+    /// Per-app valet at the strictest class our usage allows.
+    ///
+    /// Re-auth, settings reads and library QR refresh run while the app is active, and no
+    /// extension needs these secrets: the Live Activity renders the snapshot its content state
+    /// carries. `.whenUnlockedThisDeviceOnly` keeps items out of an iCloud
+    /// Keychain restore to a new device, and background work behind a locked screen cannot read
+    /// them, which the threat model accepts. The few secrets a locked-screen launch needs live
+    /// in ``readableWhileLocked``.
     private static var shared: any KeychainStore {
         sharedForTesting ?? sharedValet
     }
@@ -18,6 +26,14 @@ nonisolated enum SecureStore {
         AuthTokenManager.accessTokenKey,
         AuthTokenManager.refreshTokenKey,
         AuthTokenManager.expiresAtKey,
+    /// The secrets a launch behind a locked screen has to read.
+    ///
+    /// A push launches the app in the background, usually on a locked phone. Above all, a Live
+    /// Activity push-to-start hands over the update token the server needs to end the activity
+    /// after class, and registering it reads the backend session, device id and endpoint
+    /// override. In ``shared`` they are unreadable then: the launch would act signed out, mint
+    /// a throwaway device id, use the default endpoint and leave the activity up. NTUST, Moodle
+    /// and library credentials stay in ``shared``: no background work needs them.
         AuthTokenManager.refreshTokenUsesKey,
         AuthTokenManager.departingSessionKey,
         AppConstants.KeychainKeys.pushDeviceId,
@@ -36,6 +52,9 @@ nonisolated enum SecureStore {
     private static func home(forKey key: String) -> any KeychainStore {
         readableWhileLockedKeys.contains(key) ? readableWhileLocked : shared
     }
+    /// Home of ``readableWhileLockedKeys``. `.afterFirstUnlockThisDeviceOnly`
+    /// is readable once the phone has been unlocked after a restart, and
+    /// like ``shared`` never leaves the device.
 
     private static let legacyShared = Valet.valet(
         with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
@@ -102,6 +121,9 @@ nonisolated enum SecureStore {
 
         if let value = try? legacySharedGroup.object(forKey: key) {
             if (try? home.setObject(value, forKey: key)) != nil {
+    /// ``load(key:)``, but a throw where it answers nil because the Keychain cannot be read now,
+    /// as before the first unlock after a restart, rather than because nothing is stored. An
+    /// earlier build's copy in ``shared``, which a locked launch cannot read or move, counts too.
                 try? legacySharedGroup.removeObject(forKey: key)
             }
             return value

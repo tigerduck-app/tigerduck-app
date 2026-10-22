@@ -149,6 +149,14 @@ final class CloudSyncCoordinator {
 
         pushCoordinator.enable()
         await pushCoordinator.registration.updateCloudSyncEnabled(true)
+    // MARK: - Following the preference
+
+    /// Transitions run multi-step async work with side effects (push enable,
+    /// the preference PATCH, outbox clear). MainActor isolation does NOT
+    /// serialize across await suspension points, so an interleaved
+    /// enable/disable could leave the coordinator active while the push
+    /// stack is disabled. Every transition is chained through this task so
+    /// they run to completion one at a time.
 
         state = .active
         start()
@@ -490,3 +498,5 @@ final class CloudSyncCoordinator {
 }
 
 nonisolated struct CourseIgnoreNotStoredError: Error {}
+                // A backend without the setting answers 200 and drops it, so only an answer that
+                // names it settles the op; anything else counts as a refusal.

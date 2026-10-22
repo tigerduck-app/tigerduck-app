@@ -22,4 +22,6 @@ enum FlipToLibraryDefaultOffMigration {
         guard let domain = Bundle.main.bundleIdentifier else { return false }
         return key.suite.persistentDomain(forName: domain)?[key.name] != nil
     }
+    /// Whether the switch was ever written. `Defaults` registers each key's default, which
+    /// `object(forKey:)` returns too, so this reads the app's persistent domain alone.
 }

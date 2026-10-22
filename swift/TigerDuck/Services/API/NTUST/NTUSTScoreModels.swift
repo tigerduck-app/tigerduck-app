@@ -94,6 +94,7 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
         }
         return true
     }
+    /// Fractional: NTUST issues half credits.
 }
 
 enum CreditType: String, Codable, Equatable, Sendable, CaseIterable {
@@ -106,6 +107,9 @@ enum CreditType: String, Codable, Equatable, Sendable, CaseIterable {
 }
 
 enum GradeStatus: String, Codable, Equatable, Sendable, CaseIterable {
+    /// The school backend returns pass/fail as Chinese text whatever the UI
+    /// language, so this must be derived from raw payload values rather than
+    /// UI localization.
     case graded
     case pending
     case passed

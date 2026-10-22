@@ -4,6 +4,11 @@ nonisolated enum MoodleAssignmentService {
     static let commentsFunction = "core_comment_get_comments"
     static let groupsFunction = "core_group_get_course_user_groups"
 
+    // MARK: - mod_assign_get_assignments
+
+    /// Asks only for the courses where the user can submit, so Moodle leaves out a course they
+    /// are a TA in, whose assignments they grade
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/209).
     static func fetchAssignments(
         courseIds: [Int],
         tokens: MoodleWebserviceClient.TokenSource = .keychain,
@@ -52,6 +57,10 @@ nonisolated enum MoodleAssignmentService {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> [MoodleSubmissionComment] {
+    /// Moodle keeps a submission's comments on the assignment's module, under the submission's
+    /// record, and answers a page at a time, newest first, with the total in `count`. Paging ends
+    /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
+    /// or at ``commentPageLimit``. Oldest first, as a conversation reads.
         func page(_ number: Int) async throws -> RawComments {
             try await MoodleWebserviceClient.call(
                 commentsFunction,
@@ -199,6 +208,8 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+    /// Moodle sends `gradefordisplay` and `gradeddate` as null without a grade, and the plugins
+    /// only with the grader's record.
         lastattempt = try container.decodeIfPresent(LastAttempt.self, forKey: .lastattempt)
         feedback = try? container.decodeIfPresent(Feedback.self, forKey: .feedback)
     }
@@ -217,6 +228,8 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         return MoodleSubmissionStatus(
             assignId: assignId,
             submissionStatus: attempt?.status,
+    /// A team assignment reports the group's status in `teamsubmission`, so a teammate's
+    /// submission leaves the student's own `submission` unsubmitted or without a status.
             gradingStatus: lastattempt?.gradingstatus,
             submittedAt: submittedAt
         )
@@ -255,6 +268,7 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
             in: text, files: (plugin?.fileareas ?? []).flatMap { $0.files ?? [] }.compactMap(\.model)
         )
         return MoodleHTMLText.markdown(fromHTML: html).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : html
+    /// Moodle writes "-" for no grade.
     }
 
     private static func date(_ seconds: Int) -> Date? {

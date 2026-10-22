@@ -70,6 +70,9 @@ enum NTUSTScoreService {
         DataCache.shared.loadScoreReport(studentId: studentId)
     }
 
+        // Defensive: a successful fetch that parses to a fully empty report
+        // usually means the HTML was actually the SSO page disguised as a
+        // 200 — avoid poisoning the cache with that.
     static func invalidateCache(studentId: String) {
         DataCache.shared.invalidateScoreReport(studentId: studentId)
     }
@@ -106,6 +109,9 @@ enum NTUSTScoreService {
             if retryHost != scoreDisplayURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw NTUSTScoreServiceError.redirectedToSSO
             }
+        // Bounced to another host (ssoam2, or the portal a lapsed service session is sent to):
+        // re-login silently and retry once. The body check catches an SSO login form served
+        // inline with HTTP 200, as stuinfosys has done in Shibboleth maintenance.
             return retryHTML
         }
 

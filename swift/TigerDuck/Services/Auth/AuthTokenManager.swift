@@ -25,6 +25,11 @@ actor AuthTokenManager {
 
     func setRefreshFailedHandler(_ handler: @escaping () async -> Bool) {
         onRefreshFailed = handler
+    /// How many times the backend may have used the stored refresh token without this device
+    /// keeping the pair: sends that may have reached it and got no reply, a server error or a 200
+    /// it could not keep. The backend rotates a token sent again while its successor is unused and
+    /// takes a third use for theft, which revokes every session of the device. A new pair starts
+    /// it over. Kept with the tokens, as the app can end before the next refresh signs in again.
     }
 
     func setNoSessionHandler(_ handler: @escaping () async -> Void) {
@@ -490,6 +495,9 @@ private final class AppBackgroundTask {
         }
     }
 
+    /// `URLError`s of a request that never left the device: no network or no host to reach, a TLS
+    /// handshake that failed, as behind a captive portal's sign-in page, or a request iOS refuses
+    /// to send. A timeout, a dropped connection or a cancel may come after the token went out.
     func end() {
         guard id != .invalid else { return }
         UIApplication.shared.endBackgroundTask(id)
@@ -497,3 +505,5 @@ private final class AppBackgroundTask {
     }
 }
 #endif
+    /// Starts a UIKit background task and returns what ends it. A Mac app is not suspended in the
+    /// background, so only iOS needs one.

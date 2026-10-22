@@ -60,6 +60,14 @@ final class AuthService {
         self.librarySignIn = librarySignIn
         self.endSchoolSession = endSchoolSession
         self.now = now
+    /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``), so keychain reads
+    /// return nil while the device is locked. A process started behind a locked screen (push,
+    /// background refresh, widget timeline reload) reads no credentials, and protected
+    /// surfaces can show "not signed in" to a signed-in user.
+    ///
+    /// So this re-checks when protected data becomes available and when the app activates.
+    /// Otherwise ``_revision`` moves only on login and logout, and after an unlock the Class
+    /// Table stays on the login prompt until an unrelated redraw such as pull-to-refresh.
         self.retrySleep = retrySleep
         let present = keychainHasCredentials()
         lastKnownHasCredentials = present
@@ -246,6 +254,11 @@ final class AuthService {
     func login(studentId: String, password: String) async -> Bool {
         isLoggingIn = true
         loginError = nil
+    /// When an automatic backend sign-in that had credentials to send last failed. The backend
+    /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
+    /// https://github.com/tigerduck-app/tigerduck-backend/blob/main/server/config.py), and a
+    /// campus network puts many students behind one IP, so the next automatic one waits
+    /// ``backendSignInPause``.
         var schoolStepGeneration: Int?
 
         do {
