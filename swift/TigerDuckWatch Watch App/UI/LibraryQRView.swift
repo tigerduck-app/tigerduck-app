@@ -1,5 +1,9 @@
 import SwiftUI
 
+// watchOS has `PKPassLibrary` but not the iOS-only `requestAutomaticPassPresentationSuppression`
+// (checked against the watchOS 11 SDK), so nothing stops a side-button double-press from opening
+// Apple Pay or Express Transit here. If watchOS adds it, mirror `LibraryView`'s suppress/release.
+
 struct LibraryQRView: View {
     @State private var viewModel = LibraryQRViewModel()
     @State private var isFullScreen = false
@@ -60,6 +64,9 @@ struct LibraryQRView: View {
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 4)
                 .accessibilityLabel(String(localized: "library_qr_content_description"))
+                // No-op on watchOS, which lacks a window capture-exclusion API like Wear OS's
+                // FLAG_SECURE. Kept for parity with the phone so a future API needs no call-site
+                // change. Capture still needs the user's own side button + Digital Crown press.
                 .screenCaptureProtected()
                 .onTapGesture(count: 2) {
                     isFullScreen = true

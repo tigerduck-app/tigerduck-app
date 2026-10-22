@@ -43,6 +43,11 @@ struct SyncStatusDot: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(AppState.self) private var appState: AppState?
+    /// Observed rather than read through `Defaults[...]`. `isMinimal` feeds
+    /// `sources`, which the body reads, and a bare subscript is a read
+    /// SwiftUI never subscribes to -- so switching sync off left the row on
+    /// whatever word it already had until something unrelated forced a
+    /// redraw, which is the opposite of what `isMinimal` is for.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.schoolDataSyncedAt) private var schoolDataSyncedAt
     @State private var showDetails = false

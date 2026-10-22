@@ -106,6 +106,9 @@ struct MainTabView: View {
         }
         .onAppear {
             drainPendingWidgetDestination()
+            // Fresh launch: `.onChange(of: scenePhase)` does not fire for the
+            // initial `.active`, so the first prompt comes from here. Later
+            // foreground returns go through the scene-phase observer below.
             evaluateTimezoneAlert()
             #if os(iOS)
             appState.updateNotifyCoordinator.evaluateWhatsNewOnLaunch(in: appState)

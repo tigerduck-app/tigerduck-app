@@ -6,6 +6,8 @@ import AppKit
 #endif
 
 extension Color {
+    /// AppKit has no direct equivalent; `NSColor.controlBackgroundColor` is the
+    /// closest dynamic semantic colour for inset content surfaces in light and
     static var secondarySystemGroupedBackgroundCompat: Color {
         #if os(iOS)
         Color(uiColor: .secondarySystemGroupedBackground)

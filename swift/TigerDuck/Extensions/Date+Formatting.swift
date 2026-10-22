@@ -16,12 +16,17 @@ extension Date {
     private static let fullDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy/MM/dd"
+        // Pin to gregorian + en_US_POSIX so a device set to ROC /
+        // Buddhist calendar doesn't render `2026-04-23` as `0115/04/23`.
+        // Pin time zone too so a traveler sees Taipei's calendar day.
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
         f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 
+    /// `HH:mm` in Taipei time, on a 24-hour clock in every locale as the class times are; a
+    /// 12-hour locale's hour cycle without its AM or PM would show 20:03 as 08:03.
     var timeString: String {
         formatted(Self.timeStyle)
     }

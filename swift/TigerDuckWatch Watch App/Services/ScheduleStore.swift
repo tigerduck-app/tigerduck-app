@@ -128,6 +128,8 @@ extension ScheduleStore: WCSessionDelegate {
         Self.routeCredentialDict(userInfo, source: "userInfo")
     }
 
+    /// broadcaster prefers `sendMessage` when reachable because
+    /// `transferUserInfo` is unreliable on paired simulators.
     nonisolated func session(_ session: WCSession,
                              didReceiveMessage message: [String: Any]) {
         Self.routeCredentialDict(message, source: "message")

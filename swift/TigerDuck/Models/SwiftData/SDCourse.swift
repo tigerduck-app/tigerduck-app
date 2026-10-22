@@ -8,6 +8,7 @@ final class SDCourse: Identifiable {
     @Attribute(.unique) var courseNo: String
     var courseName: String
     var instructor: String
+    /// NTUST issues half credits, so this is fractional. See `creditsText`.
     var credits: Double
     var classroom: String
     var enrolledCount: Int
@@ -105,6 +106,10 @@ final class SDCourse: Identifiable {
         return dict
     }
 
+    /// Use this instead of writing ``classroomMapJSON`` directly: SwiftData's
+    /// ``@Model`` macro rewrites stored-property accessors, so the ``didSet``
+    /// that should reset ``_cachedClassroomMap`` does not fire reliably for
+    /// in-memory mutations and stale reads leak through ``classroom(for:)``.
     func setClassroomMap(_ map: [String: String]) {
         if let data = try? JSONEncoder().encode(map),
            let str = String(data: data, encoding: .utf8) {
@@ -113,6 +118,10 @@ final class SDCourse: Identifiable {
         _cachedClassroomMap = map
     }
 
+    /// Use this instead of assigning ``scheduleJSON`` directly: SwiftData's
+    /// ``@Model`` macro rewrites stored-property accessors, so the
+    /// ``didSet`` that should reset ``_cachedSchedule`` does not fire
+    /// reliably for in-memory mutations and stale reads leak through.
     func setSchedule(_ schedule: [Int: [String]]) {
         let stringKeyDict = Dictionary(uniqueKeysWithValues: schedule.map { ("\($0.key)", $0.value) })
         if let data = try? JSONEncoder().encode(stringKeyDict),
@@ -170,6 +179,9 @@ final class SDCourse: Identifiable {
         TigerDuckTheme.courseColor(for: courseNo)
     }
 
+    /// A regular term is four digits (`1151`). A summer term ends in a letter,
+    /// `114H` in NTUST's `api/semestersinfo` but `114h` in Moodle. Downstream
+    /// term checks compare with NTUST's spelling, so the prefix is upper-cased
     static func semesterPrefix(ofMoodleId moodleId: String) -> String? {
         guard moodleId.count > 4 else { return nil }
         let prefix = moodleId.prefix(4)
@@ -184,6 +196,9 @@ final class SDCourse: Identifiable {
         return String(moodleId.dropFirst(4))
     }
 
+    /// A Moodle `idnumber` with its term prefix normalised, so an id spelled
+    /// by one system is found under a key written by the other:
+    /// `"114hGD3115301"` and `"114HGD3115301"` both become the latter. An id
     static func normalizedMoodleId(_ moodleId: String) -> String {
         guard let prefix = semesterPrefix(ofMoodleId: moodleId) else { return moodleId }
         return prefix + moodleId.dropFirst(4)
@@ -280,6 +295,9 @@ extension SDCourse {
         return AppConstants.moodleDeepLink(redirectingTo: "/course/view.php?id=\(numericId)")
     }
 
+    /// HTTPS equivalent of ``moodleDeepLink``. No Moodle Mac app exists, so
+    /// the deep link's `moodlemobile://` scheme resolves to an unhandled-URL
+    /// error there; macOS callers open this directly in the default browser.
     var moodleWebURL: URL? {
         guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {

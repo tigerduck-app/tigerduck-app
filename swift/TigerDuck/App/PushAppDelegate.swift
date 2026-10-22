@@ -2,7 +2,13 @@ import UIKit
 import UserNotifications
 import os
 
+/// SwiftUI's `@main App` doesn't expose `didRegisterForRemoteNotifications`
+/// directly, so we bolt on a tiny `UIApplicationDelegate` via
+/// `@UIApplicationDelegateAdaptor`. The single responsibility is to forward
 final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
+    /// closure's weak capture of the coordinator never drops a token. APNs can deliver a token
+    /// or error before it is set; `bufferedToken` and `bufferedError` hold it until the
+    /// `didSet`s below replay it.
     var forwardToken: ((Data) -> Void)? {
         didSet {
             guard let forward = forwardToken, let token = bufferedToken else { return }
@@ -21,10 +27,16 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
     private var bufferedToken: Data?
     private var bufferedError: Error?
 
+    /// app. `UNUserNotificationCenter` retains the delegate weakly, so this
+    /// strong reference is what keeps it alive — without it the singleton
+    /// would silently drop taps the moment ARC reclaimed the local variable
+    /// set in `didFinishLaunchingWithOptions`.
     var notificationDelegate: NotificationDelegate?
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Delegate")
 
+    /// Wiring that cannot wait for a scene, which `didFinishLaunching` runs once: iOS can launch the
+    /// app in the background for a silent push or a Watch message, and then no `.onAppear` runs.
     static var launchWork: ((PushAppDelegate) -> Void)?
 
     func application(
@@ -38,6 +50,8 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         UNUserNotificationCenter.current().delegate = nd
         self.notificationDelegate = nd
         #if os(iOS)
+        // School Mail's refresh task must be registered before launch finishes. Its checks decode
+        // with the charset hook, which a held-back launch's School Mail bootstrap installs late.
         if SchoolMailAvailability.isEnabled {
             SchoolMailCharsetHook.install()
             MailBackgroundRefresh.register()
@@ -74,10 +88,14 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     var onSyncTrigger: (() async -> FullSyncOutcome)?
 
+    /// Runs after a sync trigger's sync and before its answer. Once the push is answered iOS may
+    /// suspend the app, so what the sync left on a timer, such as the widgets' reload, goes out here.
     var beforeAnsweringSyncTrigger: (@MainActor () -> Void)?
 
     var sendBeforeAnsweringSyncTrigger: (@MainActor (FullSyncOutcome) async -> Void)?
 
+    /// iOS allows a background push 30 seconds to call its completion handler, and ends an app that
+    /// takes longer (Apple's documentation for this delegate method).
     static let syncTriggerTimeLimit: Duration = .seconds(25)
 
     static let syncTriggerSendLimit: Duration = syncTriggerTimeLimit - .seconds(3)

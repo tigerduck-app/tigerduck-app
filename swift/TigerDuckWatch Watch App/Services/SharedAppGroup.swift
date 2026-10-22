@@ -1,6 +1,8 @@
 import Foundation
 import os
 
+/// the watch app and the widget. Both targets must declare the App Group
+/// `group.org.ntust.app.TigerDuck.watch` in their entitlements.
 nonisolated enum SharedAppGroup {
     static let identifier = "group.org.ntust.app.TigerDuck.watch"
 

@@ -45,11 +45,18 @@ final class FlipDetector {
     }
 
     deinit {
+        // CMMotionManager keeps its update closure until stopped, so `onDisappear` alone can let
+        // ARC free the detector without releasing the sensor. Stop the manager directly: taking
+        // `stateLock` in deinit would violate Swift's exclusivity rules in -O builds.
         if motionManager.isDeviceMotionActive {
             motionManager.stopDeviceMotionUpdates()
         }
     }
 
+    /// against. `let` (not `var`) because Apple's CoreMotion docs warn against
+    /// instantiating multiple `CMMotionManager`s — caching the result here
+    /// means hot paths like `LibrarySettingsView.body` and the modifier's
+    /// `shouldBeActive` don't churn the motion subsystem.
     static let isSupported: Bool = CMMotionManager().isDeviceMotionAvailable
 
     func start() {

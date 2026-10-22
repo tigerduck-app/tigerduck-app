@@ -23,6 +23,9 @@ struct MacBulletinsView: View {
     var body: some View {
         HSplitView {
             listPane
+                // With `maxWidth: 420`, HSplitView drifts the divider past the user's intent when
+                // the detail pane has short content, and the list hogs the width. This ceiling
+                // keeps the selected bulletin the visual focus.
                 .frame(minWidth: 260, idealWidth: 300, maxWidth: 340)
             detailPane
                 .frame(minWidth: 420, maxWidth: .infinity)

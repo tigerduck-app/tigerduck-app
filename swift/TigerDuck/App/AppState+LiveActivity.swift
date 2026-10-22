@@ -1,3 +1,7 @@
+// Live Activity refresh, and the notification permission that server-sent reminders
+// and Live Activity push updates need. iOS only, since ActivityKit has no macOS
+// counterpart: one `#if os(iOS)` fences the whole body, so macOS sees an empty extension.
+
 import SwiftUI
 import SwiftData
 import Defaults
@@ -38,6 +42,8 @@ extension AppState {
         )
     }
 
+    /// not sit on a stale scenario. When the app is backgrounded the Task is
+    /// suspended by iOS; `scenePhase == .active` on return triggers another
     private func scheduleBoundaryRefresh(
         snapshot: LiveActivitySnapshot?,
         courses: [SDCourse],

@@ -28,6 +28,9 @@ nonisolated final class CourseCardFontScaleStore {
     private let defaults: UserDefaults
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "FontScale")
 
+    /// `UserDefaults(suiteName:)` cannot tell: it returns nil only for reserved
+    /// names and hands back a process-local store for a group the process has no
+    /// entitlement for. See `WidgetSnapshotStore.isAppGroupAvailable(_:)` for the
     static func isAppGroupAvailable(_ identifier: String) -> Bool {
         FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: identifier
@@ -49,6 +52,9 @@ nonisolated final class CourseCardFontScaleStore {
     }
 
     func read() -> Double {
+        // `double(forKey:)` returns 0.0 for a missing key, which would clamp to the
+        // minimum. `object(forKey:)` detects the unset case first, so a user who never
+        // set a scale gets the default (1.0).
         guard defaults.object(forKey: Self.storageKey) != nil else {
             return migrateLegacyValue() ?? CourseCardFontScale.default
         }

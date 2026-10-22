@@ -17,11 +17,18 @@ final class NetworkMonitor {
         category: "Network.Monitor"
     )
 
+    /// Apple's captive-portal probe, over HTTPS so ATS needs no `NSExceptionDomains` entry for
+    /// plain HTTP. The body must contain the literal `Success` token to pass.
     private static let captiveProbeURL = URL(string: "https://captive.apple.com/hotspot-detect.html")!
     private static let captiveProbeSuccessToken = "Success"
     private static let captiveProbeTimeout: TimeInterval = 3
     private static let captiveCacheTTL: TimeInterval = 30
 
+    /// User-Agent matching Apple's own CaptiveNetworkSupport probe.
+    /// Some captive portals filter the probe response by UA (whitelist
+    /// the iOS CaptiveNetworkAgent string, reject unknown agents with
+    /// 403/RST); using Apple's UA avoids that class of false-positive
+    /// 'no internet' verdict.
     private static let captiveProbeUserAgent = "CaptiveNetworkSupport/1.0 wispr"
 
     private var cachedProbeResult: (value: Bool, at: Date)?

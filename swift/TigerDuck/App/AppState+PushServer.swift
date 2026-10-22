@@ -16,6 +16,9 @@ extension AppState {
     }
 
     #if os(iOS)
+    /// A sync trigger's handler calls this after the sync and the widgets' reload, before it
+    /// answers the push: `requestPushScheduleSync` sends nothing in the background, and iOS may
+    /// suspend the app once the push is answered.
     func sendPushScheduleAfterSyncTrigger(_ outcome: FullSyncOutcome) async {
         guard Self.sendsScheduleAfterSyncTrigger(
             outcome: outcome, applicationState: UIApplication.shared.applicationState

@@ -4,6 +4,9 @@ import os
 import UIKit
 #endif
 
+/// onboarding's sign-in page or in the Mac settings, and honoured by every build. The Keychain
+/// keeps it through the reinstalls done to retest fresh installs against another backend, never
+/// restores it via iCloud and lets a launch behind the lock screen read it. A value is stored only
 nonisolated enum DebugEndpointStore {
     static let keychainKey = "debug_api_endpoint_override"
 

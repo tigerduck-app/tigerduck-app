@@ -9,6 +9,7 @@ nonisolated enum LanguageManager {
         "zh", "yue", "nan", "hak", "wuu", "lzh"
     ]
 
+    /// The API only supports "zh" and "en".
     static func resolvedCourseApiLanguage(appLanguage: String) -> String {
         let tag = appLanguage == system ? resolvedSystemLanguage() : appLanguage
         let locale = Locale(identifier: tag)
@@ -20,6 +21,10 @@ nonisolated enum LanguageManager {
         resolvedCourseApiLanguage(appLanguage: appLanguage) == "en"
     }
 
+    /// An explicit `appLanguage` tag is trusted. For "system" this reads
+    /// `Bundle.main.preferredLocalizations`: the lproj iOS resolved at launch,
+    /// which `String(localized:)` uses and which stays stable for the process,
+    /// unlike `Locale.current`, which re-resolves when `AppleLanguages` changes.
     static func isCurrentLanguageNonChinese(appLanguage: String) -> Bool {
         let tag: String
         if appLanguage == system {
@@ -38,6 +43,10 @@ nonisolated enum LanguageManager {
         return chineseLanguageCodes.contains(code) ? "zh" : "en"
     }
 
+    /// `tools/localization/sync_localizations.py` surfaces each generated lproj as
+    /// a top-level symlink under the synchronized group, so Xcode copies them to
+    /// the bundle root (`<App>.app/<lang>.lproj`), not into a `Localization/`
+    /// subfolder. We enumerate the resource URL directly.
     static func supportedLocaleTags() -> [String] {
         guard let resourceURL = Bundle.main.resourceURL else { return [] }
         let urls = (try? FileManager.default.contentsOfDirectory(

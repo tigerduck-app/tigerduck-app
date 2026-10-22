@@ -28,6 +28,8 @@ extension AppState {
         return assignments.first { $0.assignmentId == String(id) }
     }
 
+    /// `String → Int`: APNs, FCM and relays bridge JSON numbers inconsistently. An int-tagged
+    /// NSNumber passes `as? Int`, a Double-tagged one fails it, and some relays send a string.
     private static func pushInteger(from raw: Any?) -> Int? {
         if let n = raw as? Int { return n }
         if let n = raw as? NSNumber { return n.intValue }
@@ -42,6 +44,11 @@ extension AppState {
                            uidValidity: schoolMailUID(from: userInfo["uidValidity"]))
     }
 
+    /// `pushInteger(from:)` decodes `bulletin_id`: APNs / FCM / intermediate
+    /// relays bridge JSON numbers inconsistently — some land as an Int-tagged NSNumber that
+    /// succeeds `as? Int`, others as a Double-tagged NSNumber where `as? Int` fails, and a few
+    /// re-encode the value as a quoted string. `UInt32(exactly:)` (rather than a truncating or
+    /// trapping initializer) also turns a negative or too-large value into `nil` instead of
     private static func schoolMailUID(from raw: Any?) -> UInt32? {
         if let n = raw as? Int { return UInt32(exactly: n) }
         if let n = raw as? NSNumber { return UInt32(exactly: n.int64Value) }

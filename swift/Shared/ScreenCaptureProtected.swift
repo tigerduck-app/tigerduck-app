@@ -34,6 +34,9 @@ private struct ScreenCaptureProtectedModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
         if protectionEnabled {
+            // Always wrapped, whatever `active` says. Switching between wrapped and bare content
+            // rebuilds the hosted UIKit views, so a wrapped text field loses first responder and
+            // the keyboard closes mid-typing. Over-protecting is harmless.
             SecureCaptureContainer(content: content)
         } else {
             content
@@ -61,6 +64,9 @@ private struct SecureCaptureContainer<Content: View>: UIViewRepresentable {
         uiView.setRootView(AnyView(content))
     }
 
+    // Forwarding `context.environment` into the hosted tree does not fix screen-level wraps: the
+    // crash on OnboardingView's login page comes from SwiftUI-in-UIKit-in-SwiftUI bridging depth,
+    // notably under TabView's lazy pages, not environment loss. Wrap small leaves only.
     func sizeThatFits(
         _ proposal: ProposedViewSize,
         uiView: SecureCaptureHostView,
@@ -74,6 +80,9 @@ private final class SecureCaptureHostView: UIView {
     private let textField: SecureCanvasHostingTextField = {
         let field = SecureCanvasHostingTextField()
         field.isSecureTextEntry = true
+        // Interaction stays enabled so hit-testing reaches the hosted content on the canvas;
+        // disabling it makes the hosted password field unfocusable and breaks the eye toggle.
+        // `SecureCanvasHostingTextField` suppresses the field's own activation instead.
         field.translatesAutoresizingMaskIntoConstraints = true
         field.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         return field
@@ -81,6 +90,9 @@ private final class SecureCaptureHostView: UIView {
 
     private let hostingController: UIHostingController<AnyView> = {
         let controller = UIHostingController<AnyView>(rootView: AnyView(EmptyView()))
+        // Lets the hosted tree's natural size drive the hosting view's `intrinsicContentSize` once
+        // mounted. The first Form layout pass can run before that view is in any hierarchy, so
+        // `setRootView` also pre-measures into `cachedNaturalHeight`.
         if #available(iOS 16.0, *) {
             controller.sizingOptions = .intrinsicContentSize
         }
@@ -88,10 +100,19 @@ private final class SecureCaptureHostView: UIView {
     }()
     private weak var currentHost: UIView?
     private var hostingConstraints: [NSLayoutConstraint] = []
+    /// Natural height of the hosted SwiftUI content, computed eagerly when
+    /// `setRootView` is called. Used as the intrinsic height before UIKit
+    /// has mounted the hosting controller's view. Without this, the first
+    /// `UICollectionViewListLayout` sizing pass — which runs before our
+    /// hosted view is in any hierarchy — sees `noIntrinsicMetric` and
+    /// falls back to the cell's fitting-expanded default, rendering the
+    /// password row at full sheet height for one frame.
     private var cachedNaturalHeight: CGFloat = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        // The hosted view is not added here: the text field's private canvas exists only after
+        // UIKit lays the field out, so `layoutSubviews` parents the hosted view onto it.
         addSubview(textField)
         textField.frame = bounds
         textField.onTextInput = { [weak self] text in self?.fillHostedTextField(with: text) }
@@ -104,6 +125,14 @@ private final class SecureCaptureHostView: UIView {
         fatalError("init(coder:) is not used; this view is created programmatically")
     }
 
+    /// Attach/detach the hosting controller as a proper child view
+    /// controller whenever our window changes. UIKit's containment rules
+    /// require `addChild` before `addSubview` of a controller's view —
+    /// otherwise appearance callbacks (`viewWillAppear`/`Disappear`),
+    /// trait propagation, and Dynamic Type updates skip the hosted SwiftUI
+    /// tree, and SwiftUI logs the diagnostic 'Adding a UIHostingController
+    /// as a child of a UIView without its UIViewController parent is
+    /// unsupported'.
     override func didMoveToWindow() {
         super.didMoveToWindow()
         let resolvedParent = window != nil ? nearestParentViewController() : nil
@@ -132,6 +161,9 @@ private final class SecureCaptureHostView: UIView {
 
     func setRootView(_ view: AnyView) {
         hostingController.rootView = view
+        // Pre-measure only until the hosted view is mounted; after that `sizingOptions` keeps the
+        // intrinsic size live. Updates fire on every keystroke in a bound TextField, and
+        // invalidating on each one makes the enclosing Form re-measure the row and jitter.
         guard hostingController.view.window == nil else { return }
 
         let probe = CGSize(
@@ -144,6 +176,13 @@ private final class SecureCaptureHostView: UIView {
         invalidateIntrinsicContentSize()
     }
 
+    /// UIKit layouts that size cells before SwiftUI's `sizeThatFits` gets a finite proposal,
+    /// notably the `UICollectionViewListLayout` behind `Form`, ask for this first. Reporting
+    /// `noIntrinsicMetric` makes the cell take its expanded-fitting default, the full screen, for
+    /// one frame, so the password row flashes tall when a login sheet appears.
+    ///
+    /// The hosting controller's intrinsic height gives the SwiftUI tree's natural size. Width
+    /// stays `noIntrinsicMetric` so HStacks still flex-fill.
     override var intrinsicContentSize: CGSize {
         let inner = hostingController.view.intrinsicContentSize.height
         let height: CGFloat
@@ -157,6 +196,13 @@ private final class SecureCaptureHostView: UIView {
         return CGSize(width: UIView.noIntrinsicMetric, height: height)
     }
 
+    /// Sizing rules, by which proposed dimensions are finite:
+    /// - Neither: `nil`, keeping `UIView`'s no-preference behavior so SwiftUI flex-fills the
+    ///   wrapper. A concrete measurement here collapses an empty `UITextField`.
+    /// - Both: the proposal as given, since the parent has already sized the wrapper.
+    /// - One: the proposed width if it is finite, since the parent decides the width, and the
+    ///   hosted content's measured height. A height proposal is the space available, not the
+    ///   space to use; echoing it makes Form rows flash tall on first paint.
     func fitting(_ proposal: ProposedViewSize) -> CGSize? {
         let pw = finiteProposal(proposal.width)
         let ph = finiteProposal(proposal.height)
@@ -165,10 +211,16 @@ private final class SecureCaptureHostView: UIView {
             return nil
         }
 
+        // The parent sized the wrapper (`.aspectRatio`, `.frame`). Measuring the content instead
+        // would let its own minimums shrink the wrapper, and an outer `.aspectRatio(1, .fit)`
+        // would then snap to that smaller square: a QR code at half the phone's width.
         if let pw, let ph {
             return CGSize(width: pw, height: ph)
         }
 
+        // One finite dimension, typically a Form row's width with an infinite height. Probe with
+        // a compressed-fit height so the tree reports its minimum height; an expanded-fit probe
+        // can come back unchanged from a tree not yet evaluated, painting a tall row first.
         let probe = CGSize(
             width: pw ?? UIView.layoutFittingExpandedSize.width,
             height: UIView.layoutFittingCompressedSize.height
@@ -202,6 +254,14 @@ private final class SecureCaptureHostView: UIView {
         keepHostedContentOnTop()
     }
 
+    /// Parents the hosted content onto the secure canvas, which carries the capture exclusion,
+    /// and re-parents when UIKit rebuilds it (Dynamic Type, appearance or orientation changes).
+    /// With no canvas it falls back to a subview of `self`: DEBUG asserts, since silent loss of
+    /// protection is the worst outcome, and release still renders so the user is not locked out.
+    /// Constraints anchor to `self`, not the canvas, which is sized by the field's text rect and
+    /// collapses to near zero without text, hiding the content. They may cross hierarchies
+    /// because `self` is the canvas's grandparent, and `clipsToBounds = false` on the canvas
+    /// keeps it from clipping the hosted view to its own tiny frame.
     private func installHostedContentIfNeeded() {
         guard bounds.width > 0, bounds.height > 0 else { return }
 
@@ -243,6 +303,13 @@ private final class SecureCaptureHostView: UIView {
         hostingConstraints = newConstraints
     }
 
+    /// Ensures the hosted SwiftUI view paints last among the canvas's
+    /// children. UIKit may re-add private decorations (caret, placeholder
+    /// label) under the canvas after we first installed — bringing our view
+    /// to the front on every layout pass keeps them from painting over the
+    /// hosted password row. Non-destructive: we leave UIKit's own subviews
+    /// in place rather than `removeFromSuperview`-ing them, which could
+    /// upset the secure-canvas rendering pipeline.
     private func keepHostedContentOnTop() {
         guard let host = currentHost,
               hostingController.view.superview === host,
@@ -251,6 +318,11 @@ private final class SecureCaptureHostView: UIView {
         host.bringSubviewToFront(hostingController.view)
     }
 
+    /// Locates the private "canvas" subview inside a secure `UITextField`
+    /// without naming UIKit-internal classes. Conservative: returns the
+    /// first descendant view whose class name contains "Canvas" — that
+    /// matches both `_UITextLayoutCanvasView` (iOS 16+) and any future
+    /// renames provided Apple keeps the substring.
     private func secureCanvasView(in field: UITextField) -> UIView? {
         var queue: [UIView] = field.subviews
         while !queue.isEmpty {
@@ -277,6 +349,14 @@ private final class SecureCaptureHostView: UIView {
     }
 }
 
+/// `UITextField` used only for the capture-excluded canvas that `isSecureTextEntry` creates. The
+/// field itself must never activate: a tap on a gap the hosted content leaves would raise the
+/// keyboard and steal first responder from the password field being edited.
+/// `canBecomeFirstResponder` blocks the keyboard, and `hitTest` returns `nil` for hits on the
+/// field itself, so those taps reach the SwiftUI views underneath, such as a Form row's gesture.
+/// It must never hold text either: AutoFill takes it for the form's password field, as its search
+/// for the form's fields does not look inside a text field, and writes the password into it.
+/// `insertText` and `replace` hand that text to `onTextInput` instead, so the hosted field gets it.
 private final class SecureCanvasHostingTextField: UITextField {
     var onTextInput: ((String) -> Void)?
 
@@ -345,6 +425,9 @@ private final class MacSecureWindowMarkerView: NSView {
     }
 
     deinit {
+        // The view can go away before `updateNSView` clears `active`, as when a sheet closes
+        // mid-toggle. NSView deinit runs on the main thread, so `assumeIsolated` balances the
+        // ref-count now; a later run-loop turn would briefly strand `sharingType = .none`.
         MainActor.assumeIsolated {
             if active, let previous = heldWindow {
                 MacSecureWindowRegistry.release(previous)

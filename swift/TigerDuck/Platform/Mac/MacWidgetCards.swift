@@ -1,6 +1,9 @@
 #if os(macOS)
 import SwiftUI
 
+/// macOS desktop widgets would need pbxproj changes to `TigerDuckWidgetsExtension`, whose
+/// `SUPPORTED_PLATFORMS` is `"iphoneos iphonesimulator"`. Until that target supports Mac,
+/// two of its widgets, today's schedule and the next class, render here as cards. They
 struct MacHomeWidgetsRow: View {
     let courses: [SDCourse]
 

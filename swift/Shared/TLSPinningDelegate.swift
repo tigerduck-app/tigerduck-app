@@ -23,6 +23,8 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
             return date
         }
         return [
+            // The *.ntust.edu.tw leaf and its TWCA Secure SSL CA, plus the TWCA SSL CA (TWCA CYBER
+            // Root CA) that newer NTUST certificates come from, so a renewal from either works.
             PinSet(
                 hostSuffix: "ntust.edu.tw",
                 includeSubdomains: true,
@@ -33,6 +35,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                     "BxOmElsPeD54MBOb5h+TPNJnBlsAk6spRc/wLnko0cc=",
                 ]
             ),
+            // api.lib.ntust.edu.tw has its own pin set: the leaf, Sectigo DV E36, and Sectigo's roots
+            // E46 and R46. Each renewal since 2022 changed the key and the issuer, and Sectigo now
+            // issues only under these two roots, so the next certificate still matches.
             PinSet(
                 hostSuffix: "api.lib.ntust.edu.tw",
                 includeSubdomains: true,
@@ -96,6 +101,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
 
         var trustError: CFError?
         guard SecTrustEvaluateWithError(trust, &trustError) else {
+            // The CFError description can carry the attacker cert's subject and
+            // issuer via `NSUnderlyingError`. Hash it so those details stay out
+            // of Console and sysdiagnose; the host alone stays readable.
             logger.error(
                 "TLS trust evaluation failed for \(host, privacy: .public): \(String(describing: trustError), privacy: .private(mask: .hash))"
             )
@@ -119,6 +127,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
     }
 
     nonisolated private static func matchingPinSet(for host: String) -> PinSet? {
+        // Strip a trailing dot: some resolver and proxy paths pass the FQDN
+        // form (`ssoam2.ntust.edu.tw.`), which would miss both match branches
+        // and silently fall through to system trust on a pinned host.
         var normalised = host.lowercased()
         if normalised.hasSuffix(".") { normalised.removeLast() }
         var best: PinSet?
@@ -152,6 +163,14 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         return Data(digest).base64EncodedString()
     }
 
+    /// Reconstruct the DER-encoded SubjectPublicKeyInfo from a `SecKey`.
+    /// `SecKeyCopyExternalRepresentation` returns the raw key bits, not the
+    /// SPKI wrapper, so prepend the ASN.1 algorithm-identifier header for
+    /// the key type.
+    ///
+    /// NTUST's certs are RSA 2048 (TWCA). EC P-256 and P-384 are wired in so
+    /// the likely next algorithm migration needs no pinning code change. Any
+    /// other key returns nil, so only that cert misses in the chain walk.
     nonisolated private static func spkiData(from key: SecKey) -> Data? {
         guard let attrs = SecKeyCopyAttributes(key) as? [String: Any],
               let keyType = attrs[kSecAttrKeyType as String] as? String,

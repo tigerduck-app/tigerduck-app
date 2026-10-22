@@ -1,6 +1,9 @@
 #if DEBUG
 import Foundation
 
+/// Watch persistence is separate — the watch sandbox has no App Group with
+/// the phone, so the watch keeps its own `.standard` copy populated by the
+/// WatchConnectivity push.
 struct DebugClockStore {
     static let key = AppClock.persistenceKey
     static let suiteName = AppClock.appGroupSuiteName

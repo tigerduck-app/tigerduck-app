@@ -129,6 +129,8 @@ struct DevMailServerView: View {
             }
         }
         .navigationTitle("Email")
+        // button is the one required: the port fields use `.numberPad`, which has no return key,
+        // so without it a tap into a port field traps the keyboard open.
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {

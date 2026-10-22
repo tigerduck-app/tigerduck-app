@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 struct MacClassTableView: View {
     @Environment(AppState.self) var appState
 
+    /// Read through `@Default` rather than `Defaults[...]` so toggling the
+    /// setting redraws the grid — a raw read registers no SwiftUI dependency.
     @Default(.alwaysShowAllPeriods) private var showsAllPeriods
     @Default(.outlineRequiredCourses) var outlineRequiredCourses
 
@@ -142,6 +144,9 @@ struct MacClassTableView: View {
                     Button {
                         showAddCourse = true
                     } label: {
+                        // A bare `Label` in a macOS toolbar draws the glyph on a higher baseline than
+                        // the title. The HStack matches the semester picker's row geometry, and
+                        // `.fixedSize` stops AppKit squeezing it to an icon when the picker widens.
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
                             Text(String(localized: "add_course_title"))
@@ -227,6 +232,9 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
+            // The conflict alert sits on the sheet's content: on iPhone, an alert on the parent
+            // makes SwiftUI dismiss the sheet to present it. macOS does not, but anchoring to the
+            // sheet keeps the alert attached to the search results on both platforms.
             .alert(
                 String(localized: "class_table_conflict_add_failed_title"),
                 isPresented: Binding(
@@ -334,6 +342,9 @@ struct MacClassTableView: View {
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             cacheRevision &+= 1
         }
+        // Course detail uses a custom overlay (not `.sheet`) so the user can
+        // dismiss by clicking the backdrop — macOS sheets are window-modal
+        // and swallow all outside clicks, leaving ESC as the only escape.
         .overlay {
             if let slot = selectedSlot {
                 courseDetailOverlay(slot: slot)
@@ -370,6 +381,8 @@ struct MacClassTableView: View {
             .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
             .onTapGesture { }
 
+            // Restore ESC dismissal: custom overlays don't inherit a sheet's automatic
+            // cancel handling. Hidden button keeps the shortcut active without affecting
             Button("") {
                 if detailMoodlePath.isEmpty {
                     selectedSlot = nil

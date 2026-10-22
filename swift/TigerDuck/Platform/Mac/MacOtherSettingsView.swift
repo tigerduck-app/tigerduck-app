@@ -30,6 +30,9 @@ struct MacOtherSettingsView: View {
             }
 
             Section {
+                // The example URL goes above the field, not in the TextField title: a grouped
+                // macOS Form renders that title as a leading label that squeezes the input to a
+                // sliver. On its own row the hint leaves the field full width for pasting.
                 Text(verbatim: String(localized: "settings_api_endpoint_placeholder"))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)

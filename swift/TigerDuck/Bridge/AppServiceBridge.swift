@@ -66,6 +66,9 @@ enum AppServiceBridge {
     ) async -> [SDCourse] {
         let startGeneration = authService.loginGeneration
         await SemesterCatalog.refreshIfStale()
+        // The course-selection system serves one term and its list has no term
+        // marker, so its numbers belong to the term the catalogue reports open.
+        // `currentSemesterCode()` lags: its month heuristic would misfile them for weeks.
         let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
         let display = CourseDisplayPreferences.current()
         let courseApiLanguage = display.language
@@ -119,6 +122,7 @@ enum AppServiceBridge {
             } else {
                 try await MoodleEnrolledCoursesService.fetchEnrolled()
             }
+            // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
             let moodleIdMap = moodleCourseIdMap(moodleAll)
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
@@ -213,6 +217,9 @@ enum AppServiceBridge {
         tracker.set(status, for: server, note: note)
     }
 
+    /// Moodle leads then and the transcript adds non-Moodle classes. An empty list
+    /// counts as nil: the D01 regex scrape returns no matches, not an error, when the
+    /// page drifts, and that is cached for a day, so it must not blank the term.
     static func enrolledCourseNos(
         selection: [String]?,
         moodle: [String],
@@ -242,6 +249,8 @@ enum AppServiceBridge {
         return map
     }
 
+    /// School requests a fetch has in flight at once. Past the per-host connection limit they
+    /// queue, and each one's timeout runs while it waits.
     nonisolated static let maxConcurrentRequests = 4
 
     static func concurrentMap<Item: Sendable, Output: Sendable>(

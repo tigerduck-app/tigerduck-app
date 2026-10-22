@@ -346,6 +346,8 @@ extension AppServiceBridge {
         }
     }
 
+    /// id. It takes no submission after the cutoff, so a round need not ask again until a teacher
+    /// moves the cutoff past that answer. `askedAt` precedes the round's requests, and one left
     static func closedUnsubmitted(
         records: [MoodleAssignmentRecord],
         statuses: [Int: MoodleSubmissionStatus],
@@ -369,6 +371,8 @@ extension AppServiceBridge {
         return cutoff < askedAt
     }
 
+    /// One Moodle course per course number. Moodle keeps past enrolments, so a retaken course
+    /// has one for each term it was taken in; this term's wins, else the one that started last.
     static func coursesForTerm(_ courses: [MoodleEnrolledCourse], semester: String) -> [MoodleEnrolledCourse] {
         let byCourseNo = Dictionary(grouping: courses, by: \.courseNo)
         return courses.filter { course in
@@ -379,6 +383,8 @@ extension AppServiceBridge {
         }
     }
 
+    /// Submissions Moodle has confirmed, with their time, by assignment id. Moodle keeps a
+    /// submission once it has a time, short of a teacher reverting it to a draft.
     static func confirmedSubmissions(in cached: [SDAssignment]) -> [String: Date] {
         Dictionary(
             cached.compactMap { assignment in

@@ -7,6 +7,8 @@ struct MaxCardHeightKey: PreferenceKey {
     }
 }
 
+/// `.onDisappear`, because `TabView` keeps `@State` across tab switches and a
+/// once-tall child, like the "current class" card, would otherwise keep it.
 struct EqualHeightHStack<Content: View>: View {
     var alignment: VerticalAlignment = .top
     var spacing: CGFloat? = nil

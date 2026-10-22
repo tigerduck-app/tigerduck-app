@@ -25,6 +25,9 @@ struct MacGeneralSettingsView: View {
                 }
                 .pickerStyle(.menu)
 
+                // Under the in-app picker, which cannot do this alone: its "follow system" option
+                // defers to the per-app Language & Region pane in System Settings, the only place
+                // macOS applies the system locale. Mirrors the iPhone's language redirect.
                 Button {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") {
                         NSWorkspace.shared.open(url)

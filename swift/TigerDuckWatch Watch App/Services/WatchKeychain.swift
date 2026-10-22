@@ -1,6 +1,9 @@
 import Foundation
 import Security
 
+/// scoped to this app's bundle, `.whenUnlockedThisDeviceOnly` so the
+/// secret stays on the device (no iCloud restore) and is unreadable
+/// while the watch is locked.
 nonisolated enum WatchKeychain {
 
     private static let service = "org.ntust.app.TigerDuck.watch"

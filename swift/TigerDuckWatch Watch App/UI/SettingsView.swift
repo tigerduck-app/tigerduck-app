@@ -43,6 +43,9 @@ struct SettingsView: View {
             : String(localized: "watch_settings_signed_out", locale: locale)
     }
 
+    // Pass `locale:` so lookups follow the in-app language pushed from the phone (WatchTheme's
+    // `.environment(\.locale)`). Without it `String(localized:)` uses the watch system locale
+    // from `Bundle.main.preferredLocalizations` and the row mixes languages.
     private func lastSyncedText(now: Date) -> String {
         guard let ms = store.snapshot?.syncedAtMs, ms > 0 else {
             return String(localized: "watch_last_synced_never", locale: locale)

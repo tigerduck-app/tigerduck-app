@@ -10,6 +10,9 @@ struct AppVersion: Comparable, Equatable {
         var parsed: [Int] = []
         parsed.reserveCapacity(parts.count)
         for part in parts {
+            // `Int(_:)` accepts a sign, so `Int("+1")` is 1 and passes `n >= 0`. Require plain
+            // digits so a sign in a `whatsnew.json` key or an iTunes Lookup response gives
+            // `nil` instead of collapsing to the unsigned version.
             guard !part.isEmpty, part.allSatisfy(\.isASCII), part.allSatisfy(\.isNumber) else {
                 return nil
             }

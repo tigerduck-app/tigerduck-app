@@ -5,6 +5,12 @@ import os
 
 @Observable
 final class AppState {
+    /// Debounced reload channel for widgets when course-name font scale
+    /// changes. The slider's stepped binding fires didSet on every step
+    /// crossing during a drag (up to 16 across the 0.8–1.6 range), so
+    /// routing through the coordinator collapses a fast drag into a
+    /// single 300ms-debounced WidgetKit reload instead of saturating
+    /// the per-app reload budget.
     private let widgetReloadCoordinator = WidgetReloadCoordinator()
 
     var hasCompletedOnboarding = Defaults[.hasCompletedOnboarding]
@@ -18,7 +24,13 @@ final class AppState {
 
     let updateNotifyCoordinator = UpdateNotifyCoordinator()
 
+    /// Keychain persists across app uninstall/reinstall on iOS.
+    /// Detect fresh install (no UserDefaults marker) and clear stale Keychain data
+    /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
+        // On iOS, Keychain items survive a reinstall. Purge them before constructing
+        // AuthTokenManager: its init caches the v3 tokens, which it would rewrite on the
+        // next refresh, letting a different user sync the previous user's cloud data.
         let isFreshInstall = !Defaults[.appHasBeenInstalled]
         if isFreshInstall {
             let keysToWipe: [String] = [
@@ -184,6 +196,9 @@ final class AppState {
         revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
         revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin() ?? false }
 
+        // Apply a stored in-app language override at launch so lookups use it. Skip
+        // "system": apply() would remove AppleLanguages, wiping the per-app override
+        // that iOS Settings writes to the same key.
         if appLanguage != LanguageManager.system {
             LanguageManager.apply(appLanguage)
         }
@@ -338,6 +353,9 @@ final class AppState {
         didSet { Defaults[.browserPreference] = browserPreference }
     }
 
+    /// Mac-only: where the "open in Moodle" actions route to. The iPad
+    /// Moodle app installed via Mac App Store registers `moodlemobile://`
+    /// too, so users who installed it can opt into the deep-link path.
     var macMoodleOpenTarget: MoodleOpenTarget = Defaults[.macMoodleOpenTarget] {
         didSet { Defaults[.macMoodleOpenTarget] = macMoodleOpenTarget }
     }

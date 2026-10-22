@@ -4,6 +4,8 @@ struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     var lineSpacing: CGFloat = 6
 
+    /// A parent that proposes back the width this reported, as a centred one does, can hand it a
+    /// fraction of a point less after rounding, which a strict comparison reads as an overflow.
     private static let fitTolerance: CGFloat = 0.5
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {

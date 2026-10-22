@@ -1,5 +1,8 @@
 import Foundation
 
+/// CoreImage's `CIFilter.qrCodeGenerator()` is unavailable on watchOS. This file
+/// builds the boolean module matrix; `LibraryQRViewModel.makeQRImage` draws it
+/// into a `UIImage` with CoreGraphics. Byte mode only, ECC levels L/M/Q/H,
 public struct WatchQRMatrix: Equatable, Sendable {
     public let size: Int
     private let modules: [Bool]

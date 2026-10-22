@@ -54,6 +54,9 @@ final class WatchLibraryCredentialsStore: ObservableObject {
             }
         case .wipe:
             guard wipeKeychainOnly(), clearToken() else {
+                // Keychain remove can fail if the watch is locked
+                // (whenUnlockedThisDeviceOnly). Don't advance the epoch
+                // so the phone's next republish retries the wipe.
                 return .malformed
             }
         }
@@ -91,6 +94,11 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         Int64(defaults.double(forKey: DefaultsKey.issuedAtMs))
     }
 
+    /// `issuedAtMs == 0` with credentials present means the keychain outlived
+    /// the App Group `UserDefaults`: watchOS keeps the keychain across an
+    /// uninstall and reinstall but resets defaults. Such orphans have no TTL
+    /// anchor, so they count as expired until the next phone push sets a clean
+    /// epoch and `issuedAtMs`.
     func loadCredentialsRespectingTTL(now: Date = Date()) -> (username: String, password: String)? {
         guard let u = WatchKeychain.string(forKey: Keys.username),
               let p = WatchKeychain.string(forKey: Keys.password) else {

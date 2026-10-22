@@ -1,6 +1,8 @@
 import SwiftUI
 import UIKit
 
+/// locked and undone while the screen is captured (recording, mirroring, AirPlay),
+/// and a screenshot re-masks it for later glances: iOS reports one only afterwards.
 struct PasswordField<Field: Hashable>: View {
     let placeholder: String
     @Binding var text: String
@@ -10,6 +12,8 @@ struct PasswordField<Field: Hashable>: View {
     var onSubmit: () -> Void = {}
 
     @State private var isVisible = false
+    /// `UIScreen.main` is deprecated on iOS 16+ and returns the wrong
+    /// screen in multi-scene / Stage Manager / Sidecar configurations.
     @State private var isScreenCaptured = false
     @State private var showsCaptureExplanation = false
     @State private var captureExplanationGen = 0
@@ -55,9 +59,14 @@ struct PasswordField<Field: Hashable>: View {
                 Text(String(localized: "password_eye_unavailable_during_capture"))
                     .font(.callout)
                     .multilineTextAlignment(.leading)
+                    // Without `.fixedSize(vertical: true)` the popover gives the
+                    // text one line and truncates it; with it the text grows
+                    // downward within the width `.frame(width:)` sets.
                     .fixedSize(horizontal: false, vertical: true)
                     .padding()
                     .frame(width: 260)
+                    // A real popover on compact width (iPhone) instead of the
+                    // default sheet adaptation, so the arrow points at the eye.
                     .presentationCompactAdaptation(.popover)
             }
         }
@@ -101,6 +110,8 @@ struct PasswordField<Field: Hashable>: View {
     }
 }
 
+/// `UIScreen.main.isCaptured` reads, which are deprecated on iOS 16+ and
+/// undefined on multi-scene iPad / Stage Manager.
 private struct CapturedScreenReader: UIViewRepresentable {
     let onChange: (Bool) -> Void
 
@@ -154,6 +165,8 @@ private final class CapturedScreenReaderView: UIView {
             queue: .main
         ) { [weak self, weak newScreen] _ in
             guard let newScreen else { return }
+            // When recording stops, iOS posts this a tick before `isCaptured`
+            // flips, so the read waits for the next runloop turn.
             DispatchQueue.main.async {
                 self?.onChange?(newScreen.isCaptured)
             }
@@ -213,6 +226,9 @@ private struct _PasswordTextField: UIViewRepresentable {
             applySecureTextEntry(isSecure, on: field)
         }
 
+        // Mirror @FocusState into the field only to become first responder. Resigning
+        // here on the transient nil SwiftUI emits while focus moves between fields
+        // collapses and reopens the keyboard, and UIKit moves first responder itself.
         if isFocused {
             DispatchQueue.main.async { [weak field] in
                 guard let field, !field.isFirstResponder else { return }
@@ -222,12 +238,20 @@ private struct _PasswordTextField: UIViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextField, context: Context) -> CGSize? {
+        // Without this the field reports `noIntrinsicMetric` width, the HStack may not
+        // give it the remaining space as it would a native `TextField`, and it collapses
+        // to about zero width where taps never land.
         let intrinsicHeight = uiView.intrinsicContentSize.height
         let height = intrinsicHeight > 0 ? intrinsicHeight : 30
         let width = proposal.width ?? UIView.noIntrinsicMetric
         return CGSize(width: width, height: height)
     }
 
+    /// Apple documents that toggling it during text entry clears the field.
+    /// Reassigning `text` (nil, then the saved value) keeps the field stable
+    /// without dropping first responder; the selection is then restored by
+    /// character offset, since the saved `UITextRange` is invalid once `text`
+    /// is reassigned.
     private func applySecureTextEntry(_ isSecure: Bool, on field: UITextField) {
         let savedText = field.text
         let savedOffsets: (start: Int, end: Int)? = {
@@ -265,6 +289,9 @@ private struct _PasswordTextField: UIViewRepresentable {
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {
+            // Deferred so SwiftUI state is not mutated inside UIKit's responder change,
+            // and so this write lands after the transient `focusedField = nil` SwiftUI
+            // may queue for the previous field: the main queue runs in FIFO order.
             DispatchQueue.main.async { [weak self, weak textField] in
                 guard let self, let textField, textField.isFirstResponder else { return }
                 if !self.parent.isFocused { self.parent.isFocused = true }

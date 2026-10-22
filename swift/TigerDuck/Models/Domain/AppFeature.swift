@@ -140,6 +140,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     static let libraryRelatedFeatures: Set<AppFeature> = [.library, .discussionRoom, .libraryLecture]
 
+    /// pushes `moreDeepLink`. A selection no `Tab` matches breaks the `TabView`.
     static func tabRoute(
         to feature: AppFeature,
         visibleTabs: [AppFeature]

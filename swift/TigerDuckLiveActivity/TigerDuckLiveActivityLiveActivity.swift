@@ -66,6 +66,8 @@ private struct LockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // all the slack between them. Do not apply .fixedSize() to the timer or its
+            // container: it breaks the widget reservation of Text(timerInterval:).
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
                     Circle()
@@ -129,6 +131,11 @@ private struct ExpandedBottomView: View {
     }
 }
 
+/// Live Activity views are snapshots: `ProgressView(value:)` redraws only on
+/// each `Activity.update(...)`, and updating by push alone drains battery and
+/// gets throttled, so the bar looks stuck. `ProgressView(timerInterval:countsDown:)`
+/// hands the system a time interval that the OS interpolates inside the widget
+/// extension with no CPU or push cost, the mechanism `Text(timerInterval:)` uses.
 private struct AutoProgressBar: View {
     let snapshot: LiveActivitySnapshot
 
@@ -136,6 +143,9 @@ private struct AutoProgressBar: View {
         if let start = snapshot.progressStart,
            let target = snapshot.countdownTarget,
            start < target {
+            // `ProgressView(timerInterval:)` interpolates against the real wall clock,
+            // but snapshot dates are app-clock time (possibly fake), so translate the
+            // endpoints to animate over the matching real-time span.
             let realStart = AppClock.realTime(forApp: start)
             let realTarget = AppClock.realTime(forApp: target)
             ProgressView(timerInterval: realStart...realTarget, countsDown: false) {
@@ -211,6 +221,9 @@ private struct MetadataRowView: View {
     }
 }
 
+/// assignment about to be due; the countdown alone cannot. The full-colour
+/// artwork is not accent-tinted and needs its fixed 20pt frame, or the widget
+/// lays the asset-catalog image out at natural size and blows the slot open.
 @ViewBuilder
 private func scenarioIcon(_ snapshot: LiveActivitySnapshot) -> some View {
     switch snapshot.scenario {
@@ -243,6 +256,9 @@ private func statusLabel(for scenario: LiveActivityScenarioKind) -> String {
 
 @ViewBuilder
 private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
+    // Compare in app-clock space (fake time aware), but hand SwiftUI a
+    // real-time range — `Text(timerInterval:)` ticks against the system
+    // clock and would otherwise show ~a day off when fake time is set.
     if let target = snapshot.countdownTarget, target > AppClock.now() {
         Text(timerInterval: Date()...AppClock.realTime(forApp: target), countsDown: true)
     } else {
@@ -250,6 +266,9 @@ private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
     }
 }
 
+/// The activity can outlive its target: an end push is the only remote
+/// removal (ActivityKit has no expire-at-date API, and `staleDate` does not
+/// dismiss; see `LiveActivityCoordinator`), and the local end timer and the
 private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
     switch scenario {
     case .inClass:

@@ -167,6 +167,8 @@ private struct FirstTriggerPromptHost: ViewModifier {
             }
         ) { pending in
             FirstTriggerPromptSheet(promptKey: pending.key, content: pending.content)
+                // `.medium` clips the animation and both buttons on standard phones, and
+                // full screen is too much for an opt-in question. No drag indicator: the
                 .presentationDetents([.fraction(0.7)])
                 .interactiveDismissDisabled()
         }

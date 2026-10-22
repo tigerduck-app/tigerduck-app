@@ -201,6 +201,10 @@ nonisolated enum DevMailConnectionProbe {
         case failed(Int32)
     }
 
+    /// `getaddrinfo` blocks and cannot be cancelled, so it runs on a global-queue thread rather
+    /// than a cooperative-pool one. A lookup that outlives the timeout finishes there with nobody
+    /// reading it, which is the price of asking the system resolver the same question the rest of
+    /// the app asks it.
     private static func resolveOffThread(host: String, port: Int) async -> Resolution {
         await withCheckedContinuation { (continuation: CheckedContinuation<Resolution, Never>) in
             let resumer = OneShotResumer(continuation)
@@ -303,6 +307,9 @@ nonisolated enum DevMailConnectionProbe {
                     switch state {
                     case .ready:
                         resumer.resume(.ready(DevMailConnectionProbe.describe(ready: connection)))
+                    // `.waiting` is a result, not a stage on the way to one: Network keeps
+                    // retrying a refused or unroutable connection indefinitely, and the error it
+                    // is waiting on is exactly the diagnosis.
                     case .waiting(let error), .failed(let error):
                         resumer.resume(.failed(error))
                     case .cancelled:
@@ -333,6 +340,9 @@ nonisolated enum DevMailConnectionProbe {
         return parts.isEmpty ? "connected" : parts.joined(separator: ", ")
     }
 
+    /// the two cases worth *reporting* most loudly — 1.0 and 1.1 — are the two the SDK deprecates
+    /// naming, and a diagnostic that cannot say "this server negotiated TLS 1.0" is no use. The
+    /// numbers are the TLS `ProtocolVersion` values themselves and do not move.
     static func tlsVersionName(_ rawVersion: UInt16) -> String {
         switch rawVersion {
         case 0x0301: "TLS 1.0"
@@ -488,6 +498,8 @@ nonisolated enum DevMailConnectionProbe {
         }
     }
 
+    /// enum bridges to a domain that is its own mangled type name and a code that is its case
+    /// index, which says nothing the description does not.
     static func carriesReadableCode(domain: String) -> Bool {
         [NSURLErrorDomain, NSPOSIXErrorDomain, NSOSStatusErrorDomain, "kCFErrorDomainCFNetwork"].contains(domain)
     }
@@ -512,6 +524,11 @@ nonisolated enum DevMailConnectionProbe {
         (SecCopyErrorMessageString(status, nil) as String?) ?? "no message for this OSStatus"
     }
 
+    /// Not a task group: a group does not return until every child has finished, and not waiting
+    /// for work that has not finished is the whole point here. SwiftMail's IMAP and SMTP commands
+    /// ignore task cancellation, and a filtered port is exactly the case where a socket sits for a
+    /// minute or more — so the unfinished work is left to end on its own, with nobody reading it,
+    /// while the stage reports the hang. Every connection this probe opens is held by its caller
     static func withTimeout<T: Sendable>(
         _ timeout: Duration,
         _ work: @escaping @Sendable () async -> T

@@ -118,6 +118,9 @@ extension AppState {
         startRevisionPolling(pollNow: false)
         syncTask?.cancel()
         syncTask = Task {
+            // Behind a hotel or campus Wi-Fi login page the link is "satisfied" but
+            // egress is blocked, and the pinned NTUST hosts would hard-fail with an ATS
+            // error. Bail early with a clean "no internet" message instead.
             guard await NetworkMonitor.shared.isReachable() else {
                 await MainActor.run {
                     sessionManager.loadingState = .error(String(localized: "error_network_unavailable"))

@@ -35,6 +35,8 @@ extension View {
     }
 }
 
+/// `book.fill` struck through like the system's slashed symbols, since SF Symbols has no
+/// slashed book.
 struct IgnoredAssignmentsIcon: View {
     let size: CGFloat
 

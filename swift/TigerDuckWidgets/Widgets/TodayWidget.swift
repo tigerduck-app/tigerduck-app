@@ -26,6 +26,8 @@ struct TodayProvider: TimelineProvider {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
         let now = AppClock.now()
         let dates = WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
+        // `entryDates` are app-clock boundaries, but WidgetKit schedules entries on the real
+        // clock. Stamp each entry with the real-time equivalent and carry the app-clock boundary
         let entries = dates.map { appDate in
             TodayEntry(
                 date: AppClock.realTime(forApp: appDate),
@@ -33,6 +35,8 @@ struct TodayProvider: TimelineProvider {
                 snapshot: snap
             )
         }
+        // With no courses or no signed-in user, `.atEnd` would make WidgetKit reload the single
+        // placeholder entry in an immediate loop. Refreshing at midnight retries once a day.
         let hasCourses = snap.isLoggedIn && !snap.courses.isEmpty
         let policy: TimelineReloadPolicy
         if hasCourses {

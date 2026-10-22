@@ -1,6 +1,11 @@
 import SwiftUI
 import WidgetKit
 
+/// Outside `.fullColor` the system composites the widget over its own material (a tinted home
+/// screen, clear glass) and expects content, not surfaces. It strips only `containerBackground`;
+/// a `.fill()` or `.background()` in a view is drawing it cannot see, so an opaque token there
+/// stays a solid block on the glass. The surface tokens resolve to clear in those modes, which
+/// fixes every call site at once and keeps the branch out of the views.
 struct WidgetPalette {
     let background: Color
     let surface: Color

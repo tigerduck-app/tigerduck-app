@@ -1,5 +1,7 @@
 import Foundation
 
+/// The Python backend emits `datetime.isoformat()` which may include
+/// fractional seconds depending on the source timestamp. Keeping this
 extension JSONDecoder.DateDecodingStrategy {
     static var iso8601WithFractionalSecondsFallback: Self {
         .custom { decoder in

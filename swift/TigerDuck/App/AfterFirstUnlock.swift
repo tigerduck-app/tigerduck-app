@@ -2,7 +2,13 @@ import Foundation
 import UIKit
 import os
 
+/// Whether the phone has been unlocked since it started. Until then iOS keeps the app's files, its
+/// `UserDefaults` and its after-first-unlock Keychain items closed, and `UserDefaults` answers as if
+/// nothing were stored. See docs/decisions/0024-launch-before-first-unlock.md.
 nonisolated enum FirstUnlock {
+    /// Writes a file of the protection class those default to. A new file's key is wrapped in its
+    /// class key, which iOS has only after that unlock, so the write fails until then, where a read
+    /// could not tell a closed file from a missing one.
     static func hasHappened(
         probe: URL = URL.temporaryDirectory.appending(path: "first-unlock-probe"),
         write: (Data, URL, Data.WritingOptions) throws -> Void = { try $0.write(to: $1, options: $2) }
@@ -10,6 +16,8 @@ nonisolated enum FirstUnlock {
         (try? write(Data(), probe, .completeFileProtectionUntilFirstUserAuthentication)) != nil
     }
 
+    /// which an install's first launch sets. A process that started before the first unlock may keep
+    /// an empty copy after it, so a no comes only after `synchronize()` asked storage once more.
     static func storedDataReadsBack(defaults: UserDefaults = .standard) -> Bool {
         let key = AppConstants.UserDefaultsKeys.appHasBeenInstalled
         if defaults.bool(forKey: key) { return true }

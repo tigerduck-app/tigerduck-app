@@ -24,6 +24,8 @@ struct WatchRootView: View {
                 NavigationStack { TodayView() }.tag(Tab.today)
                 NavigationStack { SettingsView() }.tag(Tab.settings)
             }
+            // System dots on `.page` style don't auto-hide on watchOS; we
+            // hide them and float our own with a fade-after-idle timer.
             .tabViewStyle(.page(indexDisplayMode: .never))
 
             dotsOverlay

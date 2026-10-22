@@ -1,5 +1,10 @@
 import Foundation
 
+/// One credential push from the phone to the watch. Delivered via
+/// `WCSession.transferUserInfo` (FIFO, guaranteed) — NOT bundled into
+/// the schedule `applicationContext` because that channel is
+/// latest-only and a stale `set` overwriting a fresh `wipe` would
+/// strand credentials on the watch after a phone logout.
 public struct WatchLibraryCredentialPayload: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case set

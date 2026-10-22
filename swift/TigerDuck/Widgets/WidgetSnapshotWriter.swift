@@ -96,6 +96,8 @@ final class WidgetSnapshotWriter {
         return keys
     }
 
+    /// An unchanged snapshot is neither written nor reloaded: this runs on every return to the
+    /// app and every data change, and each reload spends the widgets' budget.
     func regenerate(forceReload: Bool = false) {
         guard isProtectedDataAvailable() else {
             owesForcedReload = owesForcedReload || forceReload
@@ -124,6 +126,8 @@ final class WidgetSnapshotWriter {
         coordinator.requestReload()
     }
 
+    /// this one asked for it or an earlier change did. A sync trigger's handler calls it before it
+    /// answers the push, after which iOS may suspend the app before the debounce ends.
     func regenerateAndReloadNow() {
         regenerate()
         coordinator.reloadNowIfPending()

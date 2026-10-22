@@ -114,6 +114,7 @@ public enum WatchPayloadCodec {
         )
     }
 
+    // Survives plist/NSNumber round-tripping that WCSession performs.
     private static func int64(_ any: Any?) -> Int64? {
         if let n = any as? Int64    { return n }
         if let n = any as? Int      { return Int64(n) }

@@ -25,6 +25,9 @@ private struct FlipToLibraryModifier: ViewModifier {
                 if !shown { Self.offerGesture(appState: appState) }
             }
             .onChange(of: scenePhase) { _, new in
+                // Tear down only on .background. .inactive comes with transient
+                // interruptions (Control Center, a banner), and tearing down then would
+                // wipe in-progress debounce state and churn CoreMotion several times a minute.
                 if new == .background || new == .active {
                     reconcile()
                 }
@@ -49,6 +52,9 @@ private struct FlipToLibraryModifier: ViewModifier {
     private func reconcile() {
         if shouldBeActive {
             if detector == nil {
+                // Snapshot appState into a local, as Apple advises for environment values,
+                // instead of reading the modifier's @Environment wrapper inside this
+                // long-lived escaping closure.
                 let appState = self.appState
                 detector = FlipDetector { handleFaceDown(appState: appState) }
             }
@@ -68,6 +74,8 @@ private struct FlipToLibraryModifier: ViewModifier {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
+    /// signed in. A sheet already up, such as the sign-in's own, is waited out for a few seconds,
+    /// since SwiftUI rejects the root-level prompt sheet over it; past that the next return asks.
     private static func offerGesture(appState: AppState, attemptsLeft: Int = 10, waitFirst: Bool = false) {
         guard FlipDetector.isSupported,
               FlipToLibraryGate.offersGesture(
@@ -112,6 +120,8 @@ enum FlipToLibraryGate {
         signedInToLibrary && !enabled && !asked && !onLibraryPage
     }
 
+    /// Whether the offer waits: behind a sheet already up, and behind What's New or the update
+    /// prompt, which share the root with it, where two sheets set in one render leave one unshown.
     static func offerWaits(sheetPresented: Bool, notifySheetPending: Bool) -> Bool {
         sheetPresented || notifySheetPending
     }

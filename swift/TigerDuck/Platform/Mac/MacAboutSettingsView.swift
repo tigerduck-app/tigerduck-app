@@ -79,6 +79,8 @@ struct MacAboutSettingsView: View {
         .padding(.vertical, 8)
     }
 
+    /// a plain-styled Button gives back the label's own colour, so without
+    /// this they read as ordinary settings text that happens to have a
     private func linkRow(_ key: String.LocalizationValue, url: URL) -> some View {
         Button {
             openURL(url)
@@ -91,6 +93,9 @@ struct MacAboutSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.tint)
             }
+            // Without this the row is only hittable on the glyphs
+            // themselves, since a plain-styled Button takes its label's
+            // shape and the Spacer is not part of it.
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

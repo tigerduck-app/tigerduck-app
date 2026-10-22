@@ -18,9 +18,15 @@ struct LibraryShortcutProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<LibraryShortcutEntry>) -> Void) {
+        // Static: one entry, refreshed at midnight only, so the date `containerBackground` sees
+        // rolls over should theme logic depend on it; snapshot freshness does not matter. The entry
+        // date is real time: WidgetKit schedules by it, and a fake future stamp defers rendering.
         let snapshot = store.readSnapshot()
         let entry = LibraryShortcutEntry(date: Date(), snapshot: snapshot)
         let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        // WidgetKit interprets `.after(...)` against real wall-clock time,
+        // so translate the fake-clock midnight to the real instant it maps
+        // to. Identity when no debug override is active.
         let midnight = AppClock.realTime(forApp: appMidnight)
         completion(Timeline(entries: [entry], policy: .after(midnight)))
     }

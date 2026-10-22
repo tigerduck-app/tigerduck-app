@@ -20,6 +20,9 @@ extension View {
     }
 }
 
+// Shadows go on the background shape, not on `content`: SwiftUI applies `.shadow`
+// to every leaf it reaches, adding a blurred halo (an offscreen pass) per label on
+// top of the material. One shadow per card looks the same and costs far less.
 private struct PresetCardModifier: ViewModifier {
     let policy: VisualStylePolicy
     let cornerRadius: CGFloat

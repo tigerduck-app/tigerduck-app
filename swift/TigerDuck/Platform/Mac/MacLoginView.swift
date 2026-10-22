@@ -69,6 +69,7 @@ struct MacLoginView: View {
                     .accessibilityLabel(String(localized: isPasswordVisible ? "password_hide" : "password_show"))
                 }
                 .frame(maxWidth: 340)
+                // SecureField masks at the OS layer; TextField does not. While the password is
                 .screenCaptureProtected(isPasswordVisible)
             }
 

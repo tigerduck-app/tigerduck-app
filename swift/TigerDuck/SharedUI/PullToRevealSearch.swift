@@ -1,6 +1,9 @@
 import SwiftUI
 
 extension View {
+    /// with a large navigation title (`BulletinsView`) gets this from `.searchable`'s drawer;
+    /// a page whose title is a content row, to line up with Home and Class table, cannot: with
+    /// no large title to fold under, the bar keeps the field on screen at rest.
     func pullToRevealSearch(isRevealed: Binding<Bool>, isActive: Bool) -> some View {
         modifier(PullToRevealSearch(isRevealed: isRevealed, isActive: isActive))
     }

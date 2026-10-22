@@ -27,6 +27,8 @@ nonisolated struct NextClassProvider: TimelineProvider {
         completion(timeline(for: snapshot, now: AppClock.now()))
     }
 
+    /// `now` and the class times are on the app clock, which the debug clock can move. WidgetKit
+    /// runs on the real clock, so each entry and the reload are dated with their real instants.
     func timeline(for snapshot: WatchSnapshot?, now: Date) -> Timeline<NextClassEntry> {
         let courses = snapshot?.courses ?? []
         let quietDays = snapshot?.quietDays ?? []
@@ -56,6 +58,9 @@ nonisolated struct NextClassProvider: TimelineProvider {
         return Timeline(entries: entries, policy: .after(AppClock.realTime(forApp: reloadAt)))
     }
 
+    /// The phone's last push as the Watch app saved it. Also applies the push's debug clock
+    /// override: the widget runs in its own process, so its `AppClock` follows the phone's only
+    /// through this file, as the Watch app's does through `ScheduleStore`.
     func loadSnapshot() -> WatchSnapshot? {
         var snapshot: WatchSnapshot?
         if FileManager.default.fileExists(atPath: snapshotFileURL.path) {

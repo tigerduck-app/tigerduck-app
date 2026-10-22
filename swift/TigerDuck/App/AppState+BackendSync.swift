@@ -9,6 +9,9 @@ extension AppState {
     func syncOverridesFromBackend(followUpIfBusy: Bool = false) async -> FullSyncOutcome {
         guard Defaults[.cloudSyncEnabled] else { return .skipped }
         #if os(iOS)
+        // A sync trigger can launch the app behind the lock screen, where the local marks,
+        // courses and colours cannot be opened and read as empty, and a sync would write the
+        // server's view over them. Revision polling syncs at the next return to the app.
         guard UIApplication.shared.isProtectedDataAvailable else { return .skipped }
         #endif
         if fullSyncGate.isRunning {
@@ -256,6 +259,8 @@ extension AppState {
         }
     }
 
+    /// Whether a full sync's error is its own cancellation, as at the time limit of a sync trigger
+    /// push, which says nothing about the server. `URLSession` throws `URLError.cancelled` for it.
     nonisolated static func isCancellation(_ error: Error) -> Bool {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
@@ -522,6 +527,7 @@ extension AppState {
         return true
     }
 
+    /// A backend timestamp: Python `isoformat()`, which has microseconds unless they are zero.
     static func backendDate(_ value: Any?) -> Date? {
         guard let raw = value as? String else { return nil }
         return TigerDuckDateFormatters.withFractional.date(from: raw)

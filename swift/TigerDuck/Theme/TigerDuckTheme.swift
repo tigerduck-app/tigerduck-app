@@ -113,6 +113,8 @@ enum TigerDuckTheme {
 }
 
 final class ColorState: @unchecked Sendable {
+    /// nil until the map file is read. Behind the lock screen the file exists but cannot be opened
+    /// (`completeFileProtectionUnlessOpen`), and an empty map then would hand out fresh colours and
     private nonisolated(unsafe) var map: [String: UInt32]?
     private nonisolated(unsafe) var unreadableReads = 0
     private nonisolated(unsafe) var lastCountedRead: Date?
@@ -154,6 +156,8 @@ final class ColorState: @unchecked Sendable {
         self.map = read()
     }
 
+    /// Every colour read runs on the main actor, where `UIApplication` answers. A read from
+    /// anywhere else answers false, which counts nothing toward giving up on the file.
     nonisolated static func isProtectedDataAvailable() -> Bool {
         #if os(iOS)
         guard Thread.isMainThread else { return false }

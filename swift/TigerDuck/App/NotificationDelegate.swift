@@ -2,7 +2,12 @@ import Foundation
 import UserNotifications
 import os
 
+/// Lifetime: `UNUserNotificationCenter` holds its delegate weakly, so
+/// `PushAppDelegate` keeps the strong reference. The delegate itself
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    /// any responses buffered while the closure was still nil — covers
+    /// the cold-launch case where iOS delivers `didReceive` before
+    /// SwiftUI's `.onAppear` runs to wire this closure.
     var routeTap: ((UNNotificationResponse) -> Void)? {
         didSet {
             guard routeTap != nil, !pendingResponses.isEmpty else { return }
@@ -14,6 +19,10 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 
     var allowForegroundPresentation: ((UNNotification) -> UNNotificationPresentationOptions)?
 
+    /// Buffer for responses delivered before `routeTap` is wired. UN
+    /// dispatches its delegate callbacks on main and SwiftUI bodies/
+    /// onAppear also run on main, so this array is only ever touched
+    /// from the main thread — no extra synchronization needed.
     private var pendingResponses: [UNNotificationResponse] = []
 
     private let logger = Logger(

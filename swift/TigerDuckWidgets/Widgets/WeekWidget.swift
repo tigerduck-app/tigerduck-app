@@ -25,6 +25,9 @@ struct WeekProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<WeekEntry>) -> Void) {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
         let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        // WidgetKit interprets `.after(...)` against real wall-clock time,
+        // so translate the fake-clock midnight to the real instant it maps
+        // to. Identity when no debug override is active.
         let midnight = AppClock.realTime(forApp: appMidnight)
         completion(Timeline(
             entries: [WeekEntry(date: Date(), appNow: AppClock.now(), snapshot: snap)],
@@ -66,6 +69,9 @@ struct WeekWidget: Widget {
         }
         .configurationDisplayName(String(localized: "widget_week_light_label"))
         .description(String(localized: "widget_week_light_desc"))
+        // iPad gets the larger family; WidgetKit drops it on iPhone. The grid clamps its minimum
+        // cell height so the edit-mode resize preview never collapses to an invisible state when
+        // iOS asks for an intermediate size.
         .supportedFamilies([.systemLarge, .systemExtraLarge])
         .contentMarginsDisabled()
     }

@@ -16,12 +16,18 @@ nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
     }
 }
 
+/// ActivityKit does not end an activity at `staleDate`, so the prune ends the ones `endReason`
+/// and `duplicateInstanceIdsToEnd` pick. Not being the current target is never a reason to end.
 @MainActor
 final class LiveActivityCoordinator {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "LiveActivity")
     private var automaticEndTasks: [String: Task<Void, Never>] = [:]
     private var activityObserverTask: Task<Void, Never>?
     private var activityUpdateTokenTasks: [String: Task<Void, Never>] = [:]
+    /// promise that an ended activity has left `Activity.activities` by the
+    /// time `end` returns, so a survivor search that trusted
+    /// `activityState` alone could pick a copy that is already on its way
+    /// out. Pruned of ids ActivityKit no longer lists, on every pass of
     private var endedActivityIds: Set<String> = []
     private var updateTokenRegistrationHandler: (@Sendable (LiveActivityUpdateTokenRegistration) async -> Void)?
     private var isAvailable: () -> Bool = { true }
@@ -90,9 +96,13 @@ final class LiveActivityCoordinator {
         let runningActivities = Activity<TigerDuckActivityAttributes>.activities
 
         let state = TigerDuckActivityAttributes.ContentState(snapshot: snapshot)
+        // The OS checks `staleDate` against the real clock. The raw app-clock `countdownTarget`,
+        // under a debug clock set to a future date, makes `Activity.request` fail with
+        // `ActivityInput error 0`; pass the real instant that maps to the same fake-clock end.
         let realStaleDate = snapshot.countdownTarget.map(AppClock.realTime(forApp:))
         let content = ActivityContent(state: state, staleDate: realStaleDate)
 
+        // Skip a copy this coordinator just ended, which ActivityKit can still list. One the
         if let matching = runningActivities.first(where: {
             $0.attributes.activityId == targetId && !endedActivityIds.contains($0.id)
         }) {
@@ -429,6 +439,7 @@ final class LiveActivityCoordinator {
         logger.info(
             "Ending Live Activity id=\(activityId, privacy: .private) reason=\(reason, privacy: .public)"
         )
+        // Record before the await: ActivityKit can still list an ended copy, and an unrecorded one
         endedActivityIds.insert(activity.id)
         await activity.end(nil, dismissalPolicy: .immediate)
         automaticEndTasks[activityId]?.cancel()

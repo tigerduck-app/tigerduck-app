@@ -7,6 +7,11 @@ nonisolated final class WidgetSnapshotStore {
     private let decoder: JSONDecoder
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Widget")
 
+    /// `UserDefaults(suiteName:)` cannot tell. It returns nil only for reserved names (this
+    /// process's bundle identifier, `NSGlobalDomain`); for a group without the entitlement it
+    /// returns a process-local store, so app writes never reach the extension, the failure the
+    /// `init` assertion catches. The container URL is nil unless the running binary has the
+    /// entitlement. Static and non-private so `AppGroupEntitlementTests` can check it without
     static func isAppGroupAvailable(_ identifier: String) -> Bool {
         FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: identifier

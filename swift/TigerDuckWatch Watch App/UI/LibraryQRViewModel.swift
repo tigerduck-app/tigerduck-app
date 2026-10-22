@@ -177,6 +177,12 @@ final class LibraryQRViewModel {
         countdownTimer?.invalidate(); countdownTimer = nil
     }
 
+    /// `Timer.scheduledTimer` registers in `.default` mode only, so the timer
+    /// pauses while the user scrolls a SwiftUI view (which runs the main
+    /// run loop in `.tracking` mode) and then "catches up" by firing rapidly
+    /// when scrolling stops. Registering in `.common` includes both
+    /// `.default` and `.tracking`, so the countdown keeps decrementing
+    /// smoothly while paging or scrolling.
     private static func scheduleCommonModeTimer(
         interval: TimeInterval,
         repeats: Bool,
@@ -189,11 +195,15 @@ final class LibraryQRViewModel {
         return timer
     }
 
+    /// phone's `CIFilter.qrCodeGenerator()` here — CoreImage is unavailable
+    /// on watchOS. `WatchQRCodeGenerator` computes the module matrix in
     private static func makeQRImage(from payload: String) -> UIImage? {
         guard let matrix = WatchQRCodeGenerator.encode(payload, ecc: .medium) else {
             return nil
         }
 
+        // A 1-module quiet zone per side keeps the bottom edge readable on the white card. The QR
+        // spec asks for 4 modules, but the parent view already pads the white surround.
         let quiet = 1
         let modulesPerSide = matrix.size + quiet * 2
         let pixelsPerModule = 6
@@ -219,6 +229,8 @@ final class LibraryQRViewModel {
         for y in 0..<matrix.size {
             for x in 0..<matrix.size {
                 guard matrix.module(x: x, y: y) else { continue }
+                // CG origin is bottom-left; we flip Y so the QR reads
+                // top-to-bottom on screen the same way as on the phone.
                 let px = (x + quiet) * pixelsPerModule
                 let py = (matrix.size - 1 - y + quiet) * pixelsPerModule
                 context.fill(CGRect(x: px, y: py, width: pixelsPerModule, height: pixelsPerModule))

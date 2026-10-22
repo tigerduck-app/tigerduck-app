@@ -130,6 +130,8 @@ struct MacContentView: View {
     }
 }
 
+/// it or `MacMoreView` pushes it. On the outer `NavigationSplitView` detail, the button
+/// would vanish on a push: on macOS More's inner `NavigationStack` owns the pushed view's toolbar.
 struct MacFeatureDetail: View {
     let feature: AppFeature
 

@@ -43,6 +43,8 @@ struct TigerDuckApp: App {
     private var widgetSnapshotWriter: WidgetSnapshotWriter { launch.value.widgetSnapshotWriter }
 
     init() {
+        // push or a Watch message can launch the app in the background, where no scene appears
+        // and `.onAppear` never runs.
         let launch = Self.makeLaunch(hasUnlocked: FirstUnlock.hasHappened(), center: .default)
         _launch = State(initialValue: launch)
         PushAppDelegate.launchWork = { delegate in
@@ -102,6 +104,8 @@ struct TigerDuckApp: App {
                     appState.startCloudSyncIfEnabled()
                     Task { await LibraryService.signInIfCredentialed() }
                     Task { widgetSnapshotWriter.regenerate() }
+                    // `.onChange(of: scenePhase)` does not fire for the initial `.active`
+                    // value, so the first background check starts here; later foreground
                     appState.updateNotifyCoordinator.checkInBackground()
                     UNUserNotificationCenter.current().setBadgeCount(0)
                 }
@@ -185,6 +189,8 @@ struct TigerDuckApp: App {
                 title: title,
                 body: body
             )
+            // A popup arriving over a shown alert clears it and presents a tick later, so
+            // `.alert(_:isPresented:presenting:)` sees `isPresented` go false → true. Cancel
             appState.pendingServerPopupSwapTask?.cancel()
             appState.pendingServerPopupSwapTask = nil
             if appState.pendingServerPopup != nil {
@@ -287,8 +293,14 @@ struct TigerDuckApp: App {
 
         Window(String(localized: "settings_open_source_licenses"), id: MacLicensesView.windowID) {
             MacLicensesView()
+                // Rebuild on a language change, as the main window does: String(localized:)
+                // resolves once. The title follows through the navigationTitle inside; the
+                // Window menu name is the scene's own and stays until relaunch.
                 .id(rootLanguageId)
                 .environment(appState)
+                // Environments do not cross scene boundaries, so this window gets neither
+                // MacSettingsScene's tint nor the main window's; without this its links
+                // would use the system accent instead of the chosen one.
                 .tint(appState.accentColor)
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
@@ -303,6 +315,8 @@ struct TigerDuckApp: App {
 #endif
 
 extension TigerDuckApp {
+    /// `static` so the store is opened once per process: SwiftData expects one `ModelContainer`
+    /// per on-disk store, and the open (disk and schema check) runs in front of the first frame.
     static let sharedModelContainer: ModelContainer = {
         let schema = Schema([
             SDCourse.self,
@@ -332,6 +346,9 @@ extension TigerDuckApp {
         }
     }()
 
+    /// Deletes the store and its SQLite sidecars. SQLite names them by appending "-wal" and
+    /// "-shm" to the store's file name (`default.store-wal`); one left behind hands the retry
+    /// the same stale data.
     static func deleteStoreFiles(at storeURL: URL) {
         let files = [
             storeURL,

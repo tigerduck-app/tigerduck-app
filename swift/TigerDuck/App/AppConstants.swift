@@ -32,6 +32,14 @@ nonisolated enum AppConstants {
     static let accentColorDidChange = Notification.Name("TigerDuck.accentColorDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
+    /// Wraps a site-relative Moodle path in the envelope the Moodle Mobile app
+    /// expects: `moodlemobile://<site-url>?redirect=<path>`.
+    ///
+    /// Built by string: `URLComponents` cannot put a site URL in the authority. With
+    /// `host = "https"` and `path = "//<host>"` it gives `moodlemobile://https//<host>`,
+    /// dropping the inner scheme's colon so the app cannot parse a site; `host = "https:"`
+    /// makes `url` nil. `=`, `&` and `+` are escaped so a multi-parameter target stays in
+    /// the single `redirect` value. Matches Android's `Assignment.moodleDeepLink`.
     static func moodleDeepLink(redirectingTo path: String) -> URL? {
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "=&+")
@@ -60,6 +68,8 @@ nonisolated enum AppConstants {
 
     static let cachedSemesterRelabelDepth = 4
 
+    /// How deep the app follows HTML nesting: far deeper than mail or Moodle nests, and short of
+    /// the depth where WebKit stops nesting elements, so the tree `MailReadableHTML` reads is the
     static let maximumHTMLDepth = 256
 
     static let scenarioBoundarySlackSeconds: TimeInterval = 1
@@ -126,6 +136,12 @@ nonisolated enum AppConstants {
 
     static let updatePromptCooldown: TimeInterval = 7 * 24 * 60 * 60
 
+    /// iTunes Lookup storefront for App Store version checks. Pinned to
+    /// the release storefront (Taiwan) so a user traveling abroad or
+    /// behind a VPN through an unsupported region doesn't get
+    /// `resultCount == 0` (which the coordinator then treats as "no
+    /// public record" and masks a real available update). Update if the
+    /// app launches in additional storefronts.
     static let appStoreLookupStorefront = "tw"
 
     enum Periods {

@@ -22,6 +22,9 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.browserPreference,
         default: .system
     )
+    /// Mac-only. Default `.browser` because the iPad Moodle app isn't
+    /// installed by default on Mac; sending the user there before they
+    /// opt in would fail with "no app handles this URL".
     static let macMoodleOpenTarget = Key<MoodleOpenTarget>(
         AppConstants.UserDefaultsKeys.macMoodleOpenTarget,
         default: .browser
@@ -87,6 +90,9 @@ nonisolated extension Defaults.Keys {
         default: true
     )
     #if os(iOS)
+    // iOS-only: the default values come from LiveActivityPreferencesStore, which depends
+    // on ActivityKit, and ActivityKit has no macOS equivalent. Every reader of these keys
+    // is iOS-only too.
     static let assignmentLiveActivityLeadTime = Key<Double>(
         AppConstants.UserDefaultsKeys.assignmentLiveActivityLeadTime,
         default: LiveActivityPreferencesStore.defaultAssignmentLeadTime
@@ -133,6 +139,12 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.notificationSettingsPushPending,
         default: false
     )
+    /// The Keychain returns nil when the item is absent and when it cannot be read right now;
+    /// `SecureStore` cannot tell which, since Valet throws for both and `try?` flattens it.
+    /// So nil is not evidence of being signed out; treating it so sends a signed-in user to
+    /// the login prompt. UserDefaults stays readable when the Keychain is not, and the secret
+    /// itself lives only in the Keychain. Raised by login and any successful credential
+    /// read; lowered only by logout, the one time a nil read is authoritative.
     static let ntustCredentialsPresent = Key<Bool>(
         "ntustCredentialsPresent",
         default: false
