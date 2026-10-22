@@ -1,9 +1,5 @@
 import SwiftUI
 
-// watchOS has `PKPassLibrary` but not the iOS-only `requestAutomaticPassPresentationSuppression`
-// (checked against the watchOS 11 SDK), so nothing stops a side-button double-press from opening
-// Apple Pay or Express Transit here. If watchOS adds it, mirror `LibraryView`'s suppress/release.
-
 struct LibraryQRView: View {
     @State private var viewModel = LibraryQRViewModel()
     @State private var isFullScreen = false
@@ -28,9 +24,6 @@ struct LibraryQRView: View {
         .navigationTitle(String(localized: "library_virtual_pass_title"))
         .onAppear { viewModel.onAppear() }
         .onDisappear {
-            // Skip when the cover is presenting on top of us: the cover
-            // shows the same viewModel.qrImage, so we must keep the 30s
-            // refresh running or the user sees an expired QR.
             if !isFullScreen {
                 viewModel.onDisappear()
             }
@@ -46,8 +39,6 @@ struct LibraryQRView: View {
             FullScreenQRView(viewModel: viewModel, dismiss: { isFullScreen = false })
         }
     }
-
-    // MARK: - States
 
     private var emptyState: some View {
         ContentUnavailableView(
@@ -69,9 +60,6 @@ struct LibraryQRView: View {
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 4)
                 .accessibilityLabel(String(localized: "library_qr_content_description"))
-                // No-op on watchOS, which lacks a window capture-exclusion API like Wear OS's
-                // FLAG_SECURE. Kept for parity with the phone so a future API needs no call-site
-                // change. Capture still needs the user's own side button + Digital Crown press.
                 .screenCaptureProtected()
                 .onTapGesture(count: 2) {
                     isFullScreen = true
@@ -134,9 +122,6 @@ struct LibraryQRView: View {
     }
 }
 
-/// Fullscreen QR presentation. Dismissed by an upward or downward drag
-/// past `dismissThreshold`. We don't use the system swipe-down dismissal
-/// because the user requested either direction.
 private struct FullScreenQRView: View {
     let viewModel: LibraryQRViewModel
     let dismiss: () -> Void
@@ -146,9 +131,6 @@ private struct FullScreenQRView: View {
     private static let dismissThreshold: CGFloat = 60
 
     var body: some View {
-        // Ignoring the safe area runs the white field corner to corner and gives the matrix almost
-        // the whole screen; the top inset keeps the watchOS time strip off the QR modules. Reading
-        // viewModel.qrImage lets the refresh timer's updates show while the cover is up.
         ZStack {
             Color.white
             if let image = viewModel.qrImage {
@@ -161,18 +143,10 @@ private struct FullScreenQRView: View {
             }
         }
         .ignoresSafeArea()
-        // See note in `qrSection` above: no-op on watchOS today, marked
-        // for parity in case a public capture-exclusion API ships.
         .screenCaptureProtected()
-        // Hide the system close indicator so it stops landing on top of
-        // the matrix. Drag-up or drag-down is the documented dismiss
-        // gesture for this presentation.
         .toolbar(.hidden, for: .automatic)
         .offset(y: dragOffset)
         .onChange(of: viewModel.hasCredentials) { _, hasCreds in
-            // Credentials wiped (phone logout, TTL purge) — drop the
-            // cover so the user lands back on the empty state instead
-            // of staring at a stale QR with no way to refresh it.
             if !hasCreds { dismiss() }
         }
         .gesture(

@@ -1,14 +1,6 @@
 import Foundation
 import Combine
 
-/// Watch-side owner of library credentials, token, epoch, and TTL state.
-///
-/// * Receives `WatchLibraryCredentialPayload` from the WC delegate and keeps
-///   username and password in the watch keychain (`WatchKeychain`).
-/// * Keeps the credential epoch in App Group `UserDefaults`, so a fresh install
-///   resets it to 0 and a phone reinstall re-syncs cleanly (`republishIfCredentialed`).
-/// * A 7-day TTL purge keeps credentials from outliving the phone install if
-///   WC delivery never lands.
 @MainActor
 final class WatchLibraryCredentialsStore: ObservableObject {
 
@@ -18,10 +10,6 @@ final class WatchLibraryCredentialsStore: ObservableObject {
 
     private let defaults: UserDefaults
 
-    /// Bounded staleness for credentials we have not heard a fresh
-    /// `set` for. 7 days picked to comfortably cover travel, finals
-    /// week, and the holiday period without keeping credentials around
-    /// forever if WC never re-delivers.
     static let credentialTTL: TimeInterval = 7 * 24 * 60 * 60
 
     enum Keys {
@@ -42,12 +30,10 @@ final class WatchLibraryCredentialsStore: ObservableObject {
             && WatchKeychain.string(forKey: Keys.password) != nil
     }
 
-    // MARK: - Payload application
-
     enum ApplyResult: Equatable {
         case applied
-        case rejectedReplay     // payload.credEpoch <= stored
-        case malformed          // .set without username/password
+        case rejectedReplay
+        case malformed
     }
 
     @discardableResult
@@ -68,9 +54,6 @@ final class WatchLibraryCredentialsStore: ObservableObject {
             }
         case .wipe:
             guard wipeKeychainOnly(), clearToken() else {
-                // Keychain remove can fail if the watch is locked
-                // (whenUnlockedThisDeviceOnly). Don't advance the epoch
-                // so the phone's next republish retries the wipe.
                 return .malformed
             }
         }
@@ -80,8 +63,6 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         hasCredentials = (payload.kind == .set)
         return .applied
     }
-
-    // MARK: - Token cache (writes happen in WatchLibraryService)
 
     func storeToken(_ token: String, expiryMs: Int64) {
         WatchKeychain.set(token, forKey: Keys.token)
@@ -102,8 +83,6 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         return t && e
     }
 
-    // MARK: - Reads with TTL gate
-
     func storedEpoch() -> Int {
         defaults.integer(forKey: DefaultsKey.credEpoch)
     }
@@ -112,14 +91,6 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         Int64(defaults.double(forKey: DefaultsKey.issuedAtMs))
     }
 
-    /// Returns credentials only within the 7-day TTL window. Stale ones are
-    /// wiped locally so the next push from the phone starts a fresh state.
-    ///
-    /// `issuedAtMs == 0` with credentials present means the keychain outlived
-    /// the App Group `UserDefaults`: watchOS keeps the keychain across an
-    /// uninstall and reinstall but resets defaults. Such orphans have no TTL
-    /// anchor, so they count as expired until the next phone push sets a clean
-    /// epoch and `issuedAtMs`.
     func loadCredentialsRespectingTTL(now: Date = Date()) -> (username: String, password: String)? {
         guard let u = WatchKeychain.string(forKey: Keys.username),
               let p = WatchKeychain.string(forKey: Keys.password) else {
@@ -146,16 +117,6 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         WatchKeychain.string(forKey: Keys.username)
     }
 
-    // MARK: - Wipes
-
-    /// Local-only wipe used by the TTL purge (and `_resetForTests`). Clears
-    /// credentials, token cache, *and* the epoch/issuedAt markers so the
-    /// next phone push — including the broadcaster's
-    /// `republishIfCredentialed`, which re-sends the same epoch — is
-    /// applied rather than rejected as replay. The wire-format `.wipe`
-    /// payload deliberately does NOT call this; it routes through
-    /// `wipeKeychainOnly()` so the monotonic epoch keeps protecting
-    /// against out-of-order delivery.
     func wipe() {
         wipeKeychainOnly()
         clearToken()
@@ -170,8 +131,6 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         let p = WatchKeychain.remove(forKey: Keys.password)
         return u && p
     }
-
-    // MARK: - Testing helpers
 
     #if DEBUG
     func _resetForTests() {

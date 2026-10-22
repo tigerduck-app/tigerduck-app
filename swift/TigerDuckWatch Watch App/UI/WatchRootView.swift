@@ -14,9 +14,6 @@ struct WatchRootView: View {
     @State private var dotsVisible = true
     @State private var idleHideTask: Task<Void, Never>?
 
-    /// Fade the indicator out this long after the user's last tab swipe.
-    /// Long enough for a glance, short enough that an idle wrist doesn't
-    /// keep the dots burning into the screen.
     private static let idleHideDelay: Duration = .seconds(2)
 
     var body: some View {
@@ -27,8 +24,6 @@ struct WatchRootView: View {
                 NavigationStack { TodayView() }.tag(Tab.today)
                 NavigationStack { SettingsView() }.tag(Tab.settings)
             }
-            // System dots on `.page` style don't auto-hide on watchOS; we
-            // hide them and float our own with a fade-after-idle timer.
             .tabViewStyle(.page(indexDisplayMode: .never))
 
             dotsOverlay
@@ -55,9 +50,6 @@ struct WatchRootView: View {
                     .frame(width: 5, height: 5)
             }
         }
-        // The whole ZStack ignores the bottom safe area, so the dots sit
-        // close to the rounded edge — matching the y-position the system
-        // page indicator used to occupy.
         .padding(.bottom, 6)
         .opacity(dotsVisible ? 1 : 0)
         .animation(.easeInOut(duration: 0.35), value: dotsVisible)
