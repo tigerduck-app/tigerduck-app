@@ -1,12 +1,6 @@
 import SwiftUI
 
-// Preset-aware surface modifiers: they dispatch on ``VisualStylePolicy`` so one call
-// site follows the visual preset without `if preset == ...` branches. New surfaces
-// use these; `glassCard()` / `glassChip()` in View+GlassEffect.swift serve unmigrated pages.
-
 extension View {
-    /// Preset-aware card surface. Replaces ad-hoc `glassCard()` for
-    /// screens that participate in the visual preset system.
     func presetCard(
         policy: VisualStylePolicy,
         cornerRadius: CGFloat = TigerDuckTheme.CornerRadius.lg
@@ -14,8 +8,6 @@ extension View {
         modifier(PresetCardModifier(policy: policy, cornerRadius: cornerRadius))
     }
 
-    /// Preset-aware filter chip. Selected/unselected states are resolved
-    /// by the policy, so the caller just passes `isSelected`.
     func presetChip(
         policy: VisualStylePolicy,
         isSelected: Bool
@@ -23,19 +15,10 @@ extension View {
         modifier(PresetChipModifier(policy: policy, isSelected: isSelected))
     }
 
-    /// Preset-aware container that groups several rows into one iOS-style
-    /// grouped list surface. Under the default preset this is a no-op so
-    /// existing card-per-row layouts are preserved.
     func presetGroupedListContainer(policy: VisualStylePolicy) -> some View {
         modifier(PresetGroupedListContainerModifier(policy: policy))
     }
 }
-
-// MARK: - Implementation
-
-// Shadows go on the background shape, not on `content`: SwiftUI applies `.shadow`
-// to every leaf it reaches, adding a blurred halo (an offscreen pass) per label on
-// top of the material. One shadow per card looks the same and costs far less.
 
 private struct PresetCardModifier: ViewModifier {
     let policy: VisualStylePolicy
