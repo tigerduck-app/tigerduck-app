@@ -1,12 +1,8 @@
 import Foundation
 
-/// The building section for a day and period: every building with rooms that day, built from
-/// the rooms returned rather than the site's list, which also names buildings without rooms in
-/// the booking system.
 nonisolated struct BuildingDirectory: Equatable, Sendable {
     struct Building: Equatable, Sendable, Identifiable {
         let code: String
-        /// The building's rooms free at the period.
         let free: [RoomUsage]
 
         var id: String { code }
@@ -29,7 +25,6 @@ nonisolated struct BuildingDirectory: Equatable, Sendable {
         }
     }
 
-    /// The building's free rooms by floor, lowest first, each floor in room order.
     func floors(of code: String) -> [Floor] {
         guard let building = buildings.first(where: { $0.code == code }) else { return [] }
         let placed = building.free.map { (room: $0, place: RoomPlace(room: $0.room)) }
@@ -44,7 +39,6 @@ nonisolated struct BuildingDirectory: Equatable, Sendable {
         }
     }
 
-    /// Up to `limit` other buildings with a free room, nearest first.
     func nearby(_ code: String, limit: Int = 2) -> [Building] {
         let distance = { (other: Building) in CampusWalk.metres(from: code, to: other.code) ?? .infinity }
         let candidates = buildings.filter { $0.code != code && !$0.free.isEmpty }
@@ -55,8 +49,6 @@ nonisolated struct BuildingDirectory: Equatable, Sendable {
         }.prefix(limit))
     }
 
-    /// The user's last pick while it has rooms that day, else the suggested room's building,
-    /// else the building with the most free rooms.
     func defaultBuilding(picked: String?, suggested: String?) -> String? {
         let codes = Set(buildings.map(\.code))
         if let picked, codes.contains(picked) { return picked }
@@ -67,9 +59,6 @@ nonisolated struct BuildingDirectory: Equatable, Sendable {
     }
 }
 
-/// The main campus's buildings by the names the school publishes, in the user's language. A
-/// building has a Chinese and an English name only, so other languages show the English one, and
-/// one with no official English name goes by its code (`app-translation/CONVENTIONS.md`).
 nonisolated enum CampusBuildingName {
     static func of(_ code: String) -> String? {
         switch code {

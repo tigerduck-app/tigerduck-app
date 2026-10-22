@@ -1,11 +1,8 @@
 import Foundation
 
-/// Period and day math for the finder: the 14 periods by index (0 is period 1, 13 is D), and
-/// which day and period it opens on.
 nonisolated enum EmptyClassroomSchedule {
     static let periodIDs = AppConstants.Periods.chronologicalOrder
 
-    /// Each period's start and end, in minutes after midnight.
     static let periodMinutes: [(start: Int, end: Int)] = periodIDs.compactMap { id in
         guard let times = AppConstants.PeriodTimes.mapping[id],
               let start = minutes(times.start), let end = minutes(times.end) else { return nil }
@@ -17,21 +14,16 @@ nonisolated enum EmptyClassroomSchedule {
         return AppConstants.PeriodTimes.mapping[periodIDs[period]]
     }
 
-    /// The period in progress at `time`, or during a break the next one; nil after the last.
     static func upcomingPeriod(at time: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Int? {
         let minute = minuteOfDay(time, calendar: calendar)
         return periodMinutes.firstIndex { $0.end > minute }
     }
 
-    /// How many of the day's periods have ended at `time`.
     static func endedPeriods(at time: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Int {
         let minute = minuteOfDay(time, calendar: calendar)
         return periodMinutes.filter { $0.end <= minute }.count
     }
 
-    /// The day and period the finder opens on: the current period, or the next one during a
-    /// break; after the last period, and on a day without classes, the first period of the next
-    /// teaching day within `horizon` days.
     static func opening(
         at now: Date,
         horizon: Int,
@@ -60,16 +52,12 @@ nonisolated enum EmptyClassroomSchedule {
             .first(where: isTeachingDay)
     }
 
-    /// A day the finder shows no rooms for.
     nonisolated enum DayOff: Equatable {
         case weekend
         case holiday(Holiday)
         case outOfTerm
     }
 
-    /// Why `day` has no rooms to show, or nil on a teaching day. The booking system shows the
-    /// weekly timetable on a holiday and between terms as if classes met, and nothing at all on a
-    /// weekend (https://github.com/tigerduck-app/tigerduck-app/issues/478).
     static func dayOff(
         _ day: Date,
         holidays: (Date) -> [Holiday],

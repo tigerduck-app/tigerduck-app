@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// More's empty-classroom finder: free rooms on the main campus for a day and period, with a
-/// room to wait in between the user's classes.
 struct EmptyClassroomView: View {
     var embedded = false
 
@@ -56,7 +54,6 @@ struct EmptyClassroomView: View {
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .refreshable { await viewModel.refresh() }
         .sheet(item: openRoom) { room in
-            // Applied here so the sheet's scaled column widths stop growing with its text.
             EmptyClassroomContent.sheet(for: room, viewModel: viewModel, policy: appState.visualStylePolicy)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
@@ -65,15 +62,12 @@ struct EmptyClassroomView: View {
             viewModel.appear()
         }
         .onDisappear { viewModel.disappear() }
-        // A glance at Control Center goes inactive and back; only a stay in the background lets
-        // the day's rooms age.
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { wasInBackground = true }
             guard phase == .active, wasInBackground else { return }
             wasInBackground = false
             viewModel.returnToApp()
         }
-        // A sign-out moves the generation; a sign-in on this screen only stores credentials.
         .onChange(of: appState.authService.loginGeneration) { viewModel.accountChanged() }
         .onChange(of: appState.authService.hasStoredCredentials) { viewModel.accountChanged() }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
@@ -81,18 +75,14 @@ struct EmptyClassroomView: View {
         }
     }
 
-    /// Looked up in the body, so rooms that arrive while the sheet is open reach it.
     private var openRoom: Binding<RoomUsage?> {
         let room = viewModel.openRoom
         return Binding(get: { room }, set: { if $0 == nil { viewModel.closeRoom() } })
     }
 }
 
-/// The finder's title where the other pages put theirs, in their type size, and the booking
-/// site's state beside it, which none of the shared dot's servers stand for.
 struct EmptyClassroomTitleBar: View {
     let viewModel: EmptyClassroomViewModel
-    /// Signed out the site is not read, so there is no state to report.
     let showsStatus: Bool
 
     var body: some View {
@@ -117,8 +107,6 @@ struct EmptyClassroomTitleBar: View {
     }
 }
 
-/// The finder's screen below the title, from the view model alone, so it can be laid out
-/// without the app's state.
 struct EmptyClassroomContent: View {
     let viewModel: EmptyClassroomViewModel
     let policy: VisualStylePolicy
@@ -219,7 +207,6 @@ struct EmptyClassroomContent: View {
         }
     }
 
-    /// The building's name and the room's floor.
     private static func place(of room: RoomUsage, viewModel: EmptyClassroomViewModel) -> String {
         guard let place = RoomPlace(room: room.room) else { return room.room }
         return "\(viewModel.buildingName(place.building)) \(place.floorLabel)"

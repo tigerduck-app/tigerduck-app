@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// A glyph and a short title in a card, for a failure, a day without data or a holiday, with
-/// the one action that leads on from it.
 struct ClassroomStateCard<Action: View>: View {
     let systemImage: String
     let title: String
@@ -29,7 +27,6 @@ struct ClassroomStateCard<Action: View>: View {
     }
 }
 
-/// The chip under no data and a holiday, which moves to the next teaching day.
 struct NextTeachingDayButton: View {
     let day: Date
     let onSelect: (Date) -> Void
@@ -51,7 +48,6 @@ struct NextTeachingDayButton: View {
     }
 }
 
-/// Rows of grey shapes where the rooms will be.
 struct ClassroomSkeleton: View {
     let policy: VisualStylePolicy
 

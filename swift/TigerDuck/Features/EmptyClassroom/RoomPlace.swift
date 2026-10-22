@@ -1,19 +1,11 @@
 import Foundation
 
-/// Where a room is, read from its name: the building and the level.
 nonisolated struct RoomPlace: Equatable, Sendable {
-    /// The name with case and spaces normalized, which tells two rooms apart.
     let room: String
-    /// The building code, or for a name with no code, the text before its floor.
     let building: String
-    /// Floor n is level n, and basement k is level 1 - k, so B1 is 0.
     let level: Int
-    /// The room's number, which orders the rooms of a floor.
     let number: Int?
 
-    /// Reads `TR-214`, `TR-310-1`, `IB-1006`, `IB-9F`, `EE-B03`, `T4-B1` and `HHC-A304`, where
-    /// the hundreds give the floor and 0 means B1, and a name that writes its floor in
-    /// characters. Nil for a name with no floor, such as a placeholder for a room to be set.
     init?(room name: String) {
         let room = name.uppercased().filter { !$0.isWhitespace }
         if let match = room.wholeMatch(of: /HHC-([A-Z])(\d{3,4}).*/), let number = Int(match.2) {
@@ -43,8 +35,6 @@ nonisolated struct RoomPlace: Equatable, Sendable {
         level >= 1 ? "\(level)F" : "B\(1 - level)"
     }
 
-    /// The part after the building code. A basement written `B03` is room 03 of B1; anything
-    /// after the digits, such as `-1` or `A`, names part of a room on the same floor.
     private static func floor(of rest: String) -> (level: Int, number: Int?)? {
         if let match = rest.wholeMatch(of: /B(\d)/), let depth = Int(match.1) {
             return (1 - depth, nil)
@@ -65,16 +55,12 @@ nonisolated struct RoomPlace: Equatable, Sendable {
     }
 }
 
-/// The walking model the suggestion ranks rooms by, in seconds. It orders rooms and is not a
-/// route: stairs or the lift inside a building, and between buildings the straight line with
-/// a detour factor, a minute to get out and in, and the floors down to the ground and up again.
 nonisolated enum CampusWalk {
     static func seconds(from start: RoomPlace, to end: RoomPlace) -> Double? {
         if start.room == end.room { return 0 }
         if start.building == end.building {
             let floors = abs(start.level - end.level)
             if floors > 0 { return floorSeconds(floors) }
-            // Below one floor's cost, so a room on the same floor always ranks first.
             let apart = abs((start.number ?? 0) - (end.number ?? 0))
             return 1 + Double(min(apart, 9))
         }
@@ -83,7 +69,6 @@ nonisolated enum CampusWalk {
             + floorSeconds(abs(start.level - 1)) + floorSeconds(abs(end.level - 1))
     }
 
-    /// Stairs up to three floors, the lift beyond.
     static func floorSeconds(_ floors: Int) -> Double {
         Double(min(15 * floors, 45 + 3 * floors))
     }
@@ -96,14 +81,11 @@ nonisolated enum CampusWalk {
         buildings[place.building] != nil
     }
 
-    /// Straight-line metres between two buildings by code.
     static func metres(from building: String, to other: String) -> Double? {
         guard let from = buildings[building], let to = buildings[other] else { return nil }
         return metres(from, to)
     }
 
-    /// Building centres on the main campus, in degrees: the booking system's buildings and the
-    /// others a class meets in.
     private static let buildings: [String: (latitude: Double, longitude: Double)] = [
         "AD": (25.01323, 121.54108),
         "AU": (25.01404, 121.54165),
@@ -134,14 +116,11 @@ nonisolated enum CampusWalk {
     }
 }
 
-/// The move between two rooms that a badge draws.
 nonisolated enum RoomMove: Equatable, Sendable {
     case sameRoom
-    /// Floors up when positive, down when negative.
     case floors(Int)
     case walk(minutes: Int)
 
-    /// Nil for another room on the same floor, and where either place is unknown.
     static func between(_ start: RoomPlace?, _ end: RoomPlace?) -> RoomMove? {
         guard let start, let end else { return nil }
         if start.room == end.room { return .sameRoom }
