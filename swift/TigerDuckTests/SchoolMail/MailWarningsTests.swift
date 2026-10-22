@@ -81,6 +81,9 @@ struct MailWarningsTests {
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "[::1]")])
     }
 
+    // Host and authority scanning must run on `unicodeScalars`, not `Character`. A combining
+    // mark joins the scalar before it, so a `Character` scan can merge a separator like `/`
+    // into a cluster that is not equal to "/" and run past it to a forged terminator or `@`.
     @Test
     func linkIssuesCombiningMarkAfterSlashCannotHideTheRealHost() {
         let href = "https://evil.example/\u{034F}@ntust.edu.tw/login"
@@ -102,6 +105,9 @@ struct MailWarningsTests {
         #expect(issues == [.insecure])
     }
 
+    // ICU's `.` (NSRegularExpression) excludes U+000B and U+000C; Java's `.` matches them.
+    // Both patterns use "[^\n\r\u0085\u2028\u2029]" so a vertical tab in link text cannot break
+    // the whole-string match and hide a real mismatch, as plain `.*` would on iOS, not Android.
     @Test
     func linkIssuesVerticalTabInTextStillAllowsAMismatch() {
         let href = "https://evil.example/"
@@ -110,6 +116,10 @@ struct MailWarningsTests {
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
+    /// A zero-width space *inside* the shown host, not after it. The fixture's trailing-ZWSP
+    /// row happens to pass on Darwin because `CharacterSet.whitespaces` contains U+200B, so
+    /// `trimmingCharacters` removes a trailing one — that accident does not extend to the
+    /// middle of a host, which is where an attacker would put it anyway.
     @Test
     func linkIssuesInvisibleCharacterInsideTheShownHostStillMismatches() {
         let issues = MailWarnings.linkIssues(text: "ntust.e\u{200B}du.tw", href: "https://evil.example/login")

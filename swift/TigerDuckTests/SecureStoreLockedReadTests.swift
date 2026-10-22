@@ -4,6 +4,14 @@ import Testing
 import Valet
 @testable import TigerDuck
 
+/// iOS launches the app behind a locked screen for a push — above all a
+/// Live Activity push-to-start, which hands the app the new activity's
+/// update token to register so the server can end the activity when the
+/// class does. These pin which secrets such a launch can read.
+///
+/// A simulator never locks, so the tests of the locked launch itself swap
+/// ``LockablePhoneKeychain`` in for `SecureStore`'s
+/// `.whenUnlockedThisDeviceOnly` valet and lock that.
 @Suite(.serialized)
 struct SecureStoreLockedReadTests {
     static let readWhileLocked = [
@@ -65,6 +73,8 @@ struct SecureStoreLockedReadTests {
         #expect(accessibilityClasses(of: key) == [afterFirstUnlock])
     }
 
+    /// Whether a locked phone also reports an item it does not hold as
+    /// unreadable. A simulator cannot say, so the locked tests take both.
     static let absentReadsFailWhileLocked = [false, true]
 
     @Test(arguments: readWhileLocked, absentReadsFailWhileLocked)
@@ -240,11 +250,22 @@ struct SecureStoreLockedReadTests {
     }
 }
 
+/// Replaces `SecureStore`'s `.whenUnlockedThisDeviceOnly` valet in a test,
+/// and can be locked, which a simulator cannot be.
+///
+/// Locked, it fails the way that valet does behind a locked screen: reading
+/// an item it holds, or writing one, is `couldNotAccessKeychain`
+/// (`errSecInteractionNotAllowed`). Deletes go through even when locked, so
+/// a test catches code that drops a copy it could not read.
 private final class LockablePhoneKeychain: KeychainStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: Data] = [:]
     private var locked = false
 
+    /// Whether, locked, reading an item it does not hold fails too, rather
+    /// than reading as `itemNotFound`. Whether a locked phone tells an
+    /// absent item from an unreadable one is something a simulator cannot
+    /// show, so a test can take either answer.
     private let absentReadsFailWhileLocked: Bool
 
     init(absentReadsFailWhileLocked: Bool = false) {

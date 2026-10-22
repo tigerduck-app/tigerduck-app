@@ -3,6 +3,9 @@ import Testing
 import Foundation
 @testable import TigerDuck
 
+/// On the main actor, like `TimeSliderViewModel`, whose init prepares a `UIFeedbackGenerator`
+/// and can crash the test host off the main thread. The Swift 5 language mode does not flag a
+/// test that builds the model off the main actor.
 @MainActor
 struct TimeSliderViewModelTests {
 

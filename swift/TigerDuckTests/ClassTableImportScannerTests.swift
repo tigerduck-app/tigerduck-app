@@ -3,6 +3,8 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+/// The AVFoundation scanner reports a code on every frame that shows it; the filter lets it
+/// through once while it stays in view.
 @MainActor
 struct RepeatedCodeFilterTests {
     private static let start = Date(timeIntervalSince1970: 1_791_871_500)

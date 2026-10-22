@@ -1,3 +1,6 @@
+// `URLProtocol` double and the only test seam into `SettingsDocumentClient`, a concrete actor
+// whose `init` takes a `URLSession`. Must stay `nonisolated`: `URLSession` calls `startLoading()`
+// synchronously on a background queue. `lock` guards the `nonisolated(unsafe)` queues and logs.
 import Foundation
 @testable import TigerDuck
 
@@ -57,6 +60,11 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         return arrivals.filter { $0.url?.absoluteString.hasPrefix(baseURL.absoluteString) == true }
     }
 
+    /// `URLSession` may hand a `PUT`/`POST` body to a custom `URLProtocol`
+    /// as either `httpBody` or `httpBodyStream` depending on how the
+    /// request was constructed — read whichever is present. Reading only
+    /// `httpBody` is the trap that makes naive `URLProtocol` body
+    /// assertions silently vacuous.
     static func bodyData(from request: URLRequest) -> Data? {
         if let body = request.httpBody { return body }
         guard let stream = request.httpBodyStream else { return nil }
@@ -100,6 +108,8 @@ nonisolated final class SettingsAPIStub: URLProtocol {
             reply(next, for: url)
             return
         }
+        // A protocol's client takes its calls on the thread that called `startLoading()`, so the
+        // held reply goes back to that thread's run loop.
         let held = HeldReply(stub: self, runLoop: CFRunLoopGetCurrent())
         DispatchQueue.global().async {
             gate.wait()

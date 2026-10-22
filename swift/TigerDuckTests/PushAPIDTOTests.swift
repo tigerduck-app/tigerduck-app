@@ -1,3 +1,6 @@
+// Wire keys of the device DTOs in `PushAPIDTO.swift`. A property left out of `CodingKeys` is
+// silently never encoded or decoded, and a round trip through the same type cannot see that,
+// so these tests assert against raw JSON instead.
 import Foundation
 import Testing
 @testable import TigerDuck

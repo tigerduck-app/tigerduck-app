@@ -3,6 +3,11 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+/// `UIScreen` cannot be constructed, so the coordinator works against a
+/// protocol and these tests drive it with a fake panel. That is the whole
+/// reason the seam exists: the bug this type was written to fix only shows
+/// up with two holders and a real screen would mean mutating the display
+/// brightness of whatever machine the suite runs on.
 @MainActor
 struct LibraryBrightnessCoordinatorTests {
 

@@ -6,6 +6,11 @@ import Testing
 @MainActor
 enum NotificationSettingsFixtures {
 
+    /// Under `withExclusiveRealDefaults`: those keys are process-wide, and
+    /// `.serialized` does not order one suite against another, which interleave
+    /// at every `await`. Without it a test could restore another's temporary
+    /// values or post store changes into its window. Every test that reads or
+    /// writes these keys comes through here.
     static func withStore(
         _ body: (LiveActivityPreferencesStore) async throws -> Void
     ) async rethrows {

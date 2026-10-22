@@ -21,6 +21,8 @@ struct LiveMailClientParsingTests {
         #expect(message.attachments.count == 1)
         let attachment = try #require(message.attachments.first)
         #expect(attachment.contentType == "application/pdf")
+        // EMLParser prefers Content-Type's plain `name=`; the live IMAP path in LiveMailClient
+        // prefers Content-Disposition's `filename*=` and would read the UTF-8 Chinese name instead.
         #expect(attachment.filename == "report.pdf")
         let bytes = try #require(attachment.decodedData())
         #expect(String(decoding: bytes, as: UTF8.self) == "%PDF-1.4\n")
@@ -29,6 +31,7 @@ struct LiveMailClientParsingTests {
     @Test func decodesBig5HeaderAndBody() throws {
         let data = try SchoolMailFixtures.rawEML("big5-plain")
         let message = try EMLParser.parse(data)
+        // The app's A.5 rules, not EMLParser's own (Big5-blind) RFC 2047 decoder.
         #expect(MailRawHeaders.value(named: "subject", in: data) == "中文")
         let part = try #require(message.parts.first)
         let body = try #require(part.decodedData())
@@ -67,6 +70,9 @@ struct LiveMailClientParsingTests {
         #expect(MailWarnings.isBounce(returnPath: returnPath))
     }
 
+    /// `Return-Path` comes off the full header section the detail fetch already asks for, and
+    /// the *first* one wins: the delivering server prepends its own above anything the sender
+    /// wrote, so extra copies further down must not be believed over it.
     @Test func theDetailFetchReadsTheServersReturnPathAndNotALaterOne() {
         let info = MessageInfo(
             sequenceNumber: SequenceNumber(1),

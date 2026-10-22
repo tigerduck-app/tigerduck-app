@@ -73,6 +73,8 @@ struct MoodleFileTransferTests {
         }
     }
 
+    /// Moodle sends a file it lists as `document/unknown` as `application/octet-stream`
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/576).
     @Test("a file of a type Moodle does not know passes as any type but a page or a web service error")
     func unknownType() throws {
         let file = try Self.body("Rar!")

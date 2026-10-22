@@ -22,6 +22,7 @@ struct MoodleHomeworkRegressionTests {
         )
     }
 
+    /// Records what an `OpenURLAction` was asked to open; the action's completion is `@Sendable`.
     private final class OpenedURLs: @unchecked Sendable {
         var urls: [URL] = []
     }
@@ -158,6 +159,8 @@ struct MoodleHomeworkRegressionTests {
         #expect(course.courseNo == "EC1013701")
     }
 
+    /// A co-listed course: Moodle gives it one idnumber (the first-listed
+    /// department's) and buries the second department's code in `fullname`.
     @Test func moodleEnrolledCourse_coListedCourseAnswersToBothCodes() {
         let course = MoodleEnrolledCourse(
             id: 19739,
@@ -275,6 +278,10 @@ struct MoodleHomeworkRegressionTests {
         #expect(course.courseNo == "")
     }
 
+    /// A summer term's fourth character is a letter, and Moodle lower-cases
+    /// it while NTUST's catalogue upper-cases it. The old four-digit check
+    /// left `courseNo` and `semester` both empty, which filtered summer
+    /// courses out of the assignment pipeline entirely.
     @Test func moodleEnrolledCourse_summerTermIsParsedAndNormalised() {
         let summer = MoodleEnrolledCourse(
             id: 3,

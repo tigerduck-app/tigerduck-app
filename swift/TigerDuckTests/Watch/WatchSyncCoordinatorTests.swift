@@ -21,6 +21,9 @@ final class WatchSyncCoordinatorTests: XCTestCase {
             }
             pushedContexts.append(context)
         }
+        // These tests cover only the application-context path. The message and user-info members
+        // satisfy the protocol and are never called; `WCSessionUserInfoTransfer` has no
+        // constructible stub value.
         func transferUserInfo(_ userInfo: [String: Any]) -> WCSessionUserInfoTransfer {
             fatalError("transferUserInfo is not exercised by WatchSyncCoordinatorTests")
         }
@@ -92,6 +95,8 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         var value = false
     }
 
+    /// iOS can launch the app in the background for a Watch message, with no scene and so no
+    /// `WatchSyncBridge`, so the coordinator answers from the source installed at launch.
     @MainActor
     func test_syncRequest_isAnsweredFromThePayloadSource() async throws {
         let session = StubSession()
@@ -184,6 +189,8 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(republished.count, 1)
     }
 
+    /// A Watch message can launch the app behind the lock screen, where the library password
+    /// cannot be read; the Watch does not ask again, so the credentials follow the unlock.
     @MainActor
     func test_syncRequestWhileLocked_sendsTheCredentialsAfterTheUnlock() {
         let center = NotificationCenter()

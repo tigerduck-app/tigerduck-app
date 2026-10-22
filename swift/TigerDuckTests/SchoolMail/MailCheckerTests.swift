@@ -40,6 +40,8 @@ final class OrderingNotificationCenter: MailNotificationCenter, @unchecked Senda
     func removeAllMailNotifications() async {}
 }
 
+/// Rejects the named notification identifiers the way `UNUserNotificationCenter.add` does when
+/// the content is invalid or the notification service is unavailable, and accepts the rest.
 final class RejectingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
     private let lock = NSLock()
     private var rejected: Set<String>

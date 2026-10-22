@@ -37,6 +37,8 @@ struct SchoolMailFeatureTests {
     }
 
     @Test func uidParsesFromADoubleTaggedNSNumber() {
+        // NSNumber(value: 42.0)'s objCType is 'd' (double); `as? Int` fails on it the same way
+        // TigerDuckApp's bulletinId(from:) doc comment describes for bulletin_id.
         let link = AppState.schoolMailDeepLink(from: ["kind": "school_mail", "uid": NSNumber(value: 42.0)])
         #expect(link == .schoolMail(folder: "INBOX", uid: 42))
     }

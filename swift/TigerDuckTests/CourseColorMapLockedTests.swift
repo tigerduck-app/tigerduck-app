@@ -2,6 +2,9 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+/// `course_color_map.json` is `completeFileProtectionUnlessOpen`, so a first read behind the lock
+/// screen finds a file it cannot open. Read as an empty map, the next colour assignment would write
+/// fresh colours over the user's (https://github.com/tigerduck-app/tigerduck-app/issues/442).
 struct CourseColorMapLockedTests {
     private final class Disk: @unchecked Sendable {
         private let lock = NSLock()
@@ -143,6 +146,7 @@ struct CourseColorMapLockedTests {
         cache.saveCourseColorMap(["CS1010001": 0x123456])
         #expect(cache.loadCourseColorMapIfReadable() == ["CS1010001": 0x123456])
 
+        // Mode 000 stands in for the lock screen: the file is there and does not open.
         let file = root.appendingPathComponent("persistent/course_color_map.json")
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path) }

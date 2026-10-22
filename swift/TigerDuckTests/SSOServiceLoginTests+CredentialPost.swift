@@ -3,6 +3,8 @@ import Testing
 @testable import TigerDuck
 
 extension SSOServiceLoginTests {
+    /// The redirects of the POST that end it: a 307 or a 308 would send the form, password and all,
+    /// to its `Location`, and a GET is followed only over HTTPS.
     nonisolated static let refusedRedirects: [(Int, String)] = [
         (307, "https://elsewhere.stub.invalid/account/login"),
         (308, "https://elsewhere.stub.invalid/account/login"),

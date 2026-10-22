@@ -41,6 +41,9 @@ struct MailBackgroundRefreshTests {
             featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: true))
     }
 
+    /// Before the first unlock after a restart, or in a process that started then and kept the
+    /// empty copy, the preferences read as signed out, and a run that went by them would schedule
+    /// no next one (https://github.com/tigerduck-app/tigerduck-app/issues/691).
     @Test func aRunWhileStoredDataDoesNotReadBackSchedulesTheNextAndChecksNothing() async throws {
         let suite = "MailBackgroundRefreshTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))

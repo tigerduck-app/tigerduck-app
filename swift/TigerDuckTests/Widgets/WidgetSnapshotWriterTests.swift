@@ -81,6 +81,8 @@ struct WidgetSnapshotWriterTests {
         withExtendedLifetime(writer) {}
     }
 
+    /// A sync trigger's handler calls this right before it answers the push, after which iOS may
+    /// suspend the app before the debounce ends (https://github.com/tigerduck-app/tigerduck-app/issues/664).
     @Test func aReloadNowSendsTheChangedSnapshotsReloadWithoutTheDebounce() async throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
@@ -268,6 +270,8 @@ struct WidgetSnapshotWriterTests {
         #expect(last.next == nil)
     }
 
+    /// Behind the lock screen the caches cannot be opened and read as empty, so a write then would
+    /// leave the widgets showing no classes until the next one.
     @Test func aLockedPhoneKeepsTheLastSnapshot() {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }

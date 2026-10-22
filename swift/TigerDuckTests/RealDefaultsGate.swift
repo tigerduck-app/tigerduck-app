@@ -1,5 +1,8 @@
 import Foundation
 
+/// Async mutual exclusion. An actor rather than a lock because callers hold
+/// it across `await`s — a `NSLock` held over a suspension can be released
+/// on a different thread than took it.
 actor RealDefaultsGate {
     static let shared = RealDefaultsGate()
 

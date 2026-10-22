@@ -174,6 +174,7 @@ struct LibrarySignInTests {
         }
     }
 
+    /// Control Center and the app switcher each count as a return to the app.
     @Test func aReturnSoonAfterAFailureSendsNothing() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in
@@ -386,6 +387,7 @@ struct LibrarySignInTests {
         #expect(LibraryService.signInIsDue(lastFailure: failure, now: failure.addingTimeInterval(-60)))
     }
 
+    /// What a wrong password gets is unchecked, so any 4xx counts as a refusal; a 5xx does not.
     @Test func aClientErrorAnswerIsARefusal() {
         #expect(Self.refusesAnswer(withStatus: 401))
         #expect(Self.refusesAnswer(withStatus: 429))

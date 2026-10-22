@@ -238,6 +238,8 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0", "R0", "R0", "R0", "R0"])
     }
 
+    /// Behind a captive portal's sign-in page, as on campus or public Wi-Fi, the TLS handshake
+    /// fails before the request carrying the token goes out; so does a request iOS refuses to send.
     @Test("a refresh that fails before its request goes out keeps the token for the next one", arguments: [
         URLError.Code.secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
         .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid, .clientCertificateRejected,
@@ -1501,6 +1503,8 @@ struct BackendFixture {
     let loginURL: URL
     let refreshTimeout: TimeInterval
 
+    /// `accessTokenExpiry` is when A0 runs out; the default has it expired. A request the stub
+    /// holds outlasts the app's 20 seconds on a busy CI run, so the tests give it far longer.
     init(
         signedIn: Bool = true,
         accessTokenExpiry: Date = Date(timeIntervalSince1970: 0),

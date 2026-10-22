@@ -6,6 +6,9 @@ import os
 @MainActor
 struct WidgetReloadCoordinatorTests {
     final class FakeReloader: WidgetReloadCoordinator.Reloader {
+        // `Reloader` is Sendable and the debounce calls back off the main
+        // actor, so the counter cannot be a plain `var` — that is a warning
+        // today and an error in the Swift 6 language mode.
         private let count = OSAllocatedUnfairLock(initialState: 0)
         var callCount: Int { count.withLock { $0 } }
         func reloadAllTimelines() { count.withLock { $0 += 1 } }
@@ -43,6 +46,8 @@ struct WidgetReloadCoordinatorTests {
         try await waitUntil { fake.callCount == 2 }
     }
 
+    /// A sync trigger's handler answers next, and iOS may suspend the app before the debounce
+    /// ends (https://github.com/tigerduck-app/tigerduck-app/issues/664).
     @Test func reloadNowIfPending_sendsAWaitingReloadAtOnce_andOnlyOnce() async throws {
         let fake = FakeReloader()
         let timer = ManualSleeper()

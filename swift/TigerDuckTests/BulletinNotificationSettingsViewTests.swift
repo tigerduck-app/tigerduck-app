@@ -1,3 +1,5 @@
+// Bulletin push off with authorization denied: iOS never re-prompts, so `enablePush()`
+// does nothing, and the off-state section has to explain the denial and offer Settings.
 import Testing
 import UserNotifications
 @testable import TigerDuck

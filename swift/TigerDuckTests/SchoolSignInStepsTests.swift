@@ -238,6 +238,7 @@ struct SchoolSignInStepsTests {
         }
     }
 
+    /// The school's requests end with the task, as `URLSession`'s do.
     @Test func aSignInCancelledDuringTheSchoolStepShowsNoError() async throws {
         try await Self.withKeychain(libraryAccount: nil) { keychain in
             let sheet = SheetSignIn()

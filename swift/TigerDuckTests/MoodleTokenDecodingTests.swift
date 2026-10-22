@@ -3,6 +3,9 @@ import Testing
 @testable import TigerDuck
 
 struct MoodleTokenDecodingTests {
+    /// The bytes `moodlemobile://token=` carries: a binary signature, the wstoken and the
+    /// private token, joined by `:::`. The signature bytes encode to `++++////`, so the URL-safe
+    /// spelling of the triple differs from the standard one.
     private static let signatureBytes: [UInt8] = [0xFB, 0xEF, 0xBE, 0xFF, 0xFF, 0xFF]
 
     private static func triple(wstoken: String, privateToken: String) -> Data {

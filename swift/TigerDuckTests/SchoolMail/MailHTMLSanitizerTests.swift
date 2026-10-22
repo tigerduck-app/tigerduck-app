@@ -167,6 +167,12 @@ struct MailHTMLSanitizerTests {
         ])
     }
 
+    /// SwiftSoup's `Whitelist` validates a URL attribute's trimmed value but by default writes
+    /// out the original untrimmed bytes. Without trimming, `href=" https://evil.example/login"`
+    /// (or an entity-decoded `&#x0a;` or `&#x09;` prefix) would reach both `links[].href` and the
+    /// output HTML. `URL(string:)` returns nil for it, silently disabling the link-mismatch
+    /// warning, while WebKit still navigates the untrimmed link. Like the `src` handling above,
+    /// the sanitizer trims the value and writes it back before collecting it.
     @Test func trimsHrefWhitespaceBeforeChecking() {
         for prefix in [" ", "\t", "\n", "&#x0a;", "&#x09;"] {
             let html = "<a href=\"\(prefix)https://www.ntust.edu.tw\">x</a>"
@@ -241,6 +247,9 @@ struct MailHTMLSanitizerTests {
         #expect(!result.html.contains("mailto:"))
     }
 
+    /// The form the `\s+`-only pattern walked past: HTML5's "before attribute name" state
+    /// treats `/` as a separator, so this `href` is real and live, and the tokenizer needs no
+    /// separator at all after a quoted value.
     @Test(arguments: [
         "<a/href=\"https://evil.example\">x</a>",
         "<a//href='https://evil.example'>x</a>",

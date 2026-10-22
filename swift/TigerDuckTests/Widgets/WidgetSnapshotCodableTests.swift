@@ -3,6 +3,8 @@ import Testing
 @testable import TigerDuck
 
 struct WidgetSnapshotCodableTests {
+    // Anchor class so Bundle(for:) can locate the test bundle.
+    // Swift Testing structs cannot themselves be Bundle anchors.
     private final class FixtureBundleAnchor {}
 
     @Test func roundTrip_preservesAllFields() throws {
@@ -62,6 +64,9 @@ struct WidgetSnapshotCodableTests {
         #expect(decoded == course)
     }
 
+    /// Tries the test bundle first (works under Xcode when the fixture is added
+    /// as a Copy Bundle Resources entry on the test target), then falls back to
+    /// repo-relative paths for `swift test` / direct CLI runs.
     private static func loadFixtureData(name: String, ext: String) throws -> Data {
         let bundle = Bundle(for: FixtureBundleAnchor.self)
         if let url = bundle.url(forResource: name, withExtension: ext, subdirectory: "Fixtures")

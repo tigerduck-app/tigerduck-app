@@ -302,6 +302,9 @@ struct MailStoreTests {
         #expect(FileManager.default.fileExists(atPath: fresh.deletingLastPathComponent().path))
     }
 
+    /// A server-supplied filename of just `.` or `..` would otherwise make
+    /// `appendingPathComponent` resolve up out of the fresh per-attachment UUID folder this call
+    /// creates: `.` back into `attachments/`, `..` one level above that.
     @Test func temporaryFileURLMapsDotDotDotAndEmptyNamesToAttachment() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }

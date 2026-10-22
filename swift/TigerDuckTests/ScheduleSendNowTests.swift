@@ -18,6 +18,7 @@ struct ScheduleSendNowTests {
     ) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
+        // A held reply must outlast a main actor held for over a minute by other tests.
         config.timeoutIntervalForRequest = 600
         let client = PushAPIClient(
             baseURLProvider: { [baseURL = backend.baseURL] in baseURL },
@@ -80,6 +81,9 @@ struct ScheduleSendNowTests {
         #expect(backend.sent().isEmpty)
     }
 
+    /// Behind the lock screen the caches read as empty, and the server cancels every start of this
+    /// device that the list it is sent leaves out
+    /// (https://github.com/tigerduck-app/tigerduck-backend/blob/dev/server/routes/schedule_v3.py).
     @Test("Behind the lock screen, sending now sends nothing")
     func sendingNowBehindTheLockScreenSendsNothing() async {
         let backend = Backend()

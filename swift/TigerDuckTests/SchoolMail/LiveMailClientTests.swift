@@ -34,6 +34,9 @@ struct LiveMailClientTests {
 
     @Test func decoderAndParserFailuresCountAsProtocolErrors() {
         struct StandInParserError: Error {}
+        // Named-matched the way SwiftMail's own connection recycling recognizes these, since the
+        // real `IMAPDecoderError` type is not re-exported. `MailFetchSectionTests` runs the real
+        // one, produced by NIOIMAP's own pipeline from the bytes Mail2000 sent.
         #expect(LiveMailClient.isDecodeFailure(StandInParserError()))
         #expect(!LiveMailClient.isDecodeFailure(URLError(.timedOut)))
     }

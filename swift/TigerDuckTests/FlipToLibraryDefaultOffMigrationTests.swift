@@ -27,6 +27,8 @@ struct FlipToLibraryDefaultOffMigrationTests {
         }
     }
 
+    /// What a key holds in its suite's own domain. `object(forKey:)` would also return the default
+    /// `Defaults` registers for the switch, which the restore would then write as a stored value.
     private static func storedValue(_ store: UserDefaults, _ key: String) -> Any? {
         guard let domain = Bundle.main.bundleIdentifier else { return nil }
         return store.persistentDomain(forName: domain)?[key]

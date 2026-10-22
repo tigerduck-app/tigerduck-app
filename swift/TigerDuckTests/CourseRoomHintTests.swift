@@ -28,7 +28,7 @@ struct CourseRoomHintTests {
             "Gongguan Track and Field Ground",
             "系上自行安排",
             "林一",
-            "體育-游泳池",
+            "體育-游泳池",             // reads like AA-999 only if \w is Unicode
             "綜合-大講堂",
             "綜合大講堂",
             "115研討室",

@@ -4,6 +4,9 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
+/// A silent push, a Live Activity start or a Watch message can launch the app before the first
+/// unlock after a restart, when `UserDefaults` reads as empty and a launch would take itself for a
+/// fresh install (https://github.com/tigerduck-app/tigerduck-app/issues/680).
 @MainActor
 struct AfterFirstUnlockTests {
     @MainActor
@@ -91,6 +94,8 @@ struct AfterFirstUnlockTests {
         #expect(builds.ran == [1, 10])
     }
 
+    /// A process that started before the unlock may keep an empty copy of `UserDefaults` after it,
+    /// and a build from that copy would take the app for a fresh install.
     @Test(
         "A held-back launch whose stored data still does not read back at the unlock builds nothing and ends the process",
         arguments: [UIApplication.protectedDataDidBecomeAvailableNotification, UIApplication.didBecomeActiveNotification]
@@ -144,6 +149,8 @@ struct AfterFirstUnlockTests {
         #expect(FirstUnlock.storedDataReadsBack(defaults: defaults))
     }
 
+    /// The class `UserDefaults` and the app's files get by default, whose key exists only after
+    /// the first unlock. A simulator never locks, so only the option the probe asks for shows it.
     @Test("The probe writes with the protection class that has no key before the first unlock")
     func theProbeAsksForTheFirstUnlockClass() {
         var options: Data.WritingOptions?

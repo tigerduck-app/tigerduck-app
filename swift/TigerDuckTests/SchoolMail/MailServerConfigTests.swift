@@ -122,6 +122,9 @@ struct MailServerConfigTests {
         #expect(!MailServerConfig.isPinnedHost(""))
     }
 
+    /// The scheme the app asks for and the one SwiftMail acts on. `.startTLS` has to map to
+    /// SwiftMail's required form: a server that does not advertise STARTTLS then fails the
+    /// connection instead of quietly continuing in the clear.
     @Test func schemesMapOntoSwiftMailsTransportSecurity() {
         #expect(MailTransportScheme.implicitTLS.swiftMailTransportSecurityName == "implicitTLS")
         #expect(MailTransportScheme.startTLS.swiftMailTransportSecurityName == "startTLS")

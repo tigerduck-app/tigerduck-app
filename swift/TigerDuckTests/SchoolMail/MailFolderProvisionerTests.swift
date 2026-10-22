@@ -27,6 +27,9 @@ struct MailFolderProvisionerTests {
         for role in MailFolderProvisioner.creatableRoles {
             #expect(MailFolderMap.resolve(available: [role.imapName])[role] == role.imapName)
             #expect(ModifiedUTF7.decode(role.imapName) == role.decodedName)
+            // Double-encoded: modified UTF-7 escapes a literal "&" as "&-", so an already-encoded
+            // name run through an encoder once more comes back as a mailbox literally *named*
+            // "&W8RO9lCZTv1TIw-" — decoding it yields that string, not the folder's real name.
             let doubleEncoded = "&-" + role.imapName.dropFirst()
             #expect(ModifiedUTF7.decode(doubleEncoded) == role.imapName)
             #expect(MailFolderMap.resolve(available: [doubleEncoded])[role] == nil)
@@ -64,6 +67,9 @@ struct MailFolderProvisionerTests {
         #expect(await fake.calls.isEmpty)
     }
 
+    /// Two operations can race each other to the same folder, or another client can have made it
+    /// a moment ago. The server then refuses the `CREATE` — and Mail2000 has no response code to
+    /// say why — so the only honest answer comes from asking what folders exist now.
     @Test func aCreateRefusedBecauseTheMailboxExistsCountsAsSuccess() async throws {
         let fake = FakeMailClient(folders: ["INBOX": [], Self.trash: []])
         let ensured = try #require(await MailFolderProvisioner.ensure(.trash, in: [.inbox: "INBOX"], client: fake))

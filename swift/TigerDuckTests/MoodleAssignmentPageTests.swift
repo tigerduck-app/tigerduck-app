@@ -112,6 +112,7 @@ struct MoodleAssignmentPageTests {
         #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: due - 60, due: nil) == .submitted)
         #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: nil, due: due) == .submitted)
         #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: due - 907_200, due: due) == .early(907_200))
+        // Moodle counts a submission at the due time itself as on time.
         #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: due, due: due) == .early(0))
         #expect(MoodleAssignmentView.badge(isSubmitted: true, submittedAt: due + 4380, due: due) == .late(4380))
 

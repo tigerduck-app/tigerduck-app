@@ -4,6 +4,11 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
+/// AutoFill fills a sign-in form through each field's `insertText(_:)`, or `replace(_:withText:)`
+/// when the field has text, and the password field it picks next to the account field is the
+/// secure decoy `.screenCaptureProtected` hosts `PasswordField` on: its search for a form's fields
+/// does not look inside a text field. These tests write into the decoy as AutoFill does and check
+/// the password reaches the binding, which the sign-in forms' Sign in button waits for.
 @MainActor
 @Suite(.serialized)
 struct PasswordFieldAutoFillTests {

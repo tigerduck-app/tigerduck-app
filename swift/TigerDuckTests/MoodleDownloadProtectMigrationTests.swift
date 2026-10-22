@@ -65,6 +65,8 @@ struct MoodleDownloadProtectMigrationTests {
         #expect(again.names.isEmpty)
     }
 
+    /// A file that cannot take the class now, as before the first unlock after a restart, leaves
+    /// the pass to the next launch.
     @Test func aFileThatFailsLeavesThePassForTheNextLaunch() async {
         defer { cleanUp() }
         let failing = Protected()
@@ -92,6 +94,7 @@ struct MoodleDownloadProtectMigrationTests {
         #expect(isDone)
     }
 
+    /// Behind the lock a file cannot take the class, which says nothing about the next launch.
     @Test func failuresBehindTheLockDoNotEndThePass() async {
         defer { cleanUp() }
         let failing = Protected()
@@ -116,6 +119,8 @@ struct MoodleDownloadProtectMigrationTests {
         #expect(isDone)
     }
 
+    /// The modification date tells which version Moodle listed a copy in. The class is set with
+    /// the file's own date written back, whatever setting the class does to the date on a device.
     @Test func protectingWritesTheModificationDateBack() throws {
         defer { cleanUp() }
         let file = root.appendingPathComponent("B11300000/20119/m5/0a1b/Week 1.pdf")

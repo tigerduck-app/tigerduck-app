@@ -59,6 +59,9 @@ struct UpdateCheckTests {
         }
     }
 
+    /// App Store Connect takes the version as free text, and 2.2.0 went out
+    /// as "v2.2.0". The prefix made the store version unparseable, which
+    /// read as "not newer": no build was ever offered an update.
     @Test("a newer store version is offered, with or without a leading v",
           arguments: ["v99.0.0", "V99.0.0", "99.0.0"])
     func offersNewerStoreVersion(storeVersion: String) async throws {

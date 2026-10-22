@@ -8,6 +8,14 @@ import SwiftMail
 import Testing
 @testable import TigerDuck
 
+/// Why the message screen may never ask for a named header-field list, and why a response it
+/// cannot decode must not be reported as an unreachable server.
+///
+/// SwiftMail sends `headerFields: ["References"]` as `BODY.PEEK[HEADER.FIELDS ("References")]`,
+/// quoting the name as RFC 3501 allows. Mail2000 echoes the section uppercased and quoted again,
+/// and the response stops being IMAP. The responses here go through `IMAPClientHandler`, the
+/// NIO handler SwiftMail installs on its own channel, so a failing case produces the real
+/// `IMAPDecoderError` that `LiveMailClient.map(_:)` receives.
 struct MailFetchSectionTests {
 
     static func fetchResponse(section: String, literal: String) -> String {
@@ -18,8 +26,12 @@ struct MailFetchSectionTests {
 
     static let mail2000Echo = fetchResponse(section: #"HEADER.FIELDS (""REFERENCES"")"#, literal: headerBlock)
 
+    /// The same section echoed the way RFC 3501 says it should be — proving the request TigerDuck
+    /// *sent* was well-formed and it is the server's re-quoting that breaks the response.
     static let conformingEcho = fetchResponse(section: #"HEADER.FIELDS ("References")"#, literal: headerBlock)
 
+    /// `BODY.PEEK[HEADER]`'s echo, uppercased the way Mail2000 uppercases. There is no
+    /// parenthesised list in it, so there is nothing for a server to re-quote.
     static let fullHeaderEcho = fetchResponse(section: "HEADER", literal: headerBlock)
 
     static func decode(_ response: String) -> Result<[Response], any Error> {
@@ -49,6 +61,8 @@ struct MailFetchSectionTests {
     @Test func mail2000sRequotedHeaderFieldListCannotBeDecoded() throws {
         let error = try Self.decodeFailure(Self.mail2000Echo)
         let described = String(describing: error)
+        // The exact error the device logged: NIOIMAP reads the leading `""` as an empty quoted
+        // string, then meets a bare `REFERENCES` where the closing `)` belongs.
         #expect(described.contains("IMAPDecoderError"))
         #expect(described.contains("none of the options match"))
     }
@@ -70,6 +84,9 @@ struct MailFetchSectionTests {
     }
 
     @Test func theFullHeaderSectionStillCarriesReferences() throws {
+        // `BODY.PEEK[HEADER]` arrives as a `.body` section of kind `.header` with the whole header
+        // block. SwiftMail's `FetchMessageInfoHandler` collects only `.header`/`.headerFields`
+        // and parses `References:` into `MessageInfo.references`: threading needs no field list.
         guard case .success(let responses) = Self.decode(Self.fullHeaderEcho) else {
             Issue.record("BODY[HEADER] must decode")
             return
@@ -121,6 +138,8 @@ struct MailFetchSectionTests {
     }
 
     @Test func theDetailFetchStillAsksForTheHeaderSectionThatCarriesReferences() {
+        // ENVELOPE has In-Reply-To but never References, so dropping the header section
+        // altogether would silently break reply threading.
         #expect(LiveMailClient.detailOptions.contains(.fullHeader))
         #expect(LiveMailClient.detailHeaderFields == nil)
     }

@@ -134,10 +134,15 @@ struct DevMailConnectionProbeTests {
         #expect(DevMailConnectionProbe.describe(NWError.dns(-1)).contains("-1"))
     }
 
+    /// A SwiftMail error reaches the report as the case that was thrown, with its payload — which
+    /// for a rejected LOGIN is the server's own reply text, the one thing
+    /// `MailClientError.authenticationFailed` throws away.
     @Test func aThrownErrorKeepsItsTypeAndPayload() {
         let described = DevMailConnectionProbe.describe(SampleMailError.loginFailed("NO invalid credentials"))
         #expect(described.hasPrefix("SampleMailError:"))
         #expect(described.contains("NO invalid credentials"))
+        // A Swift enum bridges to an NSError whose domain is its own mangled name and whose code
+        // is its case index; neither says anything, so neither is printed.
         #expect(!described.contains("["))
     }
 
@@ -149,6 +154,8 @@ struct DevMailConnectionProbeTests {
         #expect(!DevMailConnectionProbe.carriesReadableCode(domain: "TigerDuck.SomeSwiftError"))
     }
 
+    /// Named by wire number, so the versions worth reporting loudest — the old ones, which the SDK
+    /// deprecates naming — can still be reported at all.
     @Test func aNegotiatedTLSVersionIsNamed() {
         #expect(DevMailConnectionProbe.tlsVersionName(0x0303) == "TLS 1.2")
         #expect(DevMailConnectionProbe.tlsVersionName(0x0304) == "TLS 1.3")
@@ -192,6 +199,9 @@ struct DevMailConnectionProbeTests {
         #expect(text.contains("\n\n"))
     }
 
+    /// A filtered port answers nothing at all, and SwiftMail's own commands ignore task
+    /// cancellation — so the timeout has to be able to return while the work is still running,
+    /// rather than waiting for it the way a task group would.
     @Test func workThatDoesNotFinishInTimeAnswersNil() async {
         let answer = await DevMailConnectionProbe.withTimeout(.milliseconds(20)) {
             try? await Task.sleep(for: .seconds(30))

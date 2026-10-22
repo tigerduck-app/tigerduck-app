@@ -3,6 +3,9 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
+/// `PagingScrollLock` relies on the page-style `TabView` being backed by a
+/// `UIScrollView` ancestor it can reach from a page's background. Host a
+/// real pager in a window and check the walk still lands on it.
 @MainActor
 struct PagingScrollLockTests {
     @Test(arguments: [true, false])
@@ -30,6 +33,9 @@ struct PagingScrollLockTests {
         window.isHidden = true
     }
 
+    /// A page-style `TabView` reverses under a right-to-left language, so
+    /// the same finger movement that advances in English goes back in
+    /// Arabic — and the app ships ar, fa, he and ur.
     @Test(arguments: [
         (dx: -40.0, isRTL: false, isForward: true),
         (dx: 40.0, isRTL: false, isForward: false),

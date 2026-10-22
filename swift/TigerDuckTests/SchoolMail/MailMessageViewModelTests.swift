@@ -604,6 +604,9 @@ struct MailMessageViewModelTests {
         #expect(h.model.linkTarget(forIndex: -1) == nil)
     }
 
+    /// The href judged, shown and opened is canonicalized once the way a browser would: a
+    /// backslash after the scheme is a separator, so the authority ends at "evil.example" and
+    /// the "last `@` ends userinfo" rule never even reaches "ntust.edu.tw" hiding after it.
     @Test func canonicalizationFoldsABackslashBeforeReadingUserinfo() async {
         let h = Self.harness(Self.messageWithRawLinkHref(#"https://evil.example\@ntust.edu.tw/login"#))
         await h.model.load()
@@ -814,6 +817,8 @@ struct MailMessageViewModelTests {
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/01", linkCount: 2) == nil)
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0?x=1", linkCount: 2) == nil)
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid.evil/0", linkCount: 2) == nil)
+        // ICU's `$` also matches immediately before a trailing line terminator, unlike a strict
+        // end-of-string anchor.
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0\n", linkCount: 2) == nil)
     }
 

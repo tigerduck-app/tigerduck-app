@@ -10,6 +10,7 @@ struct MailGuideURLTests {
             == "https://tigerduck.app/help/receive-mail/apple?embed=1&theme=dark&lang=zh-Hant&bg=%23000000&fg=%23ffffff")
     }
 
+    /// A raw `#` would end the query at `bg=` and the page would get no colours at all.
     @Test func coloursNeverSendARawHash() {
         let url = MailGuide.embedURL(isDark: false, languageTag: "en", background: 0xFAFAFA, foreground: 0x111111)
         #expect(!url.absoluteString.contains("#"))

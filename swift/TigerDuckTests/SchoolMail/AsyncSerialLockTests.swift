@@ -3,6 +3,9 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+/// Every test here can fail by hanging rather than by producing a wrong value — a lock that
+/// stops handing the queue on leaves its waiters parked for ever — and Swift Testing applies no
+/// default limit, so each one carries its own `.timeLimit`.
 struct AsyncSerialLockTests {
     @Test(.timeLimit(.minutes(1)))
     func neverInterleavesTwoBodies() async throws {
@@ -36,6 +39,9 @@ struct AsyncSerialLockTests {
 
         await lock.acquire()
 
+        // Spawn each waiter only once the previous one has enqueued, as `waiterCount` reports,
+        // not after a sleep: a `Task {}` reaches `acquire()` in no fixed time, so a stagger could
+        // queue B before A and fail a correct lock.
         var tasks: [Task<Void, Never>] = []
         for name in ["A", "B", "C"] {
             tasks.append(Task {
@@ -53,6 +59,9 @@ struct AsyncSerialLockTests {
         #expect(events == ["A", "B", "C"])
     }
 
+    /// `.timeLimit` because the failure mode this covers is a **hang**, not a wrong value: a
+    /// `withLock` that stopped releasing on the error path would leave the second `withLock`
+    /// below waiting forever, and Swift Testing applies no default limit.
     @Test(.timeLimit(.minutes(1)))
     func aThrowingBodyStillReleasesTheLock() async throws {
         let lock = AsyncSerialLock()

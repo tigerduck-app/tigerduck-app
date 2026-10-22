@@ -884,6 +884,9 @@ struct NotificationSettingsSyncTests {
 @MainActor
 struct NotificationSettingsApplyTests {
 
+    /// Thread-safe box for the observer block, which `NotificationCenter`
+    /// treats as `@Sendable` even though `queue: nil` runs it synchronously
+    /// on the posting thread.
     private final class OriginLog: @unchecked Sendable {
         private let lock = NSLock()
         private var values: [Bool] = []
@@ -891,6 +894,8 @@ struct NotificationSettingsApplyTests {
         var all: [Bool] { lock.lock(); defer { lock.unlock() }; return values }
     }
 
+    /// `body` runs: `true` if it was flagged remote-origin. `queue: nil` so
+    /// the block runs synchronously and nothing has to be awaited.
     private static func recordedOrigins(_ body: () -> Void) -> [Bool] {
         let log = OriginLog()
         let token = NotificationCenter.default.addObserver(

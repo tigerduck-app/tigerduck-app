@@ -51,6 +51,9 @@ struct LicenseCatalogTests {
         #expect(!catalog.packages.contains { $0.identity == "swift-syntax" })
     }
 
+    /// The abbreviation tables ship as bundle resources, symlinked in from a
+    /// submodule that is published under MIT. The app being AGPL says
+    /// nothing about them, and MIT asks that its notice travel with the data.
     @Test("the abbreviation data is listed under its own licence, not the app's")
     func bundledDataIsListed() throws {
         let catalog = try #require(LicenseCatalog.load())

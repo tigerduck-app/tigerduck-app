@@ -353,6 +353,7 @@ struct MoodleCourseMembersTests {
         #expect(site.pictureCalls.count == 1)
     }
 
+    /// The decode draws the whole picture (`kCGImageSourceShouldCacheImmediately`).
     @Test("a downloaded picture is decoded off the main actor")
     func downloadedPictureIsDecodedOffTheMainActor() async throws {
         let folder = Folder()
@@ -588,6 +589,7 @@ struct MoodleCourseMembersTests {
             Self.member(9, "Observer", roleDetails: [MoodleMember.Role(shortName: "observer", name: "Course observer", sortOrder: 9)]),
             Self.member(4, "M11399012 @ Assistant", idNumber: "M11399012", roles: ["teacher"]),
             Self.member(5, "Instructor", roles: ["editingteacher"]),
+            // Moodle sends no name for a role that keeps its language pack's name.
             Self.member(8, "Guide", roleDetails: [MoodleMember.Role(shortName: "guide", name: "", sortOrder: 7)]),
             Self.member(7, "No role", roleDetails: []),
         ])

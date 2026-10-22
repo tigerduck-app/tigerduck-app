@@ -73,6 +73,9 @@ struct HeaderControlMetricsTests {
         let os = UIDevice.current.systemVersion
 
         if #available(iOS 26, *) {
+            // About 1.3x Today here: `.buttonStyle(.glass)` is sized for one short word, and at
+            // its 28.33pt the glass behind an icon reads as a sliver. The band is wide because
+            // Today's height is Apple's; it catches a collapse to Today's size or a runaway.
             let ratio = capsule / today
             #expect(
                 ratio > 1.15 && ratio < 1.45,

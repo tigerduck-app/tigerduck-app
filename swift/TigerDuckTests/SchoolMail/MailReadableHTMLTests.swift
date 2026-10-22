@@ -114,6 +114,9 @@ struct MailReadableHTMLTests {
             == ##"<table><colgroup><col style="background-color: #000000" /></colgroup><tbody><tr><td><font color="#333333">a</font></td></tr></tbody></table><table><colgroup><col style="background-color: #000000" /></colgroup><tbody><tr><td><font color="#333333">b</font></td></tr></tbody></table><table><tbody><tr><td><font color="#959595">c</font></td></tr></tbody></table>"##)
     }
 
+    /// WebKit paints a table's background over its grid only, so its caption is judged on what the
+    /// table sits on, and given back the colour the table was given in its place
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/677).
     @Test func aCaptionSitsOnWhatItsTableSitsOn() {
         let black = Self.readable(##"<table bgcolor="#000000"><caption><font color="#333333">Caption</font></caption><tr><td>Cell</td></tr></table>"##)
         #expect(black.html(on: .light)
@@ -259,6 +262,8 @@ struct MailReadableHTMLTests {
         #expect(MailReadableHTML.parse(value[...], legacy: false) == nil)
     }
 
+    /// `bgcolor` and `<font color>` follow HTML's legacy colour rules, which read `#333333ff` or
+    /// `rgb()` as some other colour, so only the forms both rules agree on are read there.
     @Test func bgcolorAndFontColorTakeOnlyTheFormsHTMLReadsAsCSSDoes() {
         #expect(MailReadableHTML.parse("#333", legacy: true) == RGBA(0x333333))
         #expect(MailReadableHTML.parse("#333333", legacy: true) == RGBA(0x333333))

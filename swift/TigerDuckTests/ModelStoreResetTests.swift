@@ -5,6 +5,8 @@ import Testing
 @MainActor
 struct ModelStoreResetTests {
 
+    /// SQLite writes its sidecars as `default.store-wal` and `default.store-shm`, and they must go
+    /// with the store, or the retry after a failed open reads the same stale data.
     @Test func resetDeletesTheStoreAndItsSQLiteSidecars() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ModelStoreResetTests-\(UUID().uuidString)", isDirectory: true)

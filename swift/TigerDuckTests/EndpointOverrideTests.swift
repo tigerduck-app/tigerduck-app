@@ -57,6 +57,7 @@ struct EndpointOverrideTests {
 
     @Test("routable v4 ranges are not private")
     func routableIPv4() {
+        // 172.32 is outside the /12; 100.64 is CGNAT, which the carrier routes.
         for host in ["8.8.8.8", "172.32.0.1", "172.15.0.1", "100.64.0.1", "193.168.0.1"] {
             #expect(!PushServerConfig.isPrivateOrLoopbackHost(host), "\(host) should not be private")
         }
@@ -64,6 +65,7 @@ struct EndpointOverrideTests {
 
     @Test("leading-zero octets are rejected rather than read as octal")
     func leadingZeroOctets() {
+        // Some resolvers read 0192 as octal and land somewhere else entirely.
         #expect(!PushServerConfig.isPrivateOrLoopbackHost("0192.168.1.5"))
     }
 

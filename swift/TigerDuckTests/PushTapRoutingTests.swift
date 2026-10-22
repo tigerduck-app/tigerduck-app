@@ -12,6 +12,7 @@ struct PushTapRoutingTests {
     }
 
     @Test func aCustomPushBulletinOpensTheBulletin() {
+        // A Double-tagged NSNumber, which `as? Int` does not accept.
         let link = AppState.bulletinDeepLink(
             from: ["kind": "custom_push_bulletin", "bulletin_id": NSNumber(value: 77.0)]
         )

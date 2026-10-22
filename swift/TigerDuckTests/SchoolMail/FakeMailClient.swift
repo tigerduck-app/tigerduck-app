@@ -22,6 +22,9 @@ actor FakeMailClient: MailClient {
     var pageErrors: [String: MailClientError] = [:]
     private(set) var pageRequests: [String] = []
     var searchError: MailClientError?
+    /// Simulates a server that refuses `SEARCH HEADER "Message-ID"` — nothing in Mail2000's
+    /// CAPABILITY banner promises it is honoured, and a refusal is what makes the sent-copy
+    /// dedupe probe unanswerable.
     var containsMessageIDError: MailClientError?
     var appendError: MailClientError?
     var sendError: MailClientError?
@@ -43,6 +46,7 @@ actor FakeMailClient: MailClient {
         set { if newValue { heldCommands.insert("search") } else { heldCommands.remove("search") } }
     }
     var autoSaveSentTo: String?
+    /// Returned by `summaries(folder:fromUID:)` on top of the real range (the `n:*` quirk).
     var extraSummaries: [MailSummary] = []
     private(set) var calls: [String] = []
     private(set) var attachmentPins: [UInt32?] = []

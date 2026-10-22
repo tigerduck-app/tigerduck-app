@@ -104,6 +104,7 @@ struct MoodleCourseForumsTests {
                     try self.record("posts \(discussionId)", kind: "posts")
                     return self.lock.withLock { self._posts[discussionId] ?? [] }
                 },
+                // Moodle marks every post of the discussion read.
                 markViewed: { discussionId, _ in
                     try self.record("viewed \(discussionId)", kind: "viewed")
                     self.lock.withLock {

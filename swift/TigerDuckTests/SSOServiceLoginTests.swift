@@ -121,6 +121,8 @@ struct SSOServiceLoginTests {
         #expect(posts.isEmpty)
     }
 
+    /// The session may be the stored account's, but the password is the one just typed, which the
+    /// school checks only on the form (https://github.com/tigerduck-app/tigerduck-app/issues/412).
     @Test("a sign-in the user starts on a live session still posts the typed password")
     func interactiveSignInOnALiveSessionPostsThePassword() async {
         let service = Self.serviceURL()

@@ -35,6 +35,7 @@ struct ClassTablePeriodVisibilityTests {
         try await waitUntil { viewModel.cellRoleCache.isEmpty }
     }
 
+    /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
     private final class Flag: @unchecked Sendable {
         var raised = false
     }

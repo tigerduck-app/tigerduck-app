@@ -13,6 +13,7 @@ struct MailTextRulesTests {
     }
 
     @Test func big5IsDecodedAsItsHKSCSSuperset() {
+        // 0x88 0x40 exists only in HKSCS; a plain Big5 decoder rejects the whole body.
         let decoded = MailCharset.decode(Self.big5("中文") + Data([0x88, 0x40]), label: "big5")
         #expect(decoded.hasPrefix("中文"))
         #expect(decoded.count == 3)
@@ -41,6 +42,10 @@ struct MailTextRulesTests {
         #expect(MailCharset.decode(Data(bytes), label: nil).unicodeScalars.map(\.value) == [0xFF, 0x80, 0xFF])
     }
 
+    /// Mail2000 routinely labels a part `us-ascii` and then puts UTF-8 bytes in it. The label
+    /// resolves, so decoding it leniently succeeds on every byte and turns the Chinese greeting
+    /// below into `è¦ªæ„›çš„…`. Strict UTF-8 therefore runs before the lenient path: a body that
+    /// is valid UTF-8 is UTF-8, whatever the header claims.
     @Test(arguments: ["us-ascii", "US-ASCII", "ascii", "\"us-ascii\""])
     func aBodyMislabelledASCIIButWrittenInUTF8StillReadsAsUTF8(label: String) {
         #expect(MailCharset.decode(Data("親愛的同學您好".utf8), label: label) == "親愛的同學您好")
@@ -107,6 +112,10 @@ struct MailTextRulesTests {
         #expect(MailTextCleaner.clean("") == "")
     }
 
+    /// `clean` must leave U+200B alone. Java's `\s` is ASCII-only, but Foundation's
+    /// `CharacterSet.whitespaces` contains U+200B on Darwin, so collapsing with it would
+    /// rewrite `ntust.e<U+200B>du.tw` as `ntust.e du.tw` — one host broken into two words,
+    /// where Android keeps it whole. Removing it is `visibleText`'s job.
     @Test func cleanLeavesZeroWidthSpacesForVisibleTextToRemove() {
         #expect(MailTextCleaner.clean("ntust.e\u{200B}du.tw") == "ntust.e\u{200B}du.tw")
         #expect(MailTextCleaner.visibleText("ntust.e\u{200B}du.tw") == "ntust.edu.tw")
@@ -124,6 +133,9 @@ struct MailTextRulesTests {
         #expect(MailTextCleaner.visibleText("a\(invisible)b") == "ab")
     }
 
+    /// `Cf`/`Cc` is not the whole invisible table. Unicode's own `Default_Ignorable_Code_Point`
+    /// is, and it covers the combining grapheme joiner, every variation selector, the reserved
+    /// default-ignorables and the Hangul fillers — none of which is `Cf` or `Cc`.
     @Test(arguments: [
         "\u{034F}", "\u{FE00}", "\u{FE0F}", "\u{E0100}", "\u{2065}",
         "\u{115F}", "\u{1160}", "\u{3164}", "\u{FFA0}", "\u{17B4}", "\u{180B}",
@@ -132,6 +144,8 @@ struct MailTextRulesTests {
         #expect(MailTextCleaner.visibleText("a\(invisible)b") == "ab")
     }
 
+    /// U+2800 is a printing character (`So`) that every font draws as nothing, so Unicode does
+    /// not call it default-ignorable but a reader cannot see it either. Named on its own line.
     @Test func visibleTextRemovesTheBlankBraillePattern() {
         #expect(MailTextCleaner.visibleText("a\u{2800}b") == "ab")
     }
@@ -203,6 +217,10 @@ struct MailTextRulesTests {
         #expect(MailRawHeaders.value(named: "reply-to", in: raw) == "\"Office\" <office@mail.ntust.edu.tw>")
         #expect(MailRawHeaders.value(named: "Cc", in: raw) == nil)
     }
+    /// Android's `String(bytes, charset)` substitutes U+FFFD and always returns; iOS's
+    /// `String(data:encoding:)` returns nil, so one truncated byte in a correctly labelled UTF-8
+    /// body used to fall through to the guess chain — where Big5-HKSCS accepts almost anything
+    /// and the whole message rendered as mojibake.
     @Test func aLabelledBodyWithOneBadByteStillDecodesAsThatCharset() {
         var bytes = Array("這是中文測試".utf8)
         bytes.insert(0xE4, at: 6)

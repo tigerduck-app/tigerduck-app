@@ -25,6 +25,7 @@ struct ClassTableTodayCoursesTests {
         #expect(viewModel.todayCourses.isEmpty)
     }
 
+    /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
     private final class Flag: @unchecked Sendable {
         var raised = false
     }

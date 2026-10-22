@@ -71,6 +71,8 @@ extension TLSPinningDelegateTests {
         #expect(Set(roots).isSubset(of: pins), "\(Set(roots).subtracting(pins))")
     }
 
+    /// A renewal may serve only its leaf and intermediate, so a root pin has to match the anchor
+    /// that trust evaluation adds from the system store.
     @Test("A root pin matches a chain served without its root")
     func aRootPinMatchesTheAnchorOfTheEvaluatedChain() throws {
         let leafAndIntermediate = Array(Self.libraryChain.prefix(2))

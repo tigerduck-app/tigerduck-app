@@ -159,6 +159,8 @@ struct SyncOutboxTests {
         }
     }
 
+    /// A launch behind the lock screen cannot read the queue (`completeFileProtectionUnlessOpen`).
+    /// An edit made then must not be written over it, and joins it once it can be read.
     @Test func aQueueThatCannotBeReadYetIsKeptAndJoined() async throws {
         let directory = Self.freshDirectory()
         await Self.makeOutbox(directory: directory).enqueue(Self.mark)

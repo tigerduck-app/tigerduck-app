@@ -4,6 +4,14 @@ import SwiftMail
 import Testing
 @testable import TigerDuck
 
+/// A mail whose `BODYSTRUCTURE` the server botches must still open.
+///
+/// Mail2000 sometimes describes a message in a way no IMAP parser can read. NIOIMAP does not
+/// fail the FETCH but reports `MessageAttribute.BodyStructure.invalid`, kept by vendored patch 6
+/// as `MessageInfo.bodyStructureUnusable`. With `parts` empty, `LiveMailClient.detail` finds no
+/// body or attachments: the screen would show only the source, and `MailWarnings`, which reads
+/// the subject and body, could not raise the delivery-failure warning. On that path only, the
+/// client fetches the whole message and parses the MIME itself, as Android's Angus Mail does.
 struct MailBodyStructureFallbackTests {
 
     static func unusableStructureInfo(size: Int? = 4096) -> MessageInfo {

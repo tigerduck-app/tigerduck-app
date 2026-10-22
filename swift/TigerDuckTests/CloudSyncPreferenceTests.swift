@@ -15,6 +15,7 @@ struct CloudSyncPreferenceTests {
         body(Defaults.Key<Bool>("cloudSyncEnabled", default: true, suite: suite))
     }
 
+    /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
     private final class Flag: @unchecked Sendable {
         var raised = false
     }

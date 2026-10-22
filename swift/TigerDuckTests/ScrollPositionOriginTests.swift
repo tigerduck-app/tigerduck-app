@@ -3,6 +3,9 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
+/// The class table scrolls by a switch's shift with `ScrollPosition.scrollTo(y:)`, from the offset
+/// `ScrollGeometry` reports. The two count from different origins, so the class table adds the top
+/// inset; this catches the SDK changing either.
 @MainActor
 struct ScrollPositionOriginTests {
     struct Reading: Equatable {
@@ -31,6 +34,7 @@ struct ScrollPositionOriginTests {
 
     @Test func scrollToCountsFromTheTopInset() async throws {
         let scroll = Scroll()
+        // A window of the app's scene has the status bar's safe area, so the scroll view gets a top inset.
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.rootViewController = UIHostingController(rootView: Scroller(scroll: scroll))

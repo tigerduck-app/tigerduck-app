@@ -16,6 +16,10 @@ struct MailListViewModelTests {
         let seen: SeenLog
     }
 
+    /// `nonisolated` because the fake-server `update` closures below are nonisolated, and the
+    /// suite is `@MainActor` — without it this constant is main-actor isolated and reading it
+    /// from one of those closures is an error in the Swift 6 language mode. `MailFolderRole` is
+    /// `nonisolated` already, so the value has nothing main-actor about it.
     nonisolated static let sent = MailFolderRole.sent.imapName
 
     static func harness(

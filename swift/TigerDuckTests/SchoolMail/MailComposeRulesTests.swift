@@ -245,6 +245,11 @@ struct MailComposeRulesTests {
         #expect(headers.inReplyTo == "<m1@x>")
         #expect(headers.references == ["<m0@x>", "<m1@x>"])
     }
+    /// `In-Reply-To`/`References` are the only header values this builder echoes back from a
+    /// *received* mail, and a received `Message-ID` is attacker-controlled free text. RFC 5322
+    /// `msg-id`s are ASCII and Mail2000 announces no SMTPUTF8, so a non-ASCII token is the one
+    /// remaining way raw 8-bit bytes could reach the wire — it is dropped whole rather than
+    /// mangled into something that identifies no message anywhere.
     @Test func nonASCIIThreadingReferencesAreDroppedRatherThanSentAsRawUTF8() {
         var mail = Self.mail()
         mail.inReplyTo = "<王大明@evil.example>"

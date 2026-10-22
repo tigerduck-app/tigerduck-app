@@ -367,6 +367,7 @@ struct ClassTableShareQRCodeTests {
         #expect(feature.messageString == text)
         let symbol = try #require(feature.symbolDescriptor)
         #expect(symbol.errorCorrectionLevel == .levelM)
+        // The first four bits of the first data codeword are the mode indicator; 0010 is alphanumeric.
         #expect(symbol.errorCorrectedPayload.first.map { $0 >> 4 } == 0b0010)
         if sample == .eightTerms {
             #expect(symbol.symbolVersion <= 18, "\(text.count) characters")
@@ -416,16 +417,22 @@ struct ClassTableShareSheetTests {
         }.cgImage
     }
 
+    /// A line Vision read, with its box in the image: normalized, origin at the bottom left.
     private struct RecognizedLine: Sendable {
         let text: String
         let boundingBox: CGRect
     }
 
+    /// The lines Vision reads in `image`, recognized on a GCD thread while the caller awaits. One
+    /// recognition takes 15 seconds to over a minute on a CI runner, and every other test waits on
+    /// the main actor (https://github.com/tigerduck-app/tigerduck-app/issues/530). A detached task
+    /// would hold one of the cooperative pool's threads instead, a third of a CI runner's.
     private nonisolated static func lines(in image: CGImage, words: [String]) async throws -> [RecognizedLine] {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let request = VNRecognizeTextRequest()
                 request.recognitionLevel = .accurate
+                // Vision reads mostly its first language: English first misses a Chinese screen.
                 let chinese = Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
                 request.recognitionLanguages = chinese ? ["zh-Hant", "en-US"] : ["en-US", "zh-Hant"]
                 request.usesLanguageCorrection = false
@@ -525,6 +532,7 @@ struct ClassTableShareSheetTests {
         defer { window.isHidden = true }
         let failure = String(localized: "library_qr_generate_failed")
         let words = [model.studentId, failure]
+        // Vision drops a space between Latin and Chinese text, which the Chinese failure text has.
         let showsFailure = { (line: String) in line.filter { !$0.isWhitespace }.contains(failure.filter { !$0.isWhitespace }) }
         let onScreen = try await lines(in: window, words: words, showing: model.studentId).map(\.text)
         #expect(onScreen.contains(where: showsFailure), "a missing QR must explain its failure on screen: \(onScreen)")

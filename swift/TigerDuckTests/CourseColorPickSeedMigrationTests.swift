@@ -45,6 +45,7 @@ struct CourseColorPickSeedMigrationTests {
         defer { cleanUp() }
         let cache = makeCache()
         cache.saveCourseColorMap(["CS1010001": 0x123456])
+        // Mode 000 stands in for the lock screen: the file is there and does not open.
         let file = root.appendingPathComponent("persistent/course_color_map.json")
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
 

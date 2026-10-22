@@ -134,6 +134,8 @@ struct ClassroomUsageServiceTests {
         #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == usage)
     }
 
+    /// A page left over would post the date it already shows, which the site may answer from that
+    /// page's own state (https://github.com/tigerduck-app/tigerduck-app/issues/513).
     @Test("a pull reads the day again from a new campus page, without signing in")
     func forcedReadStartsFromANewCampusPage() async throws {
         let harness = Harness()
@@ -153,6 +155,8 @@ struct ClassroomUsageServiceTests {
         #expect(harness.account.signIns == 0)
     }
 
+    /// Nothing on the campus page is known to name its grid's day, which the site may keep from an
+    /// earlier read (https://github.com/tigerduck-app/tigerduck-app/issues/475).
     @Test("today is read by posting its date, not off the grid the campus page shows")
     func todayPostsItsDate() async throws {
         let harness = Harness()
