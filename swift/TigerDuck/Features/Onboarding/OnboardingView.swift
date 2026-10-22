@@ -13,8 +13,6 @@ struct OnboardingView: View {
     @State private var syncEnabled = true
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @State private var notificationRequestInFlight = false
-    /// Presents the API-endpoint editor from the sign-in page, for
-    /// users pointing the app at their own backend deployment.
     @Environment(\.openURL) private var openURL
     @State private var showEndpointSheet = false
     @Environment(\.scenePhase) private var scenePhase
@@ -22,15 +20,10 @@ struct OnboardingView: View {
 
     private enum Field { case studentId, password }
 
-    /// Page order: Welcome → Privacy → Cloud Sync → Apple Watch →
-    /// Login → Notifications → Ready.
     private enum Page: Int, CaseIterable {
         case welcome, privacy, cloudSync, watchOS, login, notifications, ready
     }
 
-    /// iPad has no Apple Watch pairing affordance — there's no Watch app to
-    /// install from the iPad, so the slide is pure noise there. Keep it for
-    /// iPhone (the canonical pairing host) and for any non-iOS host.
     private var showsWatchPage: Bool {
         #if os(iOS)
         UIDevice.current.userInterfaceIdiom != .pad
@@ -53,31 +46,21 @@ struct OnboardingView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
         .background(Color.backgroundPrimary)
-        // Keyboard avoidance acts on the TabView root, not the page VStacks. Without this the login
-        // page shrinks to fit above the keyboard, squeezing its ScrollView and lifting its buttons;
-        // tap-to-dismiss and the ScrollView's scroll-to-dismiss still clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         .onChange(of: currentPage) { _, page in
             focusedField = nil
-            // Belt and braces for `PagingScrollLock`: nothing past the
-            // terms page is reachable until both boxes are ticked.
             if page > Page.privacy.rawValue, !hasAgreedToTerms {
                 currentPage = Page.privacy.rawValue
             }
         }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, newPhase in
-            // Catch a System Settings round-trip — if the user enabled
-            // notifications externally, reflect that the moment they
-            // return so the denied row + settings button stop showing.
             if newPhase == .active {
                 Task { await refreshNotificationStatus() }
             }
         }
     }
-
-    // MARK: - Page 0: Welcome
 
     private var welcomePage: some View {
         OnboardingPageView(
@@ -94,9 +77,6 @@ struct OnboardingView: View {
                         .lineLimit(12)
                         .minimumScaleFactor(0.6)
 
-                    // `Link` over `Button` keeps the `.isLink` VoiceOver trait and long-press peek,
-                    // Copy Link and Share. Bordered and large for a reliable hit target. The page's
-                    // dismiss tap is a `.simultaneousGesture`, so iOS 18 passes the first tap on.
                     VStack(spacing: TigerDuckTheme.Spacing.lg) {
                         Link(destination: AppURLs.website) {
                             Label(String(localized: "onboarding_welcome_website_label"), systemImage: "globe")
@@ -124,8 +104,6 @@ struct OnboardingView: View {
             }
         )
     }
-
-    // MARK: - Page 1: Privacy & terms
 
     private var hasAgreedToTerms: Bool { agreedPrivacy && agreedDeletion }
 
@@ -170,9 +148,6 @@ struct OnboardingView: View {
                 }
             }
         )
-        // A swipe would bypass the Next button's gate, so forward swipes off this page are refused
-        // until both boxes are ticked. Backward stays free: the tick does not gate going back to
-        // Welcome. `currentPage` is checked because the pager pre-builds the neighbouring page.
         .background(
             PagingScrollLock(isLocked: currentPage == Page.privacy.rawValue && !hasAgreedToTerms)
                 .allowsHitTesting(false)
@@ -198,15 +173,10 @@ struct OnboardingView: View {
                 Toggle(label, isOn: isOn)
             }
 
-            // Kept reachable by VoiceOver: the checkbox above is exposed as
-            // a Toggle, so this is the only way an assistive-tech user can
-            // open the privacy / delete-account page before accepting it.
             Link(label, destination: destination)
                 .font(.callout)
         }
     }
-
-    // MARK: - Page 2: Cross-Device Sync
 
     private var cloudSyncPage: some View {
         OnboardingPageView(
@@ -255,8 +225,6 @@ struct OnboardingView: View {
             },
             actions: {
                 Button(String(localized: "action_next")) {
-                    // `AppState` acts on this like on any other change to the
-                    // preference (`CloudSyncPreference`).
                     Defaults[.cloudSyncEnabled] = syncEnabled
                     let nextPage = showsWatchPage ? Page.watchOS.rawValue : Page.login.rawValue
                     withAnimation(reduceMotion ? nil : .default) { currentPage = nextPage }
@@ -315,8 +283,6 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Page 3: Apple Watch support (iPhone only)
-
     private var watchOSPage: some View {
         OnboardingPageView(
             icon: "applewatch",
@@ -331,8 +297,6 @@ struct OnboardingView: View {
             .controlSize(.large)
         }
     }
-
-    // MARK: - Page 4: Login
 
     private var loginPage: some View {
         let isSignedIn = appState.authService.hasStoredCredentials
@@ -401,16 +365,11 @@ struct OnboardingView: View {
             },
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    // Least committal first: check the server, repoint the app, then skip. After a
-                    // failed sign-in nothing else shows whether the backend is why. A Button like
-                    // the two below, not a Link; it skips the browser preference, not offered yet.
                     Button(String(localized: "settings_check_server_status")) {
                         openURL(AppURLs.serverStatus)
                     }
                     .foregroundStyle(Color.textSecondary)
 
-                    // Above "Skip": a self-hosted backend must be set before signing in, since the
-                    // sign-in round trip is one of the calls that goes to it.
                     Button(String(localized: "onboarding_custom_endpoint_button")) {
                         showEndpointSheet = true
                     }
@@ -466,8 +425,6 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Page 5: Notifications
-
     private var notificationsPage: some View {
         OnboardingPageView(
             icon: "bell.badge.fill",
@@ -498,9 +455,6 @@ struct OnboardingView: View {
                     }
                     .foregroundStyle(Color.textSecondary)
 
-                    // Until the system prompt is answered, the forward action is Allow in
-                    // `notificationStatusRow`. A Next here would let onboarding end without
-                    // `requestAuthorization`, stuck in `.notDetermined` with no registration path.
                     if notificationStatus != .notDetermined {
                         Button(String(localized: "action_next")) {
                             withAnimation(reduceMotion ? nil : .default) { currentPage = Page.ready.rawValue }
@@ -550,9 +504,6 @@ struct OnboardingView: View {
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshNotificationStatus()
-        // The first notification opt-in happens here, so start the push stack now: PushCoordinator
-        // registers for remote notifications and the server sync runs. Otherwise the device waits
-        // for the next launch to register, and nothing server-backed arrives until then.
         guard granted else { return }
         appState.enablePushServer()
     }
@@ -561,8 +512,6 @@ struct OnboardingView: View {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         await MainActor.run { notificationStatus = settings.authorizationStatus }
     }
-
-    // MARK: - Page 6: Done
 
     private var readyPage: some View {
         OnboardingPageView(
@@ -582,21 +531,9 @@ struct OnboardingView: View {
 }
 
 #if canImport(UIKit)
-/// Refuses forward drags on the page-style `TabView`'s own scroll view and leaves backward ones
-/// alone. `scrollDisabled` does not reach the page-style pager, hence the UIKit walk to find it.
-///
-/// `isScrollEnabled = false` while locked would freeze both directions, so a user who had not
-/// ticked the boxes could not swipe back to Welcome either. The tick gates only forward motion,
-/// so the pager stays scrollable and the forward drag is cancelled instead.
 struct PagingScrollLock: UIViewRepresentable {
     let isLocked: Bool
 
-    /// Whether a drag of `translationX` points at the *next* page.
-    ///
-    /// Pulled out of the gesture handler so the mirroring has a test: a
-    /// page-style `TabView` reverses under a right-to-left language, so the
-    /// same finger movement that advances in English goes back in Arabic,
-    /// and the app ships four right-to-left locales.
     static func isForwardDrag(translationX: CGFloat, isRTL: Bool) -> Bool {
         isRTL ? translationX > 0 : translationX < 0
     }
@@ -614,11 +551,7 @@ struct PagingScrollLock: UIViewRepresentable {
     final class LockView: UIView {
         var isLocked = false
 
-        /// Not private: a test asserts the superview walk still reaches
-        /// the pager, which is the load-bearing half of this class.
         private(set) weak var attachedPager: UIScrollView?
-        /// Latched at the first movement big enough to have a direction, so
-        /// one judgement is made per drag rather than one per callback.
         private var hasJudgedDrag = false
 
         override func didMoveToWindow() {
@@ -650,16 +583,12 @@ struct PagingScrollLock: UIViewRepresentable {
             guard isLocked, !hasJudgedDrag else { return }
 
             let dx = recognizer.translation(in: pager).x
-            // Too small to have a direction yet. Waiting beats guessing —
-            // a wrong guess cancels a legitimate backward swipe.
             guard abs(dx) > 4 else { return }
             hasJudgedDrag = true
 
             let isRTL = pager.effectiveUserInterfaceLayoutDirection == .rightToLeft
             guard PagingScrollLock.isForwardDrag(translationX: dx, isRTL: isRTL) else { return }
 
-            // Turning scrolling off and straight back on cancels the pan in
-            // flight; the pager snaps back to the page it started on.
             pager.isScrollEnabled = false
             pager.isScrollEnabled = true
         }
