@@ -3,6 +3,9 @@ import Foundation
 import Testing
 import UIKit
 
+/// SwiftUI builds its accessibility tree only for a client such as VoiceOver or UI testing, and a
+/// simulator without one, as in CI, leaves the elements out. This turns it on as UI testing does,
+/// and off once the last suite that asked for it is done, since suites run in parallel.
 @MainActor
 func withAccessibilityAutomation<T>(_ body: () async throws -> T) async throws -> T {
     if AccessibilityAutomation.users == 0 { try AccessibilityAutomation.set(true) }

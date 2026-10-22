@@ -9,6 +9,7 @@ struct ScheduleSyncServiceTests {
     private static let container: ModelContainer = {
         let schema = Schema([SDCourse.self, SDAssignment.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        // swiftlint:disable:next force_try
         return try! ModelContainer(for: schema, configurations: config)
     }()
 

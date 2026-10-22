@@ -55,6 +55,7 @@ struct MailGuideURLTests {
         #expect(MailGuide.decision(for: guide, isMainFrame: true) == .allow)
     }
 
+    /// WebKit only reports transport failures; an HTTP error page has to be caught by status.
     @Test func aMainFrameHTTPErrorIsAFailedLoad() {
         #expect(MailGuide.isLoadFailure(statusCode: 404, isMainFrame: true))
         #expect(MailGuide.isLoadFailure(statusCode: 502, isMainFrame: true))

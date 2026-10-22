@@ -112,6 +112,10 @@ struct MailTextRulesTests {
         #expect(MailTextCleaner.visibleText("ntust.e\u{200B}du.tw") == "ntust.edu.tw")
     }
 
+    /// U+200B is spelled out in `visibleText` rather than left to `generalCategory`, which
+    /// reports `.format` on this toolchain but answers from the platform's Unicode tables at
+    /// run time and has reported otherwise in earlier Unicode versions. This pins the
+    /// requirement whichever mechanism ends up satisfying it.
     @Test(arguments: [
         "\u{200B}", "\u{2060}", "\u{00AD}", "\u{FEFF}", "\u{001C}", "\u{0000}", "\u{007F}",
         "\u{0090}", "\u{202E}", "\u{200F}", "\u{061C}", "\u{2069}", "\u{0009}", "\u{000A}",

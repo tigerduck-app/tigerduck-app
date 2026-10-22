@@ -122,6 +122,8 @@ struct DevMailConnectionProbeTests {
         #expect(noSuchRecord.contains("NWError.dns(-65554)"))
         #expect(noSuchRecord.contains("kDNSServiceErr_NoSuchRecord"))
 
+        // errSSLXCertChainInvalid — the shape a third-party certificate the system will not build
+        // a chain for arrives in.
         let badChain = DevMailConnectionProbe.describe(NWError.tls(-9807))
         #expect(badChain.contains("NWError.tls(-9807)"))
     }

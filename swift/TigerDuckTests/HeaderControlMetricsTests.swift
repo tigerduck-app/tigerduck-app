@@ -5,6 +5,14 @@ import UIKit
 
 @testable import TigerDuck
 
+/// The class table's header ⋯ button is sized against the Calendar "Today"
+/// button: equal below iOS 26, about 1.3x on 26, where `.buttonStyle(.glass)`
+/// is much tighter than a glass backing behind an icon wants to be. Today's
+/// height is Apple's and differs per OS version, so only this test keeps the
+/// two from drifting when either side changes.
+///
+/// Heights come from a laid-out window, not `sizeThatFits`: the ideal size a
+/// hosting controller reports is not what a button style lays out to.
 @MainActor
 @Suite("Header control metrics")
 struct HeaderControlMetricsTests {

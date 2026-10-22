@@ -277,6 +277,7 @@ struct MoodleMaterialsTests {
 
     @Test("a downloaded file is closed to reads while the device is locked")
     func downloadedFileProtection() {
+        // A simulator keeps no protection class on a file, so this reads what a copy is given.
         let attributes = MoodleFileDownloads.placedAttributes(modified: nil)
         #expect(attributes[.protectionKey] as? FileProtectionType == .completeUnlessOpen)
     }

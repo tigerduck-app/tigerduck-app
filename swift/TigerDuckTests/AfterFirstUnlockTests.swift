@@ -221,6 +221,7 @@ struct AfterFirstUnlockTests {
 
         #expect(FirstUnlock.hasHappened(probe: probe))
         #expect(FirstUnlock.hasHappened(probe: probe))
+        // A simulator never locks, so a folder that is not there stands in for a class key that is not.
         #expect(!FirstUnlock.hasHappened(probe: folder.appending(path: "missing/probe")))
     }
 }

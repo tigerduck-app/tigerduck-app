@@ -1,4 +1,7 @@
 #if os(iOS)
+// A simulator keeps no protection class on a file, so the tests record what the migration asks
+// to protect through its `protect` seam. The keys mirror the migration's private ones, which are
+// real, process-wide state: the suite is `.serialized` and `init` clears them first.
 import Foundation
 import Testing
 @testable import TigerDuck
