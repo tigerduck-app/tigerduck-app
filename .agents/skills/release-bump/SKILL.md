@@ -1,6 +1,6 @@
 ---
 name: release-bump
-description: Use when bumping TigerDuck's marketing version (vX.Y.Z) — bumps project.pbxproj (marketing version and build number), adds the in-app whatsnew.json entry, refreshes README.md + README.en.md (badge + version-history row), and creates a single chore(release) commit. Trigger on phrases like "bump version", "升版", "release X.Y.Z", "更新 README 標版本", or whenever pbxproj's MARKETING_VERSION changes are staged.
+description: Use when bumping TigerDuck's marketing version (vX.Y.Z) — bumps project.pbxproj (marketing version and build number), adds the in-app whatsnew.json entry, refreshes the README.md + README.en.md version badge, creates a single chore(release) commit, and after the tag publishes the bilingual GitHub release. Trigger on phrases like "bump version", "升版", "release X.Y.Z", "發 release", or whenever pbxproj's MARKETING_VERSION changes are staged.
 ---
 
 # TigerDuck Release Bump
@@ -19,7 +19,7 @@ End-to-end checklist for cutting a new TigerDuck App Store release. The whole lo
 Gather from the user only if not already obvious:
 
 1. **Target version** `X.Y.Z` — auto-detect if pbxproj is already staged (read the `+` lines)
-2. **Highlights for the version-history row** — auto-extract from `git log <prev-tag>..HEAD` if the user hasn't dictated them; confirm the framing in 1 short line before editing READMEs
+2. **Highlights** for `whatsnew.json` and the GitHub release — auto-extract from `git log <prev-tag>..HEAD` if the user hasn't dictated them
 3. **Build number** — current `CURRENT_PROJECT_VERSION` + 1, unless the user names one
 
 ## Procedure
@@ -92,44 +92,18 @@ build number.
 
 ### 3. Synthesize highlights
 
-Read `git log <prev-tag>..HEAD --oneline` and group commits. Pick the user/product-meaningful items, **skip pure refactors and internal cleanups**. Phrase them as one line, separated by `、` in `README.md` and by commas in `README.en.md`, as the existing rows are. **No emoji**: no row has one.
+Read `git log <prev-tag>..HEAD --oneline` and group commits. Pick the user/product-meaningful items, **skip pure refactors and internal cleanups**. They feed `whatsnew.json` (step 5) and the GitHub release (step 7). The READMEs carry no version history or roadmap: releases live on GitHub Releases and plans on GitHub Milestones.
 
-### 4. Update README.md (繁中) + README.en.md (English) in lockstep
+### 4. Update the version badge in README.md + README.en.md
 
-Both files always change together. Two surgical edits per file:
-
-**A. Version badge** (around line 7):
+Both files always change together, one edit each (around line 9):
 
 ```text
 old: [![Version](https://img.shields.io/badge/Version-v<PREV>-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v<PREV>)
 new: [![Version](https://img.shields.io/badge/Version-v<NEW>-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v<NEW>)
 ```
 
-Color is **`00BB00`**. Do not change.
-
-**B. Version history table** — insert a new row right under the header.
-
-`README.md` (Chinese — section `## 版本歷程`):
-
-```markdown
-| 版本 | 日期 | 重點 |
-|:---:|:---:|---|
-| `v<NEW>` | YYYY-MM-DD | <highlights in zh-Hant> |
-| `v<PREV>` | ... | (existing row) |
-```
-
-`README.en.md` (English — section `## Release History`):
-
-```markdown
-| Version | Date | Highlights |
-|:---:|:---:|---|
-| `v<NEW>` | YYYY-MM-DD | <highlights in English> |
-| `v<PREV>` | ... | (existing row) |
-```
-
-Date is the bump date in `YYYY-MM-DD` (today, unless user specifies). The version cell is the version in backticks, `` `vX.Y.Z` ``, not bold, as in every existing row.
-
-If the version unlocks new product capability, also tick the matching item in the **Roadmap / 開發規劃** section and append `` `vX.Y.Z` `` after the description, in place of a "下一版推出" / "coming in the next release" note. Don't invent roadmap entries; only check off ones that already exist.
+Color is **`00BB00`**. Do not change. The link target is the GitHub release step 7 publishes.
 
 ### 5. Add the in-app "What's new" entry
 
@@ -182,7 +156,7 @@ layout:
   render, as bulleted sentences. Write new entries with `items`.
 - Append the block at the end, keep 2-space indent, and re-validate:
   `python3 -c "import json;json.load(open('swift/TigerDuck/whatsnew.json'))"`
-- Reuse the README highlights as the source, then trim them to what a user
+- Reuse the step 3 highlights as the source, then trim them to what a user
   would actually notice.
 
 Feature pages — a demo of a new feature, or a question such as "apply the
@@ -209,19 +183,56 @@ chore(release): bump marketing version to <NEW>
 - pbxproj: 18 CURRENT_PROJECT_VERSION lines <PREV_BUILD> -> <NEW_BUILD>, matching Xcode Cloud
 - whatsnew.json: add the <NEW> entry in zh-TW and en
 - README.md / README.en.md: badge bumped to v<NEW>
-- Release history row for v<NEW>:
+- Highlights:
   * <bullet 1>
   * <bullet 2>
   * <bullet 3>
 ```
-
-If the pbxproj was bumped in a separate earlier commit and this commit is README-only, change the title to `docs(README): add v<NEW> to release history` and drop the pbxproj bullet.
 
 After commit:
 
 ```bash
 git log --oneline -3
 git status      # should be clean of release files; submodule/untracked unrelated files allowed
+```
+
+### 7. Publish the GitHub release (after the tag)
+
+The release PR from `dev` to `main` merges first, and the signed tag `v<NEW>` goes on its merge
+commit; both wait for the user's go-ahead. Then the tag gets a GitHub release, written in both
+languages in one body.
+
+```bash
+prev=$(git tag -l 'v*' --sort=-v:refname | sed -n 2p)                                  # the tag before v<NEW>
+git log "$prev..v<NEW>" --merges --format='%s|%b' | grep 'Merge pull request'          # the PRs
+git log "$prev..v<NEW>" --no-merges --format='%ae %H' | sort -u -k1,1                   # one commit per author
+gh api repos/tigerduck-app/tigerduck-app/commits/<sha> --jq .author.login              # author -> GitHub login
+```
+
+Leave bots (dependabot, github-actions) out of the contributors.
+
+```markdown
+### 重點
+- <one line per change a user notices, naming several features in one line> (#123 #124)
+
+### Highlights
+- <the same lines in English, same order> (#123 #124)
+
+### 貢獻者 · Contributors
+@login1 @login2
+
+**發布日期 · Released**: YYYY-MM-DD · **Full Changelog**: https://github.com/tigerduck-app/tigerduck-app/compare/v<PREV>...v<NEW>
+```
+
+- Summarize, never list every PR: 1–6 lines, each citing the PRs behind it. A large release splits
+  into `### 新功能` + `### 改進與修正` and `### New` + `### Improvements and fixes`.
+- Start from the `whatsnew.json` entry and add what it leaves out (Mac, Watch, widgets); skip
+  refactors, CI, tests and dependency bumps users never notice.
+- No user counts, no ids, and no security detail beyond what the PR title already says in public.
+- Write the notes to a file and show it to the user; publish only after they approve:
+
+```bash
+gh release create "v<NEW>" -R tigerduck-app/tigerduck-app --verify-tag --title "v<NEW>" --notes-file <notes.md> --latest
 ```
 
 ## Build-number-only bumps
@@ -236,7 +247,7 @@ sed -i '' 's|CURRENT_PROJECT_VERSION = <PREV>;|CURRENT_PROJECT_VERSION = <NEW>;|
 ```
 
 Do **not** touch the READMEs for one of these — no marketing version changed,
-so the badge and the release-history table stay as they are. Commit on its own
+so the badge stays as it is, and no GitHub release is published. Commit on its own
 as `chore(release): bump build number to <NEW> for v<MARKETING>`.
 
 Check both branches before picking the number. If `main` shipped a hotfix
@@ -254,8 +265,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 - **Two READMEs always move together.** Never update one without the other.
 - **`whatsnew.json` moves with them.** Every marketing bump gets an entry, both locales, fix-only releases included.
 - **Badge color is `00BB00`** (green). Don't switch palette.
-- **Version cell format:** `` `vX.Y.Z` `` (backticks, not bold). **No emoji** in the row.
-- **Date:** `YYYY-MM-DD` in the table.
+- **Every tag gets a GitHub release** in zh-Hant and English, with contributors and a Full Changelog link; the READMEs keep no version history or roadmap.
 - **Commit type:** `chore(release):` for version bumps, `docs(README):` for follow-up doc-only fixes.
 - **No `Co-Authored-By`** trailer.
 - **Body language:** English, bullet list with `-` and nested `*`.
@@ -270,8 +280,6 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 - [ ] `grep -c "CURRENT_PROJECT_VERSION = <NEW_BUILD>;" swift/TigerDuck.xcodeproj/project.pbxproj` → exactly **18**
 - [ ] `whatsnew.json` has a `<NEW>` key with both `zh-TW` and `en`, and still parses
 - [ ] Both READMEs have the new badge URL and link target
-- [ ] Both version-history tables have the new row at the **top** (right under the header divider)
-- [ ] Date is `YYYY-MM-DD`, version cell is `` `vX.Y.Z` ``, and the row has no emoji
 - [ ] Commit body is in English, no `Co-Authored-By`
 - [ ] `git status` after commit shows only unrelated untracked/dirty files (submodule pointer, ad-hoc docs)
 
@@ -279,11 +287,12 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 
 - ❌ Updating only the Chinese README — the English one drifts and stops matching.
 - ❌ Shipping a marketing bump with no `whatsnew.json` entry — the update sheet loses its summary, or never appears when the upgrade brings no catalog page, and the app never warns you; only the `dev` → `main` CI check catches it.
-- ❌ Pasting the README highlight verbatim into `whatsnew.json` — the README row is a changelog, the JSON is App Store copy.
+- ❌ Pasting the release notes verbatim into `whatsnew.json` — the release is a changelog, the JSON is App Store copy.
+- ❌ Listing every PR in a GitHub release — summarize and cite the PRs behind each line.
+- ❌ Adding a version-history row or a roadmap item back to the READMEs — those live on GitHub Releases and Milestones.
 - ❌ Writing a new `whatsnew.json` entry as `highlights` — it renders as plain bullets; new entries use `items` rows.
 - ❌ Bumping `MARKETING_VERSION = 1.0;` placeholders — these are test targets, not shippable.
 - ❌ Bumping the marketing version but not the build number — the repo's build drifts from what Xcode Cloud shows.
 - ❌ Squashing the app-translation submodule bump into the release commit — keep them separate so reverting a release doesn't unwind translations.
-- ❌ Inventing roadmap items to mark as done. Only tick rows that already exist.
 - ❌ Using `git add .` — too greedy for this repo's working tree.
 - ❌ Leaving the badge URL pointing at the old release tag.
