@@ -24,24 +24,13 @@ final class HomeViewModel {
         }
     }
 
-    /// Cached source-of-truth assignment list, already filtered to the current
-    /// semester. The visible `upcomingAssignments` is derived from this via
-    /// `assignmentFilter` so toggling filters is instant and does not refetch.
     var allAssignmentsCache: [SDAssignment] = []
 
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
 
-    /// Guards the fire-and-forget pull-to-refresh path against overlapping
-    /// fetches. ``triggerRefresh(authService:)`` flips this to `true` while
-    /// a fetch is running; additional pulls within that window coalesce
-    /// into a no-op instead of stacking concurrent Tasks that would race
-    /// on DataCache writes and `dataDidUpdate` notifications.
     private var isRefreshing = false
-    /// Single source of truth for the merged course list (portal + user-added,
-    /// minus deletions, with custom names overlaid). Sharing this with the
-    /// Live Activity stack keeps Home, Class Table, and lock screen aligned.
     private let courseProvider = CanonicalCourseProvider()
 
     init() {
@@ -50,7 +39,6 @@ final class HomeViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            // Skip if we just posted this notification ourselves (data already up-to-date)
             guard self?.isUpdatingFromNetwork != true else { return }
             self?.reloadFromCache()
         }
@@ -77,8 +65,6 @@ final class HomeViewModel {
         courses: [SDCourse]
     ) -> [SDAssignment] {
         let currentCourseNos = Set(courses.map(\.courseNo))
-        // Empty-course fallback: skip filter so first-launch (no roster yet)
-        // does not blank out the assignment list.
         guard !currentCourseNos.isEmpty else { return assignments }
         return assignments.filter { currentCourseNos.contains($0.courseNo) }
     }
@@ -95,9 +81,6 @@ final class HomeViewModel {
         case .incomplete:
             upcomingAssignments = allAssignmentsCache.upcomingSorted()
         case .all:
-            // Time-agnostic: `UpcomingAssignmentsView` splits past from future under
-            // its `TimelineView`, so rows re-bucket as the clock advances instead of
-            // freezing at a `Date()` captured here.
             upcomingAssignments = allAssignmentsCache.allCandidates()
         case .ignored:
             upcomingAssignments = allAssignmentsCache.ignoredSorted()
@@ -125,7 +108,6 @@ final class HomeViewModel {
             }
         }
 
-        // Load cached data immediately; backgroundSync() on app launch handles the network refresh
         reloadFromCache()
     }
 
@@ -133,11 +115,6 @@ final class HomeViewModel {
         await fetchData(authService: authService)
     }
 
-    /// Coalesced fire-and-forget refresh. Designed for pull-to-refresh
-    /// where the caller returns immediately (so UIRefreshControl dismisses
-    /// its spinner) and the actual fetch continues on a detached Task.
-    /// Repeated pulls while a refresh is already in flight are dropped to
-    /// prevent two fetches racing on the same caches.
     func triggerRefresh(authService: AuthService) {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -153,9 +130,6 @@ final class HomeViewModel {
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
 
-        // `isReachable()` adds Apple's captive-portal probe to the interface-up check,
-        // so a hotel or campus login Wi-Fi shows "no internet" rather than the pin
-        // failure the NTUST or Moodle call would hit.
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
@@ -163,9 +137,6 @@ final class HomeViewModel {
 
         await MainActor.run { manager.loadingState = .loading }
 
-        // Home refreshes only Moodle assignments, sparing the 3-5 s NTUST SSO round
-        // trip. Courses come from AppState.backgroundSync at cold launch and from
-        // ClassTable pull-to-refresh (`forceRefresh: true`); Home reads courseProvider.
         MoodleEnrolledCoursesService.dropSharedAnswer()
         let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
         let allCourses = courseProvider.currentCourses()
@@ -204,19 +175,12 @@ final class HomeViewModel {
                 widgets: []
             ),
 
-            // TODO: Add quickWidgets section once widget features are implemented
         ]
     }
 
     var selectedCourse: SDCourse? = nil
-    /// Set together with ``selectedCourse`` when the detail sheet is opened
-    /// from the TimeSlider so the sheet can render the exact slot the user
-    /// tapped (right weekday, right start/end). Nil when the sheet was
-    /// opened from somewhere that doesn't have slot context.
     var selectedCourseSlot: CourseTimeSlot? = nil
-    /// The assignment page pushed over Home.
     var shownAssignment: MoodleAssignmentPage? = nil
-    /// One opened while the course sheet covered Home, pushed once the sheet has gone.
     @ObservationIgnored private var assignmentAfterSheet: MoodleAssignmentPage?
 
     func archiveAssignment(_ assignment: SDAssignment) {
@@ -267,19 +231,12 @@ final class HomeViewModel {
         broadcastAssignmentChange()
     }
 
-    /// The class table's per-course assignment badge reads the same
-    /// assignment cache, so a tick here has to reach it too. The guard
-    /// flag keeps our own observer from re-reading what we just wrote.
     private func broadcastAssignmentChange() {
         isUpdatingFromNetwork = true
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         isUpdatingFromNetwork = false
     }
 
-    /// Pushes `page`, closing the course sheet first when one covers Home, which a reminder tapped
-    /// with the sheet up would otherwise open behind. With `closingSheet` false the page goes in
-    /// behind the sheet: one over it refused to close, such as a mail draft, or is kept over
-    /// reminders, such as What's New, and would go with it.
     func show(_ page: MoodleAssignmentPage, closingSheet: Bool = true) {
         guard closingSheet, selectedCourse != nil else {
             shownAssignment = page
@@ -328,8 +285,6 @@ final class HomeViewModel {
         saveSectionLayout()
     }
 
-    /// Puts `feature` in the first section that holds shortcuts, adding a Quick widgets section
-    /// when Home has none, so the Add sheet's list always does something.
     func addQuickFeature(_ feature: AppFeature) {
         let holdsShortcuts: (HomeSection) -> Bool = { $0.type == .quickWidgets || $0.type == .custom }
         if !sections.contains(where: holdsShortcuts) {
@@ -347,7 +302,6 @@ final class HomeViewModel {
         saveSectionLayout()
     }
 
-    /// Called by HomeView after drag-reorder completes.
     func saveSectionLayout() {
         reindexSections()
         if let data = try? JSONEncoder().encode(sections) {

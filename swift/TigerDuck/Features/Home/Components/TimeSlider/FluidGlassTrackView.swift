@@ -13,13 +13,9 @@ struct FluidGlassTrackView: View {
         GeometryReader { geo in
             let width = geo.size.width
             let centerX = width / 2
-            // Positive xOffset is right, the future. In RTL the gesture handler flips
-            // the drag so a rightward swipe still advances time, so future segments
-            // flip left too: every x-offset is mirrored so gesture and visuals agree.
             let rtlFactor: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
 
             ZStack {
-                // Glass track background
                 if #available(iOS 26, *) {
                     Capsule()
                         .fill(.clear)
@@ -31,21 +27,17 @@ struct FluidGlassTrackView: View {
 
                 tickMarks(centerX: centerX, visibleWidth: width, rtlFactor: rtlFactor)
 
-                // Course segments positioned relative to center
                 ForEach(viewModel.timeSlots) { slot in
                     let startOffset = viewModel.xOffset(for: slot.start)
                     let endOffset = viewModel.xOffset(for: slot.end)
                     let segWidth = max(TimeSliderMetrics.minimumFluidBlockWidth, endOffset - startOffset)
                     let segCenterX = centerX + rtlFactor * (startOffset + endOffset) / 2
 
-                    // Only render if visible
                     if segCenterX + segWidth / 2 > -50 && segCenterX - segWidth / 2 < width + 50 {
                         let isActive = viewModel.selectedTime >= slot.start && viewModel.selectedTime <= slot.end
                         let segOpacity = isActive
                             ? policy.timeSliderActiveSegmentOpacity
                             : policy.timeSliderInactiveSegmentOpacity
-                        // Clashing courses split the segment's height into flush lanes, as on
-                        // Android, so the band still reads as one block: only its outer corners round.
                         let lane = viewModel.slotLanes[slot.id] ?? TimeSliderLane(lane: 0, count: 1)
                         let laneHeight = TimeSliderMetrics.fluidSegmentHeight / CGFloat(lane.count)
                         let laneTop = (trackHeight - TimeSliderMetrics.fluidSegmentHeight) / 2 + CGFloat(lane.lane) * laneHeight
@@ -65,13 +57,11 @@ struct FluidGlassTrackView: View {
                     }
                 }
 
-                // Center indicator
                 RoundedRectangle(cornerRadius: 1)
                     .fill(.white.opacity(0.7))
                     .frame(width: TimeSliderMetrics.selectionThumbWidth, height: TimeSliderMetrics.selectionThumbHeight)
                     .position(x: centerX, y: trackHeight / 2)
 
-                // Glow dot
                 Circle()
                     .fill(thumbGlowColor)
                     .frame(width: TimeSliderMetrics.glowDotSize, height: TimeSliderMetrics.glowDotSize)
@@ -97,17 +87,13 @@ struct FluidGlassTrackView: View {
         .frame(height: trackHeight)
     }
 
-    // MARK: - Tick Marks
-
     @ViewBuilder
     private func tickMarks(centerX: CGFloat, visibleWidth: CGFloat, rtlFactor: CGFloat) -> some View {
         let markerInterval = TimeSliderMetrics.markerIntervalMinutes * 60
         let majorInterval = TimeSliderMetrics.majorMarkerIntervalMinutes * 60
 
-        // Determine visible time range
         let selectedRef = viewModel.selectedTime.timeIntervalSinceReferenceDate
 
-        // Generate markers covering visible range
         let visibleMinutes = Double(visibleWidth / TimeSliderMetrics.pointsPerMinute)
         let rangeStart = selectedRef - visibleMinutes * 60
         let rangeEnd = selectedRef + visibleMinutes * 60
@@ -153,8 +139,6 @@ struct FluidGlassTrackView: View {
         guard policy.timeSliderUsesCourseColoredThumb else {
             return .white
         }
-        // Overlapping classes leave the thumb one colour to glow: the first
-        // concurrent course, the same one the leftmost card shows.
         if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first {
             return slot.course.color
         }

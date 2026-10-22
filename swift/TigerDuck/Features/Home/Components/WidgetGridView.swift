@@ -45,8 +45,6 @@ struct WidgetGridView: View {
         }
     }
 
-    // MARK: - Cell
-
     @ViewBuilder
     private func widgetCell(_ widget: WidgetItem) -> some View {
         let card = cardContent(widget)
@@ -74,9 +72,6 @@ struct WidgetGridView: View {
                     )
                 )
         } else {
-            // `scrollSafeTapAction` uses a real `Button`, which wins the first press on
-            // iOS 18 against the enclosing ScrollView; the edit long-press rides along as
-            // a `.simultaneousGesture` and never blocks it. See View+ScrollSafeGesture.
             card
                 .scrollSafeTapAction { onTap?(widget.feature) }
                 .longPressToEdit(reduceMotion: reduceMotion) { isEditing = true }
@@ -145,8 +140,6 @@ private struct WidgetDragPreview: View {
         )
     }
 }
-
-// MARK: - Wiggle modifier
 
 extension View {
     func wiggling(_ isWiggling: Bool) -> some View {

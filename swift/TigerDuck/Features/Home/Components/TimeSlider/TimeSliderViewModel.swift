@@ -5,48 +5,30 @@ import UIKit
 final class TimeSliderViewModel {
     private var prefersReducedMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
-    // MARK: - Data
     var timeSlots: [CourseTimeSlot] = [] {
         didSet { slotLanes = Self.lanes(for: timeSlots) }
     }
 
-    /// The lane of each slot that overlaps another, by slot id; see `lanes(for:)`.
     private(set) var slotLanes: [String: TimeSliderLane] = [:]
 
-    // MARK: - State
     var selectedTime: Date = AppClock.now()
     var isUserDragging: Bool = false
 
-    // MARK: - Private
     private var allCourses: [SDCourse] = []
     private var timelineCenterDate: Date = AppClock.now()
-    /// Tracks which haptic interval the user was last in, to fire once per crossing.
     private var lastHapticSlot: Int = 0
     private let hapticGenerator = UISelectionFeedbackGenerator()
-    /// Whether classes do not meet on a day; a slot on such a day is left off
-    /// the timeline. Never, by default, so a test does not read the device's
-    /// cached calendar.
     private let isQuietDay: (Date) -> Bool
-    // `nonisolated(unsafe)` so `deinit` can remove them; `@ObservationIgnored`
-    // keeps the macro from swapping the storage out from under the modifier.
-    // Same pattern as `ClassTableViewModel.dataObserver`.
     @ObservationIgnored
     private nonisolated(unsafe) var quietDayObservers: [Any] = []
 
     var hasCourses: Bool { !timeSlots.isEmpty }
 
-    // MARK: - Compressed Position Cache
-
-    /// Sorted anchors mapping each slot boundary to a compressed X position (in points).
-    /// Built once per `configure` call; `xOffset(for:)` interpolates between them.
     private var anchors: [(time: Date, x: CGFloat)] = []
 
     init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
         self.isQuietDay = isQuietDay
         hapticGenerator.prepare()
-        // Which classes meet can change while the courses do not: a "still have class"
-        // toggle, a holiday published (the calendar store then posts `dataDidUpdate`) or a
-        // class skipped. Rebuild then, rather than wait for the slider to reappear.
         quietDayObservers = [
             AppConstants.holidayNotifyDidChange,
             AppConstants.dataDidUpdate,
@@ -60,9 +42,6 @@ final class TimeSliderViewModel {
         }
     }
 
-    /// Home's slider. Its window spans weeks, so near either end of the term it reaches days
-    /// outside it; a day is quiet unless `calendarStore` makes it a class day, the check the
-    /// class table's carousel makes.
     convenience init(calendarStore: AcademicCalendarStore) {
         self.init(isQuietDay: { !calendarStore.isClassDay($0) })
     }
@@ -73,8 +52,6 @@ final class TimeSliderViewModel {
         }
     }
 
-    // MARK: - Configuration
-
     func configure(courses: [SDCourse]) {
         allCourses = courses
         rebuildTimeline(around: AppClock.now())
@@ -83,9 +60,6 @@ final class TimeSliderViewModel {
         }
     }
 
-    /// Rebuild around the same center when which days are quiet, or which
-    /// classes are skipped, may have changed. Unlike `configure`, it leaves the
-    /// selected time where the user put it.
     func reloadQuietDays() {
         rebuildTimeline(around: timelineCenterDate)
     }
@@ -100,8 +74,6 @@ final class TimeSliderViewModel {
         rebuildAnchors()
     }
 
-    /// Build a compressed mapping: real time → visual X position.
-    /// Course blocks use linear density; gaps between courses are logarithmically compressed.
     private func rebuildAnchors() {
         let intervals = busyIntervals
         guard !intervals.isEmpty else { anchors = []; return }
@@ -115,7 +87,6 @@ final class TimeSliderViewModel {
         var result: [(time: Date, x: CGFloat)] = []
         var x: CGFloat = 0
 
-        // Add padding before first slot
         let paddingBefore = compressedGapWidth(
             minutes: 60, refMin: refMin, ppm: ppm, minGap: minGap, maxGap: maxGap
         )
@@ -125,13 +96,11 @@ final class TimeSliderViewModel {
         for (i, slot) in intervals.enumerated() {
             result.append((time: slot.start, x: x))
 
-            // Slot duration (linear)
             let durationMin = slot.end.timeIntervalSince(slot.start) / 60
             x += CGFloat(durationMin) * ppm
 
             result.append((time: slot.end, x: x))
 
-            // Gap to next slot
             if i + 1 < intervals.count {
                 let next = intervals[i + 1]
                 let gapMin = next.start.timeIntervalSince(slot.end) / 60
@@ -149,7 +118,6 @@ final class TimeSliderViewModel {
             }
         }
 
-        // Add padding after last slot
         let paddingAfter = compressedGapWidth(
             minutes: 60, refMin: refMin, ppm: ppm, minGap: minGap, maxGap: maxGap
         )
@@ -161,12 +129,6 @@ final class TimeSliderViewModel {
         anchors = result
     }
 
-    /// `timeSlots` merged into non-overlapping busy intervals. The class
-    /// table allows two courses in one period; laying both out as separate
-    /// slots gave the anchor table two X ranges for the same minute, so
-    /// `interpolateTime` walked backwards after the first slot's end and the
-    /// drag pinned there. One interval per clash keeps time → X monotonic;
-    /// the track still draws each course's segment on top of the other.
     private var busyIntervals: [(start: Date, end: Date, date: Date)] {
         var result: [(start: Date, end: Date, date: Date)] = []
         for slot in timeSlots {
@@ -179,9 +141,6 @@ final class TimeSliderViewModel {
         return result
     }
 
-    /// Clashing courses stack in lanes on the track instead of one drawing over the other.
-    /// Slots that overlap, directly or through a third, form a group, as `busyIntervals`
-    /// merges them, and take their lanes from `OverlapLanes`; a slot alone is left out.
     static func lanes(for slots: [CourseTimeSlot]) -> [String: TimeSliderLane] {
         var lanes: [String: TimeSliderLane] = [:]
         var group: [CourseTimeSlot] = []
@@ -208,7 +167,6 @@ final class TimeSliderViewModel {
         return lanes
     }
 
-    /// Compress a gap of `minutes` into a visual width.
     private func compressedGapWidth(
         minutes: Double, refMin: Double, ppm: CGFloat, minGap: CGFloat, maxGap: CGFloat
     ) -> CGFloat {
@@ -218,8 +176,6 @@ final class TimeSliderViewModel {
         let width = min(linear, compressed)
         return min(max(width, minGap), maxGap)
     }
-
-    // MARK: - Real-time Update
 
     func tick(_ now: Date) {
         if !isUserDragging {
@@ -238,12 +194,7 @@ final class TimeSliderViewModel {
         }
     }
 
-    // MARK: - Course State Resolution
-
     func courseState(at time: Date) -> CourseState {
-        // Every slot containing `time`, not only the first: overlapping classes put
-        // two courses in one period, each tappable for its own room and assignments.
-        // `timeSlots` is sorted by start, so the cards come out in timeline order.
         let active = timeSlots.filter { time >= $0.start && time <= $0.end }
         if !active.isEmpty {
             return .inClass(active)
@@ -264,33 +215,25 @@ final class TimeSliderViewModel {
         courseState(at: selectedTime)
     }
 
-    // MARK: - Compressed X Offset
-
-    /// Returns the compressed X position for a given time, relative to selectedTime's X.
-    /// Positive = right (future), negative = left (past).
     func xOffset(for time: Date) -> CGFloat {
         let timeX = interpolateX(for: time)
         let selectedX = interpolateX(for: selectedTime)
         return timeX - selectedX
     }
 
-    /// Interpolate within the anchor table to find the X position for any time.
     private func interpolateX(for time: Date) -> CGFloat {
         guard anchors.count >= 2 else { return 0 }
 
-        // Before first anchor
         if time <= anchors.first!.time {
             let dist = anchors.first!.time.timeIntervalSince(time) / 60
             return anchors.first!.x - CGFloat(dist) * TimeSliderMetrics.pointsPerMinute
         }
 
-        // After last anchor
         if time >= anchors.last!.time {
             let dist = time.timeIntervalSince(anchors.last!.time) / 60
             return anchors.last!.x + CGFloat(dist) * TimeSliderMetrics.pointsPerMinute
         }
 
-        // Find surrounding anchors and interpolate
         for i in 0..<anchors.count - 1 {
             let a = anchors[i]
             let b = anchors[i + 1]
@@ -305,26 +248,20 @@ final class TimeSliderViewModel {
         return 0
     }
 
-    // MARK: - Drag
-
     func onDragStarted() {
         isUserDragging = true
         hapticGenerator.prepare()
         lastHapticSlot = hapticSlot(for: selectedTime)
     }
 
-    /// Called incrementally with dx delta (in points).
-    /// Converts dx from compressed visual space back to real time movement.
     func onDragChanged(dx: CGFloat, invertDirection: Bool) {
         if !isUserDragging { onDragStarted() }
         let direction: CGFloat = invertDirection ? 1 : -1
 
-        // Convert visual dx back to time by finding what time corresponds to the new X
         let currentX = interpolateX(for: selectedTime)
         let newX = currentX + direction * dx
         selectedTime = interpolateTime(for: newX)
 
-        // Haptic feedback at interval crossings
         let currentSlot = hapticSlot(for: selectedTime)
         if currentSlot != lastHapticSlot {
             hapticGenerator.selectionChanged()
@@ -335,18 +272,15 @@ final class TimeSliderViewModel {
         checkTimelineRebuildNeeded()
     }
 
-    /// Reverse lookup: given an X position, find the corresponding time.
     private func interpolateTime(for x: CGFloat) -> Date {
         guard anchors.count >= 2 else { return selectedTime }
 
-        // Before first anchor
         if x <= anchors.first!.x {
             let dist = anchors.first!.x - x
             let minutes = Double(dist / TimeSliderMetrics.pointsPerMinute)
             return anchors.first!.time.addingTimeInterval(-minutes * 60)
         }
 
-        // After last anchor
         if x >= anchors.last!.x {
             let dist = x - anchors.last!.x
             let minutes = Double(dist / TimeSliderMetrics.pointsPerMinute)
@@ -383,7 +317,6 @@ final class TimeSliderViewModel {
 
 }
 
-/// Where a clashing slot sits on the track: lane `lane` of `count`, top to bottom.
 struct TimeSliderLane: Equatable {
     let lane: Int
     let count: Int
