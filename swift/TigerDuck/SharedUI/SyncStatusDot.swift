@@ -1,14 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// The one status mark in a page header: a bare dot, with no backing.
-///
-/// Colour is the worst known state of the sources the page depends on
-/// (red > green); grey means nothing has reported yet or the source is
-/// switched off, and never wins. While a fetch runs the dot becomes a
-/// spinning ring. Tapping it lists every source with its own state and when
-/// the page's data last arrived. After a second with no change, no tap and
-/// no open popover the dot fades so it stops competing with the page title.
 struct SyncStatusDot: View {
     struct Source: Identifiable {
         let id: String
@@ -18,13 +10,9 @@ struct SyncStatusDot: View {
         let text: String
     }
 
-    /// The time the details' "Last updated" row gives.
     enum LastSynced: Equatable {
-        /// `schoolDataSyncedAt`, for the pages built from the school data.
         case schoolData
-        /// When the page's own data last arrived from its server, nil if it never has.
         case at(Date?)
-        /// No row, for a page showing nothing it read, as the finder on a day it does not ask about.
         case hidden
     }
 
@@ -36,14 +24,11 @@ struct SyncStatusDot: View {
     private let mode: Mode
     private let lastSynced: LastSynced
 
-    /// App-wide sync sources, read live from the trackers.
     init(servers: [ServerKind], lastSynced: LastSynced) {
         mode = .servers(servers)
         self.lastSynced = lastSynced
     }
 
-    /// One page-local source (the library session, say) the page tracks
-    /// itself.
     init(
         status: ServerStatus, label: String, icon: String, text: String, isLoading: Bool = false,
         lastSynced: LastSynced
@@ -57,14 +42,7 @@ struct SyncStatusDot: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
-    /// Optional so the dot still renders in a preview with no `AppState`
-    /// injected, where "signed out" is the conservative read.
     @Environment(AppState.self) private var appState: AppState?
-    /// Observed rather than read through `Defaults[...]`. `isMinimal` feeds
-    /// `sources`, which the body reads, and a bare subscript is a read
-    /// SwiftUI never subscribes to -- so switching sync off left the row on
-    /// whatever word it already had until something unrelated forced a
-    /// redraw, which is the opposite of what `isMinimal` is for.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.schoolDataSyncedAt) private var schoolDataSyncedAt
     @State private var showDetails = false
@@ -76,12 +54,8 @@ struct SyncStatusDot: View {
     private let session = NTUSTSessionManager.shared
 
     static let idleDelay: Duration = .seconds(1)
-    /// Low enough to read as "background", high enough that red vs green
-    /// still tells apart at a glance.
     static let idleOpacity = 0.5
 
-    /// Worst-of reduction, ignoring `.unknown` (grey) unless nothing else
-    /// is known. A session-level error counts as a failure.
     static func summary(loadingState: LoadingState, statuses: [ServerStatus]) -> ServerStatus {
         if case .error = loadingState { return .failed }
         if statuses.contains(.failed) { return .failed }
@@ -98,14 +72,6 @@ struct SyncStatusDot: View {
 
     private var isSignedIn: Bool { appState?.authService.hasStoredCredentials ?? false }
 
-    /// Sync switched off: the row reads "Minimal" instead of "OK", and nothing
-    /// else about it changes. Signed out it is never called: `body` draws nothing.
-    ///
-    /// It is not treated as off: the academic calendar and the bulletin feed are
-    /// public GETs fetched regardless of this setting, so the backend always has a
-    /// real answer, and a grey "Off" row would hide a backend that is down. A stale
-    /// green cannot linger: `AppState` clears the reading on every flip, and only
-    /// `noteBackendReachable` writes it back while sync is off.
     private func isMinimal(_ server: ServerKind) -> Bool {
         server == .backend && !cloudSyncEnabled
     }
@@ -131,17 +97,12 @@ struct SyncStatusDot: View {
     private var summary: ServerStatus {
         switch mode {
         case .servers:
-            // No grey short-circuit for `allSatisfy(isMinimal)`: a page whose only
-            // source is the backend still has a state worth colouring while sync is
-            // off, and showing it is the point of the minimal reading.
             Self.summary(loadingState: session.loadingState, statuses: sources.map(\.status))
         case .single(let source, _):
             source.status
         }
     }
 
-    /// "Minimal" rather than the bare state when the only thing running is the
-    /// public part — VoiceOver should give the same distinction the rows do.
     private var accessibilityStatusText: String {
         if isLoading { return String(localized: "sync_status_syncing") }
         if case .servers(let servers) = mode,
@@ -157,14 +118,6 @@ struct SyncStatusDot: View {
         return servers.lazy.compactMap { tracker.note(for: $0) }.first
     }
 
-    /// Signed out there is nothing syncing and nothing to report, so the
-    /// header carries no mark at all rather than a grey one that has to
-    /// explain itself. On the pages that need an account the content
-    /// already says so in full, and the one page that works signed out
-    /// (bulletins are public) never had a status worth reading there.
-    ///
-    /// Only `.servers` is account-gated. A `.single` source is page-local
-    /// and tracks something the page signed into itself, like the library.
     @ViewBuilder
     var body: some View {
         if case .servers = mode, !isSignedIn {
@@ -185,9 +138,6 @@ struct SyncStatusDot: View {
                     mark.transition(.scale.combined(with: .opacity))
                 }
             }
-            // The 28pt frame is the tap target, not a backing: the mark
-            // itself stays 10pt. Without it the dot would be a 10pt hit
-            // area, well under the 44pt minimum.
             .frame(width: 28, height: 28)
             .contentShape(Circle())
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isLoading)
@@ -206,9 +156,6 @@ struct SyncStatusDot: View {
         .onDisappear { idleTask?.cancel() }
     }
 
-    /// Any change or interaction brings the dot back to full strength;
-    /// a quiet second with the popover closed fades it again. A running
-    /// fetch never fades — the ring is the progress indicator.
     private func restartIdleTimer() {
         idleTask?.cancel()
         dimmed = false
@@ -220,8 +167,6 @@ struct SyncStatusDot: View {
         }
     }
 
-    /// Red and green alone do not tell the states apart for everyone, so with
-    /// Differentiate Without Color on, OK and failed also differ in shape.
     @ViewBuilder
     private var mark: some View {
         if differentiateWithoutColor, let glyph = Self.glyph(summary) {
@@ -276,8 +221,6 @@ struct SyncStatusDot: View {
         .padding(12)
     }
 
-    /// Dot, icon, name, state. The icon sits in a fixed-width slot so
-    /// symbols of different widths still leave every name on one column.
     private func row(color: Color, icon: String, name: String, text: String?) -> some View {
         HStack(spacing: 8) {
             Circle().fill(color).frame(width: 8, height: 8)
@@ -300,7 +243,6 @@ struct SyncStatusDot: View {
         }
     }
 
-    /// Short forms, so the age fits the row's trailing column.
     static func ageText(_ syncedAt: Date?, now: Date) -> String {
         guard let syncedAt else { return String(localized: "sync_status_never_updated") }
         let seconds = max(0, now.timeIntervalSince(syncedAt))
@@ -324,8 +266,6 @@ struct SyncStatusDot: View {
         }
     }
 
-    /// The shape that tells OK from failed without their colours. Grey, nothing
-    /// reported yet, keeps the plain dot.
     static func glyph(_ status: ServerStatus) -> String? {
         switch status {
         case .unknown: nil
@@ -342,9 +282,6 @@ struct SyncStatusDot: View {
         }
     }
 
-    /// The three words the `.servers` rows report a state in. Not private: a `.single` page
-    /// whose source has no vocabulary of its own (School Mail — a mail server is reachable or
-    /// it is not) should say the same words here rather than keep a second copy of them.
     static func statusText(_ status: ServerStatus) -> String {
         switch status {
         case .ok: String(localized: "sync_status_ok")

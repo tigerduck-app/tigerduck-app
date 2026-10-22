@@ -9,8 +9,6 @@ extension View {
     ) -> some View {
         overlay(alignment: .bottomTrailing) {
             if show {
-                // Read with the course card it sits on. The class table cells set a label
-                // of their own, which names the mark instead.
                 Image(systemName: "book.fill")
                     .font(.system(size: iconSize))
                     .foregroundStyle(color)
@@ -20,8 +18,6 @@ extension View {
         }
     }
 
-    /// The class table's mark for a course whose assignments are all ignored. It takes the
-    /// assignment badge's place, which such a course never shows.
     func ignoredAssignmentsBadge(
         show: Bool,
         iconSize: CGFloat,
@@ -39,8 +35,6 @@ extension View {
     }
 }
 
-/// `book.fill` struck through like the system's slashed symbols, since SF Symbols has no
-/// slashed book.
 struct IgnoredAssignmentsIcon: View {
     let size: CGFloat
 
@@ -48,7 +42,6 @@ struct IgnoredAssignmentsIcon: View {
         let lineWidth = size * 0.09
         Image(systemName: "book.fill")
             .font(.system(size: size))
-            // A clear band on the slash's upper side keeps it apart from the fill, as the system draws it.
             .mask {
                 Rectangle()
                     .overlay {
@@ -62,8 +55,6 @@ struct IgnoredAssignmentsIcon: View {
             }
     }
 
-    /// A line at 45 degrees down to the right across a square centred in the frame, moved `offset`
-    /// towards the upper right.
     private struct Slash: Shape {
         let offset: CGFloat
 

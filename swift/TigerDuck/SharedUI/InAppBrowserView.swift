@@ -1,10 +1,6 @@
 import SwiftUI
 import SafariServices
 
-/// SFSafariViewController only safely accepts http(s). Other schemes
-/// (`javascript:`, `data:`, `file:`) crash on init, so the wrapper falls
-/// back to a graceful unsupported-URL view instead of forwarding the URL
-/// blindly.
 struct InAppBrowserView: View {
     let url: URL
 

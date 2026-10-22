@@ -1,16 +1,9 @@
 import SwiftUI
 
-/// Lays its subviews out left to right, starting a new line whenever the next one would not
-/// fit — tags on a bulletin, recipients on a mail.
-///
-/// A subview wider than a whole line is offered the line's width rather than its own, so it
-/// wraps or truncates inside the line instead of running off the screen.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     var lineSpacing: CGFloat = 6
 
-    /// A parent that proposes back the width this reported, as a centred one does, can hand it a
-    /// fraction of a point less after rounding, which a strict comparison reads as an overflow.
     private static let fitTolerance: CGFloat = 0.5
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
