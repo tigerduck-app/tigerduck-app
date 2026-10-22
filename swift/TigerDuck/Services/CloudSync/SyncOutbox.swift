@@ -1,24 +1,11 @@
 import Foundation
 import os
 
-// MARK: - SyncOp
-
-/// Pending local change waiting to be pushed to the server.
 nonisolated enum SyncOp: Codable, Sendable {
-    /// `moodleId` is the course's Moodle idnumber (or the server's
-    /// `{semester}{courseNo}` fallback) — the value the override endpoint
-    /// resolves against. It is NOT the `client:{semester}:{courseNo}`
-    /// course_key, which that endpoint never consults.
     case courseOverride(semester: String, moodleId: String, customName: String?, colorHex: String?, locale: String?, stamp: Date)
     case assignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, stamp: Date)
-    /// Ignores every assignment of a course, or stops, by the same `moodleId` as
-    /// `courseOverride`. `moodleCourseId` is the numeric Moodle id; with `ignore` nil the op
-    /// sends that id alone, to a server that ignores the course without it.
     case courseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, stamp: Date)
-    /// Deletes a course hidden here from the server, which keeps listing it until this lands.
     case courseDelete(semester: String, courseNo: String, stamp: Date)
-    /// Uploads a course added here, its key forced past a tombstone, as this device holds it when
-    /// it goes. The server lacks the course until this lands.
     case courseAdd(semester: String, courseNo: String, stamp: Date)
 
     private enum CodingKeys: String, CodingKey {
@@ -37,9 +24,6 @@ nonisolated enum SyncOp: Codable, Sendable {
         case semester, courseNo, stamp
     }
 
-    /// Manual decode only: `moodleId` was persisted as `courseKey` before the
-    /// rename, and a failed decode wipes the whole outbox file — so fall back
-    /// to the old key. Encoding stays synthesized (writes `moodleId`).
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if container.contains(.courseOverride) {
@@ -88,10 +72,6 @@ nonisolated enum SyncOp: Codable, Sendable {
         }
     }
 
-    /// Ops with the same dedupKey replace each other (last writer wins).
-    /// courseOverride keys include the field set (and the locale for name
-    /// edits) so simultaneous name and color edits — and per-locale custom
-    /// names — can coexist in the queue rather than evicting each other.
     var dedupKey: String {
         switch self {
         case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, _):
@@ -112,10 +92,6 @@ nonisolated enum SyncOp: Codable, Sendable {
     }
 }
 
-// MARK: - ResolvedSyncOp
-
-/// What the executor receives: the queued op flattened to the Moodle
-/// identifiers the override PATCH endpoints resolve directly.
 nonisolated enum ResolvedSyncOp: Sendable {
     case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?)
     case assignmentOverride(assignmentId: Int, localStatus: String)
@@ -124,36 +100,21 @@ nonisolated enum ResolvedSyncOp: Sendable {
     case courseAdd(semester: String, courseNo: String)
 }
 
-// MARK: - OutboxEntry
-
 nonisolated struct OutboxEntry: Codable, Sendable {
     let id: UUID
     let op: SyncOp
     var attempts: Int
 }
 
-// MARK: - SyncOutbox
-
-/// Persisted outbound-operation queue. Survives app restarts.
 actor SyncOutbox {
     static let maxAttempts = 5
 
     private let directory: URL
     private let read: @Sendable (URL) throws -> Data
     private var entries: [OutboxEntry] = []
-    /// Marks, course settings and course adds the server refused `maxAttempts` times. A pull still
-    /// treats each as an edit on its way up, so the local state stands, and `requeueParked()` gives
-    /// it one more try per full sync until it lands, as `AcademicCalendarStore.unacknowledgedHolidayIDs`
-    /// does for holidays.
     private var parked: [OutboxEntry] = []
-    /// Bumped by `clearAll()`. A drain suspended at `await execute` when the
-    /// queue is cleared must not merge its retained entries back afterwards.
     private var generation = 0
-    /// False while a queue file exists but could not be read, as at a launch behind the lock
-    /// screen (`completeFileProtectionUnlessOpen`). Until it is read, or `loadOrGiveUp` gives up
-    /// on it, nothing is written over the files, and what was queued meanwhile joins what they hold.
     private var isLoaded: Bool
-    /// Reads `loadOrGiveUp` found the files unreadable with protected data available.
     private var unreadableLoads = 0
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
@@ -165,7 +126,6 @@ actor SyncOutbox {
         self.read = read
         let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read)
         let parked = Self.loadEntries(from: directory, fileName: Self.parkedFileName, read: read)
-        // Both or neither, so a retry takes each file whole.
         let loaded = queued != nil && parked != nil
         self.entries = loaded ? queued ?? [] : []
         self.parked = loaded ? parked ?? [] : []
@@ -193,11 +153,6 @@ actor SyncOutbox {
 
     static let unreadableLoadLimit = 3
 
-    /// For a caller that can tell whether protected data is available, which this actor cannot
-    /// ask. A queue file still unreadable with it available is damaged or has the wrong
-    /// permissions rather than waiting for an unlock. After `unreadableLoadLimit` such reads the
-    /// outbox stops waiting: it keeps what it can read and what was queued since, and its next
-    /// write replaces the files, so those edits survive a relaunch.
     func loadOrGiveUp(protectedDataAvailable: Bool) {
         guard !isLoaded else { return }
         let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read)
@@ -213,7 +168,6 @@ actor SyncOutbox {
         adopt(queued: queued ?? [], parked: parkedOnDisk ?? [])
     }
 
-    /// Whether any entry is queued or parked.
     func holdsEntries() -> Bool {
         loadIfNeeded()
         return !entries.isEmpty || !parked.isEmpty
@@ -232,14 +186,11 @@ actor SyncOutbox {
     func clearAll() {
         entries = []
         parked = []
-        // Sign-out empties the files whether or not they were read.
         isLoaded = true
         generation += 1
         persist()
     }
 
-    /// Drops the queued and parked ops `isDropped` names, edits the user chose to throw away. A
-    /// drain under way keeps none of them; one already sent stays sent.
     func discard(where isDropped: @Sendable (SyncOp) -> Bool) {
         loadIfNeeded()
         entries.removeAll { isDropped($0.op) }
@@ -247,8 +198,6 @@ actor SyncOutbox {
         persist()
     }
 
-    /// Queues every parked mark again with one attempt left. One whose old copy a drain still
-    /// holds stays parked: that drain drops the copy when it ends, so requeuing would lose both.
     func requeueParked() {
         loadIfNeeded()
         guard !parked.isEmpty else { return }
@@ -266,16 +215,11 @@ actor SyncOutbox {
         persist()
     }
 
-    /// `keepsWithoutAttempt` for `op`. A course add spends an attempt on any answer from the server,
-    /// 5xx included: its whole-term upload can fail there for its payload alone, and waiting without
-    /// one would hold every op behind it. After `maxAttempts` it parks, out of the queue's way.
     static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {
         if case .courseAdd = op, case PushAPIError.httpStatus(_, _) = error { return false }
         return keepsWithoutAttempt(error)
     }
 
-    /// Errors that say nothing about the edit: no network, a cancelled drain, a session to renew,
-    /// or a server that is down or busy. The entry waits for a later drain without an attempt.
     static func keepsWithoutAttempt(_ error: Error) -> Bool {
         switch error {
         case is CancellationError, is URLError:
@@ -289,18 +233,11 @@ actor SyncOutbox {
         }
     }
 
-    // MARK: - Drain
-
-    /// Process entries in order via the provided executor, leaving the ones `isHeld` names
-    /// queued and untried. Returns `true` if the queue is empty at the end.
     @discardableResult
     func drain(
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
         execute: @Sendable (ResolvedSyncOp) async throws -> Void
     ) async -> Bool {
-        // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
-        // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
-        // mid-drain bumps `generation`: stop and never merge back, or cleared entries resurrect.
         loadIfNeeded()
         let snapshot = entries
         let snapshotIds = Set(snapshot.map(\.id))
@@ -312,9 +249,6 @@ actor SyncOutbox {
             guard generation == startGeneration else { return }
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
-            // A mid-drain enqueue can share a dedupKey with a retained entry. The new op is the
-            // last writer, so drop the retained entry it supersedes; keeping both would make the
-            // next drain PATCH the stale value before the fresh one. A discarded one goes too.
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
             let stillQueued = Set(entries.map(\.id))
             entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && stillQueued.contains($0.id) }
@@ -326,7 +260,6 @@ actor SyncOutbox {
         while index < snapshot.count {
             guard generation == startGeneration else { return entries.isEmpty }
             let entry = snapshot[index]
-            // Discarded or superseded since the snapshot: not sent.
             guard entries.contains(where: { $0.id == entry.id }) else {
                 index += 1
                 continue
@@ -340,8 +273,6 @@ actor SyncOutbox {
             do {
                 try await execute(resolve(entry.op))
             } catch {
-                // A `clearAll()` during the request removed the entry; keeping or parking
-                // it now would bring it back.
                 guard generation == startGeneration else { return entries.isEmpty }
                 if Self.keepsWithoutAttempt(error, for: entry.op) {
                     mergeAndStore(retainRemainder: index)
@@ -364,11 +295,6 @@ actor SyncOutbox {
         return entries.isEmpty
     }
 
-    /// Reports an entry the server refused `maxAttempts` times. A mark, a course's ignore setting
-    /// or a course added here is parked, as dropping the add would let the next full sync drop
-    /// the course; a course override, a course delete, or a numeric course id sent alone, is
-    /// dropped: the next full sync applies the server's colour, name or course over it, and
-    /// sends the id again.
     private func giveUp(on entry: OutboxEntry, after error: Error) {
         let kind: String
         let parks: Bool
@@ -381,20 +307,14 @@ actor SyncOutbox {
         }
         logger.warning("Outbox: gave up on \(kind, privacy: .public) after \(Self.maxAttempts) attempts")
         AppLogger.captureError(error, context: ["phase": "cloudSync.outbox.giveUp", "op": kind])
-        // One discarded or superseded while its request was out is not parked either.
         guard parks, entries.contains(where: { $0.id == entry.id }) else { return }
         parked.removeAll { $0.op.dedupKey == entry.op.dedupKey }
         parked.append(entry)
     }
 
-    // MARK: - Resolution
-
     private func resolve(_ op: SyncOp) -> ResolvedSyncOp {
         switch op {
         case .courseOverride(_, let moodleId, let customName, let colorHex, let locale, _):
-            // Use the locale the name was stored under. Legacy queued ops
-            // predate locale tracking (decode to nil) — fall back to the
-            // device locale so the name still carries a tag.
             let resolvedLocale = customName != nil
                 ? (locale ?? Locale.current.language.languageCode?.identifier)
                 : nil
@@ -407,7 +327,6 @@ actor SyncOutbox {
             return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore)
 
         case .courseDelete(let semester, let courseNo, _):
-            // The Moodle idnumber, which PATCH .../override takes, deletes nothing.
             return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
 
         case .courseAdd(let semester, let courseNo, _):
@@ -415,14 +334,9 @@ actor SyncOutbox {
         }
     }
 
-    // MARK: - Persistence
-
     private static let fileName = "outbox.json"
-    /// Apart from `fileName`, which a build without parking would read as queued edits.
     private static let parkedFileName = "outbox-parked.json"
 
-    /// Reads the files the init could not. What was queued since stays, after what they hold, and
-    /// replaces an op of theirs with the same key.
     private func loadIfNeeded() {
         guard !isLoaded,
               let queued = Self.loadEntries(from: directory, fileName: Self.fileName, read: read),
@@ -455,8 +369,6 @@ actor SyncOutbox {
         }
     }
 
-    /// Decodes each entry independently so one undecodable entry (unknown
-    /// op case, schema drift) drops only itself, never the whole queue.
     private struct FailableEntry: Decodable {
         let entry: OutboxEntry?
         init(from decoder: Decoder) throws {
@@ -464,7 +376,6 @@ actor SyncOutbox {
         }
     }
 
-    /// Nil when the file exists but cannot be read now; none when it is missing or undecodable.
     private static func loadEntries(
         from directory: URL,
         fileName: String,
@@ -490,7 +401,6 @@ actor SyncOutbox {
     }
 }
 
-/// Thrown by the executor when the API returns 401 so the outbox drain aborts.
 struct SyncOutboxAuthError: Error {
     let statusCode: Int
 }
