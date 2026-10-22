@@ -61,9 +61,6 @@ struct ScoreView: View {
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .refreshable {
-            // Fire-and-forget: pull gesture dismisses UIRefreshControl
-            // immediately; live progress moves to the top-right
-            // SyncStatusDot like other pages in the app.
             viewModel.triggerRefresh(authService: appState.authService)
         }
         .sheet(item: $selectedCourse) { course in

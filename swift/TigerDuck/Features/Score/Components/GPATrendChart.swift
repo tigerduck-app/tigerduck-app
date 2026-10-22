@@ -1,14 +1,6 @@
 import SwiftUI
 import Charts
 
-/// The GPA line chart and the readout under it, shared by the iPhone's `RankingsTrendCard` and
-/// the Mac's score page. Each wraps it in its own card and scope picker.
-///
-/// A term whose ranking the school has not posted still gets a point, the GPA from the grades in
-/// so far, drawn hollow at the end of a dashed stretch to read as an estimate, without ranks.
-///
-/// Selection is sticky, so the chart can be compared with other cards: a tap, drag or Mac hover
-/// picks the nearest term, kept after the pointer leaves; the row below shows its GPA and ranks.
 struct GPATrendChart: View {
     let points: [GPATrendPoint]
     let scope: ScoreViewModel.RankingScope
@@ -16,16 +8,11 @@ struct GPATrendChart: View {
     @State private var selectedTerm: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// The theme tint; `Color.accentColor` ignores `.tint(...)`, this doesn't.
     private let lineColor = TintShapeStyle()
 
-    // iOS is dark-only and draws in the theme's fixed colours. The Mac
-    // follows the system appearance, where fixed white text vanishes in
-    // light mode, so it takes the adaptive ones.
     #if os(macOS)
     private let primaryText = Color.primary
     private let secondaryText = Color.secondary
-    /// Fills an estimate's hollow ring: the Mac score cards' ground.
     private let ringFill = Color.secondarySystemGroupedBackgroundCompat
     #else
     private let primaryText = Color.textPrimary
@@ -38,8 +25,6 @@ struct GPATrendChart: View {
             chart
             summaryRow(for: resolvedSelection)
         }
-        // Reset selection if the term it pointed to is gone after a refresh,
-        // so the indicator/RuleMark doesn't silently point at a missing entry.
         .onChange(of: points.map(\.term)) { _, newTerms in
             if let term = selectedTerm, !newTerms.contains(term) {
                 selectedTerm = nil
@@ -47,10 +32,6 @@ struct GPATrendChart: View {
         }
     }
 
-    // MARK: - Chart
-
-    /// Consecutive published terms, split wherever a provisional term
-    /// sits, so the solid line never bridges an estimate.
     private var publishedRuns: [[GPATrendPoint]] {
         var runs: [[GPATrendPoint]] = [[]]
         for point in points {
@@ -63,8 +44,6 @@ struct GPATrendChart: View {
         return runs.filter { !$0.isEmpty }
     }
 
-    /// Each provisional term paired with the point before it, so the dashed
-    /// stretch continues the line into the estimate.
     private var provisionalSegments: [[GPATrendPoint]] {
         points.indices.compactMap { index in
             guard points[index].isProvisional else { return nil }
@@ -127,9 +106,6 @@ struct GPATrendChart: View {
                     .fill(Color.clear)
                     .contentShape(Rectangle())
                     .gesture(
-                        // minimumDistance: 0 hands taps to the drag handler too, so no separate
-                        // SpatialTapGesture is needed. There is no onEnded: the selection stays
-                        // pinned after the finger lifts.
                         DragGesture(minimumDistance: 0)
                             .onChanged { drag in
                                 selectTerm(
@@ -140,8 +116,6 @@ struct GPATrendChart: View {
                             }
                     )
                     #if os(macOS)
-                    // A pointer reads the chart by moving over it. Leaving
-                    // keeps the last term, as lifting a finger does.
                     .onContinuousHover { phase in
                         if case .active(let location) = phase {
                             selectTerm(at: location, proxy: proxy, geometry: geo)
@@ -164,8 +138,6 @@ struct GPATrendChart: View {
         .value("GPA", gpa)
     }
 
-    /// Filled dot for a published term, hollow ring for an estimate; the
-    /// pinned term grows either way.
     @ViewBuilder
     private func symbol(for point: GPATrendPoint) -> some View {
         let size: CGFloat = isSelected(point.term) ? 14 : 9
@@ -180,8 +152,6 @@ struct GPATrendChart: View {
                 .frame(width: size, height: size)
         }
     }
-
-    // MARK: - Summary
 
     @ViewBuilder
     private func summaryRow(for point: GPATrendPoint?) -> some View {
@@ -206,8 +176,6 @@ struct GPATrendChart: View {
         .animation(Self.summaryAnimation(reduceMotion: reduceMotion), value: scope)
     }
 
-    /// Animates the summary's change of term or scope, except with Reduce Motion on, as the rest
-    /// of Score does.
     static func summaryAnimation(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .smoothSpring
     }
@@ -231,12 +199,6 @@ struct GPATrendChart: View {
         }
     }
 
-    // MARK: - Selection resolution
-
-    /// Map a tap/drag location to the closest term by plot-area
-    /// proportion. Using index math instead of `proxy.value(atX:)` keeps this
-    /// robust against Swift Charts' categorical-axis quirks (which return
-    /// nil at the padding edges and the zero-midpoint between points).
     private func selectTerm(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
         guard !points.isEmpty else { return }
         guard let plotFrame = proxy.plotFrame else { return }
@@ -250,8 +212,6 @@ struct GPATrendChart: View {
         selectedTerm = points[clampedIndex].term
     }
 
-    /// Point matching the selected term, falling back to the most recent
-    /// entry so the summary row is never blank before first tap.
     private var resolvedSelection: GPATrendPoint? {
         if let term = selectedTerm,
            let match = points.first(where: { $0.term == term }) {
@@ -281,8 +241,6 @@ struct GPATrendChart: View {
         guard point.isProvisional else { return base }
         return base + " · " + String(localized: "score_gpa_provisional")
     }
-
-    // MARK: - Helpers
 
     private func gpa(for point: GPATrendPoint) -> Double? {
         rank(point).gpa
