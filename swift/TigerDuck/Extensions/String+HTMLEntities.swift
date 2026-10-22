@@ -1,13 +1,6 @@
 import Foundation
 
 extension String {
-    /// Decodes HTML character references that Moodle may emit in assignment titles and course
-    /// full names: decimal (`&#38;`), hexadecimal (`&#x26;`, `&#X26;`) and named (`&amp;`, `&lt;`,
-    /// `&rsquo;`, `&mdash;`, …).
-    ///
-    /// Decoding is a single left-to-right pass, so `&amp;lt;` resolves to the literal `&lt;`, not
-    /// `<`, preserving doubly encoded text. Unknown entities such as `&foo;` are left intact
-    /// rather than dropped.
     func decodingHTMLEntities() -> String {
         guard contains("&") else { return self }
 
@@ -29,10 +22,6 @@ extension String {
         return result
     }
 
-    /// Search for the closing `;` of an entity body, scanning at most
-    /// `maxBodyLength` characters past `start`. Bounding the lookahead
-    /// keeps an unrelated `;` later in the string from being treated as
-    /// the terminator of an unrelated `&`.
     private func nextSemicolon(after start: Index) -> Index? {
         let maxBodyLength = 10
         let bodyStart = self.index(after: start)
@@ -62,11 +51,6 @@ extension String {
         return String(Character(scalar))
     }
 
-    /// Common HTML5 named entities Moodle text typically uses. Not the
-    /// full spec list — covers the punctuation, symbols, and Latin
-    /// supplement characters likely to appear in assignment titles and
-    /// course descriptions. Numeric entities cover anything outside this
-    /// set.
     private static let namedEntities: [String: String] = [
         "amp": "&",
         "lt": "<",
