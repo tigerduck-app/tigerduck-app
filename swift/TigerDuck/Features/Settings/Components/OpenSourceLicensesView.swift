@@ -7,6 +7,9 @@ struct OpenSourceLicensesView: View {
     var body: some View {
         List {
             if let catalog {
+                // TigerDuck's own licence, and next to it anything TigerDuck
+                // publishes separately — name-abbr is MIT, not the app's
+                // AGPL, and listing it under "third-party" would be wrong.
                 Section {
                     NavigationLink {
                         AppLicenseView(license: catalog.app)
@@ -31,6 +34,9 @@ struct OpenSourceLicensesView: View {
                     }
                 }
             } else {
+                // `LicenseCatalog.load` already logged the failure. Don't leave an empty
+                // page: MIT and BSD attribution and the AGPL source offer are owed whether
+                // or not the JSON parsed, and the repository has both.
                 Section {
                     Text(String(localized: "settings_licenses_unavailable"))
                         .font(.callout)

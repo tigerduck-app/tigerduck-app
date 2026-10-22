@@ -38,6 +38,7 @@ struct ClassTableImportScannerView: View {
             .environment(\.colorScheme, .dark)
             .navigationTitle(String(localized: "class_table_import"))
             .navigationBarTitleDisplayMode(.inline)
+            // The bar takes its dark scheme only over a background it shows.
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -117,6 +118,8 @@ struct ClassTableImportScannerView: View {
     }
 }
 
+/// VisionKit's scanner, which reports a code once when it comes into view: one still in view
+/// after its alert or confirm screen closes is read again only once it leaves and comes back.
 private struct QRDataScanner: UIViewControllerRepresentable {
     let onCode: (String) -> Bool
 
@@ -204,6 +207,7 @@ private struct QRCaptureScanner: UIViewRepresentable {
     final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
         var onCode: (String) -> Bool
         private let session = AVCaptureSession()
+        /// `startRunning` blocks until the camera is up, so it runs off the main thread.
         private let sessionQueue = DispatchQueue(label: "org.ntust.app.TigerDuck.classTableImport.camera")
         private var filter = RepeatedCodeFilter()
         private var rotation: AVCaptureDevice.RotationCoordinator?
@@ -233,6 +237,7 @@ private struct QRCaptureScanner: UIViewRepresentable {
             session.addInput(input)
             session.addOutput(output)
             session.commitConfiguration()
+            // The types can be set only once the output is in a session with a camera.
             output.metadataObjectTypes = [.qr]
             output.setMetadataObjectsDelegate(self, queue: .main)
 
@@ -272,6 +277,9 @@ private struct QRCaptureScanner: UIViewRepresentable {
     }
 }
 
+/// Lets a code through once while it stays in view. AVFoundation reports a code on every frame
+/// that shows it, and without this a code still in front of the camera would open its confirm
+/// screen again the moment it was cancelled.
 struct RepeatedCodeFilter {
     static let gap: TimeInterval = 1
 

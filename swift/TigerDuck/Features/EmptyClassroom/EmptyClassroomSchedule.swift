@@ -58,6 +58,9 @@ nonisolated enum EmptyClassroomSchedule {
         case outOfTerm
     }
 
+    /// Why `day` has no rooms to show, or nil on a teaching day. The booking system shows the
+    /// weekly timetable on a holiday and between terms as if classes met, and nothing at all on a
+    /// weekend (https://github.com/tigerduck-app/tigerduck-app/issues/478).
     static func dayOff(
         _ day: Date,
         holidays: (Date) -> [Holiday],

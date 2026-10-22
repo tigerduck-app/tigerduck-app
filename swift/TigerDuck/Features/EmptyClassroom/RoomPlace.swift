@@ -6,6 +6,9 @@ nonisolated struct RoomPlace: Equatable, Sendable {
     let level: Int
     let number: Int?
 
+    /// Reads `TR-214`, `TR-310-1`, `IB-1006`, `IB-9F`, `EE-B03`, `T4-B1` and `HHC-A304`, where
+    /// the hundreds give the floor and 0 means B1, and a name that writes its floor in
+    /// characters. Nil for a name with no floor, such as a placeholder for a room to be set.
     init?(room name: String) {
         let room = name.uppercased().filter { !$0.isWhitespace }
         if let match = room.wholeMatch(of: /HHC-([A-Z])(\d{3,4}).*/), let number = Int(match.2) {
@@ -35,6 +38,8 @@ nonisolated struct RoomPlace: Equatable, Sendable {
         level >= 1 ? "\(level)F" : "B\(1 - level)"
     }
 
+    /// The part after the building code. A basement written `B03` is room 03 of B1; anything
+    /// after the digits, such as `-1` or `A`, names part of a room on the same floor.
     private static func floor(of rest: String) -> (level: Int, number: Int?)? {
         if let match = rest.wholeMatch(of: /B(\d)/), let depth = Int(match.1) {
             return (1 - depth, nil)

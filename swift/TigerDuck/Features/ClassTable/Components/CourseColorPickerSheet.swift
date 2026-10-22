@@ -132,6 +132,9 @@ struct CourseColorPickerSheet: View {
                     suppressNextColorChange = false
                     return
                 }
+                // This also sees the no-op tick SwiftUI emits when the picker first shows
+                // the current course color; the debouncer applies nothing for it, so just
+                // opening the sheet issues no setColor call and broadcast.
                 customPicks.pick(hexFrom(color: newValue))
             }
         }
@@ -161,6 +164,14 @@ struct CourseColorPickerSheet: View {
         .contentShape(Circle())
     }
 
+    /// Extract a 24-bit RGB hex from a SwiftUI `Color`. The picker's `Color`
+    /// resolves through the active environment.
+    ///
+    /// On macOS, `NSColor(color)` may land in a color space with no direct
+    /// `cgColor`: the API is declared non-optional but documented to return
+    /// nil then, and the picker's catalog colors trip this. Converting through
+    /// `.sRGB` first reads RGBA from a well-defined space, and an unresolved
+    /// CGColor becomes black (0) instead of a crash.
     private func hexFrom(color: Color) -> UInt32 {
         #if canImport(UIKit)
         let resolved: CGColor? = UIColor(color).cgColor
@@ -178,6 +189,9 @@ struct CourseColorPickerSheet: View {
     }
 }
 
+/// Holds a custom colour back until the drag pauses. The `ColorPicker` reports every
+/// step of a drag, and each applied pick writes the colour map, posts `dataDidUpdate`,
+/// which reloads Home, Class Table, Calendar and the Live Activity, and queues a sync.
 @MainActor
 final class CustomColorPickDebouncer {
     static let pause: Duration = .milliseconds(300)

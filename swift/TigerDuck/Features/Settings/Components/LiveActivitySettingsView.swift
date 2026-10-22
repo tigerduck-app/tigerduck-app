@@ -103,6 +103,9 @@ struct LiveActivitySettingsView: View {
             refreshLiveActivityAuthorization()
         }
         .onChange(of: scenePhase) { _, newPhase in
+            // Re-read after a trip to Settings, as `NotificationPermissionSettingsView`
+            // does. This also fires while that screen is pushed on top, so the row is
+            // right when the user pops back; `.task` does not re-run on a pop.
             if newPhase == .active {
                 refreshLiveActivityAuthorization()
             }
@@ -113,6 +116,14 @@ struct LiveActivitySettingsView: View {
         liveActivitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
     }
 
+    /// The link row's state, or `nil` to show nothing when the user is not blocked.
+    /// The only gate is `ActivityAuthorizationInfo().areActivitiesEnabled`: when it is
+    /// false, `LiveActivityCoordinator.apply` requests nothing. Notification
+    /// authorization is not a gate, unlike on Android: on iOS `Activity.request`
+    /// succeeds with notifications denied, so a warning would sit on a working screen.
+    /// Static and taking a `Bool` so `LiveActivitySettingsViewTests` can pin the
+    /// decision without constructing a view, store or environment.
+    /// See docs/decisions/0011-live-activity-permission-gate.md.
     static func permissionGapStatus(
         liveActivitiesEnabled: Bool
     ) -> NotificationPermissionSettingsView.RowStatus? {

@@ -9,6 +9,8 @@ final class ClassTableImportModel: Identifiable {
         let nickname: String
     }
 
+    /// The alerts that start a lookup carry its job, so their buttons work
+    /// whether SwiftUI clears the alert before or after it runs them.
     enum Prompt: Equatable {
         case invalid
         case noCode
@@ -142,6 +144,7 @@ final class ClassTableImportModel: Identifiable {
         let request = VNDetectBarcodesRequest()
         request.symbologies = [.qr]
         #if targetEnvironment(simulator)
+        // The simulator cannot create the inference context the later revisions run in.
         request.revision = 1
         #endif
         do {

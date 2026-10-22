@@ -42,6 +42,8 @@ struct BulletinNotificationSettingsView: View {
             }
         }
         .onDisappear {
+            // Auto-save on leaving the page (swipe back, tab switch). Pushing the editor also
+            // fires `onDisappear`; a non-nil `editingClientId` means the page is only covered.
             if editingClientId == nil, store.isDirty {
                 Task { await store.save() }
             }
@@ -312,6 +314,14 @@ struct BulletinNotificationSettingsView: View {
         UIApplication.shared.open(url)
     }
 
+    /// Whether the off-state section must explain the permission problem and offer iOS Settings,
+    /// instead of leaving "Turn on bulletin push" as the only control. `.denied` is the one status
+    /// the enable button cannot move: iOS never re-prompts after a refusal, so
+    /// `requestAuthorization` returns `false` silently and `enablePush()` stops at its guard. The
+    /// on-state branch's status row and Settings button are unreachable from here, so this section
+    /// carries both. An unknown future status errs toward the route, matching
+    /// `NotificationPermissionSettingsView.notificationPermissionStatus(for:)`, which maps it to
+    /// `.notGranted`. `static` over a plain value so a test needs no view or `AppState`.
     static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
         switch status {
         case .denied: return true

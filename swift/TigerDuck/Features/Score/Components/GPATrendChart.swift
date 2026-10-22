@@ -8,6 +8,7 @@ struct GPATrendChart: View {
     @State private var selectedTerm: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// The theme tint; `Color.accentColor` ignores `.tint(...)`, this doesn't.
     private let lineColor = TintShapeStyle()
 
     #if os(macOS)
@@ -199,6 +200,10 @@ struct GPATrendChart: View {
         }
     }
 
+    /// Map a tap/drag location to the closest term by plot-area
+    /// proportion. Using index math instead of `proxy.value(atX:)` keeps this
+    /// robust against Swift Charts' categorical-axis quirks (which return
+    /// nil at the padding edges and the zero-midpoint between points).
     private func selectTerm(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
         guard !points.isEmpty else { return }
         guard let plotFrame = proxy.plotFrame else { return }

@@ -79,6 +79,9 @@ struct TodayCourseCarousel: View {
             .padding(.horizontal, carouselEdgeInset)
         }
 
+        // Only iOS presents this view (the Mac uses MacClassTableView), and
+        // ScrollPosition needs macOS 15 against a macOS 14 deployment target, so
+        // the self-scroll is compiled for iOS alone instead of gated at runtime.
         #if os(iOS)
         return row
             .scrollPosition($scrollPosition)

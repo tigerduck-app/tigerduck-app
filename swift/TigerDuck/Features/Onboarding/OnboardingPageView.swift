@@ -64,9 +64,15 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         .padding(.top, TigerDuckTheme.Spacing.xxl)
         .padding(.bottom, TigerDuckTheme.Spacing.xxl * 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Lay the page out against the device, not the keyboard's safe area: by default, focusing a
+        // login field pushes the whole VStack, "Sign in" and "Skip for now" included, above the
+        // keyboard, so the buttons jump. Tap-to-dismiss and the ScrollView's scroll dismiss it.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         #if canImport(UIKit)
+        // `simultaneousTapGesture` uses `.simultaneousGesture`, not `.onTapGesture`: a plain tap
+        // recognizer on the page root competes with, and on iOS 18 swallows, taps on the `Link`s
+        // and `Button`s in `content` (the welcome page's GitHub link). See View+ScrollSafeGesture.
         .simultaneousTapGesture { UIApplication.dismissKeyboard() }
         #endif
     }
@@ -94,6 +100,9 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
                 .foregroundStyle(accentColor)
                 .symbolEffect(.pulse, isActive: !reduceMotion)
         case .layerFlash:
+            // Compose the shield and lock as separate images so only the
+            // lock animates (the built-in lock.shield.fill effect would
+            // pulse both layers).
             ZStack {
                 Image(systemName: "shield.fill")
                     .font(.system(size: heroIconSize))

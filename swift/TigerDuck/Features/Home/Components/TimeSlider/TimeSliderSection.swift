@@ -82,6 +82,9 @@ struct TimeSliderSection: View {
                     )
                 }
             }
+            // Tick from `.onChange`, not the body: mutating state during body evaluation
+            // trips "Modifying state during view update". Pass `AppClock.now()`, not
+            // `context.date`, so the next tick does not undo a debug time override.
             .onChange(of: context.date) { _, _ in
                 viewModel.tick(AppClock.now())
             }

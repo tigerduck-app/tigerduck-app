@@ -15,6 +15,9 @@ struct OtherSettingsView: View {
                         Text(String(localized: "settings_font_size_title"))
                             .foregroundStyle(.primary)
                         Spacer()
+                        // Locale-aware decimal separator: en "1.20×",
+                        // de/fr/es/it "1,20×". `String(format:)` would
+                        // be POSIX-only and break the non-period locales.
                         Text(CourseCardFontScale
                             .normalize(appState.courseCardFontScale)
                             .formatted(.number.precision(.fractionLength(2))) + "×")

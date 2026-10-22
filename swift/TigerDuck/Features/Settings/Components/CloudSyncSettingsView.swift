@@ -121,6 +121,10 @@ struct CloudSyncSettingsView: View {
         )
     }
 
+    /// Registered means the server accepted this device, which is what
+    /// `lastRegisteredAt` records — the Mac account tab reads the same. A
+    /// push-to-start token only exists while Live Activities are on, so its
+    /// length said nothing about whether reminders can reach here.
     @ViewBuilder
     private func syncStatusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
         LabeledContent(label) {

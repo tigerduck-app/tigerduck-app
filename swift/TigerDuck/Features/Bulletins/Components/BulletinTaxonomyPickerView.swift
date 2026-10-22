@@ -30,6 +30,9 @@ struct BulletinTaxonomyPickerView: View {
                                     .foregroundStyle(.tint)
                             }
                         }
+                        // Without `contentShape`, taps on the Spacer or trailing padding
+                        // fall through to the List row (a no-op) instead of the Button,
+                        // so the whole row is made hit-testable.
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)

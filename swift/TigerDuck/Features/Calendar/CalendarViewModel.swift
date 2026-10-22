@@ -13,6 +13,9 @@ final class CalendarViewModel {
     private(set) var calendarDays: [Date?] = CalendarViewModel.buildCalendarDays(for: .now)
 
     private var hasLoaded = false
+    // `nonisolated(unsafe)` lets `deinit`, nonisolated under Swift 6, read this to
+    // remove the observer. `@ObservationIgnored` is required: without it `@Observable`
+    // makes this a computed accessor, and the modifier has no effect (a warning).
     @ObservationIgnored
     private nonisolated(unsafe) var dataObserver: Any? = nil
 
@@ -54,6 +57,9 @@ final class CalendarViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            // Delivered on the main queue, but the closure crosses into this
+            // @MainActor class, so hop explicitly to make calling `setEvents` sound
+            // under Swift 6 strict concurrency.
             Task { @MainActor [weak self] in
                 self?.setEvents(DataCache.shared.loadCalendarEvents())
             }

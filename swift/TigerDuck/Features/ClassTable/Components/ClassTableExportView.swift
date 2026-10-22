@@ -5,6 +5,8 @@ import UIKit
 struct ClassTableExportView: View {
     let viewModel: ClassTableViewModel
     let owner: String?
+    /// The page's Differentiate Without Color, handed to the grid directly:
+    /// the renderer's environment cannot carry it.
     let differentiateWithoutColor: Bool
 
     static let width: CGFloat = 390
@@ -38,6 +40,13 @@ struct ClassTableExportView: View {
 
 @MainActor
 enum ClassTableExporter {
+    /// Draws ``ClassTableExportView`` into a PNG in the temporary directory
+    /// and returns its URL, or `nil` when nothing could be drawn or written.
+    /// Hand the URL to ``discard(_:)`` once it has been shared.
+    ///
+    /// `ImageRenderer` starts from an empty environment rather than the one
+    /// the page sits in, so everything the grid reads from it is handed over
+    /// explicitly.
     static func render(
         viewModel: ClassTableViewModel,
         appState: AppState,
@@ -55,7 +64,11 @@ enum ClassTableExporter {
             .environment(appState)
             .environment(\.colorScheme, .dark)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
+            // A right-to-left language mirrors the page's grid; the empty
+            // environment would draw it left-to-right.
             .environment(\.layoutDirection, layoutDirection)
+            // Bold Text. Differentiate Without Color cannot be set here, so
+            // it rides on the view instead.
             .environment(\.legibilityWeight, legibilityWeight)
         let renderer = ImageRenderer(content: content)
         renderer.scale = 3
@@ -65,8 +78,11 @@ enum ClassTableExporter {
         let name = fileName(
             title: String(localized: "feature_class_table"),
             semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
+            // A nickname has no length limit, and a file name past 255 bytes cannot be written.
             studentId: owner.map { String($0.prefix(40)) }
         )
+        // Drawing needs the main actor; encoding a 3x PNG and writing it does
+        // not, and is the slower half.
         return await Task.detached(priority: .userInitiated) { () -> URL? in
             guard let data = image.pngData() else { return nil }
             let fileManager = FileManager.default
@@ -117,6 +133,8 @@ enum ClassTableExporter {
         return parts.joined(separator: "_") + ".png"
     }
 
+    /// Path separators, the characters Files and FAT-formatted drives
+    /// refuse, and control characters.
     private nonisolated static let unsafeFileNameCharacters = CharacterSet(charactersIn: "/\\:*?\"<>|")
         .union(.controlCharacters)
 }

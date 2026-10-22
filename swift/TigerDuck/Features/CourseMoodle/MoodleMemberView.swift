@@ -204,6 +204,7 @@ struct MoodleMemberProfile: View {
                 .textSelection(.enabled)
         case .email(let address):
             if let url = URL(string: "mailto:\(address)") {
+                // Wrapped, an address would break with a hyphen it does not have.
                 Text(AttributedString(address, attributes: AttributeContainer().link(url)))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)

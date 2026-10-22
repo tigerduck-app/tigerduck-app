@@ -10,6 +10,8 @@ struct ClassTableImportConfirmView: View {
                 Section(String(localized: "class_table_nickname")) {
                     TextField(String(localized: "class_table_nickname"), text: $model.nickname)
                         #if os(macOS)
+                        // A grouped Mac form puts the label beside the field, under the same
+                        // words in the section header.
                         .labelsHidden()
                         #endif
                 }
@@ -21,6 +23,7 @@ struct ClassTableImportConfirmView: View {
             }
             .formStyle(.grouped)
             #if os(macOS)
+            // A Mac sheet has no title bar to show the navigation title in.
             .safeAreaInset(edge: .top) {
                 Text(String(localized: "class_table_import"))
                     .font(.headline)

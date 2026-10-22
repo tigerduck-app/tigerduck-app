@@ -3,9 +3,15 @@ import SwiftUI
 nonisolated extension MoodleMember {
     var name: String { MoodlePersonName.displayName(fullName) }
     var studentId: String? { idNumber ?? MoodlePersonName.studentId(fullName) }
+    /// Never Moodle's own field, which NTUST's Moodle fills with the degree level, and only for the
+    /// signed-in student.
     var department: NTUSTDepartment? { NTUSTDepartment(studentId: studentId) }
 }
 
+/// The department a bachelor's student ID names, the one the student was admitted to. The ID is a
+/// letter, the entry year in three digits, the department's code in two and a serial in three.
+/// Each case is the department's course code, which names its strings, and only the codes the
+/// school's course rosters confirm are here (`app-translation/CONVENTIONS.md`).
 nonisolated enum NTUSTDepartment: String {
     case im = "01", et = "02", me = "03", tx = "04", ct = "05", ch = "06"
     case ee = "07", ba = "08", dt = "10", ad = "13", cs = "15", hc = "30"
@@ -75,6 +81,8 @@ nonisolated struct MoodleMemberSection: Identifiable, Equatable {
             }
         }
 
+        /// A person with several roles shows once, in the first section of them. One with none is
+        /// listed with the students, as Moodle counts every enrolled person a participant.
         init(_ member: MoodleMember) {
             self = member.roles.map(Placement.init).min() ?? .students
         }

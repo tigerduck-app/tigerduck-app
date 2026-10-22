@@ -417,6 +417,8 @@ struct MoodleOpenCapsule: View {
     }
 }
 
+/// A Moodle user as the app names them. NTUST's Moodle spells a full name "student ID @ name";
+/// the part after the `@` is the name, and a name without one is used whole.
 nonisolated enum MoodlePersonName {
     static func displayName(_ fullName: String) -> String {
         let trimmed = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -425,6 +427,7 @@ nonisolated enum MoodlePersonName {
         return name.isEmpty ? trimmed : name
     }
 
+    /// The part before the `@`, for a user whose `idnumber` Moodle leaves out.
     static func studentId(_ fullName: String) -> String? {
         guard let at = fullName.firstIndex(of: "@") else { return nil }
         let id = fullName[..<at].trimmingCharacters(in: .whitespacesAndNewlines)

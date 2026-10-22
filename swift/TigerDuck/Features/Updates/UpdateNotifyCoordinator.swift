@@ -6,6 +6,14 @@ import UIKit
 import AppKit
 #endif
 
+/// Owns the App Store "newer build?" check and the sheet flags it feeds. A child of ``AppState``
+/// so views observe `pendingUpdate` and `pendingWhatsNew` through `@Environment(AppState.self)`.
+///
+/// On the Mac the lookup answers with the universal purchase's one record and no Mac version.
+/// The Mac ships the same marketing version from the same target, so that version stands in,
+/// and Update Now opens the Mac App Store page. What's New is iPhone-only; the Mac shows an
+/// alert (`MacUpdateCheck.swift`). The 7-day same-version "Later" cooldown mirrors Android's
+/// `UpdatePromptGate.COOLDOWN_MS`, and the What's New flow matches Android's, keyed by versionCode.
 @MainActor
 @Observable
 final class UpdateNotifyCoordinator {
@@ -186,6 +194,13 @@ final class UpdateNotifyCoordinator {
 
     #if os(iOS)
 
+    /// Single sheet item consumed by ``updateNotifySheetHost()``. Both
+    /// pending flags fold into the same `.sheet(item:)` to avoid the
+    /// SwiftUI race that stacking two `.sheet(item:)` modifiers on the
+    /// same view introduces. What's New presents first when both are
+    /// set so the upgrade summary is read before the next-version
+    /// prompt — dismissing it lets the update prompt take its place on
+    /// the next observation cycle.
     var activeNotifySheet: NotifySheet? {
         if let entry = pendingWhatsNew { return .whatsNew(entry) }
         if let pending = pendingUpdate { return .update(pending) }
@@ -223,6 +238,8 @@ final class UpdateNotifyCoordinator {
             if manual { lastManualCheckResult = .failed }
             return
         case .noRecord:
+            // Apple has no public record (TestFlight, or an unlisted region), so nothing newer is
+            // public: a manual check reports up to date and a background check does nothing.
             if manual { lastManualCheckResult = .upToDate }
             return
         case .found:
@@ -279,6 +296,9 @@ final class UpdateNotifyCoordinator {
         }
         let task = Task<LookupResult, Never> { [bundleId, session, reportError] in
             do {
+                // Pin the storefront so users abroad / on a VPN don't
+                // get an IP-inferred storefront that returns no record
+                // and silently masks an available update.
                 let outcome = try await AppStoreUpdateService.fetchLatest(
                     bundleId: bundleId,
                     session: session,

@@ -112,6 +112,9 @@ struct BulletinsView: View {
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
         .navigationTitle(String(localized: "feature_announcements"))
+        // Default placement on iOS 26 is the navigation bar drawer, revealed on
+        // pull-down and collapsed on scroll. The system applies Liquid Glass, so
+        // per the HIG this view does not call `.glassEffect()`.
         .searchable(text: $viewModel.searchText, isPresented: $searchIsPresented, prompt: String(localized: "bulletin_search_prompt"))
         .refreshable { await viewModel.refresh() }
         .toolbar {
@@ -122,6 +125,9 @@ struct BulletinsView: View {
                     }
                 }
             }
+            // The dot opts out of the shared toolbar background: that capsule spans
+            // neighbouring items and stays while the dot fades on idle, leaving an
+            // empty pill. Bare also matches the pages that draw it in a plain header row.
             if #available(iOS 26, *) {
                 ToolbarItem(placement: .topBarTrailing) {
                     SyncStatusDot(servers: [.backend], lastSynced: .at(bulletinsSyncedAt))
@@ -224,6 +230,9 @@ struct BulletinsView: View {
             }
         } else {
             ForEach(displayedItems) { bulletin in
+                // A plain Button, not a NavigationLink, keeps the tap highlight without
+                // the trailing chevron. The push runs through the parent List's
+                // `.navigationDestination(item:)`.
                 Button {
                     detailingBulletin = bulletin
                 } label: {

@@ -3,6 +3,14 @@ import SwiftUI
 import MetalKit
 import UIKit
 
+/// Renders a black/white QR `UIImage` into a `CAMetalLayer` with
+/// `wantsExtendedDynamicRangeContent` enabled, so the white modules emit
+/// luminance above the SDR clip point on EDR displays (iPhone XS and newer).
+///
+/// Metal, not `Image(...).allowedDynamicRange(.high)`, which does not reliably
+/// promote synthetic UIImages: CoreImage clamps to `0...1` in non-extended
+/// working spaces, and SwiftUI does not always tag even an extended-range one as HDR.
+/// Bypassing `Image` is the supported path in Apple's EDR and Core Animation HDR sessions.
 struct HDRQRCodeImage: UIViewRepresentable {
     static let isSupported: Bool = MTLCreateSystemDefaultDevice() != nil
 
@@ -33,6 +41,12 @@ final class EDRMetalQRView: UIView {
     private var pendingImage: UIImage?
     private var texture: MTLTexture?
     private var lastUploadedImage: UIImage?
+    /// Coalesces every `redraw()` request made in one run-loop turn into a
+    /// single draw. `updateUIView` + `setImage` + `layoutSubviews` used to
+    /// each grab a drawable synchronously; the layer only has three and
+    /// none is returned until the frame is presented, so the fourth
+    /// `nextDrawable()` blocked the main thread for its 1 s timeout —
+    /// the "whole app freezes when the QR refreshes" report.
     private var redrawScheduled = false
 
     var brightness: Float = 5.0 {
@@ -55,6 +69,8 @@ final class EDRMetalQRView: UIView {
         metalLayer.pixelFormat = .rgba16Float
         metalLayer.framebufferOnly = true
         metalLayer.wantsExtendedDynamicRangeContent = true
+        // extendedLinearDisplayP3 keeps pixel values in linear light, which
+        // is what the EDR compositor expects when it scales above 1.0.
         metalLayer.colorspace = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)
         EDRMetalStack.load { [weak self] stack in
             self?.attach(stack)
@@ -120,6 +136,8 @@ final class EDRMetalQRView: UIView {
     }
 
     private func redraw() {
+        // Off-window layers never present, so their drawables never come
+        // back — asking for one would just burn the timeout.
         guard
             window != nil,
             let stack,

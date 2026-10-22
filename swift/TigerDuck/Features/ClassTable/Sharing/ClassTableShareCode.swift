@@ -5,7 +5,9 @@ import zlib
 nonisolated struct ClassTableShareCode: Equatable, Sendable {
     enum Format: Equatable, Sendable {
         case tigerDuck
+        /// TAT's code with class times, which the decoder checks and drops.
         case tat2
+        /// TAT's older code, with no class times.
         case tat1
     }
 
@@ -91,10 +93,14 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
             year: number(0..<4), month: number(4..<6), day: number(6..<8),
             hour: number(8..<10), minute: number(10..<12)
         )
+        // The calendar rolls an impossible date such as February 30 over to another day, so a
+        // stamp names a date only when that date writes back to the same stamp.
         guard let date = AppConstants.taipeiCalendar.date(from: parts), Self.stamp(date) == stamp else { return nil }
         return date
     }
 
+    /// NTUST's course-number shape, the one `CourseSelectionService.courseNoRegex` reads from the
+    /// course-selection list: an optional `3`, two letters, then six or seven letters or digits.
     static func isCourseNo(_ text: Substring) -> Bool {
         text.wholeMatch(of: /3?[A-Z]{2}[A-Z0-9]{6,7}/) != nil
     }
@@ -135,7 +141,9 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
 
     private static let inflatedLimit = 65_536
 
+    /// Raw DEFLATE (RFC 1951), which `COMPRESSION_ZLIB` reads and writes.
     private static func deflated(_ bytes: [UInt8]) -> [UInt8]? {
+        // DEFLATE adds a few bytes of block headers to ASCII text at worst.
         var output = [UInt8](repeating: 0, count: bytes.count + 64)
         let count = compression_encode_buffer(&output, output.count, bytes, bytes.count, nil, COMPRESSION_ZLIB)
         return count > 0 ? Array(output.prefix(count)) : nil
@@ -157,6 +165,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
 
     private static let base32Alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".utf8)
 
+    /// RFC 4648 Base32 without `=` padding.
     static func base32(_ bytes: [UInt8]) -> String {
         var output: [UInt8] = []
         var buffer = 0
@@ -173,6 +182,8 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         return String(decoding: output, as: UTF8.self)
     }
 
+    /// Nil for a character outside the alphabet, or for a length or trailing bits no encoder
+    /// writes (RFC 4648, section 3.5).
     static func base32Decoded(_ text: Substring) -> [UInt8]? {
         var output: [UInt8] = []
         var buffer = 0

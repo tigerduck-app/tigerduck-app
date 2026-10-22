@@ -222,6 +222,8 @@ final class MoodleFileDownloads {
         lhs.timeIntervalSince1970.rounded() == rhs.timeIntervalSince1970.rounded()
     }
 
+    /// Moodle cleans file names of slashes already; this keeps a name that slipped through, or
+    /// one of only dots, from leaving the file's folder.
     nonisolated static func safeName(_ name: String) -> String {
         let cleaned = name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
         return cleaned.allSatisfy { $0 == "." } ? "file" : cleaned

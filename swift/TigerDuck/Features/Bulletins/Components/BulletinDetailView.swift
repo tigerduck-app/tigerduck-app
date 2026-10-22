@@ -2,6 +2,13 @@ import MarkdownUI
 import SwiftUI
 import os
 
+/// Full-screen bulletin reader. The parent pushes this via
+/// `.navigationDestination`; the nav bar stays in place (with just
+/// the back-button chevron hidden) because
+/// `toolbar(.hidden, for: .navigationBar)` disables the
+/// interactivePopGesture on iOS — which the user explicitly needs.
+/// A transparent toolbar background lets the masthead feel edge-to-
+/// edge without sacrificing the system swipe-from-left-edge dismissal.
 struct BulletinDetailView: View {
     let bulletin: BulletinAPI.BulletinSummary
     let taxonomy: BulletinTaxonomyStore

@@ -85,6 +85,9 @@ final class ScoreViewModel {
 
     func triggerRefresh(authService: AuthService, force: Bool = true) {
         guard !isRefreshing else { return }
+        // Pinned to MainActor: `refresh` writes `manager.loadingState` and `@Observable` state that
+        // SwiftUI reads on main, and a `Task` without an actor inherits the enclosing isolation, so
+        // it could resume on a background executor after the network await.
         Task { @MainActor [weak self] in
             await self?.refresh(authService: authService, force: force)
         }

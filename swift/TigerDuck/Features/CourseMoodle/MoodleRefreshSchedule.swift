@@ -14,6 +14,7 @@ final class MoodleRefreshTimer {
     let ttl: TimeInterval
     private let now: () -> Date
     private let sleep: @Sendable (Duration) async -> Void
+    /// `nonisolated(unsafe)` so `deinit` can cancel it; everything else reaches it on the main actor.
     private nonisolated(unsafe) var loop: Task<Void, Never>?
 
     init(

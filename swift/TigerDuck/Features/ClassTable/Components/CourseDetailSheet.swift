@@ -225,6 +225,9 @@ struct CourseDetailSheet: View {
                 copied: codeCopied,
                 onTap: copyCourseCode
             )
+            // Only general-education courses carry a dimension; for every
+            // other course the portal sends an empty string and the row
+            // would be a label with nothing beside it.
             if !course.dimension.isEmpty {
                 InfoRow(
                     label: String(localized: "course_detail_dimension_label"),
@@ -256,6 +259,10 @@ struct CourseDetailSheet: View {
         .sensoryFeedback(.success, trigger: copyFeedback)
     }
 
+    /// QueryCourse spells `AllYear` as "F" (spans the academic year) or "H"
+    /// (a single semester). Anything else — including the empty string a row
+    /// cached before this field existed carries — says nothing, so the row
+    /// is left out rather than shown blank.
     private var durationText: String? {
         switch course.allYear.uppercased() {
         case "F": return String(localized: "course_detail_duration_full_year")
@@ -264,6 +271,8 @@ struct CourseDetailSheet: View {
         }
     }
 
+    /// QueryCourse's `RequireOption`, "R" required or "E" elective. Anything else, such as the
+    /// empty string of a row merged from another device, says nothing, so the row is left out.
     static func requireOptionText(_ requireOption: String) -> String? {
         switch requireOption.uppercased() {
         case "R": return String(localized: "course_detail_require_option_required")
@@ -343,6 +352,11 @@ struct CourseDetailSheet: View {
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
+    /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile
+    /// picks the user up inside the app, and open the web page when it is not
+    /// installed. On macOS no Moodle Mac app exists and the deep link would
+    /// surface as an "unhandled URL" error, so the platform-aware
+    /// `moodleOpenURL` returns the HTTPS URL instead.
     private func openMoodleCourse() {
         guard let url = course.moodleOpenURL else { return }
         let web = course.moodleWebURL
@@ -435,12 +449,17 @@ private struct InfoRow: View {
                 .foregroundStyle(Color.textPrimary)
                 .multilineTextAlignment(.trailing)
         }
+        // Without this the button only reacts on the label and value text,
+        // not on the gap between them — which is most of the row.
         .contentShape(Rectangle())
     }
 }
 
 #if os(iOS)
 extension View {
+    /// The course detail's own bar. On iOS 26 it is an empty, clear bar with the page drawn under
+    /// it as if it were hidden: a bar that a push turns on sits at the sheet's top edge until the
+    /// push ends, then drops below the grabber, so every pushed Moodle screen jumped.
     @ViewBuilder
     func courseDetailRootBar() -> some View {
         if #available(iOS 26, *) {

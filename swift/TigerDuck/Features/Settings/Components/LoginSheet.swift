@@ -15,6 +15,13 @@ struct LoginSheet: View {
     let onLogin: (String, String) -> Void
     let onDismiss: () -> Void
     let footerLink: FooterLink?
+    /// Whether the username field collects an email address rather than an NTUST-style ID.
+    ///
+    /// Defaults to `false`, which is every caller in a Release build: NTUST, the library and
+    /// School Mail all take an ID that is conventionally upper-case, so the field upper-cases as
+    /// it is typed. An address must not be treated that way — `.characters` would turn
+    /// `user@example.com` into `USER@EXAMPLE.COM`, and an address's local part is case-sensitive
+    /// (RFC 5321 §2.3.11), so the upper-cased form is what would be sent to `LOGIN`.
     let usernameIsAnAddress: Bool
 
     @Environment(AppState.self) private var appState

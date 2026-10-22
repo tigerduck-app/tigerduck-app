@@ -1,6 +1,14 @@
 #if os(iOS)
 import SwiftUI
 
+/// Mounts the update prompt and What's New sheets on `MainTabView`, at the same level as
+/// `.flipToLibraryAttached()` and `.firstTriggerPromptHost()`, so a stale presentation cannot
+/// leak across tab swaps as a per-tab `.sheet(...)` would.
+///
+/// Both go through one `.sheet(item:)` driven by ``UpdateNotifyCoordinator/activeNotifySheet``:
+/// two on one view race when both items turn non-nil in one render (a post-update launch that is
+/// also behind the App Store), and the loser never presents or runs `onDismiss`, so its seen-marker
+/// never advances. What's New goes first; any dismissal acknowledges it, then the prompt shows.
 private struct UpdateNotifySheetHost: ViewModifier {
     @Environment(AppState.self) private var appState
 

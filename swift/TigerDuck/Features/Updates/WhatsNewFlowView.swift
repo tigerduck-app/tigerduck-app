@@ -62,6 +62,9 @@ struct WhatsNewFlowView: View {
                     .accessibilityHidden(step != index)
                 }
             }
+            // An RTL HStack lays steps out right to left, but SwiftUI
+            // mirrors `offset(x:)` under RTL as well, so the same
+            // negative offset brings the next step in either way.
             .offset(x: -CGFloat(index) * proxy.size.width)
         }
         .clipped()

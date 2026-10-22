@@ -46,6 +46,9 @@ struct OnboardingView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
         .background(Color.backgroundPrimary)
+        // Keyboard avoidance acts on the TabView root, not the page VStacks. Without this the login
+        // page shrinks to fit above the keyboard, squeezing its ScrollView and lifting its buttons;
+        // tap-to-dismiss and the ScrollView's scroll-to-dismiss still clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         .onChange(of: currentPage) { _, page in
@@ -77,6 +80,9 @@ struct OnboardingView: View {
                         .lineLimit(12)
                         .minimumScaleFactor(0.6)
 
+                    // `Link` over `Button` keeps the `.isLink` VoiceOver trait and long-press peek,
+                    // Copy Link and Share. Bordered and large for a reliable hit target. The page's
+                    // dismiss tap is a `.simultaneousGesture`, so iOS 18 passes the first tap on.
                     VStack(spacing: TigerDuckTheme.Spacing.lg) {
                         Link(destination: AppURLs.website) {
                             Label(String(localized: "onboarding_welcome_website_label"), systemImage: "globe")
@@ -531,9 +537,21 @@ struct OnboardingView: View {
 }
 
 #if canImport(UIKit)
+/// Refuses forward drags on the page-style `TabView`'s own scroll view and leaves backward ones
+/// alone. `scrollDisabled` does not reach the page-style pager, hence the UIKit walk to find it.
+///
+/// `isScrollEnabled = false` while locked would freeze both directions, so a user who had not
+/// ticked the boxes could not swipe back to Welcome either. The tick gates only forward motion,
+/// so the pager stays scrollable and the forward drag is cancelled instead.
 struct PagingScrollLock: UIViewRepresentable {
     let isLocked: Bool
 
+    /// Whether a drag of `translationX` points at the *next* page.
+    ///
+    /// Pulled out of the gesture handler so the mirroring has a test: a
+    /// page-style `TabView` reverses under a right-to-left language, so the
+    /// same finger movement that advances in English goes back in Arabic,
+    /// and the app ships four right-to-left locales.
     static func isForwardDrag(translationX: CGFloat, isRTL: Bool) -> Bool {
         isRTL ? translationX > 0 : translationX < 0
     }
@@ -589,6 +607,8 @@ struct PagingScrollLock: UIViewRepresentable {
             let isRTL = pager.effectiveUserInterfaceLayoutDirection == .rightToLeft
             guard PagingScrollLock.isForwardDrag(translationX: dx, isRTL: isRTL) else { return }
 
+            // Turning scrolling off and straight back on cancels the pan in
+            // flight; the pager snaps back to the page it started on.
             pager.isScrollEnabled = false
             pager.isScrollEnabled = true
         }

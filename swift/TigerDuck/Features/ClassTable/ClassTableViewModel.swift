@@ -53,6 +53,8 @@ final class ClassTableViewModel {
 
     @ObservationIgnored private let lookUpImportedTerm: ImportedTermLookup
 
+    /// Keeps the persisted selection selectable even after it ages out of the
+    /// catalogue window — a `Picker` whose tag matches no option renders blank.
     private static func semesterOptions(including selected: String) -> [String] {
         let options = SemesterCatalog.availableSemesters()
         return options.contains(selected) ? options : options + [selected]
@@ -171,6 +173,9 @@ final class ClassTableViewModel {
 
     var hasLoaded = false
     var isUpdatingFromNetwork = false
+    // `nonisolated(unsafe)` lets `deinit`, nonisolated even on a `@MainActor`
+    // class, read these to remove the observers. Without `@ObservationIgnored`
+    // the `@Observable` macro makes the storage computed and strips the modifier.
     @ObservationIgnored
     private nonisolated(unsafe) var dataObserver: Any?
     @ObservationIgnored
@@ -209,6 +214,9 @@ final class ClassTableViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            // Delivered on the main queue, but the closure is `@Sendable`; hop to
+            // the main actor explicitly so touching `isUpdatingFromNetwork` and
+            // calling `reloadFromCache` is sound under strict concurrency.
             Task { @MainActor [weak self] in
                 guard let self, !self.isUpdatingFromNetwork else { return }
                 self.reloadFromCache()

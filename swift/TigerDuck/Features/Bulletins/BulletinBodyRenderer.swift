@@ -14,6 +14,13 @@ nonisolated enum BulletinBodyRenderer {
             ?? ""
     }
 
+    /// Pre-processes the raw Markdown so MarkdownUI's CommonMark parser picks up inline emphasis
+    /// inside list items. The LLM sometimes emits `*   ` (an asterisk and several spaces) as a
+    /// list marker, which some CommonMark profiles render as a plain paragraph. A `**` run flush
+    /// against full-width CJK punctuation can also fail the flanking rules, with the punctuation
+    /// just outside the bold or just inside before the closing `**`, because the closing run is
+    /// neither preceded by whitespace nor followed by whitespace or punctuation. Every observed
+    /// shape is normalised here so the theme's `.strong` styling fires.
     static func normalize(_ source: String) -> String {
         var text = source
         text = text.replacingOccurrences(

@@ -61,6 +61,9 @@ private struct WhatsNewTemplateBody<Accessory: View>: View {
             }
             .scrollBounceBehavior(.basedOnSize)
         }
+        // The Next button stays put while pages slide, so VoiceOver focus
+        // would sit on it and never hear the new page; move it to the
+        // heading as the page becomes current.
         .onChange(of: isCurrent) { _, current in
             if current { isTitleFocused = true }
         }

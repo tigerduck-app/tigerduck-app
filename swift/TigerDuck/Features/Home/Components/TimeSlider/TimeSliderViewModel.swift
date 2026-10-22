@@ -19,6 +19,9 @@ final class TimeSliderViewModel {
     private var lastHapticSlot: Int = 0
     private let hapticGenerator = UISelectionFeedbackGenerator()
     private let isQuietDay: (Date) -> Bool
+    // `nonisolated(unsafe)` so `deinit` can remove them; `@ObservationIgnored`
+    // keeps the macro from swapping the storage out from under the modifier.
+    // Same pattern as `ClassTableViewModel.dataObserver`.
     @ObservationIgnored
     private nonisolated(unsafe) var quietDayObservers: [Any] = []
 

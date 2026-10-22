@@ -208,6 +208,9 @@ struct TimetableGridView: View {
 
             Color.clear
                 .overlay(alignment: .top) {
+                    // `scrollSafeTapAction` wraps the cell in a real `Button` so
+                    // the first tap wins iOS 18 arbitration against the grid's
+                    // scroll view. See View+ScrollSafeGesture.
                     courseFace(
                         course, spanCount: spanCount,
                         showsRoomHint: roomHint != nil, showsMark: hasBadge || ignoresAssignments
@@ -457,6 +460,9 @@ private struct ConflictClusterView: View {
                 sharpBottomOuter: sharpBottom
             )
 
+            // `scrollSafeTapAction` wraps the cluster in a real `Button` so the first tap
+            // wins iOS 18 scroll arbitration; see View+ScrollSafeGesture. Any tap opens
+            // the picker, not per-shape hit-testing, so the user sees both, as on Android.
             ZStack(alignment: .topLeading) {
                 courseRegion(
                     course: courseA,
@@ -626,6 +632,14 @@ private struct ConflictClusterView: View {
         }
     }
 
+    /// A filled dot in the course's own colour, for use as a menu icon.
+    ///
+    /// Drawn into a bitmap and marked `.alwaysOriginal` because UIKit retints
+    /// template images, SF Symbols included, to the menu's own tint, so
+    /// `Image(systemName: "circle.fill").foregroundStyle(...)` arrives grey.
+    ///
+    /// It rides on the "Pick color" row because UIKit renders an inline menu's
+    /// section header from its title alone and drops any image it carries.
     private static func colorDot(_ color: Color) -> Image {
         #if canImport(UIKit)
         let side: CGFloat = 16

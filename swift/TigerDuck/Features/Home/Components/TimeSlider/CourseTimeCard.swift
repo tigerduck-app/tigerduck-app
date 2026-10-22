@@ -33,6 +33,9 @@ struct CourseTimeCard: View {
 
     @ViewBuilder
     private func cardContent(slot: CourseTimeSlot, opacity: Double) -> some View {
+        // `scrollSafeTapAction` wraps the surface in a real `Button` so the first tap
+        // inside Home's ScrollView opens the detail sheet instead of being swallowed
+        // (iOS 18 arbitration). `Button` supplies the `.isButton` trait and hit shape.
         cardSurface(slot: slot, opacity: opacity)
             .scrollSafeTapAction { onSelect?(slot) }
             .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
@@ -115,6 +118,9 @@ struct CourseTimeCard: View {
         }
     }
 
+    // The pinned gregorian calendar, and `en_US_POSIX` in the short form, keep the
+    // numeric date stable on ROC or Buddhist-calendar devices. The EEEEE weekday
+    // still follows `Locale.current`; only the calendar arithmetic is overridden.
     private static let dateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)

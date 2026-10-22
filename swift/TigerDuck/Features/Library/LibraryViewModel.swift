@@ -32,6 +32,9 @@ final class LibraryViewModel {
     @ObservationIgnored nonisolated(unsafe) private var signInObserver: (any NSObjectProtocol)?
 
     init() {
+        // `queue: nil` delivers synchronously on the posting thread, and
+        // `LibraryService` posts from the main actor — so the code is off the
+        // screen before the sign-out that invalidated it even returns.
         accountObserver = NotificationCenter.default.addObserver(
             forName: LibraryService.accountDidChange, object: nil, queue: nil
         ) { [weak self] _ in

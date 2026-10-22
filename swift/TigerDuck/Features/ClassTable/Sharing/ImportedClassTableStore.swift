@@ -259,6 +259,9 @@ final class ImportedClassTableStore {
             defer { try? manager.removeItem(at: staging) }
             var replacement = staging.appendingPathComponent(fileURL.lastPathComponent)
             let data = try JSONEncoder().encode(StoredFile(owner: owner, people: people.map { StoredPerson($0) }))
+            // Readable from the first unlock after a restart, unlike `DataCache`'s files: the store
+            // reads the file once, and a read refused while the phone is locked would leave it
+            // empty for the rest of the run.
             try data.write(to: replacement, options: [.completeFileProtectionUntilFirstUserAuthentication])
             var values = URLResourceValues()
             values.isExcludedFromBackup = true

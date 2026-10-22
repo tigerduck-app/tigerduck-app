@@ -6,6 +6,10 @@ import UIKit
 struct FontSizeSettingsView: View {
     @Environment(AppState.self) private var appState
     #if os(iOS)
+    /// Matches the `TimeSliderViewModel` pattern — keep one generator
+    /// alive for the lifetime of the view so `prepare()` actually warms
+    /// the haptic engine; a fresh-per-call generator skips priming and
+    /// the first selection feels delayed.
     @State private var hapticGenerator = UISelectionFeedbackGenerator()
     #endif
     @State private var lastHapticScale: Double?
@@ -53,6 +57,9 @@ struct FontSizeSettingsView: View {
                     defer { lastHapticScale = snapped }
                     guard let last = lastHapticScale, snapped != last else { return }
                     hapticGenerator.selectionChanged()
+                    // Re-prime for the next tick so the kernel keeps the
+                    // engine warm — `selectionChanged()` invalidates the
+                    // primed state.
                     hapticGenerator.prepare()
                 }
                 .onAppear {

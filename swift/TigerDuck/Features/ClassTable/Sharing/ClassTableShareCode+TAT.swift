@@ -1,11 +1,15 @@
 import Foundation
 
+/// TAT's share code, which the app reads in versions 1 and 2 and writes in version 2.
+/// See docs/decisions/0023-class-table-share-code.md.
 nonisolated extension ClassTableShareCode {
     static let tatPrefix = "HTTPS://NTUST-TAT.WEB.APP/S/"
 
     private static let tatStudentIdLength = 9
     private static let tatCourseNoLength = 9
 
+    /// One character per period of `AppConstants.Periods.chronologicalOrder`, in its order: the
+    /// noon period, the app's 5, is `N`, so `5` to `9` stand for the app's 6 to 10.
     private static let tatPeriodCodes = Array("1234N56789ABCD")
 
     static func decodeTAT(_ code: String) throws -> ClassTableShareCode {
@@ -22,6 +26,8 @@ nonisolated extension ClassTableShareCode {
         let semester = body.dropFirst(4).prefix(4)
         guard isASCII(body), isSemester(semester) else { throw ClassTableShareCodeError.malformed }
 
+        // A shorter ID is padded with spaces. Trimming a code with no courses takes the padding
+        // with it, so the field may come up short.
         var studentId = body.dropFirst(8).prefix(tatStudentIdLength)
         while studentId.last == " " { studentId = studentId.dropLast() }
         guard studentId.isEmpty || isUpperAlphanumerics(studentId) else { throw ClassTableShareCodeError.malformed }
@@ -43,6 +49,9 @@ nonisolated extension ClassTableShareCode {
         )
     }
 
+    /// TAT's version 2 code for one term of the user's class table, with each course's weekdays
+    /// and periods. A course code TAT cannot hold, any but nine characters long, is left out;
+    /// nil when no course is left or the student ID is longer than TAT's nine characters.
     @MainActor
     static func encodeTAT(studentId: String, semester: String, courses: [SDCourse]) -> String? {
         let id = studentId.uppercased()
@@ -64,6 +73,8 @@ nonisolated extension ClassTableShareCode {
         return tatPrefix + "TAT2" + term + paddedId + chunks.joined(separator: "-")
     }
 
+    /// `.`, the weekday from `1` (Monday) to `7`, and the day's periods; empty for a weekday
+    /// out of range or a day with no period TAT can hold.
     private static func tatDay(_ weekday: Int, periods: [String]) -> String {
         let order = AppConstants.Periods.chronologicalOrder
         let indices = Set(periods.compactMap { order.firstIndex(of: $0) }).sorted()

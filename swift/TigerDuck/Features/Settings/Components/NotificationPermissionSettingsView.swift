@@ -55,6 +55,10 @@ struct NotificationPermissionSettingsView: View {
         }
     }
 
+    /// Same authorized/not split as `SettingsView.refreshNotificationsAuthorization()`:
+    /// `.authorized`, `.provisional`, and `.ephemeral` all count as granted.
+    /// Granted or not is the whole answer: every iPhone and iPad this app
+    /// deploys to has a real notification-authorization concept.
     static func notificationPermissionStatus(for status: UNAuthorizationStatus) -> RowStatus {
         switch status {
         case .authorized, .provisional, .ephemeral: return .granted
@@ -63,6 +67,9 @@ struct NotificationPermissionSettingsView: View {
         }
     }
 
+    /// `ActivityAuthorizationInfo().areActivitiesEnabled` is a plain Bool on
+    /// this app's deployment target, so this row is granted or not, the same
+    /// as the notification row above.
     static func liveActivityPermissionStatus(enabled: Bool) -> RowStatus {
         enabled ? .granted : .notGranted
     }

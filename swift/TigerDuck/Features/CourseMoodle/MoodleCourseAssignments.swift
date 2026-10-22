@@ -54,6 +54,10 @@ final class MoodleCourseAssignments {
         return feed
     }
 
+    /// The submission as Moodle has it now, with its comments and its group's name where the site
+    /// lets the app read them. A call Moodle refuses leaves its part out; one that cannot reach
+    /// Moodle keeps what the page showed. An assignment that takes no online submission has none.
+    /// The status the page then shows goes to `api.submissionFetched` too.
     func refreshSubmission(of record: MoodleAssignmentRecord) async {
         guard !record.noSubmissions else { return }
         let context = context

@@ -104,6 +104,9 @@ extension MoodleAssignmentView {
         !submission.files.isEmpty || submission.onlineText != nil || submission.submittedAt != nil
     }
 
+    /// A grade of points over a maximum, as Moodle writes "85.00 / 100.00", splits into the two,
+    /// each without the zeros ending its decimals. Any other grade, such as a letter, a percentage
+    /// or a scale's word, stays whole.
     static func score(of grade: String) -> Score {
         let parts = grade.split(separator: "/", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }

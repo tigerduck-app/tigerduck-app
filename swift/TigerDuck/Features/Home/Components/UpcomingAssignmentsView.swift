@@ -40,6 +40,12 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
+    /// A `LazyVStack`, not a `List`. A non-scrolling `List` needs a `.frame(height:)`
+    /// from per-row `PreferenceKey` measurements fed into `@State`, which on a tab
+    /// switch race the list's `.animation` and hang the UI. Its `.swipeActions`
+    /// inside the parent `ScrollView` also flash a black slab above the first row
+    /// mid-swipe, which no inset or background tweak silences. `LazyVStack` sizes
+    /// itself to its children, and `SwipeableRow` below replaces `.swipeActions`.
     private func cardLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
         LazyVStack(spacing: TigerDuckTheme.Spacing.sm) {
             ForEach(rows, id: \.assignmentId) { assignment in
@@ -243,6 +249,14 @@ struct SwipeActionDescriptor {
     let action: () -> Void
 }
 
+/// Custom horizontal-drag swipe row, standing in for `List.swipeActions` so the
+/// assignment list can live in the home `ScrollView` without a `List`: its
+/// `.swipeActions` flash a black slab above the first row, and its row diff on
+/// a tab switch races `PreferenceKey` height measurement until the UI hangs.
+///
+/// Drag past `triggerThreshold` either way to run that side's action; release
+/// short of it to snap back. The action fires before the spring-back animation
+/// so the owning view can remove the row on the frame the spring starts.
 private struct SwipeableRow<Content: View>: View {
     let leadingAction: SwipeActionDescriptor?
     let trailingAction: SwipeActionDescriptor?
@@ -286,6 +300,8 @@ private struct SwipeableRow<Content: View>: View {
         .contentShape(Rectangle())
         .offset(x: offset)
         .simultaneousGesture(dragGesture)
+        // The swipes are custom drags, which VoiceOver, Voice Control, Switch Control and a
+        // keyboard cannot perform; the same actions are offered as accessibility actions.
         .accessibilityActions {
             if let leadingAction {
                 Button(leadingAction.label, action: leadingAction.action)

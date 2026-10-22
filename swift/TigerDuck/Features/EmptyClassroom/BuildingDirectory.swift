@@ -1,5 +1,8 @@
 import Foundation
 
+/// The building section for a day and period: every building with rooms that day, built from
+/// the rooms returned rather than the site's list, which also names buildings without rooms in
+/// the booking system.
 nonisolated struct BuildingDirectory: Equatable, Sendable {
     struct Building: Equatable, Sendable, Identifiable {
         let code: String
@@ -59,6 +62,9 @@ nonisolated struct BuildingDirectory: Equatable, Sendable {
     }
 }
 
+/// The main campus's buildings by the names the school publishes, in the user's language. A
+/// building has a Chinese and an English name only, so other languages show the English one, and
+/// one with no official English name goes by its code (`app-translation/CONVENTIONS.md`).
 nonisolated enum CampusBuildingName {
     static func of(_ code: String) -> String? {
         switch code {

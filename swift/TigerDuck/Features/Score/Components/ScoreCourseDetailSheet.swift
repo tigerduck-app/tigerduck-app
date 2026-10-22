@@ -124,6 +124,10 @@ struct ScoreCourseDetailSheet: View {
         }
     }
 
+    /// Day-code mapping aligned with `CourseLookupService.parseNodeToSchedule`:
+    ///   M=Mon · T=Tue · W=Wed · R=Thu · F=Fri · S=Sat · U=Sun
+    /// Inverse direction here — turn `[weekday: [periods]]` back into the
+    /// NTUST course-selection node string the school uses on its own pages.
     private static let dayCodes: [Int: String] = [
         1: "M", 2: "T", 3: "W", 4: "R", 5: "F", 6: "S", 7: "U"
     ]

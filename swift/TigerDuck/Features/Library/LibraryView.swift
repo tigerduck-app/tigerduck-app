@@ -16,6 +16,9 @@ struct LibraryView: View {
 
     private enum LoginField { case username, password }
     #if os(iOS)
+    /// Token returned by `PKPassLibrary.requestAutomaticPassPresentationSuppression`.
+    /// Held only while the QR page is on-screen so a side-button double-press
+    /// can't fire up Apple Pay / Express Transit and cover the library QR.
     @State private var passSuppressionToken: PKSuppressionRequestToken?
     @State private var hostScreen = WeakScreen()
     @State private var brightnessToken = UUID()
@@ -97,6 +100,9 @@ struct LibraryView: View {
     }
 
     #if os(iOS)
+    // TODO: Request `com.apple.developer.passkit.pass-presentation-suppression` from
+    // Apple. Until granted, production signing strips it from `TigerDuck.entitlements`,
+    // so the call gets `.notSupported` and the side button still opens Express Transit.
     private func suppressExpressTransit() {
         guard passSuppressionToken == nil else { return }
         let token = PKPassLibrary.requestAutomaticPassPresentationSuppression { _ in }
@@ -114,6 +120,14 @@ struct LibraryView: View {
     #endif
 
     #if os(iOS)
+    /// `true` when this display can drive EDR at all, so the Metal renderer's
+    /// local highlight carries the QR and global brightness is left alone.
+    ///
+    /// Reads `potentialEDRHeadroom`, which Apple documents as queryable before any
+    /// EDR content is shown, and which is `1.0` on SDR panels. `currentEDRHeadroom`
+    /// reads `1.0` until the Metal layer draws, so it would boost every device. A
+    /// thermally throttled EDR panel shows the QR at SDR white, which still scans.
+    /// See docs/decisions/0009-library-qr-brightness.md.
     private var edrIsAvailable: Bool {
         guard let screen = hostScreen.screen else { return false }
         return HDRQRCodeImage.isSupported && screen.potentialEDRHeadroom > 1.0
@@ -135,6 +149,14 @@ struct LibraryView: View {
     private func restoreBrightness() {}
     #endif
 
+    /// A wide canvas rotates freely, so anchor the QR to vertical center to keep
+    /// its on-screen position stable across orientation changes. A compact one is
+    /// portrait in practice and keeps the regular top-aligned scroll layout.
+    ///
+    /// Keyed on size class, not idiom: a foldable's inner display ignores the
+    /// app's supported orientations and reports the `.phone` idiom while regular
+    /// in both dimensions, so "iPhone is portrait-locked" does not hold. macOS has
+    /// no size class here but does not show LibraryView, so it falls through.
     private var shouldCenterQRForRotation: Bool {
         #if os(iOS)
         horizontalSizeClass == .regular && viewModel.isLoggedIn

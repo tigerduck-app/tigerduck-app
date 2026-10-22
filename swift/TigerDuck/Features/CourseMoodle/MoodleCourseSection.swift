@@ -10,6 +10,9 @@ struct MoodleCourseSection: View {
     var body: some View {
         let rows = store.sectionRows
         let summary = store.shownSummary
+        // What comes and goes inside this stack fades in as a fetch brings it. On the course
+        // detail's stack, the keys would change as the store arrives and animate the sheet's first
+        // layout, sliding the content in from a corner.
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
             if !rows.isEmpty || summary != nil {
                 Divider().background(Color.textSecondary)

@@ -5,6 +5,14 @@ import UserNotifications
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    /// Observed, not read through `Defaults[...]`: a bare subscript is a
+    /// plain read that SwiftUI never subscribes to, so this screen kept
+    /// rendering "On" after the switch inside `CloudSyncSettingsView` had
+    /// already turned it off -- popping back does not re-evaluate a parent
+    /// body on its own.
+    ///
+    /// The preference is the flag's only copy -- `appState.cloudSyncEnabled`
+    /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @Default(.pinTodayCoursesOnClassTable) private var pinTodayCoursesOnClassTable
@@ -121,6 +129,9 @@ struct SettingsView: View {
                         isOn: $appState.useEnglishClassroomAbbreviation
                     )
                     if appState.useEnglishClassroomAbbreviation {
+                        // The Form default, `.menu`, sizes the row for one line, so a long
+                        // localized label wraps to two lines and is clipped at the bottom.
+                        // `.navigationLink` renders a real NavigationLink whose row fits the label.
                         Picker(
                             String(localized: "settings_classroom_mandarin_display"),
                             selection: $appState.classroomMandarinDisplay
@@ -225,6 +236,8 @@ struct SettingsView: View {
                 }
             }
 
+            // No in-app picker: the user picks the app language in the per-app
+            // picker in iOS Settings, and iOS restarts the process on selection.
             Section(String(localized: "feature_category_language")) {
                 Button {
                     #if os(iOS)
@@ -447,6 +460,14 @@ struct SettingsView: View {
         .disabled(appState.updateNotifyCoordinator.isCheckingForUpdate)
     }
 
+    /// "Check Server Status" row. It sits under Check for Updates because that row asks
+    /// whether this app is current, and this one whether the services behind it are up.
+    ///
+    /// Honours the in-app or external browser preference like every other link in
+    /// Settings. In-app it uses `SFSafariViewController`, which follows the status URL's
+    /// current 302 to another origin in place. A `WKWebView` with a host allowlist would
+    /// dead-end there, and an `openURL` hand-off would eject the user into Safari
+    /// mid-redirect.
     private var serverStatusRow: some View {
         Button {
             if appState.browserPreference == .inApp {
@@ -590,6 +611,9 @@ struct SettingsView: View {
 
         SecureStore.removeAll(preserving: [DebugEndpointStore.keychainKey])
 
+        // Batch-delete through the live container rather than removing the
+        // store file — the container is still mounted and every view is
+        // holding queries against it.
         try? modelContext.delete(model: SDCourse.self)
         try? modelContext.delete(model: SDAssignment.self)
         try? modelContext.delete(model: SDAnnouncement.self)

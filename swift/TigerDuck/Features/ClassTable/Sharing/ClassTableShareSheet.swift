@@ -24,6 +24,7 @@ struct ClassTableShareSheet: View {
                 Spacer()
                 Button(String(localized: "action_done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
+                // A sheet takes Escape only through a cancel button, and Done keeps Return.
                 Button("") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .opacity(0)

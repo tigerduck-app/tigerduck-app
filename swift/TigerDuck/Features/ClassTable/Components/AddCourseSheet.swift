@@ -9,6 +9,9 @@ struct AddCourseSheet: View {
     let onAdd: (SDCourse) -> Bool
     var onRemove: ((String) -> Void)? = nil
 
+    /// Course codes are ASCII alphanumeric and always contain at least one digit
+    /// (e.g., "EC1013701", "GE1002101"). Anything else is treated as a name or
+    /// teacher query.
     private static let courseCodePattern = #"^[A-Za-z0-9]+$"#
 
     private static let liveSearchDebounce: Duration = .milliseconds(350)
@@ -77,6 +80,9 @@ struct AddCourseSheet: View {
                     }
                 }
             }
+            // Dismiss the keyboard from the background only: a `.simultaneousGesture` on
+            // the Form swallows row Buttons, so "+" stops firing. Taps in section gaps or
+            // the footer reach the background; `.scrollDismissesKeyboard` handles drags.
             .background(
                 Color.backgroundPrimary
                     .contentShape(Rectangle())
@@ -91,8 +97,14 @@ struct AddCourseSheet: View {
                 }
             }
         }
+        // The Form's `.background` paints only the scrollable area, so at the .medium
+        // detent the nav bar and bottom safe area stay translucent and the class table
+        // shows through. `.presentationBackground` paints the whole sheet container.
         .presentationBackground(Color.backgroundPrimary)
     }
+
+    // No `Form`: on macOS it makes the search field tiny and anchors the footer label
+    // to the wrong side. The frame stays modest so the sheet does not dwarf the window.
 
     private var macBody: some View {
         VStack(spacing: 0) {
@@ -187,6 +199,9 @@ struct AddCourseSheet: View {
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
+            // Strip the default macOS bordered-button chrome from each row. Otherwise
+            // each result sits in its own rounded button frame, which shifts the leading
+            // text edge and makes the course-no / instructor / classroom column uneven.
             .buttonStyle(.plain)
         }
     }
@@ -289,6 +304,8 @@ struct AddCourseSheet: View {
         let primaryLanguage = LanguageManager.resolvedCourseApiLanguage(
             appLanguage: Defaults[.appLanguage]
         )
+        // Send the traditional form to the zh API so simplified-Chinese queries
+        // still match traditional course names.
         let zhQuery = Self.toTraditional(query)
         let enQuery = query
 
@@ -362,6 +379,9 @@ struct AddCourseSheet: View {
             semester: semester, teacher: query, language: language
         )
 
+        // Tolerate one endpoint failing (the teacher one often throws for a query that
+        // is clearly not a teacher's name), but rethrow when both fail so the caller
+        // shows `add_course_search_failed` rather than a misleading `add_course_not_found`.
         var nameResults: [CourseSearchResult] = []
         var teacherResults: [CourseSearchResult] = []
         var nameError: Error?

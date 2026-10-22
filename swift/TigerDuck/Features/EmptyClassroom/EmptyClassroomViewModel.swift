@@ -10,7 +10,9 @@ final class EmptyClassroomViewModel {
     enum Content: Equatable {
         case loading
         case rooms(CampusUsage)
+        /// A weekend, a weekday outside the term, or a weekday the site answers with no rooms.
         case noData
+        /// The site shows the weekly timetable on a holiday, so its rooms are not shown.
         case holiday(name: String)
         case failed(offline: Bool)
     }
@@ -172,6 +174,8 @@ final class EmptyClassroomViewModel {
         load(force: false)
     }
 
+    /// iOS sends no `onAppear` when the app comes back to the foreground, while today's rooms
+    /// have aged and the day shown may have passed, so the screen on view reads again.
     func returnToApp() {
         guard isOnScreen else { return }
         appear()

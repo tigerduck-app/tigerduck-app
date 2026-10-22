@@ -312,6 +312,8 @@ private struct MoodleFileDrag: ViewModifier {
 #endif
 
 extension MoodlePage {
+    /// A file link in the browser: Moodle's web service path wants a token, which the browser
+    /// does not have, and the same file under the site's own path takes the signed-in session.
     static func browserURL(_ url: URL) -> URL {
         let prefix = "/webservice/pluginfile.php/"
         guard MoodleAutologinService.isMoodlePage(url),

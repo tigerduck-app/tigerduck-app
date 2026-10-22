@@ -75,11 +75,17 @@ struct HomeView: View {
                 )
             )
             .contentShape(Rectangle())
+            // A long-press anywhere in the scroll content enters edit mode. As a
+            // `.simultaneousGesture` it does not swallow the first tap on widgets and
+            // course cards on iOS 18. See View+ScrollSafeGesture.
             .longPressToEdit(reduceMotion: reduceMotion) {
                 if !viewModel.isEditingHome { viewModel.isEditingHome = true }
             }
         }
         .refreshable {
+            // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
+            // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
+            // the top-right SyncStatusDot shows its status.
             viewModel.triggerRefresh(authService: appState.authService)
             if Defaults[.cloudSyncEnabled] {
                 Task { await appState.syncOverridesFromBackend() }

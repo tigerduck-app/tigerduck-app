@@ -185,7 +185,10 @@ nonisolated enum ClassTableShareError: Error {
     case noQRCode
 }
 
+/// QR codes of share codes, at error correction level M. Both formats are in upper case, which
+/// Core Image writes in alphanumeric mode, the smallest symbol for them.
 enum ClassTableShareQRCode {
+    /// Core Image leaves one module of light margin, and the QR code standard asks for four.
     private static let extraMargin: CGFloat = 3
     private static let context = CIContext()
 

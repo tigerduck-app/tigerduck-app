@@ -62,6 +62,8 @@ struct EmptyClassroomView: View {
             viewModel.appear()
         }
         .onDisappear { viewModel.disappear() }
+        // A glance at Control Center goes inactive and back; only a stay in the background lets
+        // the day's rooms age.
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { wasInBackground = true }
             guard phase == .active, wasInBackground else { return }

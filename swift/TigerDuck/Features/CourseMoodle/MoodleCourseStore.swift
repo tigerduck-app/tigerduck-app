@@ -263,6 +263,8 @@ nonisolated struct MoodleMemberList: Codable, Sendable, Equatable {
     let ownId: Int?
     var members: [MoodleMember]
 
+    /// Whether anyone but the account is there to show, which a course split into groups the
+    /// account sees alone of may not have.
     var showsOthers: Bool {
         members.contains { $0.id != ownId }
     }
@@ -415,6 +417,9 @@ final class MoodleCourseStore {
         courseForums.filter { !$0.isNews && $0.discussionCount > 0 }
     }
 
+    /// One call for every course of the term. A site that does not allow the forum calls answers
+    /// as if no course had a forum, which hides the announcements and the forums; one that does
+    /// not allow the posts call keeps only the announcements, as a discussion would show no reply.
     func refreshForums() async {
         await forums.refresh { [api, termCourseIds] in
             let functions = try await api.functions()
@@ -429,6 +434,8 @@ final class MoodleCourseStore {
 
     var materialsFetchedAt: Date? { materials.fetchedAt }
 
+    /// A site that does not allow the call answers as if the course had no materials, which hides
+    /// their row. Copies of files Moodle has a newer version of go once the answer is in.
     func refreshMaterials() async {
         await materials.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseContentsService.contentsFunction) else {
@@ -440,6 +447,8 @@ final class MoodleCourseStore {
         downloads.removeOutdated(fresh.fileRefs.map { ($0.file, location(of: $0.file, in: $0.owner)) })
     }
 
+    /// A file or link opened on screen, which Moodle logs as a view of its module when the site
+    /// allows the call. A failed call is not retried and shows nothing.
     @discardableResult
     func open(_ material: MoodleMaterial) -> Task<Void, Never> {
         Task { [api, context] in
@@ -472,6 +481,8 @@ final class MoodleCourseStore {
         downloads.cancel(location(of: file, in: owner))
     }
 
+    /// The course's grade items for the signed-in student. A site that does not allow the call
+    /// answers as if the course had none, which hides the row.
     func refreshGrades() async {
         await grades.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleGradeService.gradeItemsFunction) else {
@@ -510,6 +521,8 @@ final class MoodleCourseStore {
         return feed
     }
 
+    /// A site that does not allow the posts call answers with none, which leaves the first post
+    /// as the discussion's list brought it.
     func refreshThread(of discussion: MoodleDiscussion) async {
         await thread(of: discussion).refresh { [api] in
             guard try await api.functions().contains(MoodleForumService.discussionPostsFunction) else {
@@ -547,6 +560,11 @@ final class MoodleCourseStore {
         open(discussion, in: newsForum)
     }
 
+    /// Every opening fetches the posts, as the list may not know of a reply yet, and keeps which
+    /// were unread for the dots. Moodle marks the whole discussion read on the view event, so it
+    /// goes only once the posts load on a page still on screen (`isShown`): an opening whose fetch
+    /// fails, or whose page has left by then, sends nothing and returns nil, leaving the replies
+    /// unread for the next opening.
     func openThread(
         of discussion: MoodleDiscussion, in forum: MoodleForum, isShown: () -> Bool = { true }
     ) async -> Set<Int>? {
@@ -569,6 +587,10 @@ final class MoodleCourseStore {
         return members.value?.members.first { $0.id == id }
     }
 
+    /// The whole list in one call, which the section counts and the screen groups and searches.
+    /// A site that does not allow the call, or a course that keeps its participants from the
+    /// account, answers as if the course had no members, which hides their row for good rather
+    /// than failing on every refresh.
     func refreshMembers() async {
         await members.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseMembersService.membersFunction) else {
@@ -600,6 +622,11 @@ final class MoodleCourseStore {
         pictures[url] = image
     }
 
+    /// The member's own picture as a file named for them, which Quick Look opens and its share
+    /// menu saves: Moodle's 512 px size, downloaded on the first open and kept, else the 100 px
+    /// one the list shows; nil while neither is on the device. Quick Look tells an image by its
+    /// extension, which the kept files have none of. The copy sits next to them, so a new upload
+    /// and a sign-out delete it too.
     func picturePreview(of member: MoodleMember) async -> URL? {
         guard let url = member.pictureURL, context.isCurrent() else { return nil }
         let kept = pictureFile(of: member.id, url: url)
@@ -709,6 +736,8 @@ final class MoodleCourseStore {
         return value
     }
 
+    /// One call for this course. A site that does not allow it answers as if the course had no
+    /// summary, which shows nothing.
     func refreshSummary() async {
         await summary.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseSummaryService.coursesFunction) else { return .empty }

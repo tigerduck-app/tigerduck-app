@@ -4,9 +4,17 @@ import UIKit
 
 enum LibraryQRRenderer {
 
+    /// One context for the app's lifetime — creating one per QR compiles
+    /// Core Image's Metal pipeline every 30 s.
+    // Plain `nonisolated`, not `nonisolated(unsafe)`: `CIContext` is `Sendable` in
+    // the current SDK. The annotation is still needed because the module defaults
+    // to MainActor isolation and `image(from:)` runs off it.
     nonisolated private static let ciContext = CIContext()
 
     nonisolated static func image(from string: String) -> UIImage? {
+        // Plain SDR render. `HDRQRCodeImage` applies the HDR brightness at draw time
+        // in a Metal shader; doing it here in CoreImage is unreliable, since the filter
+        // chain clamps and SwiftUI does not tag synthetic UIImages as HDR.
         let context = ciContext
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(string.utf8)
