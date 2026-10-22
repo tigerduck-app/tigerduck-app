@@ -39,7 +39,6 @@ struct WidgetTimelineDerivationTests {
         )
     }
 
-    /// A fixed Monday in Taipei time, which the widget reads periods in (2024-01-01 was a Monday).
     private func monday(_ hour: Int, _ minute: Int) -> Date {
         var components = DateComponents()
         components.year = 2024; components.month = 1; components.day = 1
@@ -81,7 +80,6 @@ struct WidgetTimelineDerivationTests {
         let earlier = course(courseNo: "A", displayName: "Early", weekday: 1, periods: ["A"])
         let later = course(courseNo: "B", displayName: "Later", weekday: 1, periods: ["C"])
         let snap = snapshot(courses: [earlier, later])
-        // 09:30 — Earlier ended at 09:00; Later starts at 10:20.
         let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 30))
         if case .nextToday(let info) = derived {
             #expect(info.course.displayName == "Later")
@@ -95,12 +93,10 @@ struct WidgetTimelineDerivationTests {
         let earlier = course(courseNo: "A", displayName: "MonClass", weekday: 1, periods: ["A"])
         let tomorrow = course(courseNo: "B", displayName: "TuesClass", weekday: 2, periods: ["B"])
         let snap = snapshot(courses: [earlier, tomorrow])
-        // 18:00 Monday — nothing left today
         let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(18, 0))
         if case .tomorrowFirst(let info) = derived {
             #expect(info.course.displayName == "TuesClass")
             #expect(info.startTime == "09:10")
-            // Monday 18:00 → Tuesday really is tomorrow.
             #expect(info.day == .tomorrow)
         } else {
             Issue.record("Expected .tomorrowFirst, got \(derived)")
@@ -113,14 +109,6 @@ struct WidgetTimelineDerivationTests {
         #expect(derived == .noMoreClasses)
     }
 
-    /// Marking today's in-progress class as skipped must drop it out of
-    /// `.ongoing` so the widget stops showing the cancelled class as the
-    /// active slot.
-    ///
-    /// It does not fall through to `.noMoreClasses`: the course still meets
-    /// next Monday, and the seven-day scan finds it so a one-class-a-week
-    /// timetable does not read as empty for six days. The scan must not
-    /// caption that slot "Tomorrow", hence the `day` assertion.
     @Test func skippedToday_removesFromOngoing() {
         let now = monday(9, 30)
         let key = WidgetTimelineDerivation.dateKey(for: now)
@@ -136,8 +124,6 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
-    /// When today's *upcoming* class is skipped but a later non-skipped class
-    /// exists, derivation should skip past the cancelled slot to the next real one.
     @Test func skippedToday_fallsThroughToNextNonSkipped() {
         let now = monday(9, 30)
         let key = WidgetTimelineDerivation.dateKey(for: now)
@@ -153,9 +139,6 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
-    /// A course scheduled at A (08:10–09:00) and C (10:20–11:10) — with B
-    /// unscheduled — must NOT report as ongoing during the 09:00–10:20 gap.
-    /// The gap should fall through to `.nextToday(C)`.
     @Test func nonContiguousPeriods_gapFallsThroughToNextToday() {
         let snap = snapshot(courses: [
             course(courseNo: "X", displayName: "Split", weekday: 1, periods: ["A", "C"]),
@@ -169,9 +152,6 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
-    /// Adjacent-in-`order` periods (B and C) should still render as one block
-    /// "B–C" while inside that block's envelope — the gap fix must not break
-    /// the contiguous-run span behavior.
     @Test func contiguousPeriods_renderAsRange() {
         let snap = snapshot(courses: [
             course(courseNo: "Y", displayName: "Block", weekday: 1, periods: ["B", "C"]),
@@ -185,8 +165,6 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
-    /// `tomorrowFirst` advances per-day, so the skip check must use each target
-    /// date's key — not today's — when scanning ahead.
     @Test func skippedTomorrow_advancesToDayAfter() {
         let now = monday(18, 0)
         let tomorrowKey = WidgetTimelineDerivation.dateKey(
@@ -199,15 +177,12 @@ struct WidgetTimelineDerivationTests {
         let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
         if case .tomorrowFirst(let info) = derived {
             #expect(info.course.displayName == "WedKeep")
-            // Two days out, so the widget must name the weekday instead of
-            // saying "Tomorrow".
             #expect(info.day == .later(weekday: 3))
         } else {
             Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
         }
     }
 
-    /// A course meeting twice in a day gets a row per block, not one row spanning the gap.
     @Test func todayRows_splitACourseIntoItsBlocks() {
         let now = monday(8, 0)
         let snap = snapshot(courses: [
@@ -237,7 +212,6 @@ struct WidgetTimelineDerivationTests {
         #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map(\.id) == ["Y-B"])
     }
 
-    /// On a school holiday the Today widget shows its empty state, as now and next have no class.
     @Test func todayRows_areEmptyOnAHoliday() {
         let now = monday(8, 0)
         var snap = snapshot(courses: [
@@ -248,8 +222,6 @@ struct WidgetTimelineDerivationTests {
         #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).isEmpty)
     }
 
-    /// A course in a different room for each block shows the room of the block in question,
-    /// not every room joined, which the week grid cut to "TR-313, ...".
     @Test func eachBlockShowsItsOwnRoom() {
         let twoRooms = SnapshotCourse(
             courseNo: "X",
@@ -278,23 +250,18 @@ struct WidgetTimelineDerivationTests {
         }
         let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: monday(8, 0))
         #expect(rows.map(\.classroom) == ["TR-313", "IB-101"])
-        // The week grid asks for a whole block, whose distinct rooms it lists.
         #expect(twoRooms.classroom(weekday: 1, periods: ["A", "B", "C"]) == "TR-313, IB-101")
     }
 
-    /// Taipei's midnight wherever the device is, since the widget's day is Taipei's.
     @Test func nextMidnight_isTaipeiMidnight() {
         let taipei = WidgetTaipei.calendar
         let lateEvening = taipei.date(from: DateComponents(year: 2026, month: 9, day: 22, hour: 23, minute: 30))!
         let midnight = taipei.date(from: DateComponents(year: 2026, month: 9, day: 23))!
         #expect(WidgetTimelineDerivation.nextMidnight(after: lateEvening) == midnight)
-        // At midnight itself the next one is a day later, never the same instant.
         let nextDay = taipei.date(from: DateComponents(year: 2026, month: 9, day: 24))!
         #expect(WidgetTimelineDerivation.nextMidnight(after: midnight) == nextDay)
     }
 
-    /// The evening before a school holiday, the scan passes the holiday as today's check
-    /// does, instead of offering its class as tomorrow's.
     @Test func holidayTomorrow_advancesToTheNextClassDay() {
         let now = monday(18, 0)
         let tomorrowKey = WidgetTimelineDerivation.dateKey(
@@ -314,10 +281,7 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
-    /// A holiday has no class now or later today, but the widget still offers the next class
-    /// day, as it does every evening, and captions it "Tomorrow" when it is.
     @Test func holidayToday_offersTomorrowsFirstClass() {
-        // 09:30, inside the Monday class that a class day would show as ongoing.
         let now = monday(9, 30)
         var snap = snapshot(courses: [
             course(courseNo: "A", displayName: "MonClass", weekday: 1, periods: ["B"]),
@@ -334,7 +298,6 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
-    /// Past a holiday that runs into tomorrow, the next class day is named by its weekday.
     @Test func holidayTodayAndTomorrow_offerTheNextClassDay() {
         let now = monday(9, 30)
         var snap = snapshot(courses: [
@@ -353,10 +316,7 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
-    /// Today's own class stays hidden on a holiday, and with the same weekday next week quiet
-    /// too, the seven-day scan has nothing to offer.
     @Test func holidayToday_withNoClassForAWeek_hasNoMoreClasses() {
-        // 08:00, before the Monday class that a class day would show as next today.
         let now = monday(8, 0)
         var snap = snapshot(courses: [
             course(courseNo: "A", displayName: "MonClass", weekday: 1, periods: ["B"]),
@@ -365,7 +325,6 @@ struct WidgetTimelineDerivationTests {
         #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .noMoreClasses)
     }
 
-    /// A holiday later in the week leaves a class day's own classes in place.
     @Test func classDayBeforeAHoliday_keepsTodaysClasses() {
         var snap = snapshot(courses: [
             course(courseNo: "A", displayName: "MonClass", weekday: 1, periods: ["B"]),
@@ -388,9 +347,6 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
-    /// The providers add an entry at each period boundary of today's timetable. On a holiday
-    /// every one of them shows the same next class, so the widget does not change at those
-    /// boundaries, and the midnight entry moves on to the new day.
     @Test func holidayToday_holdsOneStateUntilMidnight() {
         let now = monday(7, 0)
         var snap = snapshot(courses: [
@@ -404,7 +360,6 @@ struct WidgetTimelineDerivationTests {
         let midnight = WidgetTimelineDerivation.nextMidnight(after: now)
         #expect(dates.first == now)
         #expect(dates.last == midnight)
-        // `now`, the six boundaries of A to C, and midnight.
         #expect(dates.count == 8)
 
         let states = dates.dropLast().map { WidgetTimelineDerivation.derive(snapshot: snap, at: $0) }

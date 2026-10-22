@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// How a Moodle file is fetched: the key goes into the URL only for the Moodle site, and a reply
-/// that is not the file fails. Downloads run against `SettingsAPIStub`, so nothing leaves the
-/// process, and one at a time, since a test counts the temporary files every download leaves.
 @Suite(.serialized)
 struct MoodleFileTransferTests {
     private static let site = URL(string: "https://moodle2.ntust.edu.tw")!
@@ -76,8 +73,6 @@ struct MoodleFileTransferTests {
         }
     }
 
-    /// Moodle sends a file it lists as `document/unknown` as `application/octet-stream`
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/576).
     @Test("a file of a type Moodle does not know passes as any type but a page or a web service error")
     func unknownType() throws {
         let file = try Self.body("Rar!")

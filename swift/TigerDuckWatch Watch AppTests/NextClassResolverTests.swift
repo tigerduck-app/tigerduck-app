@@ -11,7 +11,6 @@ final class NextClassResolverTests: XCTestCase {
         )
     }
 
-    /// Builds a Date for Mon 2026-05-11 at the given HH:mm in the system calendar.
     private func mondayAt(_ hhmm: String) -> Date {
         let comps = hhmm.split(separator: ":").map(String.init)
         var dc = DateComponents()
@@ -95,7 +94,6 @@ final class NextClassResolverTests: XCTestCase {
         XCTAssertEqual(r.next?.id, "B")
     }
 
-    /// The Today tab lists the whole day, classes already over included.
     func test_todaysClasses_listsTodayInStartOrder() {
         let late = course("B", weekday: 1, start: "13:30", end: "14:20")
         let early = course("A", weekday: 1, start: "10:20", end: "11:10")
@@ -124,7 +122,6 @@ final class NextClassResolverTests: XCTestCase {
     }
 
     func test_overlappingSessions_picksEarliestEnd() {
-        // Defensive: real data shouldn't overlap, but lock the contract.
         let a = course("A", weekday: 1, start: "10:00", end: "11:00")
         let b = course("B", weekday: 1, start: "10:30", end: "11:30")
         let r = NextClassResolver.resolve(courses: [a, b], now: mondayAt("10:45"))

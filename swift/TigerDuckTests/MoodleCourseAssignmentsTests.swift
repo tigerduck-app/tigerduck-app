@@ -3,10 +3,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// A course's assignments in `MoodleCourseStore`, from what an assignment round left in a cache in
-/// a folder of its own, and each one's submission over a stand-in `MoodleCourseAPI`: the section's
-/// row and list, the page's cached copy, the calls the site's functions allow, and what a sign-out
-/// leaves. Every name and id here is made up.
 @MainActor
 struct MoodleCourseAssignmentsTests {
     private nonisolated static let courseId = 20119
@@ -48,14 +44,11 @@ struct MoodleCourseAssignmentsTests {
         content: "<p>Please check page 2.</p>"
     )
 
-    /// What an assignment round leaves: its records for the account, and the assignments Home
-    /// lists, which leave out those with no due date or no online submission.
     private static func round(_ records: [MoodleAssignmentRecord], in folder: Folder, account: String = account) {
         folder.cache.saveMoodleData(records, fetchedAt: Date(), name: MoodleAssignmentRecord.cacheName, account: account)
         folder.cache.saveAssignments(records.filter { $0.dueDate != nil && !$0.noSubmissions }.map { assignment($0.assignId) })
     }
 
-    /// What the stand-in site answers, and what the store asked it for.
     private final class Site: @unchecked Sendable {
         private let lock = NSLock()
         private var _functions: Set<String> = [
@@ -87,7 +80,6 @@ struct MoodleCourseAssignmentsTests {
             lock.withLock { _calls.append(call) }
         }
 
-        /// `before` runs before the submission answers; it can fail or suspend the request.
         func api(before: @escaping @Sendable () async throws -> Void = {}) -> MoodleCourseAPI {
             MoodleCourseAPI(
                 functions: { self.lock.withLock { self._functions } },
@@ -163,8 +155,6 @@ struct MoodleCourseAssignmentsTests {
         )?.value
     }
 
-    // MARK: - Section row
-
     @Test("the row counts every assignment of the course the round recorded, after the materials, before the grades")
     func sectionRow() async {
         let folder = Folder()
@@ -217,10 +207,6 @@ struct MoodleCourseAssignmentsTests {
         #expect(store.assignments.entry(for: Self.assignment(702)) == nil)
     }
 
-    // MARK: - List
-
-    /// Due `offset` after `due`, which is the list's clock, and handed in `submitted` after it, with
-    /// Home's row for it unless `listed` is false.
     private static func entry(
         _ id: Int, due offset: TimeInterval?, submitted: TimeInterval? = nil, cutoff: TimeInterval? = nil,
         ignored: Bool = false, markedDone: Bool = false, listed: Bool = true
@@ -259,8 +245,6 @@ struct MoodleCourseAssignmentsTests {
             String(localized: "assignment_status_overdue"), String(localized: "assignment_status_submitted"),
         ])
     }
-
-    // MARK: - Submission
 
     @Test("an assignment's page shows the submission it showed last time until the fetch answers")
     func submissionCacheFirst() async {
@@ -399,8 +383,6 @@ struct MoodleCourseAssignmentsTests {
         #expect(store.assignments.submission(of: Self.record(704)).value == nil)
     }
 
-    // MARK: - Sign-out
-
     @Test("a sign-out while the submission is on its way writes nothing and asks for no comments or group")
     func signOutDuringFetch() async {
         let folder = Folder()
@@ -446,8 +428,6 @@ struct MoodleCourseAssignmentsTests {
         #expect(cachedSubmission(folder, of: 701) == nil)
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
     }
-
-    // MARK: - Opening from Home
 
     @Test("an assignment opened outside a course detail gets the store of the course its record names")
     func storeForAssignment() {

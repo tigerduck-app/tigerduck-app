@@ -25,7 +25,6 @@ struct AssignmentStatusRequestTests {
         let started = OSAllocatedUnfairLock<[Int: ContinuousClock.Instant]>(initialState: [:])
         let records = [1, 2, 3].map { Self.record($0, cutoff: nil) }
 
-        // One at a time, so the second goes out only once the first has answered.
         let answers = await AppServiceBridge.askStatuses(of: records, limit: 1) { id in
             started.withLock { $0[id] = .now }
             try await Task.sleep(for: .milliseconds(5))
@@ -100,8 +99,6 @@ struct AssignmentStatusRequestTests {
         )
         #expect(closed == ["1": earlier])
     }
-
-    // MARK: - Concurrency
 
     @MainActor
     private final class Tracker {

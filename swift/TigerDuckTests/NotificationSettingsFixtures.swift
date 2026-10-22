@@ -1,6 +1,3 @@
-// Fixtures for the suites that drive `NotificationSettingsSync.reconcile` against a real
-// `LiveActivityPreferencesStore` and `SettingsAPIStub`: reconcile, seed migration, apply,
-// and the read tests of the push queue suite.
 import Defaults
 import Foundation
 import Testing
@@ -9,14 +6,6 @@ import Testing
 @MainActor
 enum NotificationSettingsFixtures {
 
-    /// Runs `body` with a fresh store, restoring every `Defaults` key the
-    /// store touches afterwards.
-    ///
-    /// Under `withExclusiveRealDefaults`: those keys are process-wide, and
-    /// `.serialized` does not order one suite against another, which interleave
-    /// at every `await`. Without it a test could restore another's temporary
-    /// values or post store changes into its window. Every test that reads or
-    /// writes these keys comes through here.
     static func withStore(
         _ body: (LiveActivityPreferencesStore) async throws -> Void
     ) async rethrows {
@@ -45,7 +34,6 @@ enum NotificationSettingsFixtures {
                 Defaults[.classReminderLeadMinutes] = savedClassReminderLead
                 Defaults[.hasPickedClassReminderLead] = savedPicked
             }
-            // Only a pull clears the pick, so a test could not clear one left behind.
             Defaults[.hasPickedClassReminderLead] = false
             try await body(LiveActivityPreferencesStore())
         }
@@ -55,12 +43,10 @@ enum NotificationSettingsFixtures {
         baseURL.appendingPathComponent("settings/notification")
     }
 
-    /// A `GET` that finds no document: the account has never written one.
     static func notFound() -> SettingsAPIStub.StubResponse {
         .init(statusCode: 404, body: Data())
     }
 
-    /// A successful `GET` — `{"document": ..., "revision": ...}`.
     static func found(_ document: [String: Any], revision: Int) throws -> SettingsAPIStub.StubResponse {
         .init(
             statusCode: 200,
@@ -68,25 +54,20 @@ enum NotificationSettingsFixtures {
         )
     }
 
-    /// A successful `PUT` — just the new revision.
     static func written(revision: Int) throws -> SettingsAPIStub.StubResponse {
         .init(statusCode: 200, body: try JSONSerialization.data(withJSONObject: ["revision": revision]))
     }
 
-    /// A `409` — `{"server": {"document": ..., "revision": ...}}`.
     static func conflict(_ document: [String: Any], revision: Int) throws -> SettingsAPIStub.StubResponse {
         let server: [String: Any] = ["document": document, "revision": revision]
         return .init(statusCode: 409, body: try JSONSerialization.data(withJSONObject: ["server": server]))
     }
 
-    /// The envelope a `PUT` actually sent.
     static func sentEnvelope(_ request: URLRequest) throws -> [String: Any] {
         let body = try #require(SettingsAPIStub.bodyData(from: request))
         return try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
     }
 
-    /// The `document` a `PUT` actually sent, as a raw dictionary — the only
-    /// view that shows keys the typed document has no property for.
     static func sentDocument(_ request: URLRequest) throws -> [String: Any] {
         try #require(try sentEnvelope(request)["document"] as? [String: Any])
     }

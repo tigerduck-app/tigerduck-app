@@ -13,10 +13,6 @@ enum SchoolMailFixtures {
         return try Data(contentsOf: url)
     }
 
-    /// Non-blank lines of a `.txt` fixture, in file order — mirrors the Android reader
-    /// for the same corpus (`javaClass.getResourceAsStream(...).bufferedReader().readLines()
-    /// .filter { it.isNotBlank() }`): lines that are empty or all whitespace are dropped,
-    /// nothing else is special.
     static func lines(_ name: String) throws -> [String] {
         guard let url = Bundle(for: Token.self).url(forResource: name, withExtension: "txt") else {
             throw FixtureError.missing(name)

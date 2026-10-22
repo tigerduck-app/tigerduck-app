@@ -1,6 +1,3 @@
-// The course colours from before the app noted which ones the user picked
-// (https://github.com/tigerduck-app/tigerduck-app/issues/563). The done key mirrors the migration's
-// private one, real process-wide state: the suite is `.serialized` and clears it.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -48,7 +45,6 @@ struct CourseColorPickSeedMigrationTests {
         defer { cleanUp() }
         let cache = makeCache()
         cache.saveCourseColorMap(["CS1010001": 0x123456])
-        // Mode 000 stands in for the lock screen: the file is there and does not open.
         let file = root.appendingPathComponent("persistent/course_color_map.json")
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
 

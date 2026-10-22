@@ -1,5 +1,3 @@
-// What a sign-out deletes that TigerSync does not keep, which its confirmation names
-// (https://github.com/tigerduck-app/tigerduck-app/issues/563).
 import Testing
 @testable import TigerDuck
 
@@ -8,7 +6,6 @@ struct SignOutUnsyncedDataTests {
 
     private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
 
-    /// Each kind of data, with the categories that must all keep it.
     private static let kinds: [(data: Held, needs: Set<String>)] = [
         (Held(courses: true), ["courses"]),
         (Held(courseNames: true), ["course_names"]),

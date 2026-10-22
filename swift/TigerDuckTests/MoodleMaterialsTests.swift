@@ -3,9 +3,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// A course's materials through `MoodleCourseStore` over a stand-in `MoodleCourseAPI`, with the
-/// cache and the downloaded files in a folder of their own: the section row's count, the gating,
-/// the cache, the downloads and what a screen opens.
 @MainActor
 struct MoodleMaterialsTests {
     private nonisolated static let courseId = 20119
@@ -37,7 +34,6 @@ struct MoodleMaterialsTests {
         MoodleMaterialSection(id: 101, name: "Week 1", materials: [reading, lab]),
     ])
 
-    /// The calls the store made, and what the stand-in site answers.
     private final class Site: @unchecked Sendable {
         private let lock = NSLock()
         private var _functions = MoodleMaterialsTests.functions
@@ -59,8 +55,6 @@ struct MoodleMaterialsTests {
         var viewed: [Int] { lock.withLock { _viewed } }
         var downloads: [String] { lock.withLock { _downloads } }
 
-        /// `beforeDownload` runs once a download starts, with its progress callback; it throws to
-        /// fail the download.
         func api(
             beforeMaterials: @escaping @Sendable () async -> Void = {},
             beforeDownload: @escaping @Sendable (_ file: MoodleFile, _ progress: @escaping @Sendable (Double) -> Void) async throws -> Void = { _, _ in }
@@ -79,7 +73,6 @@ struct MoodleMaterialsTests {
                     }
                 },
                 markMaterialViewed: { material, isCurrent in
-                    // As the live call does once it holds a token.
                     guard await isCurrent() else { throw CancellationError() }
                     self.lock.withLock { self._viewed.append(material.id) }
                 },
@@ -95,7 +88,6 @@ struct MoodleMaterialsTests {
         }
     }
 
-    /// A cache and a files folder of their own, removed when the test ends.
     @MainActor
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
@@ -127,8 +119,6 @@ struct MoodleMaterialsTests {
     }
 
     private static let syllabusRef = MoodleFileRef(file: file("syllabus.pdf"), owner: .module(9101))
-
-    // MARK: - Section row
 
     @Test("the materials row counts files and links, each file of a folder on its own")
     func rowCount() async {
@@ -191,8 +181,6 @@ struct MoodleMaterialsTests {
         #expect(store.sectionRows.map(\.kind) == [.materials])
     }
 
-    // MARK: - Cache
-
     @Test("materials are cached per account, shown before anything is asked, and fresh for five minutes")
     func cache() async {
         let folder = Folder()
@@ -234,8 +222,6 @@ struct MoodleMaterialsTests {
         #expect(store.downloadState(of: Self.syllabusRef.file, in: Self.syllabusRef.owner) == .notDownloaded)
     }
 
-    // MARK: - Views on Moodle
-
     @Test("opening a file or link logs its module's view once, only when the site allows that call")
     func viewEvents() async {
         let folder = Folder()
@@ -249,7 +235,6 @@ struct MoodleMaterialsTests {
         #expect(site.viewed == [9101, 9201])
     }
 
-    /// On iPad a materials screen in another window outlives a sign-out.
     @Test("a file opened after its account signed out logs no view")
     func noViewEventAfterSignOut() async {
         let folder = Folder()
@@ -261,8 +246,6 @@ struct MoodleMaterialsTests {
 
         #expect(site.viewed.isEmpty)
     }
-
-    // MARK: - Downloads
 
     @Test("a file downloads once however often it is asked for, with its progress on the way")
     func downloadOnce() async throws {
@@ -292,8 +275,6 @@ struct MoodleMaterialsTests {
         #expect(site.downloads.count == 1)
     }
 
-    /// The other Moodle files on disk are closed behind the lock screen, and an attachment such as
-    /// a grade list should be too (https://github.com/tigerduck-app/tigerduck-app/issues/444).
     @Test("a downloaded file is closed to reads while the device is locked")
     func downloadedFileProtection() {
         // A simulator keeps no protection class on a file, so this reads what a copy is given.
@@ -429,7 +410,6 @@ struct MoodleMaterialsTests {
         try await waitUntil { store.downloadState(of: newer, in: .module(9101)) == .downloading(progress: 0.2) }
 
         reports.withLock { $0[0] }(0.9)
-        // The report hops to the main actor, so a hop queued after it runs once it has.
         await Task { @MainActor in }.value
         #expect(store.downloadState(of: newer, in: .module(9101)) == .downloading(progress: 0.2))
 
@@ -475,8 +455,6 @@ struct MoodleMaterialsTests {
         #expect(store.downloadState(of: Self.syllabusRef.file, in: .module(9101)) == .notDownloaded)
         #expect(await folder.downloads.measure() == 0)
     }
-
-    // MARK: - Opening on screen
 
     @Test("a file that finishes downloading opens only if it was the last tapped and the screen still shows")
     func autoOpen() async throws {
@@ -537,7 +515,6 @@ struct MoodleMaterialsTests {
         opener.share(Self.syllabusRef, store: store)
         await gate.fire()
 
-        // The tap started the download, so its check has run once the download's state settles.
         try await waitUntil {
             opener.shared != nil && store.downloadState(of: Self.syllabusRef.file, in: Self.syllabusRef.owner) == .downloaded(copy)
         }

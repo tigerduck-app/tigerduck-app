@@ -4,7 +4,6 @@ import SwiftUI
 import Testing
 @testable import TigerDuck
 
-/// Flip-to-library needs a signed-in library account, since the flip opens its QR code.
 @MainActor
 struct FlipToLibraryGateTests {
     @Test("signed out of the library, the Settings switch reads off whatever it holds")
@@ -22,8 +21,6 @@ struct FlipToLibraryGateTests {
         #expect(!FlipToLibraryGate.isArmed(enabled: true, signedInToLibrary: true, inBackground: true))
     }
 
-    /// The switch is off by default, and a library sign-in asks once whether to turn it on
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/434).
     @Test("the gesture is offered once, to a library account with the switch off")
     func theGestureIsOfferedOnceAfterALibrarySignIn() {
         #expect(!Defaults.Key<Bool>.flipToLibraryEnabled.defaultValue)
@@ -33,15 +30,11 @@ struct FlipToLibraryGateTests {
         #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: true, onLibraryPage: false))
     }
 
-    /// Someone who signs in on the Library page is there to show the code, which the offer's sheet
-    /// would cover (https://github.com/tigerduck-app/tigerduck-app/issues/529).
     @Test("the gesture is not offered over the Library page")
     func theOfferWaitsUntilTheLibraryPageIsLeft() {
         #expect(!FlipToLibraryGate.offersGesture(signedInToLibrary: true, enabled: false, asked: false, onLibraryPage: true))
     }
 
-    /// A tab switch can show one Library page before it hides the other, and a page can appear
-    /// twice in a row, so the page counts as shown until every one has gone.
     @Test("each Library page counts once, until it goes")
     func eachLibraryPageCountsOnce() {
         let presence = LibraryPagePresence()
@@ -61,8 +54,6 @@ struct FlipToLibraryGateTests {
         #expect(presence.isShown)
     }
 
-    /// What's New and the update prompt share the root with the offer, and two sheets set there in
-    /// one render leave one unshown, so the offer waits for them as for any sheet already up.
     @Test("the offer waits behind a sheet already up and behind What's New or the update prompt")
     func theOfferWaitsForOtherSheets() {
         #expect(!FlipToLibraryGate.offerWaits(sheetPresented: false, notifySheetPending: false))

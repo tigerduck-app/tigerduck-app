@@ -3,9 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The phone fetches a library code for the Watch with its own token. A sign-out while that
-/// request is out leaves the code with the departing account
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/436).
 @MainActor
 struct WatchLibraryQRReplyTests {
     @Test func aCodeFetchedAcrossASignOutReachesNeitherTheCacheNorTheWatch() async {

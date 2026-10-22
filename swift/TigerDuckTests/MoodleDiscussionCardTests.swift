@@ -3,8 +3,6 @@ import SwiftUI
 import Testing
 @testable import TigerDuck
 
-/// The time stamps of the Moodle screens: zero-padded, the time today and the year only when it
-/// is not this one, on the Taipei calendar.
 struct MoodleDateFormatTests {
     private static func taipei(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
         AppConstants.taipeiCalendar.date(
@@ -45,9 +43,6 @@ struct MoodleDateFormatTests {
 #if os(iOS)
 import UIKit
 
-/// The announcement card laid out in a real window and measured with probes, as
-/// `HeaderControlMetricsTests` measures its controls: the title and the preview stop at two
-/// lines, and the time keeps its whole width on the title's first line however long the title.
 @MainActor
 struct MoodleDiscussionCardTests {
     private final class Frames: @unchecked Sendable {
@@ -56,7 +51,6 @@ struct MoodleDiscussionCardTests {
 
     private static let longText = String(repeating: "期中考範圍與注意事項，請各組於本週五前登記期末專題題目。", count: 6)
 
-    /// Lays `view` out at `width` in a window and returns the frames its probes reported.
     private func layout(_ view: some View, width: CGFloat = 390) -> [String: CGRect] {
         let frames = Frames()
         let host = UIHostingController(

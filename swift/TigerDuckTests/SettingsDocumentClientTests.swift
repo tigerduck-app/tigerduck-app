@@ -1,6 +1,3 @@
-// `SettingsDocumentClient` through `SettingsAPIStub`. Its wire format is dictionary access against
-// a contract in the backend repo (`server/routes/settings_docs.py`, `server/sync/serializers.py`)
-// that no compiler checks. Bodies copy the live backend's in full: a parser must handle extra keys.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -12,7 +9,6 @@ struct SettingsDocumentClientTests {
         baseURL.appendingPathComponent("settings/notification")
     }
 
-    /// A full `settings_document_to_dict` body, extra keys and all.
     private static func serverEnvelope(document: [String: Any], revision: Int) throws -> Data {
         try JSONSerialization.data(withJSONObject: [
             "namespace": "notification",
@@ -41,8 +37,6 @@ struct SettingsDocumentClientTests {
         try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    // MARK: - Read
-
     @Test("read unwraps the document and revision out of the server's envelope")
     func readParsesEnvelope() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
@@ -58,8 +52,6 @@ struct SettingsDocumentClientTests {
         let result = try #require(try await client.read(namespace: "notification"))
 
         #expect(result.revision == 7)
-        // The `document` value only, lifted out of the envelope — not the
-        // envelope itself, which is the easy thing to get wrong here.
         let parsed = try Self.object(result.document)
         #expect(Set(parsed.keys) == ["assignments"])
         let assignments = try #require(parsed["assignments"] as? [String: Any])
@@ -117,8 +109,6 @@ struct SettingsDocumentClientTests {
         )
     }
 
-    // MARK: - Write envelope
-
     @Test("write wraps the document in the backend's envelope, with an explicit null base_revision on create")
     func writeSendsCreateEnvelope() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
@@ -140,11 +130,7 @@ struct SettingsDocumentClientTests {
         let sent = try Self.object(try #require(SettingsAPIStub.bodyData(from: request)))
         #expect(Set(sent.keys) == ["schema_version", "document", "base_revision"])
         #expect(sent["schema_version"] as? Int == 1)
-        // Explicitly null, not omitted: `null` is what tells the backend
-        // "create this namespace" (`SettingsPut.base_revision`).
         #expect(sent["base_revision"] is NSNull)
-        // The caller's document travels as the `document` value, not
-        // re-wrapped or stringified.
         let sentDocument = try #require(sent["document"] as? [String: Any])
         let courses = try #require(sentDocument["courses"] as? [String: Any])
         #expect(courses["enabled"] as? Bool == true)
@@ -173,8 +159,6 @@ struct SettingsDocumentClientTests {
         #expect(sent["base_revision"] as? Int == 11)
     }
 
-    // MARK: - Conflict
-
     @Test("a 409 comes back as .conflict carrying the winning document, not as a thrown error")
     func writeReturnsConflict() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
@@ -198,9 +182,6 @@ struct SettingsDocumentClientTests {
             return
         }
         #expect(revision == 42)
-        // Read out of `server.document`, not out of the top level — the top
-        // level of a 409 body has no `document` key at all, so a parser
-        // looking in the wrong place would have thrown instead.
         let parsed = try Self.object(document)
         let courses = try #require(parsed["courses"] as? [String: Any])
         #expect(courses["enabled"] as? Bool == false)
@@ -222,14 +203,11 @@ struct SettingsDocumentClientTests {
         }
     }
 
-    // MARK: - Malformed bodies
-
     @Test("a body that is not JSON at all surfaces as PushAPIError, not a raw JSONSerialization error")
     func nonJSONBodyThrowsPushAPIError() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-        // What a captive portal or a misconfigured proxy actually returns.
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data("<html><body>502 Bad Gateway</body></html>".utf8)),
             for: url
@@ -267,14 +245,6 @@ struct SettingsDocumentClientTests {
         }
     }
 
-    // MARK: - APIVersionGate
-
-    /// The gate latches for the whole process by design, so this is the
-    /// **only** test in the target that touches it — both halves live in
-    /// one test rather than two so they cannot race each other's reset, and
-    /// no other test sends it a 410. (404 and 409, which this client hands to
-    /// the gate on its normal paths, do not latch it — the first half here
-    /// is what proves the assertion in the second half means something.)
     @Test("the version gate latches on 410 and only on 410")
     @MainActor
     func versionGateSeesEveryStatusButLatchesOnlyOnGone() async throws {

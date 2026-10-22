@@ -3,14 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `MailPageSession` must never close the connection while a `use(_:)` command is in flight, a
-/// stale close timer must never act, and a network or certificate error must drop the
-/// connection so the next call reconnects, but only once every concurrent `use(_:)` is done.
-///
-/// Nothing here waits on a clock. An in-flight `use(_:)` is parked inside the client on
-/// `FakeMailClient`'s command gate, and the idle-close timer is a `ManualSleeper` the test
-/// fires by hand, so "the delay has passed" and "the call is still in flight" are facts the
-/// test establishes rather than timing margins, which flake.
 @MainActor
 struct MailPageSessionTests {
     private static let idleClose: Duration = .milliseconds(200)
@@ -25,19 +17,18 @@ struct MailPageSessionTests {
         let useTask = Task {
             try await session.use { client in _ = try await client.status(folder: "INBOX") }
         }
-        await fake.waitForArrival("status") // the use really is in flight, not merely spawned
+        await fake.waitForArrival("status")
 
-        session.releaseSoon() // requested while that use is still in flight
-        // Nothing may even be armed yet: an in-flight call defers the close entirely.
+        session.releaseSoon()
         #expect(await timer.armedCount == 0)
         #expect(await fake.calls.contains("logout") == false)
 
         await fake.release("status")
-        _ = try await useTask.value // the use is done; the deferred close is armed now
+        _ = try await useTask.value
 
         try await timer.waitUntilArmed()
         #expect(await timer.requestedDurations == [Self.idleClose])
-        await timer.fire() // the whole idle delay, with no clock
+        await timer.fire()
         await fake.waitForArrival("logout")
         #expect(await fake.calls.contains("logout"))
     }
@@ -47,13 +38,10 @@ struct MailPageSessionTests {
         let timer = ManualSleeper()
         let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { await timer.sleep(for: $0) })
         _ = try await session.use { _ in }
-        session.releaseSoon() // arms a close at generation N
+        session.releaseSoon()
         try await timer.waitUntilArmed()
-        _ = try await session.use { _ in } // cancels it and bumps the generation; nothing re-arms it
+        _ = try await session.use { _ in }
 
-        // The use's cancel ends the superseded timer's wait, as it ends a real `Task.sleep`; firing
-        // as well covers a timer the cancel never reached. Whichever of the cancellation check or
-        // the generation guard catches it, no close may happen.
         await timer.fire()
         await Task.yield()
         #expect(await fake.calls.contains("logout") == false)
@@ -73,7 +61,7 @@ struct MailPageSessionTests {
         }
         #expect(await fake.calls.contains("logout"))
         _ = try await session.use { _ in }
-        #expect(openCount == 2) // dropped, so the next call reopened
+        #expect(openCount == 2)
     }
 
     @Test func aProtocolErrorKeepsTheClient() async throws {
@@ -89,12 +77,9 @@ struct MailPageSessionTests {
         }
         #expect(await fake.calls.contains("logout") == false)
         _ = try await session.use { _ in }
-        #expect(openCount == 1) // kept, so the next call reused it
+        #expect(openCount == 1)
     }
 
-    /// A network or certificate error from one `use(_:)` must not yank the connection out from
-    /// under a different `use(_:)` still running on it: the drop waits until every in-flight
-    /// call is done.
     @Test func anErrorPathDropWaitsForEveryOtherInFlightUseBeforeClosing() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         let session = MailPageSession(idleClose: .seconds(30), open: { fake })
@@ -104,26 +89,18 @@ struct MailPageSessionTests {
         let longUseTask = Task {
             try await session.use { client in _ = try await client.status(folder: "INBOX") }
         }
-        await fake.waitForArrival("status") // parked inside the client, genuinely in flight
+        await fake.waitForArrival("status")
 
         await #expect(throws: MailClientError.self) {
             try await session.use { _ in throw MailClientError.unreachable }
         }
-        // The failing use has already returned, but the long one is still in flight — the
-        // drop it asked for must be deferred, not acted on immediately.
         #expect(await fake.calls.contains("logout") == false)
 
         await fake.release("status")
-        // `use` only returns once its own `endUse()` has run, and that is what performs the
-        // deferred drop — so there is nothing left to wait for after this line.
         _ = try await longUseTask.value
         #expect(await fake.calls.contains("logout"))
     }
 
-    /// A rejected password is never sent again. `MailAccountManager.openSession()` is the
-    /// documented choke point for the IMAP sign-in, but SMTP `AUTH LOGIN` happens inside a
-    /// `use(_:)` body and never goes near it, so the session reports an authentication rejection
-    /// from any layer, not just the one it opened the connection with.
     @Test func anAuthenticationRejectionFromInsideAUseIsReported() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         var failures = 0
@@ -144,9 +121,6 @@ struct MailPageSessionTests {
         #expect(failures == 0)
     }
 
-    // MARK: Sign-out
-
-    /// Hands out `first`, then `second` on every later open, counting opens.
     private final class Opener {
         let first: FakeMailClient
         let second: FakeMailClient
@@ -165,9 +139,6 @@ struct MailPageSessionTests {
         }
     }
 
-    /// Without this, the idle timer was the only thing that ever closed the page's connection
-    /// — and `use(_:)` cancels it. A second student signing in inside that window was handed the
-    /// first student's session: their mailbox, and a compose that sent as them.
     @Test func aSignOutClosesTheHeldConnectionAtOnce() async throws {
         let center = NotificationCenter()
         let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
@@ -199,8 +170,6 @@ struct MailPageSessionTests {
         #expect(await fake.calls.contains("logout"))
     }
 
-    /// An open still logging in when the student signs out finishes with the old credentials:
-    /// it is closed, never adopted, and the call that asked for it gets no client.
     @Test func anOpenOvertakenByASignOutIsClosedNotAdopted() async throws {
         let center = NotificationCenter()
         let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
@@ -218,8 +187,6 @@ struct MailPageSessionTests {
         #expect(next === opener.second)
     }
 
-    /// Sign-outs on a different centre — another test's account manager — are not this
-    /// session's business.
     @Test func aSignOutElsewhereLeavesTheSessionAlone() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         let session = MailPageSession(idleClose: .seconds(30), open: { fake }, signOutEvents: NotificationCenter())

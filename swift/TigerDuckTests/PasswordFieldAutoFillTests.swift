@@ -4,11 +4,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// AutoFill fills a sign-in form through each field's `insertText(_:)`, or `replace(_:withText:)`
-/// when the field has text, and the password field it picks next to the account field is the
-/// secure decoy `.screenCaptureProtected` hosts `PasswordField` on: its search for a form's fields
-/// does not look inside a text field. These tests write into the decoy as AutoFill does and check
-/// the password reaches the binding, which the sign-in forms' Sign in button waits for.
 @MainActor
 @Suite(.serialized)
 struct PasswordFieldAutoFillTests {
@@ -21,11 +16,9 @@ struct PasswordFieldAutoFillTests {
     final class Credentials {
         var account = ""
         var password = ""
-        /// When `LoginSheet` enables Sign in, apart from a sign-in already running.
         var canSignIn: Bool { !account.isEmpty && !password.isEmpty }
     }
 
-    /// `LoginSheet`'s form as AutoFill sees it, without the `AppState` the sheet needs.
     private struct SignInForm: View {
         enum Field: Hashable { case account, password }
 
@@ -95,8 +88,6 @@ struct PasswordFieldAutoFillTests {
         }
     }
 
-    /// Runs `body` with the capture wrapper on, which Settings → Developer can store as off in the
-    /// simulator, and puts the stored value back afterwards.
     private func withCaptureProtectionOn(_ body: () async throws -> Void) async rethrows {
         let defaults = UserDefaults.standard
         let key = ScreenCaptureProtectionDebugFlag.userDefaultsKey
@@ -118,7 +109,6 @@ struct PasswordFieldAutoFillTests {
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.rootViewController = UIHostingController(rootView: SignInForm(credentials: credentials))
         window.makeKeyAndVisible()
-        // The password field joins the window once the capture wrapper has laid out its canvas.
         try await waitUntil { window.descendants(ofType: UITextField.self).contains { $0.textContentType == .password } }
 
         let fields = window.descendants(ofType: UITextField.self)

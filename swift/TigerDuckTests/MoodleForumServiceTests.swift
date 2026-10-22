@@ -3,9 +3,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// The forum calls and the site info they are gated on, against `SettingsAPIStub` on a site that
-/// does not exist, so no request reaches Moodle. The answers follow the shapes Moodle 4.5
-/// documents for these functions; every name in them is made up.
 struct MoodleForumServiceTests {
     private static let site = URL(string: "https://moodle-stub.invalid")!
 
@@ -15,7 +12,6 @@ struct MoodleForumServiceTests {
         return URLSession(configuration: config)
     }
 
-    /// The URL a call posts `function` to; the token keeps it unique to one test.
     private static func endpoint(_ function: String, token: String) -> URL {
         URL(string: "https://moodle-stub.invalid/webservice/rest/server.php"
             + "?moodlewsrestformat=json&wsfunction=\(function)&wstoken=\(token)")!

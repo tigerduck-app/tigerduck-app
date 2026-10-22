@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The course lookup behind an import: NTUST's course query answers each code, as for the user's
-/// own courses, and no half of a class table comes back.
 @MainActor
 struct ClassTableImportLookupTests {
     private static let display = AppServiceBridge.CourseDisplayPreferences(

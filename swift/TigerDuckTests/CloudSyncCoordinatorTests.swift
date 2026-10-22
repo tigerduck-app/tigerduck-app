@@ -1,5 +1,3 @@
-// `CloudSyncCoordinator` drains the outbox against a stubbed backend (`SettingsAPIStub`): which
-// requests a tick sends, and what it leaves queued.
 import Defaults
 import Foundation
 import SwiftUI
@@ -21,8 +19,6 @@ struct CloudSyncCoordinatorTests {
         }
     }
 
-    /// Course settings wait as in the app, on the real `Defaults`, and so do marks with
-    /// `syncsAssignmentMarks` nil.
     private static func makeCoordinator(
         _ backend: Backend,
         syncsAssignmentMarks: (@Sendable () -> Bool)? = { true },
@@ -114,8 +110,6 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
     }
 
-    /// A sign-out empties the outbox, so its confirmation counts both
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/563).
     @Test("Edits queued or parked are still unsent, and an empty outbox holds none")
     func queuedAndParkedEditsAreUnsent() async {
         let backend = Backend()
@@ -133,7 +127,6 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.holdsUnsentEdits())
     }
 
-    /// Read after the outbox, an edit that reached it during that read was seen in neither place.
     @Test("A course edit still on its way into the outbox is unsent")
     func anEditOnItsWayInIsUnsent() async {
         let coordinator = Self.makeCoordinator(Backend())
@@ -167,7 +160,6 @@ struct CloudSyncCoordinatorTests {
         let coordinator = Self.makeCoordinator(backend) { syncsMarks.withLock { $0 } }
         await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
         coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")
-        // The colour is queued from a task of its own.
         for _ in 0..<2000 {
             if await coordinator.outbox.pendingCount() == 2 { break }
             try? await Task.sleep(for: .milliseconds(5))
@@ -184,8 +176,6 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
-    /// A full sync holds these courses' colours and names from the server's
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/649).
     @Test("A colour or name edit counts as pending from the edit until its request is sent")
     func colourAndNameEditsArePendingUntilSent() async {
         let backend = Backend()
@@ -195,7 +185,6 @@ struct CloudSyncCoordinatorTests {
 
         coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")
         coordinator.enqueueCourseNameOverride(moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en")
-        // Read at once: each edit is queued from a task of its own, which may not have run yet.
         let pending = await coordinator.pendingCourseOverrides()
         #expect(pending.colors == ["1151CS1"])
         #expect(pending.names == ["1151EE2"])
@@ -216,8 +205,6 @@ struct CloudSyncCoordinatorTests {
         #expect(sent.names.isEmpty)
     }
 
-    /// An edit both queued and sent while a full sync's fetch is out is in neither of its outbox
-    /// samples (https://github.com/tigerduck-app/tigerduck-app/issues/670).
     @Test("A colour or name edit queued after a reading is listed after it is sent, and one queued before is not")
     func editsQueuedAfterAReadingAreListedOnceSent() async {
         let backend = Backend()
@@ -242,8 +229,6 @@ struct CloudSyncCoordinatorTests {
         #expect(edited.names == ["1151EE2"])
     }
 
-    /// The sample is taken before the fetch, and the hold is read when the server's colours and
-    /// names are applied (https://github.com/tigerduck-app/tigerduck-app/issues/670).
     @Test("A full sync holds what its sample listed and what was edited since, sent or not")
     func aFullSyncHoldsWhatItsSampleListedAndWhatWasEditedSince() async {
         let backend = Backend()
@@ -269,8 +254,6 @@ struct CloudSyncCoordinatorTests {
         #expect(held.names == ["1151EE2", "1151EE3"])
     }
 
-    /// Use Local lets go of its hold once these end
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/681).
     @Test("The task that queues a colour or a name ends once the edit is in the outbox")
     func colourAndNameTasksEndOnceTheEditIsQueued() async {
         let coordinator = Self.makeCoordinator(Backend())
@@ -289,7 +272,6 @@ struct CloudSyncCoordinatorTests {
         let backend = Backend()
         backend.answer("sync/assignments/42/override", body: Self.markReply)
         backend.answer("sync/assignments/43/override", body: Self.markReply)
-        // On for the first mark and off from the second, as if turned off while the first went.
         let reads = OSAllocatedUnfairLock(initialState: 0)
         let coordinator = Self.makeCoordinator(backend) {
             reads.withLock { count in
@@ -376,8 +358,6 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
     }
 
-    /// They went up after the answer and overwrote the server's values the user chose
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/665).
     @Test("Use Server for colours or names drops those edits still queued, and leaves the other kind and every other edit")
     func useServerDropsTheAnsweredColoursOrNames() async {
         let coordinator = Self.makeCoordinator(Backend())
@@ -459,7 +439,6 @@ struct CloudSyncCoordinatorTests {
         #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00"}"#
 }
 
-/// The test host builds no `AppState`, so this holds the conflict the alert's binding shows.
 @MainActor
 private final class ShownReenableConflict {
     var conflict: AppState.ReenableConflict?

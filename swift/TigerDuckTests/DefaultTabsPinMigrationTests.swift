@@ -1,6 +1,3 @@
-// Which installs `DefaultTabsPinMigration` keeps on the pre-2.3.0 bar (Home, Class table,
-// Calendar) rather than Home, Class table, Mail. iPhone/iPad-only like the migration; the test
-// target also builds for macOS. `doneKey` mirrors the migration's private flag literal.
 #if os(iOS)
 import Defaults
 import Foundation
@@ -30,8 +27,6 @@ struct DefaultTabsPinMigrationTests {
                 }
             }
             names.forEach(UserDefaults.standard.removeObject(forKey:))
-            // Not `hasCompletedOnboarding`: its registered default reads
-            // back as `false`, which is what "absent" means for it.
             for name in names.prefix(3) {
                 try #require(
                     UserDefaults.standard.object(forKey: name) == nil,
@@ -42,8 +37,6 @@ struct DefaultTabsPinMigrationTests {
         }
     }
 
-    // MARK: - runIfNeeded
-
     @Test func anUpgradeStoresTheOldBarOnce() async throws {
         try await Self.withRealMigrationKeys {
             Defaults[.lastShownWhatsNewVersion] = "2.2.0"
@@ -53,14 +46,12 @@ struct DefaultTabsPinMigrationTests {
             #expect(AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) == [.home, .classTable, .calendar])
             #expect(UserDefaults.standard.bool(forKey: doneKey))
 
-            // Once done, never again — even with the bar gone.
             Defaults[.configuredTabsData] = nil
             #expect(!DefaultTabsPinMigration.runIfNeeded())
             #expect(Defaults[.configuredTabsData] == nil)
         }
     }
 
-    /// `AppState.init` seeds the running version before migrations run.
     @Test func aFreshInstallStoresNothing() async throws {
         try await Self.withRealMigrationKeys {
             Defaults[.lastShownWhatsNewVersion] = "2.3.0"
@@ -83,7 +74,6 @@ struct DefaultTabsPinMigrationTests {
         }
     }
 
-    // MARK: - Classification
     @Test func anExistingUntouchedBarKeepsCalendar() {
         #expect(DefaultTabsPinMigration.keepsPreviousDefault(storedTabs: nil, isExistingInstall: true))
     }
@@ -93,8 +83,6 @@ struct DefaultTabsPinMigrationTests {
         #expect(!DefaultTabsPinMigration.keepsPreviousDefault(storedTabs: stored, isExistingInstall: true))
     }
 
-    /// A stored list that decodes to nothing shows the default, so it
-    /// counts as untouched.
     @Test func aStoredBarThatDecodesToNothingKeepsCalendar() throws {
         let empty = try JSONEncoder().encode([String]())
         #expect(DefaultTabsPinMigration.keepsPreviousDefault(storedTabs: empty, isExistingInstall: true))
@@ -110,14 +98,11 @@ struct DefaultTabsPinMigrationTests {
         #expect(DefaultTabsPinMigration.isUpgradeFromBeforeNewDefault(lastShownWhatsNewVersion: "2.1.4", hasCompletedOnboarding: false))
     }
 
-    /// `AppState.init` seeds the running version on a fresh install, and on
-    /// the first launch after a full reset, before the migration runs.
     @Test func aFreshInstallOrAResetIsNot() {
         #expect(!DefaultTabsPinMigration.isUpgradeFromBeforeNewDefault(lastShownWhatsNewVersion: "2.3.0", hasCompletedOnboarding: true))
         #expect(!DefaultTabsPinMigration.isUpgradeFromBeforeNewDefault(lastShownWhatsNewVersion: "2.4.0", hasCompletedOnboarding: false))
     }
 
-    /// A build from before the What's New marker leaves it empty.
     @Test func withNoMarkerOnboardingDecides() {
         #expect(DefaultTabsPinMigration.isUpgradeFromBeforeNewDefault(lastShownWhatsNewVersion: nil, hasCompletedOnboarding: true))
         #expect(!DefaultTabsPinMigration.isUpgradeFromBeforeNewDefault(lastShownWhatsNewVersion: nil, hasCompletedOnboarding: false))

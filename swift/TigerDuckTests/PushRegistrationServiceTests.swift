@@ -1,6 +1,3 @@
-// `PushRegistrationService` registers on any APNs token and never waits for a push-to-start
-// (PTS) token, which exists only while Live Activities are on. Assignment reminders arrive only
-// by push to the standard token, and the register carries app version, locale and cloud-sync flag.
 import Defaults
 import Foundation
 import Testing
@@ -10,8 +7,6 @@ import os
 @Suite("Push device registration")
 @MainActor
 struct PushRegistrationServiceTests {
-
-    // MARK: - Fixtures
 
     private static func makeService(
         baseURL: URL,
@@ -29,10 +24,7 @@ struct PushRegistrationServiceTests {
                 authHeaderProvider: authHeader
             ),
             deviceClass: "iphone",
-            // Each test awaits its attempt with `awaitPendingRegistration()`, so the debounce
-            // has nothing to merge: it ends at once and only records the window it asked for.
             debounceSleep: { window in debounces.withLock { $0.append(window) } },
-            // The backoff after a failed attempt likewise ends at once.
             retrySleep: { delay in retries.withLock { $0.append(delay) } }
         )
     }
@@ -49,10 +41,6 @@ struct PushRegistrationServiceTests {
         baseURL.appendingPathComponent("devices/test-device/preferences")
     }
 
-    /// The 200 body `PATCH /devices/{id}/preferences` answers with, echoing
-    /// the bulletin flag the way the backend does (the column is NOT NULL
-    /// with a `server_default`). `nil` omits the key entirely, which is
-    /// what a backend without the column answers.
     private static func preferencesBody(bulletinPushEnabled: Bool?) -> Data {
         let echo = bulletinPushEnabled.map { ",\n  \"bulletin_push_enabled\": \($0)" } ?? ""
         return Data("""
@@ -68,8 +56,6 @@ struct PushRegistrationServiceTests {
         """.utf8)
     }
 
-    /// Stubs one registration attempt: the anonymous announce, then
-    /// `registrations` successful POSTs to `/devices/register`.
     private static func expectAttempt(_ baseURL: URL, registrations: Int) {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: announceURL(baseURL))
         for _ in 0..<registrations {
@@ -80,8 +66,6 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    /// Stubs one attempt whose registration the backend refuses, as it does once it has revoked
-    /// the session.
     private static func expectRefusedAttempt(_ baseURL: URL) {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: announceURL(baseURL))
         SettingsAPIStub.enqueue(
@@ -90,8 +74,6 @@ struct PushRegistrationServiceTests {
         )
     }
 
-    /// Registers the standard token while the backend refuses every attempt, until the backoff
-    /// gives up: the first attempt and three retries.
     private static func registerUntilGivenUp(
         _ service: PushRegistrationService,
         baseURL: URL,
@@ -106,7 +88,6 @@ struct PushRegistrationServiceTests {
         try #require(snapshot.lastRegisteredAt == nil)
     }
 
-    /// Every `/devices/register` body sent so far, in order.
     private static func sentRegistrations(_ baseURL: URL) throws -> [[String: Any]] {
         try SettingsAPIStub.requests(for: registerURL(baseURL)).map { request in
             let body = try #require(SettingsAPIStub.bodyData(from: request))
@@ -118,14 +99,6 @@ struct PushRegistrationServiceTests {
         (registration["push_token"] as? [String: Any])?["token_kind"] as? String
     }
 
-    /// Runs `body` with the two delivery-preference flags the register body
-    /// carries pinned to their non-default values, then puts both back.
-    ///
-    /// Pinned rather than re-read at assertion time: the register sends the inverse of
-    /// `serverPushUserOptOut`, and an expectation derived the same way would pass without the `!`.
-    /// Both keys live in process-wide `UserDefaults` (see `AppDefaults.swift`), so this takes the
-    /// shared gate: this suite's tests run concurrently with each other and with
-    /// `BulletinPushOptOutMigrationTests`, which arranges the same keys.
     private static func withPinnedDeliveryPreferences(
         _ body: () async throws -> Void
     ) async rethrows {
@@ -136,18 +109,12 @@ struct PushRegistrationServiceTests {
                 Defaults[.bulletinPushEnabled] = savedBulletin
                 Defaults[.serverPushUserOptOut] = savedOptOut
             }
-            // Shipped defaults are the opposite of both: bulletins on, and
-            // not opted out of operator pushes.
             Defaults[.bulletinPushEnabled] = false
             Defaults[.serverPushUserOptOut] = true
             try await body()
         }
     }
 
-    /// Runs `body` with `bulletinPushEnabled` set to `start` and restores
-    /// whatever was there before — `updateBulletinPushEnabled` writes that
-    /// key into process-wide UserDefaults on success. Same gate, same
-    /// reason.
     private static func withBulletinPreference(
         startingAt start: Bool,
         _ body: () async throws -> Void
@@ -160,10 +127,6 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    /// Runs `body` with the six sync switches and
-    /// `syncPreferencesPushPending` put back as found afterwards —
-    /// `updateSyncPreferences` reads the one and writes the other in
-    /// process-wide UserDefaults. Same gate, same reason.
     private static func withSyncPreferences(
         _ body: () async throws -> Void
     ) async rethrows {
@@ -190,22 +153,16 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    // MARK: - Tests
-
     @Test("a sync-preferences PATCH that fails is sent again once a registration goes through")
     func failedSyncPreferencesPatchIsResentAfterRegistration() async throws {
         try await Self.withSyncPreferences {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
 
-            // Assignment reminders switched off with no connection: the
-            // PATCH never lands (nothing is stubbed for it).
             Defaults[.syncAssignmentReminders] = false
             await service.updateSyncPreferences()
             #expect(Defaults[.syncPreferencesPushPending])
 
-            // The next registration reaches the server, and the switches
-            // follow it there.
             Self.expectAttempt(baseURL, registrations: 1)
             SettingsAPIStub.enqueue(
                 .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: true)),
@@ -248,7 +205,6 @@ struct PushRegistrationServiceTests {
             let service = Self.makeService(baseURL: baseURL, debounces: debounces)
             Self.expectAttempt(baseURL, registrations: 1)
 
-            // Live Activities are off, so iOS never hands over a PTS token.
             await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
             await service.awaitPendingRegistration()
             #expect(debounces.withLock { $0 } == [.milliseconds(250)])
@@ -260,7 +216,6 @@ struct PushRegistrationServiceTests {
             #expect(token["token_kind"] as? String == "standard")
             #expect(token["token_value"] as? String == "abcdef")
 
-            // What the backend's reminder gate reads off the device row.
             #expect(registration["client_device_id"] as? String == "test-device")
             #expect(registration["platform"] as? String == "ios")
             let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -269,9 +224,6 @@ struct PushRegistrationServiceTests {
             #expect(registration["locale"] as? String == PushRegistrationService.currentLocaleTag)
             #expect(registration["cloud_sync_enabled"] as? Bool == Defaults[.cloudSyncEnabled])
 
-            // Every register carries both, so a migrated value or a missed PATCH self-heals. Both
-            // are pinned opposite their shipped defaults: ignoring the bulletin flag, or losing the
-            // `!` before `serverPushUserOptOut`, would invert the user's choice on every launch.
             #expect(registration["bulletin_push_enabled"] as? Bool == false)
             #expect(registration["server_push_enabled"] as? Bool == false)
 
@@ -290,9 +242,6 @@ struct PushRegistrationServiceTests {
         await service.awaitPendingRegistration()
         try #require(try Self.sentRegistrations(baseURL).map(Self.tokenKind) == ["standard"])
 
-        // Live Activities turn on and iOS hands over a PTS token. `/devices/register` takes a
-        // single `push_token` per request, so attaching it needs a registration of its own; the
-        // attempt re-sends the standard token too, which the server upserts.
         Self.expectAttempt(baseURL, registrations: 2)
         await service.update(ptsTokenHex: "a1b2")
         await service.awaitPendingRegistration()
@@ -306,9 +255,6 @@ struct PushRegistrationServiceTests {
         #expect(secondAttempt.contains { Self.tokenKind($0) == "standard" })
     }
 
-    // MARK: - Registering again after a failed registration
-    // https://github.com/tigerduck-app/tigerduck-app/issues/378
-
     @Test("a registration that gave up goes again after a sign-in, and its error clears")
     func registrationThatGaveUpRegistersAgainAfterSignIn() async throws {
         try await Self.withSyncPreferences {
@@ -318,8 +264,6 @@ struct PushRegistrationServiceTests {
             let service = Self.makeService(baseURL: baseURL, retries: retries)
             try await Self.registerUntilGivenUp(service, baseURL: baseURL, retries: retries)
 
-            // What a sign-in, a relogin and `ensureBackendSignedIn` end in, through
-            // `PushCoordinator.refreshRegistrationAfterAuth()`.
             Self.expectAttempt(baseURL, registrations: 1)
             await service.registerAgain()
             await service.awaitPendingRegistration()
@@ -418,7 +362,6 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    /// `cloud_sync_enabled` as the server keeps it: the value the last request carrying it set.
     private static func serverCloudSyncEnabled(_ baseURL: URL) throws -> Bool? {
         try SettingsAPIStub.requests(under: baseURL).compactMap { request -> Bool? in
             guard let body = SettingsAPIStub.bodyData(from: request) else { return nil }
@@ -427,8 +370,6 @@ struct PushRegistrationServiceTests {
         }.last
     }
 
-    /// A registration sends one request per token, each with the value read at its start, and the
-    /// switch's PATCH could land between them (https://github.com/tigerduck-app/tigerduck-app/issues/597).
     @Test("turning TigerSync off while a registration is out leaves the server off")
     func switchTurnedOffDuringARegistrationEndsOff() async throws {
         try await Self.withSyncPreferences {
@@ -442,8 +383,6 @@ struct PushRegistrationServiceTests {
             await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
             await service.awaitPendingRegistration()
 
-            // A push-to-start token arrives, and the attempt registers both tokens; the first
-            // registration's reply is held.
             let gate = SettingsAPIStub.ReplyGate()
             defer { gate.open() }
             let registered = Data(#"{"device_id":"server-device","push_token_id":1}"#.utf8)
@@ -459,7 +398,6 @@ struct PushRegistrationServiceTests {
 
             Defaults[.cloudSyncEnabled] = false
             let patch = Task { await service.updateCloudSyncEnabled(false) }
-            // Time for a PATCH that does not wait for the registration to go out first.
             for _ in 0..<60 where SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).isEmpty {
                 try await Task.sleep(for: .milliseconds(5))
             }
@@ -506,13 +444,11 @@ struct PushRegistrationServiceTests {
                 baseURL: baseURL, debounces: debounces, retries: retries,
                 authHeader: { await session.header() }
             )
-            // The first attempt's announce. Its registration finds no session and is not sent.
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: Self.announceURL(baseURL))
             Self.expectAttempt(baseURL, registrations: 1)
 
             await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
             await session.waitUntilHeld()
-            // A sign-in lands while that registration waits for its session.
             session.signIn()
             await service.registerAgain()
             session.release()
@@ -552,8 +488,6 @@ struct PushRegistrationServiceTests {
         #expect(await !service.snapshot().lastAttemptFoundNoSession)
     }
 
-    // MARK: - The bulletin toggle PATCHes before it persists
-
     @Test("a bulletin opt-out the server rejects leaves the local preference alone")
     func rejectedBulletinPatchDoesNotPersist() async throws {
         await Self.withBulletinPreference(startingAt: true) {
@@ -568,9 +502,6 @@ struct PushRegistrationServiceTests {
                 try await service.updateBulletinPushEnabled(false)
             }
 
-            // The page reads this key through `@Default`. Persisting before the response would
-            // show bulletins off while the server keeps sending them, with nothing to correct it
-            // until the next register.
             #expect(Defaults[.bulletinPushEnabled] == true)
         }
     }
@@ -596,9 +527,6 @@ struct PushRegistrationServiceTests {
         await Self.withBulletinPreference(startingAt: true) {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
-            // A backend without the column (rolled back, self-hosted, or older than this build)
-            // ignores the key and answers 200 without it. Nothing changed server-side, so treating
-            // it as success would leave the page saying bulletins are off while they keep arriving.
             SettingsAPIStub.enqueue(
                 .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: nil)),
                 for: Self.preferencesURL(baseURL)
@@ -631,9 +559,6 @@ struct PushRegistrationServiceTests {
     }
 }
 
-/// The bearer for each request while signed in, nil before `signIn()`. Holds the first
-/// registration POST, the first request that asks for a bearer, until `release()`, so a test can
-/// act while that registration is running; the held request keeps the answer it was asked for.
 private final class HeldRegistrationSession: Sendable {
     static let bearer = "Bearer restored"
 

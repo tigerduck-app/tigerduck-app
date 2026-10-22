@@ -1,5 +1,3 @@
-// The foreground revision poll (`RevisionPollSchedule`, `RevisionPoller`): how long it waits
-// between requests, and that it never has two in flight.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -69,7 +67,6 @@ struct RevisionPollScheduleTests {
 
 @MainActor
 struct RevisionPollerTests {
-    /// The poll the poller runs: answers from `outcomes`, and parks the next call while `holds`.
     @MainActor
     private final class ScriptedPoll {
         var outcomes: [RevisionPollOutcome] = []

@@ -4,17 +4,12 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// The finder's dense rows and its header at the largest text sizes, on the narrowest iPhone the
-/// app runs on.
 @MainActor
 @Suite(.serialized)
 struct EmptyClassroomLayoutTests {
-    /// A 375 pt iPhone less the inset of the card the rows sit in.
     private static let rowWidth: CGFloat = 375 - 2 * TigerDuckTheme.Spacing.lg
-    /// What the availability bar needs to stay readable.
     private static let barWidth: CGFloat = 80
 
-    /// The width of everything in `view` but what can shrink to nothing, such as the bar.
     private static func fixedWidth(_ view: some View, at size: DynamicTypeSize) -> CGFloat {
         let host = UIHostingController(rootView: view.environment(\.dynamicTypeSize, size))
         return host.sizeThatFits(in: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)).width
@@ -30,7 +25,6 @@ struct EmptyClassroomLayoutTests {
         #expect(Self.fixedWidth(row, at: size) <= Self.rowWidth - Self.barWidth)
     }
 
-    /// A finder that never reads, for its header alone.
     private static func idleModel() -> EmptyClassroomViewModel {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -46,7 +40,6 @@ struct EmptyClassroomLayoutTests {
         )
     }
 
-    /// The title's and the dot's frames in a 375 pt window, nil for a dot left out.
     private static func titleBarFrames(
         showsStatus: Bool, size: DynamicTypeSize = .large
     ) async throws -> (title: CGRect, dot: CGRect?) {
@@ -65,7 +58,6 @@ struct EmptyClassroomLayoutTests {
             try await waitUntil { accessibilityElement(labeled: title, in: host.view) != nil }
             let titleFrame = try #require(accessibilityElement(labeled: title, in: host.view)).accessibilityFrame
             let dot = accessibilityElement(labeled: SyncStatusDot.statusText(.unknown), in: host.view)
-            // In screen points, which are the window's: it sits at the screen's origin.
             return (titleFrame, dot?.accessibilityFrame)
         }
     }

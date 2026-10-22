@@ -69,8 +69,6 @@ struct ClassStopTests {
         #expect(stops.map(\.lastPeriod) == [1, 5])
     }
 
-    /// A block of consecutive periods can change rooms halfway, so the walk to the next room
-    /// starts from where the class ends (https://github.com/tigerduck-app/tigerduck-app/issues/538).
     @Test("a block that changes rooms halfway is a stop for each room")
     func aBlockThatChangesRoomsIsTwoStops() {
         let course = SDCourse(

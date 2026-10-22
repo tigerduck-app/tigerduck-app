@@ -4,24 +4,15 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Signing in to the library again with the stored credentials once the day-long token runs out,
-/// as the app does at launch, on each return and when the Library page opens. The sign-in request
-/// is a stand-in, so nothing leaves the process.
-///
-/// A refusal is kept in a real `Defaults` key, so these tests hold the gate in
-/// `docs/decisions/0020-real-defaults-gate.md` and put the key back.
 @MainActor
 struct LibrarySignInTests {
     @MainActor
     private final class Calls {
         var count = 0
-        /// Holds a stand-in request until the test opens it, so the test can act while it is out.
         var isOpen = false
-        /// What a caller's own account check answers.
         var callerIsCurrent = true
     }
 
-    /// The broadcaster's epoch, which every message to the Watch moves.
     private static var watchEpoch: Int {
         UserDefaults(suiteName: "group.org.ntust.app.TigerDuck")?.integer(forKey: "watchLibraryCredEpoch") ?? 0
     }
@@ -31,7 +22,6 @@ struct LibrarySignInTests {
         return LibraryLoginData(username: "", token: "token", expirationTimeStamp: Int64(expiry))
     }
 
-    /// Runs `body` with a library account of its own in the keychain and no refusal on record.
     private static func withStoredAccount(
         username: String = "B1LIB" + UUID().uuidString.prefix(8),
         _ body: (MemoryKeychain) async throws -> Void
@@ -60,8 +50,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// A sign-in the app makes by itself, for the Library page's code or the Watch's, reaches the
-    /// screens that show the library account, as one from the sign-in form does (#438).
     @Test func aSignInWithTheStoredCredentialsIsAnnounced() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in
@@ -80,7 +68,6 @@ struct LibrarySignInTests {
         try await Self.withStoredAccount { _ in
             #expect(LibraryService.canSignInWithStoredCredentials)
             let epoch = Self.watchEpoch
-            // The refusal signs the account out, which Settings and the flip have to hear.
             let observer = NotificationCenter.default.addObserver(
                 forName: LibraryService.signInDidChange, object: nil, queue: nil
             ) { _ in MainActor.assumeIsolated { announcements.count += 1 } }
@@ -90,10 +77,8 @@ struct LibrarySignInTests {
                 throw LibraryServiceError.loginFailed("wrong password")
             }
             #expect(announcements.count == 1)
-            // Kept in the defaults, so the next launch does not send it either.
             #expect(Defaults[.libraryStoredPasswordRejected])
             #expect(!LibraryService.canSignInWithStoredCredentials)
-            // The Watch is told to drop its copy, and is not handed the password again.
             #expect(Self.watchEpoch == epoch + 1)
             #expect(LibraryService.storedPasswordIfAvailable() == nil)
 
@@ -105,7 +90,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// Credentials saved by a sign-in that worked end the refusal of the ones before.
     @Test func savedCredentialsEndTheRefusal() async throws {
         try await Self.withStoredAccount { _ in
             LibraryService.storedPasswordRejected = true
@@ -132,7 +116,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// Launch and the Library page can both ask while the first sign-in is still on the wire.
     @Test func callersThatArriveTogetherShareOneSignIn() async throws {
         let calls = Calls()
         let signIn: @MainActor (String, String) async throws -> LibraryLoginData = { _, _ in
@@ -152,7 +135,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// The answer to a sign-in still out when the user signed out puts nothing back.
     @Test func aSignOutDuringTheSignInKeepsNothing() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in
@@ -173,7 +155,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// A refusal of the password the user has since replaced says nothing about the new one.
     @Test func aRefusalOfAReplacedPasswordIsNotKept() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { keychain in
@@ -193,7 +174,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// Control Center and the app switcher each count as a return to the app.
     @Test func aReturnSoonAfterAFailureSendsNothing() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in
@@ -206,12 +186,10 @@ struct LibrarySignInTests {
             }
             #expect(!signedIn)
             #expect(calls.count == 0)
-            // A sign-in that works ends the pause, so none is left for a later test.
             _ = try? await LibraryService.ensureToken { _, _ in Self.answer() }
         }
     }
 
-    /// A typed sign-in still out when the user signed out of the library saves nothing.
     @Test func aSignOutDuringATypedSignInKeepsNothing() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in
@@ -232,8 +210,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// The school sign-in's library step: no library account of that ID is stored yet, so a school
-    /// sign-out meanwhile moves no library generation, and only the caller can tell.
     @Test func aSignInItsCallerNoLongerWantsKeepsNothing() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in
@@ -270,8 +246,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// The sign-in form trims what it saves, but a username saved before it did can carry spaces
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/588).
     @Test func aUsernameWithSpacesIsTheSchoolAccountOfItsID() async throws {
         try await Self.withStoredAccount(username: " B1LIBSPACE ") { _ in
             #expect(!LibraryService.hasAccount(otherThan: "b1libspace"))
@@ -281,9 +255,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// The token lasts a day, and the Library page signs in again behind its code, so an account
-    /// whose token ran out still counts as signed in for Settings and the flip
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/528).
     @Test func storedCredentialsCountAsSignedInOnceTheTokenRunsOut() async throws {
         try await Self.withStoredAccount { _ in
             #expect(!LibraryService.isTokenValid)
@@ -298,8 +269,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// A code request that fails short of a refusal, as on a weak signal at the gate, keeps the
-    /// page signed in to try again: the stored credentials can still sign in.
     @Test func aFailedCodeRequestKeepsAStoredAccountSignedIn() async throws {
         try await Self.withStoredAccount { _ in
             LibraryQRCache.shared.clear()
@@ -328,8 +297,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// A retry that works after a failed code request fetches a fresh code every cycle after it,
-    /// rather than leaving the one it fetched to run out on screen.
     @Test func aRetryAfterAFailureKeepsRefreshingTheCode() async throws {
         try await Self.withStoredAccount { _ in
             LibraryQRCache.shared.clear()
@@ -349,8 +316,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// The status dot's last sync is when the code on screen was issued, and an account change
-    /// takes the time with the code.
     @Test func theLastSyncIsWhenTheCodeOnScreenWasIssued() async throws {
         try await Self.withStoredAccount { _ in
             LibraryQRCache.shared.clear()
@@ -377,9 +342,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// A refusal found by another caller, such as the sign-in at launch or for the Watch, signs out
-    /// a page waiting to retry a failed code request at once, not at its retry
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/556).
     @Test func aRefusalElsewhereSignsOutAPageBackingOff() async throws {
         try await Self.withStoredAccount { _ in
             LibraryQRCache.shared.clear()
@@ -399,7 +361,6 @@ struct LibrarySignInTests {
         }
     }
 
-    /// A sign-in that worked elsewhere leaves a signed-in page as it is.
     @Test func aSignInElsewhereKeepsThePageSignedIn() async throws {
         try await Self.withStoredAccount { _ in
             LibraryQRCache.shared.clear()
@@ -422,11 +383,9 @@ struct LibrarySignInTests {
         #expect(LibraryService.signInIsDue(lastFailure: nil, now: failure))
         #expect(!LibraryService.signInIsDue(lastFailure: failure, now: failure.addingTimeInterval(60)))
         #expect(LibraryService.signInIsDue(lastFailure: failure, now: failure.addingTimeInterval(LibraryService.signInPause)))
-        // A clock set back does not stretch it.
         #expect(LibraryService.signInIsDue(lastFailure: failure, now: failure.addingTimeInterval(-60)))
     }
 
-    /// What a wrong password gets is unchecked, so any 4xx counts as a refusal; a 5xx does not.
     @Test func aClientErrorAnswerIsARefusal() {
         #expect(Self.refusesAnswer(withStatus: 401))
         #expect(Self.refusesAnswer(withStatus: 429))

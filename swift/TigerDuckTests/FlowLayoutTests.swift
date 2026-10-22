@@ -4,9 +4,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// A centred parent proposes back the width the layout reported, a fraction of a point less after
-/// rounding, and the last item must keep its line for it
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/479).
 @MainActor
 struct FlowLayoutTests {
     @Test func itemsKeepTheirLineInAHairLessThanTheWidthTheyReported() {

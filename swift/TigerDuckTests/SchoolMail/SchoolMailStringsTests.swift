@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Every School Mail key resolves in English and Traditional Chinese — a missing key
-/// would ship its raw name on screen.
 struct SchoolMailStringsTests {
     static let keys = [
         "feature_school_mail", "feature_school_mail_short", "school_mail_account_title",
@@ -49,20 +47,15 @@ struct SchoolMailStringsTests {
         "school_mail_settings_background_refresh_hint",
         "school_mail_forwarded_header", "school_mail_forward_from",
         "school_mail_forward_date", "school_mail_forward_subject",
-        // The notification-check diagnostics list: one key per outcome and per trigger.
         "school_mail_check_skipped_busy", "school_mail_check_skipped_signed_out",
         "school_mail_check_skipped_disabled", "school_mail_check_skipped_auth_failed",
         "school_mail_check_baseline_reset", "school_mail_check_no_new_mail",
         "school_mail_check_sign_in_failed", "school_mail_check_failed",
         "school_mail_check_trigger_page", "school_mail_check_trigger_foreground",
         "school_mail_check_trigger_background",
-        // Spoken, never drawn: the two icon-only controls on the message screen.
         "school_mail_reply_menu", "school_mail_message_actions",
-        // The sent copy's three outcomes: no folder, the APPEND failed, or the dedupe
-        // probe went unanswered so nothing was filed.
         "school_mail_sent_copy_no_folder", "school_mail_sent_copy_failed",
         "school_mail_sent_copy_unknown",
-        // Not School Mail's own, but compose's error dialog dismisses with it.
         "settings_acknowledged",
     ]
 

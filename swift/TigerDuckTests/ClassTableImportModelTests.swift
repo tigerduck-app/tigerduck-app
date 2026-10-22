@@ -5,9 +5,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The import flow with no camera and no NTUST: codes handed in as the scanner and an image hand
-/// them in, the prompts they raise, the confirm screen's nickname and rows, and what a lookup
-/// saves to a store in a folder of its own.
 @MainActor
 struct ClassTableImportModelTests {
     private typealias Term = ClassTableShareCode.Term
@@ -19,8 +16,6 @@ struct ClassTableImportModelTests {
         deinit { try? FileManager.default.removeItem(at: url) }
     }
 
-    /// Stands in for NTUST's course query: answers each term from `courses`, records the terms it
-    /// was asked for, and fails for the terms in `failing`.
     private final class Lookup {
         var courses: [String: [SDCourse]] = [:]
         var failing: Set<String> = []
@@ -33,7 +28,6 @@ struct ClassTableImportModelTests {
         }
     }
 
-    /// Holds a lookup until the test opens it.
     private final class Gate {
         private var continuation: CheckedContinuation<Void, Never>?
         var isWaiting: Bool { continuation != nil }
@@ -82,8 +76,6 @@ struct ClassTableImportModelTests {
         SDCourse(courseNo: courseNo, courseName: name, schedule: [2: ["3", "4"]], semester: semester)
     }
 
-    // MARK: - Reading a code
-
     @Test("the camera passes over another app's QR code and goes on scanning")
     func unknownCodeIsSkipped() throws {
         let model = makeModel()
@@ -101,9 +93,7 @@ struct ClassTableImportModelTests {
     @Test(
         "a damaged, edited or newer share code is refused with one message, and scanning goes on",
         arguments: [
-            // The checksum no longer matches the payload.
             "HTTPS://TIGERDUCK.APP/T/1.B11300001.202610131405.1151.PMHDMNBQGQYDAMGUOGDLFDDULROWCYV6RYYFMACMBQAA.E2YUDIQ",
-            // The payload holds the course code CS10100.
             "HTTPS://TIGERDUCK.APP/T/1.B11300001.202610131405.1151.OMHDMNBQGQYDAMGUOGDLAAA.5GDOVTY",
             "HTTPS://TIGERDUCK.APP/T/2.B11300001.202610131405.1151.OMHDMNBQGQYDAMAEAA.O6Y5T6Y",
             "HTTPS://TIGERDUCK.APP/T/1.B11300001",
@@ -162,8 +152,6 @@ struct ClassTableImportModelTests {
         #expect(model.isIdle)
         #expect(lookup.calls.isEmpty)
     }
-
-    // MARK: - Images
 
     @Test("a chosen photo reserves the import before loading starts, so a camera code cannot replace it")
     func photoReadWinsOverCamera() async throws {
@@ -313,8 +301,6 @@ struct ClassTableImportModelTests {
         #expect(refused.prompt == .invalid)
     }
 
-    // MARK: - Confirm screen
-
     @Test("the nickname starts as the student ID, or empty for a code without one, and Import needs one")
     func nicknameRules() async throws {
         let ours = makeModel()
@@ -371,8 +357,6 @@ struct ClassTableImportModelTests {
             String(localized: "class_table_import_course_count"),
         ])
     }
-
-    // MARK: - Lookup
 
     @Test("a failed save keeps confirmation open and a retry succeeds once the file can be written")
     func saveFailureCanRetry() async throws {
@@ -581,7 +565,6 @@ struct ClassTableImportModelTests {
         #expect(!model.isLookingUp)
     }
 
-    /// The Mac's Cancel in the toolbar, and the scanner's close button, stop an update this way.
     @Test("Cancel during an update leaves the person's courses as they were")
     func cancelDuringUpdate() async throws {
         store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
@@ -605,7 +588,6 @@ struct ClassTableImportModelTests {
         #expect(model.isIdle)
     }
 
-    /// A model whose lookup waits for `gate`, then answers each term with one course.
     private func gatedModel(_ gate: Gate) -> ClassTableImportModel {
         ClassTableImportModel(
             store: store,
@@ -623,8 +605,6 @@ struct ClassTableImportModelTests {
         try #require(condition())
     }
 
-    /// A sign-out moves the login generation, and so does the one another student ID's sign-in
-    /// runs first; here it happens while the course query is still out.
     @Test("a sign-out during the lookup saves nothing and closes the import")
     func signOutSavesNothing() async throws {
         var generation = 1
@@ -649,13 +629,10 @@ struct ClassTableImportModelTests {
         #expect(model.isFinished)
     }
 
-    // MARK: - Helpers
-
     private static func reloadedPeople(_ folder: Folder) -> [ImportedPerson] {
         ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { signedIn }).people
     }
 
-    /// A PNG of `text` as a QR code with a quiet zone around it, like a screenshot of one.
     private static func qrImage(_ text: String) throws -> Data {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(text.utf8)

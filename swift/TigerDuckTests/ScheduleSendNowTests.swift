@@ -1,6 +1,3 @@
-// `PushCoordinator.syncNow`, which a sync trigger's handler calls in the background to send the
-// Live Activity schedule before it answers the push, after which iOS may suspend the app
-// (https://github.com/tigerduck-app/tigerduck-app/issues/663). The backend is `SettingsAPIStub`.
 import Foundation
 import Testing
 import UIKit
@@ -21,7 +18,6 @@ struct ScheduleSendNowTests {
     ) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
-        // A held reply must outlast a main actor held for over a minute by other tests.
         config.timeoutIntervalForRequest = 600
         let client = PushAPIClient(
             baseURLProvider: { [baseURL = backend.baseURL] in baseURL },
@@ -72,7 +68,6 @@ struct ScheduleSendNowTests {
         await push.disable()
     }
 
-    /// A sign-out's unregister waits only for a POST already under way.
     @Test("Once a sign-out has stopped the push stack, sending now sends nothing")
     func sendingNowAfterASignOutSendsNothing() async {
         let backend = Backend()
@@ -85,9 +80,6 @@ struct ScheduleSendNowTests {
         #expect(backend.sent().isEmpty)
     }
 
-    /// Behind the lock screen the caches read as empty, and the server cancels every start of this
-    /// device that the list it is sent leaves out
-    /// (https://github.com/tigerduck-app/tigerduck-backend/blob/dev/server/routes/schedule_v3.py).
     @Test("Behind the lock screen, sending now sends nothing")
     func sendingNowBehindTheLockScreenSendsNothing() async {
         let backend = Backend()
@@ -100,7 +92,6 @@ struct ScheduleSendNowTests {
         await push.disable()
     }
 
-    /// In the foreground the debounced `requestPushScheduleSync` that the sync's changes start sends it.
     @Test("A sync trigger's handler sends the schedule only after a sync that synced, with the app in the background",
           arguments: [FullSyncOutcome.synced, .skipped, .failed],
           [UIApplication.State.background, .inactive, .active])

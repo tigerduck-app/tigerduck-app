@@ -16,8 +16,6 @@ struct MailMessageViewModelTests {
         let session: MailPageSession
         let folder: String
 
-        /// A second screen over the same fake server, cache, prefs and connection — what the user
-        /// gets by going back to the list and opening another mail.
         @MainActor
         func anotherMessage(uid: UInt32) -> MailMessageViewModel {
             MailMessageViewModel(
@@ -59,7 +57,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.plainText == "請立即驗證")
         #expect(h.model.warnings.contains(.externalSender(address: "admin@evil.example")))
         #expect(h.model.warnings.contains(.passwordBait))
-        // A prefetch leaves the inline images out; the open is what brings them.
         #expect(await h.fake.detailsWithoutImages.isEmpty)
     }
 
@@ -70,8 +67,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.original?.replyTo?.map(\.address) == ["office@mail.ntust.edu.tw", "b@x.tw"])
     }
 
-    /// A detail that does not say whether the mail has a Reply-To must not read as one without:
-    /// compose would answer the sender instead of looking it up.
     @Test func aDetailWithoutItsHeaderSectionLeavesReplyToUnknown() async throws {
         let h = Self.harness(FakeMailClient.message(uid: 5, replyTo: nil))
         await h.model.load()
@@ -79,8 +74,6 @@ struct MailMessageViewModelTests {
         #expect(original.replyTo == nil)
     }
 
-    /// A mail with no HTML part shows only its plain text, whose links have to be tappable there
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/520).
     @Test func plainTextMailKeepsItsLinks() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: "See https://www.ntust.edu.tw/ now", html: nil))
         await h.model.load()
@@ -95,10 +88,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.plainText == "a\nb")
     }
 
-    /// Fetching, parsing and sanitizing the body is the slow half of opening a mail, while the
-    /// sender, subject and date are already on disk in the folder's cached page. The header is
-    /// built from `summary`, so it is ready before the body is — and stays up even when the body
-    /// never arrives at all, which is the case that proves it does not depend on `detail`.
     @Test func theHeaderComesFromTheCachedPageWithoutWaitingForTheBody() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, name: "教務處", subject: "期末考公告"))
         await h.fake.update { $0.detailError = .unreachable }
@@ -109,17 +98,12 @@ struct MailMessageViewModelTests {
         #expect(h.model.loadState == .failed(MailAccountManager.LoginError(MailClientError.unreachable).message))
     }
 
-    /// Once the message itself lands, that is what the header reads — the row the list cached can
-    /// be staler than the fetch (its `\Seen` flag, for one, which this very screen just set).
     @Test func theLoadedMessageSupersedesTheCachedRow() async {
         let h = Self.harness(FakeMailClient.message(uid: 7, seen: false))
         await h.model.load()
         #expect(h.model.summary?.isSeen == true)
     }
 
-    /// The formatted view renders the sanitized HTML document, so a plain-text-only mail must
-    /// not offer it — picking it would show nothing. The selection has to move off it at the same
-    /// moment, or the picker is left pointing at an entry that is no longer in the menu.
     @Test func aMailWithNoHTMLDoesNotOfferTheFormattedMode() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: "只有純文字", html: nil))
         #expect(h.model.availableModes == MailMessageViewModel.ViewMode.allCases)
@@ -135,9 +119,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.mode == .formatted)
     }
 
-    /// Only the formatted view of an HTML mail is drawn on a page, so that is the only place
-    /// "View in light mode" would change anything — and before the body lands there is no HTML
-    /// to know about yet.
     @Test func lightModeIsOfferedOnlyForTheFormattedViewOfAnHTMLMail() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
         #expect(!h.model.offersLightMode)
@@ -155,8 +136,6 @@ struct MailMessageViewModelTests {
         #expect(!h.model.offersLightMode)
     }
 
-    /// The app's own page until the reader asks, white paper while they want it, and the app's
-    /// page again when they turn it back off.
     @Test func lightModeSwitchesThePageTheMailIsDrawnOn() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
         await h.model.load()
@@ -167,7 +146,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.htmlTheme == .app)
     }
 
-    /// Never saved: the next mail opens on the app's page, whatever the last one was switched to.
     @Test func lightModeBelongsToOneScreen() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, html: "<p>a</p>"),
                              extra: [FakeMailClient.message(uid: 6, html: "<p>b</p>")])
@@ -179,8 +157,6 @@ struct MailMessageViewModelTests {
         #expect(next.htmlTheme == .app)
     }
 
-    /// Mail that sets its own colours was written for white paper, so it opens there. The switch
-    /// still goes back, and the page it goes to gets the fixes that page needs.
     @Test func aMailThatSetsItsOwnColoursOpensOnWhitePaper() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, html: ##"<p><font color="#333333">Hi</font></p>"##))
         await h.model.load()
@@ -201,7 +177,6 @@ struct MailMessageViewModelTests {
         }
     }
 
-    /// The page is picked when the body first arrives; a refresh must not undo the reader's choice.
     @Test func theReadersChoiceOutlastsARefresh() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, html: ##"<p style="color: #333333">Hi</p>"##))
         await h.model.load()
@@ -220,8 +195,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.formattedHTML == ##"<p style="color: #959595">Hi <img src="https://x.example/a.png" /></p>"##)
     }
 
-    /// Leaving the screen cancels its load, and that has to reach the detached work too, or a
-    /// large mail keeps working for a screen that has gone.
     @Test func cancellingTheCallerCancelsTheDetachedWork() async {
         let caller = Task {
             await MailMessageViewModel.detachedCancellably { () -> Bool in
@@ -236,8 +209,6 @@ struct MailMessageViewModelTests {
         #expect(await caller.value)
     }
 
-    /// A screen that has gone cancels its load, and nothing that load worked out is applied, the
-    /// body the cache already had included.
     @Test func aCancelledLoadAppliesNothing() async throws {
         let message = FakeMailClient.message(uid: 5, html: ##"<p style="color: #333333">Hi</p>"##)
         let h = Self.harness(message)
@@ -267,10 +238,6 @@ struct MailMessageViewModelTests {
         #expect(h.center.removed == ["school-mail-1-7"])
     }
 
-    /// End to end for a Mail2000 delivery failure: the `Return-Path: <>` the detail fetch
-    /// carries reaches the warning rules, so the screen asks about the typo and raises nothing
-    /// about an outside sender. The list badge is separate — `MailSummary.isExternal`, which is
-    /// already false for a sender with no address at all.
     @Test func aBounceAsksAboutTheTypoAndIsNotBadgedAsOutsideMail() async {
         let h = Self.harness(FakeMailClient.message(
             uid: 5, from: "", name: "Mail Deliver System",
@@ -283,8 +250,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.summary?.isExternal == false)
     }
 
-    /// A large source is loaded without asking: `MailSourceTextView` lays out only what is on
-    /// screen, so the prompt the old view needed no longer buys anything.
     @Test func largeSourceLoadsWithoutAsking() async {
         var message = FakeMailClient.message(uid: 5)
         message.summary.size = 10 * 1024 * 1024
@@ -294,9 +259,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.source?.contains("Subject:") == true)
     }
 
-    /// And the reason it can be loaded without asking: it is cached, so revisiting the mail
-    /// costs nothing. The second screen over the same cache reads it back without a second
-    /// `rawSource` round trip.
     @Test func aLoadedSourceIsCachedAndServedFromTheCacheNextTime() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
@@ -312,10 +274,6 @@ struct MailMessageViewModelTests {
         #expect(await h.fake.calls.filter { $0 == "rawSource INBOX 5" }.count == 1)
     }
 
-    /// A failed source load must end the spinner in a terminal, retryable state rather than
-    /// spinning forever.
-    /// The source is pinned to the generation the mail was opened under: after a folder
-    /// recreation its UID names another message, which must be neither shown nor cached here.
     @Test func aSourceFetchAfterAFolderRecreationIsRefused() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
@@ -326,8 +284,6 @@ struct MailMessageViewModelTests {
         #expect(h.cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
     }
 
-    /// A body or source on the wire when the cache is wiped, as a sign-out wipes it, is not saved
-    /// after the wipe (https://github.com/tigerduck-app/tigerduck-app/issues/632).
     @Test func aBodyOnTheWireWhenTheCacheIsWipedIsNotSaved() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.fake.hold("detail")
@@ -381,8 +337,6 @@ struct MailMessageViewModelTests {
         #expect(await h.fake.folders[Self.trash]?.count == 1)
     }
 
-    // `MailPreferences` has no `ownDeletedUIDs`: the owned-deleted set is keyed by folder and by
-    // the UIDVALIDITY the page was built from.
     @Test func pendingDeletionsAreRememberedWhenOthersFlaggedMailToo() async {
         let h = Self.harness(FakeMailClient.message(uid: 5), extra: [FakeMailClient.message(uid: 9, deleted: true)])
         await h.model.load()
@@ -390,9 +344,6 @@ struct MailMessageViewModelTests {
         #expect(h.prefs.ownedDeleted(folder: "INBOX", uidValidity: 1).uids == [5])
     }
 
-    /// A delete whose STORE lands but whose deleted-UID check then fails leaves a `\Deleted` UID
-    /// on the server. If the app does not claim it, `shouldExpunge` is false in that folder for
-    /// good: every later delete degrades to "hide", and Trash stops actually deleting anything.
     @Test func aPartlyFailedDeleteClaimsTheFlagItLandedInsteadOfWedgingTheFolder() async {
         let h = Self.harness(FakeMailClient.message(uid: 5), folder: Self.trash,
                              extra: [FakeMailClient.message(uid: 6)])
@@ -400,11 +351,9 @@ struct MailMessageViewModelTests {
         await h.fake.update { $0.deletedUIDsError = .serverBusy }
         #expect(await h.model.delete() == false)
         #expect(h.model.actionError != nil)
-        // The STORE reached the server, so the flag is ours and has to be remembered.
         #expect(await h.fake.folders[Self.trash]?.first(where: { $0.summary.uid == 5 })?.summary.isDeleted == true)
         #expect(h.prefs.ownedDeleted(folder: Self.trash, uidValidity: 1).uids == [5])
 
-        // ...and because it is remembered, the next delete in that folder still expunges.
         await h.fake.update { $0.deletedUIDsError = nil }
         let second = h.anotherMessage(uid: 6)
         await second.load()
@@ -412,8 +361,6 @@ struct MailMessageViewModelTests {
         #expect(await h.fake.folders[Self.trash]?.isEmpty == true)
     }
 
-    /// A message another client had already flagged `\Deleted` must never become ours just
-    /// because our own STORE also touched it.
     @Test func aPartlyFailedDeleteNeverClaimsMailSomeoneElseHadAlreadyDeleted() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, deleted: true), folder: Self.trash)
         await h.model.load()
@@ -422,8 +369,6 @@ struct MailMessageViewModelTests {
         #expect(h.prefs.ownedDeleted(folder: Self.trash, uidValidity: 1).uids.isEmpty)
     }
 
-    /// The credentials or the connection that just failed are exactly what the ownership probe
-    /// would need, so it must not fire a second, doomed request after either.
     @Test func aDeleteRejectedForAuthenticationNeverFiresTheOwnershipProbe() async {
         let h = Self.harness(FakeMailClient.message(uid: 5), folder: Self.trash)
         await h.model.load()
@@ -432,15 +377,11 @@ struct MailMessageViewModelTests {
         #expect(!(await h.fake.calls).contains { $0.hasPrefix("flags ") })
     }
 
-    /// Move and delete are four to five round trips with no progress indication, so a second tap
-    /// is expected behaviour. It must not COPY the mail a second time — that files one message
-    /// into two folders — nor race the owned-deleted read-modify-write.
     @Test func aSecondTapDuringAMoveIsIgnoredInsteadOfFilingTheMailTwice() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
         await h.fake.hold("copy")
         let first = Task { await h.model.move(to: Self.trash) }
-        // The first COPY is on the wire; the screen shows no progress, so the user taps again.
         await h.fake.waitForArrival("copy")
         let second = Task { await h.model.move(to: Self.trash) }
         await Task.yield()
@@ -458,9 +399,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.deleteIsPermanent)
     }
 
-    /// A move that hits `folderChanged` shows the error and reports the folder through
-    /// `onFolderChanged`, never a bare `cache.dropFolder` of its own, which could race and be
-    /// undone by the list's queued cache-write chain.
     @Test func folderChangedShowsAnErrorAndNotifiesTheListToRecover() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
@@ -475,8 +413,6 @@ struct MailMessageViewModelTests {
         #expect(changedFolders == ["INBOX"])
     }
 
-    /// `setFlag` (not just `MailMover`) can also hit `folderChanged`; `toggleSeen` must notify
-    /// the list the same way `performMove` does.
     @Test func toggleSeenFolderChangedNotifiesTheListToRecover() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
@@ -488,9 +424,6 @@ struct MailMessageViewModelTests {
         #expect(changedFolders == ["INBOX"])
     }
 
-    /// The mark-as-seen `setFlag` inside `load()` can also hit `folderChanged`. The detail fetch
-    /// has already succeeded by then, so this exercises the "cached or fresh detail already
-    /// showing" branch of the catch with a `folderChanged` specifically, not a generic error.
     @Test func loadFolderChangedFromMarkAsSeenNotifiesTheListToRecover() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, seen: false))
         var changedFolders: [String] = []
@@ -502,11 +435,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.actionError != nil)
     }
 
-    /// The detail fetch is pinned to the cached page's generation, like every other command this
-    /// screen sends. A folder recreated server-side reuses its UIDs, so the same folder+UID names
-    /// a different message: it must never be rendered on the screen that was opened for the old
-    /// one, nor cached under the old generation's key — it goes through the list's folder-change
-    /// recovery instead.
     @Test func aDetailFetchAfterAFolderRecreationRecoversInsteadOfShowingAnotherMessage() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, subject: "原信"))
         var changedFolders: [String] = []
@@ -520,10 +448,6 @@ struct MailMessageViewModelTests {
         #expect(h.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
     }
 
-    /// A notification names the generation its UID was minted under. Once the folder has been
-    /// recreated and the list has re-cached it under the new generation, the same UID is another
-    /// mail — pinning to the cached page would open it and mark it read. The fetch is pinned to
-    /// the route's own UIDVALIDITY instead, and refused.
     @Test func aNotificationFromBeforeAFolderRecreationDoesNotOpenTheMailNowAtItsUID() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, subject: "新信"))
         await h.fake.update { $0.uidValidity["INBOX"] = 2 }
@@ -543,10 +467,6 @@ struct MailMessageViewModelTests {
         #expect(await !h.fake.calls.contains { $0.hasPrefix("setFlag") })
     }
 
-    /// The gap this closes precisely: the mark-as-seen `setFlag` in `load()` was already pinned,
-    /// but it only runs for an unread mail. Opening one that is already `\Seen` sent no pinned
-    /// command at all, so nothing ever compared generations — and the reused UID's message was
-    /// shown and cached without a single check.
     @Test func anAlreadySeenMailIsPinnedTooEvenThoughItSetsNoFlag() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, subject: "原信", seen: true))
         await h.fake.update { $0.uidValidity["INBOX"] = 2 }
@@ -558,20 +478,13 @@ struct MailMessageViewModelTests {
         #expect(h.model.loadState == .failed(MailAccountManager.LoginError(MailClientError.folderChanged).message))
     }
 
-    /// Without a cached page UIDVALIDITY there is nothing honest to compare a move against:
-    /// fetching one fresh right there would make `MailMover`'s freshness check compare a value
-    /// against itself. Refuses instead, with no server call at all.
     @Test func movingWithNoCachedPageValidityRefusesInsteadOfGuessing() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
-        // No `load()` call: `pageUIDValidity` is never populated.
         #expect(await h.model.move(to: Self.trash) == false)
         #expect(h.model.actionError != nil)
         #expect(await h.fake.calls.isEmpty)
     }
 
-    /// A cached detail can already be on screen when a background refresh (or the mark-as-seen
-    /// that follows it) fails; that must still surface, not be silently swallowed just because
-    /// something is already showing.
     @Test func aFailedRefreshWhenAlreadyLoadedSetsAnActionError() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
@@ -594,12 +507,9 @@ struct MailMessageViewModelTests {
         #expect(url.lastPathComponent == "課程.pdf")
         #expect(try Data(contentsOf: url) == Data("%PDF".utf8))
         #expect(!h.model.isRisky(part))
-        // Pinned to the same cached page generation `load()` fetched the part list under, not nil.
         #expect(await h.fake.attachmentPins == [1])
     }
 
-    /// A large attachment takes a minute to arrive, so a second tap is expected. It must not queue
-    /// another whole download on the connection the list's poll waits for too.
     @Test func aRepeatTapDuringAnAttachmentDownloadIsIgnored() async {
         let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
                                 filename: "課程.pdf", contentID: nil, size: 4, isAttachment: true)
@@ -621,11 +531,6 @@ struct MailMessageViewModelTests {
         #expect((await h.fake.calls).filter { $0.hasPrefix("attachment ") }.count == 1)
     }
 
-    /// `prepareAttachment` is where a mail's bytes leave the app — into a temp file, then Quick
-    /// Look or the share sheet. `load()` pins its `detail`, but the part fetch that follows used
-    /// to carry no pin at all, so a folder recreated between opening the mail and tapping the
-    /// attachment would write the reused UID's file to disk under the filename still on screen.
-    /// Refuse instead: no temp file, and the failure is reported like any other.
     @Test func anAttachmentDownloadRefusesAfterTheFolderWasRecreated() async {
         let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
                                 filename: "課程.pdf", contentID: nil, size: 4, isAttachment: true)
@@ -634,21 +539,13 @@ struct MailMessageViewModelTests {
         message.attachments = ["2": Data("%PDF".utf8)]
         let h = Self.harness(message)
         await h.model.load()
-        // The recreation lands between opening the mail and tapping its attachment.
         await h.fake.update { $0.uidValidity["INBOX"] = 2 }
         #expect(await h.model.prepareAttachment(part) == nil)
         #expect(h.model.actionError == MailAccountManager.LoginError(MailClientError.folderChanged).message)
         #expect(await h.fake.attachmentPins == [1])
-        // A failed download gives the row its actions back.
         #expect(h.model.downloading.isEmpty)
     }
 
-    /// Mirrors Android's `SchoolMailMessageViewModel.needsConfirmation`: a `text/html` or
-    /// `image/svg+xml` attachment is risky whatever its filename extension, and unlike a merely
-    /// risky file, Quick Look must never render it in-process. `isNeverRenderedInApp` forces the
-    /// share-sheet path even for a confirmed "open". A real part's content type carries
-    /// parameters (`; charset=...`), which a whole-string comparison misses, so the fixture
-    /// carries one too rather than a bare `"text/html"`.
     @Test func htmlContentTypeAttachmentIsRiskyAndNeverRenderedInApp() async {
         let part = MailBodyPart(section: "2", contentType: "text/html; charset=utf-8", charset: nil, transferEncoding: nil,
                                 filename: "notes.txt", contentID: nil, size: 4, isAttachment: true)
@@ -671,9 +568,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.isNeverRenderedInApp(part))
     }
 
-    /// A merely risky attachment (a dangerous extension behind a decoy one) is not forced to
-    /// the share sheet: "resume the requested action" still applies to it, and only
-    /// never-rendered-in-app types are forced.
     @Test func doubleExtensionAttachmentIsRiskyButNotForcedToShare() async {
         let part = MailBodyPart(section: "2", contentType: "application/octet-stream", charset: nil, transferEncoding: nil,
                                 filename: "invoice.pdf.exe", contentID: nil, size: 4, isAttachment: true)
@@ -684,10 +578,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.isRisky(part))
         #expect(!h.model.isNeverRenderedInApp(part))
     }
-
-    // MARK: Links
-    // A link is addressed by its index into the rewritten document's own anchors, never by URL
-    // matching.
 
     @Test func linkChecksUseTheAnchorTextAndCanonicalizeTheHref() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, html: "<a href=\"https://ntust-login.xyz/r\">ntust.edu.tw</a>"))
@@ -714,9 +604,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.linkTarget(forIndex: -1) == nil)
     }
 
-    /// The href judged, shown and opened is canonicalized once the way a browser would: a
-    /// backslash after the scheme is a separator, so the authority ends at "evil.example" and
-    /// the "last `@` ends userinfo" rule never even reaches "ntust.edu.tw" hiding after it.
     @Test func canonicalizationFoldsABackslashBeforeReadingUserinfo() async {
         let h = Self.harness(Self.messageWithRawLinkHref(#"https://evil.example\@ntust.edu.tw/login"#))
         await h.model.load()
@@ -728,9 +615,6 @@ struct MailMessageViewModelTests {
         } == true)
     }
 
-    /// Canonicalization never percent-decodes: a redirect or safelink URL's own `%2F`, `%23` and
-    /// nested percent-encoded URL must survive unchanged, or the href shown and opened stops
-    /// meaning what the sender's href meant.
     @Test func canonicalizationPreservesExistingPercentEncoding() async {
         let h = Self.harness(FakeMailClient.message(
             uid: 5,
@@ -765,9 +649,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.sanitized?.blockedRemoteImages == 0)
     }
 
-    /// `loadImages` and `apply` both sanitize off the main actor, guarded by the same generation
-    /// token so neither can clobber a result the other already applied. Concurrent calls must
-    /// never leave `allowRemoteImages` and `sanitized.blockedRemoteImages` disagreeing.
     @Test func concurrentLoadAndLoadImagesNeverLeaveInconsistentState() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, html: "<img src=\"https://x.example/a.png\">"))
         await h.model.load()
@@ -778,9 +659,6 @@ struct MailMessageViewModelTests {
         #expect(h.model.allowRemoteImages)
         #expect(h.model.sanitized != nil)
     }
-
-    // MARK: Web view lockdown
-    // See docs/decisions/0003-mail-webview-lockdown.md.
 
     @Test func theWebViewIsLockedDown() {
         let configuration = MailWebViewFactory.makeConfiguration(cidHandler: MailCIDSchemeHandler(images: [:]))
@@ -804,7 +682,6 @@ struct MailMessageViewModelTests {
         #expect(MailWebViewFactory.document(for: "", allowRemoteImages: true).contains("img-src tdcid: data: https: http:"))
     }
 
-    /// The mail sits on the app's own page, not a sheet of white paper inside a dark app.
     @Test func theDocumentIsDrawnOnTheAppsPage() {
         let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false)
         #expect(document.contains("background:#000000"))
@@ -820,19 +697,12 @@ struct MailMessageViewModelTests {
         #expect(document.contains("background:#ffffff;color:#1a1a1a"))
     }
 
-    /// "View in light mode" is white paper with black text, in the light scheme — the page a mail
-    /// that only sets its own dark text was written against.
     @Test func lightModeIsWhitePaper() {
         let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false, theme: .light)
         #expect(document.contains(":root{color-scheme:light;}"))
         #expect(document.contains("background:#ffffff;color:#000000"))
     }
 
-    /// The rule list depends only on the image allowance. A light mode switch keeps it, so there
-    /// is nothing to compile: the new page goes on at once, with no compile to wait behind. A
-    /// change of allowance still compiles and installs its own list.
-    /// CI picks it by name to run after the other tests: see `on_screen_tests` in
-    /// `.github/workflows/tests.yaml`.
     @Test func aLightModeSwitchReusesTheInstalledRules() async {
         var view = MailHTMLView(html: "<p>x</p>", linkCount: 0, inlineImages: [:], allowRemoteImages: false,
                                 contentHeight: .constant(1), onLinkTap: { _ in })
@@ -858,10 +728,6 @@ struct MailMessageViewModelTests {
         #expect(coordinator.installedRulesAllowRemoteImages == true)
     }
 
-    /// A new mail fetched in the background is kept without its inline images, so the detail that
-    /// replaces it on screen is the first to bring them, to the page the cached body opened.
-    /// CI picks it by name to run after the other tests: see `on_screen_tests` in
-    /// `.github/workflows/tests.yaml`.
     @Test func inlineImagesThatArriveLaterReachThePage() async {
         let html = #"<p><img src="tdcid:logo"></p>"#
         let cached = MailHTMLView(html: html, linkCount: 0, inlineImages: [:], allowRemoteImages: false,
@@ -881,7 +747,6 @@ struct MailMessageViewModelTests {
         #expect(coordinator.loadedKey != cachedLoad)
     }
 
-    /// The document adds only the page; a sender's colours reach it as the view model gives them.
     @Test func aSendersOwnColoursAreLeftAlone() {
         let body = #"<p style="background:#ffeeaa;color:#003300">x</p>"#
         #expect(MailWebViewFactory.document(for: body, allowRemoteImages: false).contains(body))
@@ -892,15 +757,12 @@ struct MailMessageViewModelTests {
         #expect(MailHTMLTheme.css(0xFF_12_34_56) == "#123456")
     }
 
-    // MARK: Header
-
     @Test func aNamedSenderGetsTwoLines() {
         let lines = MailMessageView.senderLines(name: "教務處", address: "office@mail.ntust.edu.tw")
         #expect(lines.primary == "教務處")
         #expect(lines.secondary == "office@mail.ntust.edu.tw")
     }
 
-    /// The address used to be the headline and then printed again underneath it.
     @Test func aSenderWithNoNameShowsTheAddressOnce() {
         let lines = MailMessageView.senderLines(name: nil, address: "someone@gmail.com")
         #expect(lines.primary == "someone@gmail.com")
@@ -910,7 +772,6 @@ struct MailMessageViewModelTests {
         #expect(blank.secondary == nil)
     }
 
-    /// A bounce carries a name and no usable address; an empty address is no address.
     @Test func aMissingAddressLeavesNoEmptyLine() {
         let bounce = MailMessageView.senderLines(name: "Mail Deliver System", address: "")
         #expect(bounce.primary == "Mail Deliver System")
@@ -928,13 +789,11 @@ struct MailMessageViewModelTests {
         #expect(list[0].address == "a@mail.ntust.edu.tw")
         #expect(list[1].name == nil)
         #expect(list[1].address == "b@gmail.com")
-        // Not an address: shown as written rather than dropped.
         #expect(list[2].address == nil)
         #expect(list[2].raw == "undisclosed-recipients:")
         #expect(MailRecipient.parse(nil, ownAddress: nil).isEmpty)
     }
 
-    /// The student's own address is the one the header tints.
     @Test func theStudentsOwnAddressIsMarked() {
         let list = MailRecipient.parse(["B10000000@Mail.NTUST.edu.tw", "b10000001@mail.ntust.edu.tw"],
                                        ownAddress: "b10000000@mail.ntust.edu.tw")
@@ -955,24 +814,12 @@ struct MailMessageViewModelTests {
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/01", linkCount: 2) == nil)
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0?x=1", linkCount: 2) == nil)
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid.evil/0", linkCount: 2) == nil)
-        // ICU's `$` also matches immediately before a trailing line terminator, unlike a strict
-        // end-of-string anchor.
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0\n", linkCount: 2) == nil)
     }
 
-    // MARK: Helpers
-
-    /// A message whose HTML body's single anchor carries `href` verbatim — used for
-    /// canonicalization test cases whose href isn't representable as a normal Swift string
-    /// interpolation inside an HTML literal (backslashes, etc.).
     private static func messageWithRawLinkHref(_ href: String) -> FakeMailClient.Message {
         FakeMailClient.message(uid: 5, html: "<a href=\"\(href)\">ntust.edu.tw</a>")
     }
-    /// Android builds the plain view from the sanitized document; iOS built it from the raw
-    /// body, so text the sanitizer drops with its container was invisible in the formatted view
-    /// and visible — and linkified — in the plain one. Two views of one mail saying different
-    /// things is a usable bait-and-switch, and the hidden text also fed the password-bait
-    /// keyword haystack.
     @Test func thePlainViewIsBuiltFromTheSanitizedDocumentNotTheRawBody() async {
         let html = "<p>正常內容</p><noscript>您的信箱容量已滿，請立即驗證 https://evil.example/login</noscript>"
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: html))

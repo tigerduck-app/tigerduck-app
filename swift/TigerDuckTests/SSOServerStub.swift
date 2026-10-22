@@ -1,6 +1,3 @@
-// `URLProtocol` double for the SSO sign-in flow. Each URL serves its queued answers in order and
-// a URL with none fails, so a request the test did not expect shows up as an error and never
-// leaves the process. `nonisolated`: `URLSession` calls `startLoading()` on a background queue.
 import Foundation
 
 nonisolated final class SSOServerStub: URLProtocol {
@@ -10,31 +7,24 @@ nonisolated final class SSOServerStub: URLProtocol {
         let body: String
         var followTo: URL?
         var failure: URLError.Code?
-        /// Bytes sent in place of `body`, for a body that is not UTF-8.
         var rawBody: Data?
 
         static func page(_ html: String, status: Int = 200) -> Answer {
             Answer(status: status, headers: [:], body: html)
         }
 
-        /// A 302 the session sees as the answer, as the SSO probe does with redirects off.
         static func redirect(to location: String) -> Answer {
             Answer(status: 302, headers: ["Location": location], body: "")
         }
 
-        /// A redirect the session follows to `url`, which the stub then answers.
         static func follow(to url: URL) -> Answer {
             redirect(302, to: url)
         }
 
-        /// A `status` redirect to `url`, proposed as URLSession proposes a server's: a 307 or a
-        /// 308 sends the request again with its method and body, any other a GET without a body.
-        /// A session that refuses it gets the redirect and `body` as the answer.
         static func redirect(_ status: Int, to url: URL, body: String = "") -> Answer {
             Answer(status: status, headers: ["Location": url.absoluteString], body: body, followTo: url)
         }
 
-        /// A request that ends with `code` instead of an answer, such as one its caller cancelled.
         static func failure(_ code: URLError.Code) -> Answer {
             Answer(status: 0, headers: [:], body: "", failure: code)
         }
@@ -121,7 +111,6 @@ nonisolated final class SSOServerStub: URLProtocol {
 
     override func stopLoading() {}
 
-    /// The request URLSession proposes for a `status` redirect of `request` to `target`.
     private static func proposal(after status: Int, of request: URLRequest, body: Data?, to target: URL) -> URLRequest {
         guard [307, 308].contains(status) else { return URLRequest(url: target) }
         var resent = request
@@ -133,15 +122,9 @@ nonisolated final class SSOServerStub: URLProtocol {
     private enum RedirectDecision {
         case follow(URLRequest)
         case refuse
-        /// The delegate's call returned before it decided.
         case undecided
     }
 
-    /// What `task`'s delegate does with the redirect. URLSession asks the delegate too, but leaves a
-    /// task whose protocol redirect was refused waiting for its timeout, so the stub asks first and
-    /// answers with a refused redirect itself, as a server does. Only a decision made before the
-    /// delegate's call returns counts: waiting would hold up the one thread that runs every
-    /// `URLProtocol` in the process, and with it every suite's requests.
     private static func decision(
         on response: HTTPURLResponse, proposing proposed: URLRequest, in task: URLSessionTask?
     ) -> RedirectDecision {
@@ -150,22 +133,17 @@ nonisolated final class SSOServerStub: URLProtocol {
         )
         guard let task, let delegate = task.delegate, delegate.responds(to: decides) else { return .follow(proposed) }
         let decision = Decision()
-        // The delegates under test ignore the session they are given.
         delegate.urlSession?(
             URLSession.shared, task: task, willPerformHTTPRedirection: response, newRequest: proposed
         ) { decision.settle($0) }
         return decision.current
     }
 
-    /// The error of a request whose redirect the task's delegate left undecided, which fails the
-    /// test that made it rather than pass for a refusal.
     private static let undecidedRedirect = URLError(.unknown, userInfo: [
         NSLocalizedDescriptionKey:
             "SSOServerStub: the task's delegate returned without deciding the redirect; the stub takes only a decision made during the call",
     ])
 
-    /// A delegate's redirect decision. A completion handler called later, on another thread, finds
-    /// the request already failed.
     private final class Decision: @unchecked Sendable {
         private let lock = NSLock()
         private var settled = RedirectDecision.undecided
@@ -181,7 +159,6 @@ nonisolated final class SSOServerStub: URLProtocol {
         }
     }
 
-    /// A POST body can arrive as `httpBodyStream` rather than `httpBody`.
     private static func bodyData(of request: URLRequest) -> Data? {
         if let body = request.httpBody { return body }
         guard let stream = request.httpBodyStream else { return nil }

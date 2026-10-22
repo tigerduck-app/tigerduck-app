@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `syncOverridesFromBackend` writes marks, course colours and names, holiday choices and
-/// manual courses after its awaits, and the re-enable conflict check shows a dialog after its
-/// fetch. Sign-out clears those caches and moves the login generation in between, so the rule
-/// checked after each await is pinned here.
 struct FullSyncSignOutTests {
     @Test("A sync the sign-in and the sync switch both outlived may write")
     func syncThatOutlivedNothingMayWrite() {
@@ -23,17 +19,12 @@ struct FullSyncSignOutTests {
         #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: false, protectedDataAvailable: true))
     }
 
-    /// The phone locked while the request was out, and the reply woke the app behind the lock screen.
     @Test("A sync that resumes behind the lock screen writes nothing over the caches it cannot read")
     func syncResumedBehindTheLockScreenStopsItsWrites() {
         #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: true, protectedDataAvailable: false))
     }
 }
 
-/// `AppState.categoriesLeftToCheck`: what a re-enable check leaves to another when it ends. One runs
-/// at a time, so a category switched back on meanwhile waits for it. A check the sign-out outlived
-/// drops its result by the rule above, and must neither strand the next account's categories nor
-/// check the departing account's again on the next account's data.
 @MainActor
 struct ReenableCheckSignOutTests {
     @Test("A check that ends under the same sign-in leaves the categories switched back on while it ran")
@@ -68,7 +59,6 @@ struct ReenableCheckSignOutTests {
                 Defaults[.categoriesSyncedOnce] = saved.3
                 Defaults[.courseRowIdsSeen] = saved.4
             }
-            // The check compares assignments, and courses is switched back on before the sign-out.
             Defaults[.pendingConflictCategories] = ["assignments", "courses"]
 
             AppState.forgetSyncProgress()
@@ -81,10 +71,6 @@ struct ReenableCheckSignOutTests {
     }
 }
 
-/// `AppState.ConflictCheckRetry`: when a full sync or a revision poll that reached the server runs
-/// the pending re-enable check again. The outbox holds a course setting while the Assignments check
-/// is pending, and the check used to run only from the Settings screens, so one that failed offline
-/// kept the setting from the server until the next visit there.
 struct ConflictCheckRetryTests {
     private static let start = Date(timeIntervalSince1970: 1_790_000_000)
 
@@ -109,8 +95,6 @@ struct ConflictCheckRetryTests {
         #expect(!Self.isDue(retry, awaitingAnswer: true))
     }
 
-    /// A weak link can answer the small revision poll every ten seconds while the snapshot keeps
-    /// timing out, and each `/sync/full` costs the server a log row and pushes its own sync back.
     @Test("A failed check runs again only after a wait that doubles with each failure, up to half an hour")
     func failuresBackOff() {
         var retry = AppState.ConflictCheckRetry()
@@ -143,19 +127,14 @@ struct ConflictCheckRetryTests {
 
         retry.note(.conflict(["assignments"]), at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, after: 3600))
-        // The wait starts over after a verdict.
         retry.noteFailure(at: Self.start, generation: 0)
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
     }
 
-    /// The one-at-a-time guard turns away the check of a category switched back on while another
-    /// runs. When the running check asked, nothing checked the later category after the answer,
-    /// and its course settings and marks waited in the outbox.
     @Test("Once the dialog is answered, a category switched back on while its check ran is checked")
     func anAnswerOwesTheCategoriesMarkedDuringTheCheck() {
         var retry = AppState.ConflictCheckRetry()
 
-        // The courses check finds a difference; Assignments was switched back on while it ran.
         retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
         #expect(!Self.isDue(retry, pending: ["assignments", "courses"], awaitingAnswer: true))
 
@@ -170,12 +149,9 @@ struct ConflictCheckRetryTests {
 
         retry.noteAnswered(leaving: [], awaitingAnswer: false, generation: 0)
 
-        // A category switched back on later is checked by the Settings screen that marks it.
         #expect(!Self.isDue(retry, pending: ["assignments"]))
     }
 
-    /// A second check can raise its dialog while the answer's own requests are still out. Closed
-    /// without an answer, that dialog is not raised again by itself.
     @Test("An answer that finds another dialog up owes no check of its own")
     func anAnswerWithAnotherDialogUpOwesNothing() {
         var retry = AppState.ConflictCheckRetry()
@@ -184,12 +160,9 @@ struct ConflictCheckRetryTests {
 
         retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: true, generation: 0)
 
-        // That dialog is closed without an answer.
         #expect(!Self.isDue(retry, pending: ["assignments"]))
     }
 
-    /// The departing account's check can end after the next account's reached a verdict, which it
-    /// must not undo (https://github.com/tigerduck-app/tigerduck-app/issues/608).
     @Test("A check of the departing account that ends after the next account's verdict changes nothing")
     func anOlderAccountsLateResultIsDropped() {
         var retry = AppState.ConflictCheckRetry()
@@ -203,8 +176,6 @@ struct ConflictCheckRetryTests {
         #expect(!Self.isDue(retry, generation: 5))
     }
 
-    /// Keep Local whose save failed would meet the same server content at once and ask the same
-    /// question again (https://github.com/tigerduck-app/tigerduck-app/issues/608).
     @Test("An answer whose save failed is checked again only after the wait a failed check gets")
     func aFailedSaveWaitsBeforeAskingAgain() {
         var retry = AppState.ConflictCheckRetry()
@@ -216,13 +187,10 @@ struct ConflictCheckRetryTests {
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay, pending: ["courses"]))
     }
 
-    /// A sign-out moves the login generation. The departing account's failures used to stay, so
-    /// after five of them the next account's first failed check waited 16 minutes, not 30 seconds.
     @Test("The next account starts as at launch, even after the departing account's check ends late")
     func aSignOutStartsTheRetriesOver() {
         var retry = AppState.ConflictCheckRetry()
         for _ in 0..<5 { retry.noteFailure(at: Self.start, generation: 4) }
-        // The departing account's check ends after the sign-out.
         retry.note(.dropped, at: Self.start, generation: 4)
         #expect(!Self.isDue(retry, generation: 4))
 
@@ -233,7 +201,6 @@ struct ConflictCheckRetryTests {
     }
 }
 
-/// `AppState.conflictCheckOutcome`: what a finished re-enable check does with its result.
 struct ConflictCheckOutcomeTests {
     @Test("A sign-out, sync turned off or the lock screen since the check started drops its result")
     func overtakenResultsAreDropped() {
@@ -249,8 +216,6 @@ struct ConflictCheckOutcomeTests {
         ) == .resolvedMeanwhile)
     }
 
-    /// Use Local keeps what it sends after its course requests pending until it has queued it, and
-    /// a check begun before the answer compared those categories too.
     @Test("A check that compared what a Use Local answer still sends asks nothing about it")
     func whatUseLocalStillSendsIsNotAskedAgain() {
         let stillPending = AppState.categoriesToCheck(
@@ -276,9 +241,6 @@ struct ConflictCheckOutcomeTests {
     }
 }
 
-/// `AppState.markForReenableCheck`: which categories switched back on wait for the re-enable check.
-/// A device that has not taken a category's data holds no copy of it, so the check has nothing to
-/// compare there, and Use Local would send this device's own over the server's.
 @MainActor
 struct ReenableMarkTests {
     private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
@@ -289,9 +251,6 @@ struct ReenableMarkTests {
 
     private static var synced: Set<String> { categories.filter { AppState.hasSynced($0) } }
 
-    /// The sync progress keys and the sync switches are the app's real `Defaults`, which other
-    /// suites read and write too, so these tests take the gate
-    /// (docs/decisions/0020-real-defaults-gate.md). Each starts with every switch on and nothing taken.
     private static func withSyncProgress(_ body: () -> Void) async {
         await withExclusiveRealDefaults {
             let saved = (
@@ -314,7 +273,6 @@ struct ReenableMarkTests {
         }
     }
 
-    /// Records a full sync as `runFullSync` does, with the switches `Defaults` holds.
     private static func recordSync(
         pendingChecks: Set<String> = [], marksLeftFor reason: AppState.MarksLeftReason? = nil
     ) {
@@ -329,22 +287,16 @@ struct ReenableMarkTests {
             AppState.categoriesTaken(switchedOn: Self.categories, pendingChecks: pending, marksLeftFor: reason)
         }
         #expect(taken([], nil) == Self.categories)
-        // One step applies colours and names, so a check pending on either holds back both.
         #expect(taken(["course_names"], nil) == ["courses", "assignments"])
         #expect(taken(["course_colors"], nil) == ["courses", "assignments"])
         #expect(taken(["courses"], nil) == ["course_colors", "course_names", "assignments"])
         #expect(taken([], .editedDuringFetch) == Self.categories.subtracting(["assignments"]))
         #expect(taken(["assignments"], .conflictCheckPending) == Self.categories.subtracting(["assignments"]))
         #expect(taken([], .switchedOff) == Self.categories.subtracting(["assignments"]))
-        // Uploaded to a server that had none, the marks there are this device's.
         #expect(taken([], .uploadedLocalMarks) == Self.categories)
         #expect(AppState.categoriesTaken(switchedOn: ["courses"], pendingChecks: [], marksLeftFor: nil) == ["courses"])
     }
 
-    /// Use Local reads the colours, names and marks it sends only after its course requests, so
-    /// they stay on the stored pending list until it has queued them
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/651), and the courses stay until
-    /// their deletes are done (https://github.com/tigerduck-app/tigerduck-app/issues/667).
     @Test("Use Local keeps every category it answers pending until it is done with it, and only a relaunch asks again")
     func useLocalKeepsWhatItAnswersPending() {
         var pending = Self.categories
@@ -362,8 +314,6 @@ struct ReenableMarkTests {
                 uploadedLocalMarks: false, editedDuringFetch: false
             )
         ).isEmpty)
-        // The answer sends them itself, so the check leaves them alone; after a relaunch no
-        // answer holds them, and it asks again.
         #expect(AppState.categoriesToCheck(pending: pending, answering: hold.held).isEmpty)
         #expect(AppState.categoriesToCheck(pending: pending, answering: AppState.UseLocalHold().held) == pending)
 
@@ -385,15 +335,12 @@ struct ReenableMarkTests {
         #expect(hold.held.isEmpty)
     }
 
-    /// The re-mark finds the category already pending, and the check skips it while the answer
-    /// holds it.
     @Test("A category switched off and on while Use Local sends it stays pending for its own check")
     func aReenableWhileUseLocalSendsItStaysPending() {
         var pending: Set<String> = ["courses", "course_colors", "course_names"]
         var hold = AppState.UseLocalHold()
         let held = hold.take(["courses", "course_colors", "course_names"], keepLocal: true, from: &pending)
 
-        // As `markCategoryReenabled` does for the colours switch.
         pending.insert("course_colors")
         hold.noteReenabled("course_colors")
         hold.noteReenabled("assignments")
@@ -419,7 +366,6 @@ struct ReenableMarkTests {
     @Test("Names a sync left for a pending colours check stay unrecorded, so switching them off and on checks nothing")
     func namesHeldForAColoursCheckAreNotRecorded() async {
         await Self.withSyncProgress {
-            // Names off since the sign-in, so every sync since took the other three.
             Defaults[.categoriesSyncedOnce] = Self.categories.subtracting(["course_names"])
             Defaults[.pendingConflictCategories] = ["course_colors"]
 
@@ -461,7 +407,6 @@ struct ReenableMarkTests {
     func aSyncWithASwitchOffLeavesItsCategoryUnchecked(category: String) async {
         await Self.withSyncProgress {
             for entry in Self.switches where entry.category == category { Defaults[entry.key] = false }
-            // As the sync passes it, which takes the marks only with their switch on.
             Self.recordSync(marksLeftFor: AppState.reasonToLeaveMarks(
                 syncsMarks: Defaults[.syncAssignments], conflictCheckPending: false,
                 uploadedLocalMarks: false, editedDuringFetch: false
@@ -485,7 +430,6 @@ struct ReenableMarkTests {
     @Test("After a sign-out and a sign-in, turning TigerSync on raises no check, and the first pull takes the server's marks")
     func turningSyncOnAfterASignInChecksNothing() async {
         await Self.withSyncProgress {
-            // As a full sync of the departing account leaves them, its server holding no reset.
             Defaults[.assignmentMarksSyncedOnce] = true
             Self.recordSync()
 
@@ -506,7 +450,6 @@ struct ReenableMarkTests {
           arguments: [true, false])
     func turningSyncBackOnAfterASyncChecksEveryCategory(marksSynced: Bool) async {
         await Self.withSyncProgress {
-            // The update records the categories of an account signed in then and leaves this flag false.
             Defaults[.assignmentMarksSyncedOnce] = marksSynced
             Self.recordSync()
 
@@ -519,7 +462,6 @@ struct ReenableMarkTests {
     @Test("Switching a category back on while signed out marks nothing for whoever signs in next")
     func signedOutMarksNothing() async {
         await Self.withSyncProgress {
-            // Recorded as after a sync, so the sign-in alone decides.
             Defaults[.assignmentMarksSyncedOnce] = true
             Self.recordSync()
 

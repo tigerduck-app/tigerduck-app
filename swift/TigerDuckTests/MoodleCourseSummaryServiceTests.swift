@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `core_course_get_courses_by_field` for a course's summary, against `SettingsAPIStub` on a site
-/// that does not exist, so no request reaches Moodle, and the rule that leaves out a summary
-/// with nothing of its own. The answers follow the shape Moodle 4.5 documents; every name in
-/// them is made up.
 struct MoodleCourseSummaryServiceTests {
     private static let site = URL(string: "https://moodle-stub.invalid")!
 
@@ -15,7 +11,6 @@ struct MoodleCourseSummaryServiceTests {
         return URLSession(configuration: config)
     }
 
-    /// The URL a call posts to; the token keeps it unique to one test.
     private static func endpoint(token: String) -> URL {
         URL(string: "https://moodle-stub.invalid/webservice/rest/server.php"
             + "?moodlewsrestformat=json&wsfunction=\(MoodleCourseSummaryService.coursesFunction)&wstoken=\(token)")!
@@ -78,8 +73,6 @@ struct MoodleCourseSummaryServiceTests {
 
         #expect(summary == .empty)
     }
-
-    // MARK: - What shows
 
     private static func summary(_ html: String, names: [String] = ["Computer Networks", "CN 2025"]) -> MoodleCourseSummary {
         MoodleCourseSummary(html: html, text: MoodleHTMLText.plainText(fromHTML: html), names: names)

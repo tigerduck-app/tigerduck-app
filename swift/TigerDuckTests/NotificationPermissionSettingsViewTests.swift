@@ -1,6 +1,3 @@
-// Each row of `NotificationPermissionSettingsView` collapses a system authorization to
-// granted or not granted, the one piece of the screen's own logic. Both mappings are
-// static functions of plain values, so no view, store or environment is built.
 import Testing
 import UserNotifications
 @testable import TigerDuck

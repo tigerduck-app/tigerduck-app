@@ -3,14 +3,8 @@ import Testing
 
 @testable import TigerDuck
 
-/// The endpoint gate lets anyone point the app at their own backend, so the
-/// only thing standing between a Bearer token and the open wire is the
-/// "public addresses must be HTTPS" rule. These pin both halves: what counts
-/// as private (and so may use cleartext), and what does not.
 @Suite("API endpoint override")
 struct EndpointOverrideTests {
-
-    // MARK: - Transport rule
 
     @Test("public hosts are accepted over https, with no allowlist")
     func publicHostsOverHTTPS() {
@@ -51,8 +45,6 @@ struct EndpointOverrideTests {
         #expect(PushServerConfig.normalize(url).absoluteString == url.absoluteString)
     }
 
-    // MARK: - Host classification
-
     @Test("rfc1918, loopback and link-local v4 are private")
     func privateIPv4() {
         for host in [
@@ -65,7 +57,6 @@ struct EndpointOverrideTests {
 
     @Test("routable v4 ranges are not private")
     func routableIPv4() {
-        // 172.32 is outside the /12; 100.64 is CGNAT, which the carrier routes.
         for host in ["8.8.8.8", "172.32.0.1", "172.15.0.1", "100.64.0.1", "193.168.0.1"] {
             #expect(!PushServerConfig.isPrivateOrLoopbackHost(host), "\(host) should not be private")
         }
@@ -73,7 +64,6 @@ struct EndpointOverrideTests {
 
     @Test("leading-zero octets are rejected rather than read as octal")
     func leadingZeroOctets() {
-        // Some resolvers read 0192 as octal and land somewhere else entirely.
         #expect(!PushServerConfig.isPrivateOrLoopbackHost("0192.168.1.5"))
     }
 
@@ -97,11 +87,6 @@ struct EndpointOverrideTests {
         #expect(!PushServerConfig.isPrivateOrLoopbackHost("::ffff:8.8.8.8"))
     }
 
-    // MARK: - Health URL
-
-    /// `/health` is a sibling of the version prefix, not a child of it.
-    /// Getting this wrong makes every save fail with "not a TigerDuck
-    /// backend" against a perfectly healthy server.
     @Test("health url replaces the version segment rather than appending")
     func healthURL() {
         func health(_ base: String) -> String? {

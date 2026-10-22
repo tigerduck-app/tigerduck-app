@@ -3,20 +3,13 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Someone else's class table on the class table page: which one shows, the terms its picker
-/// lists, and that nothing on it edits the user's class table or shows the user's assignments.
-///
-/// Serialized, and synchronous on the main actor where it can be: the tests swap the catalogue
-/// cache and the stored term pick, as `ClassTableSemesterTests` does, and put both back.
 @Suite(.serialized)
 @MainActor
 struct ClassTableSwitchingTests {
     private typealias Term = ClassTableShareCode.Term
 
-    /// `SemesterCatalog.listKey`, which is private to the catalogue.
     private static let catalogueKey = "semesterCatalog.semesters"
 
-    /// A folder removed when the test ends, holding the store's file.
     private final class Folder {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("ClassTableSwitchingTests-\(UUID().uuidString)", isDirectory: true)
@@ -24,7 +17,6 @@ struct ClassTableSwitchingTests {
         deinit { try? FileManager.default.removeItem(at: url) }
     }
 
-    /// Ming shared 115-1 and 114-2; Hua shared 114-2 and 114-1.
     private struct People {
         let store: ImportedClassTableStore
         let ming: ImportedPerson
@@ -80,14 +72,9 @@ struct ClassTableSwitchingTests {
 
     private static func show(_ id: UUID?, in people: People, on viewModel: ClassTableViewModel) {
         people.store.show(id)
-        // What `ClassTableView` runs when the shown class table changes.
         viewModel.showShownTable()
     }
 
-    // MARK: - Which class table shows
-
-    /// The page draws a switch in one update, so the class table it keeps the rows of on screen
-    /// is the one before the switch, Today carousel included.
     @Test("the page keeps the class table on screen until it follows the store")
     func aSwitchWaitsForThePage() throws {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
@@ -152,7 +139,6 @@ struct ClassTableSwitchingTests {
             #expect(viewModel.currentSemester == "1142")
             #expect(viewModel.availableSemesters == ["1142", "1141"])
             #expect(viewModel.courses.map(\.courseNo) == ["PE1010002"])
-            // The move is not the user's pick: their own class table keeps following the newest term.
             #expect(Defaults[.classTableSelectedSemester] == nil)
         }
     }
@@ -204,16 +190,13 @@ struct ClassTableSwitchingTests {
             #expect(viewModel.isDeletingPerson)
             #expect(viewModel.personInAlert?.nickname == "Ming")
             viewModel.deletePersonInAlert()
-            // The page shows the deleted person until it follows the store.
             #expect(viewModel.shownPerson?.nickname == "Ming")
-            // What `ClassTableView` runs when the shown class table changes.
             viewModel.showShownTable()
 
             #expect(people.store.people.map(\.nickname) == ["Hua"])
             #expect(viewModel.shownPerson == nil)
             #expect(viewModel.availableSemesters == ["1151", "1142", "1141"])
             #expect(!viewModel.courses.contains { $0.courseNo == "CS1010001" })
-            // The confirmation keeps its title while it closes.
             #expect(viewModel.personInAlert?.nickname == "Ming")
         }
     }
@@ -238,8 +221,6 @@ struct ClassTableSwitchingTests {
             #expect(people.store.people.map(\.nickname) == ["Hua"])
         }
     }
-
-    // MARK: - Read-only
 
     @Test("someone else's class table edits nothing and shows none of the user's assignments")
     func anotherTableIsReadOnly() throws {
@@ -269,7 +250,6 @@ struct ClassTableSwitchingTests {
             viewModel.deleteCourse(theirs)
             #expect(viewModel.courses.map(\.courseNo) == ["CS1010001"])
 
-            // The user's own class table shows the same assignment.
             Self.show(nil, in: people, on: viewModel)
             viewModel.assignments = [assignment]
             #expect(viewModel.hasAssignment(for: "CS1010001"))
@@ -290,7 +270,6 @@ struct ClassTableSwitchingTests {
             let customNames = DataCache.shared.loadCourseCustomNames()
             let userAdded = DataCache.shared.loadUserAddedCourses().map(\.courseNo)
 
-            // Another window switches while the rename alert is up.
             Self.show(people.ming.id, in: people, on: viewModel)
             #expect(!viewModel.showRenameAlert)
             #expect(viewModel.courseToRecolor == nil)
@@ -318,14 +297,12 @@ struct ClassTableSwitchingTests {
         viewModel.showResetConfirm = true
         let customNames = DataCache.shared.loadCourseCustomNames()
 
-        // What the class table does when the sign-in changes.
         viewModel.closeOwnEdits()
         #expect(!viewModel.showRenameAlert)
         #expect(viewModel.courseToRecolor == nil)
         #expect(!viewModel.showAddCourse)
         #expect(!viewModel.showResetConfirm)
 
-        // The rename alert's buttons, tapped as it closes.
         viewModel.confirmRename()
         viewModel.revertRename(own)
         #expect(own.customName == "Own name")
@@ -351,7 +328,6 @@ struct ClassTableSwitchingTests {
         case none, signOut, switchToSomeoneElse, otherTerm
     }
 
-    /// A past term, so the write-back saves no colours in the test host's colour map.
     @Test("a pull of the user's own term writes back only to the same sign-in and the same term on screen", arguments: LateChange.allCases)
     func lateOwnRefresh(change: LateChange) throws {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: "1142") {
@@ -380,8 +356,6 @@ struct ClassTableSwitchingTests {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
             let folder = Folder()
             let store = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { "B11300000" })
-            // New each run: the colour map is the test host's own, and a run that broke the rule
-            // would have saved a colour for a fixed number.
             let theirs = "QQ" + UUID().uuidString.prefix(7)
             #expect(TigerDuckTheme.courseColorMap[theirs] == nil)
             let person = try #require(store.add(
@@ -401,8 +375,6 @@ struct ClassTableSwitchingTests {
         }
     }
 
-    /// Sign-out empties the colour map while someone else's class table can still be on screen, and
-    /// the reload it posts runs before the page shows the user's own table again.
     @Test("a reload on someone else's class table gives the user's last term list no colours")
     func reloadOnTheirTableAfterASignOut() throws {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
@@ -418,7 +390,6 @@ struct ClassTableSwitchingTests {
             let viewModel = ClassTableViewModel(importedTables: store)
             store.show(person.id)
             viewModel.showShownTable()
-            // The departing account's term list, read before the sign-out emptied the caches.
             let departing = "QQ" + UUID().uuidString.prefix(7)
             viewModel.currentSemesterCourses = [Self.course(departing, "Departing course", semester: "1151")]
 
@@ -427,8 +398,6 @@ struct ClassTableSwitchingTests {
             #expect(TigerDuckTheme.courseColorMap[departing] == nil)
         }
     }
-
-    // MARK: - Rename
 
     @Test("Save waits for a nickname, and a saved one replaces the person's")
     func renameNeedsANickname() throws {
@@ -453,8 +422,6 @@ struct ClassTableSwitchingTests {
             #expect(people.store.people.map(\.nickname) == ["Xiao Ming", "Hua"])
         }
     }
-
-    // MARK: - Pull to refresh
 
     @Test("a pull on someone else's class table looks their term up again, and only that term")
     func pullLooksTheTermUpAgain() async throws {
@@ -495,7 +462,6 @@ struct ClassTableSwitchingTests {
         #expect(stored.courses(in: "1151").map(\.classroom) == ["TR-313"])
         #expect(stored.courses(in: "1142").map(\.courseName) == ["Circuits"])
 
-        // No lookup went through this time: the rows stay and the page says the refresh failed.
         await viewModel.refreshShownPerson()
 
         #expect(lookups.count == 2)
@@ -504,8 +470,6 @@ struct ClassTableSwitchingTests {
         #expect(stored.courses(in: "1151").map(\.classroom) == ["TR-313"])
         #expect(viewModel.courses.map(\.classroom) == ["TR-313"])
     }
-
-    // MARK: - Sign-out
 
     @Test("failed rename, delete and refresh saves preserve the table and surface a save error", arguments: ["rename", "delete", "refresh"])
     func failedPersonMutation(operation: String) async throws {

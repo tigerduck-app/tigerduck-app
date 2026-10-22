@@ -5,11 +5,8 @@ import UIKit
 import os
 @testable import TigerDuck
 
-/// The backend's `sync_trigger` push wakes the app in the background, where iOS waits a limited
-/// time for the completion handler (https://github.com/tigerduck-app/tigerduck-app/issues/449).
 @MainActor
 struct PushAppDelegateTests {
-    /// What a completion handler was called with, from any thread.
     private final class Answers: Sendable {
         private let state = OSAllocatedUnfairLock<[UIBackgroundFetchResult]>(initialState: [])
 
@@ -20,7 +17,6 @@ struct PushAppDelegateTests {
         }
     }
 
-    /// What happened, in order, from any thread.
     private final class Events: Sendable {
         private let state = OSAllocatedUnfairLock<[String]>(initialState: [])
 
@@ -31,14 +27,10 @@ struct PushAppDelegateTests {
         }
     }
 
-    /// Holds the calling thread until `signal`, at most `seconds`, as a long synchronous stretch of
-    /// a sync holds the main actor. Returns whether the signal came.
     private static func hold(until signal: DispatchSemaphore, atMost seconds: Int) -> Bool {
         signal.wait(timeout: .now() + .seconds(seconds)) == .success
     }
 
-    /// Far past what a test waits: the main actor can be held for over a minute on a busy runner,
-    /// which the real limits would take for a slow sync.
     private static let wideLimits = (answer: Duration.seconds(600), send: Duration.seconds(590))
 
     @Test("The app declares the Remote notifications background mode, so a sync trigger reaches it in the background")
@@ -63,9 +55,6 @@ struct PushAppDelegateTests {
         #expect(result == expected)
     }
 
-    /// Once the push is answered iOS may suspend the app, so the widgets' reload goes out first
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/664), and then the Live Activity
-    /// schedule, whose request can take longer (https://github.com/tigerduck-app/tigerduck-app/issues/663).
     @Test("What must not wait for the next launch runs after the sync and before the answer: the widgets, then the send")
     func whatMustNotWaitRunsBeforeTheAnswer() async {
         let delegate = PushAppDelegate()
@@ -89,7 +78,6 @@ struct PushAppDelegateTests {
         #expect(result == .newData)
     }
 
-    /// The time limit is far off here, as the main actor can be held for over a minute by other tests.
     @Test("A send that outlasts its deadline does not hold the answer, which reports the sync")
     func aSendPastItsDeadlineDoesNotHoldTheAnswer() async throws {
         let answers = Answers()
@@ -113,7 +101,6 @@ struct PushAppDelegateTests {
         #expect(events.all.first == "answer")
     }
 
-    /// The deadline comes before the time limit, so a sync the limit cancelled sends nothing either.
     @Test("A send whose deadline passed during the sync is not started")
     func aSendPastItsDeadlineBeforeItStartsIsNotStarted() async throws {
         let answers = Answers()
@@ -153,8 +140,6 @@ struct PushAppDelegateTests {
         #expect(answers.results == [.failed])
     }
 
-    /// The open app shows what the sync fetches, and its own sync may be waiting for this one
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/682).
     @Test("A sync that outlasts the limit goes on while the app is active, and only the limit answers")
     func aSyncPastTheLimitGoesOnWhileTheAppIsActive() async {
         let answers = Answers()
@@ -177,7 +162,6 @@ struct PushAppDelegateTests {
         let answered = DispatchSemaphore(value: 0)
         var heldUntilAnswered: Bool?
 
-        // The sync lets the main actor go only once the answer is recorded, or after 10 seconds.
         PushAppDelegate.run({
             heldUntilAnswered = Self.hold(until: answered, atMost: 10)
             return .newData

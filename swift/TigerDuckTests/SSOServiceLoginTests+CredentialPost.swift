@@ -1,31 +1,23 @@
-// Where a POST carrying a password or a token may go: sign-in forms, forms passing a sign-in on,
-// and the library's and backend's sign-ins. An extension of `SSOServiceLoginTests`, so these run
-// in its serialized order: they share the stub's queues, the SSO probe's URL and the refusals.
 import Foundation
 import Testing
 @testable import TigerDuck
 
 extension SSOServiceLoginTests {
-    /// The redirects of the POST that end it: a 307 or a 308 would send the form, password and all,
-    /// to its `Location`, and a GET is followed only over HTTPS.
     nonisolated static let refusedRedirects: [(Int, String)] = [
         (307, "https://elsewhere.stub.invalid/account/login"),
         (308, "https://elsewhere.stub.invalid/account/login"),
         (302, "http://ssoam2.ntust.edu.tw/connect/authorize/callback?client_id=stub"),
     ]
 
-    /// Form actions the password may not go to.
     nonisolated static let refusedActions = [
         "https://elsewhere.stub.invalid/account/login",
         "http://ssoam2.ntust.edu.tw/account/login",
     ]
 
-    /// Where ssoam2 sends a browser once the password is accepted.
     nonisolated static let authorizeCallback = URL(
         string: "https://ssoam2.ntust.edu.tw/connect/authorize/callback?client_id=stub"
     )!
 
-    /// The fixture sign-in form, posting to `action`.
     static func signInForm(postingTo action: String) throws -> String {
         let fixture = #"action="/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback""#
         try #require(Pages.ssoam2Login.contains(fixture))
@@ -35,8 +27,6 @@ extension SSOServiceLoginTests {
     private func requests(to url: URL) -> [SSOServerStub.Request] {
         SSOServerStub.requests.filter { $0.url == url }
     }
-
-    // MARK: - SSO sign-in
 
     @Test(
         "a sign-in whose password POST meets a redirect it may not follow ends there",
@@ -48,7 +38,6 @@ extension SSOServiceLoginTests {
         let outcome = await signIn(service) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
-            // Read as the answer, the sign-in form in the redirect would pass for a refusal.
             SSOServerStub.enqueue(.redirect(status, to: target, body: Pages.ssoam2Login), for: Self.postURL)
         }
         #expect(requests(to: target).isEmpty)
@@ -90,7 +79,6 @@ extension SSOServiceLoginTests {
             }
         }
         #expect(posts.isEmpty)
-        // No password went out, so the sign-in does not ask the user to check it.
         guard case .failure(SSOLoginError.invalidResponse) = outcome.result else {
             Issue.record("expected invalidResponse, got \(outcome.result)")
             return
@@ -98,10 +86,6 @@ extension SSOServiceLoginTests {
         #expect(outcome.refusals.count == 0)
     }
 
-    // MARK: - Moodle token renewal
-
-    /// A renewal from `page`, and after a failure one more, which the pause should keep from
-    /// harvesting. `harvests` counts both.
     private func renewal(from page: String) async -> (Result<String, Error>, refusals: Int, harvests: Int) {
         let log = HarvestLog()
         let renewal = pageWalk(log: log, from: page, at: Self.loginURL)
@@ -129,7 +113,6 @@ extension SSOServiceLoginTests {
             return
         }
         #expect(refusals == 0)
-        // Paused as other failures are: the second renewal sent nothing.
         #expect(harvests == 1)
     }
 
@@ -166,9 +149,6 @@ extension SSOServiceLoginTests {
         #expect(harvests == 1)
     }
 
-    // MARK: - Forms that pass the sign-in on
-
-    /// An OIDC or SAML form that passes the sign-in on to `action`, with its token.
     static func bridgeForm(postingTo action: String) -> String {
         """
         <html><body><form method="post" action="\(action)">
@@ -205,7 +185,6 @@ extension SSOServiceLoginTests {
         let service = Self.serviceURL()
         let target = try #require(URL(string: "https://courseselection.ntust.edu.tw/signin-oidc"))
         let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/signin-oidc"))
-        // A body that is not UTF-8, as a Big5 page is, must not hide the redirect.
         var stopped = SSOServerStub.Answer.redirect(status, to: elsewhere)
         stopped.rawBody = Data([0xA4, 0xA4, 0xFF])
         let outcome = await signIn(service) {
@@ -214,7 +193,6 @@ extension SSOServiceLoginTests {
             SSOServerStub.enqueue(.redirect(302, to: Self.authorizeCallback), for: Self.postURL)
             SSOServerStub.enqueue(.page(Self.bridgeForm(postingTo: target.absoluteString)), for: Self.authorizeCallback)
             SSOServerStub.enqueue(stopped, for: target)
-            // The SSO session is live, so only the stopped redirect says the service got nothing.
             SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
         }
         #expect(requests(to: target).map(\.method) == ["POST"])
@@ -266,8 +244,6 @@ extension SSOServiceLoginTests {
         }
         #expect(refusals == 0)
     }
-
-    // MARK: - The library's and the backend's sign-in
 
     @Test("the library sign-in stops at a 307 or a 308 rather than send the password on", arguments: [307, 308])
     func librarySignInStopsAtARedirect(status: Int) async throws {

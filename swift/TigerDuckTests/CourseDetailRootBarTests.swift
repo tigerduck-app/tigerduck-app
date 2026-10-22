@@ -4,9 +4,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// A Moodle screen pushed in the course detail sheet keeps its bar where it lands. With the root's
-/// bar hidden, the pushed bar sat at the sheet's top edge until the push ended, then dropped 16 pt
-/// below the grabber with everything under it.
 @MainActor
 struct CourseDetailRootBarTests {
     @Observable
@@ -17,7 +14,6 @@ struct CourseDetailRootBarTests {
         var pushedTops: [CGFloat] = []
     }
 
-    /// The course detail's navigation as `CourseDetailSheet` builds it.
     struct Detail: View {
         @Bindable var probe: Probe
 
@@ -62,7 +58,6 @@ struct CourseDetailRootBarTests {
 
         probe.path.append(1)
         try await waitUntil { !probe.pushedTops.isEmpty }
-        // Past the end of the push, when the bar used to drop.
         try await Task.sleep(for: .seconds(1))
         #expect(Set(probe.pushedTops).count == 1, "the pushed screen's top inset went \(probe.pushedTops)")
     }

@@ -50,7 +50,6 @@ final class ScheduleStoreTests: XCTestCase {
         XCTAssertEqual(fresh.snapshot, sampleSnapshot())
     }
 
-    /// A newer Watch build can leave a preset this one does not know in the cache.
     @MainActor
     func test_loadFromDisk_unknownVisualPreset_keepsTheSnapshotAsTigerDuck() throws {
         let cached = """

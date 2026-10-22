@@ -70,7 +70,6 @@ struct VisualStylePolicyTests {
         #expect(Self.contrast(Self.tat.classTableCourseOutline(colour), on: fill) >= 3)
     }
 
-    /// The HSV hue from 0 up to 1, or nil for a grey, which has none.
     private static func hue(_ colour: Color.Resolved) -> Double? {
         let (red, green, blue) = (Double(colour.red), Double(colour.green), Double(colour.blue))
         let top = max(red, green, blue)
@@ -86,7 +85,6 @@ struct VisualStylePolicyTests {
         return sector < 0 ? sector / 6 + 1 : sector / 6
     }
 
-    /// The WCAG contrast ratio of `text`, blended over the opaque `background`.
     private static func contrast(_ text: Color, on background: Color.Resolved) -> Double {
         let ink = text.resolve(in: EnvironmentValues())
         let blended = Color.Resolved(

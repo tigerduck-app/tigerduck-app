@@ -1,6 +1,3 @@
-// The tries of a stored password the school refused, against stand-ins for the school, Moodle and
-// the backend. The refusals are real `Defaults` keys, so each test that touches them holds the gate
-// in docs/decisions/0020-real-defaults-gate.md and puts them back.
 import Defaults
 import Foundation
 import os
@@ -8,8 +5,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// The waits a refusal of the stored password starts
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/768).
 @Suite("The waits after a refused stored password")
 struct StoredPasswordScheduleTests {
     @Test("after refusals in a row the waits are ten seconds, a minute and five minutes, then six hours")
@@ -32,20 +27,15 @@ struct StoredPasswordScheduleTests {
             == refused.addingTimeInterval(SSOLoginService.storedPasswordRetryInterval))
         let setBack = refused.addingTimeInterval(-1)
         #expect(retryAt(after: 4, lastAt: refused, now: setBack) == setBack)
-        // A count without its time, as a write cut short could leave, holds nothing back.
         #expect(retryAt(after: 2, lastAt: nil, now: refused) == refused)
     }
 }
 
-/// `AuthService`'s tries of a refused stored password, armed on a `ManualSleeper` and timed by the
-/// test's clock (https://github.com/tigerduck-app/tigerduck-app/issues/768).
 @MainActor
 @Suite("Trying a refused stored password again", .serialized)
 struct StoredPasswordRetryTests {
     nonisolated static let start = Date(timeIntervalSince1970: 2_000_000)
 
-    /// Moodle's answers to the harvests: the first `refusing` refuse the stored password, and each
-    /// after them takes it and hands out "harvested". `whileOut` runs as each harvest waits.
     nonisolated final class Harvests: @unchecked Sendable {
         private let lock = NSLock()
         private var refusalsLeft: Int
@@ -73,8 +63,6 @@ struct StoredPasswordRetryTests {
         var count: Int { lock.withLock { made } }
     }
 
-    /// The school's side of a try's SSO sign-in: the probe of the session, then each post of the
-    /// stored password, whose answer it books as `SSOLoginService` does.
     @MainActor
     final class School {
         enum Answer { case takes, refuses, isOffline, signsOut }
@@ -117,8 +105,6 @@ struct StoredPasswordRetryTests {
         func signOut() { auth?.logout() }
     }
 
-    /// A device signed in to the school, whose SSO session is live unless `school` says otherwise,
-    /// with no Moodle token and no backend session.
     @MainActor
     struct Device {
         let auth: AuthService
@@ -172,12 +158,10 @@ struct StoredPasswordRetryTests {
             clock.withLock { $0 += seconds }
         }
 
-        /// What the app's center does with the wait `SSOLoginService` announces on the default one.
         func handOnTheWait() {
             center.post(name: SSOLoginService.storedPasswordPostWaits, object: nil)
         }
 
-        /// Hands on a wait and returns the try it arms, once that try has begun to wait.
         func armTheTry() async throws -> Task<Void, Never> {
             handOnTheWait()
             try await sleeper.waitUntilArmed()
@@ -197,8 +181,6 @@ struct StoredPasswordRetryTests {
         }
     }
 
-    /// Runs `body` signed in on a keychain of its own, after `count` refusals of the stored password,
-    /// the last at `last`, and puts back the real keys that sign-ins and sign-outs write.
     func signedIn(refusals count: Int, last: Date?, _ body: (MemoryKeychain) async throws -> Void) async throws {
         try await withExclusiveRealDefaults {
             let saved = (
@@ -275,8 +257,6 @@ struct StoredPasswordRetryTests {
         #expect(device.harvests.count == 1)
     }
 
-    /// The banner's error is of an automatic sign-in that failed, which a try that signs in to the
-    /// school makes stale; the sign-in sheet's state is the user's own sign-in's.
     @Test("a try that signs in to the school clears the banner a failed automatic sign-in left, and nothing of the sheet's",
           arguments: [true, false])
     func signedInTryClearsTheBanner(sessionIsLive: Bool) async throws {
@@ -298,8 +278,6 @@ struct StoredPasswordRetryTests {
         #expect(!device.auth.isLoggingIn)
     }
 
-    /// The sign-in sheet shows `isLoggingIn` and `loginError` and the banners `reauthErrorMessage`,
-    /// so a try that wrote them would show a spinner and an error nobody asked for.
     @Test("a try whose school sign-in is refused stops there, and leaves the sign-in sheet and the banners alone")
     func refusedSchoolSignInStopsTheTry() async throws {
         let device = Device(harvests: Harvests(refusing: 0))
@@ -321,8 +299,6 @@ struct StoredPasswordRetryTests {
         #expect(device.school.posts == 1)
         #expect(device.harvests.count == 0)
         #expect(SettingsAPIStub.requests(for: device.backend.loginURL).isEmpty)
-        // Not armed again by the try: the refusal's own announcement arms the next, and this test
-        // does not hand it on.
         #expect(await device.sleeper.armedCount == 1)
     }
 
@@ -377,7 +353,6 @@ struct StoredPasswordRetryTests {
         #expect(device.harvests.count == 1)
     }
 
-    /// Where a sign-out lands while a try is out.
     enum SignOutStep: String, CaseIterable, CustomTestStringConvertible {
         case schoolSignIn
         case tokenHarvest
@@ -412,7 +387,6 @@ struct StoredPasswordRetryTests {
         let device = Device(harvests: Harvests(refusing: 0))
         device.answerTheBackendSignIn()
 
-        // Two refusals before the relaunch, the last 20 seconds before it: 40 seconds of the minute are left.
         try await signedIn(refusals: 2, last: Self.start.addingTimeInterval(-20)) { _ in
             await device.auth.ensureBackendSignedIn()
             #expect(device.harvests.count == 0)
@@ -429,8 +403,6 @@ struct StoredPasswordRetryTests {
         #expect(SettingsAPIStub.requests(for: device.backend.loginURL).count == 1)
     }
 
-    /// The device of the issue: signed in, its backend session revoked, no Moodle token stored and
-    /// the latch of 2.6.2 up.
     @Test("a device the latch held gets a backend session at the first return to the app after the update")
     func latchedDeviceSignsInAfterTheUpdate() async throws {
         let device = Device(harvests: Harvests(refusing: 0))
@@ -455,8 +427,6 @@ struct StoredPasswordRetryTests {
         var retryTimes: [Date] = []
     }
 
-    /// Each announcement carries when the next post may go, so a stray one of another test, with a
-    /// time of its own, does not pass for this test's.
     @Test("a refusal and each automatic post it holds back are announced with when the next post may go")
     func waitsAreAnnounced() async throws {
         let refused = Date(timeIntervalSince1970: 3_000_000 + Double(Int.random(in: 0..<1_000_000)))
@@ -487,7 +457,6 @@ struct StoredPasswordRetryTests {
 
             device.auth.logout()
             #expect(SSOLoginService.storedPasswordRefusals.count == 0)
-            // The next account signs in and is refused in turn, which the dropped try must not answer.
             keychain.unlock(withMoodleToken: false)
             SSOLoginService.storedPasswordRefusals = (1, Self.start)
             device.advance(by: 10)

@@ -8,18 +8,10 @@ import WebKit
 struct MailReadableHTMLTests {
     typealias RGBA = MailReadableHTML.RGBA
 
-    /// Through the sanitizer and the link rewrite first, as the message screen does: only what
-    /// survives them reaches the page.
     static func readable(_ raw: String) -> MailReadableHTML {
         MailReadableHTML(MailHTMLSanitizer.rewriteLinks(MailHTMLSanitizer.sanitize(raw, allowRemoteImages: false).html).html)
     }
 
-    // MARK: The page a mail opens on
-
-    /// A colour anywhere counts, a quoted reply's too, and so does one this cannot read. A colour
-    /// that does not show, or that another declaration overrides, does not count
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/678). A border colour is not a text
-    /// or background colour, and `background` never gets past the CSS filter.
     @Test(arguments: [
         ("<p>Hello</p>", false),
         (##"<p style="font-size: 14px; border-left: 1px solid #cccccc">Hello</p>"##, false),
@@ -48,8 +40,6 @@ struct MailReadableHTMLTests {
         #expect(Self.readable(html).setsColors == setsColors)
     }
 
-    // MARK: Text on its background
-
     @Test func textOnItsOwnBackgroundIsFixedOnEitherPage() {
         let page = Self.readable(##"<p style="background-color: #ffff00; color: #ffffff">Notice</p>"##)
         for theme in [MailHTMLTheme.app, .light] {
@@ -57,7 +47,6 @@ struct MailReadableHTMLTests {
         }
     }
 
-    /// The nearest background counts: the second cell's own white, not the table's blue.
     @Test func textOnAnAncestorsBackgroundIsFixedOnEitherPage() {
         let page = Self.readable(
             ##"<table bgcolor="#003366" style="color: #ffffff"><tr><td><font color="#000080">Notice</font></td><td bgcolor="#ffffff" style="color: #000000"><font color="#000080">Notice</font></td></tr></table>"##
@@ -73,15 +62,12 @@ struct MailReadableHTMLTests {
         #expect(page.html(on: .light) == ##"<p><font color="#333333">Dark</font> <font color="#595959">Light</font></p>"##)
     }
 
-    /// Grey on half-black over white paper: a mid-tone no colour reaches 7:1 on, so the fix is
-    /// black, which comes closest.
     @Test func aTranslucentBackgroundLetsThePageShowThrough() {
         let page = Self.readable(##"<div style="background-color: rgba(0, 0, 0, 0.5)"><p style="color: #808080">Notice</p></div>"##)
         #expect(page.html(on: .app) == ##"<div style="background-color: rgba(0, 0, 0, 0.5)"><p style="color: #959595">Notice</p></div>"##)
         #expect(page.html(on: .light) == ##"<div style="background-color: rgba(0, 0, 0, 0.5)"><p style="color: #000000">Notice</p></div>"##)
     }
 
-    /// Half blue over half red: a dark purple on the dark page, a mid-tone violet on white paper.
     @Test func translucentLayersStack() {
         let page = Self.readable(
             ##"<div style="background-color: rgba(255, 0, 0, 0.5)"><div style="background-color: rgba(0, 0, 255, 0.5)"><p style="color: #800080">x</p></div></div>"##
@@ -98,9 +84,6 @@ struct MailReadableHTMLTests {
         #expect(MailReadableHTML.readable(RGBA(0x000000), on: RGBA(0x777777)) == nil)
     }
 
-    /// A `border-image` with `fill` is the one image that reaches the page behind text. The
-    /// sanitizer drops `background` attributes and `background-image`, so text under those
-    /// sits on the page and is fixed like any other.
     @Test func textOverABackgroundImageKeepsItsColour() {
         let page = Self.readable(
             ##"<div style="border-image: linear-gradient(#000000, #000000) fill 1"><font color="#333333">Over an image</font></div><table background="paper.png"><tr><td style="background-image: url(paper.png)"><font color="#333333">On the page</font></td></tr></table>"##
@@ -123,7 +106,6 @@ struct MailReadableHTMLTests {
             == ##"<div style="border-image-source: linear-gradient(#000000, #000000)"><font color="#333333">a</font></div><p><font color="#959595">b</font></p>"##)
     }
 
-    /// A column's background paints behind its cells without being their ancestor.
     @Test func aTableWithColumnBackgroundsCannotBeRead() {
         let page = Self.readable(
             ##"<table><colgroup><col style="background-color: #000000"></colgroup><tr><td><font color="#333333">a</font></td></tr></table><table><col style="background-color: #000000"><tr><td><font color="#333333">b</font></td></tr></table><table><tr><td><font color="#333333">c</font></td></tr></table>"##
@@ -132,9 +114,6 @@ struct MailReadableHTMLTests {
             == ##"<table><colgroup><col style="background-color: #000000" /></colgroup><tbody><tr><td><font color="#333333">a</font></td></tr></tbody></table><table><colgroup><col style="background-color: #000000" /></colgroup><tbody><tr><td><font color="#333333">b</font></td></tr></tbody></table><table><tbody><tr><td><font color="#959595">c</font></td></tr></tbody></table>"##)
     }
 
-    /// WebKit paints a table's background over its grid only, so its caption is judged on what the
-    /// table sits on, and given back the colour the table was given in its place
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/677).
     @Test func aCaptionSitsOnWhatItsTableSitsOn() {
         let black = Self.readable(##"<table bgcolor="#000000"><caption><font color="#333333">Caption</font></caption><tr><td>Cell</td></tr></table>"##)
         #expect(black.html(on: .light)
@@ -145,8 +124,6 @@ struct MailReadableHTMLTests {
         #expect(white.html(on: .light) == ##"<table bgcolor="#ffffff"><caption>Caption</caption><tbody><tr><td>Cell</td></tr></tbody></table>"##)
     }
 
-    /// A `display` that takes the table or its caption out of table layout puts the caption on the
-    /// table's background, where it is judged as any other child.
     @Test(arguments: [##"<table bgcolor="#000000" style="display: block">"##, ##"<table bgcolor="#000000"><caption style="display: block">"##])
     func aCaptionOutOfTableLayoutSitsOnTheTable(opening: String) {
         let html = opening.hasSuffix("<caption style=\"display: block\">")
@@ -165,7 +142,6 @@ struct MailReadableHTMLTests {
             == ##"<div style="background-color: hsl(0 0% 0%)"><font color="#333333">a</font></div><table><tbody><tr><td bgcolor="#000000ff"><font color="#333333">b</font></td></tr></tbody></table><p><font color="#959595">c</font></p>"##)
     }
 
-    /// An inline `background-color` outranks `bgcolor`: the text sits on black, not white.
     @Test func anInlineBackgroundOutranksBgcolor() {
         let page = Self.readable(##"<table><tr><td bgcolor="#ffffff" style="background-color: #000000"><font color="#333333">x</font></td></tr></table>"##)
         #expect(page.html(on: .app)
@@ -177,14 +153,12 @@ struct MailReadableHTMLTests {
         #expect(page.html(on: .app) == ##"<p style="background-color: #000000 !important; background-color: #ffffff; color: #959595">x</p>"##)
     }
 
-    /// A `color` declaration outranks `<font color>`, even one this cannot read.
     @Test func aColorDeclarationOutranksFontColor() {
         let page = Self.readable(##"<p><font color="#ffffff" style="color: #333333">a</font><font color="#333333" style="color: hsl(0 0% 20%)">b</font></p>"##)
         #expect(page.html(on: .app)
             == ##"<p><font color="#ffffff" style="color: #959595">a</font><font color="#333333" style="color: hsl(0 0% 20%)">b</font></p>"##)
     }
 
-    /// Translucent text is judged as it shows over its background; invisible text stays invisible.
     @Test func translucentTextIsJudgedAsItShows() {
         let page = Self.readable(##"<p style="color: rgba(0, 0, 0, 0.5)">a</p><p style="color: transparent">b</p>"##)
         #expect(page.html(on: .app) == ##"<p style="color: #959595">a</p><p style="color: transparent">b</p>"##)
@@ -202,9 +176,6 @@ struct MailReadableHTMLTests {
         #expect(MailReadableHTML.readable(RGBA(0xFFFF00), on: RGBA(0xFFFFFF)) == RGBA(0x5C5C00))
     }
 
-    /// A fix always reaches 7:1, or on a mid-tone where no colour does the better of white and
-    /// black, even rounded to whole bytes. A colour that already reads is never touched, and a
-    /// grey stays grey.
     @Test func everyFixReachesTheTarget() {
         for background in [0x000000, 0xFFFFFF, 0x777777, 0x3366CC, 0xFFFF00, 0x123456] as [UInt32] {
             let page = RGBA(background)
@@ -230,9 +201,6 @@ struct MailReadableHTMLTests {
         }
     }
 
-    // MARK: Text that inherits its colour
-
-    /// On the dark page a highlight inherits the page's white; on white paper, black, which reads.
     @Test func aHighlightWithNoColourOfItsOwnIsGivenOne() {
         let html = ##"<p>Read <span style="background-color: #ffff00">this</span> first</p>"##
         let page = Self.readable(html)
@@ -240,15 +208,11 @@ struct MailReadableHTMLTests {
         #expect(page.html(on: .light) == html)
     }
 
-    /// The sender's black is moved for the dark page, but reads on the yellow inside it, so the
-    /// yellow gets the black back.
     @Test func aBackgroundGetsBackTheColourTheSenderMeant() {
         let page = Self.readable(##"<div style="color: #000000">Hi <span style="background-color: #ffff00">there</span></div>"##)
         #expect(page.html(on: .app) == ##"<div style="color: #959595">Hi <span style="background-color: #ffff00; color: #000000">there</span></div>"##)
     }
 
-    /// A link draws in the page's link colour, not its parent's, so a dark cell needs it fixed
-    /// too. A link on the page itself keeps the colour WebKit gives it there.
     @Test func aLinkOnTheSendersBackgroundIsFixed() {
         let page = Self.readable(
             ##"<table bgcolor="#000000"><tr><td>Text <a href="https://a.example">link</a></td></tr></table><p><a href="https://b.example">page link</a></p>"##
@@ -259,7 +223,6 @@ struct MailReadableHTMLTests {
             == ##"<table bgcolor="#000000"><tbody><tr><td>Text <a href="https://link.invalid/0">link</a></td></tr></tbody></table><p><a href="https://link.invalid/1">page link</a></p>"##)
     }
 
-    /// Text inside a link inherits the link colour, so a highlight there starts from it.
     @Test func aHighlightInsideALinkStartsFromTheLinkColour() {
         let page = Self.readable(##"<p><a href="https://a.example"><span style="background-color: #ffff00">Marked</span> link</a></p>"##)
         #expect(page.html(on: .app)
@@ -271,8 +234,6 @@ struct MailReadableHTMLTests {
         #expect(page.html(on: .light)
             == ##"<div style="background-color: #000000; color: #ffffff">Text <a href="https://link.invalid/0" style="color: #6092ff">link</a></div>"##)
     }
-
-    // MARK: Colour forms
 
     @Test(arguments: [
         "#333", "#333F", "#333333", "#333333ff", "rgb(51, 51, 51)", "rgba(51, 51, 51, 1)", "RGB(20% 20% 20%)",
@@ -298,8 +259,6 @@ struct MailReadableHTMLTests {
         #expect(MailReadableHTML.parse(value[...], legacy: false) == nil)
     }
 
-    /// `bgcolor` and `<font color>` follow HTML's legacy colour rules, which read `#333333ff` or
-    /// `rgb()` as some other colour, so only the forms both rules agree on are read there.
     @Test func bgcolorAndFontColorTakeOnlyTheFormsHTMLReadsAsCSSDoes() {
         #expect(MailReadableHTML.parse("#333", legacy: true) == RGBA(0x333333))
         #expect(MailReadableHTML.parse("#333333", legacy: true) == RGBA(0x333333))
@@ -309,7 +268,6 @@ struct MailReadableHTMLTests {
         }
     }
 
-    /// A colour in a form this reads is written back as `#rrggbb`; one it cannot read stays as sent.
     @Test func aFixedColourIsWrittenAsHex() {
         let page = Self.readable(
             ##"<p style="color: rgb(51 51 51 / 100%)">a</p><p style="color: hsl(0 0% 20%)">b</p><p><font color="DarkSlateGray">c</font><font color="#333333ff">d</font></p>"##
@@ -318,9 +276,6 @@ struct MailReadableHTMLTests {
             == ##"<p style="color: #959595">a</p><p style="color: hsl(0 0% 20%)">b</p><p><font color="#7a9c9c">c</font><font color="#333333ff">d</font></p>"##)
     }
 
-    // MARK: The work
-
-    /// The font sits at the deepest depth read, then one deeper.
     @Test func coloursDeeperThanTheCapStayAsSent() {
         for (wrappers, fixed) in [(AppConstants.maximumHTMLDepth - 1, true), (AppConstants.maximumHTMLDepth, false)] {
             let html = String(repeating: "<div>", count: wrappers) + ##"<font color="#333333">x</font>"## + String(repeating: "</div>", count: wrappers)
@@ -328,8 +283,6 @@ struct MailReadableHTMLTests {
         }
     }
 
-    /// Past `maximumSearches` distinct colours on a page, a colour that does not read takes the
-    /// better of white and black without a search.
     @Test func pastTheSearchCapAFixIsWhiteOrBlack() {
         let colours = (0...MailReadableHTML.maximumSearches).map { String(format: "#%02x%02x%02x", $0 % 16, $0 / 16 % 16, $0 / 256) }
         let page = MailReadableHTML(colours.map { #"<font color="\#($0)">x</font>"# }.joined()).html(on: .app)
@@ -338,7 +291,6 @@ struct MailReadableHTMLTests {
         #expect(page.components(separatedBy: "#ffffff").count == 2)
     }
 
-    /// Cancelled while the document is read, or while a page is written, the colours stay as sent.
     @Test func aCancelledReadLeavesTheColoursAsSent() async {
         let html = ##"<p style="color: #333333">x</p>"##
         let (readWhileCancelled, sawColours) = await Task { () -> (String, Bool) in
@@ -357,8 +309,6 @@ struct MailReadableHTMLTests {
         #expect(MailReadableHTML(html).html(on: .app) == ##"<p style="color: #959595">x</p>"##)
     }
 
-    /// Each call writes every colour it may change, so a page comes out the same whatever was
-    /// asked for before it.
     @Test func pagesComeOutTheSameInAnyOrder() {
         let html = MailHTMLSanitizer.rewriteLinks(MailHTMLSanitizer.sanitize(
             ##"<table bgcolor="#003366"><tr><td><font color="#000080">Notice</font></td><td bgcolor="#ffffff"><font color="#000080">Notice</font></td></tr></table>"##,
@@ -373,7 +323,6 @@ struct MailReadableHTMLTests {
         #expect(pages[0] != pages[1])
     }
 
-    /// Only the elements whose colour changes are written out again; the rest keep their bytes.
     @Test func anElementLeftAloneKeepsItsBytes() {
         #expect(MailReadableHTML("<p><font color=#333333>a</font> <font color='#ffffff'>b</font></p>").html(on: .app)
             == ##"<p><font color="#959595">a</font> <font color='#ffffff'>b</font></p>"##)
@@ -384,10 +333,6 @@ struct MailReadableHTMLTests {
         #expect(MailReadableHTML.targets(in: html) == [#" href="https://link.invalid/0""#, #" src="tdcid:a""#])
     }
 
-    /// Every vector gets elements that need fixing on both pages, through each way a colour is
-    /// written: a style's `color` value, `<font color>`, and a `color` given to a background (after
-    /// quotes, entities and `!important`) and to a link. Each page shows those writes, gains no
-    /// forbidden token, keeps its links, and differs from the input only in colours.
     @Test func eitherPageOfTheCorpusChangesOnlyColours() throws {
         let carriers = ##"<p style="font-family: &quot;A&amp;B&quot;, serif; color: #808080 !important">x</p><div style="font-family: 'Noto Sans'; background-color: #ffffff">y</div><div style="background-color: #000000 !important"><a href="https://a.example">z</a></div><font color="#808080">w</font>"##
         let writes: [(MailHTMLTheme, [String])] = [
@@ -418,11 +363,6 @@ struct MailReadableHTMLTests {
         }
     }
 
-    // MARK: WebKit
-
-    /// The link colour assumed for each page is the one WebKit draws an unstyled link in there.
-    /// CI picks it by name to run after the other tests: see `on_screen_tests` in
-    /// `.github/workflows/tests.yaml`.
     @MainActor
     @Test(arguments: [MailHTMLTheme.app, MailHTMLTheme.light])
     func theLinkColourIsWebKitsOwn(theme: MailHTMLTheme) async {
