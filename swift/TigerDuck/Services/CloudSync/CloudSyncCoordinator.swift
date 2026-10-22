@@ -104,6 +104,14 @@ final class CloudSyncCoordinator {
         assignments && courses && !pendingChecks.contains("assignments")
     }
 
+    // MARK: - Following the preference
+
+    /// Transitions run multi-step async work with side effects (push enable,
+    /// the preference PATCH, outbox clear). MainActor isolation does NOT
+    /// serialize across await suspension points, so an interleaved
+    /// enable/disable could leave the coordinator active while the push
+    /// stack is disabled. Every transition is chained through this task so
+    /// they run to completion one at a time.
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
 
     func followPreference() {
@@ -149,14 +157,6 @@ final class CloudSyncCoordinator {
 
         pushCoordinator.enable()
         await pushCoordinator.registration.updateCloudSyncEnabled(true)
-    // MARK: - Following the preference
-
-    /// Transitions run multi-step async work with side effects (push enable,
-    /// the preference PATCH, outbox clear). MainActor isolation does NOT
-    /// serialize across await suspension points, so an interleaved
-    /// enable/disable could leave the coordinator active while the push
-    /// stack is disabled. Every transition is chained through this task so
-    /// they run to completion one at a time.
 
         state = .active
         start()
@@ -416,6 +416,8 @@ final class CloudSyncCoordinator {
                     moodleId: courseId,
                     ignoreAssignments: ignore,
                     moodleCourseId: moodleCourseId)
+                // A backend without the setting answers 200 and drops it, so only an answer that
+                // names it settles the op; anything else counts as a refusal.
                 guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
 
             case .courseDelete(let courseKey):
@@ -498,5 +500,3 @@ final class CloudSyncCoordinator {
 }
 
 nonisolated struct CourseIgnoreNotStoredError: Error {}
-                // A backend without the setting answers 200 and drops it, so only an answer that
-                // names it settles the op; anything else counts as a refusal.

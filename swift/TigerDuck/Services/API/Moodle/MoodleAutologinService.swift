@@ -4,14 +4,14 @@ import Foundation
 final class MoodleAutologinService {
     static let shared = MoodleAutologinService(keySource: { try await requestKey() })
 
+    /// Moodle gives an account one key in this many seconds (`autologinmintimebetweenreq`, 360 on
+    /// NTUST) and refuses the rest, counting the keys the Moodle app asks for too.
     nonisolated static let keyInterval: TimeInterval = 360
 
     nonisolated static let keyWait: Duration = .seconds(3)
 
     nonisolated struct Key: Sendable {
         let userId: Int
-    /// Moodle gives an account one key in this many seconds (`autologinmintimebetweenreq`, 360 on
-    /// NTUST) and refuses the rest, counting the keys the Moodle app asks for too.
         let value: String
         let autologinURL: String
     }
@@ -43,6 +43,8 @@ final class MoodleAutologinService {
         return Self.signedInURL(key, opening: url) ?? url
     }
 
+    /// Asks for a key in a task of its own, which runs to its end after the open that started it
+    /// stops waiting: Moodle starts ``keyInterval`` at the request, so a key that comes late counts.
     private func startKeyRequest(generation: Int) -> Task<Key?, Never> {
         isRequesting = true
         return Task {
@@ -60,8 +62,6 @@ final class MoodleAutologinService {
         }
     }
 
-    /// Asks for a key in a task of its own, which runs to its end after the open that started it
-    /// stops waiting: Moodle starts ``keyInterval`` at the request, so a key that comes late counts.
     private func answer(of request: Task<Key?, Never>) async -> Key? {
         let (answers, continuation) = AsyncStream<Key?>.makeStream()
         Task { continuation.yield(await request.value) }
@@ -101,6 +101,9 @@ final class MoodleAutologinService {
 
     private nonisolated static let moodleHost = AppConstants.moodleBaseURL.host?.lowercased()
 
+    /// Asks Moodle for a key under the stored token, which is renewed as for any Moodle call. The
+    /// private token goes in the POST body, since Moodle refuses one in the query, and is read
+    /// again inside because a renewed token comes with its own. Nil without a private token.
     nonisolated static func requestKey(
         tokens: MoodleWebserviceClient.TokenSource = .keychain,
         privateToken: () -> String? = {
@@ -122,9 +125,6 @@ final class MoodleAutologinService {
                 session: session,
                 siteURL: siteURL
             )
-    /// Asks Moodle for a key under the stored token, which is renewed as for any Moodle call. The
-    /// private token goes in the POST body, since Moodle refuses one in the query, and is read
-    /// again inside because a renewed token comes with its own. Nil without a private token.
             return Key(userId: userId, value: answer.key, autologinURL: answer.autologinurl)
         }
     }

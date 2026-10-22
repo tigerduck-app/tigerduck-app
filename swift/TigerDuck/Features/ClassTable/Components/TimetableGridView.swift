@@ -76,6 +76,7 @@ struct TimetableGridView: View {
 
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
 
+    ///
     private var courseNameSize: CGFloat {
         courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
     }
@@ -637,7 +638,6 @@ private struct ConflictClusterView: View {
     /// Drawn into a bitmap and marked `.alwaysOriginal` because UIKit retints
     /// template images, SF Symbols included, to the menu's own tint, so
     /// `Image(systemName: "circle.fill").foregroundStyle(...)` arrives grey.
-    ///
     /// It rides on the "Pick color" row because UIKit renders an inline menu's
     /// section header from its title alone and drops any image it carries.
     private static func colorDot(_ color: Color) -> Image {

@@ -22,6 +22,8 @@ protocol MailClient: Actor {
     func listFolders() async throws -> [String]
     func status(folder: String) async throws -> MailboxStatusInfo
     func page(folder: String, olderThanSequence: Int?, pageSize: Int) async throws -> MailFolderPage
+    /// Summaries with UID ≥ `fromUID`. Implementations may return one extra message below
+    /// `fromUID` (the IMAP `n:*` quirk); callers filter.
     func summaries(folder: String, fromUID: UInt32) async throws -> [MailSummary]
     func summaries(folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws -> [MailSummary]
     func flags(folder: String, uids: ClosedRange<UInt32>, expectedUIDValidity: UInt32?) async throws -> [UInt32: MailFlags]
@@ -34,8 +36,6 @@ protocol MailClient: Actor {
     func deletedUIDs(folder: String, expectedUIDValidity: UInt32) async throws -> Set<UInt32>
     func expunge(folder: String, expectedUIDValidity: UInt32) async throws
     func createFolder(_ name: String) async throws
-    /// Summaries with UID ≥ `fromUID`. Implementations may return one extra message below
-    /// `fromUID` (the IMAP `n:*` quirk); callers filter.
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool
     func send(_ message: Data, from sender: String, to recipients: [String]) async throws

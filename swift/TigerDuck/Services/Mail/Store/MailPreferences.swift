@@ -27,6 +27,10 @@ nonisolated protocol MailPreferences: AnyObject, Sendable {
 }
 
 nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sendable {
+    /// The Codable twin of `OwnedDeleted` used only for persistence. `OwnedDeleted` itself is
+    /// declared in `MailMover.swift` without `Codable`; Swift only synthesizes `Codable` for a
+    /// conformance declared in the same file as the type, so this store keeps its own record
+    /// shape and converts at the boundary instead of extending `OwnedDeleted` from here.
     private struct OwnedDeletedRecord: Codable, Equatable, Sendable {
         var folder: String
         var uidValidity: UInt32
@@ -47,10 +51,6 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
 
     private static let lock = NSLock()
 
-    /// The Codable twin of `OwnedDeleted` used only for persistence. `OwnedDeleted` itself is
-    /// declared in `MailMover.swift` without `Codable`; Swift only synthesizes `Codable` for a
-    /// conformance declared in the same file as the type, so this store keeps its own record
-    /// shape and converts at the boundary instead of extending `OwnedDeleted` from here.
     init(defaults: UserDefaults = .standard) {
         studentIDKey = Defaults.Key<String?>("school_mail_student_id", suite: defaults)
         displayNameKey = Defaults.Key<String?>("school_mail_display_name", suite: defaults)

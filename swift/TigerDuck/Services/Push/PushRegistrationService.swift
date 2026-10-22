@@ -13,6 +13,11 @@ struct PushRegistrationSnapshot: Sendable {
     let lastRegisteredAt: Date?
 }
 
+/// APNs environment of the PTS token Apple issues for this build. Debug
+/// builds use the sandbox (`api.sandbox.push.apple.com`); TestFlight and
+/// App Store builds are issued production tokens. The server uses the
+/// value we upload to select the correct APNs host, so it MUST match the
+/// build configuration — never a constant string.
 nonisolated enum PushAPNsEnv {
     #if DEBUG
     static let resolvedForBuild = "development"
@@ -21,12 +26,11 @@ nonisolated enum PushAPNsEnv {
     #endif
 }
 
+/// The hardware model this device reports to the backend, for support work
+/// in the portal: the machine identifier ("iPhone17,3", "iPad16,3",
+/// "Mac15,3"). Apple exposes no marketing name. A simulator reports the
+/// identifier of the device it simulates.
 nonisolated enum PushDeviceModel {
-/// APNs environment of the PTS token Apple issues for this build. Debug
-/// builds use the sandbox (`api.sandbox.push.apple.com`); TestFlight and
-/// App Store builds are issued production tokens. The server uses the
-/// value we upload to select the correct APNs host, so it MUST match the
-/// build configuration — never a constant string.
     static let current: String? = {
         #if os(macOS)
         var size = 0
@@ -35,10 +39,6 @@ nonisolated enum PushDeviceModel {
         guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return nil }
         return String(decoding: buffer.prefix { $0 != 0 }, as: UTF8.self)
         #else
-/// The hardware model this device reports to the backend, for support work
-/// in the portal: the machine identifier ("iPhone17,3", "iPad16,3",
-/// "Mac15,3"). Apple exposes no marketing name. A simulator reports the
-/// identifier of the device it simulates.
         if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
             return simulated
         }
@@ -52,11 +52,16 @@ nonisolated enum PushDeviceModel {
 }
 
 nonisolated enum PushDeviceClass {
+    // `@MainActor`: reading `UIDevice.current.userInterfaceIdiom` requires the
+    // main actor.
     @MainActor
     static var resolvedForBuild: String {
         #if os(macOS)
         return "mac"
         #else
+        // An iOS binary running on an Apple Silicon Mac ("Designed for iPad")
+        // reports `.mac`. Falling through to "iphone" there would mis-target
+        // operator pushes that filter on `device_class`.
         switch UIDevice.current.userInterfaceIdiom {
         case .pad:   return "ipad"
         case .mac:   return "mac"
@@ -64,16 +69,11 @@ nonisolated enum PushDeviceClass {
         default:     return "iphone"
         }
         #endif
-    // `@MainActor`: reading `UIDevice.current.userInterfaceIdiom` requires the
-    // main actor.
     }
 
     static func platform(for deviceClass: String) -> String {
         switch deviceClass {
         case "ipad": return "ipados"
-        // An iOS binary running on an Apple Silicon Mac ("Designed for iPad")
-        // reports `.mac`. Falling through to "iphone" there would mis-target
-        // operator pushes that filter on `device_class`.
         case "mac":  return "macos"
         default:     return "ios"
         }
@@ -128,6 +128,9 @@ actor PushRegistrationService {
         bundleId: String = "org.ntust.app.TigerDuck",
         attrsType: String = "TigerDuckActivityAttributes",
         apnsEnv: String = PushAPNsEnv.resolvedForBuild,
+        // No default: `PushDeviceClass.resolvedForBuild` is `@MainActor`, and
+        // an actor init evaluates default arguments in a nonisolated context.
+        // Callers pass it from their own main-actor context.
         deviceClass: String,
         debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
         retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
@@ -142,6 +145,11 @@ actor PushRegistrationService {
         self.retrySleep = retrySleep
     }
 
+    // MARK: - Locale
+
+    /// The language the app is rendering, not the device's region setting:
+    /// `preferredLocalizations` reflects what actually resolved against the
+    /// bundle, so the server's copy matches what the user sees on screen.
     static var currentLocaleTag: String {
         Bundle.main.preferredLocalizations.first ?? "en"
     }
@@ -164,9 +172,6 @@ actor PushRegistrationService {
     #if os(iOS)
     func registerLiveActivityUpdateToken(
         _ registration: LiveActivityUpdateTokenRegistration
-        // No default: `PushDeviceClass.resolvedForBuild` is `@MainActor`, and
-        // an actor init evaluates default arguments in a nonisolated context.
-        // Callers pass it from their own main-actor context.
     ) async {
         pendingActivityRegistrations[registration.activityId] = registration
         guard hasRegistrableToken else {
@@ -181,11 +186,6 @@ actor PushRegistrationService {
     func registerPassiveDevice() async {
         passiveRegistrationsRunning += 1
         defer {
-    // MARK: - Locale
-
-    /// The language the app is rendering, not the device's region setting:
-    /// `preferredLocalizations` reflects what actually resolved against the
-    /// bundle, so the server's copy matches what the user sees on screen.
             passiveRegistrationsRunning -= 1
             releaseCloudSyncPatchesIfIdle()
         }
@@ -277,6 +277,9 @@ actor PushRegistrationService {
                 let response = try await apiClient.updateDevicePreferences(
                     deviceId: uuid, bulletinPushEnabled: enabled
                 )
+                // A backend without the column ignores the key and answers 200,
+                // so compare the echo. `DevicePreferencesResponse` stays tolerant
+                // of a missing field for other PATCHes; here missing means failed.
                 guard response.bulletinPushEnabled == enabled else {
                     throw PushAPIError.invalidResponse
                 }
@@ -345,9 +348,6 @@ actor PushRegistrationService {
             if syncPreferencesPatchChain == task {
                 syncPreferencesPatchChain = nil
             }
-                // A backend without the column ignores the key and answers 200,
-                // so compare the echo. `DevicePreferencesResponse` stays tolerant
-                // of a missing field for other PATCHes; here missing means failed.
         }
         await task.value
     }

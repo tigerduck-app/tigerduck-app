@@ -318,6 +318,7 @@ struct ClassTableView: View {
         if #available(iOS 26, *) { 36 } else { 40 }
     }
 
+    ///
     @ViewBuilder
     private var headerActions: some View {
         let menu = Menu {
@@ -416,7 +417,6 @@ struct ClassTableView: View {
     /// `contentShape` is explicit because the glyph is smaller than its cell:
     /// without it only the symbol's bounds are tappable, not the padding that
     /// makes the circle look right.
-    ///
     /// `.subheadline`, not `.body`: Today's caption label is 14.33pt tall in its
     /// 28.33pt pill, while a `.body` symbol is 17pt and looks heavier even at the
     /// same outer height. `.subheadline` gives 15.33pt, the same optical weight,

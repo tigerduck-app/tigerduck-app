@@ -102,7 +102,6 @@ extension AppState {
         }
     }
 
-
     func setHolidayNotify(_ notify: Bool, holidayID: Int) {
         guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID) else {
             return

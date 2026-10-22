@@ -56,6 +56,7 @@ nonisolated enum MoodleForumService {
     static let discussionPostsFunction = "mod_forum_get_discussion_posts"
     static let viewDiscussionFunction = "mod_forum_view_forum_discussion"
 
+    /// Asked for explicitly: Moodle's default `perpage` of 0 returns every discussion at once.
     static let discussionsPerPage = 20
 
     static func forums(
@@ -75,7 +76,6 @@ nonisolated enum MoodleForumService {
     }
 
     static func discussions(
-    /// Asked for explicitly: Moodle's default `perpage` of 0 returns every discussion at once.
         forumId: Int,
         page: Int,
         token: String,
@@ -97,6 +97,7 @@ nonisolated enum MoodleForumService {
         ).discussions.map(\.model)
     }
 
+    /// Moodle returns the whole thread from this call, so it has no paging parameters.
     static func posts(
         discussionId: Int,
         token: String,
@@ -118,7 +119,6 @@ nonisolated enum MoodleForumService {
         ).posts.map(\.model)
     }
 
-    /// Moodle returns the whole thread from this call, so it has no paging parameters.
     static func markViewed(
         discussionId: Int,
         token: String,
@@ -223,6 +223,7 @@ private nonisolated struct RawPost: Decodable, Sendable {
         let fullname: String?
     }
 
+    /// Moodle's file exporter names the link `url`; `external_files` names it `fileurl`.
     struct File: Decodable, Sendable {
         let filename: String?
         let filepath: String?
@@ -248,7 +249,6 @@ private nonisolated struct RawPost: Decodable, Sendable {
     let id: Int
     let subject: String?
     let message: String?
-    /// Moodle's file exporter names the link `url`; `external_files` names it `fileurl`.
     let author: Author?
     let hasparent: Bool?
     let parentid: Int?

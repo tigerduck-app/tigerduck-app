@@ -249,6 +249,12 @@ actor MoodleTokenService {
         var postedPassword = false
     }
 
+    /// The harvest's session. The shared cookie store keeps SSO anti-forgery and correlation
+    /// cookies across the launch.php -> login -> authorize redirects; a private jar on Apple's
+    /// URLSession stack drops them, and the credential POST bounces to /account/login as a false
+    /// rejection. A harvest holds the stored-password lock, so a request whose server trickles its
+    /// answer stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default
+    /// week, and the harvest as a whole after ``harvestDeadline``.
     nonisolated static func harvestConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
@@ -277,6 +283,9 @@ actor MoodleTokenService {
         )
         defer { session.invalidateAndCancel() }
 
+        // Step 1: GET launch.php; URLSession follows the 303s to the SSO login. The passport is
+        // an integer, matching how the Moodle Mobile App generates it: `String(Double)` can emit
+        // `1e-06` or a locale's `,`, either of which Moodle's `weblogin` may reject.
         let passport = Int(Double.random(in: 0..<1) * 1000)
         var launchComps = URLComponents(
             url: AppConstants.moodleBaseURL.appendingPathComponent("admin/tool/mobile/launch.php"),
@@ -297,12 +306,6 @@ actor MoodleTokenService {
         try assertOK(response: initialResp, data: initialData)
         guard let initialURL = (initialResp as? HTTPURLResponse)?.url else {
             throw MoodleWebserviceError.malformedResponse(detail: "missing initial response URL")
-    /// The harvest's session. The shared cookie store keeps SSO anti-forgery and correlation
-    /// cookies across the launch.php -> login -> authorize redirects; a private jar on Apple's
-    /// URLSession stack drops them, and the credential POST bounces to /account/login as a false
-    /// rejection. A harvest holds the stored-password lock, so a request whose server trickles its
-    /// answer stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default
-    /// week, and the harvest as a whole after ``harvestDeadline``.
         }
         return try await resolveTokenTriple(
             session: session,
@@ -334,9 +337,6 @@ actor MoodleTokenService {
                 underlying: "No HTTP response",
             )
         }
-        // Step 1: GET launch.php; URLSession follows the 303s to the SSO login. The passport is
-        // an integer, matching how the Moodle Mobile App generates it: `String(Double)` can emit
-        // `1e-06` or a locale's `,`, either of which Moodle's `weblogin` may reject.
         if http.statusCode != 200 {
             if let moodleError = MoodleWebserviceError.from(jsonData: data) {
                 throw moodleError
@@ -496,6 +496,9 @@ actor MoodleTokenService {
     }
 
     nonisolated static func decodeTokenTriple(from base64Token: String) throws -> TokenTriple {
+        // `Data(base64Encoded:)` takes only the standard padded alphabet, so map the URL-safe
+        // `-` and `_` and pad. The extraction regex allows `-` and `_` since Moodle may emit
+        // either encoding.
         var standardized = base64Token
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
@@ -561,9 +564,6 @@ actor MoodleTokenService {
             let payload = extractInputPairs(from: formBody)
             guard let resolvedActionURL = URL(string: action, relativeTo: ssoBaseURL)?.absoluteURL else { return }
             let isOidcAction = resolvedActionURL.host == "moodle2.ntust.edu.tw"
-        // `Data(base64Encoded:)` takes only the standard padded alphabet, so map the URL-safe
-        // `-` and `_` and pad. The extraction regex allows `-` and `_` since Moodle may emit
-        // either encoding.
                 && resolvedActionURL.path.hasPrefix("/auth/oidc")
             if isOidcAction,
                 payload["code"] != nil

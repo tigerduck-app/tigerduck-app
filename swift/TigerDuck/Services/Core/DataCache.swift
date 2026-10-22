@@ -43,9 +43,6 @@ final class DataCache {
         self.persistentDir = persistentDir
     }
 
-    func saveCourses(_ courses: [SDCourse], semester: String) {
-        let dtos = courses.map { CachedCourse(from: $0) }
-        save(dtos, to: coursesFilename(semester, currentCourseApiLanguage()))
     // MARK: - Courses (semester + language-scoped)
 
     /// Save courses for a specific semester. The NTUST API returns localized
@@ -53,6 +50,9 @@ final class DataCache {
     /// cache filename includes the resolved course-API language to keep
     /// per-language payloads from clobbering each other when the user toggles
     /// the app language.
+    func saveCourses(_ courses: [SDCourse], semester: String) {
+        let dtos = courses.map { CachedCourse(from: $0) }
+        save(dtos, to: coursesFilename(semester, currentCourseApiLanguage()))
     }
 
     func loadCourses(semester: String) -> [SDCourse] {
@@ -370,6 +370,8 @@ final class DataCache {
         savePickedCourseColors(loadPickedCourseColors().union([courseNo]))
     }
 
+    /// The per-course color map, or nil while its file exists but cannot be read, as behind the
+    /// lock screen (`completeFileProtectionUnlessOpen`). A missing file is an empty map.
     func loadCourseColorMapIfReadable() -> [String: UInt32]? {
         let url = persistentDir.appendingPathComponent("course_color_map.json")
         if FileManager.default.fileExists(atPath: url.path), (try? Data(contentsOf: url)) == nil { return nil }
@@ -489,8 +491,6 @@ final class DataCache {
             }
         }
         try? FileManager.default.removeItem(at: moodleFilesDir)
-    /// The per-course color map, or nil while its file exists but cannot be read, as behind the
-    /// lock screen (`completeFileProtectionUnlessOpen`). A missing file is an empty map.
         revision &+= 1
     }
 
@@ -507,6 +507,16 @@ final class DataCache {
         revision &+= 1
     }
 
+    // MARK: - Moodle course id map (idnumber → numeric id)
+
+    /// Persisted map from Moodle course idnumber to numeric id, saved by ``AppServiceBridge``
+    /// whenever it fetches the user's enrolled courses. Moodle Mobile's deep-link router honors
+    /// only `?id=N` redirects reliably (the web accepts `?idnumber=…`, the in-app handler does
+    /// not), so deep links look the numeric id up here. Lives in ``persistentDir`` to survive
+    /// cache sweeps of localized course data; cleared on logout by ``clearUserScopedData()``.
+    /// Always overwrite the whole map with the fresh snapshot: merging would keep entries for
+    /// courses the user left or whose id was reissued, and `SDCourse.moodleDeepLink` would
+    /// point at a dead course.
     func saveMoodleCourseIdMap(_ map: [String: Int]) {
         save(map, to: "moodle_course_id_map.json", in: persistentDir)
     }
@@ -517,6 +527,8 @@ final class DataCache {
 
     func lookupMoodleCourseId(idnumber: String) -> Int? {
         guard !idnumber.isEmpty else { return nil }
+        // Normalised on both sides: Moodle spells a summer term "114h" and
+        // NTUST "114H", and a course row can hold either spelling.
         return loadMoodleCourseIdMap()[SDCourse.normalizedMoodleId(idnumber)]
     }
 
@@ -555,6 +567,9 @@ final class DataCache {
         revision &+= 1
         do {
             let data = try encoder.encode(value)
+            // `.completeFileProtectionUnlessOpen` keeps academic PII at rest unreadable from a
+            // backup or a jailbroken device; "UnlessOpen" still lets background refreshes
+            // rewrite the file while the device is locked.
             try data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
         } catch {
             AppLogger.captureError(error, context: [
@@ -658,16 +673,6 @@ struct CachedCourse: Codable {
             schedule = [:]
         }
 
-    // MARK: - Moodle course id map (idnumber → numeric id)
-
-    /// Persisted map from Moodle course idnumber to numeric id, saved by ``AppServiceBridge``
-    /// whenever it fetches the user's enrolled courses. Moodle Mobile's deep-link router honors
-    /// only `?id=N` redirects reliably (the web accepts `?idnumber=…`, the in-app handler does
-    /// not), so deep links look the numeric id up here. Lives in ``persistentDir`` to survive
-    /// cache sweeps of localized course data; cleared on logout by ``clearUserScopedData()``.
-    /// Always overwrite the whole map with the fresh snapshot: merging would keep entries for
-    /// courses the user left or whose id was reissued, and `SDCourse.moodleDeepLink` would
-    /// point at a dead course.
         let classroomMap: [String: String]
         if let json = classroomMapJSON,
            let data = json.data(using: .utf8),
@@ -678,8 +683,6 @@ struct CachedCourse: Codable {
         }
 
         let course = SDCourse(
-        // Normalised on both sides: Moodle spells a summer term "114h" and
-        // NTUST "114H", and a course row can hold either spelling.
             courseNo: courseNo,
             courseName: courseName,
             instructor: instructor,
@@ -727,9 +730,6 @@ private struct CachedAssignment: Codable {
 
     func toSDAssignment() -> SDAssignment {
         SDAssignment(
-            // `.completeFileProtectionUnlessOpen` keeps academic PII at rest unreadable from a
-            // backup or a jailbroken device; "UnlessOpen" still lets background refreshes
-            // rewrite the file while the device is locked.
             assignmentId: assignmentId,
             courseNo: courseNo,
             courseName: courseName,

@@ -23,6 +23,7 @@ nonisolated enum AppConstants {
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
+    ///
     static let liveActivityPreferencesRemoteOriginKey = "TigerDuck.liveActivityPreferencesRemoteOrigin"
     static let liveActivityPreferencesDeviceOnlyKey = "TigerDuck.liveActivityPreferencesDeviceOnly"
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
@@ -34,7 +35,6 @@ nonisolated enum AppConstants {
 
     /// Wraps a site-relative Moodle path in the envelope the Moodle Mobile app
     /// expects: `moodlemobile://<site-url>?redirect=<path>`.
-    ///
     /// Built by string: `URLComponents` cannot put a site URL in the authority. With
     /// `host = "https"` and `path = "//<host>"` it gives `moodlemobile://https//<host>`,
     /// dropping the inner scheme's colon so the app cannot parse a site; `host = "https:"`

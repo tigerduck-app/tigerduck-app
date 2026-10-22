@@ -27,7 +27,6 @@ extension AppState {
         isShowingNTUSTLoginSheet = false
     }
 
-
     func openFromWidget(_ destination: WidgetDestination) {
         pendingWidgetDestination = destination
     }

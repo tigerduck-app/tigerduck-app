@@ -74,6 +74,7 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
     var term: String
     var code: String
     var name: String
+    /// Fractional: NTUST issues half credits.
     var credits: Double?
     var creditType: CreditType
     var grade: String
@@ -84,6 +85,9 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
 
     var id: String { "\(term)-\(code)-\(index ?? -1)" }
 
+    /// The school backend returns pass/fail as Chinese text whatever the UI
+    /// language, so this must be derived from raw payload values rather than
+    /// UI localization.
     var isPassStatusPassed: Bool {
         let normalized = grade.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.isEmpty { return true }
@@ -94,7 +98,6 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
         }
         return true
     }
-    /// Fractional: NTUST issues half credits.
 }
 
 enum CreditType: String, Codable, Equatable, Sendable, CaseIterable {
@@ -107,9 +110,6 @@ enum CreditType: String, Codable, Equatable, Sendable, CaseIterable {
 }
 
 enum GradeStatus: String, Codable, Equatable, Sendable, CaseIterable {
-    /// The school backend returns pass/fail as Chinese text whatever the UI
-    /// language, so this must be derived from raw payload values rather than
-    /// UI localization.
     case graded
     case pending
     case passed

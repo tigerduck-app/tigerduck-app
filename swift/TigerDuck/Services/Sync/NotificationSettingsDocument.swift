@@ -74,6 +74,7 @@ nonisolated extension NotificationSettingsDocument.Assignments {
     }
 }
 
+///
 private nonisolated struct WholeNumberElement: Decodable {
     let value: Int?
 
@@ -83,6 +84,13 @@ private nonisolated struct WholeNumberElement: Decodable {
     }
 }
 
+/// The whole numbers in the array at `key`, or `nil` when there is no JSON
+/// array there (an absent key, `null`, or a value of another type).
+/// Drops bad elements, not the array, like the backend's `_numbers`
+/// (`server/push/reminders.py`) and Android's `asValidatedIntListOrNull`: all
+/// three read `[30, "15"]` as the full set `[30]`, not as a reason to fall back
+/// to `reminder_offsets_hours`. The backend delivers the reminders, so reading
+/// it differently would give two devices on one account different reminders.
 private nonisolated func wholeNumberList<Key: CodingKey>(
     in container: KeyedDecodingContainer<Key>,
     forKey key: Key
@@ -104,14 +112,6 @@ nonisolated extension NotificationSettingsDocument.LiveActivity {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         showClassPreparing = try? container.decodeIfPresent(Bool.self, forKey: .showClassPreparing)
-/// The whole numbers in the array at `key`, or `nil` when there is no JSON
-/// array there (an absent key, `null`, or a value of another type).
-///
-/// Drops bad elements, not the array, like the backend's `_numbers`
-/// (`server/push/reminders.py`) and Android's `asValidatedIntListOrNull`: all
-/// three read `[30, "15"]` as the full set `[30]`, not as a reason to fall back
-/// to `reminder_offsets_hours`. The backend delivers the reminders, so reading
-/// it differently would give two devices on one account different reminders.
         showInClass = try? container.decodeIfPresent(Bool.self, forKey: .showInClass)
         showAssignment = try? container.decodeIfPresent(Bool.self, forKey: .showAssignment)
         classPreparingLeadSeconds = try? container.decodeIfPresent(Int.self, forKey: .classPreparingLeadSeconds)

@@ -138,4 +138,3 @@ struct TimeSliderSection: View {
         return f
     }()
 }
-

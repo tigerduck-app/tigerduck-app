@@ -35,10 +35,10 @@ struct MailSourceTextView: UIViewRepresentable {
 
     func updateUIView(_ view: UITextView, context: Context) {
         _ = dynamicTypeSize
-        if context.coordinator.appliedText != text {
         // Assigning `text` re-runs TextKit's bookkeeping over the whole string, so the source is
         // written once, not on every unrelated re-render. Comparing against `view.text` would
         // itself be an O(n) copy-and-compare of that string.
+        if context.coordinator.appliedText != text {
             context.coordinator.appliedText = text
             view.text = text
         }
@@ -46,12 +46,12 @@ struct MailSourceTextView: UIViewRepresentable {
         view.textColor = UIColor(color)
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
     /// Deliberately never `uiView.sizeThatFits` — which is what `UIViewRepresentable` would
     /// do by default, and which measures the *whole* document to answer. That is exactly the
     /// full layout this view exists to avoid, and it would put the freeze back by another
     /// route. The view is as flexible as SwiftUI asks it to be and scrolls inside whatever it
     /// is given; only an ideal-size probe (a `nil` dimension) gets a fixed answer.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         CGSize(width: Self.resolve(proposal.width), height: Self.resolve(proposal.height))
     }
 

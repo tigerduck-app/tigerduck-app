@@ -494,4 +494,3 @@ struct NotificationSettingsReconcileTests {
         }
     }
 }
-

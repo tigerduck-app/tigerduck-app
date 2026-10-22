@@ -92,6 +92,7 @@ enum CalendarService {
     }
 
     static func parseICS(_ ics: String) -> [SDCalendarEvent] {
+        // Unfold ICS line continuations (lines starting with space or tab are continuations)
         let unfolded = ics
             .replacingOccurrences(of: "\r\n ", with: "")
             .replacingOccurrences(of: "\r\n\t", with: "")
@@ -101,7 +102,6 @@ enum CalendarService {
         var events: [SDCalendarEvent] = []
         let lines = unfolded.components(separatedBy: .newlines)
 
-        // Unfold ICS line continuations (lines starting with space or tab are continuations)
         var inEvent = false
         var summary: String?
         var dtStart: Date?
@@ -179,6 +179,10 @@ enum CalendarService {
         return cal
     }()
 
+    /// Unescape ICS TEXT-typed values per RFC 5545:
+    /// `\,` → `,`, `\;` → `;`, `\n` / `\N` → newline, `\\` → `\`.
+    /// Without this, raw escape sequences leak into the UI as
+    /// `Final Exam\, MA1`.
     nonisolated static func unescapeICSText(_ raw: String) -> String {
         var out = ""
         out.reserveCapacity(raw.count)
@@ -200,10 +204,6 @@ enum CalendarService {
                 }
             } else {
                 out.append(ch)
-    /// Unescape ICS TEXT-typed values per RFC 5545:
-    /// `\,` → `,`, `\;` → `;`, `\n` / `\N` → newline, `\\` → `\`.
-    /// Without this, raw escape sequences leak into the UI as
-    /// `Final Exam\, MA1`.
             }
         }
         return out

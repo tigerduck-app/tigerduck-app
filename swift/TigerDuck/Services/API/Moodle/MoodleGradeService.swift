@@ -19,6 +19,8 @@ nonisolated struct MoodleGradeItem: Codable, Sendable, Hashable, Identifiable {
 nonisolated enum MoodleGradeService {
     static let gradeItemsFunction = "gradereport_user_get_grade_items"
 
+    /// What Moodle answers when a course keeps its grade report from the student, by a course
+    /// setting or a permission: the course has no grades to show, and the fetch did not fail.
     private static let reportWithheld: Set<String> = ["nopermissiontoviewgrades", "nopermissions"]
 
     static func gradeItems(
@@ -30,8 +32,6 @@ nonisolated enum MoodleGradeService {
     ) async throws -> [MoodleGradeItem] {
         do {
             let answer = try await MoodleWebserviceClient.call(
-    /// What Moodle answers when a course keeps its grade report from the student, by a course
-    /// setting or a permission: the course has no grades to show, and the fetch did not fail.
                 gradeItemsFunction,
                 params: [("courseid", String(courseId)), ("userid", String(userId))],
                 token: token,
@@ -67,6 +67,9 @@ private nonisolated struct RawGradeItem: Decodable, Sendable {
     let gradeishidden: Bool?
     let feedback: String?
 
+    /// Moodle writes "-" for an item not graded yet, puts a pass mark's icon as HTML before a
+    /// grade, and sends no `graderaw` for a grade it keeps from the student, such as one hidden
+    /// until a date.
     var model: MoodleGradeItem {
         let formatted = MoodleHTMLText.plainText(fromHTML: gradeformatted ?? "")
         return MoodleGradeItem(
@@ -81,7 +84,4 @@ private nonisolated struct RawGradeItem: Decodable, Sendable {
             feedback: BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: feedback ?? ""))
         )
     }
-    /// Moodle writes "-" for an item not graded yet, puts a pass mark's icon as HTML before a
-    /// grade, and sends no `graderaw` for a grade it keeps from the student, such as one hidden
-    /// until a date.
 }

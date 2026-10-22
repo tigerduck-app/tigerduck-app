@@ -34,8 +34,8 @@ nonisolated struct MailListRow: Identifiable, Hashable, Sendable {
 
     var uid: UInt32 { summary.uid }
 
+    /// NUL-joined. A folder name is modified UTF-7, which encodes every byte a mailbox name can
+    /// carry but never produces a NUL, so no two (folder, uid) pairs can collide on this.
     var id: String { "\(folder)\u{0}\(summary.uid)" }
 }
 #endif
-    /// NUL-joined. A folder name is modified UTF-7, which encodes every byte a mailbox name can
-    /// carry but never produces a NUL, so no two (folder, uid) pairs can collide on this.

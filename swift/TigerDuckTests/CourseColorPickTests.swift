@@ -89,4 +89,3 @@ struct CourseColorPickTests {
         #expect(ids == ["CS1": "1151CS1", "CS2": "1151CS2", "CS3": "1151CS3"])
     }
 }
-

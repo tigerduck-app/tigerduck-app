@@ -115,4 +115,3 @@ private struct MoreFeatureDestination<Content: View>: View {
             .accessibilityAction(.escape) { dismiss() }
     }
 }
-

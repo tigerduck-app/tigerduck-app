@@ -110,6 +110,11 @@ enum SSOLoginService {
         await storedPasswordPosts.waiterCount
     }
 
+    /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
+    /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
+    /// refused before either counted the refusal, and the school counts both toward the lockout.
+    /// `body` checks ``storedPasswordPostMustWait(now:)``, posts, reads the answer and counts a
+    /// refusal before it returns. A sign-in the user typed posts what was typed, so it does not wait.
     nonisolated(nonsending) static func postingStoredPassword<T>(
         _ body: nonisolated(nonsending) () async throws -> T
     ) async rethrows -> T {
@@ -127,13 +132,12 @@ enum SSOLoginService {
     private static var isLoginRunning = false
     private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
 
+    /// Runs `body` once every login started before it has finished. A login that meets the
+    /// SSO page clears the ssoam2 cookies, so two at once break each other. An automatic login
+    /// that waited then finds the session signed in and posts no password; one the user typed
+    /// still posts what was typed.
     static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
         if isLoginRunning {
-    /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
-    /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
-    /// refused before either counted the refusal, and the school counts both toward the lockout.
-    /// `body` checks ``storedPasswordPostMustWait(now:)``, posts, reads the answer and counts a
-    /// refusal before it returns. A sign-in the user typed posts what was typed, so it does not wait.
             await withCheckedContinuation { waitingLogins.append($0) }
         } else {
             isLoginRunning = true
@@ -151,10 +155,6 @@ enum SSOLoginService {
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
-    /// Runs `body` once every login started before it has finished. A login that meets the
-    /// SSO page clears the ssoam2 cookies, so two at once break each other. An automatic login
-    /// that waited then finds the session signed in and posts no password; one the user typed
-    /// still posts what was typed.
         studentId: String,
         password: String,
         generation: Int,
@@ -216,10 +216,15 @@ enum SSOLoginService {
         do {
             var (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
 
+            // Step 3: Check if we're on the SSO login page. A live session would let a password the
+            // user typed through unchecked, so that sign-in drops the service's cookies and goes on to
+            // step 4, which ends the SSO session: the visit after it reaches the form.
             if interactive, !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
             } else if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if try await isSignedIn(html: currentHTML, url: currentURL, session: session) { return true }
+                // A service whose own session lapsed sends the visit to the campus portal, not to
+                // the sign-in form; without its cookies the next visit goes through SSO.
                 NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
                 (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
                 if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
@@ -232,6 +237,9 @@ enum SSOLoginService {
 
             if !interactive, storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
 
+            // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
+            // device-change warnings. They are in the session's jar, the NTUST-private one:
+            // clearing `HTTPCookieStorage.shared` would miss them and only hurt unrelated callers.
             let jar = session.configuration.httpCookieStorage
             jar?.cookies?
                 .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }
@@ -244,15 +252,10 @@ enum SSOLoginService {
             }
             currentURL = resp2.url ?? serviceURL
             currentHTML = html2
-            // Step 3: Check if we're on the SSO login page. A live session would let a password the
-            // user typed through unchecked, so that sign-in drops the service's cookies and goes on to
-            // step 4, which ends the SSO session: the visit after it reaches the form.
 
             if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
                     session: session, html: currentHTML, baseURL: currentURL, generation: generation
-                // A service whose own session lapsed sends the visit to the campus portal, not to
-                // the sign-in form; without its cookies the next visit goes through SSO.
                 )
                 guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                     throw SSOLoginError.loginFormNotFound
@@ -265,9 +268,6 @@ enum SSOLoginService {
             }
 
             var payload: [(String, String)] = form.inputs
-            // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
-            // device-change warnings. They are in the session's jar, the NTUST-private one:
-            // clearing `HTTPCookieStorage.shared` would miss them and only hurt unrelated callers.
             replaceOrAppend(&payload, name: "Username", value: studentId)
             replaceOrAppend(&payload, name: "Password", value: password)
             if !payload.contains(where: { $0.0 == "captcha" }) {
@@ -389,6 +389,9 @@ enum SSOLoginService {
         delegate: (any URLSessionTaskDelegate & Sendable)? = nil
     ) async throws -> (Data, URLResponse) {
         try checkSignedIn(generation)
+        // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
+        // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
+        // timeout, so a stalled SSO server could hang the login Task indefinitely.
         var request = URLRequest(url: url, timeoutInterval: 15)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -401,6 +404,11 @@ enum SSOLoginService {
         fields.map { "\(urlEncode($0.name))=\(urlEncode($0.value))" }.joined(separator: "&")
     }
 
+    /// Form-encode a single name or value per
+    /// `application/x-www-form-urlencoded` rules:
+    /// percent-encode every byte outside RFC-3986 unreserved, then map
+    /// space → `+`. This keeps passwords containing `+ & = / ; %` and
+    /// CJK characters from being silently corrupted.
     private static let formAllowed: CharacterSet = {
         CharacterSet(charactersIn:
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
@@ -430,11 +438,3 @@ enum SSOLoginService {
         }
     }
 }
-        // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
-        // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
-        // timeout, so a stalled SSO server could hang the login Task indefinitely.
-    /// Form-encode a single name or value per
-    /// `application/x-www-form-urlencoded` rules:
-    /// percent-encode every byte outside RFC-3986 unreserved, then map
-    /// space → `+`. This keeps passwords containing `+ & = / ; %` and
-    /// CJK characters from being silently corrupted.

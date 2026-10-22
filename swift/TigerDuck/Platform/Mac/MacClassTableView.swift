@@ -543,7 +543,6 @@ struct MacClassTableView: View {
         .padding(.vertical, 40)
     }
 
-
     private func openShareSheet() {
         guard let studentId = appState.authService.storedStudentId else { return }
         let terms = ClassTableShareModel.terms(

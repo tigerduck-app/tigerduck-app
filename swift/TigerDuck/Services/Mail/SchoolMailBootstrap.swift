@@ -3,7 +3,6 @@ import Foundation
 
 @MainActor
 enum SchoolMailBootstrap {
-    static func install(
     /// `account` and `notifier` are parameters so a test can install the hooks on its own
     /// instances and run them. Asserting that the singleton's five closures are non-nil passes
     /// with every hook body empty, and touches the app's real `UserDefaults` and cache directory.
@@ -12,6 +11,7 @@ enum SchoolMailBootstrap {
     /// nonisolated context, and naming the main-actor `MailAccountManager.shared` there is an
     /// isolation error in Swift 6 mode. This `@MainActor` body resolves it instead, so a passed
     /// instance is used and every other caller still gets the singleton.
+    static func install(
         account: MailAccountManager? = nil,
         notifier: MailNotifier = MailChecker.shared.notifier
     ) {
@@ -48,6 +48,8 @@ enum SchoolMailBootstrap {
         Task { await MailForegroundCheck.runIfDue() }
     }
 
+    /// iOS expects the next refresh to be requested as the app leaves the foreground, and can
+    /// suspend it before an `await` returns, so this decides at once from the last permission read.
     static func sceneDidEnterBackground() {
         let account = MailAccountManager.shared
         guard MailBackgroundRefresh.shouldRescheduleAfterHandling(
@@ -55,8 +57,6 @@ enum SchoolMailBootstrap {
             signedIn: account.isLoggedIn,
             notificationsEnabled: account.notificationsEnabled,
             authFailed: account.authFailed,
-    /// iOS expects the next refresh to be requested as the app leaves the foreground, and can
-    /// suspend it before an `await` returns, so this decides at once from the last permission read.
             notificationsDenied: MailNotificationPermission.lastKnownDenied
         ) else { return }
         MailBackgroundRefresh.schedule()

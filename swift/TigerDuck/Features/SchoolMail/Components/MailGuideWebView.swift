@@ -17,6 +17,7 @@ nonisolated enum MailGuide {
             URLQueryItem(name: "bg", value: MailHTMLTheme.css(background)),
             URLQueryItem(name: "fg", value: MailHTMLTheme.css(foreground)),
         ]
+        // `URLQueryItem` leaves `#` alone in a value, and a bare `#` would end the query there.
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "#", with: "%23")
         return components.url!
     }
@@ -25,7 +26,6 @@ nonisolated enum MailGuide {
         guard let url = url?.standardized,
               url.scheme?.lowercased() == "https",
               url.host?.lowercased() == host,
-        // `URLQueryItem` leaves `#` alone in a value, and a bare `#` would end the query there.
               url.user == nil, url.password == nil,
               url.port == nil || url.port == 443 else { return false }
         return url.path.hasPrefix(pathPrefix) || url.path + "/" == pathPrefix
@@ -40,6 +40,9 @@ nonisolated enum MailGuide {
         return isMainFrame ? .openExternally : .refuse
     }
 
+    /// A main-frame HTTP error. WebKit reports only transport failures through `didFail…`; a 404
+    /// or 502 would otherwise render the server's own error body inside the screen, with no way
+    /// to retry.
     static func isLoadFailure(statusCode: Int, isMainFrame: Bool) -> Bool {
         isMainFrame && statusCode >= 400
     }
@@ -54,9 +57,6 @@ struct MailGuideWebView: UIViewRepresentable {
     let url: URL
     let background: UIColor
     let onExternalLink: (URL) -> Void
-    /// A main-frame HTTP error. WebKit reports only transport failures through `didFail…`; a 404
-    /// or 502 would otherwise render the server's own error body inside the screen, with no way
-    /// to retry.
     let onError: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }

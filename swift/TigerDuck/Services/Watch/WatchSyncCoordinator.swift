@@ -140,6 +140,11 @@ final class WatchSyncCoordinator: NSObject {
         deliver(snapshot(Date()))
     }
 
+    /// Attempt to deliver `snapshot` to the watch. If the watch isn't reachable
+    /// yet (session not activated, no paired watch, or app not installed), the
+    /// snapshot is held in `pendingSnapshot` and flushed by the next activation
+    /// completion or `sessionWatchStateDidChange` callback. Delivery errors
+    /// also keep the snapshot pending so a later state change can retry.
     private func deliver(_ snapshot: WatchSnapshot) {
         guard session.isPaired, session.isWatchAppInstalled else {
             pendingSnapshot = snapshot
@@ -159,11 +164,6 @@ final class WatchSyncCoordinator: NSObject {
     private func flushPendingIfReady() {
         guard let snapshot = pendingSnapshot else { return }
         deliver(snapshot)
-    /// Attempt to deliver `snapshot` to the watch. If the watch isn't reachable
-    /// yet (session not activated, no paired watch, or app not installed), the
-    /// snapshot is held in `pendingSnapshot` and flushed by the next activation
-    /// completion or `sessionWatchStateDidChange` callback. Delivery errors
-    /// also keep the snapshot pending so a later state change can retry.
     }
 
     func scheduleDebouncedPush(_ payload: Payload, force: Bool = false) {
@@ -198,6 +198,7 @@ extension WatchSyncCoordinator: WCSessionDelegate {
         }
     }
 
+    // iOS-only delegate methods required by the protocol
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
     nonisolated func sessionDidDeactivate(_ session: WCSession) {
         session.activate()
@@ -213,13 +214,19 @@ extension WatchSyncCoordinator: WCSessionDelegate {
         Task { @MainActor in self.answerSyncRequest() }
     }
 
+    /// Reply-expecting messages. The watch asks for a library QR here so it
+    /// can show one without internet of its own while the phone is in
+    /// Bluetooth range. Answered from `LibraryQRCache` while that code has
+    /// `reuseThreshold` seconds left (both screens then show the same
+    /// code), otherwise fetched with the phone's own library token. Needs
+    /// the phone unlocked for the Keychain read; a locked phone replies
+    /// with an error and the watch falls back to its own radio.
     nonisolated func session(_ session: WCSession,
                              didReceiveMessage message: [String: Any],
                              replyHandler: @escaping ([String: Any]) -> Void) {
         guard message[WatchWireFormat.MessageKey.kind] as? String
                 == WatchWireFormat.MessageKind.libraryQRRequest else {
             self.session(session, didReceiveMessage: message)
-    // iOS-only delegate methods required by the protocol
             replyHandler([:])
             return
         }
@@ -235,13 +242,6 @@ extension WatchSyncCoordinator: WCSessionDelegate {
             return [
                 WatchWireFormat.LibraryQRKey.payload: payload,
                 WatchWireFormat.LibraryQRKey.remaining: cache.remaining(),
-    /// Reply-expecting messages. The watch asks for a library QR here so it
-    /// can show one without internet of its own while the phone is in
-    /// Bluetooth range. Answered from `LibraryQRCache` while that code has
-    /// `reuseThreshold` seconds left (both screens then show the same
-    /// code), otherwise fetched with the phone's own library token. Needs
-    /// the phone unlocked for the Keychain read; a locked phone replies
-    /// with an error and the watch falls back to its own radio.
             ]
         }
         let started = generation()

@@ -22,6 +22,9 @@ nonisolated enum CredentialPost {
         }
     }
 
+    /// The request a redirect of the POST is followed with, or nil to stop at the redirect, which
+    /// is then the POST's answer. URLSession sends the form again to the `Location` of a 307 or a
+    /// 308, so only a 301, 302 or 303 is followed, as a GET without the form and over HTTPS.
     static func request(following response: HTTPURLResponse, proposed: URLRequest) -> URLRequest? {
         guard [301, 302, 303].contains(response.statusCode),
               proposed.url?.scheme?.lowercased() == "https" else { return nil }
@@ -32,9 +35,6 @@ nonisolated enum CredentialPost {
         get.setValue(nil, forHTTPHeaderField: "Content-Type")
         get.setValue(nil, forHTTPHeaderField: "Content-Length")
         return get
-    /// The request a redirect of the POST is followed with, or nil to stop at the redirect, which
-    /// is then the POST's answer. URLSession sends the form again to the `Location` of a 307 or a
-    /// 308, so only a 301, 302 or 303 is followed, as a GET without the form and over HTTPS.
     }
 }
 

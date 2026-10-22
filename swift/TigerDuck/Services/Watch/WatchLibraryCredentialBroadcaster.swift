@@ -90,9 +90,14 @@ final class WatchLibraryCredentialBroadcaster {
             WatchWireFormat.LibraryCredentialKey.kind: WatchWireFormat.UserInfoKind.libraryCredential,
             WatchWireFormat.LibraryCredentialKey.payload: json,
         ]
+        // Always queue transferUserInfo (durable, FIFO), so an apply that fails on the watch,
+        // like a wipe on a locked keychain, runs again; sendMessage confirms transport only. If
+        // reachable, also sendMessage for speed; the epoch guard drops the duplicate.
         _ = session.transferUserInfo(userInfo)
         if session.isReachable {
             session.sendMessage(userInfo, replyHandler: nil) { [weak self] error in
+                // sendMessage's error handler fires on a background queue;
+                // hop to MainActor so we don't cross self's actor isolation.
                 Task { @MainActor [weak self] in
                     self?.logger.error(
                         "sendMessage failed: \(error.localizedDescription); transferUserInfo will still deliver"
@@ -102,8 +107,3 @@ final class WatchLibraryCredentialBroadcaster {
         }
     }
 }
-        // Always queue transferUserInfo (durable, FIFO), so an apply that fails on the watch,
-        // like a wipe on a locked keychain, runs again; sendMessage confirms transport only. If
-        // reachable, also sendMessage for speed; the epoch guard drops the duplicate.
-                // sendMessage's error handler fires on a background queue;
-                // hop to MainActor so we don't cross self's actor isolation.

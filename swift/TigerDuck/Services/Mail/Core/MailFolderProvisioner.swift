@@ -5,9 +5,6 @@ nonisolated struct MailFolderUnavailable: Error, Equatable {
     var role: MailFolderRole
 }
 
-nonisolated enum MailFolderProvisioner {
-    struct Ensured: Equatable, Sendable {
-        var name: String
 /// Creates a missing role folder when an operation needs one, then re-resolves the role map from a
 /// fresh `LIST`. Mail2000 accounts need not have Sent, Drafts or Trash. Three rules: (1) only
 /// those three are ever created: `.junk` belongs to the server's spam filter, and RFC 3501
@@ -16,19 +13,14 @@ nonisolated enum MailFolderProvisioner {
 /// map cannot see the new folder. Roles resolve by name, so the same names are created on any
 /// server. `createFolder` gets the raw modified UTF-7 `MailFolderRole.imapName`, which nothing
 /// below re-encodes. See docs/decisions/0016-mail-role-folder-provisioning.md.
+nonisolated enum MailFolderProvisioner {
+    struct Ensured: Equatable, Sendable {
+        var name: String
         var roles: [MailFolderRole: String]
     }
 
     static let creatableRoles: Set<MailFolderRole> = [.sent, .drafts, .trash]
 
-    static func ensure(
-        _ role: MailFolderRole, in roles: [MailFolderRole: String], client: any MailClient
-    ) async -> Ensured? {
-        if let existing = roles[role] { return Ensured(name: existing, roles: roles) }
-        guard creatableRoles.contains(role) else { return nil }
-        try? await client.createFolder(role.imapName)
-        guard let available = try? await client.listFolders() else { return nil }
-        let refreshed = MailFolderMap.resolve(available: available)
     /// The folder for `role`, creating it if the account has none. Returns nil, and the caller
     /// falls back, when the role must never be created or a fresh `LIST` does not resolve it back.
     /// Never throws: no caller may fail its own operation because a folder could not be made.
@@ -37,6 +29,14 @@ nonisolated enum MailFolderProvisioner {
     /// two operations, or another client, can race to the same folder. The re-resolve also proves
     /// the name went out in a form the server understood: a mangled or double-encoded name never
     /// resolves to this role, and handing it back would make the next operation create another.
+    static func ensure(
+        _ role: MailFolderRole, in roles: [MailFolderRole: String], client: any MailClient
+    ) async -> Ensured? {
+        if let existing = roles[role] { return Ensured(name: existing, roles: roles) }
+        guard creatableRoles.contains(role) else { return nil }
+        try? await client.createFolder(role.imapName)
+        guard let available = try? await client.listFolders() else { return nil }
+        let refreshed = MailFolderMap.resolve(available: available)
         guard let created = refreshed[role] else { return nil }
         return Ensured(name: created, roles: refreshed)
     }

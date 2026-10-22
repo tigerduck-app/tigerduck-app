@@ -9,6 +9,8 @@ nonisolated struct MailReadableHTML {
 
     let setsColors: Bool
     private let html: String
+    /// Held whole: a node finds its output settings through its document, which a node alone
+    /// does not keep alive.
     private let document: Document?
     private let nodes: [Node]
     private let targets: [String]
@@ -20,8 +22,6 @@ nonisolated struct MailReadableHTML {
         targets = Self.targets(in: html)
         var setsColors = false
         var nodes: [Node] = []
-    /// Held whole: a node finds its output settings through its document, which a node alone
-    /// does not keep alive.
         var document: Document?
         do {
             let parsed = try SwiftSoup.parseBodyFragment(html)
@@ -45,6 +45,8 @@ nonisolated struct MailReadableHTML {
                         parent = nodes.count - 1
                     }
                 }
+                // WebKit paints a table's background and border over its grid only, not its caption,
+                // while both keep their table display.
                 let captionBackdrop = visit.element.tagName() == "table" && Self.keepsDisplay(style, ["table", "inline-table"])
                     ? visit.backdrop : backdrop
                 stack += try visit.element.children().array().reversed().map { child in
@@ -59,8 +61,6 @@ nonisolated struct MailReadableHTML {
         }
         self.setsColors = setsColors
         self.document = document
-                // WebKit paints a table's background and border over its grid only, not its caption,
-                // while both keep their table display.
         self.nodes = nodes
     }
 
@@ -258,6 +258,9 @@ nonisolated struct MailReadableHTML {
         return color.alpha > 0
     }
 
+    /// Keywords that set no colour of their own. Not `initial`: on `color` it is the initial colour,
+    /// which WebKit has drawn black under a dark `color-scheme`
+    /// (https://github.com/w3c/csswg-drafts/issues/9274), so it counts as a colour.
     private static let colorlessKeywords: Set<String> = ["currentcolor", "inherit", "unset", "revert", "revert-layer"]
 
     private static func layer(of element: Element, style: Style) throws -> Layer {
@@ -300,9 +303,6 @@ nonisolated struct MailReadableHTML {
         if let declaration = style.effective("color") {
             return Sent(color: parse(declaration.value, legacy: false), attribute: "style", value: style.text,
                         range: declaration.value.startIndex..<declaration.value.endIndex)
-    /// Keywords that set no colour of their own. Not `initial`: on `color` it is the initial colour,
-    /// which WebKit has drawn black under a dark `color-scheme`
-    /// (https://github.com/w3c/csswg-drafts/issues/9274), so it counts as a colour.
         }
         guard element.tagName() == "font", let value = try legacyValue("color", of: element) else { return nil }
         return Sent(color: parse(value, legacy: true), attribute: "color", value: String(value.base),
@@ -311,6 +311,8 @@ nonisolated struct MailReadableHTML {
 
     private static let targetPattern = try! NSRegularExpression(pattern: #"\s(?:href|src)="[^"]*""#)
 
+    /// Every double-quoted `href` and `src` in `html`, in order. That is all of them: `html` is
+    /// SwiftSoup's output, which quotes so, and a page reuses those bytes for what it leaves alone.
     static func targets(in html: String) -> [String] {
         targetPattern.matches(in: html, range: NSRange(html.startIndex..., in: html))
             .compactMap { Range($0.range, in: html).map { String(html[$0]) } }
@@ -358,8 +360,6 @@ nonisolated struct MailReadableHTML {
     private static func function(_ value: String) -> RGBA? {
         guard let open = value.firstIndex(of: "("), value.hasSuffix(")"), ["rgb", "rgba"].contains(value[..<open]) else { return nil }
         let arguments = value[value.index(after: open)..<value.index(before: value.endIndex)]
-    /// Every double-quoted `href` and `src` in `html`, in order. That is all of them: `html` is
-    /// SwiftSoup's output, which quotes so, and a page reuses those bytes for what it leaves alone.
         var channels: [Substring]
         var alpha: Substring?
         if arguments.contains(",") {
@@ -383,6 +383,8 @@ nonisolated struct MailReadableHTML {
         return RGBA(red: rgb[0], green: rgb[1], blue: rgb[2], alpha: opacity)
     }
 
+    /// A number out of `scale` or a percentage, clamped to 0...1 as CSS does. Only digits, signs,
+    /// points and exponents: `Double(_:)` alone also takes `nan`, `inf` and hex floats.
     private static func number(_ text: Substring, scale: Double) -> Double? {
         let isPercentage = text.hasSuffix("%")
         let digits = isPercentage ? text.dropLast() : text
@@ -440,8 +442,6 @@ nonisolated struct MailReadableHTML {
 
     private nonisolated struct Fixes {
         private nonisolated struct Pair: Hashable {
-    /// A number out of `scale` or a percentage, clamped to 0...1 as CSS does. Only digits, signs,
-    /// points and exponents: `Double(_:)` alone also takes `nan`, `inf` and hex floats.
             let text: RGBA
             let background: RGBA
         }

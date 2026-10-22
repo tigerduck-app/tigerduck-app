@@ -317,7 +317,6 @@ final class TimeSliderViewModel {
         }
     }
 
-
 }
 
 struct TimeSliderLane: Equatable {

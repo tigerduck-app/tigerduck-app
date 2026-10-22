@@ -30,14 +30,14 @@ nonisolated struct CampusUsage: Equatable, Sendable {
     let buildingNames: [String: String]
 }
 
+/// Reads cour01's room-use page, an ASP.NET WebForms page: the form state each postback sends
+/// back, the date calendar's links, the room grid and its pager.
 nonisolated enum ClassroomUsageParser {
     static let periodCount = 14
     static let campusField = "DropdownCampusListID"
     static let calendarTarget = "date_cal"
 
     struct Postback: Equatable, Sendable {
-/// Reads cour01's room-use page, an ASP.NET WebForms page: the form state each postback sends
-/// back, the date calendar's links, the room grid and its pager.
         let target: String
         let argument: String
     }
@@ -92,6 +92,8 @@ nonisolated enum ClassroomUsageParser {
         return utc.dateComponents([.day], from: epoch, to: day).day ?? 0
     }
 
+    /// The postback that brings `day` closer: the day itself once the calendar links it, else
+    /// the month step toward it. The site answers a day it does not link with an error page.
     static func calendarStep(toward day: Int, days: Set<Int>, monthSteps: [Int]) -> Postback? {
         if days.contains(day) {
             return Postback(target: calendarTarget, argument: String(day))
@@ -104,8 +106,6 @@ nonisolated enum ClassroomUsageParser {
         }
         return step.map { Postback(target: calendarTarget, argument: "V\($0)") }
     }
-    /// The postback that brings `day` closer: the day itself once the calendar links it, else
-    /// the month step toward it. The site answers a day it does not link with an error page.
 
     private static func grid(in doc: Document) -> Grid? {
         guard let table = try? doc.getElementById("showinfo_grd") else { return nil }
@@ -132,6 +132,10 @@ nonisolated enum ClassroomUsageParser {
         }
     }
 
+    /// A cell's text, split where the site writes `</br>`, which the parser reads as `<br>`, and
+    /// read through every other element but the tables a cell holds, such as its small one.
+    /// A booking is told by its marker line, not by the cell colour, which the site puts on the
+    /// wrong cells of a second page.
     private static func slotUse(_ cell: Element) -> RoomSlotUse {
         var parts = [""]
         func read(_ node: Node) {
@@ -149,10 +153,6 @@ nonisolated enum ClassroomUsageParser {
         }
         read(cell)
         let lines = parts
-    /// A cell's text, split where the site writes `</br>`, which the parser reads as `<br>`, and
-    /// read through every other element but the tables a cell holds, such as its small one.
-    /// A booking is told by its marker line, not by the cell colour, which the site puts on the
-    /// wrong cells of a second page.
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard let first = lines.first else { return .free }

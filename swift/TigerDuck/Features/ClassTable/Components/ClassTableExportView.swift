@@ -2,6 +2,7 @@
 import SwiftUI
 import UIKit
 
+///
 struct ClassTableExportView: View {
     let viewModel: ClassTableViewModel
     let owner: String?
@@ -43,7 +44,6 @@ enum ClassTableExporter {
     /// Draws ``ClassTableExportView`` into a PNG in the temporary directory
     /// and returns its URL, or `nil` when nothing could be drawn or written.
     /// Hand the URL to ``discard(_:)`` once it has been shared.
-    ///
     /// `ImageRenderer` starts from an empty environment rather than the one
     /// the page sits in, so everything the grid reads from it is handed over
     /// explicitly.

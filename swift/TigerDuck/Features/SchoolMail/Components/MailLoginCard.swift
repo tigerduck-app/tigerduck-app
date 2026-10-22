@@ -51,6 +51,9 @@ struct MailLoginCard: View {
                 TextField(usernamePlaceholder, text: $studentID)
                     .textContentType(usernameIsAnAddress ? .emailAddress : .username)
                     .autocorrectionDisabled()
+                    // `.characters` suits a student ID (`B10000000`) but upper-cases an address as
+                    // it is typed, and `MailAccountManager.normalizedUsername` keeps an address's
+                    // case (RFC 5321 §2.3.11), so the login would go out upper-cased and fail.
                     .textInputAutocapitalization(usernameIsAnAddress ? .never : .characters)
                     .keyboardType(usernameIsAnAddress ? .emailAddress : .default)
                     .focused($field, equals: .studentID)
@@ -67,9 +70,6 @@ struct MailLoginCard: View {
                     onSubmit: submit
                 )
                 .padding(TigerDuckTheme.Spacing.md)
-                    // `.characters` suits a student ID (`B10000000`) but upper-cases an address as
-                    // it is typed, and `MailAccountManager.normalizedUsername` keeps an address's
-                    // case (RFC 5321 §2.3.11), so the login would go out upper-cased and fail.
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
             }
 

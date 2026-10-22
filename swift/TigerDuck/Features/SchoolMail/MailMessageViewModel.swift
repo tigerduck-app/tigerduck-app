@@ -14,6 +14,7 @@ nonisolated struct MailLinkTarget: Equatable, Sendable, Identifiable {
     var canOpen: Bool
     var id: String { href }
 
+    ///
     static let openableSchemes: Set<String> = ["http", "https", "mailto"]
 
     static func isOpenable(_ href: String) -> Bool {
@@ -21,6 +22,9 @@ nonisolated struct MailLinkTarget: Equatable, Sendable, Identifiable {
         return openableSchemes.contains(scheme)
     }
 
+    /// The scheme, lower-cased, per RFC 3986 §3.1 (`ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`),
+    /// or nil when there is none. The character rule is also what keeps a colon *inside* a path
+    /// or a userinfo from being read as a scheme separator.
     private static func scheme(of href: String) -> String? {
         let href = href.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let colon = href.firstIndex(of: ":") else { return nil }
@@ -38,9 +42,6 @@ nonisolated struct MailFormattedPages: Equatable, Sendable {
     var app: String
     var light: String
     var setsColors: Bool
-    /// The scheme, lower-cased, per RFC 3986 §3.1 (`ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`),
-    /// or nil when there is none. The character rule is also what keeps a colon *inside* a path
-    /// or a userinfo from being read as a scheme separator.
 }
 
 @MainActor
@@ -73,6 +74,13 @@ final class MailMessageViewModel {
     private(set) var plainText = ""
     private(set) var linkedPlainText = AttributedString()
     private(set) var warnings: [MailWarning] = []
+    /// Nothing this screen can render: no text body, no HTML body, no attachments. Drives the
+    /// "Couldn't read this mail's format. Showing its source instead." banner and the forced
+    /// source view below. It says what there is to show, not why: `LiveMailClient` parses the
+    /// MIME itself when Mail2000 gets a `BODYSTRUCTURE` wrong, so such a mail opens normally.
+    /// What is left is a mail that carries nothing, and one with an unusable structure that is
+    /// too large to download whole for a local parse (`MailConstants.maxLocalParseBytes`). Both
+    /// leave only the raw source, so they read the same banner.
     private(set) var parseFailed = false
     private(set) var source: String?
     private(set) var sourceLoadFailed = false
@@ -96,18 +104,19 @@ final class MailMessageViewModel {
     @ObservationIgnored private var pageUIDValidity: UInt32?
     @ObservationIgnored private var htmlGeneration = 0
 
+    /// `cache` and `prefs` are injectable only so a test can use throwaway storage instead of
+    /// the app's real singleton, which reaches the real `UserDefaults` and cache directory.
+    ///
+    /// Both default to `nil` rather than `= MailAccountManager.shared.…`: a default argument
+    /// expression is type-checked in a nonisolated context, and `MailAccountManager.shared` is
+    /// main-actor isolated, so naming it there is an isolation violation in the Swift 6
+    /// language mode. Resolving them in this main-actor body keeps the seam the same: a passed
+    /// value is used, and an omitted one gets the singleton's.
     init(
         route: MailMessageRoute,
         session: MailPageSession,
         folderRoles: [MailFolderRole: String],
         cache: MailCache? = nil,
-    /// Nothing this screen can render: no text body, no HTML body, no attachments. Drives the
-    /// "Couldn't read this mail's format. Showing its source instead." banner and the forced
-    /// source view below. It says what there is to show, not why: `LiveMailClient` parses the
-    /// MIME itself when Mail2000 gets a `BODYSTRUCTURE` wrong, so such a mail opens normally.
-    /// What is left is a mail that carries nothing, and one with an unusable structure that is
-    /// too large to download whole for a local parse (`MailConstants.maxLocalParseBytes`). Both
-    /// leave only the raw source, so they read the same banner.
         prefs: (any MailPreferences)? = nil,
         notifier: MailNotifier = MailChecker.shared.notifier
     ) {
@@ -167,14 +176,6 @@ final class MailMessageViewModel {
         let account = prefs.studentID
         let wipeCount = cache.wipeCount
         let cachedPage = await Task.detached { cache.loadPage(folder: folder) }.value
-    /// `cache` and `prefs` are injectable only so a test can use throwaway storage instead of
-    /// the app's real singleton, which reaches the real `UserDefaults` and cache directory.
-    ///
-    /// Both default to `nil` rather than `= MailAccountManager.shared.…`: a default argument
-    /// expression is type-checked in a nonisolated context, and `MailAccountManager.shared` is
-    /// main-actor isolated, so naming it there is an isolation violation in the Swift 6
-    /// language mode. Resolving them in this main-actor body keeps the seam the same: a passed
-    /// value is used, and an omitted one gets the singleton's.
         let validity = route.uidValidity ?? cachedPage?.uidValidity
         let page = cachedPage?.uidValidity == validity ? cachedPage : nil
         pageUIDValidity = validity
@@ -228,6 +229,13 @@ final class MailMessageViewModel {
         pages = computed.3
     }
 
+    /// `BODY.PEEK[]`: never marks the mail read. No size prompt: `MailSourceTextView` lays out
+    /// only the visible viewport, so a multi-megabyte source costs a download, not a frozen
+    /// screen.
+    /// Cache-first like the body in `load()` and keyed the same way (folder, this folder's
+    /// cached-page UIDVALIDITY, UID), in the same directory and LRU budget, so a visit does not
+    /// download the whole source again. Without a cached page there is no UIDVALIDITY to key
+    /// by, so the fetch still works but is not saved, the same rule `load()` applies to a body.
     func loadSource() async {
         sourceLoadFailed = false
         let cache = self.cache
@@ -340,14 +348,6 @@ final class MailMessageViewModel {
                     await MailMover.recoverAfterFailure(after: error, uid: uid, previouslyFlagged: owned,
                                                         client: client, wasAlreadyDeleted: wasAlreadyDeleted)
                 }
-    /// `BODY.PEEK[]`: never marks the mail read. No size prompt: `MailSourceTextView` lays out
-    /// only the visible viewport, so a multi-megabyte source costs a download, not a frozen
-    /// screen.
-    ///
-    /// Cache-first like the body in `load()` and keyed the same way (folder, this folder's
-    /// cached-page UIDVALIDITY, UID), in the same directory and LRU budget, so a visit does not
-    /// download the whole source again. Without a cached page there is no UIDVALIDITY to key
-    /// by, so the fetch still works but is not saved, the same rule `load()` applies to a body.
                 if let claim = recovered ?? nil { prefs.setOwnedDeleted(claim) }
             }
             actionError = MailAccountManager.LoginError(error).message
@@ -387,9 +387,17 @@ final class MailMessageViewModel {
         return isNeverRenderedInApp(part)
     }
 
+    /// HTML/SVG (by extension or by content type) is never rendered in the app, only saved or
+    /// handed to another app. Unlike a merely risky file, "open" always takes the share-sheet
+    /// hand-off, whatever the user asked for, never Quick Look: Quick Look renders HTML/SVG
+    /// in-process with WebKit (JavaScript on, remote loads allowed), which is what the
+    /// locked-down message web view exists to prevent.
     func isNeverRenderedInApp(_ part: MailBodyPart) -> Bool {
         let filename = part.filename ?? ""
         if MailWarnings.neverRenderedInApp(filename: filename) { return true }
+        // Real parts carry parameters (SwiftMail appends `; charset=…`), and a whole-string match
+        // would send `text/html; charset=UTF-8` to Quick Look, the mislabeled-extension case this
+        // exists for. `contentTypeWithoutParameters` is the same helper `attachmentRisk` uses.
         let type = MailWarnings.contentTypeWithoutParameters(part.contentType) ?? ""
         return type == "text/html" || type == "image/svg+xml"
     }
@@ -478,11 +486,3 @@ final class MailMessageViewModel {
     }
 }
 #endif
-    /// HTML/SVG (by extension or by content type) is never rendered in the app, only saved or
-    /// handed to another app. Unlike a merely risky file, "open" always takes the share-sheet
-    /// hand-off, whatever the user asked for, never Quick Look: Quick Look renders HTML/SVG
-    /// in-process with WebKit (JavaScript on, remote loads allowed), which is what the
-    /// locked-down message web view exists to prevent.
-        // Real parts carry parameters (SwiftMail appends `; charset=…`), and a whole-string match
-        // would send `text/html; charset=UTF-8` to Quick Look, the mislabeled-extension case this
-        // exists for. `contentTypeWithoutParameters` is the same helper `attachmentRisk` uses.

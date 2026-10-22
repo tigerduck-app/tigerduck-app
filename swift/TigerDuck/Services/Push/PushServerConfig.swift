@@ -1,6 +1,7 @@
 import Defaults
 import Foundation
 
+///
 nonisolated enum PushServerConfig {
 
     static func resolveServerURL() -> URL {
@@ -54,9 +55,20 @@ nonisolated enum PushServerConfig {
         return url
     }
 
+    // MARK: - Host classification
+
+    /// True when `host` cannot be routed off the local network, and so may
+    /// be reached over plain HTTP: `localhost` and RFC 6761 `*.localhost`,
+    /// IPv4 loopback, RFC 1918 and link-local, IPv6 `::1`, `fc00::/7` and
+    /// `fe80::/10`. IPv4-mapped forms such as `::ffff:192.168.1.5` are judged
+    /// by their IPv4 address, not waved through.
+    /// Excluded: CGNAT `100.64.0.0/10`, which the carrier routes, and `*.local`
+    /// mDNS names, which are names rather than IP ranges; both need HTTPS.
     static func isPrivateOrLoopbackHost(_ host: String) -> Bool {
         let normalized = host.lowercased()
         if normalized == "localhost" || normalized.hasSuffix(".localhost") { return true }
+        // `URL.host` strips the brackets from `[::1]`, but callers that
+        // hand us a raw authority string may not have.
         let bare = normalized.hasPrefix("[") && normalized.hasSuffix("]")
             ? String(normalized.dropFirst().dropLast())
             : normalized
@@ -81,6 +93,10 @@ nonisolated enum PushServerConfig {
         }
     }
 
+    /// Strict dotted-quad parse: exactly four decimal octets in 0...255
+    /// with no leading zeros. Leading zeros are rejected because some
+    /// resolvers read `0192.168.1.5` as octal, which would let a crafted
+    /// literal read as private here and resolve somewhere else entirely.
     private static func parseIPv4(_ host: String) -> [Int]? {
         let parts = host.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 4 else { return nil }
@@ -88,21 +104,9 @@ nonisolated enum PushServerConfig {
         for part in parts {
             guard let value = Int(part), String(value) == part, (0...255).contains(value) else {
                 return nil
-    // MARK: - Host classification
-
-    /// True when `host` cannot be routed off the local network, and so may
-    /// be reached over plain HTTP: `localhost` and RFC 6761 `*.localhost`,
-    /// IPv4 loopback, RFC 1918 and link-local, IPv6 `::1`, `fc00::/7` and
-    /// `fe80::/10`. IPv4-mapped forms such as `::ffff:192.168.1.5` are judged
-    /// by their IPv4 address, not waved through.
-    ///
-    /// Excluded: CGNAT `100.64.0.0/10`, which the carrier routes, and `*.local`
-    /// mDNS names, which are names rather than IP ranges; both need HTTPS.
             }
             octets.append(value)
         }
-        // `URL.host` strips the brackets from `[::1]`, but callers that
-        // hand us a raw authority string may not have.
         return octets
     }
 
@@ -124,6 +128,10 @@ nonisolated enum PushServerConfig {
         return false
     }
 
+    /// Parses an IPv6 literal into 16 bytes via the system resolver, which
+    /// is the same parser URLSession will use — hand-rolling the `::`
+    /// expansion risks classifying an address differently from the stack
+    /// that actually dials it.
     private static func parseIPv6(_ host: String) -> [UInt8]? {
         var address = in6_addr()
         guard host.withCString({ inet_pton(AF_INET6, $0, &address) }) == 1 else { return nil }
@@ -131,10 +139,6 @@ nonisolated enum PushServerConfig {
     }
 
     #if DEBUG
-    /// Strict dotted-quad parse: exactly four decimal octets in 0...255
-    /// with no leading zeros. Leading zeros are rejected because some
-    /// resolvers read `0192.168.1.5` as octal, which would let a crafted
-    /// literal read as private here and resolve somewhere else entirely.
     private static func readDebugServerURL() -> URL? {
         guard let dict = secretsPlistDict(),
               let raw = dict["DebugServerURL"] as? String,
@@ -166,7 +170,3 @@ nonisolated enum PushServerConfig {
 private enum PushServerConfigError: Error {
     case schemeRewriteProducedNilURL
 }
-    /// Parses an IPv6 literal into 16 bytes via the system resolver, which
-    /// is the same parser URLSession will use — hand-rolling the `::`
-    /// expansion risks classifying an address differently from the stack
-    /// that actually dials it.

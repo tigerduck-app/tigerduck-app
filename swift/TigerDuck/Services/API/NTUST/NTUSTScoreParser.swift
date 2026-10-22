@@ -4,6 +4,9 @@ import SwiftSoup
 nonisolated enum NTUSTScoreParser {
 
     private static let creditPatterns: [(Regex<AnyRegexOutput>, CreditType)] = {
+        // The fraction is optional and matters: NTUST issues half credits,
+        // and `\d+` alone matched nothing for "0.5", which fell through to
+        // `.unknown` with no credit at all.
         let raw: [(String, CreditType)] = [
             (#"^\[\s*(\d+(?:\.\d+)?)\s*\]$"#, .educationProgram),
             (#"^<\s*(\d+(?:\.\d+)?)\s*>$"#,   .notCounted),
@@ -15,9 +18,6 @@ nonisolated enum NTUSTScoreParser {
             guard let regex = try? Regex(pattern) else { return nil }
             return (regex, type)
         }
-        // The fraction is optional and matters: NTUST issues half credits,
-        // and `\d+` alone matched nothing for "0.5", which fell through to
-        // `.unknown` with no credit at all.
     }()
 
     private static let currentTermRegex: Regex<AnyRegexOutput>? = {

@@ -50,6 +50,10 @@ nonisolated enum MoodleAssignmentService {
 
     static let commentPageLimit = 10
 
+    /// Moodle keeps a submission's comments on the assignment's module, under the submission's
+    /// record, and answers a page at a time, newest first, with the total in `count`. Paging ends
+    /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
+    /// or at ``commentPageLimit``. Oldest first, as a conversation reads.
     static func comments(
         cmid: Int,
         submissionId: Int,
@@ -57,10 +61,6 @@ nonisolated enum MoodleAssignmentService {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> [MoodleSubmissionComment] {
-    /// Moodle keeps a submission's comments on the assignment's module, under the submission's
-    /// record, and answers a page at a time, newest first, with the total in `count`. Paging ends
-    /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
-    /// or at ``commentPageLimit``. Oldest first, as a conversation reads.
         func page(_ number: Int) async throws -> RawComments {
             try await MoodleWebserviceClient.call(
                 commentsFunction,
@@ -196,6 +196,8 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
     let lastattempt: LastAttempt?
     let feedback: Feedback?
 
+    /// Moodle sends `gradefordisplay` and `gradeddate` as null without a grade, and the plugins
+    /// only with the grader's record.
     struct Feedback: Decodable {
         let gradefordisplay: String?
         let gradeddate: Int?
@@ -208,12 +210,12 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-    /// Moodle sends `gradefordisplay` and `gradeddate` as null without a grade, and the plugins
-    /// only with the grader's record.
         lastattempt = try container.decodeIfPresent(LastAttempt.self, forKey: .lastattempt)
         feedback = try? container.decodeIfPresent(Feedback.self, forKey: .feedback)
     }
 
+    /// A team assignment reports the group's status in `teamsubmission`, so a teammate's
+    /// submission leaves the student's own `submission` unsubmitted or without a status.
     private var attempt: LastAttempt.Submission? {
         let own = lastattempt?.submission
         let team = lastattempt?.teamsubmission
@@ -228,8 +230,6 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         return MoodleSubmissionStatus(
             assignId: assignId,
             submissionStatus: attempt?.status,
-    /// A team assignment reports the group's status in `teamsubmission`, so a teammate's
-    /// submission leaves the student's own `submission` unsubmitted or without a status.
             gradingStatus: lastattempt?.gradingstatus,
             submittedAt: submittedAt
         )
@@ -253,6 +253,7 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         )
     }
 
+    /// Moodle writes "-" for no grade.
     private var grade: MoodleAssignmentGrade? {
         guard let feedback else { return nil }
         let shown = MoodleHTMLText.plainText(fromHTML: feedback.gradefordisplay ?? "")
@@ -268,7 +269,6 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
             in: text, files: (plugin?.fileareas ?? []).flatMap { $0.files ?? [] }.compactMap(\.model)
         )
         return MoodleHTMLText.markdown(fromHTML: html).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : html
-    /// Moodle writes "-" for no grade.
     }
 
     private static func date(_ seconds: Int) -> Date? {

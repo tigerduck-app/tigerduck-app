@@ -31,6 +31,7 @@ struct PushDiagnostic: Sendable {
     let uuid: String
 }
 
+///
 @MainActor
 final class PushCoordinator {
     private let identity: PushIdentity
@@ -112,9 +113,15 @@ final class PushCoordinator {
                     .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
                 logger.info("notification authorization granted=\(granted, privacy: .public)")
             }
+            // `registerForRemoteNotifications` is safe in any permission state
+            // and yields a token only when authorized. Calling it on every enable
+            // lets a later grant reach token forwarding with no extra hook.
             #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
             #elseif os(macOS)
+            // macOS is passive — no APNs push. Register the device UUID
+            // with the backend (no push token) so it appears in the sync
+            // log. The Mac client syncs on foreground only.
             await registration.registerPassiveDevice()
             #endif
         }
@@ -151,15 +158,9 @@ final class PushCoordinator {
 
     func fetchRevision() async throws -> Int {
         try await apiClient.fetchRevision()
-            // `registerForRemoteNotifications` is safe in any permission state
-            // and yields a token only when authorized. Calling it on every enable
-            // lets a later grant reach token forwarding with no extra hook.
     }
 
     func fetchFullSync() async throws -> [String: Any] {
-            // macOS is passive — no APNs push. Register the device UUID
-            // with the backend (no push token) so it appears in the sync
-            // log. The Mac client syncs on foreground only.
         try await apiClient.fetchFullSync()
     }
 
@@ -377,6 +378,15 @@ final class PushCoordinator {
         await scheduleSync.awaitInflight()
     }
 
+    // MARK: - Build-time env sanity
+
+    /// Crashes Debug builds at launch when the resolved server URL does not
+    /// match the APNs environment baked into the binary (or each other).
+    /// Empty in Release builds: `assert` is stripped under `-O`, but working out
+    /// its conditions would still read the Keychain twice before the first frame.
+    /// Guards against the regression where someone flips `PushAPNsEnv` or
+    /// `AppConstants.productionPushServerURL` without flipping the other,
+    /// or seeds a stale UserDefaults override pointing the wrong way.
     nonisolated static func assertEnvConsistency() {
         #if DEBUG
         let resolved = PushServerConfig.resolveServerURL()
@@ -430,13 +440,3 @@ nonisolated struct UploadLedger {
         }
     }
 }
-    // MARK: - Build-time env sanity
-
-    /// Crashes Debug builds at launch when the resolved server URL does not
-    /// match the APNs environment baked into the binary (or each other).
-    /// Empty in Release builds: `assert` is stripped under `-O`, but working out
-    /// its conditions would still read the Keychain twice before the first frame.
-    ///
-    /// Guards against the regression where someone flips `PushAPNsEnv` or
-    /// `AppConstants.productionPushServerURL` without flipping the other,
-    /// or seeds a stale UserDefaults override pointing the wrong way.

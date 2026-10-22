@@ -13,21 +13,23 @@ nonisolated enum HTMLParser {
         return looksLikeSSOLoginBody(html)
     }
 
-    static func looksLikeSSOLoginBody(_ html: String) -> Bool {
-        guard html.contains("loginForm") || html.range(of: "username", options: .caseInsensitive) != nil,
-              let doc = try? SwiftSoup.parse(html) else { return false }
-
-        return (try? doc.select("form#loginForm").first()) != nil ||
     /// Body-only signature for the SSO login form, ignoring the URL.
     /// Use this when an upstream service (e.g. stuinfosys / score
     /// portal) returns 200 with the SSO form rendered inline instead
     /// of redirecting to ssoam2 — the URL-gated `isSSOLoginPage`
     /// would miss that case and the HTML parser would fall through
     /// to `.empty`.
+    static func looksLikeSSOLoginBody(_ html: String) -> Bool {
+        guard html.contains("loginForm") || html.range(of: "username", options: .caseInsensitive) != nil,
+              let doc = try? SwiftSoup.parse(html) else { return false }
+
+        return (try? doc.select("form#loginForm").first()) != nil ||
             ((try? doc.select("input[name=Username]").first()) != nil &&
                 (try? doc.select("input[name=Password]").first()) != nil)
     }
 
+    /// Check if a response landed on the NetIQ sign-in form of the other SSO host, ssoam. It
+    /// submits through an invisible reCAPTCHA, so only a browser can sign in there.
     static func isNetIQLoginPage(html: String, url: URL) -> Bool {
         guard url.host == "ssoam.ntust.edu.tw", let doc = try? SwiftSoup.parse(html) else { return false }
 
@@ -35,8 +37,6 @@ nonisolated enum HTMLParser {
             ((try? doc.select("input[name=Ecom_User_ID]").first()) != nil &&
                 (try? doc.select("input[name=Ecom_Password]").first()) != nil)
     }
-    /// Check if a response landed on the NetIQ sign-in form of the other SSO host, ssoam. It
-    /// submits through an invisible reCAPTCHA, so only a browser can sign in there.
 
     static func findFormById(_ html: String, id: String) -> FormData? {
         guard let doc = try? SwiftSoup.parse(html),

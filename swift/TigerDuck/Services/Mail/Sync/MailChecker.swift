@@ -203,6 +203,7 @@ actor MailChecker {
         }
         guard status.uidNext > marker else { return InboxCheck(outcome: .noNewMail, uidValidity: status.uidValidity) }
 
+        // `marker:*` always includes the last message, even when its UID is below marker.
         let fetched = try await client.summaries(folder: MailConstants.inbox, fromUID: marker)
             .filter { $0.uid >= marker }
         let fresh = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
@@ -255,4 +256,3 @@ actor MailChecker {
     }
 }
 #endif
-        // `marker:*` always includes the last message, even when its UID is below marker.

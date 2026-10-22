@@ -188,7 +188,6 @@ struct ClassTableLaneRunTests {
     }
 }
 
-
 struct ConflictLaneShapeTests {
 
     @Test func aCourseThatNarrowsIsOneShapeAndLeavesTheSeamOpen() {

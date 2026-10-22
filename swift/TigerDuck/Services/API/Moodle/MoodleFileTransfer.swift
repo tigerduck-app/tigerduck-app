@@ -43,6 +43,11 @@ nonisolated enum MoodleFileTransfer {
         }
     }
 
+    /// Moodle sends a stored file with the MIME type it lists for it, so another type is a page
+    /// standing in for the file. A file it lists as `document/unknown` comes as
+    /// `application/octet-stream`, and one it lists with no type as any type, so any type but a page
+    /// passes for either. A web service error comes as JSON and throws its own case, even for a JSON
+    /// file, whose own type the error shares.
     static func check(_ response: URLResponse, at location: URL, mimeType: String?) throws {
         guard let http = response as? HTTPURLResponse else {
             throw MoodleWebserviceError.malformedResponse(detail: "No HTTP response")
@@ -51,11 +56,6 @@ nonisolated enum MoodleFileTransfer {
         let expected = baseType(mimeType)
         if served == "application/json", let error = moodleError(at: location) { throw error }
         guard http.statusCode == 200 else { throw MoodleWebserviceError.httpStatus(code: http.statusCode) }
-    /// Moodle sends a stored file with the MIME type it lists for it, so another type is a page
-    /// standing in for the file. A file it lists as `document/unknown` comes as
-    /// `application/octet-stream`, and one it lists with no type as any type, so any type but a page
-    /// passes for either. A web service error comes as JSON and throws its own case, even for a JSON
-    /// file, whose own type the error shares.
         let listed = expected.flatMap { $0.isEmpty || $0 == "document/unknown" ? nil : $0 }
         let isFile = listed.map { served == $0 } ?? (served != "text/html")
         if !isFile { throw MoodleWebserviceError.malformedResponse(detail: served ?? "") }
@@ -92,6 +92,7 @@ nonisolated enum MoodleFileTransfer {
                         continuation.resume(throwing: MoodleWebserviceError.malformedResponse(detail: "No file"))
                         return
                     }
+                    // The system deletes `location` once this handler returns.
                     let kept = FileManager.default.temporaryDirectory
                         .appendingPathComponent("MoodleDownload-\(UUID().uuidString)")
                     do {
@@ -102,7 +103,6 @@ nonisolated enum MoodleFileTransfer {
                     }
                 }
                 let observation = task.progress.observe(\.completedUnitCount) { transfer, _ in
-                    // The system deletes `location` once this handler returns.
                     let total = transfer.totalUnitCount > 0 ? transfer.totalUnitCount : Int64(expectedSize)
                     progress(total > 0 ? min(1, Double(transfer.completedUnitCount) / Double(total)) : 0)
                 }

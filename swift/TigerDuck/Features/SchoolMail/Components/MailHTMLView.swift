@@ -59,6 +59,13 @@ struct MailHTMLView: UIViewRepresentable {
             cidHandler = MailCIDSchemeHandler(images: parent.inlineImages)
         }
 
+        /// `[weak self]` keeps the observation from retaining the coordinator (the coordinator
+        /// owns the observation, so a strong capture would be a cycle). The weak binding is
+        /// resolved *here*, in the observation callback, rather than inside the `Task`: a `weak`
+        /// capture is a mutable variable, and reading one from concurrently-executing code is an
+        /// error in the Swift 6 language mode. `guard let self` turns it into an immutable
+        /// strong reference the `Task` can capture, which is dropped again as soon as that hop
+        /// finishes — the observation itself still holds nothing.
         func observeHeight(of webView: WKWebView) {
             heightObservation = webView.scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, change in
                 guard let self, let height = change.newValue?.height else { return }
@@ -83,13 +90,6 @@ struct MailHTMLView: UIViewRepresentable {
                 loadTask = nil
                 MailHTMLView.paint(webView, with: theme)
                 webView.loadHTMLString(document, baseURL: nil)
-        /// `[weak self]` keeps the observation from retaining the coordinator (the coordinator
-        /// owns the observation, so a strong capture would be a cycle). The weak binding is
-        /// resolved *here*, in the observation callback, rather than inside the `Task`: a `weak`
-        /// capture is a mutable variable, and reading one from concurrently-executing code is an
-        /// error in the Swift 6 language mode. `guard let self` turns it into an immutable
-        /// strong reference the `Task` can capture, which is dropped again as soon as that hop
-        /// finishes — the observation itself still holds nothing.
                 return
             }
             loadTask = Task { @MainActor [weak self] in

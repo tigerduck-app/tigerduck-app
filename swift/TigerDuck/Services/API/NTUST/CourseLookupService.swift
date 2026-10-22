@@ -73,6 +73,9 @@ enum CourseLookupService {
     nonisolated static func parseNodeToSchedule(_ node: String?) -> [Int: [String]] {
         guard let node, !node.isEmpty else { return [:] }
 
+        // M-F = weekday 1..5; S/U = Sat/Sun; X is the legacy NTUST code for
+        // Saturday makeup classes (predates the S/U pair). Other letters get
+        // logged so unknown future codes don't silently disappear.
         let dayMap: [Character: Int] = [
             "M": 1, "T": 2, "W": 3, "R": 4, "F": 5,
             "S": 6, "U": 7, "X": 6
@@ -80,9 +83,6 @@ enum CourseLookupService {
         var schedule: [Int: [String]] = [:]
 
         for item in node.split(separator: ",") {
-        // M-F = weekday 1..5; S/U = Sat/Sun; X is the legacy NTUST code for
-        // Saturday makeup classes (predates the S/U pair). Other letters get
-        // logged so unknown future codes don't silently disappear.
             let trimmed = item.trimmingCharacters(in: .whitespaces)
             guard let first = trimmed.first else { continue }
             guard let day = dayMap[first] else {

@@ -114,6 +114,9 @@ actor SyncOutbox {
     private var entries: [OutboxEntry] = []
     private var parked: [OutboxEntry] = []
     private var generation = 0
+    /// False while a queue file exists but could not be read, as at a launch behind the lock
+    /// screen (`completeFileProtectionUnlessOpen`). Until it is read, or `loadOrGiveUp` gives up
+    /// on it, nothing is written over the files, and what was queued meanwhile joins what they hold.
     private var isLoaded: Bool
     private var unreadableLoads = 0
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
@@ -149,9 +152,6 @@ actor SyncOutbox {
     func pendingCount() -> Int {
         loadIfNeeded()
         return entries.count
-    /// False while a queue file exists but could not be read, as at a launch behind the lock
-    /// screen (`completeFileProtectionUnlessOpen`). Until it is read, or `loadOrGiveUp` gives up
-    /// on it, nothing is written over the files, and what was queued meanwhile joins what they hold.
     }
 
     static let unreadableLoadLimit = 3
@@ -241,6 +241,9 @@ actor SyncOutbox {
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
         execute: @Sendable (ResolvedSyncOp) async throws -> Void
     ) async -> Bool {
+        // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
+        // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
+        // mid-drain bumps `generation`: stop and never merge back, or cleared entries resurrect.
         loadIfNeeded()
         let snapshot = entries
         let snapshotIds = Set(snapshot.map(\.id))
@@ -298,9 +301,6 @@ actor SyncOutbox {
         return entries.isEmpty
     }
 
-        // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
-        // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
-        // mid-drain bumps `generation`: stop and never merge back, or cleared entries resurrect.
     private func giveUp(on entry: OutboxEntry, after error: Error) {
         let kind: String
         let parks: Bool

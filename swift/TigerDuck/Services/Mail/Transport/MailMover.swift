@@ -12,6 +12,14 @@ nonisolated struct MailMoveResult: Equatable, Sendable {
     var stillPending: OwnedDeleted
 }
 
+/// Move and delete without UIDPLUS. EXPUNGE removes every `\Deleted` message in the folder,
+/// another client's included, so TigerDuck expunges only when every one is its own, checked fresh
+/// on the server; otherwise its flags wait, hidden from the list. Each step that changes mail
+/// carries `previouslyFlagged.uidValidity` to check against its own SELECT, since the 60 s poll
+/// can run between steps. A recreated folder means `.folderChanged`, which no caller retries.
+/// Started commands are never retried (`recoverAfterFailure` asks the server once). Another
+/// client can still act between the deleted-UID check and EXPUNGE.
+/// See docs/decisions/0014-mail-delete-without-uidplus.md.
 nonisolated enum MailMover {
     static func move(
         uids: [UInt32], from folder: String, to target: String,
@@ -22,14 +30,6 @@ nonisolated enum MailMover {
         try await client.copy(folder: folder, uids: uids, to: target, expectedUIDValidity: previouslyFlagged.uidValidity)
         return try await flagAndMaybeExpunge(uids: uids, in: folder, client: client, previouslyFlagged: previouslyFlagged)
     }
-/// Move and delete without UIDPLUS. EXPUNGE removes every `\Deleted` message in the folder,
-/// another client's included, so TigerDuck expunges only when every one is its own, checked fresh
-/// on the server; otherwise its flags wait, hidden from the list. Each step that changes mail
-/// carries `previouslyFlagged.uidValidity` to check against its own SELECT, since the 60 s poll
-/// can run between steps. A recreated folder means `.folderChanged`, which no caller retries.
-/// Started commands are never retried (`recoverAfterFailure` asks the server once). Another
-/// client can still act between the deleted-UID check and EXPUNGE.
-/// See docs/decisions/0014-mail-delete-without-uidplus.md.
 
     static func deletePermanently(
         uids: [UInt32], in folder: String,

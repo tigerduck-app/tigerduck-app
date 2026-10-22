@@ -54,13 +54,6 @@ nonisolated enum MailWarnings {
     static let archivePasswordHints = ["密碼", "password", "解壓縮"]
     static let neverRenderInApp: Set<String> = ["html", "htm", "shtml", "xhtml", "mht", "mhtml", "svg"]
 
-    private static let emailDelimiters = "\\x{20}\\x{09}\\x{0A}\\x{0B}\\x{0C}\\x{0D}@<>()\",;:"
-    private static let emailPattern = try! NSRegularExpression(
-        pattern: "[^\(emailDelimiters)]+@[^\(emailDelimiters)]+\\.[^\(emailDelimiters)]+"
-    )
-
-    private static let shownHostPattern = try! NSRegularExpression(
-        pattern: "^(?:[a-z][a-z0-9+.-]*://)?((?:[\\p{L}\\p{N}-]+\\.)+[\\p{L}]{2,})(?::[0-9]+)?(?:[/?#][^\\n\\r\\u0085\\u2028\\u2029]*)?$",
     /// Delimiter-based, like Android's `EMAIL`: the local part, host and TLD each run to the next
     /// delimiter, not over an ASCII allowlist. For Han characters before the `@`, a non-ASCII host
     /// or a one-letter TLD, all of which warn on Android, an ASCII-only pattern matches nothing and
@@ -69,10 +62,10 @@ nonisolated enum MailWarnings {
     /// The ASCII whitespace class is spelled out instead of `\s`: Java's `\s` is ASCII-only but
     /// ICU's, which `NSRegularExpression` uses, is Unicode-wide, so `\s` would end the match where
     /// Android runs on. No `.caseInsensitive`: there are no letter ranges for it to fold.
-        options: [.caseInsensitive]
+    private static let emailDelimiters = "\\x{20}\\x{09}\\x{0A}\\x{0B}\\x{0C}\\x{0D}@<>()\",;:"
+    private static let emailPattern = try! NSRegularExpression(
+        pattern: "[^\(emailDelimiters)]+@[^\(emailDelimiters)]+\\.[^\(emailDelimiters)]+"
     )
-
-    private static let schemePattern = try! NSRegularExpression(pattern: "^([a-zA-Z][a-zA-Z0-9+.-]*):")
 
     /// The text a link claims to point at, for the link-mismatch warning. Unicode-aware
     /// (`\p{L}`/`\p{N}`), like Android's `HOST_LIKE`, so a homograph host in another script is
@@ -82,10 +75,25 @@ nonisolated enum MailWarnings {
     /// U+000B and U+000C, and ICU's `\d` is Unicode-wide where Java's is ASCII. So this pattern and
     /// `plainHttpLinkPattern` spell out `[^\n\r\u0085\u2028\u2029]` for Java's `.`, as regex
     /// escapes in the pattern string rather than Swift's `\u{...}`, and `[0-9]` for `\d`.
+    private static let shownHostPattern = try! NSRegularExpression(
+        pattern: "^(?:[a-z][a-z0-9+.-]*://)?((?:[\\p{L}\\p{N}-]+\\.)+[\\p{L}]{2,})(?::[0-9]+)?(?:[/?#][^\\n\\r\\u0085\\u2028\\u2029]*)?$",
+        options: [.caseInsensitive]
+    )
+
+    private static let schemePattern = try! NSRegularExpression(pattern: "^([a-zA-Z][a-zA-Z0-9+.-]*):")
+
     private static let urlHostLegacyPattern = try! NSRegularExpression(
         pattern: "^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^/?#@]*@)?([^/?#:]+)", options: [.caseInsensitive]
     )
 
+    /// An href is a "plain" link, for the password-bait warning, only in the form browsers treat
+    /// as unambiguous: `http(s)://`, a host of ASCII letters, digits, `-` and `.`, an optional
+    /// `:port`, then the end or `/ ? #`. Anything else (userinfo, backslashes, missing or extra
+    /// slashes, percent-escapes or non-ASCII in the authority, whitespace) is an outside link.
+    /// No `.caseInsensitive`: its Unicode case folding lets `[A-Za-z]` match lookalikes such as the
+    /// Kelvin sign U+212A, dotted and dotless I (U+0130, U+0131) and the long s U+017F, which can
+    /// pass inside `https`, letting a non-ASCII host or scheme pass as ASCII. The scheme is spelled
+    /// out per letter. The trailing `[/?#]` group spells out Java's `.` as in `shownHostPattern`.
     private static let plainHttpLinkPattern = try! NSRegularExpression(
         pattern: "^[Hh][Tt][Tt][Pp][Ss]?://([A-Za-z0-9.-]+)(?::[0-9]+)?(?:[/?#][^\\n\\r\\u0085\\u2028\\u2029]*)?$"
     )
@@ -96,14 +104,6 @@ nonisolated enum MailWarnings {
         return domain
     }
 
-    /// An href is a "plain" link, for the password-bait warning, only in the form browsers treat
-    /// as unambiguous: `http(s)://`, a host of ASCII letters, digits, `-` and `.`, an optional
-    /// `:port`, then the end or `/ ? #`. Anything else (userinfo, backslashes, missing or extra
-    /// slashes, percent-escapes or non-ASCII in the authority, whitespace) is an outside link.
-    /// No `.caseInsensitive`: its Unicode case folding lets `[A-Za-z]` match lookalikes such as the
-    /// Kelvin sign U+212A, dotted and dotless I (U+0130, U+0131) and the long s U+017F, which can
-    /// pass inside `https`, letting a non-ASCII host or scheme pass as ASCII. The scheme is spelled
-    /// out per letter. The trailing `[/?#]` group spells out Java's `.` as in `shownHostPattern`.
     static func isSchoolDomain(_ raw: String) -> Bool {
         isSchoolDomain(raw, config: MailServerConfig.effective)
     }
@@ -121,6 +121,14 @@ nonisolated enum MailWarnings {
 
     private static let maxDomainTypoEdits = 2
 
+    /// RFC 5321 §4.5.5: a delivery status notification is sent with the null reverse-path, which
+    /// the receiving server records as `Return-Path: <>`. That header comes from our side of the
+    /// delivery, unlike the `From` display name ("Mail Deliver System"), which any sender can
+    /// type, so it is the only bounce marker worth trusting. Only the opened message has it, from
+    /// the full header `LiveMailClient.detailOptions` fetches; the list's ENVELOPE fetch lacks it,
+    /// so the list goes by a sender with no domain. Both call a forged bounce whose `From` names
+    /// an outside domain external, since a bounce is exempted only when it has no domain.
+    /// See docs/decisions/0013-mail-bounce-detection.md.
     static func isBounce(returnPath: String?) -> Bool {
         guard let returnPath else { return false }
         return returnPath.filter { !$0.isWhitespace } == "<>"
@@ -149,14 +157,6 @@ nonisolated enum MailWarnings {
         guard !right.isEmpty else { return left.count }
         var previous = Array(0...right.count)
         var current = [Int](repeating: 0, count: right.count + 1)
-    /// RFC 5321 §4.5.5: a delivery status notification is sent with the null reverse-path, which
-    /// the receiving server records as `Return-Path: <>`. That header comes from our side of the
-    /// delivery, unlike the `From` display name ("Mail Deliver System"), which any sender can
-    /// type, so it is the only bounce marker worth trusting. Only the opened message has it, from
-    /// the full header `LiveMailClient.detailOptions` fetches; the list's ENVELOPE fetch lacks it,
-    /// so the list goes by a sender with no domain. Both call a forged bounce whose `From` names
-    /// an outside domain external, since a bounce is exempted only when it has no domain.
-    /// See docs/decisions/0013-mail-bounce-detection.md.
         for i in 1...left.count {
             current[0] = i
             for j in 1...right.count {
@@ -181,6 +181,12 @@ nonisolated enum MailWarnings {
         return lowered
     }
 
+    /// ASCII case-insensitive prefix check, scalar by scalar. Not `String.hasPrefix`, which
+    /// compares `Character`s (extended grapheme clusters): a combining mark attaches to
+    /// whatever scalar precedes it — including `/` or another scheme letter — merging it into
+    /// one `Character` that no longer equals the plain ASCII character `hasPrefix` is looking
+    /// for (spec A.4 rule 1/2/3 parity; this is the same class of bug `browserHostOf` guards
+    /// against below). `prefix` must itself be lowercase ASCII.
     private static func hasASCIICaseInsensitivePrefix(_ text: String, _ prefix: String) -> Bool {
         var iterator = text.unicodeScalars.makeIterator()
         for expected in prefix.unicodeScalars {
@@ -228,15 +234,16 @@ nonisolated enum MailWarnings {
         return toASCII(normalizedDomain(host))
     }
 
+    /// All scanning here is on `unicodeScalars`, never on `String`'s default `Character`
+    /// (extended grapheme cluster) view: a combining mark attaches to whatever scalar
+    /// precedes it, so `Character`-based comparison of `/`, `\`, `?`, `#`, `@`, `[`, `]` or
+    /// `:` can silently merge one of those separators into a bogus, non-matching cluster —
+    /// e.g. `/` immediately followed by a combining mark stops being `"/"` as a `Character` —
+    /// letting the scan run straight past a real terminator or the true last `@` to a
+    /// forged one further along (spec A.4 rule 2 parity).
     private static func browserHostOf(_ href: String, authorityStart: String.Index) -> String? {
         let scalars = href.unicodeScalars
         var start = authorityStart
-    /// ASCII case-insensitive prefix check, scalar by scalar. Not `String.hasPrefix`, which
-    /// compares `Character`s (extended grapheme clusters): a combining mark attaches to
-    /// whatever scalar precedes it — including `/` or another scheme letter — merging it into
-    /// one `Character` that no longer equals the plain ASCII character `hasPrefix` is looking
-    /// for (spec A.4 rule 1/2/3 parity; this is the same class of bug `browserHostOf` guards
-    /// against below). `prefix` must itself be lowercase ASCII.
         while start < scalars.endIndex, scalars[start] == "/" || scalars[start] == "\\" {
             start = scalars.index(after: start)
         }
@@ -271,6 +278,9 @@ nonisolated enum MailWarnings {
         var warnings: [MailWarning] = []
         let address = MailTextCleaner.clean(input.fromAddress)
         let senderDomain = domain(ofAddress: address)
+        // No domain means external unless `Return-Path: <>` marks a bounce, as Mail2000 sends its
+        // own failure notices from a bare `<MAILER-DAEMON>`. The password-bait gate still counts a
+        // forged bounce's outside links. See docs/decisions/0013-mail-bounce-detection.md.
         let bounce = isBounce(returnPath: input.returnPath)
         let external = senderDomain.isEmpty ? !bounce : !isSchoolDomain(senderDomain, config: config)
         if external, !address.isEmpty {
@@ -302,13 +312,6 @@ nonisolated enum MailWarnings {
         }
         return warnings
     }
-    /// All scanning here is on `unicodeScalars`, never on `String`'s default `Character`
-    /// (extended grapheme cluster) view: a combining mark attaches to whatever scalar
-    /// precedes it, so `Character`-based comparison of `/`, `\`, `?`, `#`, `@`, `[`, `]` or
-    /// `:` can silently merge one of those separators into a bogus, non-matching cluster —
-    /// e.g. `/` immediately followed by a combining mark stops being `"/"` as a `Character` —
-    /// letting the scan run straight past a real terminator or the true last `@` to a
-    /// forged one further along (spec A.4 rule 2 parity).
 
     static func displayFilename(_ raw: String) -> String {
         var name = MailTextCleaner.clean(raw)
@@ -354,9 +357,6 @@ nonisolated enum MailWarnings {
 
     static func linkIssues(text rawText: String, href rawHref: String) -> [MailLinkIssue] {
         let href = sanitizeHref(rawHref).trimmingCharacters(in: .whitespacesAndNewlines)
-        // No domain means external unless `Return-Path: <>` marks a bounce, as Mail2000 sends its
-        // own failure notices from a bare `<MAILER-DAEMON>`. The password-bait gate still counts a
-        // forged bounce's outside links. See docs/decisions/0013-mail-bounce-detection.md.
         let text = MailTextCleaner.visibleText(rawText).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if hasASCIICaseInsensitivePrefix(href, "mailto:") {
@@ -438,6 +438,11 @@ nonisolated enum MailWarnings {
         var fragment: String?
     }
 
+    /// Characters a path/query/fragment carries literally after canonicalization —
+    /// unreserved (RFC 3986) plus sub-delims and the structural characters `:@/?#`. Mirrors
+    /// Android's `PATH_SAFE` constant; anything else (space, control characters, quotes,
+    /// brackets, any non-ASCII byte) is percent-encoded the way a browser's own
+    /// canonicalization would.
     private static let pathSafeBytes: Set<UInt8> = {
         var set = Set<UInt8>()
         for scalar in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@/?#".unicodeScalars {
@@ -564,8 +569,3 @@ nonisolated enum MailWarnings {
     }
 }
 #endif
-    /// Characters a path/query/fragment carries literally after canonicalization —
-    /// unreserved (RFC 3986) plus sub-delims and the structural characters `:@/?#`. Mirrors
-    /// Android's `PATH_SAFE` constant; anything else (space, control characters, quotes,
-    /// brackets, any non-ASCII byte) is percent-encoded the way a browser's own
-    /// canonicalization would.

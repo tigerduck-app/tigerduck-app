@@ -3,6 +3,9 @@ import Foundation
 
 nonisolated enum MailTransportScheme: String, Codable, CaseIterable, Sendable {
     case implicitTLS
+    /// Plaintext greeting, then a required STARTTLS upgrade. Never negotiated as optional:
+    /// SwiftMail maps this to `.startTLSRequired`, which fails the connection outright when
+    /// the server does not advertise STARTTLS rather than continuing in the clear.
     case startTLS
     case plaintext
 
@@ -10,9 +13,6 @@ nonisolated enum MailTransportScheme: String, Codable, CaseIterable, Sendable {
         switch self {
         case .implicitTLS: "Implicit TLS"
         case .startTLS: "STARTTLS"
-    /// Plaintext greeting, then a required STARTTLS upgrade. Never negotiated as optional:
-    /// SwiftMail maps this to `.startTLSRequired`, which fails the connection outright when
-    /// the server does not advertise STARTTLS rather than continuing in the clear.
         case .plaintext: "None (plaintext)"
         }
     }

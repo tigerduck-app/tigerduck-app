@@ -624,7 +624,6 @@ enum AppServiceBridge {
 
 }
 
-
 private extension SDCourse {
     func updated(with data: CourseData) -> SDCourse {
         SDCourse(

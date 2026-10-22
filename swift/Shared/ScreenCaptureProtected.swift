@@ -11,6 +11,7 @@ enum ScreenCaptureProtectionDebugFlag {
 }
 
 extension View {
+    ///
     func screenCaptureProtected(_ active: Bool = true) -> some View {
         modifier(ScreenCaptureProtectedModifier(active: active))
     }
@@ -67,6 +68,7 @@ private struct SecureCaptureContainer<Content: View>: UIViewRepresentable {
     // Forwarding `context.environment` into the hosted tree does not fix screen-level wraps: the
     // crash on OnboardingView's login page comes from SwiftUI-in-UIKit-in-SwiftUI bridging depth,
     // notably under TabView's lazy pages, not environment loss. Wrap small leaves only.
+
     func sizeThatFits(
         _ proposal: ProposedViewSize,
         uiView: SecureCaptureHostView,
@@ -180,7 +182,6 @@ private final class SecureCaptureHostView: UIView {
     /// notably the `UICollectionViewListLayout` behind `Form`, ask for this first. Reporting
     /// `noIntrinsicMetric` makes the cell take its expanded-fitting default, the full screen, for
     /// one frame, so the password row flashes tall when a login sheet appears.
-    ///
     /// The hosting controller's intrinsic height gives the SwiftUI tree's natural size. Width
     /// stays `noIntrinsicMetric` so HStacks still flex-fill.
     override var intrinsicContentSize: CGSize {

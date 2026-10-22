@@ -2,6 +2,7 @@
 import SwiftUI
 import UIKit
 
+///
 /// `UIScreen.main` is deprecated on iOS 16+, and on a foldable it keeps naming
 /// the panel the window just left. The library QR pins its screen bright to stay
 /// scannable, so the wrong panel leaves the code dim. A fold is just a screen
@@ -45,7 +46,6 @@ final class HostScreenReaderView: UIView {
     }
 
     /// `didMoveToWindow` alone misses the case this reader exists for.
-    ///
     /// A fold, or a Stage Manager window dragged to another display, reassigns
     /// `UIWindowScene.screen` under an unchanged window, so no view is added or
     /// removed and `didMoveToWindow` never fires. The screen is re-read on layout

@@ -50,6 +50,8 @@ nonisolated enum MoodleCourseMembersService {
         ).map { $0.model(siteURL: siteURL) }
     }
 
+    /// A picture the member uploaded is a file of theirs under `pluginfile.php`; Moodle's default
+    /// picture is a theme image, such as `/theme/image.php/moove/core/1/u/f1`.
     static func isOwnPicture(_ url: URL, siteURL: URL) -> Bool {
         guard url.scheme?.lowercased() == "https", url.host?.lowercased() == siteURL.host?.lowercased() else {
             return false
@@ -59,11 +61,12 @@ nonisolated enum MoodleCourseMembersService {
             && path.contains("/user/icon/")
     }
 
+    /// The 512 px size of a member's own picture: Moodle names it `f3` where `profileimageurl`
+    /// names the 100 px `f1`, and sends `f1` for a picture uploaded before Moodle kept `f3`. Nil
+    /// for a URL that names another size.
     static func largePicture(_ url: URL) -> URL? {
         guard url.lastPathComponent == "f1",
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
-    /// A picture the member uploaded is a file of theirs under `pluginfile.php`; Moodle's default
-    /// picture is a theme image, such as `/theme/image.php/moove/core/1/u/f1`.
         components.percentEncodedPath = String(components.percentEncodedPath.dropLast(2)) + "f3"
         return components.url
     }
@@ -73,9 +76,6 @@ nonisolated enum MoodleCourseMembersService {
         accessKey: String?,
         token: String,
         session: URLSession = MoodleWebserviceClient.session,
-    /// The 512 px size of a member's own picture: Moodle names it `f3` where `profileimageurl`
-    /// names the 100 px `f1`, and sends `f1` for a picture uploaded before Moodle kept `f3`. Nil
-    /// for a URL that names another size.
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> Data {
         guard isOwnPicture(url, siteURL: siteURL),

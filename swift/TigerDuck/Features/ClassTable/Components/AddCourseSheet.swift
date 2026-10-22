@@ -102,7 +102,6 @@ struct AddCourseSheet: View {
         // shows through. `.presentationBackground` paints the whole sheet container.
         .presentationBackground(Color.backgroundPrimary)
     }
-
     // No `Form`: on macOS it makes the search field tiny and anchors the footer label
     // to the wrong side. The frame stays modest so the sheet does not dwarf the window.
 

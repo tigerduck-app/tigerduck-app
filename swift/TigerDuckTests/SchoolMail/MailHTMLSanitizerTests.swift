@@ -227,7 +227,6 @@ struct MailHTMLSanitizerTests {
         #expect(links == [URL(string: "https://www.ntust.edu.tw")!])
     }
 
-
     @Test func rewriteLinksReplacesEveryHrefAndReportsTheOriginals() {
         let result = MailHTMLSanitizer.rewriteLinks(
             "<p><a href=\"https://evil.example/login\">ntust.edu.tw</a> and <a href=\"mailto:cc@mail.ntust.edu.tw\">mail</a></p>"
