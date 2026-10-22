@@ -1,8 +1,6 @@
 import Defaults
 import Foundation
 
-/// The result stays on the main actor, so a waiter reads it after the round's `Void` task ends
-/// instead of taking the non-Sendable models out of the task.
 private final class AssignmentRound {
     let generation: Int
     let rechecks: Bool
@@ -18,17 +16,8 @@ private final class AssignmentRound {
 extension AppServiceBridge {
 
     private static var runningRound: AssignmentRound?
-    /// When Moodle was asked for the status each cached assignment last took, by id. A monotonic
-    /// clock, as a wall clock set back would make a later answer look older.
     private static var statusAskedAt: [String: ContinuousClock.Instant] = [:]
 
-    /// One Moodle assignment round at a time: launch, a return to the app and the Home, Class
-    /// Table and Calendar pulls write the same cache. A caller joins the round in flight for its
-    /// account, unless it wants submissions rechecked and that round does not.
-    ///
-    /// `recheckSubmissions` asks Moodle about every submission. Without it a round skips the
-    /// ones ``recordsToAskAbout(_:confirmed:closed:)`` leaves out, so a pull, or Refresh on the
-    /// Mac, is what shows a reverted submission.
     static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
         let generation = authService.loginGeneration
         return await sharedRound(
@@ -46,15 +35,12 @@ extension AppServiceBridge {
         isCurrent: @MainActor () -> Bool,
         run: @escaping @MainActor () async -> [SDAssignment]
     ) async -> [SDAssignment] {
-        // A round that finished stays in `runningRound` until its starter resumes; the
-        // identity check keeps a waiter from taking that finished round for a new one.
         var waitedFor: AssignmentRound?
         while let round = runningRound, round.generation == generation, round !== waitedFor {
             await round.task?.value
             if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
             waitedFor = round
         }
-        // One that waited past its account's sign-out would run beside the next account's round.
         guard isCurrent() else { return DataCache.shared.loadAssignments() }
         let round = AssignmentRound(generation: generation, rechecks: rechecks)
         round.task = Task { round.assignments = await run() }
@@ -64,20 +50,14 @@ extension AppServiceBridge {
         return answer(round, isCurrent: isCurrent)
     }
 
-    /// A round the account signed out of while Moodle answered built the departing account's
-    /// list, which the next account's screens would show; the cache the sign-out emptied is theirs.
     private static func answer(_ round: AssignmentRound, isCurrent: @MainActor () -> Bool) -> [SDAssignment] {
         isCurrent() ? round.assignments : DataCache.shared.loadAssignments()
     }
 
-    /// A return to the app refreshes Moodle assignments once the school data is this old.
     static let foregroundRefreshInterval: TimeInterval = 60
 
     private static var lastForegroundAttempt: Date?
 
-    /// Due once neither the last answered round nor the last attempt is that recent, so a
-    /// Moodle that keeps failing is not asked on every return. A date ahead of the clock, left
-    /// by a clock set back, counts as old.
     static func isForegroundRefreshDue(syncedAt: Date?, lastAttempt: Date?, now: Date) -> Bool {
         [syncedAt, lastAttempt].allSatisfy { date in
             guard let date else { return true }
@@ -86,8 +66,6 @@ extension AppServiceBridge {
         }
     }
 
-    /// Runs on every return to the foreground. Offline it does nothing, so the indicator does
-    /// not spin and Moodle is not marked failed.
     static func refreshAssignmentsIfDue(authService: AuthService) async {
         let now = Date()
         guard authService.storedStudentId != nil,
@@ -96,8 +74,6 @@ extension AppServiceBridge {
               ),
               await NetworkMonitor.shared.isReachable() else { return }
         lastForegroundAttempt = now
-        // A sync that shows progress or an error owns the indicator, and so does one that starts
-        // during this round, so this round ends it only when no other sync started meanwhile.
         let manager = NTUSTSessionManager.shared
         let showsProgress = manager.loadingState == .idle || manager.loadingState == .loaded
         if showsProgress { manager.loadingState = .loading }
@@ -107,7 +83,6 @@ extension AppServiceBridge {
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
-    /// Sign-out stops the departing account's round; its writes would be skipped anyway.
     static func cancelAssignmentRound() {
         runningRound?.task?.cancel()
         runningRound = nil
@@ -137,18 +112,12 @@ extension AppServiceBridge {
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
-            // `fetchCourses` saves this map too, but assignments can finish first on a
-            // cold launch, and the deep-link button should not wait. Replaced whole as in
-            // `fetchCourses`, with the same guard against a mid-fetch logout.
             let moodleIdMapForAssignments = moodleCourseIdMap(moodleEnrolled)
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
             }
 
-            // The course cache is empty on first launch (courses sync in parallel); rather
-            // than blank Assignments, filter by roster (handles drops), else Moodle's term.
-            // `localCourseNos` skips the Moodle widening; it picks a co-listed course's code.
             let localCourseNos = Set(currentCourses.map(\.courseNo)).union(
                 DataCache.shared.loadUserAddedCourses(semester: currentSemester).map(\.courseNo)
             )
@@ -167,8 +136,6 @@ extension AppServiceBridge {
             }
             let relevantMoodleCourseIds = relevantCourses.map(\.id)
             guard !relevantMoodleCourseIds.isEmpty else {
-                // Moodle answered: nothing for this term yet. An answer with no courses at
-                // all says nothing about the term, so it leaves the data undated.
                 if !moodleEnrolled.isEmpty, authService.loginGeneration == startGeneration {
                     Defaults[.schoolDataSyncedAt] = Date()
                 }
@@ -181,8 +148,6 @@ extension AppServiceBridge {
             let moodleCoursesById = Dictionary(
                 uniqueKeysWithValues: relevantCourses.map { ($0.id, $0) }
             )
-            // Resolved once per course rather than once per assignment: the
-            // scan over `courseNos` runs a regex across the course fullname.
             let courseNoByMoodleId = Dictionary(
                 uniqueKeysWithValues: relevantCourses.map {
                     ($0.id, assignmentCourseNo(for: $0, localCourseNos: localCourseNos))
@@ -249,11 +214,6 @@ extension AppServiceBridge {
         }
     }
 
-    /// Writes what a round fetched for `account`: the assignments, their records, the closed ones
-    /// and the calendar's Moodle rows, which every round rebuilds so a Home pull or a return to the
-    /// app moves them too. `answered` holds when Moodle was asked for each status it gave. Nothing
-    /// is written once the round is cancelled or the account signed out, and the result says
-    /// whether it wrote.
     static func persistRound(
         _ assignments: [SDAssignment],
         records: [MoodleAssignmentRecord],
@@ -276,9 +236,6 @@ extension AppServiceBridge {
         return true
     }
 
-    /// Moodle's answer for each record that gave one, with when its own request went out: a round
-    /// asks a few at a time, and one time for all would let a page's answer asked for in between
-    /// pass for newer than one asked after it.
     static func askStatuses(
         of records: [MoodleAssignmentRecord],
         limit: Int = maxConcurrentRequests,
@@ -296,10 +253,6 @@ extension AppServiceBridge {
         )
     }
 
-    /// Writes a status an assignment's page fetched into the cached assignments, which Home, the
-    /// Live Activity and the reminders read, once no round is running. An answer asked for before
-    /// the one the assignment has, a round's or another page's, is dropped, and nothing is written
-    /// once the account signed out. `schoolDataSyncedAt` dates whole rounds, so it stays.
     @discardableResult
     static func takeSubmissionStatus(
         _ status: MoodleSubmissionStatus,
@@ -308,7 +261,6 @@ extension AppServiceBridge {
         isCurrent: () -> Bool,
         notifying center: NotificationCenter = .default
     ) async -> Bool {
-        // As in `sharedRound`, a finished round can stay in `runningRound` for a moment.
         var waitedFor: AssignmentRound?
         while let round = runningRound, round !== waitedFor {
             await round.task?.value
@@ -329,8 +281,6 @@ extension AppServiceBridge {
         return true
     }
 
-    /// Fire-and-forget: the backend keeps the list for cross-device sync and builds the
-    /// reminders from it.
     private static func uploadForReminders(_ assignments: [SDAssignment]) {
         #if os(iOS)
         guard let upload = assignmentUploader, Defaults[.cloudSyncEnabled] else { return }
@@ -353,9 +303,6 @@ extension AppServiceBridge {
         #endif
     }
 
-    /// A round's assignments, one per record with a due date and a submission, with the user's
-    /// marks applied as `DataCache.loadAssignments` applies them. Each records the term
-    /// `marks` are for, the term the round fetches.
     static func assignments(
         from records: [MoodleAssignmentRecord],
         moodleCoursesById: [Int: MoodleEnrolledCourse],
@@ -387,8 +334,6 @@ extension AppServiceBridge {
         }
     }
 
-    /// The records a round asks Moodle about. One without a due date or a submission is dropped
-    /// from the list, Moodle keeps a submission it confirmed, and a `closed` one cannot change.
     static func recordsToAskAbout(
         _ records: [MoodleAssignmentRecord],
         confirmed: [String: Date],
@@ -401,10 +346,6 @@ extension AppServiceBridge {
         }
     }
 
-    /// When Moodle called each assignment unsubmitted in an answer asked for after its cutoff, by
-    /// id. It takes no submission after the cutoff, so a round need not ask again until a teacher
-    /// moves the cutoff past that answer. `askedAt` precedes the round's requests, and one left
-    /// unanswered keeps its time from `kept`.
     static func closedUnsubmitted(
         records: [MoodleAssignmentRecord],
         statuses: [Int: MoodleSubmissionStatus],
@@ -428,8 +369,6 @@ extension AppServiceBridge {
         return cutoff < askedAt
     }
 
-    /// One Moodle course per course number. Moodle keeps past enrolments, so a retaken course
-    /// has one for each term it was taken in; this term's wins, else the one that started last.
     static func coursesForTerm(_ courses: [MoodleEnrolledCourse], semester: String) -> [MoodleEnrolledCourse] {
         let byCourseNo = Dictionary(grouping: courses, by: \.courseNo)
         return courses.filter { course in
@@ -440,8 +379,6 @@ extension AppServiceBridge {
         }
     }
 
-    /// Submissions Moodle has confirmed, with their time, by assignment id. Moodle keeps a
-    /// submission once it has a time, short of a teacher reverting it to a draft.
     static func confirmedSubmissions(in cached: [SDAssignment]) -> [String: Date] {
         Dictionary(
             cached.compactMap { assignment in
@@ -457,9 +394,6 @@ extension AppServiceBridge {
         cachedAssignments: [SDAssignment],
         answeredIds: Set<String>
     ) -> [SDAssignment] {
-        // An assignment whose status request failed keeps its known `isCompleted` and
-        // `submittedAt`, so the UI neither shows "not submitted" nor loses whether it was late.
-        // One Moodle answered keeps the answer: a teacher may have reverted it to a draft.
         let previousById = Dictionary(
             uniqueKeysWithValues: cachedAssignments.map { ($0.assignmentId, $0) }
         )
@@ -476,11 +410,7 @@ extension AppServiceBridge {
         return freshAssignments
     }
 
-    /// Matches the course number that leads a Moodle fullname, so
-    /// `courseName(from:)` can strip it. Static so it compiles once, not per
-    /// assignment.
     private static let courseNoPrefixRegex: NSRegularExpression = {
-        // Anchored: must match the whole token.
         try! NSRegularExpression(pattern: "^3?[A-Z]{2}[A-Z0-9]{6,7}$")
     }()
 
