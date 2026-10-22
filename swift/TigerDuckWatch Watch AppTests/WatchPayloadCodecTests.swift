@@ -76,13 +76,9 @@ final class WatchPayloadCodecTests: XCTestCase {
         var dict = try WatchPayloadCodec.encode(sampleSnapshot())
         dict.removeValue(forKey: WatchWireFormat.Key.visualPreset)
         let decoded = try WatchPayloadCodec.decode(dict)
-        // Older phones don't send the field; the watch must keep the
-        // default TigerDuck look rather than drifting to an Apple-style
-        // surface unintentionally.
         XCTAssertEqual(decoded.visualPreset, .default)
     }
 
-    /// A newer phone can send a preset this Watch build does not know.
     func test_decode_unknownVisualPreset_defaultsToTigerDuck() throws {
         var dict = try WatchPayloadCodec.encode(sampleSnapshot())
         dict[WatchWireFormat.Key.visualPreset] = "someFuturePreset"
@@ -92,9 +88,6 @@ final class WatchPayloadCodecTests: XCTestCase {
     }
 
     func test_jsonDecode_legacyDiskCacheWithoutVisualPreset_succeeds() throws {
-        // `ScheduleStore.loadFromDisk()` decodes with `JSONDecoder`, not `WatchPayloadCodec`,
-        // and synthesised `Codable` ignores the init's defaults. A cache from before `visualPreset`
-        // must still decode, or the upgraded watch shows its empty state until a fresh WC push.
         let legacyJSON = """
         {
             "version": 1,
@@ -126,8 +119,6 @@ final class WatchPayloadCodecTests: XCTestCase {
         XCTAssertEqual(decoded, snapshot)
     }
 
-    /// A phone that sends neither key, or a payload with none to send, decodes to no holidays
-    /// and no skipped days.
     func test_decode_withoutQuietDaysOrSkippedDates_hasNone() throws {
         let dict = try WatchPayloadCodec.encode(sampleSnapshot())
         XCTAssertNil(dict[WatchWireFormat.Key.quietDays])

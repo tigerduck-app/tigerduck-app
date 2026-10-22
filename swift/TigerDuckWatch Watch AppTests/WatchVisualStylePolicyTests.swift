@@ -4,7 +4,6 @@ import XCTest
 
 final class WatchVisualStylePolicyTests: XCTestCase {
 
-    /// TAT changes only the phone's class table, so the Watch draws TigerDuck's cards.
     @MainActor
     func test_tat_drawsTigerDucksCards() {
         let tat = WatchVisualStylePolicy(preset: .tat)
