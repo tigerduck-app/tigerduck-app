@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The cour01 client against made-up pages: the sign-in, the campus and date postbacks, the
-/// pages of a day, the kept days, and what a sign-out leaves behind. Each test serves its own
-/// URL, so the stub's queues do not cross.
 @MainActor
 struct ClassroomUsageServiceTests {
     private typealias Pages = ClassroomPageFixtures
@@ -32,7 +29,6 @@ struct ClassroomUsageServiceTests {
                 session: URLSession(configuration: config),
                 queryURL: url,
                 sessionGeneration: { account.generation },
-                // As the SSO sign-in does, refuses a sign-in for a session a sign-out has ended.
                 signIn: { _, _, generation in
                     account.signInAttempts += 1
                     guard generation == account.generation else { throw CancellationError() }
@@ -49,7 +45,6 @@ struct ClassroomUsageServiceTests {
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(html.utf8), gate: gate), for: url)
         }
 
-        /// The sign-in, the campus postback and both pages of 2026-10-14.
         func serveFirstDay() {
             serve(Pages.page(campus: ""))
             serve(Pages.page(rows: [Pages.row("TR-212", "cc....cc..b...")], viewState: "campus"))
@@ -75,7 +70,6 @@ struct ClassroomUsageServiceTests {
             return fields
         }
 
-        /// `generation` is the session the credentials were read in, the current one unless given.
         func usage(on day: Date, isToday: Bool = false, force: Bool = false, generation: Int? = nil) async throws -> CampusUsage {
             try await service.usage(
                 on: day, isToday: isToday, force: force,
@@ -91,7 +85,6 @@ struct ClassroomUsageServiceTests {
         AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 9)) ?? .distantPast
     }
 
-    /// The finder's dot on any screen reads this, so it follows the reads that asked the site.
     @Test("the site's last answer is kept for every screen until a new school session")
     func siteStatus() async throws {
         let harness = Harness()
@@ -106,7 +99,6 @@ struct ClassroomUsageServiceTests {
         }
         #expect(harness.service.siteStatus == .failed)
 
-        // The kept day answers without asking, and leaves the failure.
         _ = try await harness.usage(on: Self.day(10, 14))
         #expect(harness.service.siteStatus == .failed)
 
@@ -142,8 +134,6 @@ struct ClassroomUsageServiceTests {
         #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == usage)
     }
 
-    /// A page left over would post the date it already shows, which the site may answer from that
-    /// page's own state (https://github.com/tigerduck-app/tigerduck-app/issues/513).
     @Test("a pull reads the day again from a new campus page, without signing in")
     func forcedReadStartsFromANewCampusPage() async throws {
         let harness = Harness()
@@ -163,8 +153,6 @@ struct ClassroomUsageServiceTests {
         #expect(harness.account.signIns == 0)
     }
 
-    /// Nothing on the campus page is known to name its grid's day, which the site may keep from an
-    /// earlier read (https://github.com/tigerduck-app/tigerduck-app/issues/475).
     @Test("today is read by posting its date, not off the grid the campus page shows")
     func todayPostsItsDate() async throws {
         let harness = Harness()
@@ -180,8 +168,6 @@ struct ClassroomUsageServiceTests {
         #expect(harness.form(2)["__EVENTARGUMENT"] == "9783")
     }
 
-    /// Past 12 hours a kept day is too old to show while it reloads, so a failed reload shows the
-    /// failure (https://github.com/tigerduck-app/tigerduck-app/issues/477).
     @Test("a kept day is shown while it reloads for up to 12 hours")
     func aKeptDayAgesOut() async throws {
         let harness = Harness()
@@ -194,8 +180,6 @@ struct ClassroomUsageServiceTests {
         #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == nil)
     }
 
-    /// Leaving the screen or signing out ends a read; the device log keeps real failures only
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/514).
     @Test("a read that a sign-out ends while it starts over leaves nothing in the log")
     func cancelledRetryIsNotLogged() async throws {
         let harness = Harness()
@@ -309,8 +293,6 @@ struct ClassroomUsageServiceTests {
         #expect(harness.account.signIns == 0)
     }
 
-    /// The next account's dot starts unknown, whatever the departed account's read gets back
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/620).
     @Test("a read that a sign-out ends leaves the site's status unknown", arguments: [true, false])
     func signOutLeavesTheStatusUnknown(answered: Bool) async throws {
         let harness = Harness()
@@ -320,7 +302,6 @@ struct ClassroomUsageServiceTests {
         let gate = SettingsAPIStub.ReplyGate()
         harness.serve(Pages.page(campus: ""))
         harness.serve(Pages.page(rows: [Pages.row("TR-212", "cc....cc..b...")], viewState: "campus"))
-        // The day's only page, so a read the checks let through would end here.
         SettingsAPIStub.enqueue(
             answered
                 ? .init(statusCode: 200, body: Data(Pages.page(rows: [Pages.row("TR-617", "cc............")], viewState: "day").utf8), gate: gate)
@@ -380,13 +361,11 @@ struct ClassroomUsageServiceTests {
         #expect(harness.requests.count == 4)
     }
 
-    /// A pager row on page `page` that links the page after it.
     private static func pager(_ page: Int) -> String {
         "<tr align=\"left\"><td colspan=\"15\"><span>\(page)</span>&nbsp;"
             + "<a href=\"\(Pages.postback("pager$\(page + 1)", ""))\">\(page + 1)</a></td></tr>"
     }
 
-    /// Serves the sign-in again after the first read fails, where the query page never returns.
     private static func serveFailingRetry(_ harness: Harness) {
         harness.serve(Pages.errorPage)
         harness.serve(Pages.errorPage)

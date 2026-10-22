@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `gradereport_user_get_grade_items` against `SettingsAPIStub` on a site that does not exist, so
-/// no request reaches Moodle. The answers follow the shape Moodle 4.5 documents for the function,
-/// with the pass mark's icon its user report puts before a grade; every name and grade is made up.
 struct MoodleGradeServiceTests {
     private static let site = URL(string: "https://moodle-stub.invalid")!
 
@@ -14,7 +11,6 @@ struct MoodleGradeServiceTests {
         return URLSession(configuration: config)
     }
 
-    /// The URL the call posts to; the token keeps it unique to one test.
     private static func endpoint(token: String) -> URL {
         URL(string: "https://moodle-stub.invalid/webservice/rest/server.php"
             + "?moodlewsrestformat=json&wsfunction=\(MoodleGradeService.gradeItemsFunction)&wstoken=\(token)")!

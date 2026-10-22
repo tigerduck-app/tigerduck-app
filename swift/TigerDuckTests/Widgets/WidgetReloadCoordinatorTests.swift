@@ -6,17 +6,10 @@ import os
 @MainActor
 struct WidgetReloadCoordinatorTests {
     final class FakeReloader: WidgetReloadCoordinator.Reloader {
-        // `Reloader` is Sendable and the debounce calls back off the main
-        // actor, so the counter cannot be a plain `var` — that is a warning
-        // today and an error in the Swift 6 language mode.
         private let count = OSAllocatedUnfairLock(initialState: 0)
         var callCount: Int { count.withLock { $0 } }
         func reloadAllTimelines() { count.withLock { $0 += 1 } }
     }
-
-    // The debounce wait is a `ManualSleeper`, so a window ends when the test fires it: on a
-    // loaded runner a real one can take far longer to end, and a second request made before
-    // it ends cancels it, so a correct coordinator would read as broken.
 
     @Test func collapses_rapidCalls_intoOne() async throws {
         let fake = FakeReloader()
@@ -30,8 +23,6 @@ struct WidgetReloadCoordinatorTests {
         try await timer.waitUntilArmed(atLeast: 5)
         #expect(await timer.requestedDurations == [Duration](repeating: .milliseconds(300), count: 5))
         #expect(fake.callCount == 0)
-        // Each request cancelled the window before it, which ends that wait; firing ends the last.
-        // Counting once every window has finished leaves no late reload unseen.
         await timer.fire()
         for window in windows { await window.value }
         #expect(fake.callCount == 1)
@@ -52,8 +43,6 @@ struct WidgetReloadCoordinatorTests {
         try await waitUntil { fake.callCount == 2 }
     }
 
-    /// A sync trigger's handler answers next, and iOS may suspend the app before the debounce
-    /// ends (https://github.com/tigerduck-app/tigerduck-app/issues/664).
     @Test func reloadNowIfPending_sendsAWaitingReloadAtOnce_andOnlyOnce() async throws {
         let fake = FakeReloader()
         let timer = ManualSleeper()
@@ -64,7 +53,6 @@ struct WidgetReloadCoordinatorTests {
         coordinator.reloadNowIfPending()
         #expect(fake.callCount == 1)
 
-        // The window it cut short ends without a reload of its own, and nothing waits any more.
         try await timer.waitUntilArmed()
         await timer.fire()
         await window.value

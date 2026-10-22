@@ -4,19 +4,8 @@ import SwiftMail
 import Testing
 @testable import TigerDuck
 
-/// A mail whose `BODYSTRUCTURE` the server botches must still open.
-///
-/// Mail2000 sometimes describes a message in a way no IMAP parser can read. NIOIMAP does not
-/// fail the FETCH but reports `MessageAttribute.BodyStructure.invalid`, kept by vendored patch 6
-/// as `MessageInfo.bodyStructureUnusable`. With `parts` empty, `LiveMailClient.detail` finds no
-/// body or attachments: the screen would show only the source, and `MailWarnings`, which reads
-/// the subject and body, could not raise the delivery-failure warning. On that path only, the
-/// client fetches the whole message and parses the MIME itself, as Android's Angus Mail does.
 struct MailBodyStructureFallbackTests {
 
-    /// What the detail fetch comes back with for such a message: everything except the structure.
-    /// The envelope, the flags, the size and the full header section all decoded fine — only the
-    /// `BODYSTRUCTURE` did not, which is exactly why an empty `parts` is not the whole story.
     static func unusableStructureInfo(size: Int? = 4096) -> MessageInfo {
         MessageInfo(
             sequenceNumber: SequenceNumber(1),
@@ -31,12 +20,7 @@ struct MailBodyStructureFallbackTests {
         )
     }
 
-    // MARK: The ceiling
-
     @Test func onlyAnUnusableStructureEarnsAWholeMessageDownload() {
-        // The normal path must stay exactly as cheap as it is. A message that genuinely has no
-        // parts looks identical from the outside — same empty `parts` — and must not start
-        // downloading itself.
         var usable = Self.unusableStructureInfo()
         usable.bodyStructureUnusable = false
         #expect(!LiveMailClient.recoversByLocalParse(usable))
@@ -44,25 +28,16 @@ struct MailBodyStructureFallbackTests {
     }
 
     @Test func theMailThatPromptedThisRecoveryIsActuallyRecovered() {
-        // The Mail2000 bounce this recovery exists for is 28.2 MB, so the ceiling cannot be
-        // `MailCache`'s 10 MB entry limit. Refusing saves nothing: `parseFailed` forces the source
-        // view, and the screen's `loadSource()` fetches the whole message for an unreadable dump.
         #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: 28 * 1024 * 1024)))
     }
 
     @Test func aMessageOverTheCeilingIsNotDownloadedWhole() {
-        // A bound still exists, so a pathological message is not held in memory twice — it is
-        // just the size this app already calls the largest single message it deals with
-        // (`maxEncodedMessageBytes`), not the cache's storage ceiling.
         let cap = MailConstants.maxLocalParseBytes
         #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: cap)))
         #expect(!LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: cap + 1)))
     }
 
     @Test func bothDetailFetchesCarryWhatTheCeilingAndTheFlagNeed() {
-        // `detailInfo` retries a protocol error with the summary attributes, which still ask for
-        // BODYSTRUCTURE, so an unusable structure is recognised without the header section. Both
-        // sets ask for RFC822.SIZE, so the ceiling is known before any body byte is fetched.
         for options in [LiveMailClient.detailOptions, LiveMailClient.summaryOptions] {
             #expect(options.contains(.bodyStructure))
             #expect(options.contains(.size))
@@ -70,19 +45,13 @@ struct MailBodyStructureFallbackTests {
     }
 
     @Test func anUnknownSizeIsNotReadAsOversized() {
-        // Both fetch option sets ask for RFC822.SIZE, so this is the shape of a server that
-        // ignored an attribute it was asked for. Treating that as "too large" would let such a
-        // server switch the whole recovery off, which is the opposite of the point.
         #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: nil)))
     }
-
-    // MARK: The recovery
 
     @Test func theBodyIsRecoveredByParsingTheMessageLocally() throws {
         let raw = try SchoolMailFixtures.rawEML("bounce-multipart")
         let info = Self.unusableStructureInfo()
         let summary = try #require(LiveMailClient.summary(from: info))
-        // What the server said about this message: nothing usable.
         #expect(info.parts.isEmpty)
         #expect(!summary.hasAttachments)
 
@@ -91,30 +60,22 @@ struct MailBodyStructureFallbackTests {
         #expect(text.contains("The following addresses had delivery errors"))
         #expect(text.contains("B10000001@mail.ntust.edj.tw"))
         #expect(detail.htmlBody == nil)
-        // The returned original: one attachment, at the section the local parse assigned it.
         #expect(detail.parts.map(\.section) == ["1", "2"])
         #expect(detail.attachments.map(\.contentType) == ["message/rfc822"])
         #expect(detail.summary.hasAttachments)
-        // A part from a local parse has no BODYSTRUCTURE octet count; its own bytes are it.
         #expect((detail.attachments.first?.size ?? 0) > 0)
-        // Everything that did not come from the structure still comes from the fetch.
         #expect(detail.returnPath == "<>")
         #expect(detail.summary.subject == "Returned Mail: Hostname cannot be resolved")
         #expect(detail.summary.fromName == "Mail Deliver System")
     }
 
     @Test func aLocalParseThatFindsNothingEitherIsNotDressedUpAsARecovery() throws {
-        // Then the caller falls through to the ordinary (empty) result and the screen says what
-        // it has always said — rather than reporting a body that was never found.
         let info = Self.unusableStructureInfo()
         let summary = try #require(LiveMailClient.summary(from: info))
         #expect(LiveMailClient.localDetail(summary: summary, info: info, raw: Data()) == nil)
     }
 
     @Test func theLocalParseAppliesTheAppsCharsetRules() throws {
-        // The same two steps the server path applies to a fetched part, in the same order:
-        // transfer-decode, then decode the bytes with the Appendix A.5 charset rules — not
-        // EMLParser's own Big5-blind fallback chain.
         let raw = try SchoolMailFixtures.rawEML("big5-plain")
         let message = try EMLParser.parse(raw)
         let part = try #require(message.parts.first)
@@ -124,16 +85,12 @@ struct MailBodyStructureFallbackTests {
         )
     }
 
-    // MARK: Symptom 2 — the warning the empty body swallowed
-
     @Test func theRecoveredBodyEarnsTheMistypedRecipientWarning() throws {
         let raw = try SchoolMailFixtures.rawEML("bounce-multipart")
         let info = Self.unusableStructureInfo()
         let summary = try #require(LiveMailClient.summary(from: info))
         let detail = try #require(LiveMailClient.localDetail(summary: summary, info: info, raw: raw))
 
-        // `Return-Path: <>` makes it a bounce; the recovered body is what names the near-miss
-        // domain. Neither half alone produces the warning.
         #expect(MailWarnings.isBounce(returnPath: detail.returnPath))
         #expect(MailWarnings.mentionsMistypedSchoolAddress(try #require(detail.textBody)))
         #expect(MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edj.tw"))
@@ -149,8 +106,6 @@ struct MailBodyStructureFallbackTests {
         ))
         #expect(warnings.contains(.mistypedRecipient))
 
-        // And with the body the bug left empty, it cannot fire — which is the whole of why
-        // symptom 2 was downstream of symptom 1, not a second defect.
         let starved = MailWarnings.evaluate(MailWarningInput(
             fromAddress: detail.summary.fromAddress ?? "",
             fromName: detail.summary.fromName,
@@ -162,8 +117,6 @@ struct MailBodyStructureFallbackTests {
         ))
         #expect(!starved.contains(.mistypedRecipient))
     }
-
-    // MARK: The message screen
 
     @MainActor
     @Test func theParseFailedBannerIsGoneAndTheWarningIsOn() async throws {
@@ -182,14 +135,12 @@ struct MailBodyStructureFallbackTests {
         await harness.model.load()
         #expect(harness.model.loadState == .loaded)
         #expect(!harness.model.parseFailed)
-        // Not forced into the source view any more; a mail with no HTML part lands on plain text.
         #expect(harness.model.mode == .plain)
         #expect(harness.model.warnings.contains(.mistypedRecipient))
     }
 
     @MainActor
     @Test func aMessageWithNothingToShowStillSaysSo() async {
-        // The residue `parseFailed` still covers: no body, no attachments, nothing to render.
         let harness = MailMessageViewModelTests.harness(
             FakeMailClient.message(uid: 11, text: nil, html: nil)
         )

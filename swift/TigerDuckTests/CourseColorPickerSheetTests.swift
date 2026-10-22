@@ -4,9 +4,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// A sign-out in another window re-renders the view presenting the colour sheet, which builds the
-/// sheet again with a sign-in check made under the next account. A preset tapped after that still
-/// saves nothing (https://github.com/tigerduck-app/tigerduck-app/issues/482).
 @MainActor
 @Suite(.serialized)
 struct CourseColorPickerSheetTests {
@@ -18,13 +15,11 @@ struct CourseColorPickerSheetTests {
         var hexes: [UInt32] = []
     }
 
-    /// The generation `Presenter` last built the sheet under.
     private final class Built {
         var generation: Int?
         func record(_ generation: Int) { self.generation = generation }
     }
 
-    /// Reads the generation in `body`, as the class table's sheet closure does.
     private struct Presenter: View {
         let login: Login
         let course: SDCourse

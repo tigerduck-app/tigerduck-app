@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The course members call against `SettingsAPIStub` on a site that does not exist, so no
-/// request reaches Moodle. The answer follows the shape Moodle 4.5 documents for
-/// `core_enrol_get_enrolled_users`; every person in it is made up.
 struct MoodleCourseMembersServiceTests {
     private static let site = URL(string: "https://moodle-stub.invalid")!
 
@@ -77,7 +74,6 @@ struct MoodleCourseMembersServiceTests {
         #expect(teacher.pictureURL == URL(string: "https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1?rev=5"))
         #expect(teacher.description == "Office hours: Tue 10:00")
         #expect(teacher.interests == ["networks", "QUIC"])
-        // A checkbox, a date and an empty field have nothing to read.
         #expect(teacher.fields == [MoodleMember.Field(name: "Office & lab", value: "TR-412")])
 
         let student = members[1]

@@ -2,8 +2,6 @@ import SwiftUI
 import Testing
 @testable import TigerDuck
 
-/// The conflict layout behind the iPhone grid, the Mac grid and the week widget: which cell
-/// starts a block, which cells it covers, and where each overlapping course sits in it.
 struct ClassTableLayoutTests {
 
     private struct Course {
@@ -24,9 +22,6 @@ struct ClassTableLayoutTests {
         )
     }
 
-    /// Monday's cells top to bottom: `.` empty, `^` covered by a block above, `A×2` a course alone
-    /// over two rows, and `[A@0×3 B@1×1]/3` a cluster three rows tall with each course's first
-    /// row and row count. Three or more courses also show each one's lane, and the lane count.
     private static func monday(_ courses: [Course]) -> [String] {
         periods.indices.map { describe(role(courses, at: $0)) }
     }
@@ -85,7 +80,6 @@ struct ClassTableLayoutTests {
         #expect(Self.monday([a, b]) == ["[A@0×2 B@0×2]/2", "^", ".", ".", ".", "."])
     }
 
-    /// Each course keeps to its own rows, so B is not drawn in periods 1 and 3.
     @Test func aPartialOverlapPlacesEachCourseInItsOwnRows() {
         let a = Course(no: "A", schedule: [1: ["1", "2", "3"]])
         let b = Course(no: "B", schedule: [1: ["2"]])
@@ -98,8 +92,6 @@ struct ClassTableLayoutTests {
         #expect(Self.monday([b, a]) == [".", "[A@0×2 B@1×2]/3", "^", "^", ".", "."])
     }
 
-    /// A on 1-2, B on 2-3 and C on 3-4: A and C never meet, but B bridges them, so the three
-    /// are one cluster from period 1 to 4, and A and C share a lane: two lanes, not three.
     @Test func aChainOfThreeIsOneClusterTwoLanesWide() {
         let a = Course(no: "A", schedule: [1: ["1", "2"]])
         let b = Course(no: "B", schedule: [1: ["2", "3"]])
@@ -107,7 +99,6 @@ struct ClassTableLayoutTests {
         #expect(Self.monday([a, b, c]) == ["[A@0×2 L0 B@1×2 L1 C@2×2 L0]/4 in 2", "^", "^", "^", ".", "."])
     }
 
-    /// The two short courses beside a long one take turns in the second lane.
     @Test func coursesThatNeverMeetShareALane() {
         let long = Course(no: "P", schedule: [1: ["1", "2", "3", "4"]])
         let early = Course(no: "Q", schedule: [1: ["2"]])
@@ -115,9 +106,6 @@ struct ClassTableLayoutTests {
         #expect(Self.monday([long, early, late]) == ["[P@0×4 L0 Q@1×1 L1 R@3×1 L1]/4 in 2", "^", "^", "^", ".", "."])
     }
 
-    /// A meets on 1-2 and 4-5, and B on 2-4 joins its two blocks: B and both of A's blocks are
-    /// one cluster down to period 5, with A's blocks in one lane
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/470).
     @Test func aCourseWhoseTwoBlocksAnotherBridgesKeepsBoth() {
         let a = Course(no: "A", schedule: [1: ["1", "2", "4", "5"]])
         let b = Course(no: "B", schedule: [1: ["2", "3", "4"]])
@@ -135,7 +123,6 @@ struct ClassTableLayoutTests {
     }
 }
 
-/// The lanes the class table and the Home time slider stack overlapping courses in.
 struct OverlapLanesTests {
 
     @Test func overlappingIntervalsTakeSeparateLanes() {
@@ -144,14 +131,12 @@ struct OverlapLanesTests {
         #expect(assigned.count == 2)
     }
 
-    /// Intervals are half-open: a class that ends as the next begins leaves the lane free.
     @Test func backToBackIntervalsShareALane() {
         let assigned = OverlapLanes.assign([(start: 0, end: 2), (start: 2, end: 4)])
         #expect(assigned.lanes == [0, 0])
         #expect(assigned.count == 1)
     }
 
-    /// Lanes follow the starts, not the order given; a tie keeps the order given.
     @Test func lanesFollowTheStartsAndTiesKeepTheOrderGiven() {
         let assigned = OverlapLanes.assign([(start: 2, end: 4), (start: 0, end: 3), (start: 0, end: 1)])
         #expect(assigned.lanes == [1, 0, 1])
@@ -165,8 +150,6 @@ struct OverlapLanesTests {
     }
 }
 
-/// How a member of a three-course cluster is drawn row by row on the iPhone: across the whole
-/// width where it meets no other course, as in the two-course L shape, else in its own lane.
 struct ClassTableLaneRunTests {
 
     private static func segment(_ no: String, offset: Int, span: Int, lane: Int) -> ClassTableConflictSegment<String> {
@@ -192,7 +175,6 @@ struct ClassTableLaneRunTests {
         ])
     }
 
-    /// A long course beside two short ones narrows twice and is whole between them.
     @Test func aLongCourseNarrowsOnlyBesideTheOthers() {
         let long = Self.segment("P", offset: 0, span: 4, lane: 0)
         let all = [long, Self.segment("Q", offset: 1, span: 1, lane: 1), Self.segment("R", offset: 3, span: 1, lane: 1)]
@@ -207,10 +189,8 @@ struct ClassTableLaneRunTests {
 }
 
 
-/// The outline the iPhone draws one lane-layout course with.
 struct ConflictLaneShapeTests {
 
-    /// The chain's first course: alone across the top row, then in the left lane beside the second.
     @Test func aCourseThatNarrowsIsOneShapeAndLeavesTheSeamOpen() {
         let geometry = ConflictLaneGeometry(width: 100, laneCount: 2, cellHeight: 50, rowSpacing: 4)
         let runs = [

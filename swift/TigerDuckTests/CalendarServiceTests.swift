@@ -8,8 +8,6 @@ struct CalendarServiceTests {
         AppConstants.taipeiCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
     }
 
-    /// A hand-made school calendar: an all-day event, a three-day one with an escaped, folded
-    /// summary, three timed ones (UTC, a TZID and local time) and one without a UID.
     private static let ics = """
     BEGIN:VCALENDAR
     VERSION:2.0
@@ -88,14 +86,11 @@ struct CalendarServiceTests {
         #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2025, 12, 31, 23)) == 114)
     }
 
-    // MARK: - Fetching
-
     private struct Answers {
         var ics: SettingsAPIStub.StubResponse?
         var icsYear = 115
     }
 
-    /// Serves the link page and, when given, the ICS file from `SettingsAPIStub`.
     private func fetch(_ answers: Answers) async -> [SDCalendarEvent]? {
         let base = SettingsAPIStub.uniqueBaseURL()
         let pageURL = base.appendingPathComponent("calendar")

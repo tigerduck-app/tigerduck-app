@@ -4,12 +4,6 @@ import Testing
 @testable import TigerDuck
 
 struct MailStoreTests {
-    /// A `DefaultsMailPreferences` on its own `UserDefaults` suite, torn down by the returned
-    /// `cleanup` closure — never the app's real `UserDefaults.standard`. Follows this repo's
-    /// existing isolation idiom (`CloudSyncPreferenceTests.withIsolatedKey`,
-    /// `ClockCoreTests`'s per-test `UserDefaults(suiteName:)` + `removePersistentDomain`), so
-    /// these tests can run concurrently with each other and with any other suite touching
-    /// `school_mail_*` keys without interfering.
     private static func isolatedPreferences() -> (prefs: DefaultsMailPreferences, cleanup: () -> Void) {
         let suiteName = "MailStoreTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
@@ -25,9 +19,6 @@ struct MailStoreTests {
         #expect(store.password() == nil)
     }
 
-    /// Never `ValetMailSecretStorage()` — that is the production Keychain service holding the
-    /// student's own mail password, and `deleteAll()` here would wipe it. A per-run identifier
-    /// keeps the round trip honest (it is a real Keychain) without touching their credentials.
     @Test func valetStorageRoundTrips() throws {
         let storage = ValetMailSecretStorage(identifier: "org.ntust.app.TigerDuck.mail.tests.\(UUID().uuidString)")
         defer { storage.deleteAll() }
@@ -100,12 +91,6 @@ struct MailStoreTests {
         #expect(prefs.ownedDeleted(folder: other, uidValidity: 3).uids.isEmpty)
     }
 
-    /// `setOwnedDeleted` is a read-modify-write (get, filter, append, set). Without its lock,
-    /// two concurrent calls for different folders can read the same snapshot and each write
-    /// back a list missing the other's entry. `DispatchQueue.concurrentPerform` runs every
-    /// folder's write on a real OS thread pool, all against the same `prefs` instance, so a
-    /// missing entry means the lock is not doing its job. Against an unlocked build this test
-    /// fails reliably (183 of 200 folders lost).
     @Test func concurrentSetOwnedDeletedCallsForDifferentFoldersLoseNoEntry() {
         let (prefs, cleanup) = Self.isolatedPreferences()
         defer { cleanup() }
@@ -120,12 +105,6 @@ struct MailStoreTests {
         #expect(lost.isEmpty, "lost \(lost.count)/\(folderCount): \(lost.prefix(10))")
     }
 
-    /// `MailChecker.shared` and `MailAccountManager.shared` each construct their own
-    /// `DefaultsMailPreferences()` over the same `UserDefaults` keys, so the lock guarding
-    /// `setOwnedDeleted`'s read-modify-write must be shared by every instance, not held per
-    /// instance. Otherwise two instances racing over the same suite lose entries the same way
-    /// a single unlocked instance does (see
-    /// `concurrentSetOwnedDeletedCallsForDifferentFoldersLoseNoEntry` above).
     @Test func concurrentSetOwnedDeletedCallsAcrossTwoInstancesLoseNoEntry() {
         let suiteName = "MailStoreTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
@@ -177,11 +156,6 @@ struct MailStoreTests {
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 8, uid: 2) == nil)
     }
 
-    /// A bounce is kept by its display name alone — `fromAddress` is nil, not `""`
-    /// (`LiveMailClient.summary`). Both the folder list and the opened-mail body go through
-    /// the cache before they are shown again, so if either half dropped the name on the way
-    /// back the row would read "(No sender)" the moment the app was reopened, which is the
-    /// bug all over again one launch later.
     @Test func aSenderWithOnlyADisplayNameSurvivesTheCache() {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }
@@ -223,7 +197,6 @@ struct MailStoreTests {
                                            references: nil, parts: [], textBody: String(repeating: "x", count: 600),
                                            htmlBody: nil, inlineImages: nil)
             cache.saveDetail(detail, folder: "INBOX", uidValidity: 1)
-            // Eviction goes by modification date, so the next save must be stamped later.
             let saved = Date()
             try await waitUntil { Date() > saved }
         }
@@ -232,8 +205,6 @@ struct MailStoreTests {
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 1) == nil)
     }
 
-    /// The source is cached beside the body, keyed and invalidated the same way, and the two
-    /// never land on the same file despite sharing the directory.
     @Test func sourcesRoundTripBesideBodiesAndAreKeyedTheSameWay() {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }
@@ -244,7 +215,6 @@ struct MailStoreTests {
 
         #expect(cache.loadSource(folder: "INBOX", uidValidity: 7, uid: 2) == "Subject: x\r\n\r\nraw")
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 7, uid: 2)?.textBody == "body")
-        // A new UIDVALIDITY generation means a different mail under the same UID.
         #expect(cache.loadSource(folder: "INBOX", uidValidity: 8, uid: 2) == nil)
         #expect(cache.loadSource(folder: "INBOX", uidValidity: 7, uid: 3) == nil)
 
@@ -252,10 +222,6 @@ struct MailStoreTests {
         #expect(cache.loadSource(folder: "INBOX", uidValidity: 7, uid: 2) == nil)
     }
 
-    /// The bug the size check exists for: `saveSource` used to write first and let `pruneBodies`
-    /// tidy up, so one 28 MB bounce sorted newest, evicted every other cached body to get under
-    /// the limit, and was then evicted itself — the whole cache wiped, nothing gained, on every
-    /// visit. Anything over half the shared budget is now never written at all.
     @Test func anOversizedSourceIsNotCachedAndLeavesTheCacheAlone() {
         let cache = SchoolMailTestDoubles.temporaryCache(bodyLimitBytes: 4_000)
         defer { cache.clearAll() }
@@ -270,8 +236,6 @@ struct MailStoreTests {
         #expect(cache.bodyBytes() == before)
     }
 
-    /// `saveDetail` has the identical exposure — a body carrying large inline images — so it
-    /// takes the identical guard, not just the source path.
     @Test func anOversizedBodyIsNotCachedEither() {
         let cache = SchoolMailTestDoubles.temporaryCache(bodyLimitBytes: 4_000)
         defer { cache.clearAll() }
@@ -284,8 +248,6 @@ struct MailStoreTests {
         #expect(cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 1) == "small source")
     }
 
-    /// A save queued before a sign-out's wipe can run after it, and then writes nothing
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/632).
     @Test func aSaveUnderACountFromBeforeAWipeWritesNothing() {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }
@@ -323,8 +285,6 @@ struct MailStoreTests {
         #expect(!FileManager.default.fileExists(atPath: temp.path))
     }
 
-    /// Opened attachments count against no budget, so each new one deletes those opened over a
-    /// day earlier and keeps the recent ones Quick Look or the share sheet may still be reading.
     @Test func openingAnAttachmentDeletesTheOnesOpenedOverADayAgo() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }
@@ -342,9 +302,6 @@ struct MailStoreTests {
         #expect(FileManager.default.fileExists(atPath: fresh.deletingLastPathComponent().path))
     }
 
-    /// A server-supplied filename of just `.` or `..` would otherwise make
-    /// `appendingPathComponent` resolve up out of the fresh per-attachment UUID folder this call
-    /// creates: `.` back into `attachments/`, `..` one level above that.
     @Test func temporaryFileURLMapsDotDotDotAndEmptyNamesToAttachment() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }
@@ -367,10 +324,6 @@ struct MailStoreTests {
         #expect(cache.loadPage(folder: "&Vt5lNntS-") != nil)
     }
 
-    /// Sign out, kill the app before the (detached) wipe finishes, sign in as someone else:
-    /// nothing in the envelope, the filename or the payload used to say whose mail this was, so
-    /// the next student's first paint was the previous student's INBOX — and on a colliding
-    /// UIDVALIDITY the two got merged and written back rather than dropped.
     @Test func aPageCachedForOneStudentIsNotReadBackForAnother() {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MailStoreTests-\(UUID().uuidString)", isDirectory: true)
@@ -383,7 +336,6 @@ struct MailStoreTests {
 
         let second = MailCache(directory: directory, account: { "B10000002" })
         #expect(second.loadPage(folder: "INBOX") == nil)
-        // Deleted on the mismatching read, not merely hidden — so it cannot be merged later.
         #expect(first.loadPage(folder: "INBOX") == nil)
     }
 

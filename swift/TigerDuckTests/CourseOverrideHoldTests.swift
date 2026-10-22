@@ -1,5 +1,3 @@
-// What a full sync takes of the server's course colours and names while edits of them are queued
-// here (https://github.com/tigerduck-app/tigerduck-app/issues/649).
 import Foundation
 import Testing
 @testable import TigerDuck

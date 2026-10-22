@@ -1,7 +1,4 @@
 #if os(iOS)
-// A simulator keeps no protection class on a file, so the tests record what the migration asks
-// to protect through its `protect` seam. The keys mirror the migration's private ones, which are
-// real, process-wide state: the suite is `.serialized` and `init` clears them first.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -32,7 +29,6 @@ struct MoodleDownloadProtectMigrationTests {
         UserDefaults.standard.removeObject(forKey: failedLaunchesKey)
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleDownloadProtectMigrationTests-\(UUID().uuidString)", isDirectory: true)
-        // One download, one in another owner's folder and a member picture, as the app lays them out.
         for path in ["B11300000/20119/m5/0a1b/Week 1.pdf", "B11300000/20119/p7/2c3d/notes.txt", "B11300000/pictures/42-5"] {
             let file = root.appendingPathComponent(path)
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -66,8 +62,6 @@ struct MoodleDownloadProtectMigrationTests {
         #expect(again.names.isEmpty)
     }
 
-    /// A file that cannot take the class now, as before the first unlock after a restart, leaves
-    /// the pass to the next launch.
     @Test func aFileThatFailsLeavesThePassForTheNextLaunch() async {
         defer { cleanUp() }
         let failing = Protected()
@@ -82,8 +76,6 @@ struct MoodleDownloadProtectMigrationTests {
         #expect(isDone)
     }
 
-    /// A file that still fails with the phone unlocked is not likely to take the class at a later
-    /// launch, and each launch walks the whole folder again.
     @Test func aFileThatKeepsFailingWhileUnlockedEndsThePassAfterAFewLaunches() async {
         defer { cleanUp() }
         let failing = Protected()
@@ -97,7 +89,6 @@ struct MoodleDownloadProtectMigrationTests {
         #expect(isDone)
     }
 
-    /// Behind the lock a file cannot take the class, which says nothing about the next launch.
     @Test func failuresBehindTheLockDoNotEndThePass() async {
         defer { cleanUp() }
         let failing = Protected()
@@ -122,8 +113,6 @@ struct MoodleDownloadProtectMigrationTests {
         #expect(isDone)
     }
 
-    /// The modification date tells which version Moodle listed a copy in. The class is set with
-    /// the file's own date written back, whatever setting the class does to the date on a device.
     @Test func protectingWritesTheModificationDateBack() throws {
         defer { cleanUp() }
         let file = root.appendingPathComponent("B11300000/20119/m5/0a1b/Week 1.pdf")

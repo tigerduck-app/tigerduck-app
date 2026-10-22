@@ -4,9 +4,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// A silent push, a Live Activity start or a Watch message can launch the app before the first
-/// unlock after a restart, when `UserDefaults` reads as empty and a launch would take itself for a
-/// fresh install (https://github.com/tigerduck-app/tigerduck-app/issues/680).
 @MainActor
 struct AfterFirstUnlockTests {
     @MainActor
@@ -94,8 +91,6 @@ struct AfterFirstUnlockTests {
         #expect(builds.ran == [1, 10])
     }
 
-    /// A process that started before the unlock may keep an empty copy of `UserDefaults` after it,
-    /// and a build from that copy would take the app for a fresh install.
     @Test(
         "A held-back launch whose stored data still does not read back at the unlock builds nothing and ends the process",
         arguments: [UIApplication.protectedDataDidBecomeAvailableNotification, UIApplication.didBecomeActiveNotification]
@@ -113,7 +108,6 @@ struct AfterFirstUnlockTests {
         withExtendedLifetime(launch) {}
     }
 
-    /// A fresh install has nothing stored, and its first launch comes after an unlock.
     @Test("A launch after the first unlock builds without asking whether stored data reads back")
     func aLaunchAfterTheUnlockDoesNotAskForStoredData() {
         var asked = false
@@ -150,8 +144,6 @@ struct AfterFirstUnlockTests {
         #expect(FirstUnlock.storedDataReadsBack(defaults: defaults))
     }
 
-    /// The class `UserDefaults` and the app's files get by default, whose key exists only after
-    /// the first unlock. A simulator never locks, so only the option the probe asks for shows it.
     @Test("The probe writes with the protection class that has no key before the first unlock")
     func theProbeAsksForTheFirstUnlockClass() {
         var options: Data.WritingOptions?
@@ -163,8 +155,6 @@ struct AfterFirstUnlockTests {
         })
     }
 
-    /// The app's own launch, held back: its build would run the fresh-install purge and seed
-    /// What's New, both writes to stored data. Real Defaults: docs/decisions/0020-real-defaults-gate.md.
     @Test("TigerDuck's launch before the first unlock writes no stored data")
     func theAppsHeldBackLaunchWritesNothing() async {
         let installed = AppConstants.UserDefaultsKeys.appHasBeenInstalled
@@ -179,8 +169,6 @@ struct AfterFirstUnlockTests {
             }
             UserDefaults.standard.removeObject(forKey: installed)
             Defaults[.lastShownWhatsNewVersion] = nil
-            // Were the hold-back broken, a real `AppState` would be built here: before onboarding
-            // it contacts no backend.
             Defaults[.hasCompletedOnboarding] = false
 
             SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
@@ -193,8 +181,6 @@ struct AfterFirstUnlockTests {
         }
     }
 
-    /// The app's own launch with its real read-back check: no install flag ends the process at the
-    /// unlock and builds nothing. Real Defaults: docs/decisions/0020-real-defaults-gate.md.
     @Test("TigerDuck's held-back launch with nothing stored ends the process at the unlock")
     func theAppsHeldBackLaunchEndsWithoutStoredData() async {
         let installed = AppConstants.UserDefaultsKeys.appHasBeenInstalled
@@ -235,7 +221,6 @@ struct AfterFirstUnlockTests {
 
         #expect(FirstUnlock.hasHappened(probe: probe))
         #expect(FirstUnlock.hasHappened(probe: probe))
-        // A simulator never locks, so a folder that is not there stands in for a class key that is not.
         #expect(!FirstUnlock.hasHappened(probe: folder.appending(path: "missing/probe")))
     }
 }

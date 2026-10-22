@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Moodle message HTML, shaped as NTUST's announcements use it (`p`, `div`, `span`, `br`, lists,
-/// links and `h3`), turned into the Markdown and the preview the app shows.
 struct MoodleHTMLTextTests {
     @Test("paragraphs and divs become blocks, and a break stays a line break")
     func blocks() {
@@ -80,8 +78,6 @@ struct MoodleHTMLTextTests {
         #expect(MoodleHTMLText.plainText(fromHTML: html) == "Exam on 11/4. Room TR-412 Bring ID")
     }
 
-    /// A writer that recursed once per level would overflow the stack thousands of levels down
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/705).
     @Test("HTML nested far deeper than the cap keeps its text",
           arguments: [("<div>", "</div>"), ("<span>", "</span>"), ("<blockquote>", "</blockquote>"), ("<ul><li>", "</li></ul>")])
     func deepNesting(open: String, close: String) {
@@ -90,7 +86,6 @@ struct MoodleHTMLTextTests {
         #expect(MoodleHTMLText.plainText(fromHTML: html) == "deep")
     }
 
-    /// Quotes, code, links and nested inline runs come out as they did before the depth cap.
     @Test("ordinary nesting is written as before")
     func ordinaryNesting() {
         let html = "<h4>Week 3</h4><blockquote><p>Quoted <em>note</em></p><ul><li>one</li>"
@@ -118,7 +113,6 @@ struct MoodleHTMLTextTests {
             == "Week 3 Quoted note one two forum let x = 1 print(x) Run make test before Friday. Nested bold both text")
     }
 
-    /// The bold run sits at the deepest depth written, then one deeper, where it is plain text.
     @Test("an element deeper than the cap is written as its plain text")
     func pastTheCap() {
         for (wrappers, written) in [(AppConstants.maximumHTMLDepth - 1, "**x** y"), (AppConstants.maximumHTMLDepth, "x y")] {
@@ -127,8 +121,6 @@ struct MoodleHTMLTextTests {
         }
     }
 
-    /// The innermost wrapper is past the cap, where its text still leaves out what the writers
-    /// skip (https://github.com/tigerduck-app/tigerduck-app/pull/759).
     @Test("past the cap, a template's or a noscript's text stays out",
           arguments: ["div", "span"], ["template", "noscript"])
     func skippedPastTheCap(wrapper: String, skipped: String) {

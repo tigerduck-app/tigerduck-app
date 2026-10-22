@@ -5,13 +5,9 @@ import UIKit
 import UIKit.UIGestureRecognizerSubclass
 @testable import TigerDuck
 
-/// The class table switcher: the rows it lists and their order in the tab bar's menu, the tab the
-/// long press and the double tap answer on the system tab bar, the double tap's rule, the menu of
-/// someone else's class table, and that a course on it has no menu.
 @MainActor
 @Suite(.serialized)
 struct ClassTableSwitcherTests {
-    /// A folder removed when the test ends, holding the store's file.
     private final class Folder {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("ClassTableSwitcherTests-\(UUID().uuidString)", isDirectory: true)
@@ -42,8 +38,6 @@ struct ClassTableSwitcherTests {
         let hua = try #require(store.add(code("B11300002"), nickname: "Hua", courses: [:]))
         return People(store: store, ming: ming, hua: hua)
     }
-
-    // MARK: - The rows
 
     @Test("the switcher lists import first, then the people in import order, then the user")
     func rowsInOrder() throws {
@@ -96,7 +90,6 @@ struct ClassTableSwitcherTests {
         #expect(people.store.shownPersonID == nil)
     }
 
-    /// `opensUpward`: the bar is at the bottom, as on iPhone; otherwise at the top, as on iPad.
     @Test("the tab bar's menu keeps the user's row next to the tab", arguments: [true, false])
     func tabMenuOrder(opensUpward: Bool) throws {
         let people = try Self.people(Folder())
@@ -115,8 +108,6 @@ struct ClassTableSwitcherTests {
         #expect(sections.allSatisfy { $0.options.contains(.displayInline) })
         #expect(rows.joined().filter { $0.state == .on }.map(\.title) == ["Ming"])
     }
-
-    // MARK: - On the tab bar
 
     private struct Tabs: View {
         let store: ImportedClassTableStore
@@ -144,12 +135,9 @@ struct ClassTableSwitcherTests {
         let window: UIWindow
         let handler: ClassTableTabBarHandler
         let bar: UIView
-        /// The class table tab in the bar's coordinates.
         let tab: CGRect
     }
 
-    /// A full-screen window, so the bar lays out as the app's does: at the bottom on iPhone, and
-    /// at the top, apart from the controller's own tab bar, on iPad.
     private func host(_ store: ImportedClassTableStore, requestImport: @escaping () -> Void = {}) async throws -> Hosted {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -173,7 +161,6 @@ struct ClassTableSwitcherTests {
         return view.subviews.lazy.compactMap { finder(in: $0) }.first
     }
 
-    /// The tab before the class table's, Home, in a left-to-right bar.
     private static func neighbour(of tab: CGRect) -> CGPoint {
         CGPoint(x: tab.midX - tab.width, y: tab.midY)
     }
@@ -288,7 +275,6 @@ struct ClassTableSwitcherTests {
         recognizer.isShowingClassTable = { showing }
 
         recognizer.touchesBegan([], with: UIEvent())
-        // The first tap switched to the class table before the second came down.
         showing = true
         recognizer.touchesBegan([], with: UIEvent())
         #expect(!recognizer.startedOnClassTable)
@@ -297,8 +283,6 @@ struct ClassTableSwitcherTests {
         recognizer.touchesBegan([], with: UIEvent())
         #expect(recognizer.startedOnClassTable)
     }
-
-    // MARK: - Someone else's class table
 
     @Test("someone else's menu has export, import, rename and delete user, and nothing else")
     func otherPersonMenu() {

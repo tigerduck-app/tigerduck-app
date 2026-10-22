@@ -1,6 +1,3 @@
-// Course sync (`Defaults[.cloudSyncEnabled]`) has several writers, and `AppState` must
-// act on each change through `CloudSyncPreference`. These tests use a key and suite of
-// their own, because the host app's `AppState` would act on writes to the real key.
 import Defaults
 import Foundation
 import Observation
@@ -18,7 +15,6 @@ struct CloudSyncPreferenceTests {
         body(Defaults.Key<Bool>("cloudSyncEnabled", default: true, suite: suite))
     }
 
-    /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
     private final class Flag: @unchecked Sendable {
         var raised = false
     }
@@ -30,8 +26,6 @@ struct CloudSyncPreferenceTests {
             var reported: [Bool] = []
             preference.onChange { reported.append($0) }
 
-            // What onboarding's "Next" and the `@Default`-bound switch in
-            // TigerSync settings do: write the preference itself.
             Defaults[key] = false
 
             #expect(preference.isEnabled == false)
@@ -46,10 +40,7 @@ struct CloudSyncPreferenceTests {
             var reported: [Bool] = []
             preference.onChange { reported.append($0) }
 
-            // Sign-out, as it was: `CloudSyncCoordinator` wrote the
-            // preference itself, behind AppState's back.
             Defaults[key] = false
-            // Then the switch in Settings, without a relaunch.
             preference.isEnabled = true
 
             #expect(reported == [false, true])

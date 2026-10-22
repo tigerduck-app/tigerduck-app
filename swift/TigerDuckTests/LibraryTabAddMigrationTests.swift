@@ -1,6 +1,3 @@
-// Which stored bottom bars `LibraryTabAddMigration` pins Library on. iPhone/iPad-only like the
-// migration; the test target also builds for macOS. `doneKey` mirrors the migration's private
-// flag literal.
 #if os(iOS)
 import Defaults
 import Foundation
@@ -52,14 +49,12 @@ struct LibraryTabAddMigrationTests {
             #expect(Self.storedBar == [.home, .classTable, .calendar, .library])
             #expect(UserDefaults.standard.bool(forKey: doneKey))
 
-            // Once done, a bar changed afterwards stays as the user left it.
             try Self.storeBar(["home", "gpa"])
             #expect(!LibraryTabAddMigration.runIfNeeded())
             #expect(Self.storedBar == [.home, .gpa])
         }
     }
 
-    /// Turning the library on pinned it, so a bar without it is one the user changed since.
     @Test func aBarOfAUserWhoHadTheLibraryOnStays() async throws {
         try await Self.withRealMigrationKeys {
             try Self.storeBar(["home", "gpa"])
@@ -82,7 +77,6 @@ struct LibraryTabAddMigrationTests {
         }
     }
 
-    /// A bar never changed is not stored, and the default it reads already has Library.
     @Test func anUntouchedBarStoresNothing() async throws {
         try await Self.withRealMigrationKeys {
             #expect(!LibraryTabAddMigration.runIfNeeded())

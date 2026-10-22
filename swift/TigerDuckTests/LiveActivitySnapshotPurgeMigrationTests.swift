@@ -1,6 +1,3 @@
-// `doneKey` mirrors the migration's flag literal, private per
-// swift/TigerDuck/Services/Migrations/AGENTS.md. The flag is real, process-wide state, so the
-// suite is `.serialized` and `init` clears it first.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -29,7 +26,6 @@ struct LiveActivitySnapshotPurgeMigrationTests {
         #expect(appGroup.data(forKey: LiveActivitySnapshotPurgeMigration.legacySnapshotKey) == nil)
         #expect(UserDefaults.standard.data(forKey: LiveActivitySnapshotPurgeMigration.legacySnapshotKey) == nil)
 
-        // Done: a later run leaves the key alone, whatever wrote it.
         appGroup.set(Data("later".utf8), forKey: LiveActivitySnapshotPurgeMigration.legacySnapshotKey)
         LiveActivitySnapshotPurgeMigration.runIfNeeded(appGroup: appGroup)
         #expect(appGroup.data(forKey: LiveActivitySnapshotPurgeMigration.legacySnapshotKey) != nil)

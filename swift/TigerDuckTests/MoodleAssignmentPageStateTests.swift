@@ -5,9 +5,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// What VoiceOver reads on an assignment's page in each state the page draws: which sections
-/// show, in which order. Times are set off `AppClock`, which the page reads. Every name here is
-/// made up.
 @MainActor
 @Suite(.serialized)
 struct MoodleAssignmentPageStateTests {
@@ -34,8 +31,6 @@ struct MoodleAssignmentPageStateTests {
         )
     }
 
-    /// The labels and values VoiceOver reaches on the page, in the order it reads them, once
-    /// `shown` is one of them.
     private static func spoken(
         _ record: MoodleAssignmentRecord,
         answer: MoodleAssignmentSubmission = MoodleAssignmentPageTests.submission("new"),
@@ -61,9 +56,6 @@ struct MoodleAssignmentPageStateTests {
         }
     }
 
-    /// A text VoiceOver reads: one that is `exactly` a heading's, a badge's or a button's, one
-    /// `holding` a piece of a file row or of Moodle's text, or a `row` holding a label and its
-    /// value. A label alone can hide in a longer text: "Submitted" is in a late badge's too.
     private enum Read: CustomStringConvertible {
         case exactly(String)
         case holding(String)
@@ -85,7 +77,6 @@ struct MoodleAssignmentPageStateTests {
         }
     }
 
-    /// Where the first text each of `parts` matches comes; nil for a part that is not there.
     private static func order(of parts: [Read], in texts: [String]) -> [Int?] {
         parts.map { part in texts.firstIndex(where: part.matches) }
     }
@@ -150,7 +141,6 @@ struct MoodleAssignmentPageStateTests {
 
     @Test("handed in early: the time left in grey, the early badge, the text and a comment, and no grade yet")
     func handedInEarly() async throws {
-        // Half an hour past the hour, so the time left reads the same however slowly the page comes up.
         let due = AppClock.now() + 9 * 86_400 + 2 * 3_600 + 1_800
         let submittedAt = due - (10 * 86_400 + 12 * 3_600)
         var answer = MoodleAssignmentPageTests.submission(

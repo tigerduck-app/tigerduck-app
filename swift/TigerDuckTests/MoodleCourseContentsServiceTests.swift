@@ -3,9 +3,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// `core_course_get_contents` and the site info key file URLs carry, against `SettingsAPIStub` on
-/// a site that does not exist, so no request reaches Moodle. The answer follows the shape Moodle
-/// 4.5 gives; every name in it is made up.
 struct MoodleCourseContentsServiceTests {
     private static let site = URL(string: "https://moodle-stub.invalid")!
 

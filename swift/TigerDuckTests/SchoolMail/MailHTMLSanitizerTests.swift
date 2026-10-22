@@ -8,10 +8,6 @@ import WebKit
 struct MailHTMLSanitizerTests {
     static let corpus: [String] = try! SchoolMailFixtures.lines("xss-corpus")
 
-    /// The same forbidden-token list as Android's `HtmlSanitizerTest` — one hard-coded
-    /// list checked against every corpus vector's sanitized output, case-insensitively.
-    /// `image-set` was added alongside the CSS image-loading-function check (controller
-    /// ruling, 2026-09-16): the corpus now includes a `list-style: image-set(...)` vector.
     static let forbiddenTokens = [
         "<script", "javascript:", "vbscript:", "data:text", "data:image/svg", "onerror", "onload", "onclick",
         "onmouseover", "<iframe", "<object", "<embed", "<svg", "<math", "<base", "<meta", "<form",
@@ -40,8 +36,6 @@ struct MailHTMLSanitizerTests {
         #expect(allowed.html.contains("src=\"https://x.example/a.png\""))
     }
 
-    /// Controller ruling (2026-09-16): a sender-supplied `data-remote-src` must never survive —
-    /// that attribute may only ever hold an http(s) URL the sanitizer itself held back and counted.
     @Test func senderSuppliedRemoteSrcAttributeIsIgnored() {
         let result = MailHTMLSanitizer.sanitize(
             "<img data-remote-src=\"https://track.example/hidden.gif\">",
@@ -51,9 +45,6 @@ struct MailHTMLSanitizerTests {
         #expect(!result.html.contains("data-remote-src"))
     }
 
-    /// Controller ruling (2026-09-16): the `src` value is trimmed and written back before the
-    /// scheme is inspected, so a leading/trailing-whitespace `data:` URL is still recognised
-    /// and kept (trimmed), matching Android's `img.attr("src", img.attr("src").trim())`.
     @Test func trimsSrcWhitespaceBeforeChecking() {
         let html = MailHTMLSanitizer.sanitize(
             "<img src=\" data:image/png;base64,iVBORw0KGgo=\">",
@@ -72,17 +63,12 @@ struct MailHTMLSanitizerTests {
         #expect(!html.contains("svg+xml"))
     }
 
-    /// The data-image check requires the MIME subtype to be followed immediately by `;` or `,`,
-    /// matching Android's `DATA_IMAGE` regex. A plain prefix check would let a lookalike such as
-    /// `data:image/pngx,...` through.
     @Test func dataImageCheckRequiresExactMimeBoundary() {
         let html = MailHTMLSanitizer.sanitize("<img src=\"data:image/pngx,AAAA\">", allowRemoteImages: false).html
         #expect(!html.contains(" src="))
         #expect(!html.contains("data:image/pngx"))
     }
 
-    /// #226: a fixed inline height outranked the page's `height:auto`, so an image narrowed to
-    /// the screen kept its full height and came out stretched.
     @Test func aFixedImageBoxBecomesAWidthAndARatio() {
         let outlook = MailHTMLSanitizer.sanitize(
             "<img src=\"cid:poster@x\" width=\"546\" height=\"772\" style=\"width:5.6875in;height:8.0416in\">",
@@ -112,10 +98,6 @@ struct MailHTMLSanitizerTests {
         #expect(MailHTMLSanitizer.keepingAspectRatio(style) == nil)
     }
 
-    /// The rewrite as WebKit draws it on the mail page: narrowed to a phone, a loaded picture and
-    /// a held-back one keep their ratio, and on a wide page both keep the sender's 546x772 box.
-    /// CI picks it by name to run after the other tests: see `on_screen_tests` in
-    /// `.github/workflows/tests.yaml`.
     @MainActor
     @Test(arguments: [375.0, 1280.0])
     func aFixedImageBoxKeepsItsRatioOnThePage(pageWidth: Double) async throws {
@@ -151,7 +133,6 @@ struct MailHTMLSanitizerTests {
         }
     }
 
-    /// Each `<img>`'s laid-out box once the page, and every picture on it, has loaded.
     @MainActor
     private static func imageBoxes(in webView: WKWebView, count: Int) async -> [CGSize] {
         let probe = """
@@ -175,9 +156,6 @@ struct MailHTMLSanitizerTests {
         #expect(result.links == [MailLink(text: "學校首頁", href: "https://www.ntust.edu.tw")])
     }
 
-    /// Ported from Android's `HtmlSanitizerTest` ("links are extracted with their visible
-    /// text"): an evil href behind NTUST-looking visible text, plus a `mailto:` link, so a
-    /// sanitizer that dropped everything could not pass the negative tests by accident.
     @Test func linksKeepEvilHrefsBehindTrustedLookingText() {
         let result = MailHTMLSanitizer.sanitize(
             "<a href=\"https://evil.example/login\">https://www.ntust.edu.tw</a> <a href=\"mailto:a@b.tw\">mail</a>",
@@ -189,12 +167,6 @@ struct MailHTMLSanitizerTests {
         ])
     }
 
-    /// SwiftSoup's `Whitelist` validates a URL attribute's trimmed value but by default writes
-    /// out the original untrimmed bytes. Without trimming, `href=" https://evil.example/login"`
-    /// (or an entity-decoded `&#x0a;` or `&#x09;` prefix) would reach both `links[].href` and the
-    /// output HTML. `URL(string:)` returns nil for it, silently disabling the link-mismatch
-    /// warning, while WebKit still navigates the untrimmed link. Like the `src` handling above,
-    /// the sanitizer trims the value and writes it back before collecting it.
     @Test func trimsHrefWhitespaceBeforeChecking() {
         for prefix in [" ", "\t", "\n", "&#x0a;", "&#x09;"] {
             let html = "<a href=\"\(prefix)https://www.ntust.edu.tw\">x</a>"
@@ -204,9 +176,6 @@ struct MailHTMLSanitizerTests {
         }
     }
 
-    /// Link text loses bidi controls too, like sender names, subjects and attachment names
-    /// (`MailTextCleaner`), mirroring Android's `TextCleaning.clean(it.text())`, so a bidi
-    /// override cannot disguise what a link's visible text says.
     @Test func linkTextLosesBidiControls() {
         let result = MailHTMLSanitizer.sanitize(
             "<a href=\"https://example.tw\">invoice\u{202E}fdp.exe</a>",
@@ -215,9 +184,6 @@ struct MailHTMLSanitizerTests {
         #expect(result.links == [MailLink(text: "invoicefdp.exe", href: "https://example.tw")])
     }
 
-    /// Ported from Android's `HtmlSanitizerTest` ("formatting and safe styles are kept"): a
-    /// positive test, so a sanitizer that dropped everything could not pass the negative and
-    /// corpus tests by accident.
     @Test func formattingAndSafeStylesAreKept() {
         let html = MailHTMLSanitizer.sanitize(
             "<p style=\"color: red; position: fixed\">Hi <b>there</b></p><table border=\"1\"><tr><td colspan=\"2\">x</td></tr></table>",
@@ -232,14 +198,11 @@ struct MailHTMLSanitizerTests {
         #expect(MailHTMLSanitizer.plainText(fromHTML: "<p>a</p><p>b<br>c</p><ul><li>d</li><li>e</li></ul>") == "a\nb\nc\nd\ne")
     }
 
-    /// An HTML-only mail's plain text, written on a detached task, whose stack a writer that
-    /// recursed once per level would overflow (https://github.com/tigerduck-app/tigerduck-app/issues/705).
     @Test func plainTextOfHTMLNestedFarDeeperThanTheCapKeepsItsText() {
         let html = String(repeating: "<div>", count: 10_000) + "deep" + String(repeating: "</div>", count: 10_000)
         #expect(MailHTMLSanitizer.plainText(fromHTML: html) == "deep")
     }
 
-    /// The paragraph sits at the deepest depth written, then one deeper, where its text runs on.
     @Test func plainTextPastTheCapIsTheElementsText() {
         for (wrappers, written) in [(AppConstants.maximumHTMLDepth - 1, "a\nb"), (AppConstants.maximumHTMLDepth, "a b")] {
             let html = String(repeating: "<div>", count: wrappers) + "<p>a<br>b</p>" + String(repeating: "</div>", count: wrappers)
@@ -253,9 +216,6 @@ struct MailHTMLSanitizerTests {
         #expect(MailCSSFilter.filter("display: inline-block !important") == "display: inline-block !important")
     }
 
-    /// Controller ruling (2026-09-16): reject `image-set`/`image()`/`cross-fade`/`element()` the
-    /// same way as `url(`, so a CSS image-loading function can't be used to fetch a remote image
-    /// behind the sanitizer's back.
     @Test func cssFilterRejectsImageLoadingFunctions() {
         #expect(MailCSSFilter.filter("border-image-source: image-set(\"https://t.example/p.gif\" 1x)") == nil)
         #expect(MailCSSFilter.filter("list-style: image-set('https://t.example/q.gif' 1x)") == nil)
@@ -267,10 +227,6 @@ struct MailHTMLSanitizerTests {
         #expect(links == [URL(string: "https://www.ntust.edu.tw")!])
     }
 
-
-    // MARK: rewriteLinks and its fail-closed strip
-    // Every href becomes `https://link.invalid/<n>`, an index into a returned list, so WebKit never
-    // holds the sender's URL. If anchors and list fall out of lockstep, every href is stripped.
 
     @Test func rewriteLinksReplacesEveryHrefAndReportsTheOriginals() {
         let result = MailHTMLSanitizer.rewriteLinks(
@@ -286,9 +242,6 @@ struct MailHTMLSanitizerTests {
         #expect(!result.html.contains("mailto:"))
     }
 
-    /// The form the `\s+`-only pattern walked past: HTML5's "before attribute name" state
-    /// treats `/` as a separator, so this `href` is real and live, and the tokenizer needs no
-    /// separator at all after a quoted value.
     @Test(arguments: [
         "<a/href=\"https://evil.example\">x</a>",
         "<a//href='https://evil.example'>x</a>",
@@ -304,7 +257,6 @@ struct MailHTMLSanitizerTests {
         #expect(!stripped.contains("evil.example"))
     }
 
-    /// The strip must not eat the rest of the tag, or the fallback would render as gibberish.
     @Test func failClosedStripKeepsEverythingThatIsNotAnHref() {
         let stripped = MailHTMLSanitizer.stripHrefsWithRegex(
             "<p>hi <a/href=\"https://evil.example\" title=\"open\">ntust.edu.tw</a></p>"
@@ -312,9 +264,6 @@ struct MailHTMLSanitizerTests {
         #expect(stripped == "<p>hi <a title=\"open\">ntust.edu.tw</a></p>")
     }
 
-    /// `LinkedHTML`'s contract in one assertion: the html it carries never holds a live href
-    /// while `links` claims there is nothing to tap. Run over the whole XSS corpus plus the
-    /// anchor shapes above, so a future change to either branch has to keep it true.
     @Test func rewriteLinksNeverLeavesALiveHrefBehind() {
         let extra = [
             "<a/href=\"https://evil.example\">x</a>",
@@ -345,12 +294,6 @@ struct MailHTMLSanitizerTests {
         }
     }
 
-    // MARK: How tall the sender may make the message view
-
-    /// `height` and `min-height` are allowed CSS on purpose — a mail that sets them renders as
-    /// it was written — but that also means the sender writes `scrollView.contentSize.height`,
-    /// which the message screen puts straight into `.frame(height:)`. It used to have only a
-    /// lower bound, so the size asked for was whatever the CSS said.
     @Test func theRenderedHeightIsClampedAtBothEnds() {
         #expect(MailCSSFilter.allowedProperties.contains("height"))
         #expect(MailCSSFilter.allowedProperties.contains("min-height"))

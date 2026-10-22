@@ -15,8 +15,6 @@ final class InMemoryMailPreferences: MailPreferences, @unchecked Sendable {
     private var _lastCheckAt: Date?
     private var _cacheWipePending = false
     private var _diagnostics: [MailCheckRecord] = []
-    /// Keyed by folder only (never a joined string key): a stored entry is returned by
-    /// `ownedDeleted` only when its UIDVALIDITY also matches, mirroring the persisted store.
     private var ownedByFolder: [String: OwnedDeleted] = [:]
 
     var studentID: String? {
@@ -105,8 +103,6 @@ final class InMemoryMailSecretStorage: MailSecretStorage, @unchecked Sendable {
     func deleteAll() { lock.withLock { values = [:] } }
 }
 
-/// Saves for a fixture, which no wipe can overtake: the app's own writers always pass the count
-/// they read when they checked their account.
 extension MailCache {
     func savePage(_ page: MailFolderPage) {
         savePage(page, wipeCount: wipeCount)

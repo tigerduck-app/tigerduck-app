@@ -1,6 +1,3 @@
-// `WhatsNewRepository`, decoding the `whatsnew.json` summary: item rows, the legacy
-// `highlights` list, the blanks the selector filters out, and the locale fallback.
-// Drives the static selector directly, plus one check that the bundled JSON decodes.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -92,12 +89,9 @@ struct WhatsNewRepositoryTests {
             #expect(AppVersion(key) != nil, "unparseable version key \(key)")
         }
         #expect(WhatsNewRepository().latestEntry(languageTag: "en") != nil)
-        // A ceiling below the newest entry stops at the newest one under it.
         #expect(WhatsNewRepository().latestEntry(languageTag: "en", upTo: AppVersion("2.2.0")!)?.version == "2.2.0")
         #expect(WhatsNewRepository().latestEntry(languageTag: "zh-Hant-TW") != nil)
     }
-
-    // MARK: - Helpers
 
     private func select(_ json: String, languageTag: String = "en") -> WhatsNewRepository.ResolvedWhatsNew? {
         let versionEntry = try? JSONDecoder().decode([String: WhatsNewEntry].self, from: Data(json.utf8))

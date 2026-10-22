@@ -3,8 +3,6 @@ import SwiftUI
 import Testing
 @testable import TigerDuck
 
-/// What the grades screen writes for an item: the most it could be only beside a grade that is a
-/// number, the value VoiceOver reads, the kind's icon and the activity a long press opens.
 @MainActor
 struct MoodleGradeItemDisplayTests {
     private static func item(
@@ -73,9 +71,6 @@ struct MoodleGradeItemDisplayTests {
 #if os(iOS)
 import UIKit
 
-/// The grade row laid out in a hosting controller: the name stops at two lines however long it
-/// runs, a grade too long to sit beside the name goes under it, and only feedback opened under
-/// the row makes it taller.
 @MainActor
 struct MoodleGradeRowTests {
     private static let longName = String(repeating: "期末專題書面報告與口頭簡報（含同儕互評）", count: 6)

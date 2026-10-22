@@ -4,9 +4,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// What closes before a reminder's assignment page is pushed: every sheet, with the state SwiftUI
-/// keeps for it, and neither an alert, a sheet that refuses a swipe down nor one kept over
-/// reminders. Each test shows a window of its own.
 @MainActor
 struct ModalClosingTests {
     @Observable
@@ -39,7 +36,6 @@ struct ModalClosingTests {
         }
     }
 
-    /// What `then` was told and found when `closePresentations` ran it.
     private struct AtThen: Equatable {
         let closedAll: Bool
         let isPresenting: Bool
@@ -68,8 +64,6 @@ struct ModalClosingTests {
         }
     }
 
-    /// Home pushes the page from `then`, and pushes at once only when its course sheet's state is
-    /// already clear, so the state has to be clear by then, not only afterwards.
     @Test("a sheet and the one over it close, their state cleared, before the page is pushed")
     func sheetsClose() async throws {
         let sheets = Sheets()
@@ -125,8 +119,6 @@ struct ModalClosingTests {
             == AtThen(closedAll: true, isPresenting: false, course: false, files: false, courseDismissals: 0))
     }
 
-    /// Home's course sheet with a member's mail draft over it: closing the course sheet would take
-    /// the draft with it.
     @Test("a sheet that refuses a swipe over another keeps both up, and says so")
     func guardedOverAnother() async throws {
         let sheets = Sheets()
@@ -146,8 +138,6 @@ struct ModalClosingTests {
         try await waitUntil { root.presentedViewController == nil }
     }
 
-    /// What's New over Home's course sheet: closing it would mark it as seen unread
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/673).
     @Test("a sheet kept over reminders stays, with the one under it, yet still closes on a swipe")
     func keptStays() async throws {
         let sheets = Sheets()
@@ -168,8 +158,6 @@ struct ModalClosingTests {
         try await waitUntil { root.presentedViewController == nil }
     }
 
-    /// The page is pushed from the dismissal's completion, so a close UIKit dropped while a sheet
-    /// slides would leave the reminder tap doing nothing.
     @Test("a sheet still sliding up closes once it is up, and then the page is pushed")
     func sheetStillSliding() async throws {
         let sheets = Sheets()

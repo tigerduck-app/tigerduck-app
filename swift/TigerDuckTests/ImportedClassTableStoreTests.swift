@@ -2,13 +2,10 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `ImportedClassTableStore` over a file in a folder of its own: the order and replacement rules,
-/// the shown person, the file it keeps, and when it empties.
 @MainActor
 struct ImportedClassTableStoreTests {
     private typealias Term = ClassTableShareCode.Term
 
-    /// A folder removed when the test ends, holding the store's file.
     private final class Folder {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("ImportedClassTableStoreTests-\(UUID().uuidString)", isDirectory: true)
@@ -16,7 +13,6 @@ struct ImportedClassTableStoreTests {
         deinit { try? FileManager.default.removeItem(at: url) }
     }
 
-    /// The student ID the store reads as signed in; a test changes it to sign another account in.
     private final class Account {
         var studentId: String? = "B11300000"
     }
@@ -291,8 +287,6 @@ struct ImportedClassTableStoreTests {
         #expect(try folder.file.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
     }
 
-    /// `unreadable`: the file cannot be opened; otherwise it opens but does not decode, as a file
-    /// from a newer version of the app might not.
     @Test("a file that is there but cannot be read or decoded is not written over", arguments: [true, false])
     func unusableFileKept(unreadable: Bool) throws {
         let folder = Folder()
@@ -348,8 +342,6 @@ struct ImportedClassTableStoreTests {
         #expect(store.shownPersonID == person.id)
         #expect(try Data(contentsOf: folder.file) == kept)
     }
-
-    // MARK: - When the store empties
 
     @Test("signing out empties the store and its file")
     func signOutEmpties() throws {

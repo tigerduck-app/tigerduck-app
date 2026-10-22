@@ -1,6 +1,3 @@
-// `AuthService.login` and the sign-ins after the school's, against stand-ins that keep every request
-// in the process. Saving an account writes real `Defaults` keys, so each test holds the gate in
-// `docs/decisions/0020-real-defaults-gate.md` and puts them back.
 import Defaults
 import Foundation
 import Testing
@@ -10,10 +7,8 @@ import Testing
 struct SchoolSignInStepsTests {
     @MainActor
     private final class Calls {
-        /// The student ID of each library sign-in request.
         var librarySignIns: [String] = []
         var harvests = 0
-        /// Runs inside the stand-in school sign-in, after the school's answer came back.
         var onSchoolAnswer: () -> Void = {}
     }
 
@@ -49,8 +44,6 @@ struct SchoolSignInStepsTests {
         return auth
     }
 
-    /// Runs `body` with a keychain of its own, holding the library account of `libraryAccount`
-    /// with no live token, and `rejected` as the library's refusal of its stored password.
     private static func withKeychain(
         libraryAccount: String?,
         rejected: Bool = false,
@@ -69,10 +62,6 @@ struct SchoolSignInStepsTests {
         }
     }
 
-    // MARK: - The library step (https://github.com/tigerduck-app/tigerduck-app/issues/542)
-
-    /// Its token ran out, but its stored credentials sign in again behind the code, so Settings
-    /// shows it signed in and a school sign-out would keep it.
     @Test func anotherStudentsLibraryAccountStaysOnceItsTokenRunsOut() async throws {
         let calls = Calls()
         try await Self.withKeychain(libraryAccount: Self.anotherStudent) { _ in
@@ -107,8 +96,6 @@ struct SchoolSignInStepsTests {
         }
     }
 
-    /// The school has just checked this password, so this student's library account takes it in
-    /// place of the stored one, which a changed school password leaves behind.
     @Test func theSameStudentsLibraryAccountSignsInWithTheSchoolPassword() async throws {
         let calls = Calls()
         try await Self.withKeychain(libraryAccount: Self.student) { _ in
@@ -120,11 +107,6 @@ struct SchoolSignInStepsTests {
         }
     }
 
-    // MARK: - A sign-out as the school step ends (https://github.com/tigerduck-app/tigerduck-app/issues/500)
-
-    /// A sign-out from another window that lands after the school's answer came back, but before
-    /// the sign-in took it in, leaves the departed account's credentials unsaved and signs it in
-    /// to nothing else.
     @Test func aSignOutAsTheSchoolStepEndsKeepsNothing() async throws {
         let calls = Calls()
         try await Self.withKeychain(libraryAccount: nil) { keychain in
@@ -156,9 +138,6 @@ struct SchoolSignInStepsTests {
         #expect(calls.harvests == 1)
     }
 
-    // MARK: - Cancelling the sign-in sheet (https://github.com/tigerduck-app/tigerduck-app/issues/589)
-
-    /// The sign-in the sheet started, which the test cancels as the sheet's Cancel does.
     @MainActor
     private final class SheetSignIn {
         var task: Task<Bool, Never>?
@@ -170,7 +149,6 @@ struct SchoolSignInStepsTests {
         (try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == Data(Self.anotherStudent.utf8)
     }
 
-    /// A sign-in first waits for a sign-out's calls, a minute and more on a stalled network.
     @Test func aSignInCancelledWhileItWaitsSignsNothingOutOrIn() async throws {
         let calls = Calls()
         try await Self.withKeychain(libraryAccount: nil) { keychain in
@@ -238,8 +216,6 @@ struct SchoolSignInStepsTests {
         #expect(calls.harvests == 0)
     }
 
-    /// A sign-out from another window cancels the school step's requests, which end in a
-    /// cancellation the user did not cause (https://github.com/tigerduck-app/tigerduck-app/issues/581).
     @Test func aSignOutFromAnotherWindowDuringTheSchoolStepShowsNoError() async throws {
         for failure in [URLError(.cancelled) as any Error, CancellationError()] {
             try await Self.withKeychain(libraryAccount: nil) { _ in
@@ -262,7 +238,6 @@ struct SchoolSignInStepsTests {
         }
     }
 
-    /// The school's requests end with the task, as `URLSession`'s do.
     @Test func aSignInCancelledDuringTheSchoolStepShowsNoError() async throws {
         try await Self.withKeychain(libraryAccount: nil) { keychain in
             let sheet = SheetSignIn()

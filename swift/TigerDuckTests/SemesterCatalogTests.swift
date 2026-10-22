@@ -5,10 +5,6 @@ import Testing
 @MainActor
 struct SemesterCatalogTests {
 
-    /// Trimmed capture of `querycourse/api/semestersinfo`, reordered so the
-    /// newest published term is not the one course selection is open for. That
-    /// is the mid-semester shape (spring selection opens while fall is still in
-    /// session) and the case a `list.first` shortcut would silently get wrong.
     private static let payload = Data("""
     [
       {"Semester":"1152","EngSemester":"2027 Spring","Static":false,"LoginEnable":false,

@@ -3,12 +3,7 @@ import Testing
 @testable import TigerDuck
 
 struct WidgetLocalizationKeysTests {
-    /// Every key referenced from widget SwiftUI views and widget definitions.
-    /// Update this list when you add or remove a localized string in any
-    /// widget view (`swift/TigerDuckWidgets/Views/`) or widget definition
-    /// (`swift/TigerDuckWidgets/Widgets/`).
     private let keys: [String] = [
-        // Chrome strings used by views
         "widget_sign_in",
         "widget_ongoing",
         "widget_next_class",
@@ -21,7 +16,6 @@ struct WidgetLocalizationKeysTests {
         "widget_no_classes_weekend",
         "widget_today_weekday_title",
         "widget_library_shortcut_title",
-        // Gallery (configurationDisplayName / description)
         "widget_library_shortcut_label",
         "widget_library_shortcut_desc",
         "widget_next_class_light_label",
@@ -30,7 +24,6 @@ struct WidgetLocalizationKeysTests {
         "widget_today_light_desc",
         "widget_week_light_label",
         "widget_week_light_desc",
-        // Weekday shorts (used by Today + Week views)
         "weekday_mon_short",
         "weekday_tue_short",
         "weekday_wed_short",
@@ -38,7 +31,6 @@ struct WidgetLocalizationKeysTests {
         "weekday_fri_short",
         "weekday_sat_short",
         "weekday_sun_short",
-        // Weekday captions (used by the Next class views)
         "weekday_mon_caption",
         "weekday_tue_caption",
         "weekday_wed_caption",
@@ -49,9 +41,6 @@ struct WidgetLocalizationKeysTests {
     ]
 
     @Test func everyKeyResolvesInMainBundle() {
-        // The test target cannot load the widget extension's bundle, but both targets'
-        // Localizable.strings are symlinks into the shared `app-translation/` submodule,
-        // so a key that resolves in the main bundle resolves in the widget bundle too.
         for key in keys {
             let resolved = String(localized: String.LocalizationValue(key), bundle: .main)
             #expect(!resolved.isEmpty, "Key \(key) resolved to empty")

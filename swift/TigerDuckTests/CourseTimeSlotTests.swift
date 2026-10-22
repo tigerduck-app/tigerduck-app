@@ -22,8 +22,6 @@ struct CourseTimeSlotTests {
         #expect(slots.map(\.periods) == [["3", "4"], ["7"]])
     }
 
-    /// The Mac Home cards list today's classes and the next one from these, so a holiday the
-    /// user has not opted back into shows no class, as on iOS.
     @Test func meetingSlotsAreEmptyOnADayClassesDoNotMeet() {
         let slots = CourseTimeSlot.meetingSlots(
             from: [Self.course("CS101", periods: ["3", "4"])],
@@ -44,7 +42,6 @@ struct CourseTimeSlotTests {
         #expect(slots.map(\.course.courseNo) == ["CS102"])
     }
 
-    /// A class Live Activity carries only its slot's id, which names the course and the day.
     @Test func aSlotIdTellsWhetherItsClassIsSkipped() {
         let skipped = Self.course("CS101", periods: ["3"])
         skipped.skippedDates = ["2026-09-22"]

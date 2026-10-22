@@ -23,8 +23,6 @@ struct MoodleCourseForumsTests {
         )
     }
 
-    /// `created` and `modified` count from the same instant, so a list sorted by one and a list
-    /// sorted by the other can tell apart.
     private nonisolated static func discussion(
         _ id: Int, unread: Int = 0, pinned: Bool = false, created: TimeInterval = 0, modified: TimeInterval = 0,
         replies: Int = 0
@@ -45,7 +43,6 @@ struct MoodleCourseForumsTests {
         )
     }
 
-    /// The calls the store made, and what the stand-in site answers.
     private final class Site: @unchecked Sendable {
         private let lock = NSLock()
         private var _functions: Set<String> = MoodleCourseForumsTests.allFunctions
@@ -73,14 +70,12 @@ struct MoodleCourseForumsTests {
             }
         }
 
-        /// Fails every later call of `kind` ("discussions" or "posts") until called with false.
         func fail(_ kind: String, _ failing: Bool = true) {
             lock.withLock {
                 if failing { _failing.insert(kind) } else { _failing.remove(kind) }
             }
         }
 
-        /// Each call as "forums", "discussions <forum> <page>", "posts <discussion>" or "viewed <discussion>".
         var calls: [String] { lock.withLock { _calls } }
 
         private func record(_ call: String, kind: String) throws {
@@ -109,7 +104,6 @@ struct MoodleCourseForumsTests {
                     try self.record("posts \(discussionId)", kind: "posts")
                     return self.lock.withLock { self._posts[discussionId] ?? [] }
                 },
-                // Moodle marks every post of the discussion read.
                 markViewed: { discussionId, _ in
                     try self.record("viewed \(discussionId)", kind: "viewed")
                     self.lock.withLock {
@@ -124,7 +118,6 @@ struct MoodleCourseForumsTests {
         }
     }
 
-    /// A cache in a folder of its own, removed when the test ends.
     @MainActor
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
@@ -158,8 +151,6 @@ struct MoodleCourseForumsTests {
     private static func row(_ store: MoodleCourseStore) -> MoodleSectionRow? {
         store.sectionRows.first { $0.kind == .forums }
     }
-
-    // MARK: - Section row
 
     @Test("the forums row counts every discussion of the forums besides the announcements, after them")
     func rowCountsTheGeneralForums() async {
@@ -248,13 +239,10 @@ struct MoodleCourseForumsTests {
         #expect(MoodleCourseRoute.discussion(discussion, in: Self.qanda).refreshesOnItsOwn)
     }
 
-    // MARK: - Discussions
-
     @Test("a forum's discussions come an explicit page at a time, the latest post first after the pinned")
     func discussionsPaging() async throws {
         let folder = Folder()
         let site = Site()
-        // Created order and latest-post order disagree, so only the latest-post order passes.
         let full = (1...MoodleForumService.discussionsPerPage).map {
             Self.discussion(800 + $0, created: TimeInterval($0), modified: TimeInterval(100 - $0))
         }
@@ -377,8 +365,6 @@ struct MoodleCourseForumsTests {
         #expect(Self.row(store)?.count == 7)
     }
 
-    // MARK: - Cache
-
     @Test("each forum's discussions and each discussion's posts are cached apart, per account, under the course")
     func cachePerForumAndDiscussion() async {
         let folder = Folder()
@@ -457,8 +443,6 @@ struct MoodleCourseForumsTests {
         }
     }
 
-    // MARK: - Posts
-
     @Test("a site that does not allow the posts call is not asked, and the discussion shows its first post")
     func postsGatedByFunctions() async {
         let folder = Folder()
@@ -494,8 +478,6 @@ struct MoodleCourseForumsTests {
         ])
     }
 
-    // MARK: - Opening
-
     enum Invalidation: CaseIterable {
         case signOut, cancel
     }
@@ -530,8 +512,6 @@ struct MoodleCourseForumsTests {
         #expect(await opening.value == nil)
     }
 
-    /// Retry and ⌘R open in a task that leaving the page does not cancel
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/427).
     @Test("an opening whose page has left when its posts arrive tells Moodle nothing and reads nothing as read")
     func openingAfterThePageLeft() async throws {
         let folder = Folder()
@@ -653,7 +633,6 @@ struct MoodleCourseForumsTests {
         #expect(store.generalForums.first { $0.id == Self.qanda.id }?.unreadPostCount == 0)
         #expect(store.thread(of: unread).value?.posts.contains(where: \.isUnread) == false)
 
-        // The next opening fetches again and finds them read, as Moodle now has them.
         let read = try #require(pages.list?.discussions.first { $0.id == 801 })
         let again = Self.store(folder, site: site)
         #expect(await again.openThread(of: read, in: Self.qanda) == [])
@@ -757,8 +736,6 @@ struct MoodleCourseForumsTests {
         #expect(pages.list?.discussions.first?.unreadCount == 0)
     }
 
-    // MARK: - Thread layout
-
     @Test("posts read in order, each followed by its replies oldest first, nested three levels at most")
     func threadNesting() {
         let discussion = Self.discussion(801)
@@ -787,8 +764,6 @@ struct MoodleCourseForumsTests {
 
         #expect(MoodleDiscussionThread.entries(of: Self.discussion(801), in: thread).map(\.post.id) == [1, 2, 3])
     }
-
-    // MARK: - Cards
 
     @Test("a forum's card reads its author and replies after the rest; an announcement's leaves them out")
     func cardAccessibility() {

@@ -1,7 +1,5 @@
 import Testing
 
-/// The polling helper the suites wait with, run on a clock whose sleeps take the time a test
-/// gives them, so a starved main actor can be played without one.
 struct WaitUntilTests {
     private final class ScriptedClock: Clock, @unchecked Sendable {
         typealias Duration = Swift.Duration
@@ -15,7 +13,6 @@ struct WaitUntilTests {
 
         private(set) var now = Instant(offset: .zero)
         let minimumResolution = Duration.nanoseconds(1)
-        /// How long each sleep takes, in turn; one past the list takes what it asks for.
         private var sleeps: [Duration]
 
         init(sleeps: [Duration]) { self.sleeps = sleeps }
@@ -44,7 +41,6 @@ struct WaitUntilTests {
                 return false
             }
         }
-        // Each one-second wake counts a tenth: ten polls, then the last check.
         #expect(polls == 11)
     }
 }

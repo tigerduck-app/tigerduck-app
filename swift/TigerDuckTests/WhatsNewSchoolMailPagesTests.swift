@@ -1,6 +1,3 @@
-// The 2.3.0 School Mail What's New pages: the "recommended arrangement" puts Mail in Calendar's
-// slot, else appends it if there is room, else offers nothing. A bar with Mail skips both pages.
-// iPhone/iPad-only like the pages; the test target also builds for macOS.
 #if os(iOS)
 import Foundation
 import Testing
@@ -41,14 +38,11 @@ struct WhatsNewSchoolMailPagesTests {
         #expect(WhatsNewPage.offersMailPages(configuredTabs: [.home, .announcements, .gpa, .library]))
     }
 
-    /// Both the introduction and the bottom-bar question stay out.
     @Test func aBarThatAlreadyHasMailSkipsTheMailPages() {
         #expect(!WhatsNewPage.offersMailPages(configuredTabs: AppFeature.defaultTabs))
         #expect(!WhatsNewPage.offersMailPages(configuredTabs: [.home, .gpa, .schoolMail, .calendar]))
         #expect(WhatsNewPage.recommendedTabsWithMail([.home, .gpa, .schoolMail, .calendar]) == nil)
     }
-
-    // MARK: - Apply, on a stand-in for `AppState`
 
     @Test func applyingSwapsOnlyCalendarForMail() {
         let bar = StandInBar([.home, .classTable, .announcements, .calendar])
@@ -57,7 +51,6 @@ struct WhatsNewSchoolMailPagesTests {
         WhatsNewPage.applyMailRecommendation(to: bar)
         #expect(bar.configuredTabs == [.home, .classTable, .announcements, .schoolMail])
 
-        // Back, then Apply again: nothing left to change.
         #expect(!WhatsNewPage.asksAboutMail(bar))
         WhatsNewPage.applyMailRecommendation(to: bar)
         #expect(bar.configuredTabs == [.home, .classTable, .announcements, .schoolMail])
@@ -69,8 +62,6 @@ struct WhatsNewSchoolMailPagesTests {
         #expect(bar.configuredTabs == [.home, .gpa, .schoolMail])
     }
 
-    /// Keep Mine calls nothing, so a bar the question skips must not
-    /// change even if Apply were reached.
     @Test func aFullBarWithoutCalendarIsNeitherAskedNorChanged() {
         let full: [AppFeature] = [.home, .classTable, .gpa, .announcements]
         let bar = StandInBar(full)
@@ -79,14 +70,11 @@ struct WhatsNewSchoolMailPagesTests {
         #expect(bar.configuredTabs == full)
     }
 
-    // MARK: - Registration
-
     @Test func theMailPagesAreRegisteredFor230() throws {
         let pages = try #require(WhatsNewCatalog.releases["2.3.0"])
         #expect(pages.map(\.id) == ["school-mail", "mail-bottom-bar"])
     }
 
-    /// Both upgrade paths get the same two pages.
     @Test func everyUpgradeMeetsMailAndTheBarQuestion() throws {
         #expect(try pageIDs(upgradingFrom: "2.1.4") == ["school-mail", "mail-bottom-bar"])
         #expect(try pageIDs(upgradingFrom: "2.2.0") == ["school-mail", "mail-bottom-bar"])
@@ -107,8 +95,6 @@ struct WhatsNewSchoolMailPagesTests {
     }
 }
 
-/// The bar's slice of `AppState`, without the Keychain and migrations its
-/// init brings along.
 @MainActor
 private final class StandInBar: WhatsNewBottomBarState {
     var configuredTabs: [AppFeature]

@@ -28,8 +28,6 @@ struct WidgetURLRouterTests {
         #expect(WidgetURLRouter.route(url) == nil)
     }
 
-    // MARK: - Assignment links
-
     @Test func buildsTheAssignmentLink() {
         #expect(WidgetURLRouter.assignmentURL(id: "901")?.absoluteString == "tigerduck://assignment/901")
     }

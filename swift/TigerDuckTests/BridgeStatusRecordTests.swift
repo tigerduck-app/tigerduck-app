@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// A round of the departing account still running at a sign-out usually ends in its catch, as the
-/// sign-out cancels its requests, and must not mark a server failed for the next account
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/489).
 @MainActor
 struct BridgeStatusRecordTests {
     private static func signedOutAuth() -> AuthService {

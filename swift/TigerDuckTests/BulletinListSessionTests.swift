@@ -18,8 +18,6 @@ struct BulletinListSessionTests {
     private struct Stub {
         let client: BulletinAPIClient
         let baseURL: URL
-        /// The view model starts from the disk cache, which keeps rows from earlier runs and the
-        /// app, so each test's ids are new.
         let id = Int.random(in: 1_000_000_000...2_000_000_000)
 
         init() {
@@ -49,7 +47,6 @@ struct BulletinListSessionTests {
         Data(#"{"id":\#(id),"external_id":"x\#(id)","title":"T","title_clean":null,"canonical_org":null,"content_tags":[],"importance":null,"summary":null,"source_url":"https://example.invalid/\#(id)","posted_at":null,"is_deleted":false,"body_clean":null,"body_md":null,"raw_publisher":null}"#.utf8)
     }
 
-    /// What a sign-out does to the cached list, for `ids` only: other tests keep their rows.
     private static func wipeCached(_ ids: Set<Int>) {
         DataCache.shared.saveBulletinSummaries(DataCache.shared.loadBulletinSummaries().filter { !ids.contains($0.id) })
     }
@@ -99,8 +96,6 @@ struct BulletinListSessionTests {
 }
 
 extension BulletinListSessionTests {
-    /// The status dot's last sync is when the feed last gave its newest page, and a refresh that
-    /// fails leaves it.
     @Test("the last sync is when the newest page arrived, and a failed refresh keeps it")
     func lastSyncIsTheNewestPage() async throws {
         try await withExclusiveRealDefaults {
@@ -118,7 +113,6 @@ extension BulletinListSessionTests {
             let syncedAt = try #require(Defaults[.bulletinsSyncedAt])
             #expect(syncedAt >= before)
 
-            // Nothing is served for the second refresh, so it fails.
             await model.refresh()
             #expect(Defaults[.bulletinsSyncedAt] == syncedAt)
         }
@@ -147,9 +141,6 @@ extension BulletinListSessionTests {
         return gate
     }
 
-    /// A sign-out after a refresh started its task, but before the task read the list epoch, leaves
-    /// the fetch's epoch current and the list the departing student's
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/620).
     @Test("a refresh a sign-out overtook before its fetch began keeps nothing of the departing list")
     func aSignOutBeforeTheFetchBeganKeepsNothing() async throws {
         try await withExclusiveRealDefaults {
@@ -165,8 +156,6 @@ extension BulletinListSessionTests {
             #expect(Self.cachedIds.contains(departed))
 
             stub.serve(Self.page([next]))
-            // Queued in the refresh's own job before it runs, the sign-out comes after the refresh
-            // has checked the list and before the fetch task it queues.
             let refresh = Task {
                 let signOut = Task {
                     Self.wipeCached([departed])
@@ -182,8 +171,6 @@ extension BulletinListSessionTests {
         }
     }
 
-    /// A sign-out empties the cached list and its time; a request out when it came writes neither
-    /// back for the next student.
     @Test("a refresh that lands after a sign-out writes neither the last sync nor the list")
     func aRefreshAcrossASignOutWritesNothing() async throws {
         try await withExclusiveRealDefaults {
@@ -204,7 +191,6 @@ extension BulletinListSessionTests {
 
             #expect(Defaults[.bulletinsSyncedAt] == signedOut)
             #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == stub.id })
-            // Not left loading: the list starts over for the next visit to read.
             #expect(model.loadState == .idle)
         }
     }
@@ -270,10 +256,8 @@ extension BulletinListSessionTests {
             stub.serve(Self.page([newer], next: older))
             let gate = Self.serveHeld(Self.page([older]), for: stub.listURL(cursor: older))
             let model = BulletinsViewModel(apiClient: stub.client)
-            // Paused, the walk does not start, so only the scroll asks for the older page.
             model.pausePrefetch()
             await model.refresh()
-            // The disk cache holds rows from earlier runs, so the end of the list is whatever is last.
             let last = try #require(model.items.last)
             let scroll = Task { await model.loadMoreIfNeeded(triggeredBy: last) }
             try await waitUntil { SettingsAPIStub.requests(for: stub.listURL(cursor: older)).count == 1 }
@@ -286,8 +270,6 @@ extension BulletinListSessionTests {
         }
     }
 
-    /// A list on screen at a sign-out is the departing student's: the next visit, a pull or a
-    /// scroll starts from the list the sign-out left, and none writes the old rows back.
     @Test("the next visit after a sign-out drops the list on screen and reads it again")
     func aVisitAfterASignOutStartsOver() async throws {
         try await withExclusiveRealDefaults {
@@ -399,7 +381,6 @@ extension BulletinListSessionTests {
             let resolve = Task { try await model.summary(forId: tapped) }
             try await waitUntil { SettingsAPIStub.requests(for: stub.detailURL(tapped)).count == 1 }
 
-            // Signed out, then the next student's visit reads the list before the tap's answer lands.
             BulletinsViewModel.forgetListSession()
             stub.serve(Self.page([fresh]))
             await model.loadIfNeeded()
@@ -412,8 +393,6 @@ extension BulletinListSessionTests {
         }
     }
 
-    /// "Mark all read" covers the bulletins the filters leave on screen, not every loaded one
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/522).
     @Test("mark all read covers only the filtered bulletins")
     func markAllReadCoversOnlyTheFilteredBulletins() async throws {
         try await withExclusiveRealDefaults {

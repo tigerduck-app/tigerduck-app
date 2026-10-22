@@ -1,6 +1,3 @@
-// Bundle ids are per test because the stub is keyed by URL, which holds the id. Manual checks
-// skip the 24h throttle, "Skip This Version" and "Later", so the reply alone decides. They still
-// stamp real keys, so they run gated and restore them; a leftover stamp mutes background checks.
 import Defaults
 import Foundation
 import Testing
@@ -10,7 +7,6 @@ import Testing
 @MainActor
 struct UpdateCheckTests {
 
-    /// What the coordinator reported, in order.
     private final class ReportRecorder: @unchecked Sendable {
         private let lock = NSLock()
         private var _errors: [any Error] = []
@@ -22,9 +18,6 @@ struct UpdateCheckTests {
         }
     }
 
-    /// A coordinator whose lookup is answered with `storeVersion`, exactly
-    /// as typed into App Store Connect, once per `replies`. The stub answers
-    /// the real lookup request, so its wire format is part of what is tested.
     private static func makeCoordinator(
         storeVersion: String,
         replies: Int = 1,
@@ -51,7 +44,6 @@ struct UpdateCheckTests {
         )
     }
 
-    /// Runs `times` manual checks in a row, starting from nothing reported.
     private static func checkManually(_ coordinator: UpdateNotifyCoordinator, times: Int = 1) async {
         await withExclusiveRealDefaults {
             let savedCheckAt = Defaults[.lastUpdateCheckAt]
@@ -67,9 +59,6 @@ struct UpdateCheckTests {
         }
     }
 
-    /// App Store Connect takes the version as free text, and 2.2.0 went out
-    /// as "v2.2.0". The prefix made the store version unparseable, which
-    /// read as "not newer": no build was ever offered an update.
     @Test("a newer store version is offered, with or without a leading v",
           arguments: ["v99.0.0", "V99.0.0", "99.0.0"])
     func offersNewerStoreVersion(storeVersion: String) async throws {
@@ -90,8 +79,6 @@ struct UpdateCheckTests {
         #expect(coordinator.pendingUpdate == nil)
     }
 
-    /// A store version the app cannot read is not evidence that the
-    /// installed build is current.
     @Test("an unreadable store version is a failed check, not up to date")
     func unreadableStoreVersionFailsTheCheck() async throws {
         let reports = ReportRecorder()
@@ -104,8 +91,6 @@ struct UpdateCheckTests {
         #expect(reports.errors.count == 1)
     }
 
-    /// Manual checks skip the 24h throttle, so the throttle alone would let
-    /// every tap report the same unreadable version again.
     @Test("repeated manual checks report an unreadable store version once")
     func unreadableStoreVersionIsReportedOnce() async throws {
         let reports = ReportRecorder()

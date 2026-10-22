@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Where the finder opens: the period in progress, the next one in a break, and the next
-/// teaching day after the last period, at a weekend, on a holiday or between terms.
 struct EmptyClassroomScheduleTests {
     private static let calendar = AppConstants.taipeiCalendar
 
@@ -15,7 +13,6 @@ struct EmptyClassroomScheduleTests {
         time(month, day, 0)
     }
 
-    /// 2026-10-26, a Monday, is a holiday.
     private static func isTeachingDay(_ date: Date) -> Bool {
         !EmptyClassroomSchedule.isWeekend(date) && !calendar.isDate(date, inSameDayAs: day(10, 26))
     }
@@ -78,7 +75,6 @@ struct EmptyClassroomScheduleTests {
         calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour)) ?? .distantPast
     }
 
-    /// The fall term, 2026-09-14 to 2027-01-15, with 2026-10-26 a holiday.
     private static let fall = AcademicCalendar(
         revision: 1,
         terms: [SemesterTerm(code: "1151", start: day(9, 14), end: date(2027, 1, 15))],
@@ -98,7 +94,6 @@ struct EmptyClassroomScheduleTests {
         #expect(Self.dayOff(Self.day(10, 26), in: Self.fall) == .holiday(Self.fall.holidays[0]))
         #expect(Self.dayOff(Self.day(9, 11), in: Self.fall) == .outOfTerm)
         #expect(Self.dayOff(Self.date(2027, 1, 18), in: Self.fall) == .outOfTerm)
-        // Before the calendar first loads every weekday counts, as everywhere else in the app.
         #expect(Self.dayOff(Self.date(2027, 1, 18), in: .empty) == nil)
     }
 

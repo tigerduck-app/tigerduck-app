@@ -1,6 +1,3 @@
-// Hiding a course deletes it on the server through the outbox
-// (https://github.com/tigerduck-app/tigerduck-app/issues/666): the delete waits there until it
-// lands, and a full sync keeps the course hidden here as long.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -47,12 +44,10 @@ struct CourseDeleteSyncTests {
         ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##.utf8
     )
 
-    /// What hiding a course does, through `AppState.deleteBackendCourse`.
     @Test("Deleting a course drops its own settings still queued, and queues its delete and sends it")
     func deletingACourseQueuesAndSendsItsDelete() async {
         let backend = Backend()
         backend.answer(Self.path)
-        // The settings wait, so the tick sends the delete alone.
         let coordinator = Self.makeCoordinator(backend, syncsCourseIgnores: { false })
         for courseNo in ["CS1001301", "EE2005301"] {
             await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: courseNo, moodleId: "1151\(courseNo)",
@@ -84,7 +79,6 @@ struct CourseDeleteSyncTests {
         try await waitUntil(timeout: .seconds(10)) { backend.requests(Self.path).count == 1 }
     }
 
-    /// What a full sync and the re-enable check read for the snapshot they fetch.
     @Test("A delete that lands while a snapshot is fetched counts for it, as does one queued meanwhile")
     func deletesQueuedAroundAFetchCount() async {
         let backend = Backend()
@@ -175,8 +169,6 @@ struct CourseDeleteSyncTests {
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1142:GE3"])
     }
 
-    /// `deleting` holds the course numbers deleted here within the grace window and the keys of
-    /// the deletes still queued. A legacy bare entry hides its course in every term.
     @Test("A full sync shows a hidden course the server lists again only once no delete of it from here may be on its way")
     func listedCourseStaysHiddenWhileItsDeleteMayBeOnItsWay() {
         var hidden: Set<String> = ["1151:CS1", "1151:EE2", "1151:GE3", "PE4", "1142:MA5"]
@@ -191,8 +183,6 @@ struct CourseDeleteSyncTests {
         #expect(!AppState.unhideListedCourses(["EE2"], semester: "1151", deleting: ["1151:EE2"], in: &hidden))
     }
 
-    /// A hand-added course taken back here has no tombstone; a snapshot fetched before its delete
-    /// landed merged it in again.
     @Test("A full sync takes in a course only the server lists only once no delete of it from here may be on its way")
     func listedCourseIsMergedOnlyOnceNoDeleteIsOnItsWay() {
         let merges = { (courseNo: String) in
@@ -208,7 +198,6 @@ struct CourseDeleteSyncTests {
         #expect(merges("PH6"))
     }
 
-    /// Un-hidden without an upload, the course kept its queued delete, which then hid it again.
     @Test("Adding back a hidden course the class table still shows sends it with its key forced")
     func addingBackAStillShownHiddenCourseUploadsIt() {
         let savedHidden = DataCache.shared.loadDeletedCourseNos()
@@ -230,7 +219,6 @@ struct CourseDeleteSyncTests {
         #expect(viewModel.deletedCourseNos.isEmpty)
     }
 
-    /// The re-enable check asked about such a course as one only the server lists.
     @Test("The courses re-enable check counts a course whose delete is queued as gone from the server")
     func queuedDeleteIsNoServerOnlyCourse() {
         let counts = { (deleting: Set<String>) in

@@ -7,10 +7,6 @@ import UIKit
 import Testing
 @testable import TigerDuck
 
-/// A course's members in `MoodleCourseStore` over a stand-in `MoodleCourseAPI` and a cache in a
-/// folder of its own, then the sections, the detail rows and the list states the screens draw
-/// from them. Every person here is made up, and a student ID with a real department code has the
-/// entry year 199, which is still to come.
 @MainActor
 struct MoodleCourseMembersTests {
     private nonisolated static let courseId = 20119
@@ -46,17 +42,14 @@ struct MoodleCourseMembersTests {
         )
     }
 
-    /// A picture one pixel square.
     private nonisolated static let png = Data(base64Encoded:
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")!
-    /// Another picture one pixel square, which the site sends for the 512 px size.
     private nonisolated static let largePNG = Data(base64Encoded:
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO4YGAAAAMEATF0v3V3AAAAAElFTkSuQmCC")!
 
     private nonisolated static let me = member(ownId, "B11399001 @ Tiger Duck", idNumber: "B11399001")
     private nonisolated static let classmate = member(43, "B11399002 @ Duck Tiger", idNumber: "B11399002")
 
-    /// What the stand-in site answers, and what the store asked it for.
     private final class Site: @unchecked Sendable {
         private let lock = NSLock()
         private var _functions: Set<String> = [MoodleCourseMembersService.membersFunction]
@@ -74,7 +67,6 @@ struct MoodleCourseMembersTests {
             }
         }
 
-        /// Nil fails a request for the 512 px size.
         func setLargePicture(_ data: Data?) {
             lock.withLock { _largePicture = data }
         }
@@ -82,7 +74,6 @@ struct MoodleCourseMembersTests {
         var calls: [Int] { lock.withLock { _calls } }
         var pictureCalls: [URL] { lock.withLock { _pictureCalls } }
 
-        /// `before` runs before members or a picture answer; it throws to fail the request.
         func api(before: @escaping @Sendable () async throws -> Void = {}) -> MoodleCourseAPI {
             MoodleCourseAPI(
                 functions: { self.lock.withLock { self._functions } },
@@ -139,8 +130,6 @@ struct MoodleCourseMembersTests {
         folder.cache.loadMoodleData(MoodleMemberList.self, name: "courses/\(Self.courseId)/members", account: account)?.value
     }
 
-    // MARK: - Cache
-
     @Test("the members a refresh brings show from the cache the next time, for that account only")
     func cacheFirst() async {
         let folder = Folder()
@@ -196,8 +185,6 @@ struct MoodleCourseMembersTests {
         #expect(cached(folder) == nil)
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
     }
-
-    // MARK: - Section row
 
     @Test("a site that does not allow the members call hides the row without asking for members")
     func gatedByFunctions() async {
@@ -273,8 +260,6 @@ struct MoodleCourseMembersTests {
         #expect(sections.isEmpty)
     }
 
-    // MARK: - Freshness
-
     @Test("members count as fresh for 30 minutes, then the section fetches them again")
     func freshFor30Minutes() async {
         let folder = Folder()
@@ -314,13 +299,10 @@ struct MoodleCourseMembersTests {
         #expect(sections.flatMap(\.members).map(\.id) == [Self.ownId, 43])
     }
 
-    // MARK: - Pictures
-
     private nonisolated static func withPicture(_ member: MoodleMember, rev: Int) -> MoodleMember {
         MoodleMember(
             id: member.id, fullName: member.fullName, idNumber: member.idNumber,
             email: member.email, groups: member.groups, roles: member.roles,
-            // Each user has a context of their own, which the path names.
             pictureURL: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/\(member.id + 1000)/user/icon/moove/f1?rev=\(rev)"),
             description: member.description, interests: member.interests, fields: member.fields
         )
@@ -351,8 +333,6 @@ struct MoodleCourseMembersTests {
         #expect(site.pictureCalls.count == 1)
     }
 
-    /// A course of hundreds asks for every member's picture at once
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/443).
     @Test("a picture kept on the device is read off the main actor")
     func cachedPictureIsReadOffTheMainActor() async throws {
         let folder = Folder()
@@ -373,7 +353,6 @@ struct MoodleCourseMembersTests {
         #expect(site.pictureCalls.count == 1)
     }
 
-    /// The decode draws the whole picture (`kCGImageSourceShouldCacheImmediately`).
     @Test("a downloaded picture is decoded off the main actor")
     func downloadedPictureIsDecodedOffTheMainActor() async throws {
         let folder = Folder()
@@ -576,8 +555,6 @@ struct MoodleCourseMembersTests {
         #expect(pictures(folder) == ["43-5"])
     }
 
-    // MARK: - Members screen
-
     @Test("with nothing fetched the list shows the first fetch's spinner, then its error, then the spinner on a retry")
     func firstLoad() {
         let error = MoodleWebserviceError.transientNetwork(underlying: "offline")
@@ -611,7 +588,6 @@ struct MoodleCourseMembersTests {
             Self.member(9, "Observer", roleDetails: [MoodleMember.Role(shortName: "observer", name: "Course observer", sortOrder: 9)]),
             Self.member(4, "M11399012 @ Assistant", idNumber: "M11399012", roles: ["teacher"]),
             Self.member(5, "Instructor", roles: ["editingteacher"]),
-            // Moodle sends no name for a role that keeps its language pack's name.
             Self.member(8, "Guide", roleDetails: [MoodleMember.Role(shortName: "guide", name: "", sortOrder: 7)]),
             Self.member(7, "No role", roleDetails: []),
         ])
@@ -670,8 +646,6 @@ struct MoodleCourseMembersTests {
         #expect(ids(NTUSTDepartment.im.shortName) == [2])
         #expect(ids("tiger") == [3, 2])
         #expect(ids("  ") == [3, 2, 1, 4])
-        // The list shows the short name, so what only the full name has, as English's
-        // "Department of", finds no one.
         let fullOnly = NTUSTDepartment.im.name.replacingOccurrences(of: NTUSTDepartment.im.shortName, with: "")
         if !fullOnly.trimmingCharacters(in: .whitespaces).isEmpty {
             #expect(ids(fullOnly) == [])
@@ -684,8 +658,6 @@ struct MoodleCourseMembersTests {
         }
         #expect(query == "nobody")
     }
-
-    // MARK: - Member detail
 
     @Test("the detail lists the student ID, the department it names, email, groups and custom fields, each only when there is one")
     func detailRows() {
@@ -710,8 +682,6 @@ struct MoodleCourseMembersTests {
         }
     }
 
-    // MARK: - Department
-
     @Test("a bachelor's student ID names the department of its code, in either case", arguments: [
         ("01", "im"), ("02", "et"), ("03", "me"), ("04", "tx"), ("05", "ct"), ("06", "ch"),
         ("07", "ee"), ("08", "ba"), ("10", "dt"), ("13", "ad"), ("15", "cs"), ("30", "hc"),
@@ -721,7 +691,6 @@ struct MoodleCourseMembersTests {
 
         #expect("\(department)" == courseCode)
         #expect(NTUSTDepartment(studentId: "b199\(code)042") == department)
-        // The case names its strings, so a name taken from another department's key shows here.
         let key = "course_member_department_\(courseCode)"
         #expect(department.name == Bundle.main.localizedString(forKey: key, value: nil, table: nil))
         #expect(department.shortName == Bundle.main.localizedString(forKey: key + "_short", value: nil, table: nil))
@@ -749,9 +718,6 @@ struct MoodleCourseMembersTests {
 
 #if os(iOS)
 extension MoodleCourseMembersTests {
-    /// A first key that matches nobody, as a Zhuyin symbol always does, turned the list from its
-    /// sections to its no-match view, which rebuilt the field and closed the keyboard mid-syllable
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/639).
     @Test("a key that matches nobody keeps the search field and its keyboard")
     func aKeyThatMatchesNobodyKeepsTheSearchField() async throws {
         let folder = Folder()
@@ -767,7 +733,6 @@ extension MoodleCourseMembersTests {
         defer { window.isHidden = true }
         try await waitUntil { window.descendants(ofType: UIScrollView.self).first.map { $0.contentSize.height > 0 } ?? false }
         let list = try #require(window.descendants(ofType: UIScrollView.self).first)
-        // The field shows once the list is pulled past its top.
         list.contentOffset.y = -list.adjustedContentInset.top - 60
         try await waitUntil { !window.descendants(ofType: UITextField.self).isEmpty }
         let field = try #require(window.descendants(ofType: UITextField.self).first)
@@ -782,7 +747,6 @@ extension MoodleCourseMembersTests {
         #expect(window.descendants(ofType: UITextField.self).map(ObjectIdentifier.init) == [ObjectIdentifier(field)])
     }
 
-    /// Shown without making it key, so the test of the search field keeps its keyboard.
     private func show(_ view: some View) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -820,7 +784,6 @@ extension MoodleCourseMembersTests {
                 ))
                 defer { window.isHidden = true }
                 let root = try #require(window.rootViewController?.view)
-                // The name, the page's header, shows with a picture or without.
                 try await waitUntil { accessibilityElement(labeled: "Duck Tiger", in: root) != nil }
 
                 let button = accessibilityElement(labeled: label, in: root)
@@ -835,7 +798,6 @@ extension MoodleCourseMembersTests {
                 try await waitUntil { opened == 1 }
             }
 
-            // While the full-size picture is on its way, the picture takes no second tap.
             var opened = 0
             let window = try show(MoodleMemberProfile(
                 member: Self.classmate, picture: image, policy: VisualStylePolicy(preset: .default),

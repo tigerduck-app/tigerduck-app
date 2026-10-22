@@ -45,8 +45,6 @@ struct MailAccountManagerTests {
         return Harness(manager: manager, prefs: prefs, secrets: secrets, cache: cache, fake: fake, hooks: hooks)
     }
 
-    /// The banner's ✕ hides it until the next failure, as on the other screens
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/521).
     @Test func theAuthFailedBannerStaysClosedUntilTheNextFailure() async {
         let h = Self.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
@@ -60,8 +58,6 @@ struct MailAccountManagerTests {
         #expect(h.manager.showsAuthFailedBanner)
     }
 
-    /// A school sign-out takes the mail account with it only when it is the same student's, as
-    /// the library account goes (https://github.com/tigerduck-app/tigerduck-app/issues/454).
     @Test func aSchoolSignOutSignsOutOnlyTheSameStudentsMail() async {
         let h = Self.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
@@ -140,9 +136,6 @@ struct MailAccountManagerTests {
         #expect(h.manager.authFailed)
         #expect(h.prefs.authFailed)
         #expect(h.hooks.authFailed == 1)
-        // A rejected password is never retried: repeated failures lock the school account and its
-        // Wi-Fi. The second `openSession()` throws without a new client or LOGIN, so the fake's
-        // login count stays where the first rejection left it.
         #expect(await h.fake.calls.filter { $0.hasPrefix("login") }.count == loginCallsAfterFirstRejection)
     }
 
@@ -154,8 +147,6 @@ struct MailAccountManagerTests {
         #expect(h.manager.authFailed)
         let loginCallsAfterRejection = await h.fake.calls.filter { $0.hasPrefix("login") }.count
 
-        // The user re-enters the (now correct) password: only a successful `login(...)` may
-        // clear `authFailed`, and once it does, `openSession()` is allowed to send LOGIN again.
         await h.fake.update { $0.acceptedPassword = nil }
         await h.manager.login(studentID: "B10000000", password: "changed")
         #expect(!h.manager.authFailed)
@@ -174,11 +165,6 @@ struct MailAccountManagerTests {
         #expect(!h.manager.authFailed)
     }
 
-    /// A background LOGIN still on the wire when the user signs out belongs to the account that
-    /// signed out. Its rejection must not set the shared `authFailed` — that stops the checks of
-    /// whoever signs in next, for a password they never entered — and `openSession` applies it
-    /// before `MailChecker` gets the chance to drop the stale result. Signed in by seeding rather
-    /// than `login()`, so the only LOGIN to arrive at the gate is the one under test.
     @Test func aRejectionThatLandsAfterASignOutMarksNoAccountAsFailed() async throws {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
@@ -203,9 +189,6 @@ struct MailAccountManagerTests {
         await h.manager.login(studentID: "B10000000", password: "pw")
         h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 0, summaries: [], oldestLoadedSequence: nil))
         h.manager.logout()
-        // `logout()` starts the cache wipe off the main actor (see `MailAccountManager`); wait
-        // for that specific in-flight clear before asserting the cache is empty, instead of
-        // racing it.
         await h.manager.pendingCacheClear?.value
         #expect(!h.manager.isLoggedIn)
         #expect(h.manager.displayName == nil)
@@ -216,14 +199,6 @@ struct MailAccountManagerTests {
         #expect(h.hooks.signedOut == 1)
     }
 
-    /// What signing out does to the auth-failure lockout, and why pointing the app at another
-    /// mail server goes through a sign-out rather than around one.
-    ///
-    /// `authFailed` records that one account's password was rejected, without naming the account.
-    /// Kept across a server change, it would lock out a server that never rejected anything.
-    /// Cleared alone, it would let the rejected password be retried against the account that
-    /// rejected it, and repeated failures lock the school account and its Wi-Fi. Signing out
-    /// clears both: the flag and the password it applied to.
     @Test func signingOutClearsTheAuthFailureLockoutTogetherWithThePasswordItApplied() async {
         let h = Self.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
@@ -236,8 +211,6 @@ struct MailAccountManagerTests {
 
         #expect(!h.manager.authFailed)
         #expect(!h.prefs.authFailed)
-        // The lockout is gone, but so is everything it could have been retried with: there is
-        // no stored password and no student ID left to send.
         #expect(h.secrets.load(forKey: MailCredentialStore.passwordKey) == nil)
         #expect(h.prefs.studentID == nil)
         await #expect(throws: MailClientError.protocolError("credentials unavailable")) {
@@ -245,13 +218,6 @@ struct MailAccountManagerTests {
         }
     }
 
-    /// Deviation from the brief (controller-directed): `logout()`'s cache wipe runs off the
-    /// main actor in a detached task instead of inline, so a logout immediately followed by a
-    /// login must not let the new session's state get written while the old logout's clear is
-    /// still in flight — otherwise a slow clear finishing later could wipe the new session's
-    /// freshly cached mail. `clearCache` here artificially outlasts a normal (near-instant)
-    /// clear so the ordering is observable rather than a coin flip: if `login()` didn't await
-    /// the pending clear, "loginDone" would be recorded almost immediately, before "clearEnd".
     @Test func loginWaitsForAPendingLogoutClearBeforeWritingNewSessionState() async {
         let secrets = InMemoryMailSecretStorage()
         let cache = SchoolMailTestDoubles.temporaryCache()
@@ -280,17 +246,8 @@ struct MailAccountManagerTests {
         #expect(prefs.studentID == "B10000000")
     }
 
-    /// `logout()` is synchronous and `login()` is not, so a sign-out can land in any of the gaps
-    /// between `login()`'s round trips. Resuming from one of them, `login()` used to write the
-    /// whole session it had been establishing — student ID, demo flag, INBOX markers, display
-    /// name — back over a `prefs.reset()` that had just removed them, and then fire
-    /// `onSignedIn`. The app was left looking signed in to an account whose password had been
-    /// wiped from the Keychain, so every later fetch failed with nothing to re-authenticate with.
-    /// AGENTS.md: do not write previous-user data back after logout.
     @Test func aSignOutWhileLoginIsInFlightIsNotUndoneWhenItResumes() async {
         let h = Self.harness()
-        // Parked inside `establishBaseline`: the password is already saved and the `prefs` writes
-        // have already happened, which is what makes this the interleaving worth proving.
         await h.fake.hold("status")
         let login = Task { await h.manager.login(studentID: "B10000000", password: "pw") }
         await h.fake.waitForArrival("status")
@@ -311,11 +268,6 @@ struct MailAccountManagerTests {
         #expect(h.hooks.signedOut == 1)
     }
 
-    /// The narrower window: the sign-out lands inside the LOGIN round trip itself, before
-    /// `savePassword`. `logout()` has already run `credentials.clear()`, so saving the password
-    /// there puts a signed-out account's credential back into the Keychain with nothing left
-    /// that would ever remove it. The connection this call opened is still closed — cleanup is
-    /// not state, and a stale login that skipped it would leak an IMAP session.
     @Test func aSignOutDuringTheLoginRoundTripLeavesNoStoredPassword() async {
         let h = Self.harness()
         await h.fake.hold("login")
@@ -334,11 +286,6 @@ struct MailAccountManagerTests {
         #expect(await h.fake.calls == ["login B10000000", "logout"])
     }
 
-    /// `pendingCacheClear` always names the *latest* sign-out's wipe. A login resuming from
-    /// `await pendingCacheClear?.value` used to clear the field unconditionally — throwing away
-    /// the handle for a wipe a sign-out had started while it was waiting, so the next login had
-    /// nothing to wait on and its first cached page could be deleted by the previous student's
-    /// clear. The generation check bails before that line rather than after it.
     @Test func aSignOutDuringTheWaitForAPendingWipeKeepsThatWipeAwaitable() async {
         let prefs = InMemoryMailPreferences()
         let clear = ParkedCacheClear()
@@ -348,7 +295,6 @@ struct MailAccountManagerTests {
         let login = Task { await manager.login(studentID: "B10000000", password: "pw") }
         while !manager.isLoggingIn { await Task.yield() }
 
-        // The second sign-out starts a wipe of its own while the login is parked on the first.
         manager.logout()
         await clear.open()
         await login.value
@@ -387,25 +333,19 @@ struct MailAccountManagerTests {
         #expect(!(try await demo.rawSource(folder: "INBOX", uid: 4, expectedUIDValidity: nil)).isEmpty)
     }
 
-    /// The sign-out cache wipe is a directory delete on a detached task, so a process death
-    /// part-way through would leave the signed-out student's mail on disk. The marker outlives
-    /// `prefs.reset()`, and the next launch resumes the wipe through the handle `login()` waits on.
     @Test func anInterruptedSignOutCacheWipeIsFinishedAtTheNextLaunch() async {
         let prefs = InMemoryMailPreferences()
         let cleared = Counter()
 
-        // Process 1: sign out, then "die" before the wipe returns.
         let first = Self.manager(prefs: prefs, clearCache: { await cleared.increment() })
         first.logout()
         while prefs.cacheWipePending { await Task.yield() }
         #expect(await cleared.value == 1)
 
-        // Process 2: nothing owed, so launch does not re-wipe.
         let quiet = Self.manager(prefs: prefs, clearCache: { await cleared.increment() })
         quiet.resumeInterruptedCacheWipe()
         #expect(await cleared.value == 1)
 
-        // Process 3: the marker survived a kill, so launch finishes the job.
         prefs.cacheWipePending = true
         let second = Self.manager(prefs: prefs, clearCache: { await cleared.increment() })
         second.resumeInterruptedCacheWipe()
@@ -413,7 +353,6 @@ struct MailAccountManagerTests {
         #expect(await cleared.value == 2)
     }
 
-    /// A wipe marker must not be cleared by the very `reset()` the sign-out runs first.
     @Test func resettingPreferencesLeavesAPendingWipeMarkerAlone() {
         let prefs = InMemoryMailPreferences()
         prefs.cacheWipePending = true
@@ -433,8 +372,6 @@ struct MailAccountManagerTests {
         )
     }
 
-    /// One event per sign-out, however close together: `MailPageSession` and `MailListViewModel`
-    /// tear down on each, and a missed one leaves the previous student's connection open.
     @Test func everySignOutIsAnnouncedOnce() async {
         let center = NotificationCenter()
         let manager = MailAccountManager(
@@ -449,25 +386,17 @@ struct MailAccountManagerTests {
         }
         defer { center.removeObserver(token) }
         manager.logout()
-        // Synchronous: the teardown has already happened by the time `logout()` returns.
         #expect(events == 1)
         manager.logout()
         #expect(events == 2)
     }
 }
 
-/// Collects events from concurrent tasks without a data race — used only to assert ordering in
-/// `loginWaitsForAPendingLogoutClearBeforeWritingNewSessionState` above. Mirrors
-/// `AsyncSerialLockTests`'s `LockOrderRecorder`.
 private actor CacheClearOrderRecorder {
     private(set) var events: [String] = []
     func record(_ event: String) { events.append(event) }
 }
 
-/// A `clearCache` stand-in a test can park and then let go, so a sign-out's wipe can be held in
-/// flight deterministically instead of by racing a sleep against it. `open()` also releases
-/// every *later* run: a wipe started after it must not park with nothing left to resume it,
-/// which would leak a checked continuation when the test ends.
 private actor ParkedCacheClear {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false

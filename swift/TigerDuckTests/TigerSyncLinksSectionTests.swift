@@ -4,8 +4,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// TigerSync's links open where "Open links with" says, as Settings' other links do: in the
-/// app's browser, or handed to the system (https://github.com/tigerduck-app/tigerduck-app/issues/568).
 @MainActor
 @Suite(.serialized)
 struct TigerSyncLinksSectionTests {

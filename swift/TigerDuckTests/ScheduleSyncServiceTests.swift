@@ -6,26 +6,19 @@ import Testing
 @MainActor
 struct ScheduleSyncServiceTests {
 
-    // MARK: - Fixtures
-
-    /// Build a one-time in-memory SwiftData container so SDCourse / SDAssignment
-    /// instances work outside the app. We never persist — just need live models.
     private static let container: ModelContainer = {
         let schema = Schema([SDCourse.self, SDAssignment.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        // swiftlint:disable:next force_try
         return try! ModelContainer(for: schema, configurations: config)
     }()
 
     private static func context() -> ModelContext { ModelContext(container) }
 
     private static func tuesdayAt(_ hour: Int, minute: Int = 0, secondsFromNow: TimeInterval = 0) -> Date {
-        // A fixed Tuesday in Taipei time, which class periods are read in, so every class
-        // start is computable wherever the tests run.
         var comps = DateComponents()
         comps.year = 2026
         comps.month = 4
-        comps.day = 21 // Tuesday 2026-04-21
+        comps.day = 21
         comps.hour = hour
         comps.minute = minute
         comps.second = 0
@@ -79,7 +72,6 @@ struct ScheduleSyncServiceTests {
         )
     }
 
-    /// A calendar whose only holiday is the Taipei day of `day`.
     private static func calendar(holidayOn day: Date, id: Int = 1) -> AcademicCalendar {
         let date = AcademicCalendar.startOfDay(day)
         return AcademicCalendar(
@@ -91,8 +83,6 @@ struct ScheduleSyncServiceTests {
         )
     }
 
-    // MARK: - Tests
-
     @Test func emptyInputs_producesNoEvents() {
         let inputs = Self.defaultInputs(courses: [])
         let now = Self.tuesdayAt(8)
@@ -101,14 +91,6 @@ struct ScheduleSyncServiceTests {
         #expect(events.isEmpty)
     }
 
-    // MARK: - Live Activity availability
-
-    /// The server starts a Live Activity from every event this device
-    /// uploads, whether or not the app is running. With course sync off, or
-    /// the user's own Live Activity switch off, the upload has to be empty —
-    /// that is also what makes the server cancel what it already queued.
-    /// Built through the initializer `AppState` uses, so the rule is read the
-    /// way it is read there.
     @Test func unavailableLiveActivity_uploadsNoEvents() async {
         let ctx = Self.context()
         let course = Self.makeCourse(
@@ -157,13 +139,6 @@ struct ScheduleSyncServiceTests {
         }
     }
 
-    // MARK: - School holidays
-
-    /// The server starts a Live Activity from every event it is handed, so a
-    /// class that does not meet is not uploaded — the rule the on-device
-    /// resolver applies. Judged on the class's own day: "now" is the Monday
-    /// evening before, which is no holiday. The assignment stays, since a
-    /// deadline on a day off is still a deadline.
     @Test func holiday_dropsClassEventsButKeepsAssignments() {
         let ctx = Self.context()
         let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
@@ -181,7 +156,6 @@ struct ScheduleSyncServiceTests {
         #expect(events.map(\.scenario) == [.assignmentUrgent])
     }
 
-    /// "Still have class?" on that holiday: the user said the class meets.
     @Test func optedInHoliday_keepsClassEvents() {
         let ctx = Self.context()
         let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
@@ -200,8 +174,6 @@ struct ScheduleSyncServiceTests {
         #expect(Set(events.map(\.scenario)) == [.classPreparing, .inClass, .assignmentUrgent])
     }
 
-    /// Once the next term's timetable is in but before its classes begin, or between terms, no
-    /// class meets, so none is uploaded for the server to start, as on a holiday.
     @Test func outsideTheTerm_dropsClassEventsButKeepsAssignments() {
         let ctx = Self.context()
         let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
@@ -227,9 +199,6 @@ struct ScheduleSyncServiceTests {
         #expect(events.map(\.scenario) == [.assignmentUrgent])
     }
 
-    /// Seen from the Monday evening before a term that begins on Tuesday, the window reaches the
-    /// new term's first day. The timetable on hand is the old term's, so its Tuesday class does not
-    /// go up; a list of the new term's courses files that day.
     @Test func theNewTermsFirstDay_getsNoneOfTheOldTermsClasses() {
         let ctx = Self.context()
         let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
@@ -246,8 +215,6 @@ struct ScheduleSyncServiceTests {
         #expect(Set(events("1151").map(\.scenario)) == [.classPreparing, .inClass, .assignmentUrgent])
     }
 
-    /// With the new term's timetable cached, its first day is planned from it, and the old term's
-    /// classes stay off that day (https://github.com/tigerduck-app/tigerduck-app/issues/595).
     @Test func theNewTermsFirstDay_getsTheNewTermsClassesWhenCached() {
         let ctx = Self.context()
         let (old, _, now) = Self.tuesdayClassAndDeadline(context: ctx)
@@ -263,7 +230,6 @@ struct ScheduleSyncServiceTests {
         #expect(events.allSatisfy { $0.sourceId.hasPrefix("CS302_") })
     }
 
-    /// The terms are read off `now`, the app's clock the window is built on, and the calendar.
     @Test func theTermsAreTheGivenClocks() async {
         let ctx = Self.context()
         let (old, _, mondayEvening) = Self.tuesdayClassAndDeadline(context: ctx)
@@ -295,7 +261,6 @@ struct ScheduleSyncServiceTests {
         }
     }
 
-    /// Term 1142 ends on the Monday before `tuesdayAt`, and term 1151 begins that Tuesday.
     private static func termStartingTuesday() -> AcademicCalendar {
         let tuesday = AcademicCalendar.startOfDay(tuesdayAt(8))
         let day = { (offset: Int) in AcademicCalendar.calendar.date(byAdding: .day, value: offset, to: tuesday)! }
@@ -309,8 +274,6 @@ struct ScheduleSyncServiceTests {
         )
     }
 
-    /// Before the calendar is fetched the month heuristic's term is current: from February 1 on,
-    /// the spring term, whose timetable a January list does not hold.
     @Test func withoutACalendar_theHeuristicsTermDecidesTheDay() {
         let ctx = Self.context()
         let course = Self.makeCourse(courseNo: "CS401", name: "Networks", weekdayToPeriods: [1: ["3"]], context: ctx)
@@ -329,9 +292,6 @@ struct ScheduleSyncServiceTests {
         #expect(Set(events("1152").map(\.scenario)) == [.classPreparing, .inClass])
     }
 
-    /// Tuesday periods 3-4 and a deadline at Tuesday noon, seen from the
-    /// Monday evening before. The caller holds `context` for as long as it
-    /// uses the models.
     private static func tuesdayClassAndDeadline(
         context ctx: ModelContext
     ) -> (SDCourse, SDAssignment, Date) {
@@ -354,8 +314,6 @@ struct ScheduleSyncServiceTests {
 
     @Test func singleCourse_emitsBothClassPreparingAndInClass() {
         let ctx = Self.context()
-        // Tuesday periods 3-4: 10:20-12:10. "now" = 08:00, so classPreparing
-        // fires at 10:05 (15 min before start), inClass fires at 10:20.
         let course = Self.makeCourse(
             courseNo: "CS101",
             name: "Algorithms",
@@ -378,7 +336,6 @@ struct ScheduleSyncServiceTests {
         #expect(inClass != nil)
         #expect(prep?.snapshot.title == "Algorithms")
         #expect(inClass?.snapshot.title == "Algorithms")
-        // Same source_id — the server build_push_id combines with scenario
         #expect(prep?.sourceId == inClass?.sourceId)
     }
 
@@ -409,7 +366,6 @@ struct ScheduleSyncServiceTests {
             weekdayToPeriods: [2: ["3", "4"]],
             context: ctx
         )
-        // Horizon of 1 hour — class is 2h+ away, so no events
         let now = Self.tuesdayAt(8)
         let end = now.addingTimeInterval(3600)
         let events = ScheduleSyncService.buildEvents(
@@ -441,14 +397,12 @@ struct ScheduleSyncServiceTests {
             inputs: Self.defaultInputs(
                 courses: [],
                 assignments: [assignment],
-                assignmentLead: 3 * 3600 // desired fire_at = 07:00, already past now (08:00)
+                assignmentLead: 3 * 3600
             ),
             now: now,
             horizonEnd: end
         )
 
-        // Fix #2: lead-time fallback — since due date is still 2h in the
-        // future, fire ≈ now+5s instead of skipping.
         #expect(events.count == 1)
         #expect(events.first?.scenario == .assignmentUrgent)
         #expect(events.first!.fireAt > now)
@@ -462,7 +416,7 @@ struct ScheduleSyncServiceTests {
             courseNo: "CS101",
             courseName: "Algorithms",
             title: "Final Project",
-            dueDate: Self.tuesdayAt(20), // 20:00
+            dueDate: Self.tuesdayAt(20),
             isCompleted: false,
             moodleUrl: nil,
             cutoffDate: nil,
@@ -476,7 +430,7 @@ struct ScheduleSyncServiceTests {
             inputs: Self.defaultInputs(
                 courses: [],
                 assignments: [assignment],
-                assignmentLead: 3 * 3600 // fire_at = 17:00, in window
+                assignmentLead: 3 * 3600
             ),
             now: now,
             horizonEnd: end
@@ -487,15 +441,11 @@ struct ScheduleSyncServiceTests {
         #expect(event?.scenario == .assignmentUrgent)
         #expect(event?.snapshot.title == "Final Project")
         #expect(event?.sourceId == "a-1000")
-        // The server starts its activity from this snapshot, so a tap there opens the same link.
         #expect(event?.snapshot.deepLink?.absoluteString == "tigerduck://assignment/a-1000")
     }
 
     @Test func classPreparingLeadTimePast_firesImmediately() {
         let ctx = Self.context()
-        // Tuesday periods 3-4: start at 10:20. "now" = 10:00 — only 20 min
-        // until class. With a 2h lead time, the desired fire_at = 08:20 is
-        // long past, but class is still future → Fix #2 fires immediately.
         let course = Self.makeCourse(
             courseNo: "CS200",
             name: "Fallback-fire",
@@ -508,7 +458,7 @@ struct ScheduleSyncServiceTests {
         let events = ScheduleSyncService.buildEvents(
             inputs: Self.defaultInputs(
                 courses: [course],
-                classPreparingLead: 2 * 3600 // 2h lead, desired fire_at = 08:20
+                classPreparingLead: 2 * 3600
             ),
             now: now,
             horizonEnd: end
@@ -522,8 +472,6 @@ struct ScheduleSyncServiceTests {
 
     @Test func classAboutToStart_skipsClassPreparingFallback() {
         let ctx = Self.context()
-        // Class at 10:20, "now" = 10:19:30 — less than 60s until event.
-        // Fix #2 should NOT fire classPreparing (no useful warning left).
         let course = Self.makeCourse(
             courseNo: "CS201",
             name: "No-head-room",
@@ -544,12 +492,9 @@ struct ScheduleSyncServiceTests {
 
         let prep = events.first { $0.scenario == .classPreparing }
         #expect(prep == nil)
-        // inClass still scheduled normally
         #expect(events.contains { $0.scenario == .inClass })
     }
 
-    /// The server starts the "due soon" activity from this list, so an assignment the user
-    /// ignored or marked done stays out of it, as it stays out of the backend's reminders.
     @Test func ignoredAndLocallyCompletedAssignments_areSkipped() {
         let ctx = Self.context()
         let assignments = [

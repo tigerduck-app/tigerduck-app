@@ -32,8 +32,8 @@ struct NTUSTGradePointsTests {
 
     @Test func gpaIsCreditWeightedOverGradedCoursesOnly() {
         let courses = [
-            course("1142", "A", credits: 3, grade: "A+"),          // 4.3 × 3
-            course("1142", "B", credits: 1, grade: "C"),           // 2.0 × 1
+            course("1142", "A", credits: 3, grade: "A+"),
+            course("1142", "B", credits: 1, grade: "C"),
             course("1142", "C", credits: 2, grade: "成績未到", status: .pending),
             course("1142", "D", credits: 1, grade: "通過", status: .passed),
             course("1142", "E", credits: 0, grade: "A"),
@@ -56,11 +56,11 @@ struct GPATrendPointTests {
                 cumulative: RankingStats(classRank: 4, deptRank: 12, gpa: 3.85)
             )],
             courses: [
-                course("1141", "A", credits: 3, grade: "A"),        // official row exists; grade math ignored
-                course("1142", "B", credits: 2, grade: "A+"),       // 4.3 × 2
-                course("1142", "C", credits: 2, grade: "B"),        // 3.0 × 2
+                course("1141", "A", credits: 3, grade: "A"),
+                course("1142", "B", credits: 2, grade: "A+"),
+                course("1142", "C", credits: 2, grade: "B"),
                 course("1142", "D", credits: 3, grade: "成績未到", status: .pending),
-                course("1151", "E", credits: 3, grade: "成績未到", status: .pending),  // nothing graded → no point
+                course("1151", "E", credits: 3, grade: "成績未到", status: .pending),
             ],
             creditSummary: .empty
         )
@@ -71,7 +71,6 @@ struct GPATrendPointTests {
         #expect(trend[1].isProvisional)
         #expect(trend[1].semester.classRank == nil)
         #expect(abs(trend[1].semester.gpa! - 3.65) < 1e-9)
-        // Cumulative estimate spans every graded course so far: (4.0×3 + 4.3×2 + 3.0×2) / 7
         #expect(abs(trend[1].cumulative.gpa! - (4.0 * 3 + 4.3 * 2 + 3.0 * 2) / 7) < 1e-9)
     }
 }

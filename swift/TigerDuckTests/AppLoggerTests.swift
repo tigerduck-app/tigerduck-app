@@ -3,8 +3,6 @@ import Testing
 
 @testable import TigerDuck
 
-/// `AppLogger.captureError` logs its line as private, but a logging profile that enables private
-/// data shows it in a sysdiagnose, so anything left in it can still be read there.
 @Suite("Error log scrubbing")
 struct AppLoggerTests {
 
