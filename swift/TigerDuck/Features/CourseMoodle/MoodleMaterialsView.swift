@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// A course's materials in the order of its Moodle page, which teachers arrange by week or topic,
-/// so the screen keeps Moodle's sections rather than sorting by date or name.
 struct MoodleMaterialsView: View {
     let store: MoodleCourseStore
 
@@ -11,8 +9,6 @@ struct MoodleMaterialsView: View {
     @State private var files = MoodleFileOpener()
 
     var body: some View {
-        // Not a List: a long press there lifts the whole row, here a week's card, rather than
-        // the file under the finger.
         ScrollView {
             if let materials = store.materials.value {
                 LazyVStack(alignment: .leading, spacing: 0) {

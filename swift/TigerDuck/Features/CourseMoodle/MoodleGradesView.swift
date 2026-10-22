@@ -1,9 +1,6 @@
 import MarkdownUI
 import SwiftUI
 
-/// A course's grades on Moodle for the signed-in student: the course total, then each graded
-/// item in the gradebook's order. An item with feedback opens in place to show it, and a long
-/// press opens the item's activity in Moodle.
 struct MoodleGradesView: View {
     let store: MoodleCourseStore
 
@@ -71,7 +68,6 @@ struct MoodleGradesView: View {
         .presetCard(policy: appState.visualStylePolicy)
     }
 
-    /// An item no activity gives has no long-press menu, rather than an empty one.
     @ViewBuilder
     private func row(_ item: MoodleGradeItem) -> some View {
         let content = MoodleGradeRow(item: item, accent: appState.accentColor, isExpanded: isExpanded(item.id))
@@ -98,7 +94,6 @@ struct MoodleGradesView: View {
     }
 }
 
-/// The course total, styled as the course detail's classroom and time cards.
 struct MoodleGradeTotalCard: View {
     let total: MoodleGradeItem
     let policy: VisualStylePolicy
@@ -131,10 +126,6 @@ struct MoodleGradeTotalCard: View {
     }
 }
 
-/// A graded item: its kind's icon, its name, and its grade over the most it could be, which
-/// never truncate. An item with feedback is a button that shows the feedback under it; the
-/// rest cannot be tapped. The grade moves under the name at accessibility sizes, and wherever
-/// beside the name it would leave the name too little room.
 struct MoodleGradeRow: View {
     let item: MoodleGradeItem
     let accent: Color
@@ -145,7 +136,6 @@ struct MoodleGradeRow: View {
     @Environment(\.openMoodleLink) private var openMoodleLink
     @ScaledMetric(relativeTo: .body) private var nameMinWidth: CGFloat = 120
 
-    /// The line between rows and the feedback start under the name, not under the icon.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + iconWidth + TigerDuckTheme.Spacing.md
     private static let iconWidth: CGFloat = 28
 
@@ -189,8 +179,6 @@ struct MoodleGradeRow: View {
         .contentShape(Rectangle())
     }
 
-    /// Measured with the name at `nameMinWidth`, so only a grade too wide for that leaves this
-    /// layout; a long name wraps instead.
     private var gradeBesideName: some View {
         HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.md) {
             icon
@@ -219,7 +207,6 @@ struct MoodleGradeRow: View {
     }
 
     private var icon: some View {
-        // Past this size the wider symbols, such as the quiz's, run out of the icon's column.
         Image(systemName: item.symbol)
             .font(TigerDuckTheme.Typography.body)
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
@@ -284,9 +271,6 @@ extension MoodleGradeItem {
         }
     }
 
-    /// The most the grade could be, written only beside a grade that is a number: over a letter,
-    /// a percentage or a scale's word, the maximum would misread. Its digits follow Moodle's,
-    /// whatever the device's region.
     var maxText: String? {
         guard let maxGrade, let grade, grade.wholeMatch(of: /-?[0-9]+([.,][0-9]+)?/) != nil else { return nil }
         return maxGrade.formatted(
@@ -309,8 +293,6 @@ extension MoodleGradeItem {
         return "\(spokenGrade), \(state)"
     }
 
-    /// The item's activity on Moodle; nil for an item no activity gives, such as one the teacher
-    /// added by hand.
     var activityPage: MoodlePage? {
         guard let module, let cmid, module.wholeMatch(of: /[a-z0-9_]+/) != nil else { return nil }
         return .module(module, cmid: cmid)

@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 
-/// A refresh racing a page load could discard pages just added, so list work runs serially.
 @Observable
 @MainActor
 final class MoodleDiscussionPages {
@@ -9,7 +8,6 @@ final class MoodleDiscussionPages {
     let feed: MoodleFeed<MoodleDiscussionList>
     let date: KeyPath<MoodleDiscussion, Date>
     private(set) var isLoadingMore = false
-    /// The last next-page load's error, kept until a page loads, so the list can offer a retry.
     private(set) var pageFailure: (any Error)?
 
     @ObservationIgnored private let forums: MoodleFeed<MoodleTermForums>
@@ -40,9 +38,6 @@ final class MoodleDiscussionPages {
         list == nil ? nil : feed.fetchedAt
     }
 
-    /// Fetches again every page shown so far. A complete answer also corrects the forum's counts,
-    /// so a list that emptied takes its section row with it. A refresh asked for while one is
-    /// queued or running joins it, so a pull during a timed refresh fetches once.
     func refresh() async {
         if let refreshing {
             await refreshing.value

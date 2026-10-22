@@ -3,21 +3,16 @@ import ImageIO
 import Observation
 import UniformTypeIdentifiers
 
-/// The Moodle calls behind a course's Moodle screens. Each runs under the stored token, renewed
-/// as for any Moodle call. Tests pass stand-ins.
 nonisolated struct MoodleCourseAPI: Sendable {
     var functions: @Sendable () async throws -> Set<String>
     var forums: @Sendable (_ courseIds: [Int]) async throws -> [MoodleForum]
     var discussions: @Sendable (_ forumId: Int, _ page: Int) async throws -> [MoodleDiscussion]
     var posts: @Sendable (_ discussionId: Int) async throws -> [MoodlePost] = { _ in [] }
     var markViewed: @Sendable (_ discussionId: Int, _ isCurrent: @escaping @MainActor @Sendable () -> Bool) async throws -> Void
-    /// Defaults keep a stand-in for another screen's tests to the calls it is about.
     var materials: @Sendable (_ courseId: Int) async throws -> MoodleCourseMaterials = { _ in
         MoodleCourseMaterials(sections: [])
     }
     var markMaterialViewed: @Sendable (_ material: MoodleMaterial, _ isCurrent: @escaping @MainActor @Sendable () -> Bool) async throws -> Void = { _, _ in }
-    /// Downloads a file to a temporary location the caller moves; `progress` gets the share
-    /// received so far.
     var download: @Sendable (_ file: MoodleFile, _ progress: @escaping @Sendable (Double) -> Void) async throws -> URL = { _, _ in
         throw CancellationError()
     }
@@ -31,9 +26,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         throw CancellationError()
     }
     var comments: @Sendable (_ cmid: Int, _ submissionId: Int) async throws -> [MoodleSubmissionComment] = { _, _ in [] }
-    /// The account's groups on the course, by id.
     var groups: @Sendable (_ courseId: Int) async throws -> [Int: String] = { _ in [:] }
-    /// Takes the status of a submission the page fetched, asked for at `askedAt`.
     var submissionFetched: @MainActor @Sendable (
         _ status: MoodleSubmissionStatus, _ askedAt: ContinuousClock.Instant, _ context: MoodleCacheContext
     ) -> Void = { _, _, _ in }
@@ -115,7 +108,6 @@ nonisolated struct MoodleCourseAPI: Sendable {
                 return try await MoodleAssignmentService.groups(courseId: courseId, userId: userId, token: token)
             }
         },
-        // To the writer of the cached assignments, so Home shows it before the next round.
         submissionFetched: { status, askedAt, context in
             Task {
                 await AppServiceBridge.takeSubmissionStatus(
@@ -133,7 +125,6 @@ nonisolated struct MoodleCourseAPI: Sendable {
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws {
         try await MoodleWebserviceClient.withToken(tokens) { token in
-            // Token acquisition and renewal can suspend across an account change.
             guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
             try await MoodleForumService.markViewed(
                 discussionId: discussionId, token: token, session: session, siteURL: siteURL
@@ -149,22 +140,18 @@ nonisolated struct MoodleCourseAPI: Sendable {
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws {
         try await MoodleWebserviceClient.withToken(tokens) { token in
-            // Token acquisition and renewal can suspend across an account change.
             guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
             try await MoodleCourseContentsService.markViewed(material, token: token, session: session, siteURL: siteURL)
         }
     }
 }
 
-/// Where a course's Moodle data is cached, and whether the sign-in it is fetched under still holds.
 struct MoodleCacheContext {
     let account: String
     let cache: DataCache
-    /// False once the account signs out, after which nothing is written.
     let isCurrent: () -> Bool
     var now: () -> Date = { Date() }
 
-    /// The signed-in account's, nil while signed out.
     static func signedIn(_ authService: AuthService, cache: DataCache = .shared) -> MoodleCacheContext? {
         guard let account = authService.storedStudentId else { return nil }
         let generation = authService.loginGeneration
@@ -176,22 +163,15 @@ struct MoodleCacheContext {
     }
 }
 
-/// One kind of a course's Moodle data as its screen shows it: the cached copy at once, then each
-/// fetch in place, with the fetch's progress and outcome.
 @Observable
 @MainActor
 final class MoodleFeed<Value: Codable & Sendable> {
-    /// How long a copy counts as fresh; the screen's refresh timer fetches it again once older.
     let ttl: TimeInterval
     private(set) var value: Value?
     private(set) var fetchedAt: Date?
     private(set) var isRefreshing = false
-    /// `.ok` for a cached copy still fresh, as no fetch comes until it ages, else `.unknown` until
-    /// a fetch ends.
     private(set) var status: ServerStatus = .unknown
-    /// The last fetch's error, cleared by the next success.
     private(set) var failure: (any Error)?
-    /// How many fetches have failed; a screen's refresh-failure note waits for it to change.
     private(set) var failureCount = 0
 
     @ObservationIgnored private let cacheName: String
@@ -211,8 +191,6 @@ final class MoodleFeed<Value: Codable & Sendable> {
         }
     }
 
-    /// Fetches through `fetch` and keeps the answer. A refresh already running is joined, not
-    /// repeated, so a pull during a timed refresh waits for that one.
     func refresh(_ fetch: @escaping @Sendable () async throws -> Value) async {
         if let running {
             await running.value
@@ -224,8 +202,6 @@ final class MoodleFeed<Value: Codable & Sendable> {
         if running == task { running = nil }
     }
 
-    /// Applies a change made here, such as a discussion read, keeping the time of the fetch the
-    /// value came from.
     func update(_ change: (inout Value) -> Void) {
         guard var changed = value, let fetchedAt, context.isCurrent() else { return }
         change(&changed)
@@ -254,22 +230,17 @@ final class MoodleFeed<Value: Codable & Sendable> {
     }
 }
 
-/// The forums of a term's courses, from one call for all of them.
 nonisolated struct MoodleTermForums: Codable, Sendable, Equatable {
-    /// The courses asked about, so a course with no forums tells apart from one not asked about.
     let courseIds: [Int]
     var forums: [MoodleForum]
 }
 
-/// The discussions of one forum, a page at a time.
 nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
     let forumId: Int
     var discussions: [MoodleDiscussion]
-    /// Pages fetched; a refresh fetches as many again, so the list keeps its length.
     var pageCount: Int
     var hasMore: Bool
 
-    /// Pinned first, then newest first.
     var sorted: [MoodleDiscussion] { sorted(by: \.created) }
 
     func sorted(by date: KeyPath<MoodleDiscussion, Date>) -> [MoodleDiscussion] {
@@ -288,14 +259,10 @@ nonisolated struct MoodleDiscussionList: Codable, Sendable, Equatable {
     }
 }
 
-/// The people of a course the account can see, which take in the account itself.
 nonisolated struct MoodleMemberList: Codable, Sendable, Equatable {
-    /// The account's own Moodle user, nil when Moodle was not asked.
     let ownId: Int?
     var members: [MoodleMember]
 
-    /// Whether anyone but the account is there to show, which a course split into groups the
-    /// account sees alone of may not have.
     var showsOthers: Bool {
         members.contains { $0.id != ownId }
     }
@@ -306,7 +273,6 @@ nonisolated struct MoodleDiscussionThread: Codable, Sendable, Equatable {
     var posts: [MoodlePost]
 }
 
-/// A course's gradebook for the signed-in student, in Moodle's order.
 nonisolated struct MoodleCourseGrades: Codable, Sendable, Equatable {
     var items: [MoodleGradeItem]
 
@@ -314,14 +280,11 @@ nonisolated struct MoodleCourseGrades: Codable, Sendable, Equatable {
         items.first { $0.isCourseTotal && $0.isShown }
     }
 
-    /// The items the grades screen lists and its row counts: graded and shown, with the course
-    /// total and the categories' subtotals left out.
     var graded: [MoodleGradeItem] {
         items.filter { !$0.isCourseTotal && !$0.isCategoryTotal && $0.isShown }
     }
 }
 
-/// A screen the course detail opens from its Moodle section.
 enum MoodleCourseRoute: Hashable {
     case announcements
     case announcement(MoodleDiscussion)
@@ -335,7 +298,6 @@ enum MoodleCourseRoute: Hashable {
     case assignments
     case assignment(MoodleCourseAssignments.Entry)
 
-    /// Whether the screen fetches its own data, which ⌘R refreshes on the Mac.
     var refreshesOnItsOwn: Bool {
         switch self {
         case .announcements, .materials, .grades, .members, .forums, .forum, .discussion, .assignments: true
@@ -344,7 +306,6 @@ enum MoodleCourseRoute: Hashable {
     }
 }
 
-/// A row of the course detail's Moodle section. More kinds join as their screens do.
 struct MoodleSectionRow: Identifiable, Equatable {
     enum Kind: Hashable {
         case announcements
@@ -362,8 +323,6 @@ struct MoodleSectionRow: Identifiable, Equatable {
     var id: Kind { kind }
 }
 
-/// A course's data on Moodle, for the course detail's Moodle section and the screens it opens.
-/// Each kind is a ``MoodleFeed``, cached on the device for the signed-in account.
 @Observable
 @MainActor
 final class MoodleCourseStore {
@@ -379,7 +338,6 @@ final class MoodleCourseStore {
     let summary: MoodleFeed<MoodleCourseSummary>
     let assignments: MoodleCourseAssignments
 
-    /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
     @ObservationIgnored private let courseCodes: [String]
     @ObservationIgnored private let api: MoodleCourseAPI
@@ -412,9 +370,6 @@ final class MoodleCourseStore {
         assignments = MoodleCourseAssignments(courseId: courseId, context: context, api: api)
     }
 
-    // MARK: Section
-
-    /// In the section's order; a kind with nothing to count has no row.
     var sectionRows: [MoodleSectionRow] {
         var rows: [MoodleSectionRow] = []
         if let news = newsForum, news.discussionCount > 0 {
@@ -443,9 +398,6 @@ final class MoodleCourseStore {
         return rows
     }
 
-    // MARK: Forums
-
-    /// When this course's forums were fetched; nil while the cache does not cover the course.
     var forumsFetchedAt: Date? {
         forums.value?.courseIds.contains(courseId) == true ? forums.fetchedAt : nil
     }
@@ -463,9 +415,6 @@ final class MoodleCourseStore {
         courseForums.filter { !$0.isNews && $0.discussionCount > 0 }
     }
 
-    /// One call for every course of the term. A site that does not allow the forum calls answers
-    /// as if no course had a forum, which hides the announcements and the forums; one that does
-    /// not allow the posts call keeps only the announcements, as a discussion would show no reply.
     func refreshForums() async {
         await forums.refresh { [api, termCourseIds] in
             let functions = try await api.functions()
@@ -478,12 +427,8 @@ final class MoodleCourseStore {
         }
     }
 
-    // MARK: Materials
-
     var materialsFetchedAt: Date? { materials.fetchedAt }
 
-    /// A site that does not allow the call answers as if the course had no materials, which hides
-    /// their row. Copies of files Moodle has a newer version of go once the answer is in.
     func refreshMaterials() async {
         await materials.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseContentsService.contentsFunction) else {
@@ -495,16 +440,12 @@ final class MoodleCourseStore {
         downloads.removeOutdated(fresh.fileRefs.map { ($0.file, location(of: $0.file, in: $0.owner)) })
     }
 
-    /// A file or link opened on screen, which Moodle logs as a view of its module when the site
-    /// allows the call. A failed call is not retried and shows nothing.
     @discardableResult
     func open(_ material: MoodleMaterial) -> Task<Void, Never> {
         Task { [api, context] in
             guard let call = MoodleCourseContentsService.viewCalls[material.module],
                   (try? await api.functions())?.contains(call.function) == true else { return }
             do {
-                // A screen in another window can outlive a sign-out, and the next account's token
-                // would log the view as theirs.
                 try await api.markMaterialViewed(material) { @MainActor in context.isCurrent() }
             } catch is CancellationError {
                 return
@@ -514,9 +455,6 @@ final class MoodleCourseStore {
         }
     }
 
-    // MARK: Files
-
-    /// Where `file` is kept on the device for the signed-in account.
     func location(of file: MoodleFile, in owner: MoodleFileOwner) -> URL {
         downloads.location(of: file, owner: owner, courseId: courseId, account: context.account)
     }
@@ -525,7 +463,6 @@ final class MoodleCourseStore {
         downloads.state(of: file, at: location(of: file, in: owner))
     }
 
-    /// The copy of `file` on the device, downloaded first when there is none; nil when that fails.
     @discardableResult
     func download(_ file: MoodleFile, in owner: MoodleFileOwner) async -> URL? {
         await downloads.download(file, to: location(of: file, in: owner), fetch: api.download, isCurrent: context.isCurrent)
@@ -535,10 +472,6 @@ final class MoodleCourseStore {
         downloads.cancel(location(of: file, in: owner))
     }
 
-    // MARK: Grades
-
-    /// The course's grade items for the signed-in student. A site that does not allow the call
-    /// answers as if the course had none, which hides the row.
     func refreshGrades() async {
         await grades.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleGradeService.gradeItemsFunction) else {
@@ -548,9 +481,6 @@ final class MoodleCourseStore {
         }
     }
 
-    // MARK: Discussions
-
-    /// Keep announcement cache paths stable so upgrading does not discard their offline copies.
     func discussions(of forum: MoodleForum) -> MoodleDiscussionPages {
         if let pages = discussionPages[forum.id] { return pages }
         let feed = forum.isNews
@@ -580,8 +510,6 @@ final class MoodleCourseStore {
         return feed
     }
 
-    /// A site that does not allow the posts call answers with none, which leaves the first post
-    /// as the discussion's list brought it.
     func refreshThread(of discussion: MoodleDiscussion) async {
         await thread(of: discussion).refresh { [api] in
             guard try await api.functions().contains(MoodleForumService.discussionPostsFunction) else {
@@ -591,9 +519,6 @@ final class MoodleCourseStore {
         }
     }
 
-    // MARK: Opening
-
-    /// List loads must not mark discussions read; a view event is best-effort and is not retried.
     @discardableResult
     func open(_ discussion: MoodleDiscussion, in forum: MoodleForum?) -> Task<Void, Never> {
         guard context.isCurrent(), !Task.isCancelled else { return Task {} }
@@ -622,11 +547,6 @@ final class MoodleCourseStore {
         open(discussion, in: newsForum)
     }
 
-    /// Every opening fetches the posts, as the list may not know of a reply yet, and keeps which
-    /// were unread for the dots. Moodle marks the whole discussion read on the view event, so it
-    /// goes only once the posts load on a page still on screen (`isShown`): an opening whose fetch
-    /// fails, or whose page has left by then, sends nothing and returns nil, leaving the replies
-    /// unread for the next opening.
     func openThread(
         of discussion: MoodleDiscussion, in forum: MoodleForum, isShown: () -> Bool = { true }
     ) async -> Set<Int>? {
@@ -642,20 +562,13 @@ final class MoodleCourseStore {
         return unread
     }
 
-    // MARK: Members
-
     var membersFetchedAt: Date? { members.fetchedAt }
 
-    /// The member a post's author is, while the cached members have them.
     func member(_ id: Int?) -> MoodleMember? {
         guard let id else { return nil }
         return members.value?.members.first { $0.id == id }
     }
 
-    /// The whole list in one call, which the section counts and the screen groups and searches.
-    /// A site that does not allow the call, or a course that keeps its participants from the
-    /// account, answers as if the course had no members, which hides their row for good rather
-    /// than failing on every refresh.
     func refreshMembers() async {
         await members.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseMembersService.membersFunction) else {
@@ -669,20 +582,12 @@ final class MoodleCourseStore {
         }
     }
 
-    // MARK: Pictures
-
-    /// Decoded once per course detail, so a row that comes back shows its picture at once.
     private(set) var pictures: [URL: CGImage] = [:]
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
     @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
-    /// Reads a picture kept on the device, replaced in tests to see where it runs.
     @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
-    /// Decodes a picture, replaced in tests to see where it runs.
     @ObservationIgnored var decodePicture: @Sendable (Data) -> CGImage? = { MoodleCourseStore.image(from: $0) }
 
-    /// A member's own picture, from the device, else from Moodle once and then kept with the
-    /// account's other Moodle files. One who keeps Moodle's default picture, or whose download
-    /// fails or lands after a sign-out, keeps their initial.
     func loadPicture(of member: MoodleMember) async {
         guard let url = member.pictureURL, pictures[url] == nil else { return }
         let file = pictureFile(of: member.id, url: url)
@@ -695,11 +600,6 @@ final class MoodleCourseStore {
         pictures[url] = image
     }
 
-    /// The member's own picture as a file named for them, which Quick Look opens and its share
-    /// menu saves: Moodle's 512 px size, downloaded on the first open and kept, else the 100 px
-    /// one the list shows; nil while neither is on the device. Quick Look tells an image by its
-    /// extension, which the kept files have none of. The copy sits next to them, so a new upload
-    /// and a sign-out delete it too.
     func picturePreview(of member: MoodleMember) async -> URL? {
         guard let url = member.pictureURL, context.isCurrent() else { return nil }
         let kept = pictureFile(of: member.id, url: url)
@@ -720,8 +620,6 @@ final class MoodleCourseStore {
         }
     }
 
-    /// The 512 px picture from the device, else from Moodle, kept once it reads as an image. Nil
-    /// when the download fails or lands after a sign-out, and the 100 px one opens instead.
     private func largePicture(of url: URL, keptAt file: URL) async -> Data? {
         if let kept = try? Data(contentsOf: file) { return kept }
         guard let large = MoodleCourseMembersService.largePicture(url) else { return nil }
@@ -736,15 +634,12 @@ final class MoodleCourseStore {
         }
     }
 
-    /// Nil for data that is not an image.
     private nonisolated static func fileExtension(of data: Data) -> String? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let type = CGImageSourceGetType(source).flatMap({ UTType($0 as String) }) else { return nil }
         return type.preferredFilenameExtension
     }
 
-    /// Off the main actor, as a course of hundreds asks for every member's picture at once. One
-    /// read at a time, in the order rows ask, so the downloads that follow keep that order.
     private func readInTurn(_ file: URL) async -> CGImage? {
         let previous = lastPictureRead
         let read = readPictureFile
@@ -757,14 +652,11 @@ final class MoodleCourseStore {
         return await turn.value
     }
 
-    /// The decode draws the whole picture, which on the main actor would hold up the page.
     private func decodeOffMain(_ data: Data) async -> CGImage? {
         let decode = decodePicture
         return await Task.detached(priority: .userInitiated) { decode(data) }.value
     }
 
-    /// One download at a time, in the order rows ask, so the pictures on screen come first. A
-    /// row that goes away before its turn downloads nothing.
     private func downloadInTurn(_ url: URL) async -> Data? {
         let previous = lastPictureDownload
         let turn = Task { [api] () -> Data? in
@@ -783,7 +675,6 @@ final class MoodleCourseStore {
         return await withTaskCancellationHandler { await turn.value } onCancel: { turn.cancel() }
     }
 
-    /// One file per member and picture revision, which a new upload changes.
     private func pictureFile(of memberId: Int, url: URL) -> URL {
         func folderName(_ text: String) -> String {
             String(text.unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
@@ -797,7 +688,6 @@ final class MoodleCourseStore {
             .appendingPathComponent("\(memberId)-\(revision)")
     }
 
-    /// Replaces the member's earlier pictures.
     private func savePicture(_ data: Data, to file: URL) {
         let folder = file.deletingLastPathComponent()
         let memberPrefix = String(file.lastPathComponent.prefix { $0 != "-" }) + "-"
@@ -809,23 +699,16 @@ final class MoodleCourseStore {
         try? data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
     }
 
-    /// Decoded at once rather than at the first draw, which runs on the main actor; the store
-    /// calls this only off it.
     private nonisolated static func image(from data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
     }
 
-    // MARK: Summary
-
-    /// What the foot of the section shows, nil while the course has no summary worth showing.
     var shownSummary: MoodleCourseSummary? {
         guard let value = summary.value, value.isWorthShowing(besides: courseCodes) else { return nil }
         return value
     }
 
-    /// One call for this course. A site that does not allow it answers as if the course had no
-    /// summary, which shows nothing.
     func refreshSummary() async {
         await summary.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseSummaryService.coursesFunction) else { return .empty }

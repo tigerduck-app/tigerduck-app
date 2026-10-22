@@ -9,11 +9,9 @@ enum MoodleDownloadState: Equatable {
     case failed(message: String)
 }
 
-/// Each owner keeps its files in a folder of its own, as two modules can hold files of one name.
 nonisolated enum MoodleFileOwner: Hashable, Sendable {
     case module(Int)
     case post(Int)
-    /// The account's submission of the assignment with this id.
     case submission(Int)
 
     fileprivate var folderName: String {
@@ -25,9 +23,6 @@ nonisolated enum MoodleFileOwner: Hashable, Sendable {
     }
 }
 
-/// The Moodle files downloaded on this device, under `<root>/<account>/<course id>/`. A file
-/// downloads once at a time however many screens ask, and goes on when they close. A copy counts
-/// only while Moodle lists the version it was downloaded in, which its modification date keeps.
 @Observable
 @MainActor
 final class MoodleFileDownloads {
@@ -38,12 +33,9 @@ final class MoodleFileDownloads {
     nonisolated let root: URL
     private var progress: [URL: Double] = [:]
     private var failures: [URL: String] = [:]
-    /// Moves on when copies land or go, which every state read depends on.
     private var revision = 0
     @ObservationIgnored private var running: [URL: Running] = [:]
 
-    /// A download with the version it is for, which a request for another version stops. The
-    /// attempt tells its progress apart from a stopped download's still on its way.
     private struct Running {
         let version: Date?
         let attempt: UUID
@@ -54,8 +46,6 @@ final class MoodleFileDownloads {
         self.root = root
     }
 
-    /// One folder per file of an owner, so two files of one name in different folders of a
-    /// module stay apart; the file keeps its name for Quick Look and sharing.
     nonisolated func location(of file: MoodleFile, owner: MoodleFileOwner, courseId: Int, account: String) -> URL {
         let accountFolder = String(account.unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
         let digest = SHA256.hash(data: Data(((file.path ?? "/") + file.name).utf8))
@@ -76,10 +66,6 @@ final class MoodleFileDownloads {
         return .notDownloaded
     }
 
-    /// The copy of `file` at `location`, downloading it through `fetch` first when there is none.
-    /// A download of the same version already on its way is joined, and one of another version
-    /// stopped. Nil when it fails, is stopped, or ends after `isCurrent` turns false, which writes
-    /// nothing.
     @discardableResult
     func download(_ file: MoodleFile, to location: URL, fetch: @escaping Fetch, isCurrent: @escaping () -> Bool) async -> URL? {
         if Self.hasCopy(of: file, at: location) { return location }
@@ -107,7 +93,6 @@ final class MoodleFileDownloads {
         current.task.cancel()
     }
 
-    /// Stops every download, as a sign-out does, so none writes for the account that left.
     func cancelAll() {
         running.values.forEach { $0.task.cancel() }
         running = [:]
@@ -116,14 +101,11 @@ final class MoodleFileDownloads {
         revision += 1
     }
 
-    /// The bytes the downloaded files take, counted off the main actor.
     nonisolated func measure() async -> Int {
         let root = root
         return await Task.detached { Self.totalBytes(in: root) }.value
     }
 
-    /// Deletes every downloaded file, stopping the downloads on their way, and returns the bytes
-    /// left, which the settings show.
     func clear() async -> Int {
         cancelAll()
         let root = root
@@ -135,8 +117,6 @@ final class MoodleFileDownloads {
         return left
     }
 
-    /// Deletes the copies of a version Moodle no longer lists and stops the downloads of one, so
-    /// an older version neither stays nor opens.
     func removeOutdated(_ files: [(file: MoodleFile, location: URL)]) {
         var changed = false
         for (file, location) in files {
@@ -190,7 +170,6 @@ final class MoodleFileDownloads {
         }
     }
 
-    /// Whole percents, so a large file redraws its row a hundred times at most.
     private func report(_ share: Double, for location: URL, attempt: UUID) {
         guard running[location]?.attempt == attempt else { return }
         let percent = (min(max(share, 0), 1) * 100).rounded(.down) / 100
@@ -208,8 +187,6 @@ final class MoodleFileDownloads {
         }
     }
 
-    /// What a placed copy is given: closed behind the lock screen, as the other Moodle files on
-    /// disk are, and the modification date Moodle lists.
     nonisolated static func placedAttributes(modified: Date?) -> [FileAttributeKey: Any] {
         var attributes: [FileAttributeKey: Any] = [:]
         #if os(iOS)
@@ -245,8 +222,6 @@ final class MoodleFileDownloads {
         lhs.timeIntervalSince1970.rounded() == rhs.timeIntervalSince1970.rounded()
     }
 
-    /// Moodle cleans file names of slashes already; this keeps a name that slipped through, or
-    /// one of only dots, from leaving the file's folder.
     nonisolated static func safeName(_ name: String) -> String {
         let cleaned = name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
         return cleaned.allSatisfy { $0 == "." } ? "file" : cleaned

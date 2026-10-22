@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// What a Moodle file holds, for its icon: by MIME type, else by extension.
 nonisolated enum MoodleFileKind: Equatable {
     case pdf, document, presentation, spreadsheet, image, video, audio, archive, text, other
 
@@ -74,7 +73,6 @@ nonisolated enum MoodleFileKind: Equatable {
     }
 }
 
-/// One context menu serves the long press, the iPad's secondary click and the Mac's right click.
 struct MoodleFileRow: View {
     let title: String
     let file: MoodleFile
@@ -85,7 +83,6 @@ struct MoodleFileRow: View {
     let share: () -> Void
     let openInMoodle: () -> Void
 
-    /// The line between rows starts under the text, not under the icon.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + iconWidth + TigerDuckTheme.Spacing.md
     static let folderIndent: CGFloat = 28
     fileprivate static let iconWidth: CGFloat = 28
@@ -128,7 +125,6 @@ struct MoodleFileRow: View {
         #endif
     }
 
-    /// "Date · size", the date zero-padded and with its year when it is not this year's.
     private var subline: String {
         let size = ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file)
         guard let modified = file.modified else { return size }
@@ -186,14 +182,12 @@ struct MoodleLinkRow: View {
         .accessibilityValue(Self.site(of: url))
     }
 
-    /// The host without its `www.`, which says where the link goes in fewer characters.
     static func site(of url: URL) -> String {
         let host = url.host ?? url.absoluteString
         return host.lowercased().hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 }
 
-/// Not a button: a folder only heads the files listed under it.
 struct MoodleFolderRow: View {
     let name: String
     let fileCount: Int
@@ -221,7 +215,6 @@ struct MoodleFolderRow: View {
     }
 }
 
-/// The trailing mark keeps its width however the text wraps, so the marks line up down a card.
 private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: View {
     let indent: CGFloat
     @ViewBuilder let icon: Icon
@@ -247,7 +240,6 @@ private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: Vie
     }
 }
 
-/// A downloaded file shows no mark, as in the Files app.
 private struct MoodleDownloadMark: View {
     let state: MoodleDownloadState
 
@@ -305,7 +297,6 @@ extension View {
 }
 
 #if os(macOS)
-/// Only a copy on the device can be handed to the Finder.
 private struct MoodleFileDrag: ViewModifier {
     let url: URL?
 
@@ -321,8 +312,6 @@ private struct MoodleFileDrag: ViewModifier {
 #endif
 
 extension MoodlePage {
-    /// A file link in the browser: Moodle's web service path wants a token, which the browser
-    /// does not have, and the same file under the site's own path takes the signed-in session.
     static func browserURL(_ url: URL) -> URL {
         let prefix = "/webservice/pluginfile.php/"
         guard MoodleAutologinService.isMoodlePage(url),
