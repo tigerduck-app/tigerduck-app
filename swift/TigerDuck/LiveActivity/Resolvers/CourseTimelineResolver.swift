@@ -1,34 +1,16 @@
 import Foundation
 
-/// Pure course-state resolver extracted from `TimeSliderViewModel` so it
-/// can be reused by the Live Activity scenario resolver and any future
-/// background component, without dragging the slider's drag/haptic state
-/// along with it.
-///
-/// A smaller default `dayRadius` is used here because Live Activity only
-/// needs to answer "is a class happening now?" and "what is next?", not
-/// to power a scrollable multi-week timeline.
 struct CourseTimelineResolver {
-    /// Number of days scanned on each side of the resolution date. Defaults
-    /// to 1 (yesterday / today / tomorrow) to cover midnight edge cases.
     let dayRadius: Int
 
     init(dayRadius: Int = 1) {
         self.dayRadius = dayRadius
     }
 
-    /// Build the timeline of course slots around `date`.
     func timeline(for courses: [SDCourse], around date: Date) -> [CourseTimeSlot] {
         CourseTimeSlot.buildMultiDaySlots(from: courses, centerDate: date, dayRadius: dayRadius)
     }
 
-    /// Resolve state at `time` using a pre-built timeline.
-    /// `inClass` uses a half-open interval `[start, end)` so that on the
-    /// exact `slot.end == time` instant — when the next slot starts at
-    /// the same instant for back-to-back classes — only the next slot
-    /// matches. The previous closed-on-both-ends form let
-    /// `endIfStillExpired`'s +1s slack briefly hand the previous
-    /// activity to the resolver after the next class had already begun.
     func state(at time: Date, in timeline: [CourseTimeSlot]) -> CourseState {
         let active = timeline.filter { time >= $0.start && time < $0.end }
         if !active.isEmpty {
@@ -46,20 +28,15 @@ struct CourseTimelineResolver {
         return .between(previous: previous, next: next)
     }
 
-    /// Convenience: build + resolve in one call.
     func state(at time: Date, courses: [SDCourse]) -> CourseState {
         state(at: time, in: timeline(for: courses, around: time))
     }
 
-    /// Like `state(at:in:)` but drops slots whose course is skipped for
-    /// that slot's date. Live Activity rules should use this variant so
-    /// skipped classes do not trigger `inClass` or `classPreparing`.
     func nonSkippedState(at time: Date, in timeline: [CourseTimeSlot]) -> CourseState {
         let filtered = timeline.filter { !$0.course.isSkipped(on: $0.date) }
         return state(at: time, in: filtered)
     }
 
-    /// Convenience variant that builds the timeline then applies the skip filter.
     func nonSkippedState(at time: Date, courses: [SDCourse]) -> CourseState {
         nonSkippedState(at: time, in: timeline(for: courses, around: time))
     }
