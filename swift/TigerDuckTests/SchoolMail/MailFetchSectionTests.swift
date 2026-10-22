@@ -18,19 +18,12 @@ import Testing
 /// `IMAPDecoderError` that `LiveMailClient.map(_:)` receives.
 struct MailFetchSectionTests {
 
-    // MARK: Server responses
-
-    /// One untagged FETCH carrying `section` as a literal. `section` is written exactly as the
-    /// server sends it, so a test can reproduce a server's own mangling of it.
     static func fetchResponse(section: String, literal: String) -> String {
         "* 1 FETCH (UID 4242 BODY[\(section)] {\(literal.utf8.count)}\r\n\(literal))\r\n"
     }
 
     static let headerBlock = "From: a@mail.ntust.edu.tw\r\nReferences: <first@ntust> <second@ntust>\r\n\r\n"
 
-    /// What Mail2000 actually sent. The first 32 bytes of this, on the wire, are
-    /// `20424f44595b4845414445522e4649454c4453202822225245464552454e4345` — the same bytes the
-    /// device's SwiftMail log reported inside the failing `FetchMessageInfoCommand<UID>`.
     static let mail2000Echo = fetchResponse(section: #"HEADER.FIELDS (""REFERENCES"")"#, literal: headerBlock)
 
     /// The same section echoed the way RFC 3501 says it should be — proving the request TigerDuck
@@ -40,8 +33,6 @@ struct MailFetchSectionTests {
     /// `BODY.PEEK[HEADER]`'s echo, uppercased the way Mail2000 uppercases. There is no
     /// parenthesised list in it, so there is nothing for a server to re-quote.
     static let fullHeaderEcho = fetchResponse(section: "HEADER", literal: headerBlock)
-
-    // MARK: Decoding through NIOIMAP's real client pipeline
 
     static func decode(_ response: String) -> Result<[Response], any Error> {
         let channel = EmbeddedChannel()
@@ -66,8 +57,6 @@ struct MailFetchSectionTests {
         }
         return error
     }
-
-    // MARK: The parse failure
 
     @Test func mail2000sRequotedHeaderFieldListCannotBeDecoded() throws {
         let error = try Self.decodeFailure(Self.mail2000Echo)
@@ -119,17 +108,11 @@ struct MailFetchSectionTests {
         #expect(streamed.contains("References: <first@ntust> <second@ntust>"))
     }
 
-    // MARK: How the failure is reported to the user
-
     @Test func aDecodeFailureIsAProtocolErrorNotAnUnreachableServer() throws {
-        // An `IMAPDecoderError` matches none of the known shapes, so a `.unreachable` fallback
-        // would turn a parser failure into "Can't reach the mail server" on a working network.
-        // A response this client cannot read is a protocol failure.
         let error = try Self.decodeFailure(Self.mail2000Echo)
         #expect(LiveMailClient.map(error) == .protocolError(String(describing: error)))
     }
 
-    /// The message's last bytes went out and no final reply came back: it may have been sent.
     @Test func aSendWhoseAcceptanceIsUnknownIsUnconfirmed() {
         let ambiguous = SMTPSendError(phase: .content, acceptance: .ambiguous, reason: .connectionLost)
         let notAccepted = SMTPSendError(phase: .content, acceptance: .notAccepted, reason: .connectionLost)
@@ -144,16 +127,12 @@ struct MailFetchSectionTests {
         #expect(LiveMailClient.map(URLError(.timedOut)) == .unreachable)
     }
 
-    // MARK: What the detail fetch now asks for
-
     @Test func theDetailFetchSendsNoQuotedHeaderFieldList() {
         let command = FetchMessageInfoRequest.wireCommand(
             options: LiveMailClient.detailOptions,
             headerFields: LiveMailClient.detailHeaderFields
         )
         #expect(command.contains("BODY.PEEK[HEADER]"))
-        // No parenthesised list of field names, so nothing for the server to re-quote — and no
-        // quoted string anywhere in the command for it to double up.
         #expect(!command.contains("HEADER.FIELDS"))
         #expect(!command.contains("\""))
     }
@@ -166,8 +145,6 @@ struct MailFetchSectionTests {
     }
 
     @Test func theNamedFieldListIsTheShapeThatWentWrong() {
-        // What the message screen used to send, kept here so the difference is visible: the
-        // field name goes out quoted, which is the token Mail2000 quotes a second time.
         let old = FetchMessageInfoRequest.wireCommand(
             options: LiveMailClient.summaryOptions,
             headerFields: ["References"]
@@ -175,19 +152,13 @@ struct MailFetchSectionTests {
         #expect(old.contains(#"BODY.PEEK[HEADER.FIELDS ("References")]"#))
     }
 
-    // MARK: Failing soft
-
     @Test func aProtocolErrorRetriesTheDetailFetchWithoutTheHeaderSection() throws {
-        // Even with the request fixed, no decode failure anywhere in this path may stop the user
-        // reading their mail: the fetch is retried without the header section and the message
-        // opens without its thread chain.
         let decodeError = try Self.decodeFailure(Self.mail2000Echo)
         #expect(LiveMailClient.detailRetriesWithoutHeaderSection(after: decodeError))
         #expect(LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.protocolError("NO")))
     }
 
     @Test func aFailureASecondFetchCannotFixIsNotRetried() {
-        // Retrying these would only delay an error the user has to see anyway.
         #expect(!LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.unreachable))
         #expect(!LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.authenticationFailed))
         #expect(!LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.certificateRejected))
@@ -196,7 +167,6 @@ struct MailFetchSectionTests {
     }
 
     @Test func theFallbackFetchIsTheOneTheMessageListAlreadySucceedsWith() {
-        // The retry must not carry a header section of any kind — it is the list's own fetch.
         let fallback = FetchMessageInfoRequest.wireCommand(options: LiveMailClient.summaryOptions)
         #expect(!fallback.contains("BODY.PEEK[HEADER"))
         #expect(!fallback.contains("\""))

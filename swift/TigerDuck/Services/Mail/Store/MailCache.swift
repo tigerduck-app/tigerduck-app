@@ -2,21 +2,7 @@
 import Foundation
 import os
 
-/// Versioned JSON caches for folder lists and opened mail. The server is the source of
-/// truth: anything unreadable is deleted and refetched. Files are protected
-/// `completeUntilFirstUserAuthentication`, so a locked-phone background check can still
-/// write them, and the directory is excluded from backup.
-///
-/// `nonisolated`, not an `actor`: an internal lock serializes its own file I/O, and it never
-/// hops actors for callers. Every method but `wipeCount` does synchronous disk I/O, so callers
-/// keep their use of it off the main actor (background refresh, view model loads on a background task).
 nonisolated final class MailCache: @unchecked Sendable {
-    /// Still 1 with raw sources added, deliberately. A source lands under a filename no earlier
-    /// build ever wrote (`…-source.json`), so no old file is reinterpreted and nothing a new
-    /// build writes is handed to an older one as a body: an older build only ever sees these
-    /// files through `bodyFiles()`, which reads their size and modification date and may evict
-    /// them, and never decodes one. Bumping the version instead would throw away every cached
-    /// page and body on upgrade for no gain.
     static let formatVersion = 1
     private static let sharedPreferences = DefaultsMailPreferences()
     static let shared = MailCache(
@@ -25,13 +11,6 @@ nonisolated final class MailCache: @unchecked Sendable {
         account: { MailCache.sharedPreferences.studentID }
     )
 
-    /// `account` is the student ID the file was written for. Nothing else on disk carries an
-    /// account identity — not the envelope, not the `pages/<hex folder name>.json` filename,
-    /// not the payload — so without it one student's cache is indistinguishable from another's
-    /// on a shared device: sign out, kill the app before the (detached) wipe finishes, and the
-    /// next student's first paint is the previous student's INBOX. A colliding UIDVALIDITY
-    /// would make it worse than transient, merging the two into one list and persisting that.
-    /// A mismatch is treated exactly like a format-version mismatch: delete and refetch.
     private struct Envelope<Payload: Codable>: Codable {
         var version: Int
         var payload: Payload
@@ -40,19 +19,9 @@ nonisolated final class MailCache: @unchecked Sendable {
 
     private let directory: URL
     private let bodyLimitBytes: Int
-    /// A single body or source larger than this is not cached at all. Bodies and sources share
-    /// the one `bodyLimitBytes` LRU budget (see `saveSource`), and an entry anywhere near the
-    /// whole budget is nearly as bad as one over it: caching it evicts almost everything else
-    /// just to make room for the one item. Capping a single entry at half the budget means
-    /// caching one thing can never evict more than half of what is already there, so the cache
-    /// always holds more than whatever was written most recently.
     private var maxEntryBytes: Int { bodyLimitBytes / 2 }
     private let account: @Sendable () -> String?
     private let lock = NSLock()
-    /// Bumped by `clearAll()` while it holds `lock`. A writer reads it when it checks its account
-    /// and passes it to its save, which writes nothing once a wipe has run since, so a write
-    /// queued before a sign-out cannot land after that sign-out's wipe. It has a lock of its own
-    /// so that reading it on the main actor never waits for another call's disk I/O.
     private let wipes = OSAllocatedUnfairLock(initialState: 0)
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Cache")
 
@@ -65,8 +34,6 @@ nonisolated final class MailCache: @unchecked Sendable {
         self.bodyLimitBytes = bodyLimitBytes
         self.account = account
     }
-
-    // MARK: Pages
 
     func pageURL(folder: String) -> URL {
         directory.appendingPathComponent("pages", isDirectory: true)
@@ -83,8 +50,6 @@ nonisolated final class MailCache: @unchecked Sendable {
             write(page, to: pageURL(folder: page.folder))
         }
     }
-
-    // MARK: Bodies
 
     private var bodiesDirectory: URL { directory.appendingPathComponent("bodies", isDirectory: true) }
 
@@ -114,12 +79,6 @@ nonisolated final class MailCache: @unchecked Sendable {
         lock.withLock { bodyFiles().reduce(0) { $0 + $1.size } }
     }
 
-    // MARK: Raw source
-
-    /// Kept beside the body, in the same directory and keyed the same way, so the one
-    /// `bodyLimitBytes` budget and the one `pruneBodies()` sweep cover bodies and sources
-    /// together. The `-source` suffix cannot collide with a body's name: a body file is
-    /// `<hex folder>-<uidValidity>-<uid>.json` and none of those three pieces can contain a `-`.
     private func sourceURL(folder: String, uidValidity: UInt32, uid: UInt32) -> URL {
         bodiesDirectory.appendingPathComponent("\(Self.fileKey(folder))-\(uidValidity)-\(uid)-source.json")
     }
@@ -142,8 +101,6 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    /// `UIDVALIDITY` changed: this folder's list, bodies and sources are meaningless now. The
-    /// prefix match covers a source file too — it is named from the same folder key.
     func dropFolder(_ folder: String) {
         lock.withLock {
             try? FileManager.default.removeItem(at: pageURL(folder: folder))
@@ -154,16 +111,6 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    // MARK: Attachments
-
-    /// A fresh file for an opened attachment. No budget bounds these, so each call first deletes
-    /// those opened over a day earlier; `clearAll()` (sign-out) removes the rest.
-    ///
-    /// `filename` comes from the server (RFC 2047-decoded), so `.` or `..` would otherwise
-    /// resolve `appendingPathComponent` up out of this call's fresh per-attachment UUID folder —
-    /// `.` back into `attachments/`, `..` a level above that. Both, and an empty name, map to a
-    /// generic `attachment` instead; `/` is still replaced so nothing but the final path
-    /// component can be attacker-influenced.
     func temporaryFileURL(filename: String) throws -> URL {
         let attachments = directory.appendingPathComponent("attachments", isDirectory: true)
         let cutoff = Date().addingTimeInterval(-MailConstants.openedAttachmentLifetime)
@@ -181,16 +128,6 @@ nonisolated final class MailCache: @unchecked Sendable {
         return nonEmpty
     }
 
-    // MARK: Whole cache
-
-    /// Every byte under the cache root — folder pages, bodies, sources and the files an opened
-    /// attachment leaves behind — because that is what actually occupies the disk, and what the
-    /// settings screen's Cache size row has to account for. `bodyBytes()` is the narrower
-    /// figure the LRU budget is measured against and is not a substitute.
-    ///
-    /// Walking a tree is real I/O, like everything else on this type: callers keep it off the
-    /// main actor. Unreadable entries are skipped rather than thrown — a size that is a little
-    /// low is better than a settings row that fails.
     func totalBytes() -> Int {
         lock.withLock {
             let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey]
@@ -215,13 +152,8 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    /// How many times `clearAll()` has run in this process.
     var wipeCount: Int { wipes.withLock { $0 } }
 
-    // MARK: Internals
-
-    /// Whether no wipe has run since a writer read `wipeCount` as `count`. Called under `lock`,
-    /// which `clearAll()` holds, so no wipe can come between this and the write it allows.
     private func isCurrent(_ count: Int) -> Bool {
         count == wipeCount
     }
@@ -241,21 +173,11 @@ nonisolated final class MailCache: @unchecked Sendable {
         return envelope.payload
     }
 
-    /// Never throws: a failed encode or write is dropped so it can't interrupt the caller's mail
-    /// operation (the network round trip already succeeded; the cache is a convenience, not the
-    /// source of truth). Only the failure kind is logged, never the payload.
     private func write<T: Codable>(_ value: T, to url: URL) {
         guard let data = encoded(value) else { return }
         persist(data, to: url)
     }
 
-    /// The bodies/sources write path: an entry over `maxEntryBytes` is skipped outright instead
-    /// of being written and then swept up by `pruneBodies()`.
-    ///
-    /// Written first, a huge entry is the newest file, so the sweep evicts everything else
-    /// oldest-first, is still over the limit, and evicts the new entry too: a 28 MB bounce with
-    /// a base64 attachment would empty the cache and cache nothing, on every visit. Checking the
-    /// encoded size first keeps an oversized entry off disk and leaves the LRU order alone.
     private func writeBounded<T: Codable>(_ value: T, to url: URL) {
         guard let data = encoded(value) else { return }
         guard data.count <= maxEntryBytes else {
@@ -312,7 +234,6 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    /// Least recently used first, until the body cache fits its limit.
     private func pruneBodies() {
         var files = bodyFiles().sorted { $0.date < $1.date }
         var total = files.reduce(0) { $0 + $1.size }

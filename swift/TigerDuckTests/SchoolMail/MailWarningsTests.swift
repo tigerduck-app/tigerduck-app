@@ -56,14 +56,8 @@ struct MailWarningsTests {
         #expect(MailWarnings.linkIssues(text: testCase.text, href: testCase.href).map(\.fixtureCode) == testCase.expect)
     }
 
-    // The shown-host pattern must accept non-ASCII letters, as Android's does, or homograph
-    // link text is never recognized as a host and never checked against the real href. These
-    // two are not fixture cases because the shared fixture stays byte-identical to Android's.
     @Test
     func linkIssuesHomographShownHostMismatchesRealHost() {
-        // The homograph reads as "ntust.edu.tw" with Cyrillic te, dze and ie (U+0442, U+0455,
-        // U+0435) standing in for t, s and e. Asserting the full value, not just some mismatch,
-        // proves IDNA-to-ASCII ran and produced this punycode rather than something incidental.
         let homograph = "n\u{0442}u\u{0455}\u{0442}.\u{0435}du.\u{0442}w"
         let issues = MailWarnings.linkIssues(text: homograph, href: "https://ntust.edu.tw/")
         #expect(issues == [.mismatch(shownHost: "xn--nu-rmcb8g.xn--du-mlc.xn--w-8tb", realHost: "ntust.edu.tw")])
@@ -77,9 +71,6 @@ struct MailWarningsTests {
 
     @Test
     func linkIssuesNonASCIIHostConvertsToExactPunycode() {
-        // "nt\u{00FA}st.edu.tw" (u with acute, U+00FA) is a plausible lookalike
-        // domain for "ntust.edu.tw"; its exact punycode form is asserted so this test would
-        // fail if `toASCII` stopped running (or ran differently) rather than passing by luck.
         let issues = MailWarnings.linkIssues(text: "x", href: "https://nt\u{00FA}st.edu.tw/")
         #expect(issues == [.punycode(host: "xn--ntst-rra.edu.tw")])
     }
@@ -95,9 +86,6 @@ struct MailWarningsTests {
     // into a cluster that is not equal to "/" and run past it to a forged terminator or `@`.
     @Test
     func linkIssuesCombiningMarkAfterSlashCannotHideTheRealHost() {
-        // The combining mark rides on the "/" right after "evil.example". A Character-based
-        // scan would fail to recognize that "/" as a terminator, keep going, and find the
-        // LATER "@" -- misreporting ntust.edu.tw as the real host instead of evil.example.
         let href = "https://evil.example/\u{034F}@ntust.edu.tw/login"
         let issues = MailWarnings.linkIssues(text: "ntust.edu.tw", href: href)
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
@@ -105,8 +93,6 @@ struct MailWarningsTests {
 
     @Test
     func linkIssuesCombiningMarkCannotHideAPunycodeHost() {
-        // Same trick, this time hiding a punycode host's own "/" terminator so the "xn--"
-        // host gets folded into a fake userinfo instead of being flagged as punycode.
         let href = "https://xn--ntst-0ra.edu.tw/\u{034F}@ntust.edu.tw"
         let issues = MailWarnings.linkIssues(text: "xn--ntst-0ra.edu.tw", href: href)
         #expect(issues == [.punycode(host: "xn--ntst-0ra.edu.tw")])
@@ -114,9 +100,6 @@ struct MailWarningsTests {
 
     @Test
     func linkIssuesCombiningMarkCannotHideTheInsecureFlag() {
-        // The mark rides on the second "/" of "http://", so a Character-based
-        // `hasPrefix("http://")` would not match and would drop the insecure flag. IDNA maps
-        // the mark as "ignored" and drops it, so the real host is still plain "evil.example".
         let href = "http://\u{034F}evil.example/"
         let issues = MailWarnings.linkIssues(text: "evil.example", href: href)
         #expect(issues == [.insecure])
@@ -132,12 +115,6 @@ struct MailWarningsTests {
         let issues = MailWarnings.linkIssues(text: text, href: href)
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
-
-    // MARK: Invisible characters (iOS-local; the shared fixture stays byte-identical to Android's)
-
-    // In every case below, one invisible character makes a crafted mail produce fewer warnings
-    // than an ordinary one. The four `invisible … after the shown host` rows in `warnings.json`
-    // cover the link-text half on both platforms; these cover the call sites they miss.
 
     /// A zero-width space *inside* the shown host, not after it. The fixture's trailing-ZWSP
     /// row happens to pass on Darwin because `CharacterSet.whitespaces` contains U+200B, so
@@ -158,9 +135,6 @@ struct MailWarningsTests {
         #expect(issues == [.mismatch(shownHost: "admin@mail.ntust.edu.tw", realHost: "phish@evil.example")])
     }
 
-    /// The worst case in the review: the real sender is a compromised *school* account, so the
-    /// external-sender banner does not fire either, and the message screen prints the display
-    /// name as the sender headline. Without the display-name warning the verdict is silent.
     @Test
     func displayNameMismatchSurvivesAnInvisibleCharacterInTheFakeAddress() {
         let input = MailWarningInput(
@@ -174,8 +148,6 @@ struct MailWarningsTests {
         #expect(MailWarnings.evaluate(input) == [.displayNameMismatch(address: "b10123456@mail.ntust.edu.tw")])
     }
 
-    /// Android's delimiter-based `EMAIL` matches a non-ASCII local part; the ASCII-only pattern
-    /// iOS used matched nothing at all, so the same mail warned on Android and not here.
     @Test
     func displayNameMismatchDetectsANonASCIILocalPart() {
         let input = MailWarningInput(
@@ -208,12 +180,6 @@ struct MailWarningsTests {
         ])
     }
 
-    /// A Mail2000 delivery-failure notice keeps its display name and no address at all
-    /// (`MailAddress.parseSender`). `domain(ofAddress: "")` is `""`, which is not a school
-    /// domain, so the naive reading would raise "This sender isn't a school address" on every
-    /// bounce with nothing after it — a banner that names no address, on the most routine mail
-    /// the school sends. It is suppressed, and `MailSummary.isExternal` already agreed (it is
-    /// false with no address).
     @Test
     func anEmptySenderAddressRaisesNoExternalBanner() {
         let input = MailWarningInput(
@@ -229,8 +195,6 @@ struct MailWarningsTests {
         #expect(!MailWarnings.isSchoolDomain(""))
     }
 
-    // MARK: Delivery failures (Mail2000 bounces)
-
     @Test
     func onlyANullReversePathMarksABounce() {
         #expect(MailWarnings.isBounce(returnPath: "<>"))
@@ -238,14 +202,9 @@ struct MailWarningsTests {
         #expect(!MailWarnings.isBounce(returnPath: nil))
         #expect(!MailWarnings.isBounce(returnPath: ""))
         #expect(!MailWarnings.isBounce(returnPath: "<postmaster@mail.ntust.edu.tw>"))
-        // Never the display name: anyone can set one, and the whole point of reading
-        // `Return-Path` is that the receiving server writes it.
         #expect(!MailWarnings.isBounce(returnPath: "Mail Deliver System"))
     }
 
-    /// The real notice the author received (`Fixtures/bounce-no-domain.eml`): it came from the
-    /// school's own mail system, so nothing about it may count as an outside sender — and with
-    /// the address it names being one keystroke off, it asks about the typo.
     @Test
     func aMail2000BounceIsNotTreatedAsOutsideMailAndAsksAboutTheTypo() {
         let input = MailWarningInput(
@@ -265,9 +224,6 @@ struct MailWarningsTests {
         #expect(MailMessageView.text(for: .mistypedRecipient) == String(localized: "school_mail_bounce_warning"))
     }
 
-    /// The bounce exemption covers only a sender with no domain at all. A forged "bounce" whose
-    /// `From` names a real outside domain is external exactly as before — and its link still
-    /// trips password bait, which is why suppressing the flag for a true bounce costs nothing.
     @Test
     func theBounceExemptionIsNarrowAndPasswordBaitStillFires() {
         func evaluate(from: String, links: [MailLink] = []) -> [MailWarning] {
@@ -278,14 +234,11 @@ struct MailWarningsTests {
         }
         #expect(evaluate(from: "daemon@evil.example").contains(.externalSender(address: "daemon@evil.example")))
         #expect(evaluate(from: "daemon@mail.ntust.edu.tw").isEmpty)
-        // No domain, so the flag is suppressed — and the outside link catches the bait anyway.
         #expect(evaluate(from: "").isEmpty)
         #expect(evaluate(from: "", links: [MailLink(text: "verify", href: "https://evil.example/login")])
             .contains(.passwordBait))
     }
 
-    /// Without the header nothing has changed: a sender with no domain is still judged the way
-    /// it was before this rule existed.
     @Test
     func withoutAReturnPathABounceShapedMailIsJudgedExactlyAsBefore() {
         let input = MailWarningInput(
@@ -323,10 +276,6 @@ struct MailWarningsTests {
         #expect(!bounce("no address at all here").contains(.mistypedRecipient))
     }
 
-    /// The other half of the same rule, and the reason the suppression above is safe: keeping
-    /// the display name means a claimed address reaches the screen, so a From the parser could
-    /// not read must not also silence the mismatch check. A display name claiming
-    /// `office@ntust.edu.tw` over an unreadable `<GARBAGE>` address still warns.
     @Test
     func anEmptySenderAddressStillFailsTheDisplayNameCheck() {
         let input = MailWarningInput(
@@ -338,13 +287,10 @@ struct MailWarningsTests {
             attachments: []
         )
         #expect(MailWarnings.evaluate(input) == [.displayNameMismatch(address: "")])
-        // And the banner it renders does not trail off into an address that isn't there.
         #expect(MailMessageView.text(for: .displayNameMismatch(address: ""))
             == String(localized: "school_mail_warning_display_name"))
     }
 
-    /// Password bait is still gated on "not from a school address", and an unreadable From is
-    /// certainly not one — suppressing the banner must not have opened that door.
     @Test
     func anEmptySenderAddressStillCountsAsOutsideForPasswordBait() {
         let input = MailWarningInput(
@@ -358,8 +304,6 @@ struct MailWarningsTests {
         #expect(MailWarnings.evaluate(input) == [.passwordBait])
     }
 
-    /// `isRisky == false` is not just a missing banner: it makes the message screen skip the
-    /// confirmation dialog and hand the file straight to Quick Look or the share sheet.
     @Test(arguments: [
         "payload.ex\u{200B}e",
         "installer.ap\u{2060}k",
@@ -373,16 +317,11 @@ struct MailWarningsTests {
         )
     }
 
-    /// HTML and SVG attachments are never rendered in-process. With the extension mangled, the
-    /// only thing left is the attacker's own Content-Type.
     @Test(arguments: ["report.ht\u{200B}ml", "diagram.sv\u{0001}g", "page.xhtm\u{2060}l"])
     func neverRenderedInAppSurvivesAnInvisibleCharacterInTheExtension(filename: String) {
         #expect(MailWarnings.neverRenderedInApp(filename: filename))
     }
 
-    /// A.4 rule 3. One invisible character inside the keyword and the bait banner never fires.
-    /// Each subject carries exactly one keyword, the split one — anything else would let the
-    /// test pass on a keyword the attacker did not touch.
     @Test(arguments: ["您的密\u{200B}碼即將到期", "Please re-enter your pass\u{200B}word"])
     func passwordBaitSurvivesAnInvisibleCharacterInTheKeyword(subject: String) {
         let input = MailWarningInput(
@@ -396,12 +335,6 @@ struct MailWarningsTests {
         #expect(MailWarnings.evaluate(input) == [.externalSender(address: "admin@evil.example"), .passwordBait])
     }
 
-    // MARK: Invisible characters outside `Cf`/`Cc`
-
-    // The cases above all use a format or control character. The combining grapheme joiner,
-    // the variation selectors, the reserved default-ignorables, the Hangul fillers and the
-    // blank braille pattern are neither, yet reach the same surfaces with the same effect.
-
     static let invisibleMarks = [
         "\u{034F}", "\u{FE0F}", "\u{FE00}", "\u{E0100}", "\u{2065}", "\u{3164}", "\u{2800}",
     ]
@@ -412,16 +345,11 @@ struct MailWarningsTests {
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
-    /// `report.ht<U+FE0F>ml` is the concrete attack: unless the mark is stripped, the extension
-    /// is not `html`, so the message screen falls back to the attacker's own Content-Type and
-    /// renders the file in-process.
     @Test(arguments: invisibleMarks)
     func neverRenderedInAppSurvivesAnInvisibleMarkInTheExtension(mark: String) {
         #expect(MailWarnings.neverRenderedInApp(filename: "report.ht\(mark)ml"))
     }
 
-    /// `payload.ex<U+034F>e` was the other one: no risky-attachment warning, so no confirmation
-    /// dialog before the file is handed to Quick Look or the share sheet.
     @Test(arguments: invisibleMarks)
     func attachmentRiskSurvivesAnInvisibleMarkInTheExtension(mark: String) {
         #expect(
@@ -443,18 +371,10 @@ struct MailWarningsTests {
         #expect(MailWarnings.evaluate(input) == [.externalSender(address: "admin@evil.example"), .passwordBait])
     }
 
-    /// The other direction: a mark the reader *can* see must not be dropped, or an ordinary
-    /// accented or Vietnamese filename would start matching extensions it does not have.
     @Test func aVisibleCombiningMarkIsNotTreatedAsInvisible() {
         #expect(MailWarnings.attachmentRisk(filename: "payload.ex\u{0301}e", contentType: nil, subjectAndBody: "") == nil)
         #expect(!MailWarnings.neverRenderedInApp(filename: "report.ht\u{0301}ml"))
     }
-
-    // MARK: A host split across a line break
-
-    // The sanitizer hands link text on already `clean`ed, and SwiftSoup's own `text()` has
-    // normalized the anchor's whitespace before that, so a host wrapped across a line arrives
-    // here joined by a space that `visibleText` cannot remove.
 
     @Test(arguments: ["ntust.\nedu.tw", "ntust\n.edu.tw", "ntust.\u{00A0}edu.tw", "ntust.  edu.tw"])
     func aHostSplitAcrossALineBreakIsStillComparedAsOneHost(rawText: String) {
@@ -463,14 +383,11 @@ struct MailWarningsTests {
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
-    /// Only whitespace touching a dot is rejoined, so ordinary prose around a link is still
-    /// prose and not a host-shaped claim about where the link goes.
     @Test(arguments: ["按這裡 看公告", "Reset your password here", "請見 ntust.edu.tw 公告", "點我 立即 驗證"])
     func ordinaryWordsAroundALinkAreStillNotAHost(text: String) {
         #expect(MailWarnings.linkIssues(text: text, href: "https://evil.example/login").isEmpty)
     }
 
-    /// The archive hint is read from the subject and body the same way, so it dodges the same way.
     @Test
     func encryptedArchiveHintSurvivesAnInvisibleCharacterInTheKeyword() {
         #expect(
@@ -487,9 +404,6 @@ private extension MailWarning {
         case .displayNameMismatch(let address): "display_name_mismatch:\(address)"
         case .passwordBait: "password_bait"
         case .riskyAttachment(let filename, let reason): "risky_attachment:\(filename):\(reason.fixtureCode)"
-        // No row in the shared `warnings.json` carries a Return-Path, so this never fires today.
-        // It is spelled out so the code is already agreed if that fixture ever grows one — the
-        // fixture itself is byte-for-byte shared with Android and is not touched here.
         case .mistypedRecipient: "mistyped_recipient"
         }
     }

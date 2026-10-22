@@ -7,8 +7,6 @@ struct MoodleDiscussionView: View {
     let forum: MoodleForum
 
     @Environment(AppState.self) private var appState
-    /// The posts unread when the opening loaded them, which keep their dot while it lasts. Nil
-    /// until an opening loads the posts.
     @State private var unreadAtOpening: Set<Int>?
     @State private var isOpening = false
     @State private var files = MoodleFileOpener()
@@ -50,7 +48,6 @@ struct MoodleDiscussionView: View {
         .moodleAutoRefresh(every: thread.ttl, fetchedAt: { thread.fetchedAt }) {
             await refresh()
         }
-        // `.task` runs on every appearance; only one before the posts have loaded opens.
         .task {
             guard unreadAtOpening == nil else { return }
             await refresh()
@@ -60,8 +57,6 @@ struct MoodleDiscussionView: View {
         .moodleFilePresentation(files)
     }
 
-    /// Until an opening has loaded the posts, a refresh is that opening, so Moodle hears of the
-    /// view once they show. One opening runs at a time; a refresh meanwhile joins its fetch.
     private func refresh() async {
         guard unreadAtOpening == nil, !isOpening else {
             await store.refreshThread(of: discussion)
@@ -95,8 +90,6 @@ struct MoodleDiscussionView: View {
     }
 }
 
-/// Read by an opening once its posts arrive. Retry and ⌘R open in a task that leaving the page
-/// does not cancel, and a page gone by then must not tell Moodle the discussion was read.
 private final class PagePresence {
     var isShown = false
 }
@@ -104,7 +97,6 @@ private final class PagePresence {
 nonisolated struct MoodleThreadEntry: Equatable, Identifiable {
     let post: MoodlePost
     let depth: Int
-    /// Whom a reply nested deeper than the levels shown answers.
     let replyingTo: String?
 
     var id: Int { post.id }
@@ -113,8 +105,6 @@ nonisolated struct MoodleThreadEntry: Equatable, Identifiable {
 nonisolated extension MoodleDiscussionThread {
     static let maxDepth = 3
 
-    /// Missing parents and cyclic links must not hide replies. The cached first post keeps
-    /// a discussion readable before its full thread arrives.
     static func entries(of discussion: MoodleDiscussion, in thread: MoodleDiscussionThread?) -> [MoodleThreadEntry] {
         let posts = thread?.posts ?? []
         guard !posts.isEmpty else {
@@ -145,7 +135,6 @@ nonisolated extension MoodleDiscussionThread {
         for (index, root) in roots.enumerated() {
             add(root, level: index == 0 ? 0 : 1, answering: nil)
         }
-        // Posts whose parents answer each other in a loop reach no root; they still show.
         for post in posts where !shown.contains(post.id) {
             add(post, level: 1, answering: nil)
         }
@@ -154,7 +143,6 @@ nonisolated extension MoodleDiscussionThread {
 }
 
 extension MoodlePost {
-    /// The first post as a discussion list gives it, which does not say what is unread in it.
     nonisolated init(firstPostOf discussion: MoodleDiscussion) {
         self.init(
             id: discussion.postId,

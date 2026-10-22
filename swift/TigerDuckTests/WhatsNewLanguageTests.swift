@@ -1,6 +1,3 @@
-// `WhatsNewLanguage` and `WhatsNewText`: What's New is written in Traditional Chinese
-// and English only. Every Chinese-family language reads zh-Hant and everything else
-// reads English, the same split the `whatsnew.json` summary uses.
 import Foundation
 import Testing
 @testable import TigerDuck

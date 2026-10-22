@@ -1,14 +1,7 @@
 import SwiftUI
 
-/// View modifier that attaches the app-level NTUST login sheet. Applied once
-/// at the app root so any surface that calls ``AppState/presentNTUSTLogin()``
-/// triggers the same flow — Home, Class Table, Settings, and any future
-/// protected entry point share one presenter, one error surface, and one
-/// post-login refresh path.
 struct NTUSTLoginSheetHost: ViewModifier {
     @Environment(AppState.self) private var appState
-    /// The sign-in the sheet started. A sign-in first waits for a sign-out's calls, a minute and
-    /// more on a stalled network, and Cancel stops it so that it saves nothing.
     @State private var signIn: Task<Void, Never>?
 
     func body(content: Content) -> some View {
@@ -20,8 +13,6 @@ struct NTUSTLoginSheetHost: ViewModifier {
                 subtitle: String(localized: "onboarding_sign_in_subtitle"),
                 usernamePlaceholder: String(localized: "sign_in_student_id"),
                 passwordPlaceholder: String(localized: "sign_in_password"),
-                // The stored account's ID: signing in as another one first signs it out and wipes
-                // its data here (https://github.com/tigerduck-app/tigerduck-app/issues/398).
                 initialUsername: appState.authService.storedStudentId ?? "",
                 isLoggingIn: appState.authService.isLoggingIn,
                 loginError: appState.authService.loginError,
@@ -48,8 +39,6 @@ struct NTUSTLoginSheetHost: ViewModifier {
 }
 
 extension View {
-    /// Attach the shared NTUST login sheet presenter. Must be applied once
-    /// above any surface that calls ``AppState/presentNTUSTLogin()``.
     func ntustLoginSheetHost() -> some View {
         modifier(NTUSTLoginSheetHost())
     }

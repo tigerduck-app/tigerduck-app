@@ -1,13 +1,10 @@
 import Foundation
 
-/// A course's forum, from `mod_forum_get_forums_by_courses`. Every course has one `news` forum,
-/// which holds its announcements.
 nonisolated struct MoodleForum: Codable, Sendable, Hashable, Identifiable {
     let id: Int
     let courseId: Int
     let type: String
     let name: String
-    /// The course module, which Moodle's forum page takes as `id`.
     let cmid: Int
     var discussionCount: Int
     var unreadPostCount: Int
@@ -16,59 +13,43 @@ nonisolated struct MoodleForum: Codable, Sendable, Hashable, Identifiable {
     var isNews: Bool { type == "news" }
 }
 
-/// A discussion as `mod_forum_get_forum_discussions` lists it: its first post, with the
-/// discussion's counts.
 nonisolated struct MoodleDiscussion: Codable, Sendable, Hashable, Identifiable {
-    /// The discussion, which `mod_forum_view_forum_discussion` and `discuss.php?d=` take.
     let id: Int
     let postId: Int
     let title: String
-    /// HTML, already through Moodle's text filters.
     let message: String
-    /// The message as one line of text, kept with it so a list does not parse HTML as it draws.
     let preview: String
     let created: Date
-    /// The latest post's time.
     let modified: Date
     let isPinned: Bool
     var unreadCount: Int
     let replyCount: Int
-    /// Nil where the forum hides authors.
     let authorName: String?
     let attachments: [MoodleFile]
-    /// The author's Moodle user, which finds them among the course's members.
     var authorId: Int? = nil
 }
 
 nonisolated struct MoodlePost: Codable, Sendable, Hashable, Identifiable {
     let id: Int
-    /// The post this one answers; nil for the discussion's first post.
     let parentId: Int?
     let subject: String
-    /// HTML, already through Moodle's text filters. A deleted post holds Moodle's note instead.
     let message: String
     let created: Date?
-    /// Nil where the forum hides authors.
     let authorName: String?
     let attachments: [MoodleFile]
-    /// False where the forum does not track what was read.
     var isUnread: Bool
     let isDeleted: Bool
 }
 
-/// A file as Moodle's `external_files` lists it.
 nonisolated struct MoodleFile: Codable, Sendable, Hashable {
     let name: String
     let size: Int
     let url: String
     let mimeType: String?
     let modified: Date?
-    /// The folder it is in, such as `/week1/`, which tells apart two files of one name.
     var path: String? = nil
 }
 
-/// The forum calls of Moodle's mobile web service. Every call takes the token, so the caller runs
-/// it inside `MoodleWebserviceClient.withToken`.
 nonisolated enum MoodleForumService {
     static let forumsFunction = "mod_forum_get_forums_by_courses"
     static let discussionsFunction = "mod_forum_get_forum_discussions"
@@ -94,8 +75,6 @@ nonisolated enum MoodleForumService {
         ).map(\.model)
     }
 
-    /// `page` counts from 0. `moodlewssettingfilter` runs the message through the site's text
-    /// filters, as the Moodle app asks for text it shows.
     static func discussions(
         forumId: Int,
         page: Int,
@@ -140,7 +119,6 @@ nonisolated enum MoodleForumService {
         ).posts.map(\.model)
     }
 
-    /// Logs the view on Moodle, which marks the discussion read and may count toward completion.
     static func markViewed(
         discussionId: Int,
         token: String,
@@ -157,8 +135,6 @@ nonisolated enum MoodleForumService {
         )
     }
 }
-
-// MARK: - Answers
 
 private nonisolated struct RawForum: Decodable, Sendable {
     let id: Int
@@ -217,7 +193,6 @@ private nonisolated struct RawDiscussion: Decodable, Sendable {
     }
 }
 
-/// A file in a Moodle answer, as a post's attachments and a course module's contents list it.
 nonisolated struct MoodleRawFile: Decodable, Sendable {
     let filename: String?
     let filepath: String?

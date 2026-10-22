@@ -29,21 +29,14 @@ struct AsyncSerialLockTests {
         _ = await (first, second)
 
         let events = await recorder.events
-        // Whichever body wins the race runs to completion before the other one starts — the
-        // "start" that lost must never appear before the winner's "end".
         #expect(events == ["A-start", "A-end", "B-start", "B-end"] || events == ["B-start", "B-end", "A-start", "A-end"])
     }
 
-    /// The `while … waiterCount` spin below never ends if a waiter stops enqueuing, and the
-    /// `task.value` awaits never end if the queue stops draining, so a regression here is a
-    /// hang, not a failed expectation.
     @Test(.timeLimit(.minutes(1)))
     func grantsStrictFIFOOrder() async throws {
         let lock = AsyncSerialLock()
         let recorder = LockOrderRecorder()
 
-        // Hold the lock in this task first, like an in-flight command, so every waiter below
-        // queues behind it.
         await lock.acquire()
 
         // Spawn each waiter only once the previous one has enqueued, as `waiterCount` reports,
@@ -59,7 +52,7 @@ struct AsyncSerialLockTests {
             while await lock.waiterCount < tasks.count { await Task.yield() }
         }
 
-        await lock.release() // let the queue start draining
+        await lock.release()
 
         for task in tasks { await task.value }
         let events = await recorder.events
@@ -78,15 +71,12 @@ struct AsyncSerialLockTests {
             try await lock.withLock { throw TestError() }
         }
 
-        // If the throw above hadn't released the lock, this would hang until the test times out.
         var ranAfterThrow = false
         try await lock.withLock { ranAfterThrow = true }
         #expect(ranAfterThrow)
     }
 }
 
-/// Collects events from concurrent tasks without a data race — used only to assert ordering in
-/// the tests above.
 private actor LockOrderRecorder {
     private(set) var events: [String] = []
     func record(_ event: String) { events.append(event) }

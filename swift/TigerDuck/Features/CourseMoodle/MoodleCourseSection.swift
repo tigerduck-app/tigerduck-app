@@ -1,11 +1,6 @@
 import MarkdownUI
 import SwiftUI
 
-/// The course detail's Moodle section, under its incomplete assignments: a header, one card with
-/// a row for each kind of data the course has on Moodle, then the course's summary. A row shows
-/// only once its data has something in it, and the section only once it has a row or a summary.
-/// The section brings the gap above it and the course detail adds no spacing of its own, so with
-/// neither the section adds nothing to the sheet.
 struct MoodleCourseSection: View {
     let store: MoodleCourseStore
     let policy: VisualStylePolicy
@@ -79,8 +74,6 @@ struct MoodleCourseSection: View {
 }
 
 extension View {
-    /// Keeps the section's data fresh while the course detail shows, rows or none: the first
-    /// fetch is what brings the rows and the summary.
     func moodleSectionRefresh(_ store: MoodleCourseStore?) -> some View {
         background {
             if let store {
@@ -106,9 +99,6 @@ extension View {
     }
 }
 
-/// A course's summary on Moodle, at the foot of its section: four lines of plain text that open
-/// in place to the whole summary, drawn as an announcement's message is. The open summary keeps
-/// its links working, so the chevron under it, not the text, closes it again.
 struct MoodleCourseSummaryView: View {
     let summary: MoodleCourseSummary
 
@@ -219,7 +209,6 @@ struct MoodleCountRow: View {
     let count: Int
     let hasUnread: Bool
 
-    /// Align dividers with text so multi-line rows remain visually grouped with their icons.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + iconWidth + TigerDuckTheme.Spacing.md
     private static let iconWidth: CGFloat = 28
 
@@ -227,8 +216,6 @@ struct MoodleCountRow: View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             Image(systemName: icon)
                 .font(TigerDuckTheme.Typography.body)
-                // The widest icon, the forums' two bubbles, fills the column at this size and
-                // would run into the name past it.
                 .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .foregroundStyle(.tint)
                 .frame(width: Self.iconWidth)

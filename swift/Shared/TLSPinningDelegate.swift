@@ -2,39 +2,17 @@ import Foundation
 import CryptoKit
 import os
 
-/// URLSession server-trust delegate that pins SPKI SHA-256 hashes. Install it on
-/// every session that carries NTUST SSO credentials, the Moodle `wstoken` or
-/// `privatetoken`, or the library bearer token; pins and expirations match the
-/// Android app. Hosts outside the pin table fall through to system trust, and an
-/// expired pin set falls back to system trust instead of failing.
-/// `@unchecked Sendable`: URLSession calls it on arbitrary serial queues, and the
-/// only mutable state, the pin table, is built once at type load.
-/// See docs/decisions/0001-tls-pinning.md.
 final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
 
-    /// Shared instance — URLSession retains its delegate, so handing
-    /// the same singleton to every pinned session keeps the object
-    /// count to one without any state-sharing concerns (the pin table
-    /// is immutable + static).
     static let shared = TLSPinningDelegate()
 
     struct PinSet {
-        /// Bare host suffix without leading dot. For exact-match-only
-        /// hosts set `includeSubdomains = false`.
         let hostSuffix: String
         let includeSubdomains: Bool
-        /// Absolute date after which the pin set goes inert (fail-soft
-        /// fallback to system trust).
         let expiration: Date
-        /// Base64-encoded SHA-256 of SubjectPublicKeyInfo DER. Include
-        /// leaf + intermediate so a TWCA-side leaf rotation that keeps
-        /// the same intermediate does NOT immediately break the app.
         let pins: Set<String>
     }
 
-    /// Pins and expiration dates match `tigerduck-app-android`'s
-    /// `network_security_config.xml`. Rotate both repos together: diverging
-    /// pin sets break one platform before the other.
     nonisolated static let pinSets: [PinSet] = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
@@ -84,13 +62,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         category: "Security.TLSPin"
     )
 
-    /// What the pin table says about `host`, for TLS stacks that do not go through
-    /// URLSession (the School Mail IMAP/SMTP connections, see `MailTLSVerifier`).
     enum PinPolicy: Equatable, Sendable {
         case notPinned
         case pinned(Set<String>)
-        /// The host's pin set is past its expiration date: fall back to system trust,
-        /// exactly as `urlSession(_:didReceive:completionHandler:)` does.
         case expired
     }
 
@@ -98,8 +72,6 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         guard let set = matchingPinSet(for: host) else { return .notPinned }
         return now >= set.expiration ? .expired : .pinned(set.pins)
     }
-
-    // MARK: - URLSessionDelegate
 
     func urlSession(
         _ session: URLSession,
@@ -115,17 +87,11 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         let host = challenge.protectionSpace.host
 
         guard let pinSet = Self.matchingPinSet(for: host) else {
-            // Host not in scope (analytics, app's own backend, etc.)
-            // — defer to system trust. Safe to install on mixed-host
-            // sessions for that reason.
             completionHandler(.performDefaultHandling, nil)
             return
         }
 
         if Date() >= pinSet.expiration {
-            // Fail soft: bricking a stale build is worse than falling back to
-            // system trust. `.fault`, not `.warning`, so Console and sysdiagnose
-            // flag it; a missed rotation shows nowhere else and silently drops MITM defence.
             logger.fault(
                 "TLS pin for \(host, privacy: .public) expired (\(pinSet.expiration, privacy: .public)) — falling back to system trust; rotate pins"
             )
@@ -133,9 +99,6 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
             return
         }
 
-        // SPKI pinning is additive: system chain must still pass
-        // (validity window, EV, OCSP/CRL as configured) — pinning
-        // only narrows which valid chains are acceptable.
         var trustError: CFError?
         guard SecTrustEvaluateWithError(trust, &trustError) else {
             // The CFError description can carry the attacker cert's subject and
@@ -148,9 +111,6 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
             return
         }
 
-        // Any cert in the chain (leaf, intermediate or root) whose SPKI hash
-        // is pinned satisfies the pin, as with Android's `pin-set`. Pinning the
-        // leaf and its issuing CA keeps a leaf rotation on the same CA valid.
         let chain = (SecTrustCopyCertificateChain(trust) as? [SecCertificate]) ?? []
         for cert in chain {
             guard let hash = Self.sha256SPKIBase64(of: cert) else { continue }
@@ -165,8 +125,6 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         )
         completionHandler(.cancelAuthenticationChallenge, nil)
     }
-
-    // MARK: - Internals
 
     nonisolated private static func matchingPinSet(for host: String) -> PinSet? {
         // Strip a trailing dot: some resolver and proxy paths pass the FQDN
@@ -186,9 +144,6 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                 matches = normalised == suffix
             }
             if matches {
-                // Most specific match wins by label count, not character count:
-                // `api.lib.ntust.edu.tw` (5) beats `ntust.edu.tw` (3). Character count
-                // could mis-rank a short-label sibling on the library's chain.
                 let labelCount = suffix.split(separator: ".").count
                 if best == nil || labelCount > bestLabelCount {
                     best = set
@@ -199,10 +154,6 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         return best
     }
 
-    /// Compute base64(SHA-256(SPKI DER)) for `cert`. Returns `nil` for
-    /// any key algorithm the SPKI-header table below does not cover —
-    /// caller continues walking the chain rather than failing the
-    /// connection on a single unsupported cert.
     nonisolated static func sha256SPKIBase64(of cert: SecCertificate) -> String? {
         guard let key = SecCertificateCopyKey(cert),
               let spki = spkiData(from: key) else {
@@ -227,8 +178,6 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
               let keyData = SecKeyCopyExternalRepresentation(key, nil) as Data? else {
             return nil
         }
-        // CFString-to-String bridge happens once so the switch below
-        // pattern-matches on Swift strings, not CFString constants.
         let rsa = kSecAttrKeyTypeRSA as String
         let ec = kSecAttrKeyTypeECSECPrimeRandom as String
         let header: [UInt8]
@@ -258,9 +207,6 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                 0x03, 0x62, 0x00,
             ]
         default:
-            // `.fault`: a silent miss looks like a generic pin mismatch, which
-            // sends triage after the wrong cause and delays fixing `spkiData`.
-            // Logging the key type and size points at the missing header entry.
             staticLogger.fault(
                 "TLS pin: unsupported key (type=\(keyType, privacy: .public), bits=\(keySize, privacy: .public)) — add SPKI header to spkiData or this cert is silently skipped during chain walk"
             )

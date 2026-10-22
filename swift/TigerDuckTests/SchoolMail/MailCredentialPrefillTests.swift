@@ -3,12 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The three carve-outs the School Mail prefill is allowed to exist under, pinned against the
-/// pure function that decides them.
-///
-/// Everything here is a value: `isOverridden` is passed in rather than read from the real
-/// developer-override store, so no test in this file can leave another one pointed at a
-/// different mail server. The passwords are invented fixtures and appear nowhere else.
 @MainActor
 struct MailCredentialPrefillTests {
     nonisolated static let studentID = "B10000000"
@@ -36,8 +30,6 @@ struct MailCredentialPrefillTests {
         )
     }
 
-    // MARK: The prefill itself
-
     @Test("Empty fields are seeded from the NTUST account")
     func emptyFieldsTakeTheStoredCredentials() {
         let fields = Self.fields()
@@ -51,12 +43,6 @@ struct MailCredentialPrefillTests {
         #expect(fields == MailCredentialPrefill.Fields(id: "", password: ""))
     }
 
-    // MARK: Carve-out (a) — it never submits
-
-    /// The decision hands back two strings and stops. A sign-in only happens because
-    /// `MailAccountManager.login` was called, which nothing on this path does, so seeding a
-    /// password, on any number of re-appearances, sends no `LOGIN` at all. That is all that
-    /// guards the account here: repeated failures lock the school account and its campus Wi-Fi.
     @Test("Seeding a password sends nothing to the server")
     func theDecisionNeverSignsIn() async {
         let h = MailAccountManagerTests.harness()
@@ -68,8 +54,6 @@ struct MailCredentialPrefillTests {
         #expect(h.manager.loginError == nil)
     }
 
-    // MARK: Carve-out (b) — nothing of the school's while the override is on
-
     @Test("An override offers the server's own @domain and no password at all")
     func anOverrideSeedsNoSchoolCredentials() {
         let fields = Self.fields(isOverridden: true, domainSuffix: Self.overrideSuffix)
@@ -77,9 +61,6 @@ struct MailCredentialPrefillTests {
         #expect(fields.password.isEmpty)
     }
 
-    /// The regression: the carve-out used to hold only at first appearance. Prefill the card
-    /// against the school, switch the override on from Settings while the card keeps its state,
-    /// and the school's password stayed in a form now pointed at a third-party host.
     @Test("An override turned on mid-session takes the already-prefilled credentials back out")
     func anOverrideTurnedOnMidSessionClearsWhatWasAlreadySeeded() {
         let seeded = Self.fields()
@@ -95,8 +76,6 @@ struct MailCredentialPrefillTests {
         #expect(afterOverride.password.isEmpty)
     }
 
-    /// The ID field upper-cases as it is typed, so the prefilled ID can come back in a different
-    /// case than it went in. It is still the prefilled ID and still gets replaced.
     @Test("A re-cased prefilled ID still counts as prefilled")
     func aRecasedPrefilledIDIsStillReplaced() {
         let fields = Self.fields(
@@ -121,8 +100,6 @@ struct MailCredentialPrefillTests {
         #expect(fields.password.isEmpty)
     }
 
-    // MARK: Carve-out (c) — only ever fill an empty field
-
     @Test("A half-typed ID and password survive a re-seed")
     func typedValuesAreNeverOverwritten() {
         let fields = Self.fields(currentID: "B999", currentPassword: Self.typedPassword)
@@ -137,11 +114,6 @@ struct MailCredentialPrefillTests {
         #expect(fields.password == Self.ntustPassword)
     }
 
-    // MARK: A rejected password is never offered again
-
-    /// A Mail2000 password need not match the NTUST one, so a rejection is the expected failure.
-    /// Re-seeding the rejected password would make the next rejected `LOGIN` a single tap, and
-    /// repeated rejections lock the school account.
     @Test("A rejected password is not seeded again")
     func aRejectedPasswordIsNeverReoffered() {
         let fields = Self.fields(lastRejectedPassword: Self.ntustPassword)
@@ -164,8 +136,6 @@ struct MailCredentialPrefillTests {
         #expect(fields.password == Self.typedPassword)
     }
 
-    // MARK: What records the rejection
-
     @Test("A rejected sign-in is remembered, and then never re-seeded")
     func aRejectionIsRememberedAndBlocksTheNextSeed() async {
         let h = MailAccountManagerTests.harness()
@@ -174,8 +144,6 @@ struct MailCredentialPrefillTests {
 
         #expect(h.manager.loginError == .credentials)
         #expect(h.manager.lastRejectedPassword == Self.ntustPassword)
-        // A manual rejection leaves the background lockout (`authFailed`) unset; it is the
-        // prefill that must stop repeating the rejected password.
         #expect(!h.manager.authFailed)
 
         let fields = Self.fields(lastRejectedPassword: h.manager.lastRejectedPassword)
@@ -206,12 +174,6 @@ struct MailCredentialPrefillTests {
         #expect(h.manager.lastRejectedPassword == nil)
     }
 
-    // MARK: The re-auth sheet asks the same question
-
-    /// `MailLoginSheet` builds a brand-new `LoginSheet` every time it is presented, which is why
-    /// the rejection has to be remembered somewhere that outlives it. Only the password is
-    /// asserted here: the ID depends on whether an override is in force, and this file does not
-    /// touch the real override store.
     @Test("The re-auth sheet does not reopen with a rejected password")
     func theSheetDoesNotReopenWithARejectedPassword() {
         let fields = MailLoginSheet.initialFields(

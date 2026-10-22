@@ -1,9 +1,7 @@
 import Foundation
 
-/// One of the user's classes on the day in question, by period index (0 is period 1, 13 is D).
 nonisolated struct ClassStop: Equatable, Sendable {
     let course: String
-    /// The room as the class table shows it.
     let room: String
     let place: RoomPlace?
     let firstPeriod: Int
@@ -11,9 +9,6 @@ nonisolated struct ClassStop: Equatable, Sendable {
 }
 
 extension ClassStop {
-    /// One stop per run of the user's periods in one room: a block can change rooms halfway, and
-    /// the walk to a room starts where the class before it ends. `rawRoom` gives the school's name
-    /// for a room the class table shows in another form, which is what the floor rule and the site read.
     static func stops(from slots: [CourseTimeSlot], rawRoom: (String) -> String) -> [ClassStop] {
         slots.flatMap { slot in
             let weekday = slot.date.scheduleWeekday
@@ -43,13 +38,10 @@ extension ClassStop {
     }
 }
 
-/// The rooms to sit in between the user's classes: free at the chosen period, close to the
-/// class before and the class after, and best of all free until the next class starts.
 nonisolated struct RoomSuggestion: Equatable, Sendable {
     struct Candidate: Equatable, Sendable {
         let room: RoomUsage
         let place: RoomPlace?
-        /// The last period of the room's free run from the chosen period.
         let freeUntil: Int
         let fits: Bool
         let seconds: Double
@@ -58,11 +50,8 @@ nonisolated struct RoomSuggestion: Equatable, Sendable {
     let period: Int
     let previous: ClassStop?
     let next: ClassStop?
-    /// Best first.
     let candidates: [Candidate]
 
-    /// Nil while the user is in class at `period`, with no class that day before or after it,
-    /// when neither class has a room the walking model knows, or when no room is free.
     static func make(rooms: [RoomUsage], period: Int, classes: [ClassStop], limit: Int = 3) -> RoomSuggestion? {
         if classes.contains(where: { $0.firstPeriod <= period && period <= $0.lastPeriod }) { return nil }
         let previous = classes.filter { $0.lastPeriod < period }.max { $0.lastPeriod < $1.lastPeriod }
@@ -87,9 +76,6 @@ nonisolated struct RoomSuggestion: Equatable, Sendable {
         )
     }
 
-    /// No walk without a class or from one the model cannot place. A class it places but whose
-    /// walk to the room it cannot measure puts the room after every room of the same fit whose
-    /// walk it can.
     private static func walk(_ stop: RoomPlace?, _ seconds: (RoomPlace) -> Double?) -> Double {
         guard let stop, CampusWalk.hasLocation(stop) else { return 0 }
         return seconds(stop) ?? .infinity
@@ -102,7 +88,6 @@ nonisolated struct RoomSuggestion: Equatable, Sendable {
         return lhs.room.room < rhs.room.room
     }
 
-    /// The periods the card shows the room free for, ending before the next class.
     func freeSpan(of candidate: Candidate) -> ClosedRange<Int> {
         let end = next.map { min(candidate.freeUntil, $0.firstPeriod - 1) } ?? candidate.freeUntil
         return period...max(period, end)

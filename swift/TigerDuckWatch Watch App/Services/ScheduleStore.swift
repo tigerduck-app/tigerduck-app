@@ -29,12 +29,8 @@ final class ScheduleStore: NSObject, ObservableObject {
         super.init()
         let cached = loadFromDisk()
         self.snapshot = cached
-        // Re-apply any cached override from the last push so the watch
-        // wakes up still pinned to the same fake time the phone is on.
         if let cached { applyClockOverride(from: cached) }
     }
-
-    // MARK: - WC activation
 
     func activate() {
         guard WCSession.isSupported() else { return }
@@ -42,8 +38,6 @@ final class ScheduleStore: NSObject, ObservableObject {
         session.delegate = self
         session.activate()
     }
-
-    // MARK: - Persistence (unit-tested)
 
     func persist(_ snapshot: WatchSnapshot) throws {
         let data = try JSONEncoder().encode(snapshot)
@@ -53,12 +47,6 @@ final class ScheduleStore: NSObject, ObservableObject {
         widgetReloader()
     }
 
-    /// Mirrors the phone's debug time override into the watch's `AppClock`
-    /// so `NowNextView`/`TodayView` see the same fake "now". When the
-    /// phone clears the override the snapshot carries `nil`, which clears
-    /// the watch side too — keeps the two in lockstep. Watch-side
-    /// persistence isn't needed: on next launch the watch starts at real
-    /// time and the first incoming snapshot re-applies the override.
     private func applyClockOverride(from snapshot: WatchSnapshot) {
         AppClock.setOverride(ClockOverride.decode(snapshotJSON: snapshot.clockOverrideJSON))
     }
@@ -73,8 +61,6 @@ final class ScheduleStore: NSObject, ObservableObject {
             return nil
         }
     }
-
-    // MARK: - Sync request (unit-tested)
 
     func shouldRequestSync(at date: Date = Date()) -> Bool {
         let last = defaults.double(forKey: DefaultsKey.lastSyncRequestEpoch)
@@ -94,9 +80,6 @@ final class ScheduleStore: NSObject, ObservableObject {
         let now = Date()
         guard force || shouldRequestSync(at: now) else { return }
         guard WCSession.isSupported(), WCSession.default.isReachable else { return }
-        // Arm the cooldown optimistically so simultaneous calls don't pile
-        // up sendMessages; roll it back in the error handler so a transient
-        // WC failure doesn't strand the watch with stale data for 10 min.
         recordSyncRequest(at: now)
         WCSession.default.sendMessage(
             [WatchWireFormat.MessageKey.kind: WatchWireFormat.MessageKind.syncRequest],
@@ -111,8 +94,6 @@ final class ScheduleStore: NSObject, ObservableObject {
     }
 }
 
-// MARK: - WCSessionDelegate
-
 extension ScheduleStore: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession,
@@ -123,8 +104,6 @@ extension ScheduleStore: WCSessionDelegate {
         }
     }
 
-    /// The phone sends library credentials only when the Watch asks, and a Watch without them
-    /// tells the user to open the iPhone app; opening it makes the phone reachable, so ask then.
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         guard session.isReachable else { return }
         Task { @MainActor in
@@ -149,7 +128,6 @@ extension ScheduleStore: WCSessionDelegate {
         Self.routeCredentialDict(userInfo, source: "userInfo")
     }
 
-    /// `sendMessage`-delivered credential payloads land here. The
     /// broadcaster prefers `sendMessage` when reachable because
     /// `transferUserInfo` is unreliable on paired simulators.
     nonisolated func session(_ session: WCSession,
@@ -157,7 +135,6 @@ extension ScheduleStore: WCSessionDelegate {
         Self.routeCredentialDict(message, source: "message")
     }
 
-    /// Both transports carry the same envelope shape. Dedup the routing.
     nonisolated private static func routeCredentialDict(_ dict: [String: Any], source: String) {
         guard let kind = dict[WatchWireFormat.LibraryCredentialKey.kind] as? String,
               kind == WatchWireFormat.UserInfoKind.libraryCredential,

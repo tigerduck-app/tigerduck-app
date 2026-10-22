@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The `style` attribute rules of Appendix A.2.
 nonisolated enum MailCSSFilter {
     static let allowedProperties: Set<String> = [
         "color", "background-color", "font", "font-family", "font-size", "font-style", "font-weight",
@@ -11,21 +10,15 @@ nonisolated enum MailCSSFilter {
         "min-height", "max-height", "display", "list-style", "list-style-type", "list-style-position",
         "table-layout", "float", "clear", "overflow",
     ]
-    /// `margin-*`, `padding-*` and `border-*` longhands.
     static let allowedPrefixes = ["margin-", "padding-", "border-"]
     static let allowedDisplayValues: Set<String> = [
         "block", "inline", "inline-block", "table", "table-row", "table-cell", "list-item", "none",
     ]
-    /// Case-insensitive substrings that void a declaration outright. `image-set`,
-    /// `-webkit-image-set`, `image(`, `cross-fade` and `element(` are CSS image-loading
-    /// functions that can fetch a remote resource just like `url(` (controller ruling,
-    /// 2026-09-16, mirrors Android's `CssFilter.FORBIDDEN`).
     static let forbiddenValueFragments = [
         "url(", "expression", "@import", "behavior", "-moz-binding", "javascript:", "\\", "/*",
         "image-set", "-webkit-image-set", "image(", "cross-fade", "element(",
     ]
 
-    /// The surviving declarations joined with `"; "`, or nil when none survive.
     static func filter(_ style: String) -> String? {
         let kept = style.split(separator: ";").compactMap { declaration -> String? in
             guard let colon = declaration.firstIndex(of: ":") else { return nil }

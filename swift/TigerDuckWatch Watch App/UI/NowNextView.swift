@@ -8,9 +8,6 @@ struct NowNextView: View {
     }
 
     var body: some View {
-        // SwiftUI cannot observe `AppClock.now()`. Without this rebuild the view keeps the result
-        // from snapshot arrival as real or fake time passes a boundary; snapshot pushes (override
-        // flips too) rebuild via `@EnvironmentObject`. 60 s fits class boundaries at low power.
         TimelineView(.periodic(from: .now, by: 60)) { _ in
             ScrollView {
                 VStack(spacing: 12) {
@@ -41,8 +38,6 @@ struct NowNextView: View {
                             systemImage: "person.crop.circle.badge.exclamationmark"
                         )
                     } else {
-                        // Signed in but no courses on file (between terms, or
-                        // class table hasn't finished fetching on the phone yet).
                         ContentUnavailableView(
                             String(localized: "watch_no_upcoming_classes"),
                             systemImage: "calendar"
@@ -68,8 +63,6 @@ private struct ClassCard: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             HStack(spacing: 6) {
-                // Same rationale as TodayRow: the accent stripe is only
-                // needed when the surface itself is neutral.
                 if !policy.usesTintedCardSurface {
                     Rectangle()
                         .fill(courseColor)

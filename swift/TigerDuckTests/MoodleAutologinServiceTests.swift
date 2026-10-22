@@ -3,8 +3,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// `MoodleAutologinService` with stand-in keys, clocks and sign-outs, and its key request against
-/// `SettingsAPIStub` on a site that does not exist, so no request reaches Moodle.
 @MainActor
 struct MoodleAutologinServiceTests {
     private static let page = URL(string: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=5501")!
@@ -21,9 +19,6 @@ struct MoodleAutologinServiceTests {
         func record() { count += 1 }
     }
 
-    /// A service with its own sign-in generation, never the app's session generation, which
-    /// any test that signs out would move under this one. Its wait for a key ends only when the
-    /// test fires `deadline`, so a slow runner never opens a page signed out.
     private static func service(
         clock: OSAllocatedUnfairLock<Date> = OSAllocatedUnfairLock(initialState: start),
         signInGeneration: @escaping () -> Int = { 0 },
@@ -47,8 +42,6 @@ struct MoodleAutologinServiceTests {
             return key
         }
     }
-
-    // MARK: - Link
 
     @Test("the sign-in link carries the account, the key and the whole page as one encoded value")
     func signedInURLEncodesThePage() throws {
@@ -97,8 +90,6 @@ struct MoodleAutologinServiceTests {
         #expect(await Self.service(keySource: Self.answering(key)).url(for: Self.page) == Self.page)
     }
 
-    // MARK: - Rate limit
-
     @Test("within six minutes of a key a page opens as it is, without asking Moodle")
     func oneKeyPerInterval() async {
         let requests = KeyRequests()
@@ -114,7 +105,6 @@ struct MoodleAutologinServiceTests {
         #expect(await service.url(for: Self.page) == Self.signedInPage)
         #expect(await requests.count == 2)
 
-        // A clock set back leaves the last key in the future; Moodle's own clock decides.
         clock.withLock { $0 -= 3600 }
         #expect(await service.url(for: Self.page) == Self.signedInPage)
         #expect(await requests.count == 3)
@@ -133,8 +123,6 @@ struct MoodleAutologinServiceTests {
 
         let first = Task { await service.url(for: Self.page) }
         try await sleeper.waitUntilArmed()
-        // The second open runs on its own task, so one parked behind the first request fails
-        // the wait instead of hanging the test.
         let second = OSAllocatedUnfairLock<URL?>(initialState: nil)
         Task {
             let url = await service.url(for: Self.page)
@@ -148,10 +136,6 @@ struct MoodleAutologinServiceTests {
         #expect(await requests.count == 1)
     }
 
-    // MARK: - Wait
-
-    /// Opens `page` on a task of its own and holds the URL it opens with, so an open that never
-    /// stops waiting fails a `waitUntil` instead of hanging the test.
     private static func open(_ page: URL, with service: MoodleAutologinService) -> OSAllocatedUnfairLock<URL?> {
         let opened = OSAllocatedUnfairLock<URL?>(initialState: nil)
         Task {
@@ -181,7 +165,6 @@ struct MoodleAutologinServiceTests {
         try await waitUntil { first.withLock { $0 } != nil }
         #expect(first.withLock { $0 } == Self.page)
 
-        // The request is still on its way and gets the only key coming.
         #expect(await service.url(for: Self.page) == Self.page)
         #expect(await requests.count == 1)
 
@@ -222,8 +205,6 @@ struct MoodleAutologinServiceTests {
         #expect(await service.url(for: Self.page) == Self.signedInPage)
         #expect(await requests.count == 2)
     }
-
-    // MARK: - Fallbacks
 
     @Test("a key that arrives after a sign-out opens the page as it is and starts no wait")
     func signOutWhileKeyIsOnItsWay() async {
@@ -269,8 +250,6 @@ struct MoodleAutologinServiceTests {
         }
     }
 
-    // MARK: - Request
-
     private static let site = URL(string: "https://moodle-stub.invalid")!
 
     private static func session() -> URLSession {
@@ -279,7 +258,6 @@ struct MoodleAutologinServiceTests {
         return URLSession(configuration: config)
     }
 
-    /// The URL the key request posts to; the token keeps it unique to one test.
     private static func endpoint(token: String) -> URL {
         URL(string: "https://moodle-stub.invalid/webservice/rest/server.php"
             + "?moodlewsrestformat=json&wsfunction=tool_mobile_get_autologin_key&wstoken=\(token)")!

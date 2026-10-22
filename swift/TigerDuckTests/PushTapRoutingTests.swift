@@ -3,12 +3,8 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// What a tapped push opens, read from the keys the backend puts in the payload. Its standard
-/// alerts send every extra key as a string.
 @MainActor
 struct PushTapRoutingTests {
-
-    // MARK: - Bulletins
 
     @Test func aSubscriptionBulletinOpensTheBulletin() {
         let link = AppState.bulletinDeepLink(from: ["kind": "bulletin", "bulletin_id": "4821"])
@@ -28,8 +24,6 @@ struct PushTapRoutingTests {
         #expect(AppState.bulletinDeepLink(from: ["kind": "bulletin"]) == nil)
         #expect(AppState.bulletinDeepLink(from: ["kind": "bulletin", "bulletin_id": "abc"]) == nil)
     }
-
-    // MARK: - Assignment reminders
 
     private static let assignments = [
         SDAssignment(

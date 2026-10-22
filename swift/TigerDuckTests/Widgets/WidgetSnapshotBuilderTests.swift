@@ -79,7 +79,6 @@ struct WidgetSnapshotBuilderTests {
             accentColorHex: 0, now: Date()
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
-        // Expect periods to appear in chronological order per AppConstants.Periods.chronologicalOrder
         let positions = ["5", "10", "A"].map { snapshot.activePeriodIds.firstIndex(of: $0)! }
         #expect(positions == positions.sorted())
     }
@@ -89,9 +88,6 @@ struct WidgetSnapshotBuilderTests {
             courses: [], customNames: [:], colorMap: [:], isLoggedIn: true, accentColorHex: 0, now: Date()
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
-        // Verify the *mapping* is faithful, not the values themselves —
-        // those live in AppConstants and may change without affecting
-        // the builder's correctness.
         for (periodId, expected) in AppConstants.PeriodTimes.mapping {
             #expect(snapshot.periodTimes[periodId]?.start == expected.start, "period \(periodId) start mismatch")
             #expect(snapshot.periodTimes[periodId]?.end == expected.end, "period \(periodId) end mismatch")

@@ -68,10 +68,6 @@ struct MailComposeRulesTests {
         #expect(text.contains("References: <m0@x> <m1@x>\r\n"))
     }
 
-    /// A CR/LF (or any other control character) smuggled into a threading header must
-    /// never grow an extra header line — stripping them defangs a header-injection
-    /// attempt smuggled in through a hostile In-Reply-To or References value. Bcc must
-    /// never appear as a header anywhere, only in `envelopeRecipients`.
     @Test func stripsControlCharactersFromThreadingHeaders() {
         var mail = Self.mail()
         mail.inReplyTo = "<m1@x>\r\nBcc: attacker@evil.com\u{07}"
@@ -108,9 +104,6 @@ struct MailComposeRulesTests {
         #expect(text.contains("\r\n\r\n" + lines.joined(separator: "\r\n") + "\r\n--B--\r\n"))
     }
 
-    /// A hostile `mimeType` (whitespace, a control character, or anything else that
-    /// isn't a plain `type/subtype` token) must never be written into the `Content-Type`
-    /// header verbatim; it falls back to a safe default instead.
     @Test func fallsBackToASafeMimeTypeWhenMalformed() {
         let attachment = OutgoingAttachment(
             filename: "a.bin", mimeType: "text/plain\r\nBcc: attacker@evil.com", data: Data("x".utf8)
@@ -120,11 +113,6 @@ struct MailComposeRulesTests {
         #expect(!text.contains("\r\nBcc:"))
     }
 
-    /// A hostile address carrying a smuggled CRLF must never grow an extra header line,
-    /// whether it appears in From, To or Cc — `MailAddress.parseList`/`isPlausible`
-    /// already reject such a value before it gets this far (see `MailTextRulesTests`),
-    /// but `header(for:)` sanitizes as defense in depth for a `MailAddress` built any
-    /// other way (a cache, a demo fixture, ...).
     @Test func headerInjectionThroughAddressesIsBlocked() {
         let hostile = MailAddress(name: nil, address: "victim@x.tw\r\nBcc: attacker@evil.com")
         var mail = Self.mail(to: [hostile])
@@ -135,8 +123,6 @@ struct MailComposeRulesTests {
         #expect(!text.contains("\r\n\r\nBcc"))
     }
 
-    /// `messageID` is a public parameter of `build`; a hostile caller-supplied value must
-    /// be sanitized exactly like the other headers.
     @Test func sanitizesTheMessageIDParameter() {
         let hostileID = "<id@mail.ntust.edu.tw>\r\nBcc: attacker@evil.com"
         let data = MailMessageBuilder.build(Self.mail(), messageID: hostileID, date: Self.date, boundary: "B")
@@ -150,11 +136,6 @@ struct MailComposeRulesTests {
         #expect(MailMessageBuilder.makeMessageID().range(of: #"^<[0-9a-f-]{36}@mail\.ntust\.edu\.tw>$"#, options: .regularExpression) != nil)
     }
 
-    // MARK: Size estimate
-
-    /// The naive `characters * 3` estimate undercounts CJK bodies by roughly 3x (each
-    /// UTF-8 byte of a CJK character, itself already ~3 bytes/char, triples again under
-    /// quoted-printable). The estimate must stay a true upper bound on the real encoding.
     @Test func encodedSizeEstimateBoundsARealCJKBody() {
         assertEstimateCoversRealMessage(String(repeating: "測試郵件內容", count: 8_000))
     }
@@ -163,10 +144,6 @@ struct MailComposeRulesTests {
         assertEstimateCoversRealMessage(String(repeating: "The quick brown fox jumps over the lazy dog.\n", count: 2_000))
     }
 
-    /// A single unbroken line forces the encoder to soft-wrap every ~75 columns with no
-    /// newline resets in between; the estimate's wrap threshold must match the encoder's
-    /// exactly; a one-column gap (76 vs. 75) undercounts one soft break per ~75 characters,
-    /// which for a run this long is hundreds of missed `=CRLF` triples.
     @Test func encodedSizeEstimateBoundsALongUnbrokenASCIIRun() {
         assertEstimateCoversRealMessage(String(repeating: "a", count: 100_000))
     }
@@ -176,8 +153,6 @@ struct MailComposeRulesTests {
         let estimate = MailMessageBuilder.estimateEncodedSize(body: body)
         #expect(estimate >= built.count, "estimate \(estimate) must be >= actual \(built.count)")
     }
-
-    // MARK: Reply composition
 
     @Test func subjectsGetOnePrefix() {
         #expect(MailReplyComposer.replySubject("選課") == "Re: 選課")
@@ -192,10 +167,6 @@ struct MailComposeRulesTests {
         #expect(MailReplyComposer.quotedBody(of: original, dateText: "2026/09/16").hasSuffix("\n> a\n> b"))
     }
 
-    /// The forward header block's wording comes from `app-translation`, so, like
-    /// `quotesTheOriginalBody` above, this checks only the structure: two blank lines, a 5-line
-    /// header block (forwarded-message marker, From, Date, Subject, To, matching Android's
-    /// `ComposePrefill.forward`), a blank line, then the original text unquoted.
     @Test func forwardsWithAStructuredHeaderBlock() {
         let original = MailOriginal(
             from: MailAddress(name: "教務處", address: "a@mail.ntust.edu.tw"),
@@ -217,10 +188,6 @@ struct MailComposeRulesTests {
         #expect(MailReplyComposer.formatted([MailAddress(name: nil, address: "b@x.tw"), MailAddress(name: "D", address: "d@x.tw")]) == "b@x.tw, D <d@x.tw>")
     }
 
-    /// A display name containing an RFC 5322 special (here a comma, and a literal quote)
-    /// must be quoted and escaped so the formatted string round-trips through
-    /// `MailAddress.parseList` — matching Android's `ComposeRules.formatOne` and its
-    /// `formatRecipients output round-trips through parseRecipients` test.
     @Test func formattedRecipientsRoundTripThroughAddressParsing() {
         let addresses = [
             MailAddress(name: "B, C", address: "b@y.tw"),
@@ -250,11 +217,6 @@ struct MailComposeRulesTests {
         #expect(noReplyTo.to == [from])
     }
 
-    /// A Mail2000 bounce's sender survives as a display name with no address
-    /// (`MailAddress.parseSender`). Reply, reply-all and forward must all refuse to address
-    /// anything to it: never a `MAILER-DAEMON` recipient, never a `Mail Deliver System <>`
-    /// token in the To field. The reply simply opens with no recipient — which compose
-    /// then blocks on — while the forward's header block still prints the name.
     @Test func aSenderWithNoAddressNeverBecomesARecipient() {
         let daemon = MailAddress(name: "Mail Deliver System", address: "")
         let original = MailOriginal(
@@ -270,7 +232,6 @@ struct MailComposeRulesTests {
         #expect(all.to.isEmpty)
         #expect(all.cc.isEmpty)
 
-        // Nothing addressable anywhere in either result, and no empty `<>` token either.
         #expect(MailReplyComposer.formatted(all.to + all.cc).isEmpty)
         #expect(MailReplyComposer.formatted(daemon) == "Mail Deliver System")
         #expect(!MailReplyComposer.forwardBody(of: original, dateText: "2026/09/18").contains("<>"))
@@ -301,9 +262,6 @@ struct MailComposeRulesTests {
         #expect(!text.contains("王大明@evil.example"))
     }
 
-    /// The whole header block stays 7-bit even when every echoed value is hostile: the body is
-    /// quoted-printable, the subject and display name are RFC 2047 encoded words, and the
-    /// addresses are ASCII-validated before they get here.
     @Test func theBuiltMessageIsSevenBitEvenWithNonASCIIThreadingAndNames() {
         var mail = Self.mail(subject: "選課問題", body: "老師好，附件是選課單")
         mail.inReplyTo = "<訊息@evil.example>"
@@ -312,7 +270,6 @@ struct MailComposeRulesTests {
         #expect(built.allSatisfy { $0 < 0x80 })
     }
 
-    /// An ordinary ASCII thread is untouched — the rule above must not cost normal threading.
     @Test func asciiThreadingHeadersAreKept() {
         var mail = Self.mail()
         mail.inReplyTo = "<a@mail.ntust.edu.tw>"

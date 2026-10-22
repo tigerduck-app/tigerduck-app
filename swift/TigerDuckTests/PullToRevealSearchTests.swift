@@ -4,14 +4,10 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// `pullToRevealSearch` hangs off a list's real scroll geometry, so it is driven here through the
-/// scroll view of a real `List` in a window: a pull past the top reveals the field, and a scroll
-/// down folds it again unless a search is active.
 @MainActor
 struct PullToRevealSearchTests {
     final class Flag {
         var isRevealed = false
-        /// How far the list sits below its top, as its last scroll geometry change reported.
         var reportedOffset: CGFloat = 0
     }
 
@@ -31,7 +27,6 @@ struct PullToRevealSearchTests {
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.layoutIfNeeded()
-        // The rows may be laid out after this pass, and the list's insets are final once they are.
         try await waitUntil { host.view.descendants(ofType: UIScrollView.self).first.map { $0.contentSize.height > $0.bounds.height } ?? false }
         let scrollView = try #require(host.view.descendants(ofType: UIScrollView.self).first)
         let top = -scrollView.adjustedContentInset.top
@@ -42,7 +37,6 @@ struct PullToRevealSearchTests {
         #expect(flag.isRevealed, "a pull past the top reveals it")
 
         scrollView.contentOffset.y = top + 200
-        // An active search changes nothing to wait on, so also wait for the list to report the scroll.
         try await waitUntil { flag.reportedOffset > 100 && flag.isRevealed == isActive }
         #expect(flag.isRevealed == isActive, "a scroll folds it, unless the search is active")
 

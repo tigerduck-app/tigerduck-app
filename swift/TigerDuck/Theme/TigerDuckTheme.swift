@@ -2,7 +2,6 @@ import SwiftUI
 import os
 
 enum TigerDuckTheme {
-    // MARK: - Spacing
     enum Spacing {
         static let xs: CGFloat = 4
         static let sm: CGFloat = 8
@@ -12,7 +11,6 @@ enum TigerDuckTheme {
         static let xxl: CGFloat = 32
     }
 
-    // MARK: - Corner Radius
     enum CornerRadius {
         static let xs: CGFloat = 4
         static let sm: CGFloat = 8
@@ -21,7 +19,6 @@ enum TigerDuckTheme {
         static let xl: CGFloat = 24
     }
 
-    // MARK: - Font
     enum Typography {
         static let largeTitle = Font.largeTitle.bold()
         static let title = Font.title2.bold()
@@ -31,61 +28,41 @@ enum TigerDuckTheme {
         static let caption2 = Font.caption2
     }
 
-    // MARK: - Course Colors (20-color palette, high visual distinctness)
-    /// Source-of-truth palette as 24-bit RGB integers. `courseColors` derives
-    /// `Color` values from this list; the watch-sync encoder reads it via
-    /// `courseColorHex(for:)` so its hex output stays in lockstep with what
-    /// the phone renders.
     nonisolated static let coursePaletteHexes: [UInt32] = [
-        0xFF6B6B, // coral red
-        0x4ECDC4, // teal
-        0x45B7D1, // sky blue
-        0xF39C12, // orange
-        0xDDA0DD, // plum
-        0x2ECC71, // emerald green
-        0xE74C3C, // brick red
-        0x3498DB, // sapphire blue
-        0xF7DC6F, // golden yellow
-        0x9B59B6, // violet
-        0x1ABC9C, // jade green
-        0xE67E22, // pumpkin orange
-        0x85C1E9, // light blue
-        0xD35400, // burnt orange
-        0x27AE60, // forest green
-        0xC0392B, // wine red
-        0x8E44AD, // deep purple
-        0x16A085, // pine green
-        0xF1C40F, // sunflower yellow
-        0x2980B9, // cobalt blue
+        0xFF6B6B,
+        0x4ECDC4,
+        0x45B7D1,
+        0xF39C12,
+        0xDDA0DD,
+        0x2ECC71,
+        0xE74C3C,
+        0x3498DB,
+        0xF7DC6F,
+        0x9B59B6,
+        0x1ABC9C,
+        0xE67E22,
+        0x85C1E9,
+        0xD35400,
+        0x27AE60,
+        0xC0392B,
+        0x8E44AD,
+        0x16A085,
+        0xF1C40F,
+        0x2980B9,
     ]
 
     static let courseColors: [Color] = coursePaletteHexes.map { Color(hex: UInt($0)) }
 
-    /// "#RRGGBB" hex for the course's currently assigned color. Mirrors
-    /// `courseColor(for:)` but returns the wire-format string used by
-    /// `WatchPayloadEncoder`.
     static func courseColorHex(for courseNo: String) -> String {
         String(format: "#%06X", assignedHex(for: courseNo))
     }
 
-    /// Lock-protected mutable state for the per-course color map.
-    /// `ensureAssignments` runs from background sync while `setColor` runs on
-    /// MainActor (settings UI); without synchronization the concurrent
-    /// mutations race against SDCourse-driven reads on the render thread.
     private static let state = ColorState.shared()
 
-    /// Snapshot of the current courseNo → assigned hex map. Read by the
-    /// widget snapshot writer / watch payload encoder; the snapshot stays
-    /// consistent across `setColor` even when a displacement reassigns
-    /// another course.
     static var courseColorMap: [String: UInt32] {
         state.snapshot()
     }
 
-    /// Ensure every passed-in courseNo has a unique assigned color. New
-    /// courses pick the first unused preset (starting at their hash index for
-    /// stability); once the 20-color palette is exhausted, hex values derived
-    /// from the course number fill in.
     static func ensureAssignments(courseNos: [String]) {
         state.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes)
     }
@@ -94,42 +71,25 @@ enum TigerDuckTheme {
         Color(hex: UInt(assignedHex(for: courseNo)))
     }
 
-    /// Resolved hex for this course. Falls back to the deterministic hash
-    /// default if no entry has been assigned yet (callers should invoke
-    /// `ensureAssignments` to persist).
     static func assignedHex(for courseNo: String) -> UInt32 {
         state.hex(for: courseNo, palette: coursePaletteHexes)
     }
 
-    /// Palette index when the assigned color happens to match a preset, else
-    /// `nil` (the course holds a fully custom hex). Drives the picker's
-    /// "ringed preset" highlight.
     static func paletteIndex(for courseNo: String) -> Int? {
         let hex = assignedHex(for: courseNo)
         return coursePaletteHexes.firstIndex(of: hex)
     }
 
-    /// Persist a user-picked color for this course. If another course
-    /// currently holds the same hex, that other course is reassigned to the
-    /// first unused preset (or a distinct hex derived from its number when all 20 are taken)
-    /// so the uniqueness invariant survives the edit. Returns every course
-    /// whose colour changed, with its new colour, displaced ones included.
-    /// Only the picked course is noted as picked.
     @discardableResult
     static func setColor(hex: UInt32, for courseNo: String) -> [String: UInt32] {
         state.setColor(hex: hex & 0xFFFFFF, for: courseNo, palette: coursePaletteHexes)
     }
 
-    /// Applies colours in order with one write, a later one winning a colour two share.
-    /// Returns whether the map changed.
     @discardableResult
     static func applyColors(_ colors: [(courseNo: String, hex: UInt32)]) -> Bool {
         state.applyColors(colors, palette: coursePaletteHexes)
     }
 
-    /// `map` with `hex` on `courseNo`, and every other course that held it moved to an unused
-    /// colour, in course number order, so every device resolves a shared colour the same way.
-    /// `changed` is each course whose colour moved, with its new colour.
     nonisolated static func assigning(
         _ hex: UInt32,
         to courseNo: String,
@@ -143,48 +103,34 @@ enum TigerDuckTheme {
         state.snapshot()
     }
 
-    /// Refresh the in-memory map from disk. Called when the underlying
-    /// user-scoped data is swapped (e.g. logout/login).
     static func reload() {
         state.reload()
     }
 
-    /// Clear every assignment and rebuild from scratch using the preset
-    /// palette (falling back to derived hex once exhausted). Powers the
-    /// Settings "Reassign course colors" action, which leaves no colour picked.
     static func reassignAll(courseNos: [String]) {
         state.reassignAll(courseNos: courseNos, palette: coursePaletteHexes)
     }
 }
 
-/// Wraps the lock + state for `TigerDuckTheme`. Hidden behind a class so the
-/// generic `OSAllocatedUnfairLock<T>` is not visible at the use sites (the
-/// prior generic-in-static-let arrangement triggered the Swift type-checker's
-/// complexity budget on the surrounding palette literal).
 final class ColorState: @unchecked Sendable {
     /// nil until the map file is read. Behind the lock screen the file exists but cannot be opened
     /// (`completeFileProtectionUnlessOpen`), and an empty map then would hand out fresh colours and
-    /// write them over the user's, so nothing is written until a later use reads it.
     private nonisolated(unsafe) var map: [String: UInt32]?
-    /// Reads `read()` counted toward giving up on the file, and when it counted the last one.
     private nonisolated(unsafe) var unreadableReads = 0
     private nonisolated(unsafe) var lastCountedRead: Date?
     private let lock = OSAllocatedUnfairLock()
     private let load: @Sendable () -> [String: UInt32]?
     private let save: @Sendable ([String: UInt32]) -> Void
-    /// Keep the record of the colours the user picked (`DataCache.loadPickedCourseColors()`).
     private let notePick: @Sendable (String) -> Void
     private let forgetPicks: @Sendable () -> Void
     private let protectedDataAvailable: @Sendable () -> Bool
     private let now: @Sendable () -> Date
 
     nonisolated static let unreadableReadLimit = 3
-    /// One screen reads the map once per course, and those reads count as one.
     nonisolated static let unreadableReadSpacing: TimeInterval = 10
 
     private static let hashMigrationKey = "color_hash_v2_migrated"
 
-    /// The map of `DataCache.shared`, after the one-time drop of maps from before hashed colours.
     static func shared() -> ColorState {
         if !UserDefaults.standard.bool(forKey: hashMigrationKey) {
             DataCache.shared.saveCourseColorMap([:])
@@ -221,17 +167,11 @@ final class ColorState: @unchecked Sendable {
         #endif
     }
 
-    /// The map, read now if it has not been read yet. Called under `lock`.
     private func loadedMap() -> [String: UInt32]? {
         if map == nil { map = read() }
         return map
     }
 
-    /// Reads the file. One still unreadable with protected data available is damaged or has the
-    /// wrong permissions rather than waiting for an unlock, and while the map stays unread no
-    /// colour is saved. After `unreadableReadLimit` such reads, `unreadableReadSpacing` apart, the
-    /// map starts empty, so the next save replaces the file; behind the lock screen nothing counts.
-    /// A read that works starts the count over. Called under `lock`, or from `init`.
     private nonisolated func read() -> [String: UInt32]? {
         if let stored = load() {
             unreadableReads = 0
@@ -253,9 +193,6 @@ final class ColorState: @unchecked Sendable {
         lock.withLock { loadedMap() ?? [:] }
     }
 
-    /// Returns the assigned hex if one exists; otherwise falls back to the
-    /// deterministic hash default so a course that hasn't gone through
-    /// `ensureAssignments` yet still renders a sensible color.
     func hex(for courseNo: String, palette: [UInt32]) -> UInt32 {
         lock.withLock {
             if let h = loadedMap()?[courseNo] { return h }
@@ -267,9 +204,6 @@ final class ColorState: @unchecked Sendable {
         let didMutate: Bool = lock.withLock {
             guard var map = loadedMap() else { return false }
             var mutated = false
-            // A map persisted before colors were unique can hold duplicate hexes.
-            // Keep the first course in sorted order, so the keeper is deterministic,
-            // and drop the rest; the loop below recolors those still in `courseNos`.
             var seenHexes: Set<UInt32> = []
             for courseNo in map.keys.sorted() {
                 guard let hex = map[courseNo] else { continue }
@@ -278,9 +212,6 @@ final class ColorState: @unchecked Sendable {
                 mutated = true
             }
             var used = Set(map.values)
-            // Stable order so an iteration over a fresh roster always assigns
-            // colors the same way — important because the user might re-order
-            // the array between calls.
             for courseNo in courseNos.sorted() where map[courseNo] == nil {
                 let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
                 map[courseNo] = assigned
@@ -330,9 +261,6 @@ final class ColorState: @unchecked Sendable {
     ) -> (map: [String: UInt32], changed: [String: UInt32]) {
         guard map[courseNo] != newHex else { return (map, [:]) }
         var updated = map
-        // Release every other course holding this hex (normally one, but an
-        // aborted migration can leave duplicates) before reassigning, so the
-        // picker can choose the just-freed hex if it is the only valid option.
         let displaced = map.compactMap { entry -> String? in
             entry.key != courseNo && entry.value == newHex ? entry.key : nil
         }.sorted()
@@ -351,11 +279,6 @@ final class ColorState: @unchecked Sendable {
         lock.withLock { map = read() }
     }
 
-    /// Drop every assignment, then walk `courseNos` and pick fresh unique
-    /// colors for each. The sort matches `ensureAssignments` so the first
-    /// course (alphabetically by courseNo) always lands on its hash-default
-    /// preset when the palette is empty — making the reassignment feel
-    /// deterministic for an unchanged roster.
     func reassignAll(courseNos: [String], palette: [UInt32]) {
         let reassigned: Bool = lock.withLock {
             guard loadedMap() != nil else { return false }
@@ -372,26 +295,16 @@ final class ColorState: @unchecked Sendable {
         }
         guard reassigned else { return }
         persist()
-        // Every colour is a generated one again.
         forgetPicks()
     }
 
     private func persist() {
         guard let snapshot = lock.withLock({ map }) else { return }
         save(snapshot)
-        // The file is this map now, not the one that never became readable.
         lock.withLock { unreadableReads = 0 }
-        // Drives the widget snapshot rewrite. NotificationCenter post is
-        // thread-safe, so we don't need to hop back to MainActor for it.
         NotificationCenter.default.post(name: AppConstants.courseColorMapDidChange, object: nil)
     }
 
-    /// Pick the first unused preset starting from the seed's hash slot. When
-    /// every preset is already claimed, step through hex values derived from
-    /// the seed until one is free, so every device and every sync gives a
-    /// course the same colour. The 24-bit color space has 16M values against
-    /// a roster in the dozens, so this converges fast; the bounded attempt
-    /// counter guards against a `used` set covering a large fraction of RGB.
     private nonisolated static func pickUnusedHex(seed: String, used: Set<UInt32>, palette: [UInt32]) -> UInt32 {
         let start = hashIndex(for: seed, paletteCount: palette.count)
         for offset in 0..<palette.count {
@@ -405,9 +318,6 @@ final class ColorState: @unchecked Sendable {
             let candidate = state >> 8
             if !used.contains(candidate) { return candidate }
         }
-        // Reaching here implies over 16M assigned colors, impossible for a class
-        // roster. To keep the function total, nudge the hash-based pick by the
-        // used-set size so the result still differs from the seed's first guess.
         return palette[start] ^ UInt32(truncatingIfNeeded: used.count)
     }
 

@@ -2,10 +2,7 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `CredentialPost`'s rules on their own: where the sign-in form may post the password, and which
-/// redirects of that POST it follows, and as what.
 struct CredentialPostTests {
-    /// The sign-in form's POST, as URLSession would propose it again for a redirect.
     private static func post(to string: String) throws -> URLRequest {
         var request = URLRequest(url: try #require(URL(string: string)))
         request.httpMethod = "POST"

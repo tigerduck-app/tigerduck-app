@@ -6,17 +6,9 @@ final class NameAbbrService: @unchecked Sendable {
 
     private var courseAbbr: [String: String] = [:]
     private var classroomAbbr: [String: ClassroomAbbrEntry] = [:]
-    /// Reverse index: any of (key, shortened, pinyin, translated) → key.
-    /// Lets `abbreviateClassroom` resolve a previously-abbreviated value back
-    /// to its Mandarin key so the toggle works idempotently in any direction
-    /// (pinyin → translated, translated → original, etc.) without needing a
-    /// separately persisted "raw" copy.
     private var classroomReverseIndex: [String: String] = [:]
     private var abbrLoaded = false
 
-    // In-memory map of courseNo → raw API course name / classroom values.
-    // Populated during AppServiceBridge.fetchCourses; cleared on language change.
-    // Allows instant abbreviation toggle without a network round-trip.
     private var rawNames: [String: String] = [:]
     private var rawClassrooms: [String: String] = [:]
     private var rawClassroomMaps: [String: [String: String]] = [:]
@@ -24,8 +16,6 @@ final class NameAbbrService: @unchecked Sendable {
     private let lock = NSLock()
 
     private init() {}
-
-    // MARK: - Raw name cache
 
     func storeRawName(courseNo: String, name: String) {
         lock.withLock { rawNames[courseNo] = name }
@@ -50,16 +40,11 @@ final class NameAbbrService: @unchecked Sendable {
         }
     }
 
-    // MARK: - Abbreviation lookups
-
-    /// Returns the abbreviated course name, or the original if no entry exists.
     func abbreviateName(_ rawName: String) -> String {
         ensureLoaded()
         return lock.withLock { courseAbbr[rawName] ?? rawName }
     }
 
-    /// Abbreviates a classroom string (may be comma-separated).
-    /// `display`: "original" | "pinyin" | "translated"
     func abbreviateClassroom(_ raw: String, display: String) -> String {
         guard !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return raw }
         ensureLoaded()
@@ -82,24 +67,15 @@ final class NameAbbrService: @unchecked Sendable {
         return abbreviated.joined(separator: ", ")
     }
 
-    /// The school's name for one room shown in any of its display forms.
     func rawClassroom(_ shown: String) -> String {
         ensureLoaded()
         return lock.withLock { classroomKey(for: shown) }
     }
 
-    /// Resolves `part` in any form back to its Mandarin key: a direct hit first (raw, or a
-    /// short form equal to the key), then the reverse index for pinyin, translated or short
-    /// forms that differ. The caller holds `lock`.
     private func classroomKey(for part: String) -> String {
         classroomAbbr[part] != nil ? part : (classroomReverseIndex[part] ?? part)
     }
 
-    // MARK: - Batch relabel
-
-    /// Re-derives `courseName` and `classroom` on each course using the cached
-    /// raw names. Mutates in-place. Returns `true` if any course changed.
-    /// Only applies abbreviations when `LanguageManager.isCourseApiEnglish` is true.
     @discardableResult
     func relabelInPlace(
         _ courses: [SDCourse],
@@ -144,9 +120,6 @@ final class NameAbbrService: @unchecked Sendable {
         classroomAbbrEnabled: Bool,
         mandarinDisplay: String
     ) -> (classroom: String, map: [String: String]) {
-        // Mirrors the fetch-time predicate in `AppServiceBridge.fetchCourses` so a fetched
-        // cache and a relabeled cache give identical strings for the same toggle state. No UI
-        // guard hides a mismatch, so keep the two in step.
         let shouldAbbreviate = classroomAbbrEnabled || mandarinDisplay != "original"
 
         let rawFlat = lock.withLock { rawClassrooms[course.courseNo] } ?? course.classroom
@@ -181,16 +154,6 @@ final class NameAbbrService: @unchecked Sendable {
         return (flat, derivedMap)
     }
 
-    // MARK: - Lazy load
-
-    /// Two `withLock` acquisitions per public read (one in `ensureLoaded`,
-    /// one in the caller) is intentional: the first guards the lazy JSON
-    /// load, the second reads the now-populated dictionary. Keeping them
-    /// separate means the (potentially slow) bundle-resource decode never
-    /// blocks subsequent readers — once `abbrLoaded == true`, the inner
-    /// guard early-returns and the second `withLock` is a plain dictionary
-    /// lookup. NSLock isn't reentrant; hence two distinct acquisitions
-    /// rather than one wrapping block.
     private func ensureLoaded() {
         lock.withLock {
             guard !abbrLoaded else { return }
@@ -201,10 +164,6 @@ final class NameAbbrService: @unchecked Sendable {
         }
     }
 
-    /// Build a value → key map covering every non-empty form
-    /// (shortened / pinyin / translated) so an already-abbreviated classroom
-    /// can be resolved back to its Mandarin key. Direct key→key mappings are
-    /// implicit via `classroomAbbr` and not duplicated here.
     private func buildClassroomReverseIndex(
         _ entries: [String: ClassroomAbbrEntry]
     ) -> [String: String] {

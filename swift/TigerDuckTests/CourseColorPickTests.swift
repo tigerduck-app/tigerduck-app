@@ -1,6 +1,3 @@
-// A colour pick moves another course off the picked colour (`TigerDuckTheme.assigning`). Only
-// the picked course used to be sent, so the server kept two courses on one colour, and applying
-// its colours row by row swapped the pair back and forth between syncs.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -67,7 +64,6 @@ struct CourseColorPickTests {
         for (index, hex) in TigerDuckTheme.coursePaletteHexes.enumerated() {
             start[String(format: "XX%02d", index)] = hex
         }
-        // Two rows sharing a colour, the later pick last.
         let rows: [(courseNo: String, hex: UInt32)] = [("CS1", Self.red), ("CS2", Self.red)]
         let apply = { (map: [String: UInt32]) in
             rows.reduce(map) { TigerDuckTheme.assigning($1.hex, to: $1.courseNo, in: $0).map }
@@ -93,4 +89,3 @@ struct CourseColorPickTests {
         #expect(ids == ["CS1": "1151CS1", "CS2": "1151CS2", "CS3": "1151CS3"])
     }
 }
-

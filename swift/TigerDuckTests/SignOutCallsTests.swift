@@ -1,5 +1,3 @@
-// The calls a sign-out still sends as the account that signed out, and the launch that sends its
-// unregister again when it did not land (https://github.com/tigerduck-app/tigerduck-app/issues/460).
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -32,8 +30,6 @@ struct SignOutCallsTests {
         #expect(steps.taken == ["begin", "calls", "end"])
     }
 
-    /// Signed in, that account's backend sign-in drops what the retry would send: run beside it,
-    /// the retry's unregister could revoke the session the sign-in starts.
     @Test("a launch sends the unregister a sign-out left unsent only past onboarding and signed out")
     func theLaunchRetriesOnlyPastOnboardingAndSignedOut() {
         #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, sessionKept: true))

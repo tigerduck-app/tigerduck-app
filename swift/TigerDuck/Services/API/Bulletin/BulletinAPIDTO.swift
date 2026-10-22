@@ -1,15 +1,6 @@
 import Foundation
 
-/// Request/response DTOs for `/v2/bulletins` and related subscription
-/// routes. Mirrors `backend/server/bulletins/schemas.py`. Keep both sides
-/// in sync when evolving the API contract.
-///
-/// Taxonomy values (`CanonicalOrg`, `ContentTag`) are decoded as plain
-/// strings so a newly-introduced server enum does not hard-fail the whole
-/// payload — iOS falls back to showing the raw id label until the client
-/// binary catches up.
 enum BulletinAPI {
-    // MARK: - Taxonomy
 
     struct OrgLabel: Codable, Sendable, Hashable, Identifiable {
         var id: String { rawId }
@@ -45,8 +36,6 @@ enum BulletinAPI {
         }
     }
 
-    // MARK: - Bulletins
-
     enum Importance: String, Codable, Sendable, CaseIterable {
         case low
         case normal
@@ -57,9 +46,6 @@ enum BulletinAPI {
         let id: Int
         let externalId: String
         let title: String
-        /// LLM-normalized title (at most 24 full-width characters, no
-        /// decorative or publisher prefix). `nil` for rows not yet
-        /// re-classified; fall back to `title`.
         let titleClean: String?
         let canonicalOrg: String?
         let contentTags: [String]
@@ -69,7 +55,6 @@ enum BulletinAPI {
         let postedAt: Date?
         let isDeleted: Bool
 
-        /// What the UI should display as the bulletin headline.
         var displayTitle: String { titleClean ?? title }
 
         enum CodingKeys: String, CodingKey {
@@ -133,8 +118,6 @@ enum BulletinAPI {
         }
     }
 
-    // MARK: - Subscriptions
-
     enum SubscriptionMode: String, Codable, Sendable, CaseIterable, Identifiable {
         case and = "AND"
         case or = "OR"
@@ -150,11 +133,7 @@ enum BulletinAPI {
     }
 
     struct SubscriptionRule: Codable, Sendable, Identifiable, Hashable {
-        /// Server-assigned numeric id. `nil` for newly-authored rules that
-        /// have never been PUT.
         let id: Int?
-        /// Stable client-side identity so SwiftUI `ForEach` / diffing keeps
-        /// working across edits on rules that have not yet been saved.
         var clientId: UUID = .init()
         var name: String?
         var orgs: [String]

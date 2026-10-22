@@ -9,7 +9,6 @@ import os
 /// time for the completion handler (https://github.com/tigerduck-app/tigerduck-app/issues/449).
 @MainActor
 struct PushAppDelegateTests {
-    /// What a completion handler was called with, from any thread.
     private final class Answers: Sendable {
         private let state = OSAllocatedUnfairLock<[UIBackgroundFetchResult]>(initialState: [])
 
@@ -20,7 +19,6 @@ struct PushAppDelegateTests {
         }
     }
 
-    /// What happened, in order, from any thread.
     private final class Events: Sendable {
         private let state = OSAllocatedUnfairLock<[String]>(initialState: [])
 
@@ -31,8 +29,6 @@ struct PushAppDelegateTests {
         }
     }
 
-    /// Holds the calling thread until `signal`, at most `seconds`, as a long synchronous stretch of
-    /// a sync holds the main actor. Returns whether the signal came.
     private static func hold(until signal: DispatchSemaphore, atMost seconds: Int) -> Bool {
         signal.wait(timeout: .now() + .seconds(seconds)) == .success
     }
@@ -113,7 +109,6 @@ struct PushAppDelegateTests {
         #expect(events.all.first == "answer")
     }
 
-    /// The deadline comes before the time limit, so a sync the limit cancelled sends nothing either.
     @Test("A send whose deadline passed during the sync is not started")
     func aSendPastItsDeadlineBeforeItStartsIsNotStarted() async throws {
         let answers = Answers()
@@ -153,8 +148,6 @@ struct PushAppDelegateTests {
         #expect(answers.results == [.failed])
     }
 
-    /// The open app shows what the sync fetches, and its own sync may be waiting for this one
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/682).
     @Test("A sync that outlasts the limit goes on while the app is active, and only the limit answers")
     func aSyncPastTheLimitGoesOnWhileTheAppIsActive() async {
         let answers = Answers()
@@ -177,7 +170,6 @@ struct PushAppDelegateTests {
         let answered = DispatchSemaphore(value: 0)
         var heldUntilAnswered: Bool?
 
-        // The sync lets the main actor go only once the answer is recorded, or after 10 seconds.
         PushAppDelegate.run({
             heldUntilAnswered = Self.hold(until: answered, atMost: 10)
             return .newData

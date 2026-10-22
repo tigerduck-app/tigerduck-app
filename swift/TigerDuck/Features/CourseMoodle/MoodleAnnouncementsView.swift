@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// A course's announcements, from its news forum on Moodle: pinned ones first, then newest first.
 struct MoodleAnnouncementsView: View {
     let store: MoodleCourseStore
     let open: (MoodleCourseRoute) -> Void

@@ -44,7 +44,6 @@ final class WatchSyncCoordinatorTests: XCTestCase {
             languageTag: "zh-Hant-TW",
             visualPreset: .iosInspired
         )
-        // Coordinator pushes synchronously when called directly.
         XCTAssertEqual(session.pushedContexts.count, 1)
         let dict = session.pushedContexts[0]
         XCTAssertEqual(dict[WatchWireFormat.Key.accentHex] as? String, "#FF8800")
@@ -80,8 +79,6 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         let durations = await timer.requestedDurations
         XCTAssertEqual(durations, [Duration](repeating: .milliseconds(500), count: 3))
         XCTAssertTrue(session.pushedContexts.isEmpty)
-        // Each schedule cancelled the wait before it; firing ends the last. Counting once every
-        // wait has finished leaves no late push unseen.
         await timer.fire()
         for window in windows { await window.value }
         XCTAssertEqual(session.pushedContexts.count, 1)
@@ -127,8 +124,6 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(republished.count, 1)
     }
 
-    /// Every data change pushes, and most change nothing the Watch shows. Only the stamp would
-    /// differ, so the same content is not sent twice.
     @MainActor
     func test_unchangedContent_isNotPushedAgain() {
         let session = StubSession()
@@ -146,8 +141,6 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.pushedContexts.count, 2)
     }
 
-    /// A failed answer to the Watch's request stays pending, and the next push of the same
-    /// content sends it rather than counting it as already delivered.
     @MainActor
     func test_failedForcedPush_isSentByTheNextUnchangedPush() {
         let session = StubSession()
@@ -166,8 +159,6 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.pushedContexts.count, 2)
     }
 
-    /// The Watch asks when it may have lost what it had, so its request is answered even when
-    /// nothing changed. Credentials go out on that request and on no ordinary push.
     @MainActor
     func test_syncRequest_pushesUnchangedContentAndOnlyItResendsCredentials() async throws {
         let session = StubSession()
@@ -220,14 +211,11 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
         XCTAssertEqual(republished.count, 1)
 
-        // Owed once: a later return to the app sends nothing more.
         center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
         XCTAssertEqual(republished.count, 1)
         withExtendedLifetime(coord) {}
     }
 
-    /// The payload reads caches that cannot be opened behind the lock screen, and an empty one
-    /// would clear the Watch's classes, so a push asked for while locked follows the unlock.
     @MainActor
     func test_pushWhileLocked_readsNothingUntilTheUnlock() async throws {
         let center = NotificationCenter()

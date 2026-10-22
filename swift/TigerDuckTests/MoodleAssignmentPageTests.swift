@@ -6,8 +6,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// What an assignment's page shows of its submission and its times, when it fetches, and how Home
-/// brings it up. Every name here is made up.
 @MainActor
 struct MoodleAssignmentPageTests {
     nonisolated static let due = Date(timeIntervalSince1970: 1_790_600_000)
@@ -39,8 +37,6 @@ struct MoodleAssignmentPageTests {
         )
     }
 
-    /// A store over a cache in a folder of its own that the test removes, whose site answers
-    /// `answer` and counts the submission fetches.
     static func store(
         in root: URL,
         answer: MoodleAssignmentSubmission = submission("submitted"),
@@ -74,8 +70,6 @@ struct MoodleAssignmentPageTests {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleAssignmentPageTests-\(UUID().uuidString)", isDirectory: true)
     }
-
-    // MARK: - What it shows
 
     @Test("the submission time is the fetched one, and before the first fetch answers, the one the round found")
     func submittedAt() {
@@ -136,7 +130,6 @@ struct MoodleAssignmentPageTests {
         #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: false, now: due - 100_800) == .left(100_800, urgent: true))
         #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: true, now: due - 777_600) == .left(777_600, urgent: false))
         #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: nil, now: due - 60) == .left(60, urgent: false))
-        // As Home's row has it, the due time itself is not past it yet.
         #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: false, now: due) == .left(0, urgent: true))
         #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: true, now: due + 1) == .passed)
         #expect(MoodleAssignmentView.deadline(due: due, isSubmitted: nil, now: due + 1) == .passed)
@@ -218,7 +211,6 @@ struct MoodleAssignmentPageTests {
 
     @Test("the small times read the month, day, weekday and time in Taipei, without the seconds")
     func smallTimes() {
-        // Thursday 15 October 2026, 20:03:59 in Taipei.
         let date = Date(timeIntervalSince1970: 1_792_065_839)
         let zh = Locale(identifier: "zh-Hant-TW")
 
@@ -234,9 +226,6 @@ struct MoodleAssignmentPageTests {
         #expect(Date(timeIntervalSince1970: 1_792_337_040).absoluteMinuteString == "10/18 23:24")
     }
 
-    // MARK: - When it fetches
-
-    /// The page's scene phase, which the test moves as the system moves a scene's.
     @Observable
     final class Phase {
         var value: ScenePhase = .active
@@ -272,15 +261,12 @@ struct MoodleAssignmentPageTests {
 
         try await waitUntil { fetches.withLock { $0 } == 1 }
         phase.value = .inactive
-        // Leaving the app fetches nothing; the wait only gives a wrong fetch its chance to start.
         try await Task.sleep(for: .milliseconds(300))
         #expect(fetches.withLock { $0 } == 1)
         phase.value = .active
         try await waitUntil { fetches.withLock { $0 } == 2 }
         #expect(store.assignments.submission(of: Self.record).value?.isSubmitted == true)
     }
-
-    // MARK: - From Home
 
     @Test("an assignment opened while the course sheet covers Home closes the sheet, then shows over Home")
     func overCourseSheet() {
@@ -304,7 +290,6 @@ struct MoodleAssignmentPageTests {
         viewModel.courseSheetDismissed()
         #expect(viewModel.shownAssignment == page)
 
-        // A sign-out while the sheet closes drops the page waiting for it.
         viewModel.closeAssignment()
         viewModel.selectedCourse = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
         viewModel.show(page)

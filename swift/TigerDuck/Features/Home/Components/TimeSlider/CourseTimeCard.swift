@@ -2,22 +2,13 @@ import SwiftUI
 
 struct CourseTimeCard: View {
     let state: CourseState
-    /// Hands back the full slot (not just the course) so callers can preserve
-    /// the precise day + start/end of the tapped period — the detail sheet
-    /// uses both to render the right time range and weekday-specific classroom.
     let onSelect: ((CourseTimeSlot) -> Void)?
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
 
     var body: some View {
-        // EqualHeightHStack pins the .inClass and .between branches to the tallest
-        // height seen during Home's lifetime, so the slot does not jump as the slider
-        // moves between states with slightly different content heights.
         EqualHeightHStack(alignment: .top, spacing: 8) {
             switch state {
             case .inClass(let slots):
-                // Conflicting slots get a card each and share the width like `.between`'s
-                // pair, so each course shows and opens its own room and assignments. A lone
-                // slot keeps its natural width rather than the overlap's layout.
                 ForEach(slots) { slot in
                     cardContent(slot: slot, opacity: 1.0)
                         .frame(maxWidth: slots.count > 1 ? .infinity : nil)
@@ -57,9 +48,6 @@ struct CourseTimeCard: View {
         let isToday = AppConstants.taipeiCalendar.isDateInToday(slot.date)
 
         HStack(alignment: .top, spacing: 10) {
-            // Accent stripe — shows the course color as a small accent in
-            // the iOS preset, and is hidden in the default preset where
-            // the entire surface is already course-colored.
             if policy.courseColorUsage == .smallAccent {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(course.color)
@@ -69,9 +57,6 @@ struct CourseTimeCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    // This slot's own block, not `course.timeRange(for:)`: that spans the
-                    // day's first to last period and would mismatch the card when a course
-                    // has split same-day blocks.
                     Text("\(slot.start.timeString) - \(slot.end.timeString)")
                         .font(.caption.bold())
                         .foregroundStyle(timeRangeColor)
@@ -99,8 +84,6 @@ struct CourseTimeCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
         .opacity(opacity)
-        // Hit shape + tap handling come from `scrollSafeTapAction` in
-        // `cardContent`, which wraps this surface in a `Button`.
     }
 
     private func subtitle(for course: SDCourse, weekday: Int, periods: [String]) -> String {
@@ -168,8 +151,6 @@ struct CourseTimeCard: View {
         .lineLimit(1)
     }
 }
-
-// MARK: - Surface
 
 private struct CourseCardSurfaceModifier: ViewModifier {
     let tint: Color

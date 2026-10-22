@@ -4,10 +4,6 @@ import Testing
 import Valet
 @testable import TigerDuck
 
-/// Builds before v1.3 kept each secret as a bare generic-password item, matched on its account
-/// alone, and the first read moves it into `SecureStore`'s valet
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/505). Each test uses a key of its own
-/// in the simulator's real keychain, so it cannot meet another suite's items.
 struct SecureStoreLegacyItemTests {
     @Test func aSecretFromBeforeV13StaysAfterItsFirstRead() throws {
         let key = Self.uniqueKey()
@@ -16,7 +12,6 @@ struct SecureStoreLegacyItemTests {
 
         #expect(SecureStore.load(key: key) == Data("value".utf8))
         #expect(SecureStore.load(key: key) == Data("value".utf8))
-        // The bare item is gone, and the valet's copy is the only one left.
         #expect(Self.accessibilityClasses(of: key) == [kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String])
     }
 
@@ -42,9 +37,6 @@ struct SecureStoreLegacyItemTests {
         #expect(SecureStore.load(key: key) == nil)
     }
 
-    /// A valet's item carries the key as its account too, but `load` reads each valet by name. Taken
-    /// for an earlier build's item, it would be moved, and deleted where it was: under a test's
-    /// stand-in keychain, another suite's item in the simulator's keychain.
     @Test func aValetsItemIsNeitherReadNorDeletedAsAnEarlierBuildsOne() throws {
         let key = Self.uniqueKey()
         let valet = Valet.valet(
@@ -66,7 +58,6 @@ struct SecureStoreLegacyItemTests {
         "SecureStoreLegacyItemTests.\(UUID().uuidString)"
     }
 
-    /// What `KeychainManager.save` wrote before v1.3: no service, no access group, no class.
     private static func addBareItem(_ data: Data, forKey key: String) throws {
         let item: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -77,7 +68,6 @@ struct SecureStoreLegacyItemTests {
         try #require(status == errSecSuccess, "SecItemAdd failed with \(status)")
     }
 
-    /// The protection class of every keychain item stored under `key`.
     private static func accessibilityClasses(of key: String) -> [String] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// The suggested room, its free time and the way there from the class before and on to the class
-/// after, and the next two rooms in a grouped card under it. No header: its place on the screen
-/// says it.
 struct SuggestionSection: View {
     let suggestion: RoomSuggestion
     let ended: Int
@@ -20,8 +17,6 @@ struct SuggestionSection: View {
             }
         }
     }
-
-    // MARK: - The suggested room
 
     private func card(_ best: RoomSuggestion.Candidate) -> some View {
         let span = suggestion.freeSpan(of: best)
@@ -65,8 +60,6 @@ struct SuggestionSection: View {
             .accessibilityLabel(RoomAvailability.freeSpanLabel(from: span.lowerBound, to: span.upperBound))
     }
 
-    // MARK: - The next two
-
     private func alternatives(_ candidates: [RoomSuggestion.Candidate]) -> some View {
         VStack(spacing: 0) {
             ForEach(Array(candidates.enumerated()), id: \.element.room.id) { index, candidate in
@@ -80,9 +73,6 @@ struct SuggestionSection: View {
     }
 }
 
-/// The class before as a ring, the room as the green dot and the class after as a ring, with the
-/// classes' rooms under the ends. A leg shows stairs or a walk only when it takes one: staying in
-/// the room or crossing a floor is a bare line, and VoiceOver still names the move.
 struct RouteLine: View {
     let previous: ClassStop?
     let room: RoomPlace?
@@ -153,7 +143,6 @@ struct RouteLine: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Dotted for a walk, as maps draw one.
     private func track(dotted: Bool) -> some View {
         TrackShape()
             .stroke(
@@ -185,7 +174,6 @@ private struct TrackShape: Shape {
 }
 
 extension RoomMove {
-    /// Nil for staying in the room, which needs no sign.
     var symbol: String? {
         switch self {
         case .sameRoom: nil

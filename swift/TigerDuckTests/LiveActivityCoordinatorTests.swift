@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Pins the coexistence invariant: several Live Activities can run at once, and
-/// none is ended only because it is not the current resolved target. If these
-/// tests start failing, read that rule in swift/TigerDuck/LiveActivity/AGENTS.md
-/// before deciding whether to change the code or the tests.
 @MainActor
 struct LiveActivityCoordinatorTests {
 
@@ -31,13 +27,8 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
-    // MARK: - Expiry check
-
     @Test("伺服器預排的未來時段活動不會因為『不是當下目標』而被結束")
     func futurePrelaunchedActivitiesSurvive() {
-        // Class A is in progress (ends in 30 minutes) and class B's classPreparing was
-        // pre-started by push-to-start (starts in 2 hours). The resolver returns only
-        // one of them at a time, and the other must not be ended for that.
         let running = Self.facts(
             instanceId: "i1",
             activityId: "inClass-A",
@@ -110,8 +101,6 @@ struct LiveActivityCoordinatorTests {
         #expect(ended.isEmpty)
     }
 
-    // MARK: - Duplicate copies
-
     @Test("同一個 activityId 有兩份時，保留 APNs 已鑄出 token 的那一份")
     func duplicateKeepsCopyWithPushToken() {
         let withToken = Self.facts(
@@ -127,13 +116,10 @@ struct LiveActivityCoordinatorTests {
             hasPushToken: false
         )
 
-        // The copy to keep comes last, so an "always keep the first" implementation fails.
         let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd(
             [withoutToken, withToken]
         )
 
-        // i2 wins despite i1's smaller instanceId, because it has the push token: it is
-        // the copy the server can reach.
         #expect(ended == ["i1"])
     }
 
@@ -150,7 +136,6 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: Self.now.addingTimeInterval(600)
         )
 
-        // As above, i1, with the smaller instanceId, comes last.
         let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd([b, a])
 
         #expect(ended == ["i2"])
@@ -195,13 +180,8 @@ struct LiveActivityCoordinatorTests {
         #expect(ended.isEmpty)
     }
 
-    // MARK: - Live Activity unavailable
-
     @Test("即時動態不可用時全部結束，包括伺服器預排、倒數還沒到的活動")
     func unavailableEndsEveryActivity() {
-        // With course sync off, the server still push-starts B's classPreparing (in 2 h)
-        // from the uploaded schedule; A's inClass has 30 min left; one has no countdown.
-        // None ends while available (`futurePrelaunchedActivitiesSurvive`); all end otherwise.
         let prelaunched = Self.facts(
             instanceId: "i1",
             activityId: "classPreparing-B",
@@ -227,13 +207,8 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
-    // MARK: - Days without classes
-
     @Test("不上課的日子，課堂類活動會被結束，作業類留下")
     func quietDayEndsClassActivitiesOnly() {
-        // The server still starts pre-class and in-class activities on a day without
-        // classes, such as a typhoon day announced after the push. The same day has an
-        // assignment due soon, and a class activity with no countdown, so no known day.
         let preparing = Self.facts(
             instanceId: "i1",
             activityId: "classPreparing-B",
@@ -268,10 +243,6 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
-    // MARK: - Assignments no longer outstanding
-
-    /// The assignment cache: 901 submitted, 902 ignored, 903 marked done, 904 still open. No
-    /// assignment 905 is cached, as after a refresh that no longer lists it.
     private static let cachedAssignments = [
         SDAssignment(
             assignmentId: "901", courseNo: "CS101", courseName: "Algorithms", title: "Lab 1",
@@ -309,8 +280,6 @@ struct LiveActivityCoordinatorTests {
     }
 
     @Test func doneAssignmentsEndTheirActivities() {
-        // The backend ends a "due soon" activity only at the due date, so the device ends it once
-        // the cache says the assignment is submitted, ignored or marked done. 905 keeps its own.
         let all = ["901", "902", "903", "904", "905"].enumerated().map { index, id in
             Self.assignmentFacts(instanceId: "i\(index + 1)", assignmentId: id)
         }
@@ -323,12 +292,7 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
-    // MARK: - Skipped classes
-
     @Test func skippedClassesEndTheirActivities() {
-        // Skipping a class during its lead time, or during it, ends its activity rather than
-        // leaving it to its countdown (https://github.com/tigerduck-app/tigerduck-app/issues/276).
-        // Only class activities are looked up; an assignment's source id names no class.
         let preparing = Self.facts(
             instanceId: "i1",
             activityId: "classPreparing::TEST100_20260925_3",
@@ -357,7 +321,6 @@ struct LiveActivityCoordinatorTests {
     }
 
     @Test func skippedClassIsEndedNotKept() {
-        // The server pre-starts the activity of a class skipped since; it is ended on arrival.
         let reason = LiveActivityCoordinator.endReason(
             for: Self.facts(
                 instanceId: "i1",
@@ -376,8 +339,6 @@ struct LiveActivityCoordinatorTests {
     }
 
     @Test func skippedClassStopsTheStart() {
-        // The resolver leaves skipped classes out, but a skip between its resolve and the start,
-        // across the prune's await, has to stop the start too.
         func canStart(_ scenario: LiveActivityScenarioKind, sourceId: String, isSkipped: (String) -> Bool) -> Bool {
             LiveActivityCoordinator.canStart(
                 Self.snapshot(scenario, countdownTarget: Self.now.addingTimeInterval(1800), sourceId: sourceId),
@@ -394,13 +355,8 @@ struct LiveActivityCoordinatorTests {
         #expect(canStart(.assignmentUrgent, sourceId: "904") { _ in true })
     }
 
-    // MARK: - Handling one activity (shared by prune and newly appearing activities)
-
     @Test("新出現的不上課日子課堂活動會被結束，不會留下來註冊 token")
     func quietDayClassIsEndedNotKept() {
-        // Prune and the observer loop both act only on `endReason`: an activity with a
-        // reason is ended, and only one without registers its update token. So a class
-        // on a day without classes gets a reason and never reaches registration.
         let holidayEnds = Self.now.addingTimeInterval(12 * 3600)
         func reason(_ fact: LiveActivityCoordinator.RunningActivityFacts) -> LiveActivityCoordinator.EndReason? {
             LiveActivityCoordinator.endReason(
@@ -438,8 +394,6 @@ struct LiveActivityCoordinatorTests {
     }
 
     @Test func doneAssignmentIsEndedNotKept() {
-        // A server-started activity for an assignment done since gets a reason on arrival, so its
-        // token is never registered. Only assignment activities are looked up in the cache.
         func reason(_ fact: LiveActivityCoordinator.RunningActivityFacts) -> LiveActivityCoordinator.EndReason? {
             LiveActivityCoordinator.endReason(
                 for: fact,
@@ -484,8 +438,6 @@ struct LiveActivityCoordinatorTests {
         #expect(reason(true) == .expired)
     }
 
-    // MARK: - Final check before apply starts or updates
-
     private static func snapshot(
         _ scenario: LiveActivityScenarioKind,
         countdownTarget: Date?,
@@ -507,9 +459,6 @@ struct LiveActivityCoordinatorTests {
 
     @Test("prune 等待期間變成不上課的日子，apply 不會再啟動那堂課")
     func quietDayChangeStopsTheStart() {
-        // apply prunes before it starts, prune awaits, and the snapshot was resolved
-        // before that. If "Still have class?" is turned off or the academic calendar
-        // gains a holiday meanwhile, the start has to check again.
         let target = Self.now.addingTimeInterval(30 * 60)
         let quiet: (Date) -> Bool = { _ in true }
         let schoolDay: (Date) -> Bool = { _ in false }
@@ -535,8 +484,6 @@ struct LiveActivityCoordinatorTests {
     }
 
     @Test func doneAssignmentStopsTheStart() {
-        // The resolver picked the assignment before the prune's await; one marked done meanwhile
-        // must not start. An open one starts, and so does one the cache does not hold.
         func canStart(_ assignmentId: String) -> Bool {
             LiveActivityCoordinator.canStart(
                 Self.snapshot(
@@ -558,7 +505,6 @@ struct LiveActivityCoordinatorTests {
 
     @Test("判斷的是課堂自己的那一天")
     func quietDayIsJudgedOnTheClassesOwnDay() {
-        // One class falls on the holiday and the other on a school day; only the first ends.
         let onHoliday = Self.facts(
             instanceId: "i1",
             activityId: "inClass-A",

@@ -1,5 +1,3 @@
-// `SyncOutbox.drain`: which failures count against an edit, and what happens to a mark the
-// server keeps refusing. A dropped mark used to be lost, since the next pull replaced it.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -145,7 +143,6 @@ struct SyncOutboxTests {
 
         await outbox.drain { op in
             if case .assignmentOverride = op { throw PushAPIError.httpStatus(404, body: "") }
-            // A full sync starts while the colour's request is out.
             await outbox.requeueParked()
         }
 
@@ -185,9 +182,6 @@ struct SyncOutboxTests {
         await makeOutbox(directory: directory).snapshot().map(\.op.dedupKey)
     }
 
-    /// Unlocked, a queue file that still cannot be read is damaged or has the wrong permissions, not
-    /// waiting for an unlock. Kept unloaded, the outbox held what was queued since in memory only,
-    /// for a relaunch to lose.
     @Test func aQueueUnreadableWhileUnlockedIsGivenUpOnAndReplaced() async {
         let directory = Self.freshDirectory()
         await Self.makeOutbox(directory: directory).enqueue(Self.mark)

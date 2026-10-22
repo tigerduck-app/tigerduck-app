@@ -1,21 +1,11 @@
 #if os(macOS)
 import SwiftUI
 
-/// The "More" sidebar destination, mirroring the iPhone More tab.
-///
-/// Every feature the app surfaces, by category, with a pin/unpin badge per row so pinning
-/// needs no trip to Settings. Unimplemented features show the placeholder body.
-///
-/// `AppFeature.isAvailableOnMac` drops Library, Discussion Room and Library Lecture.
-/// Settings is left out: `SettingsLink` sits at the sidebar bottom, and the Settings
-/// window has the detailed pin and time-override controls.
 struct MacMoreView: View {
     @Environment(AppState.self) private var appState
 
     @State private var path = NavigationPath()
 
-    /// One row per feature (the iPhone uses the same `moreFeatures`
-    /// list — we just filter it through `isAvailableOnMac`).
     private var visibleFeatures: [AppFeature] {
         AppFeature.moreFeatures.filter { $0.isAvailableOnMac }
     }

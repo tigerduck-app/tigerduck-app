@@ -32,7 +32,6 @@ struct MoodleDownloadProtectMigrationTests {
         UserDefaults.standard.removeObject(forKey: failedLaunchesKey)
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleDownloadProtectMigrationTests-\(UUID().uuidString)", isDirectory: true)
-        // One download, one in another owner's folder and a member picture, as the app lays them out.
         for path in ["B11300000/20119/m5/0a1b/Week 1.pdf", "B11300000/20119/p7/2c3d/notes.txt", "B11300000/pictures/42-5"] {
             let file = root.appendingPathComponent(path)
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -82,8 +81,6 @@ struct MoodleDownloadProtectMigrationTests {
         #expect(isDone)
     }
 
-    /// A file that still fails with the phone unlocked is not likely to take the class at a later
-    /// launch, and each launch walks the whole folder again.
     @Test func aFileThatKeepsFailingWhileUnlockedEndsThePassAfterAFewLaunches() async {
         defer { cleanUp() }
         let failing = Protected()

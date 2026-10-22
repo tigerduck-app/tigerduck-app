@@ -1,9 +1,6 @@
 import Foundation
 import os
 
-// `nonisolated` so nonisolated parsers (`CourseLookupService.parseNodeToSchedule`) and off-main
-// URLSession handlers can use the static Loggers. `os.Logger` is Sendable; the module's default
-// MainActor isolation would block every off-main caller.
 nonisolated enum AppLogger {
     private static let subsystem = "org.ntust.app.TigerDuck"
 
@@ -18,7 +15,6 @@ nonisolated enum AppLogger {
         diagnostics.error("\(errorLine(error, context: context), privacy: .private)")
     }
 
-    /// A task the user ended, by leaving a screen or signing out, which is no failure to log.
     static func isCancellation(_ error: any Error) -> Bool {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
@@ -35,13 +31,6 @@ nonisolated enum AppLogger {
         return scrubSensitive(line)
     }
 
-    /// Scrubs credentials from a string before it is logged as private, which Console and a
-    /// sysdiagnose still show on a device with a logging profile that enables private data.
-    /// Drops the query string of any `scheme://` URL, which can carry `wstoken=` or an OIDC
-    /// `code=`, and masks `token=`, `wstoken=`, `/wstoken/<...>`, the access key of a
-    /// `/tokenpluginfile.php/<key>/` file URL, password fields and `Bearer ...` values elsewhere,
-    /// such as in `moodlemobile://token=` or a form body. An error's description or user info can
-    /// hold any of these.
     static func scrubSensitive(_ value: String) -> String {
         var out = value
         for pattern in scrubPatterns {

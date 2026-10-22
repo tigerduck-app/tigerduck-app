@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// What one course becomes in a term refresh. The refreshed list replaces the term's cache and
-/// is uploaded, and the backend's upsert overwrites times and rooms with what it carries, so a
-/// row that loses them here loses them on every synced device.
 @MainActor
 struct RefreshedCourseDataTests {
     private static let display = AppServiceBridge.CourseDisplayPreferences(

@@ -1,13 +1,9 @@
 import Foundation
 import Observation
 
-/// A course's assignments for its Moodle section: those the last assignment round recorded, which
-/// its row counts and its list shows, and each one's submission, fetched when its page opens.
 @Observable
 @MainActor
 final class MoodleCourseAssignments {
-    /// An assignment the round recorded, with Home's row for it, which keeps what Moodle said of the
-    /// submission. Home lists none without a due date or an online submission.
     struct Entry: Hashable, Identifiable {
         let record: MoodleAssignmentRecord
         let listed: SDAssignment?
@@ -15,7 +11,6 @@ final class MoodleCourseAssignments {
         var id: Int { record.assignId }
     }
 
-    /// In the order Moodle lists them.
     private(set) var list: [Entry] = []
 
     @ObservationIgnored private let courseId: Int
@@ -31,14 +26,12 @@ final class MoodleCourseAssignments {
         reload()
     }
 
-    /// The records of the account's last assignment round, in Moodle's order.
     static func records(in context: MoodleCacheContext) -> [MoodleAssignmentRecord] {
         context.cache.loadMoodleData(
             [MoodleAssignmentRecord].self, name: MoodleAssignmentRecord.cacheName, account: context.account
         )?.value ?? []
     }
 
-    /// Reads them again, as a round that ends while the course detail shows asks.
     func reload() {
         let saved = Self.records(in: context)
         records = Dictionary(saved.map { (String($0.assignId), $0) }, uniquingKeysWith: { first, _ in first })
@@ -48,15 +41,12 @@ final class MoodleCourseAssignments {
         list = saved.filter { $0.courseId == courseId }.map { Entry(record: $0, listed: listed[String($0.assignId)]) }
     }
 
-    /// Home's row with its record; nil while no round has recorded the assignment, which then
-    /// opens on Moodle.
     func entry(for assignment: SDAssignment) -> Entry? {
         records[assignment.assignmentId].map { Entry(record: $0, listed: assignment) }
     }
 
     func submission(of record: MoodleAssignmentRecord) -> MoodleFeed<MoodleAssignmentSubmission> {
         if let feed = submissions[record.assignId] { return feed }
-        // No copy counts as fresh: the page fetches the submission on every opening and return.
         let feed = MoodleFeed<MoodleAssignmentSubmission>(
             cacheName: "courses/\(courseId)/assignments/\(record.assignId)", ttl: 0, context: context
         )
@@ -81,7 +71,6 @@ final class MoodleCourseAssignments {
             var submission = try await api.submission(record.assignId)
             if let id = submission.id, submission.takesComments,
                functions.contains(MoodleAssignmentService.commentsFunction) {
-                // The next account's token would ask Moodle as them.
                 guard await isCurrent() else { throw CancellationError() }
                 submission.comments = try await Self.unlessRefused { try await api.comments(record.cmId, id) }
             }
@@ -98,7 +87,6 @@ final class MoodleCourseAssignments {
         }
     }
 
-    /// Nil for an answer that is a Moodle error, or one the app cannot read.
     private nonisolated static func unlessRefused<Value: Sendable>(
         _ call: () async throws -> Value
     ) async throws -> Value? {
@@ -113,8 +101,6 @@ final class MoodleCourseAssignments {
 }
 
 extension MoodleCourseStore {
-    /// The store of the course an assignment is in, for its page opened outside a course detail;
-    /// nil until an assignment round names that course.
     static func forAssignment(_ id: String, context: MoodleCacheContext, api: MoodleCourseAPI = .live) -> MoodleCourseStore? {
         guard let courseId = MoodleCourseAssignments.records(in: context).first(where: { String($0.assignId) == id })?.courseId
         else { return nil }

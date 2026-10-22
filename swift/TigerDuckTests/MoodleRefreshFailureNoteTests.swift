@@ -5,8 +5,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// A refresh of a course's Moodle page that fails while the page still shows what it had puts up a
-/// short note (https://github.com/tigerduck-app/tigerduck-app/issues/432).
 @MainActor
 @Suite(.serialized)
 struct MoodleRefreshFailureNoteTests {
@@ -17,9 +15,6 @@ struct MoodleRefreshFailureNoteTests {
         var isOn = true
     }
 
-    /// A page reads the feed in its body, as the Moodle pages do, so the note sees each change. The
-    /// line of counts shows that a change has been drawn. Like the forums page with a term's cache
-    /// that lacks its course, it shows nothing for a cached value until that holds two items.
     private struct Page: View {
         let feed: MoodleFeed<[Int]>
         let sleeper: ManualSleeper
@@ -54,8 +49,6 @@ struct MoodleRefreshFailureNoteTests {
     private static func model(_ sleeper: ManualSleeper) -> MoodleRefreshFailureNoteModel {
         MoodleRefreshFailureNoteModel(sleep: { await sleeper.sleep(for: $0) })
     }
-
-    // MARK: - The failure count
 
     @Test("each failed fetch counts, and a success does not")
     func failuresCount() async {
@@ -105,8 +98,6 @@ struct MoodleRefreshFailureNoteTests {
         #expect(feed.failureCount == 1)
     }
 
-    // MARK: - Which note
-
     @Test("the note names a lost connection or Moodle's maintenance, and otherwise only says the refresh failed")
     func noteText() {
         let network = MoodleRefreshFailureNote.Note(
@@ -122,16 +113,12 @@ struct MoodleRefreshFailureNoteTests {
             == .init(text: String(localized: "course_moodle_refresh_failed"), symbol: "exclamationmark.triangle"))
     }
 
-    /// With nothing kept, the page's own first-load error says it; a page under another one stays
-    /// quiet, so VoiceOver does not announce a page the student cannot see.
     @Test("no note without a failure, without content on the page, or off screen")
     func noNote() {
         #expect(MoodleRefreshFailureNote.note(for: nil, hasContent: true, isShown: true) == nil)
         #expect(MoodleRefreshFailureNote.note(for: Failure(), hasContent: false, isShown: true) == nil)
         #expect(MoodleRefreshFailureNote.note(for: Failure(), hasContent: true, isShown: false) == nil)
     }
-
-    // MARK: - How long it stays
 
     @Test("the note goes once its time is up, and a tap takes it down sooner")
     func theNoteGoes() async throws {
@@ -182,10 +169,6 @@ struct MoodleRefreshFailureNoteTests {
         await sleeper.fire()
     }
 
-    // MARK: - On the page
-
-    /// Each step is drawn before the next, and a note the first failure put up would be drawn by the
-    /// time the second step is; the note's wait is never fired, so it stays up however slow the run.
     @Test("on a page, a failure over its content shows the note and one over nothing it shows does not")
     func noteShowsOnlyOverContent() async throws {
         try await withAccessibilityAutomation {

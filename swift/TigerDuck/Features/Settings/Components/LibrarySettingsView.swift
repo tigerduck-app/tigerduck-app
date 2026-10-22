@@ -3,8 +3,6 @@ import SwiftUI
 import UIKit
 #endif
 
-/// "Library and related features": flip-to-library. `SettingsView`'s "Other settings" section
-/// links here and to `OtherSettingsView`.
 struct LibrarySettingsView: View {
     @Environment(AppState.self) private var appState
 
@@ -25,9 +23,6 @@ struct LibrarySettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    /// The flip opens the library's QR code, which needs a signed-in library account, so until one
-    /// is the switch reads off and takes no input; the choice it holds waits for the sign-in. A
-    /// change here answers the question the app asks after a library sign-in.
     static func flipSwitch(_ enabled: Binding<Bool>, signedIn: Bool) -> Binding<Bool> {
         guard signedIn else { return .constant(false) }
         return Binding(
@@ -41,8 +36,6 @@ struct LibrarySettingsView: View {
         )
     }
 
-    /// Flip-to-Library is iPhone only (the iPad use case is unclear) and needs the motion sensor,
-    /// so elsewhere this page would be empty and Settings leaves its row out.
     static var isAvailable: Bool {
         #if os(iOS)
         UIDevice.current.userInterfaceIdiom == .phone && FlipDetector.isSupported

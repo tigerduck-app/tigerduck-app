@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Loading a list must not mark discussions read; only opening one sends a view event.
 struct MoodleDiscussionsView: View {
     let pages: MoodleDiscussionPages
     let title: String
@@ -82,7 +81,6 @@ struct MoodleDiscussionsView: View {
         }
     }
 
-    /// The list's end when its next page failed, so a partial list does not pass for the whole.
     private func pageRetry(_ failure: any Error, after lastId: Int?) -> some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             Text(MoodleFirstLoadView.message(for: failure))

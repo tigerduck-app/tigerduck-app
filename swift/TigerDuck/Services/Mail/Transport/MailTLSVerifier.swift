@@ -44,9 +44,6 @@ nonisolated enum MailTLSVerifier {
         SecTrustSetVerifyDate(trust, now as CFDate)
         var error: CFError?
         guard SecTrustEvaluateWithError(trust, &error) else {
-            // The numeric CFError code identifies no one, so it is logged in the clear; the
-            // description can carry hostnames or paths and is hashed. The code stays useful in a
-            // bug report even when the hash hides everything actionable.
             let code = error.map { String(CFErrorGetCode($0)) } ?? "unknown"
             let description = error.map { String(describing: $0) } ?? "unknown"
             logger.error(
@@ -62,9 +59,6 @@ nonisolated enum MailTLSVerifier {
             logger.fault("Mail TLS pins expired for \(host, privacy: .public); falling back to system trust")
             return true
         case .pinned(let pins):
-            // The chain Security.framework actually evaluated and trusts — never the
-            // caller-supplied `certificates`, which haven't been through trust evaluation
-            // and could include something the evaluation dropped or never trusted.
             let evaluated = (SecTrustCopyCertificateChain(trust) as? [SecCertificate]) ?? []
             let matched = evaluated.contains { certificate in
                 TLSPinningDelegate.sha256SPKIBase64(of: certificate).map(pins.contains) ?? false

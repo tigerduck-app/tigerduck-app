@@ -9,14 +9,6 @@ struct EventRowView: View {
     #endif
 
     #if os(iOS)
-    /// Only a holiday can be opted back into: a term boundary is an announcement,
-    /// not a day off, so its `holidayID` is nil and no toggle appears. iOS only,
-    /// as macOS delivers no class reminders; the Mac still lists the holiday.
-    ///
-    /// Read from `Defaults`, not mirrored into `@State`: a cloud-sync merge writes
-    /// this key through `AcademicCalendarStore.applySyncedOverrides`, so a change on
-    /// another device moves the switch while the row is on screen. A copy seeded in
-    /// `onAppear` would keep showing the value from when the row first appeared.
     @Default(.holidayNotifyOverrides) private var holidayOverrides
     #endif
 
@@ -42,9 +34,6 @@ struct EventRowView: View {
 
             #if os(iOS)
             if let holidayID {
-                // Labelled, since a bare switch leaves the user guessing what it governs.
-                // A separate `Text` sits where this row wants it, not where a `Toggle`
-                // label goes; with `labelsHidden`, the accessibility label is set below.
                 Text(String(localized: "calendar_holiday_notify_title"))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
@@ -53,8 +42,6 @@ struct EventRowView: View {
                     "",
                     isOn: Binding(
                         get: { holidayOverrides.contains(holidayID) },
-                        // Through AppState, not Defaults directly, so the local
-                        // write, Live Activity refresh and upload stay in one place.
                         set: { appState.setHolidayNotify($0, holidayID: holidayID) }
                     )
                 )
@@ -83,8 +70,6 @@ struct EventRowView: View {
         AcademicCalendar.holidayID(for: event)
     }
 
-    /// A whole day's row, a holiday, a term boundary or a school event with no time, has no time
-    /// to show but "00:00", as the Mac calendar already treats it.
     static func showsTime(of event: SDCalendarEvent) -> Bool {
         !event.isAllDay
     }

@@ -16,7 +16,6 @@ nonisolated enum NTUSTDepartment: String {
     case im = "01", et = "02", me = "03", tx = "04", ct = "05", ch = "06"
     case ee = "07", ba = "08", dt = "10", ad = "13", cs = "15", hc = "30"
 
-    /// Nil for another degree's ID, one of another form, and a code not here.
     init?(studentId: String?) {
         guard let match = studentId?.wholeMatch(of: /[Bb][0-9]{3}([0-9]{2})[0-9]{3}/) else { return nil }
         self.init(rawValue: String(match.1))
@@ -39,7 +38,6 @@ nonisolated enum NTUSTDepartment: String {
         }
     }
 
-    /// For the members list, where it follows the student ID on one line.
     var shortName: String {
         switch self {
         case .im: String(localized: "course_member_department_im_short")
@@ -66,8 +64,6 @@ extension MoodlePage {
 }
 
 nonisolated struct MoodleMemberSection: Identifiable, Equatable {
-    /// In the order the sections come. A role the app does not know goes after the assistants,
-    /// under Moodle's name for it, ordered by Moodle's own sort order.
     enum Placement: Hashable, Comparable {
         case instructors
         case assistants
@@ -101,7 +97,6 @@ nonisolated struct MoodleMemberSection: Identifiable, Equatable {
             }
         }
 
-        /// Staff by name; auditors and students by student ID, as a class list runs.
         fileprivate var listsByStudentId: Bool {
             self == .auditors || self == .students
         }
@@ -112,7 +107,6 @@ nonisolated struct MoodleMemberSection: Identifiable, Equatable {
 
     var id: Placement { placement }
 
-    /// The search runs here, never on Moodle, over what a row shows.
     static func sections(of members: [MoodleMember], matching query: String = "") -> [MoodleMemberSection] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let shown = needle.isEmpty ? members : members.filter { $0.matches(needle) }
@@ -128,7 +122,6 @@ nonisolated struct MoodleMemberSection: Identifiable, Equatable {
         return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
     }
 
-    /// A person without a student ID comes after those with one.
     private static func byStudentId(_ lhs: MoodleMember, _ rhs: MoodleMember) -> Bool {
         switch (lhs.studentId, rhs.studentId) {
         case let (left?, right?) where left != right: left.localizedStandardCompare(right) == .orderedAscending
@@ -145,8 +138,6 @@ private nonisolated extension MoodleMember {
     }
 }
 
-/// The people of a course the account can see, in sections by role. The search, hidden until the
-/// list is pulled down, matches here and asks Moodle nothing.
 struct MoodleMembersView: View {
     let store: MoodleCourseStore
     let policy: VisualStylePolicy
@@ -158,10 +149,7 @@ struct MoodleMembersView: View {
     @State private var isSearchRevealed = false
     #endif
 
-    /// What the list shows. A copy fetched before stays up through a failed refresh, and a list
-    /// that empties shows nothing rather than an empty state.
     enum Content {
-        /// Nothing fetched yet: the first fetch's spinner, or its error and a retry.
         case firstLoad(failure: (any Error)?)
         case sections([MoodleMemberSection])
         case noMatches(query: String)
@@ -176,7 +164,6 @@ struct MoodleMembersView: View {
             self = sections.isEmpty && !needle.isEmpty ? .noMatches(query: needle) : .sections(sections)
         }
 
-        /// Whether a list has been fetched, so the search has something to match.
         var hasList: Bool {
             if case .firstLoad = self { false } else { true }
         }
@@ -188,8 +175,6 @@ struct MoodleMembersView: View {
             failure: store.members.failure, query: query
         )
         List {
-            // Above the switch, so a query that moves the list between its cases keeps the field,
-            // and the keyboard with it.
             if content.hasList { searchRow }
             switch content {
             case .firstLoad(let failure):
@@ -239,7 +224,6 @@ struct MoodleMembersView: View {
         )
     }
 
-    /// Hidden until the list is pulled down on iOS. The Mac has no pull, so the field stays.
     @ViewBuilder
     private var searchRow: some View {
         #if os(iOS)
@@ -323,13 +307,10 @@ private struct MoodleMemberSectionView: View {
     }
 }
 
-/// A person in the members list: picture, name, and student ID and department, the ID whole and
-/// the department cut short when the line runs out.
 struct MoodleMemberRow: View {
     let member: MoodleMember
     let picture: CGImage?
 
-    /// The line between rows starts under the text, not under the picture.
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + avatarSize + TigerDuckTheme.Spacing.md
     private static let avatarSize: CGFloat = 36
 

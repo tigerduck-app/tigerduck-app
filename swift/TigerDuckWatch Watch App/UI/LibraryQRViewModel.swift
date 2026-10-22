@@ -13,9 +13,6 @@ final class LibraryQRViewModel {
     var username: String?
     var hasCredentials: Bool
 
-    /// Same backoff schedule the phone uses — keeps a flapping 5xx on
-    /// the library API from hammering the watch radio every 30s and
-    /// killing battery. Holds at 300s after the 3rd consecutive error.
     private static let backoffSchedule: [TimeInterval] = [60, 120, 300]
     private var consecutiveErrors = 0
 
@@ -31,8 +28,6 @@ final class LibraryQRViewModel {
         self.hasCredentials = resolvedStore.hasCredentials
         self.username = resolvedStore.currentUsername()
 
-        // React to credential set/wipe pushes so the empty/loaded state
-        // flips without requiring a view rebuild.
         self.credentialsCancellable = resolvedStore.$hasCredentials
             .receive(on: RunLoop.main)
             .sink { [weak self] newValue in
@@ -57,31 +52,18 @@ final class LibraryQRViewModel {
         }
     }
 
-    // MARK: - Lifecycle
-
-    /// The payload `qrImage` was rendered from, so a cached code is not
-    /// re-rasterised on every page switch.
     private var renderedPayload: String?
 
     func onAppear() {
-        // `startRefreshCycle` reuses the cached code when it still has
-        // enough life left, so page switches don't burn a fetch.
         if hasCredentials, refreshTimer == nil {
             startRefreshCycle()
         }
     }
 
     func onDisappear() {
-        // Stop the 30s radio churn while the page is off-screen. Page
-        // tabs on watchOS can sit unfocused for hours.
         stopTimers()
     }
 
-    // MARK: - Fetch + render
-
-    /// A cached code with at least `LibraryQRCache.reuseThreshold` seconds
-    /// left is shown again with its countdown resumed and the next fetch
-    /// scheduled for when it runs out; otherwise fetch now and every 30 s.
     private func startRefreshCycle() {
         refreshTimer?.invalidate()
         let cache = LibraryQRCache.shared
@@ -122,7 +104,6 @@ final class LibraryQRViewModel {
                 consecutiveErrors = 0
                 restartCountdown(from: remaining)
             } catch WatchLibraryServiceError.credentialsNotFound {
-                // TTL purge or no credentials — mirror store state.
                 isLoading = false
                 hasCredentials = false
                 qrImage = nil
@@ -137,12 +118,6 @@ final class LibraryQRViewModel {
         }
     }
 
-    /// Phone first while it is in Bluetooth range: no watch-side internet
-    /// needed, and the two screens show the same code. Then the watch's
-    /// own link — skipping the captive-portal pre-flight when the phone is
-    /// reachable, since the watch's traffic rides the phone's connection
-    /// then, and running it otherwise so a hotel Wi-Fi surfaces the
-    /// "log into Wi-Fi" hint instead of an opaque TLS-pin error.
     private func fetchPayload() async throws -> (payload: String, remaining: Int) {
         let phoneReachable = WCSession.isSupported() && WCSession.default.isReachable
         var phoneError: Error?
@@ -220,10 +195,8 @@ final class LibraryQRViewModel {
         return timer
     }
 
-    /// Render the matrix to a `UIImage` via CoreGraphics. We can't reuse the
     /// phone's `CIFilter.qrCodeGenerator()` here — CoreImage is unavailable
     /// on watchOS. `WatchQRCodeGenerator` computes the module matrix in
-    /// pure Swift; this just fills dark cells into a grayscale bitmap.
     private static func makeQRImage(from payload: String) -> UIImage? {
         guard let matrix = WatchQRCodeGenerator.encode(payload, ecc: .medium) else {
             return nil

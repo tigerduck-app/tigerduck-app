@@ -1,9 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// A role folder an operation needed, which the account does not have and which could not be
-/// created. Thrown by a caller that has nothing useful to do without it (saving a draft); the
-/// callers that do have a fallback (filing a sent copy, deleting) never raise it.
 nonisolated struct MailFolderUnavailable: Error, Equatable {
     var role: MailFolderRole
 }
@@ -17,16 +14,11 @@ nonisolated struct MailFolderUnavailable: Error, Equatable {
 /// server. `createFolder` gets the raw modified UTF-7 `MailFolderRole.imapName`, which nothing
 /// below re-encodes. See docs/decisions/0016-mail-role-folder-provisioning.md.
 nonisolated enum MailFolderProvisioner {
-    /// One resolved role folder, together with the role map it was resolved from. Callers adopt
-    /// `roles` wholesale: it came from a fresh `LIST`, so it is a better answer than the map they
-    /// were holding, whether or not anything was actually created.
     struct Ensured: Equatable, Sendable {
-        /// The folder's raw IMAP name, as `listFolders()` reports it.
         var name: String
         var roles: [MailFolderRole: String]
     }
 
-    /// The only roles TigerDuck may bring into existence. See rule 1 above.
     static let creatableRoles: Set<MailFolderRole> = [.sent, .drafts, .trash]
 
     /// The folder for `role`, creating it if the account has none. Returns nil, and the caller

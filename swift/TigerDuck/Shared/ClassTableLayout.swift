@@ -1,12 +1,5 @@
 import Foundation
 
-/// One block of a conflict cluster of three or more. `offset` is the
-/// 0-indexed row inside the cluster where the block begins
-/// (measured from the cluster's earliest row); `span` is the block's
-/// contiguous length. Renderers stack these as offset-aware
-/// columns so a course only paints rows it's actually scheduled in.
-/// `lane` is the column the block takes: blocks that never meet share one. A course meeting
-/// twice in one cluster has a segment per block, so `id` pairs its `key` with the block's row.
 public struct ClassTableConflictSegment<Course>: Identifiable {
     public let course: Course
     public let key: String
@@ -25,8 +18,6 @@ public struct ClassTableConflictSegment<Course>: Identifiable {
     }
 }
 
-/// Rows of one cluster member that keep one horizontal extent, in rows from the cluster's top.
-/// `lanes` is every lane where the member is the only course in those rows, else its own lane.
 public struct ClassTableLaneRun: Equatable {
     public let firstRow: Int
     public let rowCount: Int
@@ -39,14 +30,8 @@ public struct ClassTableLaneRun: Equatable {
     }
 }
 
-/// Greedy interval colouring for courses that overlap, shared by the class table and the Home
-/// time slider. Taken by start, each interval gets the lowest lane whose last one has ended, so
-/// there are only as many lanes as intervals meet at once, and courses that never meet share.
 public enum OverlapLanes {
-    /// Each interval's lane, in the order given, and the number of lanes. Intervals are
-    /// half-open: one that ends where the next starts leaves the lane free for it.
     public static func assign<Bound: Comparable>(_ intervals: [(start: Bound, end: Bound)]) -> (lanes: [Int], count: Int) {
-        // Ties keep the order given, so the course listed first takes the lower lane.
         let order = intervals.indices.sorted { (intervals[$0].start, $0) < (intervals[$1].start, $1) }
         var laneEnds: [Bound] = []
         var lanes = Array(repeating: 0, count: intervals.count)
@@ -64,52 +49,23 @@ public enum OverlapLanes {
     }
 }
 
-/// Per-cell role produced by the class-table conflict-detection algorithm.
-/// Generic so the same value can carry an `SDCourse` (main app), a
-/// `SnapshotCourse` (WidgetKit), or any future surface's course model.
 public enum ClassTableCellRole<Course> {
     case empty
     case solo(Course, spanCount: Int)
-    /// Two overlapping courses occupying (possibly partially) this cluster.
-    /// `combinedSpan` is the total row count of the union;
-    /// `offsetA` / `offsetB` are 0-indexed row positions within the cluster
-    /// where each course's block begins; `spanA` / `spanB` are each course's
-    /// own contiguous block length.
     case conflictStart(
         courseA: Course, spanA: Int, offsetA: Int,
         courseB: Course, spanB: Int, offsetB: Int,
         combinedSpan: Int
     )
-    /// 3+ overlapping blocks sharing a single cluster. Each segment
-    /// carries its own offset/span inside `combinedSpan` so renderers
-    /// can place a course only in the rows it's actually scheduled in,
-    /// and its lane among `laneCount`: in an A/B/C chain A and C never
-    /// meet, so they share a lane and the cluster is two lanes wide.
-    /// Blocks in the cluster's first row lead the array and take the
-    /// lowest lanes.
     case conflictMany(
         segments: [ClassTableConflictSegment<Course>],
         combinedSpan: Int,
         laneCount: Int
     )
-    /// This cell is part of a SoloStart / ConflictStart cluster that began
-    /// at an earlier row; the renderer must emit nothing here so the
-    /// parent's `combinedSpan` can occupy the rows.
     case skip
 }
 
-/// Pure conflict-detection algorithm shared between the iPhone main view,
-/// the macOS class table, and the WeekWidget. Mirrors the iPhone
-/// `ClassTableViewModel.cellRole` semantics: each cluster — whether 2-
-/// or N-course — emits one `conflictStart` / `conflictMany` at its
-/// earliest row plus `.skip` for every later cell. Renderers carry
-/// per-course offset/span so the cluster is drawn as one staircase of
-/// offset-aware columns, not a chain of overlapping per-slot pairs.
 public enum ClassTableLayout {
-    /// Returns the role for one cell, given a flat list of courses, the
-    /// chronologically-ordered period ids for the grid, and key/schedule
-    /// accessors. The algorithm is O(periods²) per call — acceptable for
-    /// the ≤14 period rows the school uses.
     public static func cellRole<C>(
         courses: [C],
         periodIds: [String],
@@ -129,9 +85,6 @@ public enum ClassTableLayout {
         let coursesHere = coursesAt(periodIndex)
         guard !coursesHere.isEmpty else { return .empty }
 
-        // Transitive closure of overlapping blocks rooted at this cell. A block is one course's
-        // run of consecutive periods, so a course meeting twice that day joins with each block
-        // another course bridges to.
         var closure: [(course: C, first: Int, span: Int)] = []
         var seenBlocks = Set<ClusterBlock>()
 
@@ -178,9 +131,6 @@ public enum ClassTableLayout {
             )
         }
 
-        // 3+ closure: one cluster with per-block offset and span, so renderers place each
-        // block only in its own rows. Anchored-slot courses lead so column order matches the
-        // tapped cell; recursive insertion could put a later-period course first.
         let anchoredKeys = Set(coursesHere.map(keyOf))
         let anchoredFirst = closure.filter { anchoredKeys.contains(keyOf($0.course)) }
         let rest = closure.filter { !anchoredKeys.contains(keyOf($0.course)) }
@@ -203,9 +153,6 @@ public enum ClassTableLayout {
         )
     }
 
-    /// How `member` is drawn row by row: across every lane where no other member of its cluster
-    /// meets, as the two-course L shape takes the full width where a course is alone, and in its
-    /// own lane elsewhere. Consecutive rows with the same extent are one run.
     public static func laneRuns<C>(
         of member: ClassTableConflictSegment<C>,
         among segments: [ClassTableConflictSegment<C>],
@@ -225,7 +172,6 @@ public enum ClassTableLayout {
     }
 }
 
-/// A course's block in a cluster: its key and the row it begins on.
 private struct ClusterBlock: Hashable {
     let key: String
     let first: Int

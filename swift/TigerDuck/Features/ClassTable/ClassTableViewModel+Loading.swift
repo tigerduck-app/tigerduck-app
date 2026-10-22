@@ -1,20 +1,8 @@
-// Loading and refresh for the class table, plus the local-change broadcast:
-// Class Table edits must wake Home and the Live Activity coordinator, so they
-// post the same `dataDidUpdate` notification a network sync would.
-
 import Defaults
 import SwiftUI
 
 extension ClassTableViewModel {
 
-    /// Wakes Home, the Live Activity coordinator, and any other observer
-    /// that subscribes to `dataDidUpdate`. Local Class Table edits used to
-    /// only update Class Table itself, so renamed/added/deleted courses
-    /// would stay stale on Home and on the lock screen until an unrelated
-    /// network sync or scene reactivation happened to fire the same
-    /// notification. The self-observer guards against the resulting
-    /// reload pulling stale persisted state — addCourse / deleteCourse /
-    /// confirmRename always write through to DataCache before posting.
     func broadcastLocalChange() {
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
@@ -34,18 +22,13 @@ extension ClassTableViewModel {
         if !merged.isEmpty {
             courses = merged
         }
-        // Another tab or page may have switched class tables since this model was made.
         if shownPerson != nil || importedTables.shownPerson != nil { showShownTable() }
-        // backgroundSync() on app launch handles the network refresh
     }
 
     func refresh(authService: AuthService) async {
         await fetchData(authService: authService)
     }
 
-    /// Runs on every appearance, not just the first load: any course of the
-    /// shown semester that still has no classroom gets looked up again, and
-    /// a hit is broadcast so Home and the Live Activity pick it up too.
     func refreshMissingClassrooms(authService: AuthService) {
         let semester = currentSemester
         Task { [weak self] in
@@ -56,21 +39,11 @@ extension ClassTableViewModel {
         }
     }
 
-    /// Coalesced fire-and-forget refresh. Designed for pull-to-refresh
-    /// where the caller returns immediately (so UIRefreshControl dismisses
-    /// its spinner) and the actual fetch continues on a detached Task.
-    /// Repeated pulls while a refresh is already in flight are dropped to
-    /// prevent two fetches racing on the same caches.
-    /// `semester` defaults to the picker's; a reset passes the term it
-    /// captured, since the picker can move while its DELETE is in flight.
     func triggerRefresh(authService: AuthService, semester: String? = nil) {
         guard !isRefreshing else { return }
         isRefreshing = true
         Task { [weak self] in
             guard let self else { return }
-            // Gate both fetchData and the semester-rollover fetchCourses below.
-            // Gating only fetchData lets rollover hit pinned hosts on captive
-            // Wi-Fi, surfacing the TLS-pin error the pre-flight is meant to hide.
             guard await NetworkMonitor.shared.isReachable() else {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
@@ -103,18 +76,12 @@ extension ClassTableViewModel {
         let manager = NTUSTSessionManager.shared
         let targetSemester = semester ?? currentSemester
         let generation = await MainActor.run { authService.loginGeneration }
-        // Pre-flight here too so `refresh(authService:)`, used outside
-        // triggerRefresh, is gated as well. NetworkMonitor memoises the probe,
-        // so the second check on the triggerRefresh path is effectively free.
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
         }
         await MainActor.run { manager.loadingState = .loading }
 
-        // Class Table's pull-to-refresh asks for the latest enrolment, so skip
-        // the CourseService cache: add/drop shows up at once instead of after
-        // the 24h TTL that absorbs cheaper background refreshes.
         MoodleEnrolledCoursesService.dropSharedAnswer()
         async let coursesTask = AppServiceBridge.fetchCourses(
             authService: authService,
@@ -122,9 +89,6 @@ extension ClassTableViewModel {
             forceRefresh: true,
         )
         async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
-        // Manual and cross-device courses only ever held the snapshot
-        // taken when they were added; the pull is the "latest of
-        // everything" gesture, so re-query them too.
         async let userAddedTask = AppServiceBridge.refreshUserAddedCourses(
             semester: targetSemester, authService: authService
         )
@@ -141,9 +105,6 @@ extension ClassTableViewModel {
         }
     }
 
-    /// A sign-out during the fetch leaves the screen to the next account. Someone else's class
-    /// table, or another term picked during the fetch, may be on screen, and the share code reads
-    /// `courses` as the term on screen.
     func showFetched(
         _ fetched: [SDCourse], assignments fetchedAssignments: [SDAssignment], of targetSemester: String,
         startedUnder generation: Int, loginGeneration: Int

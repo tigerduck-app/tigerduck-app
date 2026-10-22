@@ -11,7 +11,6 @@ enum LoadingState: Equatable {
     case error(String)
 }
 
-/// The sync indicator a refresh drives, so a test can hand in its own instead of the app's one.
 protocol LoadingIndicator: AnyObject {
     var loadingState: LoadingState { get set }
     var loadingStarts: Int { get }
@@ -43,14 +42,10 @@ final class NTUSTSessionManager {
         didSet { if loadingState == .loading { loadingStarts &+= 1 } }
     }
 
-    /// Counts every move to `.loading`, so a sync can tell that another one started after it and
-    /// now owns the indicator.
     private(set) var loadingStarts = 0
 
     let session: URLSession
 
-    /// Moved by ``invalidateSession()``. A sign-in flow checks it against the value it started
-    /// under, so a login for an account that signed out stops instead of signing it in again.
     private(set) var generation = 0
 
     /// NTUST-only cookie jar. In `HTTPCookieStorage.shared`, NTUST SSO cookies would leak into
@@ -63,11 +58,8 @@ final class NTUSTSessionManager {
     let cookieStorage: HTTPCookieStorage = HTTPCookieStorage
         .sharedCookieStorage(forGroupContainerIdentifier: "group.org.ntust.app.TigerDuck")
 
-    private static let cookieTTL: TimeInterval = 3600 // 1 hour
+    private static let cookieTTL: TimeInterval = 3600
 
-    /// Legacy timestamp-based check, retained for synchronous readers such as
-    /// `@Observable` computed properties that cannot `await`. Auth flows should
-    /// prefer ``probeCookiesValid()`` which asks the server directly.
     var cookiesValid: Bool {
         guard let timestamp = Defaults[.ssoLoginTimestamp] else {
             return false
@@ -103,9 +95,6 @@ final class NTUSTSessionManager {
                 return false
             }
             let valid = location.contains("/Home/Index")
-            // A confirmed-good probe slides the local TTL forward, so synchronous UI that
-            // reads `cookiesValid` does not show "not authenticated" after an idle hour
-            // while the server still honors the cookie jar.
             if valid {
                 Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
             }
@@ -136,9 +125,6 @@ final class NTUSTSessionManager {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9",
         ]
-        // SPKI pin against the *.ntust.edu.tw set, so an MDM-pushed root CA on hostile campus
-        // Wi-Fi cannot MITM SSO credentials. `NoRedirectSessionDelegate`, the per-task delegate
-        // of `probeCookiesValid()`, forwards trust challenges here explicitly; its doc says why.
         session = URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
@@ -146,16 +132,11 @@ final class NTUSTSessionManager {
         )
     }
 
-    /// Cookies of ssoam2 and the parent domain carry the SSO session and the device the school
-    /// knows; every other host's belong to one service.
     private static func isSSOCookie(_ cookie: HTTPCookie) -> Bool {
         let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
         return domain == "ssoam2.ntust.edu.tw" || domain == "ntust.edu.tw"
     }
 
-    /// A service that sent its page elsewhere has a session that no longer works, and its
-    /// cookies can send the login's visit elsewhere too. Dropping them, as the launch does for
-    /// every service, lets the next visit sign it in through the SSO session.
     func dropServiceCookies(for url: URL) {
         for cookie in cookieStorage.cookies ?? []
         where cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == url.host {

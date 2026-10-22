@@ -1,23 +1,14 @@
 import Foundation
 
-/// One line of a course's gradebook as `gradereport_user_get_grade_items` shows it to the
-/// signed-in student: an activity's grade, a category's subtotal or the course total.
 nonisolated struct MoodleGradeItem: Codable, Sendable, Hashable, Identifiable {
     let id: Int
-    /// Empty for the course total and a category's subtotal, which Moodle leaves unnamed.
     let name: String
-    /// `course` for the course total, `category` for a subtotal, `mod` for an activity and
-    /// `manual` for an item the teacher added.
     let type: String
-    /// The activity's module, such as `assign` or `quiz`.
     let module: String?
-    /// The activity's course module, which its page takes as `id`.
     let cmid: Int?
-    /// The grade as the course's settings write it; nil while there is none to show.
     let grade: String?
     let maxGrade: Double?
     let isHidden: Bool
-    /// The teacher's feedback as CommonMark; empty without any.
     let feedback: String
 
     var isCourseTotal: Bool { type == "course" }
@@ -25,8 +16,6 @@ nonisolated struct MoodleGradeItem: Codable, Sendable, Hashable, Identifiable {
     var isShown: Bool { grade != nil && !isHidden }
 }
 
-/// The grade report calls of Moodle's mobile web service. Every call takes the token, so the
-/// caller runs it inside `MoodleWebserviceClient.withToken`.
 nonisolated enum MoodleGradeService {
     static let gradeItemsFunction = "gradereport_user_get_grade_items"
 
@@ -34,7 +23,6 @@ nonisolated enum MoodleGradeService {
     /// setting or a permission: the course has no grades to show, and the fetch did not fail.
     private static let reportWithheld: Set<String> = ["nopermissiontoviewgrades", "nopermissions"]
 
-    /// `userId`'s grade items in `courseId`, in the gradebook's order.
     static func gradeItems(
         courseId: Int,
         userId: Int,
@@ -57,8 +45,6 @@ nonisolated enum MoodleGradeService {
         }
     }
 }
-
-// MARK: - Answers
 
 private nonisolated struct RawGradeItems: Decodable, Sendable {
     let usergrades: [RawUserGrades]

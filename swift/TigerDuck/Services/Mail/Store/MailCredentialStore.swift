@@ -17,8 +17,6 @@ nonisolated protocol MailSecretStorage: Sendable {
 nonisolated struct ValetMailSecretStorage: MailSecretStorage, @unchecked Sendable {
     private let valet: Valet
 
-    /// `identifier` exists so a test can round-trip a throwaway Keychain service instead of the
-    /// one the student's real mail password lives in. Production never passes it.
     init(identifier: String = MailConstants.valetIdentifier) {
         valet = Valet.valet(
             with: Identifier(nonEmpty: identifier)!,

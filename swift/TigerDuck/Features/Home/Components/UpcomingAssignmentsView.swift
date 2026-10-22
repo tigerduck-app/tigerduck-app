@@ -4,12 +4,6 @@ struct UpcomingAssignmentsView: View {
     private static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
     let assignments: [SDAssignment]
-    /// In-memory course roster that resolves the canonical display name and
-    /// course code for the row's third line. Without it the row falls back to
-    /// `assignment.courseName` (the Moodle fullname with the code stripped,
-    /// fragile) and `assignment.courseNo` (empty when Moodle's `idnumber` lacks
-    /// the semester prefix), so the "course name • course ID" line can look
-    /// wrong or lose the ID.
     var courses: [SDCourse] = []
     var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
@@ -26,9 +20,6 @@ struct UpcomingAssignmentsView: View {
     }
 
     var body: some View {
-        // TimelineView fires on real wall time (it can't see AppClock); the
-        // body reads `AppClock.now()` so a debug time override flows through
-        // to the past/future partition and the "due in …" labels.
         TimelineView(.periodic(from: .now, by: 60)) { _ in
             assignmentList(for: AppClock.now())
         }
@@ -36,9 +27,6 @@ struct UpcomingAssignmentsView: View {
 
     private func assignmentList(for now: Date) -> some View {
         let policy = appState.visualStylePolicy
-        // The All tab gets a time-agnostic list, split into past and future here on
-        // the `TimelineView` clock, so a row whose `dueDate` just passed moves on the
-        // next minute tick. Other tabs sort by `dueDate` alone and pass through as is.
         let rows = filter == .all
             ? assignments.partitionedByDueDate(now: now)
             : assignments
@@ -110,7 +98,6 @@ struct UpcomingAssignmentsView: View {
         for assignment: SDAssignment,
         now: Date
     ) -> (trailing: SwipeActionDescriptor?, leading: SwipeActionDescriptor?) {
-        // A row its course's setting ignores takes no mark of its own; the class table undoes it.
         guard !assignment.isIgnoredByCourse else { return (nil, nil) }
         let status = assignment.status(now: now)
         let gray = Color(.systemGray)
@@ -145,9 +132,6 @@ struct UpcomingAssignmentsView: View {
     @ViewBuilder
     private func assignmentRow(assignment: SDAssignment, now: Date, policy: VisualStylePolicy) -> some View {
         let status = assignment.status(now: now)
-        // Default `.center` alignment keeps the trailing status vertically centred
-        // even when the title wraps to two lines and the "course name • course ID"
-        // line makes the leading column taller than the badge and time stack.
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(assignment.displayTitle)
@@ -219,7 +203,6 @@ struct UpcomingAssignmentsView: View {
         if (status == .submitted || status == .submittedLate) && assignment.isArchived {
             return (AssignmentStatus.archived.badgeLabel!, AssignmentStatus.archived.tint)
         }
-        // Overdue + locally completed/archived: show overdue badge
         if status == .locallyCompleted || status == .archived {
             guard assignment.dueDate < now else { return nil }
             if let cutoff = assignment.cutoffDate, now > cutoff {
@@ -240,15 +223,11 @@ struct UpcomingAssignmentsView: View {
         return status.usesEmphasis ? base.weight(.bold) : base
     }
 
-    /// Only overdue rows tint the due time red. Submitted rows keep the
-    /// secondary body color so the green/orange status badge reads as the
-    /// primary signal and the time is just metadata.
     private func timeColor(status: AssignmentStatus, policy: VisualStylePolicy) -> Color {
         switch status {
         case .overdueAcceptable, .overdueRejected:
             return status.tint
         case .archived, .locallyCompleted:
-            // Time label stays red — Moodle still considers these unsubmitted overdue items.
             return .badgeRed
         case .pending, .submitted, .submittedLate:
             return policy.secondaryTextColor
@@ -256,16 +235,12 @@ struct UpcomingAssignmentsView: View {
     }
 
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        // Past-due rows render the absolute deadline rather than the relative
-        // "Overdue" string, which would duplicate the status badge. Matches macOS.
         if showAbsoluteTime || assignment.dueDate < now {
             return assignment.dueDate.absoluteTimeString
         }
         return assignment.dueDate.relativeTimeString(from: now)
     }
 }
-
-// MARK: - Swipe gesture helpers
 
 struct SwipeActionDescriptor {
     let label: String
@@ -289,9 +264,6 @@ private struct SwipeableRow<Content: View>: View {
     let content: Content
 
     @State private var offset: CGFloat = 0
-    /// Set on ANY drag movement (>16pt, any direction); cleared on the
-    /// next press-down via `SwipeableButtonStyle`. Prevents swipe and
-    /// scroll from accidentally opening the assignment.
     @State private var didSwipe = false
 
     private let triggerThreshold: CGFloat = 96

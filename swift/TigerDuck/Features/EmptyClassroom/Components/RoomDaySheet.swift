@@ -1,16 +1,11 @@
 import SwiftUI
 
-/// A room's day, period by period: a lane green while free and orange while booked, joined
-/// across neighbouring periods, and each class with its teacher. A booking shows no name.
 struct RoomDaySheet: View {
     let room: RoomUsage
-    /// The building's name and the room's floor.
     let place: String
     let day: String
     let period: Int
     let ended: Int
-    /// The period in progress, or the next in a break, which today's now line marks; nil on
-    /// another day and after the last period.
     let nowPeriod: Int?
     let policy: VisualStylePolicy
 
@@ -90,7 +85,6 @@ struct RoomDaySheet: View {
         .lineLimit(1)
         .padding(.horizontal, spacing)
         .frame(minHeight: rowHeight)
-        // In the background, the lane spans the whole row and meets the next row's.
         .background(alignment: .leading) {
             ZStack(alignment: .leading) {
                 if isSelected {
@@ -109,7 +103,6 @@ struct RoomDaySheet: View {
 
     private static let laneWidth: CGFloat = 8
 
-    /// Green for free and orange for booked; a class leaves the lane empty.
     private func lane(_ index: Int) -> some View {
         let kind = laneKind(index)
         let opensRun = laneKind(index - 1) != kind

@@ -19,7 +19,6 @@ struct HeaderControlMetricsTests {
 
     private final class Box: @unchecked Sendable { var height: CGFloat = -1 }
 
-    /// Real laid-out height, taken from a `GeometryReader` inside a window.
     private func renderedHeight(_ view: some View) -> CGFloat {
         let box = Box()
         let probe = view.background(
@@ -41,7 +40,6 @@ struct HeaderControlMetricsTests {
         return box.height
     }
 
-    /// Mirrors `CalendarTabView`'s Today button.
     private var todayButton: some View {
         Button {} label: {
             Text(String(localized: "calendar_today"))
@@ -50,7 +48,6 @@ struct HeaderControlMetricsTests {
         .modifier(GlassTextButtonModifier())
     }
 
-    /// Mirrors `ClassTableView.headerActions`, including its per-OS height.
     private var headerCapsule: some View {
         let cellHeight: CGFloat = if #available(iOS 26, *) { 36 } else { 40 }
         let menu = Menu {
@@ -85,27 +82,15 @@ struct HeaderControlMetricsTests {
                 "capsule \(capsule)pt is \(ratio)x Today \(today)pt on iOS \(os) — expected ~1.3x"
             )
         } else {
-            // Below 26 both are the same kind of padded bordered control, so
-            // they should simply agree. This is the case that regressed: a
-            // constant tuned on iOS 26 left them 12pt apart here.
             #expect(
                 abs(capsule - today) <= 1,
                 "capsule \(capsule)pt vs Today \(today)pt on iOS \(os) — they should read as one size"
             )
         }
 
-        // True on every OS: whatever the reference, the capsule is never the
-        // shorter of the two. That is the direction the original bug went.
         #expect(capsule >= today - 1, "capsule \(capsule)pt is shorter than Today \(today)pt")
     }
 
-    /// Matching outer heights is not enough on its own: a `.body` glyph in
-    /// the button is 17pt against Today's 14.33pt label, which reads as a
-    /// heavier control even when the pill around it is identical.
-    ///
-    /// Measured on `plus` rather than the `ellipsis` the button shows: the
-    /// dots are only a few points tall, so their frame says nothing about
-    /// the font, and a full-height glyph in the same font does.
     @Test("the header glyph carries the same optical weight as Today's label")
     func glyphMatchesTodayLabel() {
         let label = renderedHeight(

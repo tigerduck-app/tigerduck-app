@@ -49,8 +49,6 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
         }
     }
 
-    /// Parse a Moodle error response body into the appropriate error case.
-    /// Returns nil if the data does not contain a recognizable Moodle error.
     static func from(jsonData: Data) -> MoodleWebserviceError? {
         struct MoodleErrorBody: Decodable {
             let errorcode: String?

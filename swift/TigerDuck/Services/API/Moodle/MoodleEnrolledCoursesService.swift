@@ -1,8 +1,6 @@
 import Foundation
 
 enum MoodleEnrolledCoursesService {
-    /// One answer serves every caller under the same wstoken for this long: a launch asks
-    /// from both the assignment and the course fetch, and a class-table pull from both at once.
     static let answerLifetime: TimeInterval = 60
 
     private static var answer: (token: String?, startedAt: Date, task: Task<[MoodleEnrolledCourse], Error>)?
@@ -11,8 +9,6 @@ enum MoodleEnrolledCoursesService {
         try await shared(token: await MoodleTokenService.shared.currentToken(), now: Date(), fetch: fetchUnshared)
     }
 
-    /// Joins the request in flight or reuses the last answer while both belong to `token` and
-    /// are under ``answerLifetime`` old; a failure is never kept.
     static func shared(
         token: String?,
         now: Date,
@@ -31,15 +27,11 @@ enum MoodleEnrolledCoursesService {
         }
     }
 
-    /// The next caller starts a new request. A pull calls this before it fetches.
     static func dropSharedAnswer() {
         answer = nil
     }
 
     private static func fetchUnshared() async throws -> [MoodleEnrolledCourse] {
-        // `userId(token:)` calls core_webservice_get_site_info with the same token, so it
-        // stays inside `withToken`: outside it, a stale token's `.invalidToken` from
-        // site_info would skip the renewal and fail the whole call.
         try await MoodleWebserviceClient.withToken { token in
             let userId = try await MoodleSiteInfoService.shared.userId(token: token)
             return try await MoodleWebserviceClient.call(

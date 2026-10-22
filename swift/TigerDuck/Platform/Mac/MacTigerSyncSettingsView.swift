@@ -2,14 +2,6 @@
 import SwiftUI
 import Defaults
 
-/// TigerSync tab: the Mac's counterpart of the iPhone and iPad TigerSync screen, minus what a
-/// Mac cannot use. No server-push opt-out and no notification rows, since macOS takes no
-/// notifications. One of the tabs `MacSettingsScene` assembles.
-///
-/// Synced content is a parent switch with no stored value, as on iPhone, iPad and Android: it
-/// reads on while any class-table row is on, flipping it sets all three, and the rows hide
-/// while it is off. The group hides while Sync course information is off, so a category
-/// the user cannot see never picks up a re-enable mark.
 struct MacTigerSyncSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.syncCourses) private var syncCourses
@@ -21,7 +13,6 @@ struct MacTigerSyncSettingsView: View {
     @State private var showSignIn = false
     @State private var refreshTimer: Timer?
 
-    /// Sets a class-table row under its category heading.
     private static let childIndent: CGFloat = 16
 
     var body: some View {
@@ -46,9 +37,6 @@ struct MacTigerSyncSettingsView: View {
                         }
                     }
             } footer: {
-                // No platform note here — `sync_courses_footer_platform_note`
-                // is about the iOS-only Live Activity / reminder fallout of
-                // turning this off, and macOS has neither.
                 Text(String(localized: "sync_courses_footer"))
             }
 
@@ -165,14 +153,10 @@ struct MacTigerSyncSettingsView: View {
 
     private var syncedContentOn: Bool { syncCourses || syncCourseColors || syncCourseNames }
 
-    /// The parent switch. The rows it reveals are not on screen yet when it
-    /// turns on, and are gone once it turns off, so it does their work
-    /// itself rather than leaning on anything attached to them.
     private var syncedContent: Binding<Bool> {
         Binding(
             get: { syncedContentOn },
             set: { on in
-                // Courses first: colours only turn on over synced courses.
                 setCourses(on)
                 setCourseColors(on)
                 setCourseNames(on)
@@ -181,16 +165,9 @@ struct MacTigerSyncSettingsView: View {
         )
     }
 
-    // Each setter writes one flag the way a tap on its row would, marking a
-    // category that comes back on for the re-enable conflict check; the
-    // caller then pushes the flags and runs that check once.
-
     private func setCourses(_ on: Bool) {
         if on && !syncCourses { appState.markCategoryReenabled("courses") }
         syncCourses = on
-        // Colours follow course sync both ways, through the decision function every platform's
-        // class-table rows share, and through colours' own setter so turning them back on this
-        // way marks them for the re-enable check too.
         setCourseColors(AppState.courseColorsAfterCoursesChange(coursesNowOn: on))
     }
 

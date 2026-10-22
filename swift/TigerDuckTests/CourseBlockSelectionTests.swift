@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// A course can meet twice a day in two rooms. What opens one block shows that block's room and
-/// time, not the whole day's (https://github.com/tigerduck-app/tigerduck-app/issues/517).
 @MainActor
 struct CourseBlockSelectionTests {
     private static func twiceOnMonday() -> SDCourse {
@@ -34,7 +32,6 @@ struct CourseBlockSelectionTests {
         #expect(CourseDetailSheet.classroom(of: course, weekday: 1, periods: viewModel.selectedCoursePeriods) == "IB-503")
     }
 
-    /// The conflict picker names the cluster's first period, where the picked course may start later.
     @Test("a course picked from a conflict opens the block that starts in the cluster")
     func aConflictPickOpensTheBlockInTheCluster() {
         let viewModel = ClassTableViewModel()
@@ -52,8 +49,6 @@ struct CourseBlockSelectionTests {
         #expect(CourseDetailSheet.classroom(of: course, weekday: 1, periods: viewModel.selectedCoursePeriods) == "TR-313")
     }
 
-    /// The grid leaves out period 5 when no course uses it, so blocks at 3-4 and 6-7 draw as one
-    /// cell, which opens with both.
     @Test("a cell that joins two blocks across an undrawn period opens both")
     func aCellAcrossAnUndrawnPeriodOpensBothBlocks() async throws {
         try await withExclusiveRealDefaults {
@@ -81,9 +76,6 @@ struct CourseBlockSelectionTests {
     }
 }
 
-/// Switching terms shows the cached list, then fetches the term again. The fetch has to replace
-/// what is on screen when a course comes back changed, not only when the set of courses changes
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/518).
 @MainActor
 struct ClassTableRefreshTests {
     private static func course(

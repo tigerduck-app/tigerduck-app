@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// A room's day as a thin track over the 14 periods: its free runs as capsules, the run holding
-/// the chosen period solid, and a needle at that period's start. Periods already over are not
-/// drawn as free.
 struct AvailabilityBar: View {
     let room: RoomUsage
     let period: Int
@@ -49,7 +46,6 @@ struct AvailabilityBar: View {
     }
 }
 
-/// The bar with the end of the room's free run beside it, read by VoiceOver as the free span.
 struct RoomAvailability: View {
     let room: RoomUsage
     let period: Int
@@ -84,7 +80,6 @@ struct RoomAvailability: View {
     }
 }
 
-/// A free room in a list: its name, then its day as a bar with the end of its free run.
 struct RoomRow: View {
     let room: RoomUsage
     let period: Int
@@ -94,7 +89,6 @@ struct RoomRow: View {
 
     var body: some View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
-            // The column fits the usual form, such as TR-214; a longer name shrinks into it.
             Text(verbatim: "TR-000")
                 .fixedSize()
                 .hidden()
@@ -111,7 +105,6 @@ struct RoomRow: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.vertical, TigerDuckTheme.Spacing.md)
         .frame(minHeight: 50)
-        // Past this size a name, a bar and a time no longer fit one row on an iPhone.
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .scrollSafeTapAction { onRoom(room) }
     }

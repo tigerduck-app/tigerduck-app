@@ -1,8 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// Warning card above the body — the iOS twin of Android's `FdroidNoticeCard`
-/// (orange warning icon, card surface).
 struct MailWarningBanner: View {
     let message: String
     var systemImage = "exclamationmark.triangle.fill"
@@ -32,10 +30,6 @@ struct MailWarningBanner: View {
     }
 }
 
-/// Tapping a link first shows where it really goes; issues are listed in red. `target` carries
-/// the already-canonicalized href judged by `MailWarnings`, and the string shown here is the one
-/// `onOpen` opens. When `target.canOpen` is false (an http(s) href a browser-style parse
-/// rejected) there is no Open action at all.
 struct MailLinkConfirmation: View {
     let target: MailLinkTarget
     let onOpen: () -> Void

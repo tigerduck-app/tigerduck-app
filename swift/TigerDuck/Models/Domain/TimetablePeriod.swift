@@ -1,7 +1,7 @@
 import Foundation
 
 struct TimetablePeriod: Identifiable, Hashable {
-    let id: String // e.g. "1", "2", ... "A", "B", "C"
+    let id: String
     let startTime: String
     let endTime: String
 

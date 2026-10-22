@@ -26,8 +26,6 @@ struct MailBackgroundRefreshTests {
         #expect(modes?.contains("fetch") == true)
     }
 
-    /// Only while background checks are still wanted does a handled task ask for the next one —
-    /// a signed-out or locked-out account must stop waking the app (controller ruling, task 12).
     @Test func reschedulesOnlyWhileBackgroundChecksAreStillWanted() {
         #expect(MailBackgroundRefresh.shouldRescheduleAfterHandling(
             featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: false))
@@ -39,7 +37,6 @@ struct MailBackgroundRefreshTests {
             featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: true, notificationsDenied: false))
         #expect(!MailBackgroundRefresh.shouldRescheduleAfterHandling(
             featureEnabled: false, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: false))
-        // Denied in iOS, a wake could only sign in to check for mail it cannot announce.
         #expect(!MailBackgroundRefresh.shouldRescheduleAfterHandling(
             featureEnabled: true, signedIn: true, notificationsEnabled: true, authFailed: false, notificationsDenied: true))
     }
@@ -97,8 +94,6 @@ struct MailBackgroundRefreshTests {
         #expect(checked == 1)
     }
 
-    /// Leaving the foreground cannot wait for a permission read, so it decides from the last
-    /// one, which every read records. Every reader here records the simulator's real answer.
     @Test func leavingTheForegroundDecidesFromTheLastPermissionRead() async {
         let denied = await MailNotificationPermission.isDenied()
         #expect(MailNotificationPermission.lastKnownDenied == denied)
@@ -107,10 +102,6 @@ struct MailBackgroundRefreshTests {
             notificationsDenied: MailNotificationPermission.lastKnownDenied) == !denied)
     }
 
-    /// Installs onto its own `MailAccountManager` and `MailNotifier` — never
-    /// `MailAccountManager.shared`, whose preferences are the app's real `UserDefaults` — and
-    /// then *runs* the hooks. The previous version only asserted the five closures were
-    /// non-nil, which held with every body replaced by `{}` or any two of them swapped.
     @MainActor
     @Test func bootstrapWiresHooksThatDoTheRightThing() async {
         let center = RecordingNotificationCenter()
@@ -126,11 +117,11 @@ struct MailBackgroundRefreshTests {
         account.onSignedOut?()
         while center.removedAll < 1 { await Task.yield() }
         #expect(center.removedAll == 1)
-        #expect(center.requests.isEmpty) // sign-out clears; it never posts
+        #expect(center.requests.isEmpty)
 
         account.onAuthFailed?()
         while center.requests.isEmpty { await Task.yield() }
-        #expect(center.requests.count == 1) // the lock-out notice, not another clear
+        #expect(center.requests.count == 1)
         #expect(center.removedAll == 1)
 
         account.onNotificationsDisabled?()

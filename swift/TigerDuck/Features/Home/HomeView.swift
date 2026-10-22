@@ -16,20 +16,8 @@ struct HomeView: View {
     @State private var activeSectionDrag: ReorderDragPayload?
     @State private var didReorderSection = false
 
-    /// Slow pulse so the term gate below flips on its own when wall-clock
-    /// time crosses `CurrentTerm.start` / `.end` while Home stays mounted.
-    /// `content` already reads `AppClockState.version`, which covers debug
-    /// clock overrides, but ordinary time passing invalidates nothing —
-    /// `AppClock.now()` is an untracked side-effect as far as Observation is
-    /// concerned. Both boundaries land at midnight, so a minute of latency is
-    /// ample and 60s keeps this far cheaper than the 5s default the today
-    /// carousel needs.
     @State private var termTicker = MinuteTicker(interval: 60)
 
-    /// ponytail: Home's time slider is a "today" surface, so it is dropped
-    /// outside the term rather than left to scrub a day with no classes.
-    /// Reorder and drag are unaffected — everything downstream keys off
-    /// `section.id`, never this array's indices.
     private var visibleSections: [HomeSection] {
         _ = termTicker.tick
         guard !AcademicCalendarStore.shared.calendar.isInSession() else { return viewModel.sections }
@@ -47,13 +35,9 @@ struct HomeView: View {
     }
 
     private var content: some View {
-        // Read the version so the greeting re-renders when the debug clock flips
-        // while this tab is on screen. `AppClock.now()` alone is untracked, so the
-        // greeting would keep the old time until something else invalidated the view.
         let _ = AppClockState.shared.version
         return ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                // Greeting
                 HStack {
                     Text(AppClock.now().greetingText())
                         .font(TigerDuckTheme.Typography.title)
@@ -160,13 +144,9 @@ struct HomeView: View {
             )
             .moodleLinkOpening()
         }
-        // On iPad another window can sign out or in, and the page holds the store of the account
-        // that opened it.
         .onChange(of: appState.authService.loginGeneration) {
             viewModel.closeAssignment()
         }
-        // An assignment reminder or Live Activity tap, which `MainTabView` brings Home up for. A
-        // sheet up on any tab would cover the page, so it closes first.
         .onChange(of: appState.pendingDeepLink, initial: true) { _, link in
             guard case .assignment(let id) = link else { return }
             appState.pendingDeepLink = nil
@@ -194,8 +174,6 @@ struct HomeView: View {
             finishSectionDrag()
         }
     }
-
-    // MARK: - Section cell
 
     @ViewBuilder
     private func sectionCell(_ section: HomeSection) -> some View {
@@ -279,8 +257,6 @@ struct HomeView: View {
         }
     }
 
-    /// Its page, with the store of its course; on Moodle while no assignment round has named the
-    /// course.
     private func openAssignment(_ assignment: SDAssignment, closingSheet: Bool = true) {
         if let context = MoodleCacheContext.signedIn(appState.authService),
            let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
@@ -311,8 +287,6 @@ struct HomeView: View {
         )
     }
 }
-
-// MARK: - Drag handle indicator
 
 private struct SectionDragHandle: View {
     var body: some View {
@@ -355,8 +329,6 @@ private struct SectionDragPreview: View {
         )
     }
 }
-
-// MARK: - Section content renderer
 
 private struct HomeSectionView: View {
     let section: HomeSection

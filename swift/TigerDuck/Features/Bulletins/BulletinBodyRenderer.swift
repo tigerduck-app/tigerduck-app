@@ -2,22 +2,7 @@ import Foundation
 import MarkdownUI
 import SwiftUI
 
-/// Cross-platform helpers for rendering a `BulletinAPI.BulletinDetail` body.
-///
-/// `BulletinDetailView` (iOS) and `MacBulletinsView` (macOS) both feed untrusted server Markdown
-/// into MarkdownUI and must agree on two things, kept here so a fix for one platform reaches the
-/// other: which body field wins (`body_clean`, the LLM-cleaned, fact-preserving Markdown, over the
-/// raw scrape in `body_md`), and the CommonMark preprocessing that fixes flanking-rule misfires
-/// around CJK punctuation and the `*   ` list markers the LLM emits.
 nonisolated enum BulletinBodyRenderer {
-    /// Fallback chain that picks the best non-empty body string for a
-    /// loaded `BulletinDetail`, optionally falling back to a list-row
-    /// `summary` when the detail itself is empty.
-    ///
-    /// Order: `body_clean` → `body_md` → `detail.summary` →
-    /// `fallbackSummary` → `""`. Each candidate is trimmed before the
-    /// empty check so a row of only whitespace doesn't short-circuit the
-    /// chain.
     static func bodyMarkdown(
         for detail: BulletinAPI.BulletinDetail,
         fallbackSummary: String? = nil
@@ -70,8 +55,6 @@ private nonisolated extension String {
 }
 
 extension Theme {
-    /// MarkdownUI's theme for an article body, tuned to the app rather than MarkdownUI's
-    /// GitHub-flavoured defaults. School bulletins and Moodle posts share it.
     static func bulletin(accent: Color) -> Theme {
         Theme()
             .text {

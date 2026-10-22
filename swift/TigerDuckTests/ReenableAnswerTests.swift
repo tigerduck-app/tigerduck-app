@@ -1,5 +1,3 @@
-// `AppState.answerReenableConflict`: the order of an answer to the re-enable dialog, with its
-// effects on a stand-in for `AppState` (https://github.com/tigerduck-app/tigerduck-app/issues/683).
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -15,8 +13,6 @@ struct ReenableAnswerTests {
         )
     }
 
-    /// Let go of while its edits were still on their way into the outbox, the hold left a partial
-    /// outbox and no pending check to a kill (https://github.com/tigerduck-app/tigerduck-app/issues/681).
     @Test("Use Local lets go of what it holds only once each edit it queued is in the outbox")
     func useLocalReleasesOnceItsEditsAreQueued() async {
         let app = AnswerProbe(pending: ["course_colors", "assignments"])
@@ -39,8 +35,6 @@ struct ReenableAnswerTests {
         #expect(app.hold == AppState.UseLocalHold())
     }
 
-    /// Taken off at the tap, a kill between the upload and the deletes asked nothing again, and the
-    /// hidden courses came back on every device (https://github.com/tigerduck-app/tigerduck-app/issues/667).
     @Test("Use Local for courses keeps them pending until its course requests are done")
     func useLocalKeepsCoursesPendingUntilTheirRequestsAreDone() async {
         let app = AnswerProbe(pending: ["courses"])
@@ -150,8 +144,6 @@ struct ReenableAnswerTests {
     }
 }
 
-/// Stands in for `AppState` behind `ReenableAnswerEffects`: the stored pending list and the hold,
-/// with a log of what the answer did.
 @MainActor
 private final class AnswerProbe {
     var pending: Set<String>
@@ -167,7 +159,6 @@ private final class AnswerProbe {
         self.pending = pending
     }
 
-    /// As a sign-out does, which clears the pending list; the next account may have marked its own.
     func signOut(nextAccountPending: Set<String>) {
         signedIn = false
         pending = nextAccountPending
@@ -188,7 +179,6 @@ private final class AnswerProbe {
             dropQueuedEdits: { await self.dropQueuedEdits($0, $1) },
             sendCourses: { try await self.sendCourses() },
             markCoursesForCheck: {
-                // As `markCategoryReenabled` does.
                 self.events.append("marked courses")
                 self.pending.insert("courses")
                 self.hold.noteReenabled("courses")

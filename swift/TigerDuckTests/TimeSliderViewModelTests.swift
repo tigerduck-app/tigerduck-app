@@ -23,8 +23,6 @@ struct TimeSliderViewModelTests {
         #expect(CourseTimeSlot.dateFromTimeString("", on: ref) == nil)
     }
 
-    /// A class on a day classes do not meet is left off the time machine,
-    /// while the days around it keep theirs.
     @Test func holidaySlots_areLeftOffTheTimeline() {
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
@@ -41,9 +39,6 @@ struct TimeSliderViewModelTests {
         #expect(holiday.timeSlots.count == schoolDay.timeSlots.filter { !onToday($0) }.count)
     }
 
-    /// Which days are quiet can change while the courses do not — a
-    /// "still have class" toggle, a holiday published — and the timeline
-    /// follows without waiting for the slider to reappear.
     @Test func quietDayChange_rebuildsTheTimeline() async throws {
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
@@ -62,9 +57,6 @@ struct TimeSliderViewModelTests {
         try await waitUntil { !viewModel.timeSlots.contains(where: onToday) }
     }
 
-    /// A class skipped for a day is left off that day, as the widgets and the Live Activity leave
-    /// it, while its other days and the day's other classes stay
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/372).
     @Test func skippedClass_isLeftOffThatDay() {
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let skipped = SDCourse(courseNo: "TEST100", courseName: "Skipped", schedule: allDays)
@@ -80,7 +72,6 @@ struct TimeSliderViewModelTests {
         #expect(viewModel.timeSlots.contains { $0.course.courseNo == "TEST100" && !onToday($0) })
     }
 
-    /// Skipping a class rebuilds the slider without waiting for it to reappear.
     @Test func skipToggle_rebuildsTheTimeline() async throws {
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
@@ -95,8 +86,6 @@ struct TimeSliderViewModelTests {
         try await waitUntil { !viewModel.timeSlots.contains(where: onToday) }
     }
 
-    /// Home's slider spans weeks, so near the end of a term it reaches days after it, when no
-    /// class meets. Those are left off, as a quiet holiday is.
     @Test func homeSlider_leavesOffDaysOutsideTheTerm() throws {
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
@@ -122,7 +111,6 @@ struct TimeSliderViewModelTests {
         let now = calendar.date(byAdding: .hour, value: 10, to: today)!
         vm.selectedTime = now
 
-        // With no courses, anchors are empty so all offsets should be 0
         let future = calendar.date(byAdding: .hour, value: 11, to: today)!
         #expect(vm.xOffset(for: future) == 0)
 
@@ -135,24 +123,19 @@ struct TimeSliderViewModelTests {
         let calendar = AppConstants.taipeiCalendar
         let today = calendar.startOfDay(for: AppClock.now())
 
-        // Course with periods "3","4" (10:20–12:10) every weekday so anchors are built
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
         vm.configure(courses: [course])
 
-        // Pick 11:00 as selectedTime — within the 10:20–12:10 block
         let selectedTime = calendar.date(byAdding: DateComponents(hour: 11), to: today)!
         vm.selectedTime = selectedTime
 
-        // Within a single course block, mapping is linear (deltaMinutes × ppm)
         let ppm = TimeSliderMetrics.pointsPerMinute
 
-        // +15 min → 11:15, still inside block
         let future = calendar.date(byAdding: .minute, value: 15, to: selectedTime)!
         let offset = vm.xOffset(for: future)
         #expect(abs(offset - 15.0 * ppm) < 0.01)
 
-        // −15 min → 10:45, still inside block
         let past = calendar.date(byAdding: .minute, value: -15, to: selectedTime)!
         let pastOffset = vm.xOffset(for: past)
         #expect(abs(pastOffset - (-15.0 * ppm)) < 0.01)
@@ -178,9 +161,6 @@ struct TimeSliderViewModelTests {
         }
     }
 
-    /// Overlapping courses: two courses in one period. Both belong on screen.
-    /// Keeping only the first match would drop one, and which one survived
-    /// would come from timeline order rather than any choice the reader made.
     @Test func courseState_inClass_keepsEveryOverlappingCourse() {
         let vm = TimeSliderViewModel()
         let calendar = AppConstants.taipeiCalendar
@@ -197,7 +177,6 @@ struct TimeSliderViewModelTests {
         )
         vm.timeSlots = [earlier, later]
 
-        // 11:30 — inside both blocks.
         let during = calendar.date(byAdding: .minute, value: 690, to: today)!
         guard case .inClass(let slots) = vm.courseState(at: during) else {
             Issue.record("Expected .inClass, got \(vm.courseState(at: during))")
@@ -206,10 +185,6 @@ struct TimeSliderViewModelTests {
         #expect(slots.map(\.course.courseNo) == ["MATH101", "PHYS101"])
     }
 
-    /// The same resolution backs the Live Activity, which can only show
-    /// one class and so takes `first`. The order the overlap comes back in
-    /// is therefore load-bearing, not cosmetic: it decides which of two
-    /// overlapping courses the lock screen names.
     @Test func timelineResolver_inClass_ordersOverlapsAsGiven() {
         let calendar = AppConstants.taipeiCalendar
         let today = calendar.startOfDay(for: AppClock.now())
@@ -225,7 +200,6 @@ struct TimeSliderViewModelTests {
         )
         let during = calendar.date(byAdding: .minute, value: 690, to: today)!
 
-        // Built the way `buildMultiDaySlots` builds one: sorted by start.
         let state = CourseTimelineResolver().state(at: during, in: [earlier, later])
         guard case .inClass(let slots) = state else {
             Issue.record("Expected .inClass, got \(state)")
@@ -281,9 +255,6 @@ struct TimeSliderViewModelTests {
         }
     }
 
-    /// Two courses in the same period (a clash the class table allows) must
-    /// not pin the drag at the first slot's end: the time → X mapping stays
-    /// monotonic and dragging forward keeps advancing past the clash.
     @Test func drag_advancesPastOverlappingCourses() {
         let vm = TimeSliderViewModel()
         let calendar = AppConstants.taipeiCalendar
@@ -298,7 +269,6 @@ struct TimeSliderViewModelTests {
         ])
         vm.selectedTime = calendar.date(byAdding: DateComponents(hour: 11), to: today)!
 
-        // Monotonic across the merged 10:20–13:10 block and beyond it.
         var previousX = vm.xOffset(for: vm.selectedTime)
         for minutes in stride(from: 5, through: 240, by: 5) {
             let t = calendar.date(byAdding: .minute, value: minutes, to: vm.selectedTime)!
@@ -307,8 +277,6 @@ struct TimeSliderViewModelTests {
             previousX = x
         }
 
-        // Dragging forward (content moves left, so negative dx) keeps
-        // advancing and clears the whole clash.
         var previous = vm.selectedTime
         for _ in 0..<60 {
             vm.onDragChanged(dx: -20, invertDirection: false)
@@ -320,8 +288,6 @@ struct TimeSliderViewModelTests {
         vm.isUserDragging = false
     }
 
-    /// Clashing courses stack in lanes on the track: A and C never meet, so beside B they share
-    /// one of two lanes, and a course that meets none keeps the full height.
     @Test func clashingSlotsStackInLanes() {
         let calendar = AppConstants.taipeiCalendar
         let today = calendar.startOfDay(for: AppClock.now())
@@ -341,7 +307,6 @@ struct TimeSliderViewModelTests {
         #expect(vm.slotLanes["D"] == nil)
     }
 
-    /// A class that ends as the next one starts does not clash with it.
     @Test func backToBackSlotsKeepTheFullHeight() {
         let calendar = AppConstants.taipeiCalendar
         let today = calendar.startOfDay(for: AppClock.now())
@@ -355,8 +320,6 @@ struct TimeSliderViewModelTests {
         #expect(lanes.isEmpty)
     }
 
-    /// The store reads its cache once, at init, so the device's own cache is back before the
-    /// test goes on.
     private func calendarStore(holding calendar: AcademicCalendar) throws -> AcademicCalendarStore {
         let saved = Defaults[.academicCalendarCache]
         defer { Defaults[.academicCalendarCache] = saved }

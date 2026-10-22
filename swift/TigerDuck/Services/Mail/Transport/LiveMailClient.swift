@@ -3,20 +3,16 @@ import Foundation
 import SwiftMail
 
 nonisolated extension MailTLSVerifier {
-    /// Handed to SwiftMail's `IMAPServer` and `SMTPServer`; see the vendored copy's `.custom` policy.
     static let swiftMailVerifier = MailCertificateVerifier(identifier: "org.ntust.app.TigerDuck.spki-pins") { derChain, host in
         MailTLSVerifier.verify(derChain: derChain, host: host)
     }
 }
 
-/// Installs the Appendix A.5 charset rules into SwiftMail's RFC 2047 decoder, which
-/// decodes sender names and subjects out of the IMAP ENVELOPE.
 nonisolated enum SchoolMailCharsetHook {
     static func install() {
         MailCharsetResolver.setResolver { MailCharset.encoding(forLabel: $0) }
     }
 
-    /// Exposes SwiftMail's header decoder to tests without importing SwiftMail there.
     static func decodeHeader(_ header: String) -> String {
         header.decodeMIMEHeader()
     }
@@ -43,34 +39,13 @@ actor LiveMailClient: MailClient {
     /// mangle. `MailFetchSectionTests` pins the request and replays the echo through NIOIMAP.
     nonisolated static let detailOptions: FetchMessageInfoOptions = summaryOptions.union(.fullHeader)
 
-    /// Always `nil` — see `detailOptions`. A named constant rather than an omitted argument so
-    /// the shape of the request the message screen sends is pinned by a test.
     nonisolated static let detailHeaderFields: [String]? = nil
 
     private let imap: IMAPServer
     private var credentials: (studentID: String, password: String)?
-    /// Bumped, together with clearing `credentials`, as the very first thing `logout()` does —
-    /// before its first `await` — so both changes are visible atomically to anything that reads
-    /// them afterward. `ensureLiveConnection()` captures this in the same synchronous step as
-    /// reading `credentials`, then checks it again after every `await` that precedes handing the
-    /// connection to `body()` (a successful NOOP probe, and a successful reconnect+login): a
-    /// mismatch means `logout()` ran while this method was suspended, so whatever was just
-    /// confirmed-alive or freshly opened is closed and this throws instead of leaving an
-    /// authenticated or stale-but-open connection behind for a session that already ended.
     private var connectionGeneration = 0
-    /// Serializes whole `run` bodies, liveness probe and reconnect included. Actor isolation alone
-    /// lets a second call's SELECT run at an `await` between a first call's SELECT and the
-    /// STORE/COPY/EXPUNGE it guards. With one client shared by the 60 s poll and the message
-    /// screen, `expunge(Trash)` could SELECT Trash, an interleaved `setFlag(.seen, INBOX)` SELECT
-    /// INBOX read-write, and EXPUNGE then remove INBOX's `\Deleted` mail, another client's
-    /// included. A private instance, so no other code in the module can `release()` this lock.
     private let commandLock = AsyncSerialLock()
 
-    /// The server this client talks to, resolved once at construction so the IMAP connection
-    /// and the SMTP connections `send` opens can never disagree about it — and so a
-    /// configuration change that arrives mid-session cannot move a live connection out from
-    /// under a command. A change signs out (`DevMailServerSettings`), which discards the
-    /// client, and the next one is built against the new configuration.
     private let config: MailServerConfig
 
     init(config: MailServerConfig = .effective) {
@@ -93,9 +68,6 @@ actor LiveMailClient: MailClient {
             try await imap.login(username: studentID, password: password)
             credentials = (studentID, password)
         } catch {
-            // Never leave a previous successful login's credentials in place after a failed
-            // (re)login attempt — otherwise a later command would silently reconnect as the old
-            // account instead of surfacing that this login failed.
             credentials = nil
             try? await imap.disconnect()
             throw Self.map(error)
@@ -199,14 +171,9 @@ actor LiveMailClient: MailClient {
                   let summary = Self.summary(from: info) else {
                 throw MailClientError.protocolError("message \(uid) not found")
             }
-            // The server's structure for this message cannot be parsed, so there are no parts to
-            // fetch. Fetch it whole and parse the MIME here, as Android does; nothing else tells it
-            // from an empty mail. Not `self.rawSource(...)`: it takes `commandLock`, already held.
             if Self.recoversByLocalParse(info) {
                 let raw = try await self.imap.fetchRawMessage(identifier: UID(uid))
                 if let local = Self.localDetail(summary: summary, info: info, raw: raw) { return local }
-                // The local parse found no more than the server's structure did. Fall through:
-                // the message really does have nothing to show, and the screen says so.
             }
             var textBody: String?
             var htmlBody: String?
@@ -255,45 +222,25 @@ actor LiveMailClient: MailClient {
             )
         } catch {
             guard Self.detailRetriesWithoutHeaderSection(after: error) else { throw error }
-            // The retry re-EXAMINEs, so it gets its own SELECT response and is pinned against it
-            // like the first one: the reconnect this path exists for is exactly where a folder
-            // recreated server-side would first become visible.
             let selection = try await imap.examineMailbox(folder)
             try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             return try await imap.fetchMessageInfo(for: UID(uid), options: Self.summaryOptions)
         }
     }
 
-    /// Whether a failed detail fetch is worth retrying without the header section. Only a
-    /// protocol error is — every other `MailClientError` names something a second fetch cannot
-    /// change.
     nonisolated static func detailRetriesWithoutHeaderSection(after error: any Error) -> Bool {
         if case .protocolError = map(error) { return true }
         return false
     }
 
-    /// Whether only a local MIME parse can rescue this fetch, and the message is small enough to
-    /// be worth downloading whole for it.
     ///
-    /// Only on the unusable-structure path (`MessageInfo.bodyStructureUnusable`, vendored patch 6):
-    /// a message that really has no parts shows the same empty `parts` and must never start a
-    /// download. The ceiling, `MailConstants.maxLocalParseBytes`, is checked against `RFC822.SIZE`,
-    /// which both option sets fetch, so it is known before any body byte. A missing size is not
-    /// oversized: misbehaving servers, the ones this exists for, could otherwise disable it.
     nonisolated static func recoversByLocalParse(_ info: MessageInfo) -> Bool {
         guard info.bodyStructureUnusable else { return false }
         guard let size = info.size else { return true }
         return size <= MailConstants.maxLocalParseBytes
     }
 
-    /// A `MailMessageDetail` built from the message's own bytes rather than the server's
-    /// description of them, via SwiftMail's offline `EMLParser`, the parser that
-    /// `LiveMailClientParsingTests` runs the shared `.eml` corpus through.
     ///
-    /// Summary, Message-ID, thread chain and `Return-Path` still come from the fetch, which
-    /// succeeded; only the body did not. `hasAttachments` is recomputed, because the summary was
-    /// built from the empty part list. Returns nil when the parse finds nothing to show either, so
-    /// the caller falls back to the ordinary empty result instead of claiming a recovered body.
     nonisolated static func localDetail(summary: MailSummary, info: MessageInfo, raw: Data) -> MailMessageDetail? {
         guard let message = try? EMLParser.parse(raw) else { return nil }
         var textBody: String?
@@ -329,9 +276,6 @@ actor LiveMailClient: MailClient {
         )
     }
 
-    /// Transfer-decode a locally parsed part, then apply the app's Appendix A.5 charset rules —
-    /// the same two steps `detail` applies to a part fetched from the server
-    /// (`fetchAndDecodeMessagePartData` + `MailCharset.decode`), in the same order.
     nonisolated static func decodedText(of part: MessagePart) -> String? {
         guard let data = part.decodedData() else { return nil }
         return MailCharset.decode(data, label: part.declaredCharset)
@@ -345,14 +289,6 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    /// One part's bytes, by the section the attachment list was built from.
-    ///
-    /// Asks for `.size` only so `recoversByLocalParse`'s ceiling works on the fallback below.
-    /// Pinned against this call's own EXAMINE response, like `detail`: the caller's pinned detail
-    /// fetch says nothing about the generation this connection sees now. The local-parse fallback
-    /// fetches the whole message without re-EXAMINE, so this assert covers it too. `detailInfo`'s
-    /// retry needs its own because its decode failure makes SwiftMail reconnect with no mailbox
-    /// selected.
     func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data {
         try await run {
             let selection = try await self.imap.examineMailbox(folder)
@@ -363,9 +299,6 @@ actor LiveMailClient: MailClient {
             if let found = info.parts.first(where: { $0.section.description == part.section }) {
                 return try await self.imap.fetchAndDecodeMessagePartData(messageInfo: info, part: found)
             }
-            // These sections came from a local parse (`detail`), since the server's structure was
-            // unreadable, so there is no server section to fetch. The same parse serves the bytes,
-            // or the attachments it put on screen could never be opened.
             guard Self.recoversByLocalParse(info) else {
                 throw MailClientError.protocolError("part \(part.section) not found")
             }
@@ -531,9 +464,6 @@ actor LiveMailClient: MailClient {
         guard let credentials else {
             throw MailClientError.protocolError("not logged in")
         }
-        // Read in the same synchronous step as `credentials`, before any `await`. `logout()`
-        // changes both at once, so a mismatch after any `await` below means a `logout()` landed
-        // in between.
         let generationAtStart = connectionGeneration
 
         if await imap.isConnected {
@@ -562,9 +492,6 @@ actor LiveMailClient: MailClient {
         do {
             try await imap.login(username: credentials.studentID, password: credentials.password)
         } catch {
-            // Only an auth rejection clears the credentials; doing so after a timeout, a drop or
-            // "too many connections" would leave the client "not logged in" with a valid password.
-            // The socket always closes, so the next NOOP probe cannot pass a half-done login.
             if Self.map(error) == .authenticationFailed {
                 self.credentials = nil
             }
@@ -572,20 +499,11 @@ actor LiveMailClient: MailClient {
             throw error
         }
         guard connectionGeneration == generationAtStart else {
-            // `logout()` ran mid-reconnect: this socket is now authenticated under a session
-            // that already ended. Close it rather than handing it to `body()`.
             try? await imap.disconnect()
             throw MailClientError.protocolError("not logged in")
         }
     }
 
-    /// Whether the UIDVALIDITY this command's own SELECT/EXAMINE just returned still matches the
-    /// generation the caller pinned its UIDs to. `nil`, a caller with no pin, is never a mismatch.
-    ///
-    /// The caller always supplies the expected value; it is never read from state shared between
-    /// commands. The 60 s page poll calls `status(INBOX)` on this client, so a shared copy could
-    /// take a recreated folder's new UIDVALIDITY mid-move, the guard would compare it with itself,
-    /// and COPY, STORE `\Deleted` and EXPUNGE would hit UIDs that name different messages.
     nonisolated static func uidValidityChanged(expected: UInt32?, current: UInt32) -> Bool {
         guard let expected else { return false }
         return expected != current
@@ -629,26 +547,19 @@ actor LiveMailClient: MailClient {
             }
         }
         if let sendError = error as? SMTPSendError {
-            // The end of the message went out with no final reply, so it may have been sent.
             if sendError.acceptance == .ambiguous { return .sendUnconfirmed }
             // `sendRawMessage` throws this for any failure after MAIL FROM (a rejected recipient,
             // a dropped connection mid-transaction, a timeout), the usual send failure. Most are
             // not network failures, so the fallback is `.protocolError`, not `.unreachable`.
             return classify(String(describing: sendError), fallback: .protocolError(String(describing: sendError)))
         }
-        // A response this client could not read. Checked before the text heuristics below so a
-        // decoder error can never be bucketed by whatever happens to appear in its buffer dump.
         if isDecodeFailure(error) { return .protocolError(String(describing: error)) }
-        // Nothing above recognized this error. Real network failures are named above or match
-        // `isNetworkShaped`; anything else is likelier a protocol problem, and an `.unreachable`
-        // fallback would show a parser bug as "Can't reach the mail server" on a working network.
         let described = String(describing: error)
         return classify(described, fallback: isNetworkShaped(error) ? .unreachable : .protocolError(described))
     }
 
     /// A failure of the IMAP/SMTP response decoder or its parser — the server sent something
     /// this client cannot read.
-    ///
     /// NIOIMAP surfaces these as `IMAPDecoderError` (wrapping a `ParserError`) straight from the
     /// channel and SwiftMail rethrows them untouched, but SwiftMail does not re-export NIOIMAP,
     /// so the type cannot be named here. Matched by name instead — the same way SwiftMail's own
@@ -658,10 +569,6 @@ actor LiveMailClient: MailClient {
         return text.contains("decodererror") || text.contains("parsererror")
     }
 
-    /// Errors that really do mean the server could not be reached, for the shapes that reach
-    /// `map(_:)` unrecognized: Foundation's URL and POSIX transport errors, and NIO's own
-    /// connection/channel/IO failures. `.unreachable` is reserved for these — it is also the
-    /// only classification besides `.certificateRejected` that tears the connection down.
     nonisolated static func isNetworkShaped(_ error: any Error) -> Bool {
         let domain = (error as NSError).domain
         if domain == NSURLErrorDomain || domain == NSPOSIXErrorDomain { return true }
@@ -737,7 +644,6 @@ actor LiveMailClient: MailClient {
 
     /// `Return-Path` off the full header section `detailOptions` already fetches — nil when the
     /// fetch fell back to the summary attributes (`detailInfo`), which carry no headers at all.
-    ///
     /// The **first** one, not the last. The final delivery agent prepends its `Return-Path`
     /// above everything the sender wrote, so a message carrying extra copies lower down is one
     /// where the top line is the server's and the rest are the sender's. `additionalFields` is
@@ -748,8 +654,6 @@ actor LiveMailClient: MailClient {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// `Reply-To` off the same header section as `returnPath`, decoded the way `MailAddress.parseList`
-    /// expects: empty when the section has none, nil when no section was fetched.
     nonisolated static func replyTo(from info: MessageInfo) -> String? {
         guard let fields = info.additionalHeaderFields else { return nil }
         return fields.first { $0.name.lowercased() == "reply-to" }.map { RFC2047.decode($0.value) } ?? ""
@@ -772,8 +676,6 @@ actor LiveMailClient: MailClient {
             transferEncoding: part.encoding,
             filename: part.filename.map { MailTextCleaner.clean(RFC2047.decode($0)) },
             contentID: part.contentId.map(bareContentID),
-            // `size` is BODYSTRUCTURE's octet count, which a part from a local parse
-            // (`localDetail`) has none of — its own still-encoded bytes are the same measure.
             size: part.size ?? part.data?.count,
             isAttachment: isAttachment(part)
         )
@@ -805,8 +707,6 @@ extension MailTransportScheme {
         }
     }
 
-    /// The mapping as a string, so a test can pin it without importing SwiftMail — the same
-    /// reason `SchoolMailCharsetHook.decodeHeader` exists. Nothing in the app reads this.
     nonisolated var swiftMailTransportSecurityName: String {
         String(describing: swiftMailTransportSecurity)
     }

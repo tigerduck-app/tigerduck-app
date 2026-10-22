@@ -1,9 +1,7 @@
 #if os(iOS)
 import Foundation
 
-/// Charset rules from design doc Appendix A.5 — identical on Android.
 nonisolated enum MailCharset {
-    /// The encoding A.5 prescribes for a MIME charset label; nil when unknown.
     static func encoding(forLabel label: String?) -> String.Encoding? {
         guard let raw = label?.trimmingCharacters(in: CharacterSet(charactersIn: "\" \t")).lowercased(),
               !raw.isEmpty else { return nil }
@@ -59,8 +57,6 @@ nonisolated enum MailCharset {
     }
 }
 
-/// RFC 2047 encoded-word decoding with the A.5 charset rules. Lenient: whitespace between
-/// adjacent encoded words is dropped, and a malformed word is left as written.
 nonisolated enum RFC2047 {
     private static let pattern = try! NSRegularExpression(pattern: #"=\?([^?\s]+)\?([bBqQ])\?([^?\s]*)\?="#)
 

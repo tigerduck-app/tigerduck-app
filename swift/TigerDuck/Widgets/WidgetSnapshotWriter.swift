@@ -4,13 +4,6 @@ import os
 import UIKit
 #endif
 
-/// Owns the widget snapshot write pipeline. On the app notifications that change
-/// widget content (see `attachObservers()`), it rebuilds the snapshot with
-/// `WidgetSnapshotBuilder`, writes it to the App Group store and asks
-/// `WidgetReloadCoordinator` for a debounced timeline reload.
-///
-/// The host app creates it and calls `regenerate()` at cold start. Each call
-/// rebuilds the whole snapshot, but writes and reloads only when it changed.
 @MainActor
 final class WidgetSnapshotWriter {
     private let store: WidgetSnapshotStore
@@ -33,9 +26,6 @@ final class WidgetSnapshotWriter {
         courseProvider: CanonicalCourseProvider? = nil
     ) {
         self.init(
-            // Gate on stored credentials, not `isNTUSTLoggedIn`: it flips false when
-            // session cookies expire, flashing "Please sign in" although the next sync
-            // re-authenticates silently. Same rule as `ntustProtectedAccessState`.
             isLoggedIn: { appState.authService.hasStoredCredentials },
             accentColorHex: { appState.accentColorHex },
             cache: cache,
@@ -45,9 +35,6 @@ final class WidgetSnapshotWriter {
         )
     }
 
-    // Defaults resolve in the body: under Swift 6 strict concurrency, default
-    // argument expressions are nonisolated even on a MainActor init, so the
-    // MainActor-isolated `DataCache.shared` and `WidgetReloadCoordinator()` warn there.
     init(
         isLoggedIn: @escaping @MainActor () -> Bool,
         accentColorHex: @escaping @MainActor () -> Int,
@@ -77,16 +64,8 @@ final class WidgetSnapshotWriter {
         }
     }
 
-    /// A snapshot serves for a year after it is written, and on each of those days the Next class
-    /// widget looks up to seven days ahead (`WidgetTimelineDerivation.derive`).
     private static let outsideTermHorizonDays = 366 + 7
 
-    /// The days classes do not meet, as `yyyy-MM-dd` keys, for the widget snapshot and the Watch
-    /// payload: every published holiday the user has left quiet, and the days outside the term in
-    /// the next year and a week. Holidays are not windowed: only the app writes the snapshot, and
-    /// a widget keeps reloading the last one while the app stays closed, so a horizon measured
-    /// from write time would expire while the snapshot lives on and show a class that is not
-    /// happening. The days after the last published term never end, so those need one.
     static func quietDayKeys() -> Set<String> {
         let store = AcademicCalendarStore.shared
         return quietDayKeys(calendar: store.calendar, optedIn: store.optedInHolidayIDs, now: AppClock.now())
@@ -105,9 +84,6 @@ final class WidgetSnapshotWriter {
             var day = AcademicCalendar.startOfDay(holiday.start)
             let last = AcademicCalendar.startOfDay(holiday.end)
             while day <= last {
-                // Re-asked per day rather than trusting this holiday alone:
-                // an overlapping holiday the user opted into un-suppresses
-                // the day, which is `suppressesClasses`'s rule, not ours.
                 if calendar.suppressesClasses(on: day, optedIn: optedIn) {
                     keys.insert(WidgetTimelineDerivation.dateKey(for: day))
                 }
@@ -123,9 +99,6 @@ final class WidgetSnapshotWriter {
     /// An unchanged snapshot is neither written nor reloaded: this runs on every return to the
     /// app and every data change, and each reload spends the widgets' budget.
     func regenerate(forceReload: Bool = false) {
-        // Behind the lock screen the caches cannot be opened and read as empty; the widgets keep
-        // the last snapshot, and the next return to the app writes a new one. A forced reload is
-        // owed to that one, as the regenerates after an unlock are not forced.
         guard isProtectedDataAvailable() else {
             owesForcedReload = owesForcedReload || forceReload
             return
@@ -153,7 +126,6 @@ final class WidgetSnapshotWriter {
         coordinator.requestReload()
     }
 
-    /// ``regenerate(forceReload:)``, then sends at once a reload that waits on the debounce, whether
     /// this one asked for it or an earlier change did. A sync trigger's handler calls it before it
     /// answers the push, after which iOS may suspend the app before the debounce ends.
     func regenerateAndReloadNow() {
@@ -161,7 +133,6 @@ final class WidgetSnapshotWriter {
         coordinator.reloadNowIfPending()
     }
 
-    /// Equal but for `generatedAt`, which every build stamps afresh and no widget reads.
     static func hasSameContent(_ snapshot: WidgetSnapshot, as other: WidgetSnapshot) -> Bool {
         var candidate = snapshot
         candidate.generatedAt = other.generatedAt
@@ -172,8 +143,6 @@ final class WidgetSnapshotWriter {
         let center = NotificationCenter.default
         var names: [(name: Notification.Name, forceReload: Bool)] = [
             (AppConstants.dataDidUpdate, false),
-            // The widgets render their text in the new language, which no snapshot field
-            // holds, so these two reload even when the snapshot is unchanged.
             (AppConstants.languageDidChange, true),
             (AppConstants.courseSkipStateDidChange, false),
             (AppConstants.holidayNotifyDidChange, false),
@@ -182,13 +151,10 @@ final class WidgetSnapshotWriter {
             (NSLocale.currentLocaleDidChangeNotification, true),
         ]
         #if DEBUG
-        // The days outside the term are listed from the app clock's today.
         names.append((DebugClockController.didChangeNotification, false))
         #endif
         for (name, forceReload) in names {
             let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                // The queue is .main, but strict concurrency still needs a MainActor
-                // hop to touch the writer from this closure, so go through a Task.
                 Task { @MainActor [weak self] in
                     self?.regenerate(forceReload: forceReload)
                 }

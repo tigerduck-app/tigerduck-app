@@ -6,20 +6,8 @@ struct NextClassView: View {
     let palette: WidgetPalette
     let family: WidgetFamily
 
-    /// User-chosen multiplier for course-name font, read from the App
-    /// Group at struct init. The main app reloads widget timelines after
-    /// changing the value, so the next render picks up a fresh struct
-    /// with the new scale.
     private let userScale: CGFloat = CGFloat(CourseCardFontScale.renderScale(CourseCardFontScaleStore().read()))
 
-    /// Dynamic-Type-anchored baselines for the system fonts we replaced
-    /// to multiply in `userScale`. `@ScaledMetric(relativeTo:)` makes
-    /// the default Dynamic Type point size grow/shrink with the user's
-    /// system text-size preference — so the surrounding `.subheadline`
-    /// /  `.caption` / `.title3` labels (still semantic) and these
-    /// course-name labels keep moving together as the user changes
-    /// Display & Text Size. Without this, the course name would be a
-    /// hard 15pt / 20pt / 12pt while neighbors continued to scale.
     @ScaledMetric(relativeTo: .subheadline) private var subheadlineBase: CGFloat = 15
     @ScaledMetric(relativeTo: .title3) private var title3Base: CGFloat = 20
 
@@ -38,8 +26,6 @@ struct NextClassView: View {
         }
     }
 
-    // MARK: - Variants
-
     private var isCompact: Bool { family == .systemSmall }
 
     private var signInBody: some View {
@@ -53,7 +39,6 @@ struct NextClassView: View {
     @ViewBuilder
     private func ongoingBody(infos: [WidgetDerivedState.OngoingInfo]) -> some View {
         if isCompact {
-            // Compact: first ongoing only, with +N badge counting the rest.
             compactOngoing(first: infos[0], additionalCount: infos.count - 1)
         } else if infos.count >= 2 {
             VStack(spacing: 10) {
@@ -157,10 +142,6 @@ struct NextClassView: View {
 }
 
 extension WidgetDerivedState.Day {
-    /// The caption above a next-class card. Mirrors Android's
-    /// `NextClassContent.futureDayLabel`: "Tomorrow" only when the class
-    /// literally is tomorrow, otherwise the weekday's own name, because the
-    /// derivation scans up to a week ahead.
     var headline: String {
         switch self {
         case .today: return String(localized: "widget_next_class")
@@ -169,8 +150,6 @@ extension WidgetDerivedState.Day {
         }
     }
 
-    /// One-line form for the accessory families, which have no room for a
-    /// separate caption row: "Tomorrow 09:10" against "Wed 09:10".
     func inlineCaption(_ trailing: String) -> String {
         switch self {
         case .later(let weekday):
@@ -181,7 +160,6 @@ extension WidgetDerivedState.Day {
         }
     }
 
-    /// 1 = Monday … 7 = Sunday, matching `WidgetTimelineDerivation.weekdayFor`.
     private static func caption(of weekday: Int) -> String {
         switch weekday {
         case 1: return String(localized: "weekday_mon_caption")

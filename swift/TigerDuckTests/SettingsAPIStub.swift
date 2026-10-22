@@ -9,9 +9,7 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         let statusCode: Int
         let body: Data
         var headerFields: [String: String] = [:]
-        /// Fails the request after the stub has logged it, the way a reply lost in transit does.
         var failure: URLError.Code?
-        /// Holds the reply back until the gate opens, so a test can act while the request is out.
         var gate: ReplyGate?
 
         static var noReply: StubResponse {
@@ -30,13 +28,10 @@ nonisolated final class SettingsAPIStub: URLProtocol {
     nonisolated(unsafe) private static var requestLog: [String: [URLRequest]] = [:]
     nonisolated(unsafe) private static var arrivals: [URLRequest] = []
 
-    /// A fresh, never-reused base URL so the queues below are namespaced
-    /// per test even when Swift Testing runs tests concurrently.
     static func uniqueBaseURL() -> URL {
         URL(string: "https://settings-stub.invalid/\(UUID().uuidString)/v3")!
     }
 
-    /// A client wired to this stub. Requests never leave the process.
     static func makeClient(
         baseURL: URL,
         authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
@@ -60,8 +55,6 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         return requestLog[url.absoluteString] ?? []
     }
 
-    /// Every request to any path under `baseURL`, in the order they arrived, as a server would
-    /// take them.
     static func requests(under baseURL: URL) -> [URLRequest] {
         lock.lock(); defer { lock.unlock() }
         return arrivals.filter { $0.url?.absoluteString.hasPrefix(baseURL.absoluteString) == true }
@@ -127,7 +120,6 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         }
     }
 
-    /// Only the loading thread touches these, once the reply is back on its run loop.
     private struct HeldReply: @unchecked Sendable {
         let stub: SettingsAPIStub
         let runLoop: CFRunLoop

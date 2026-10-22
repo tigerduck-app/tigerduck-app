@@ -4,9 +4,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// School sign-ins against stand-ins: `SSOLoginService.ensureServiceLogin` against
-/// `SSOServerStub`, and the Moodle token renewal with a stub harvest. Serialized: the SSO probe
-/// asks one fixed URL, the stub's queues are shared, and so are the stored password's refusals.
 @MainActor
 @Suite(.serialized)
 struct SSOServiceLoginTests {
@@ -16,13 +13,10 @@ struct SSOServiceLoginTests {
     static let loginURL = URL(
         string: "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%3Fclient_id%3Dstub"
     )!
-    /// Where the fixture form posts, resolved against ``loginURL``.
     static let postURL = URL(
         string: "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback"
     )!
     static let servicePage = "<html><body><table><tr><td>CS1001301</td></tr></table></body></html>"
-    /// The clock of the stored password's refusals in these sign-ins: a hold of seconds would run
-    /// out on the real one while a starved runner waits.
     nonisolated static let now = Date(timeIntervalSince1970: 1_500_000)
     private static let notSignedIn = SSOServerStub.Answer.redirect(to: "/account/login?ReturnUrl=%2F")
 
@@ -30,7 +24,6 @@ struct SSOServiceLoginTests {
         URL(string: "https://service.stub.invalid/\(UUID().uuidString)/")!
     }
 
-    /// The service sends this visit to the ssoam2 sign-in form.
     static func enqueueSignInForm(for service: URL) {
         SSOServerStub.enqueue(.follow(to: loginURL), for: service)
         SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: loginURL)
@@ -38,12 +31,9 @@ struct SSOServiceLoginTests {
 
     struct Outcome {
         let result: Result<Bool, Error>
-        /// `SSOLoginService.storedPasswordRefusals` when the sign-in ended.
         let refusals: (count: Int, last: Date?)
     }
 
-    /// Runs `body` after `count` refusals in a row, the last at `last`, then puts the refusals and
-    /// the login stamp back. They are real `Defaults` keys, which `BackendSessionTests` reads too.
     func withRefusals<T>(_ count: Int, last: Date? = nil, _ body: () async -> T) async -> T {
         await withExclusiveRealDefaults {
             let saved = (SSOLoginService.storedPasswordRefusals, Defaults[.ssoLoginTimestamp])
@@ -53,8 +43,6 @@ struct SSOServiceLoginTests {
         }
     }
 
-    /// An automatic sign-in unless `interactive`, after `refusals` refusals in a row, the last at
-    /// `lastRefusal`: by default ``now``, so they hold an automatic post back.
     func signIn(
         _ serviceURL: URL,
         interactive: Bool = false,
@@ -86,8 +74,6 @@ struct SSOServiceLoginTests {
     var posts: [SSOServerStub.Request] {
         SSOServerStub.requests.filter { $0.method == "POST" }
     }
-
-    // MARK: - What counts as signed in
 
     @Test("a maintenance page without a live SSO session is not a sign-in")
     func maintenancePageIsNoSignIn() async {
@@ -207,8 +193,6 @@ struct SSOServiceLoginTests {
         #expect(outcome.refusals.count == 0)
     }
 
-    // MARK: - A rejected stored password (https://github.com/tigerduck-app/tigerduck-app/issues/768)
-
     @Test("a sign-in the user did not start posts no password while a refusal holds it back")
     func refusedPasswordWaitsOutItsRefusal() async {
         let service = Self.serviceURL()
@@ -276,8 +260,6 @@ struct SSOServiceLoginTests {
         #expect(SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries + 1) == 6 * 60 * 60)
     }
 
-    /// Passing on a live session says nothing of the password; were it to clear the refusals, a
-    /// retry would post a refused password every ten seconds while the session lasts.
     @Test("a sign-in the user did not start that a live session lets through leaves the refusals")
     func liveSessionLeavesTheRefusals() async {
         let service = Self.serviceURL()
@@ -381,8 +363,6 @@ struct SSOServiceLoginTests {
         var errors: [any Error] = []
     }
 
-    /// Leaving a screen or signing out ends a sign-in's request; the device log keeps real
-    /// failures only (https://github.com/tigerduck-app/tigerduck-app/issues/584).
     @Test("a sign-in a cancelled request ends leaves nothing in the log, and a failed one is logged")
     func cancelledSignInIsNotLogged() async {
         let cancelled = Self.serviceURL()
@@ -414,14 +394,11 @@ struct SSOServiceLoginTests {
         #expect(AppLogger.isCancellation(CancellationError()))
     }
 
-    // MARK: - Moodle token renewal
-
     actor HarvestLog {
         private(set) var calls = 0
         func record() { calls += 1 }
     }
 
-    /// The keychain password a stand-in token service reads; a harvest can change it meanwhile.
     private final class StoredPassword: @unchecked Sendable {
         private let lock = NSLock()
         private var value: String
@@ -434,8 +411,6 @@ struct SSOServiceLoginTests {
         }
     }
 
-    /// A harvest without `failure` hands out the token "new", as the answer to a post of the
-    /// password unless `posted` is false. `token` stands in for the keychain.
     private func tokenService(
         log: HarvestLog,
         failure: MoodleWebserviceError?,
@@ -488,7 +463,6 @@ struct SSOServiceLoginTests {
         #expect(refusals.last == start.addingTimeInterval(SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)))
     }
 
-    /// The decision accepts four posts of a changed password a day, past the first three retries.
     @Test("after the three quick tries were refused, a renewal waits six hours")
     func renewalAfterTheQuickTriesWaitsSixHours() async {
         let log = HarvestLog()
@@ -540,8 +514,6 @@ struct SSOServiceLoginTests {
         #expect(refusals == 0)
     }
 
-    /// Each Moodle page that appears without a token asks for one, and each harvest sends the
-    /// password.
     @Test("a renewal that fails for another reason is not counted, and the next waits out a pause")
     func otherRenewalFailuresPause() async {
         let log = HarvestLog()
@@ -597,8 +569,6 @@ struct SSOServiceLoginTests {
         let answers = await withRefusals(0) { () async -> [String?] in
             async let first = try? service.refreshTokenIfNeeded(replacing: "old")
             while await log.calls == 0 { try? await Task.sleep(for: .milliseconds(5)) }
-            // The held harvest has dropped the old token, so a second call that did not join it
-            // would harvest again.
             async let second = try? service.refreshTokenIfNeeded(replacing: "old")
             try? await Task.sleep(for: .milliseconds(100))
             released.withLock { $0 = true }
@@ -610,8 +580,6 @@ struct SSOServiceLoginTests {
         #expect(await log.calls == 1)
     }
 
-    /// A harvest holds the stored-password lock, so a server that trickles its answer would hold
-    /// every automatic SSO sign-in behind it for the default week.
     @Test("a harvest gives up on a server that trickles its answer after a minute")
     func harvestTimesOut() {
         let config = MoodleTokenService.harvestConfiguration()
@@ -620,9 +588,6 @@ struct SSOServiceLoginTests {
         #expect(config.httpCookieStorage === HTTPCookieStorage.shared)
     }
 
-    /// Each request stops after a minute, but a harvest makes up to seven in turn while every
-    /// automatic sign-in waits for the lock it holds
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/607).
     @Test("a harvest past its deadline fails as a request timeout does")
     func aHarvestPastItsDeadlineFails() async {
         let service = MoodleTokenService(
@@ -657,9 +622,6 @@ struct SSOServiceLoginTests {
         #expect(await log.calls == 1)
     }
 
-    // MARK: - One automatic post of the stored password at a time
-    // https://github.com/tigerduck-app/tigerduck-app/issues/574
-
     static func result<T>(_ body: () async throws -> T) async -> Result<T, Error> {
         do {
             return .success(try await body())
@@ -687,8 +649,6 @@ struct SSOServiceLoginTests {
         }
     }
 
-    /// After a password change elsewhere, a cold start whose Moodle token is also dead runs both;
-    /// each post of the old password counts toward the account's lockout.
     @Test("an automatic sign-in waits while a renewal posts the stored password, and posts none once it is refused")
     func automaticSignInWaitsForARenewalsPost() async {
         let service = Self.serviceURL()
@@ -705,7 +665,6 @@ struct SSOServiceLoginTests {
             async let renewing = try? renewal.refreshTokenIfNeeded()
             while await log.calls == 0 { try? await Task.sleep(for: .milliseconds(5)) }
             async let signingIn = automaticSignIn(service)
-            // Long enough for a sign-in that does not wait to reach its POST.
             for _ in 0..<100 where posts.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
             answered.withLock { $0 = true }
             _ = await renewing
@@ -725,10 +684,8 @@ struct SSOServiceLoginTests {
         let log = HarvestLog()
         let renewal = tokenService(log: log, failure: nil, now: { Self.now })
         let (outcome, harvests) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
-            // The test holds the lock as an automatic sign-in does while the school answers its post.
             let renewing = await SSOLoginService.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
-                // Queued for the lock, so past its first check of the refusals.
                 await Self.waitForAQueuedPost()
                 SSOLoginService.storedPasswordRefusals = (1, Self.now)
                 return renewing
@@ -742,7 +699,6 @@ struct SSOServiceLoginTests {
         #expect(harvests == 0)
     }
 
-    /// The stored account may be the next student's by the time the lock comes free.
     @Test("a renewal that a sign-out overtook while it waited for the lock harvests nothing", .timeLimit(.minutes(1)))
     func renewalASignOutOvertookHarvestsNothing() async {
         let log = HarvestLog()
@@ -763,8 +719,6 @@ struct SSOServiceLoginTests {
         #expect(harvests == 0)
     }
 
-    /// A sign-in the user typed posts what was typed, so it goes ahead while an automatic post of
-    /// the stored password holds the lock. Waiting would hang, hence the time limit.
     @Test("a sign-in the user typed does not wait for an automatic post of the stored password", .timeLimit(.minutes(1)))
     func typedSignInsDoNotWaitForTheStoredPasswordsPosts() async {
         let service = Self.serviceURL()
@@ -797,9 +751,6 @@ struct SSOServiceLoginTests {
         #expect(token == "new")
     }
 
-    // MARK: - What a renewal counts as a refusal (https://github.com/tigerduck-app/tigerduck-app/issues/575)
-
-    /// A renewal whose harvest walks the school's pages from `page` at `url`, against `SSOServerStub`.
     func pageWalk(log: HarvestLog, from page: String, at url: URL) -> MoodleTokenService {
         MoodleTokenService(
             storedCredentials: { (studentId: "b00000000", password: "unused") },
@@ -818,7 +769,6 @@ struct SSOServiceLoginTests {
         )
     }
 
-    /// A maintenance or error page served at the sign-in path has no form, so no password went out.
     @Test("a sign-in page without its form pauses the renewal and is not counted")
     func signInPageWithoutItsFormIsNotCounted() async {
         SSOServerStub.reset()
@@ -835,7 +785,6 @@ struct SSOServiceLoginTests {
         }
         #expect(refusals == 0)
         #expect(posts.isEmpty)
-        // Paused as other failures are: the second renewal sent nothing.
         #expect(await log.calls == 1)
     }
 
@@ -857,15 +806,11 @@ struct SSOServiceLoginTests {
         #expect(posts.map(\.url) == [Self.postURL])
     }
 
-    /// The page that hands Moodle Mobile its token, `token` among the triple's three parts.
     static func tokenPage(_ token: String) -> String {
         let triple = Data("signature:::\(token):::private-token".utf8).base64EncodedString()
         return #"<script>window.location = "moodlemobile://token=\#(triple)";</script>"#
     }
 
-    /// A live SSO or Moodle session in the shared cookie jar lets `launch.php` hand the token out
-    /// at once, which says nothing of the password: clearing the refusals there would let the next
-    /// SSO sign-in post a refused password at once, and the quick retries after it.
     @Test("a renewal whose token comes without a post of the password leaves the refusals")
     func tokenWithoutAPostLeavesTheRefusals() async throws {
         SSOServerStub.reset()

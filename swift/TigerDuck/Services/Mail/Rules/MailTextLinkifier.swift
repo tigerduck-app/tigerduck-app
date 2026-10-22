@@ -1,8 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// A mail's plain text with its URLs as links. The view routes every tap through the link
-/// confirmation, never straight to the browser.
 nonisolated enum MailTextLinkifier {
     static func attributed(_ text: String) -> AttributedString {
         var result = AttributedString(text)

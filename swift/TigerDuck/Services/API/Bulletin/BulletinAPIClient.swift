@@ -1,15 +1,9 @@
 import Foundation
 import os
 
-/// URLSession-based client for the bulletin HTTP API (v3).
-///
-/// Public GET endpoints (`/taxonomy`, list, detail) do not require auth.
-/// Subscription endpoints use Bearer auth via `authHeaderProvider`.
 final class BulletinAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    /// Returns a `Bearer <token>` string for v3 JWT auth, or `nil` when the
-    /// user is not logged in.
     private let authHeaderProvider: @Sendable () async -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
 
@@ -22,8 +16,6 @@ final class BulletinAPIClient: Sendable {
         self.session = session ?? Self.defaultSession()
         self.authHeaderProvider = authHeaderProvider
     }
-
-    // MARK: - Public surface
 
     func getTaxonomy() async throws -> BulletinAPI.TaxonomyResponse {
         try await get(path: "/bulletins/taxonomy", returning: BulletinAPI.TaxonomyResponse.self)
@@ -54,9 +46,6 @@ final class BulletinAPIClient: Sendable {
         try await get(path: "/bulletins/\(id)", returning: BulletinAPI.BulletinDetail.self)
     }
 
-    // MARK: - Subscriptions (v3)
-
-    /// GET /bulletin-subscriptions — list all rules for the authenticated device.
     func getSubscriptions() async throws -> BulletinAPI.SubscriptionsResponse {
         return try await get(
             path: "/bulletin-subscriptions",
@@ -64,7 +53,6 @@ final class BulletinAPIClient: Sendable {
         )
     }
 
-    /// PUT /bulletin-subscriptions replaces all rules of the authenticated device with `rules`.
     func putSubscriptions(
         rules: [BulletinAPI.SubscriptionRule]
     ) async throws -> BulletinAPI.SubscriptionsResponse {
@@ -75,8 +63,6 @@ final class BulletinAPIClient: Sendable {
             returning: BulletinAPI.SubscriptionsResponse.self
         )
     }
-
-    // MARK: - Internals
 
     private func get<Response: Decodable>(
         path: String,
@@ -114,10 +100,6 @@ final class BulletinAPIClient: Sendable {
         return try decode(data, path: path)
     }
 
-    /// Apply `Authorization: Bearer <token>` header when the user is logged in.
-    /// No-op when `authHeaderProvider` returns nil (unauthenticated requests
-    /// are still attempted so the server can respond with 401 rather than
-    /// silently dropping calls).
     private func applyAuth(to request: inout URLRequest) async {
         if let bearer = await authHeaderProvider(), !bearer.isEmpty {
             request.setValue(bearer, forHTTPHeaderField: "Authorization")
@@ -125,9 +107,6 @@ final class BulletinAPIClient: Sendable {
     }
 
     private func execute(_ request: URLRequest) async throws -> Data {
-        // Surface the URL host+path before the call so a hung or DNS-failed
-        // request still leaves a breadcrumb (the `await` below can block
-        // for `timeoutIntervalForResource` without ever logging otherwise).
         let method = request.httpMethod ?? "GET"
         let host = request.url?.host ?? "?"
         let path = request.url?.path ?? "?"
@@ -145,9 +124,6 @@ final class BulletinAPIClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            // Body snippet stays .private — error responses may echo auth
-            // headers or correlation tokens that must not be retained in
-            // the system log indefinitely.
             logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(path, privacy: .public): \(snippet, privacy: .private)")
             APIVersionGate.shared.note(statusCode: http.statusCode)
             throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
@@ -164,8 +140,6 @@ final class BulletinAPIClient: Sendable {
             throw BulletinAPIError.decodingFailed(error)
         }
     }
-
-    // MARK: - Factory helpers
 
     private static func resolveURL(baseURL: URL, path: String, query: [URLQueryItem]) throws -> URL {
         let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

@@ -14,10 +14,6 @@ struct MailComposeView: View {
     @State private var showSendDialog = false
     @State private var showFileImporter = false
     @State private var photoItems: [PhotosPickerItem] = []
-    /// Attachment picks whose bytes are still being read off the main actor. Send stays
-    /// disabled while any is outstanding: `send()` snapshots the attachments into the message
-    /// before its round trip, so a read that finished a moment later would leave a file on
-    /// screen that was never in the mail.
     @State private var pendingPicks = 0
     @FocusState private var focused: Field?
 
@@ -105,13 +101,7 @@ struct MailComposeView: View {
                     }
                 }
             }
-            // Covers every field, picker and swipe action: `send()`/`saveDraft()` read the fields
-            // before the round trip, so an edit made meanwhile is lost once the sheet dismisses.
-            // Cancel and Send are outside this `Form`, so the toolbar disables them itself.
             .disabled(viewModel.isSending)
-            // Dragging the form down dismisses the keyboard. The body field is tall and the
-            // recipient fields are above it, so without this there is no way back to the
-            // toolbar's Send without first tapping something that steals focus.
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -122,9 +112,6 @@ struct MailComposeView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        // Validation first, confirmation second: a form that would be rejected
-                        // anyway gets its error here and no dialog, so the only mail anyone is
-                        // asked to confirm is one that really is about to leave.
                         if viewModel.confirmationIsWarranted() { showSendDialog = true }
                     } label: {
                         LoadingButtonLabel(isLoading: viewModel.isSending) {
@@ -134,9 +121,6 @@ struct MailComposeView: View {
                     .disabled(viewModel.isSending || viewModel.isLoading || pendingPicks > 0)
                 }
             }
-            // Repeats the inline error in front of the user, who is looking at the top of the form
-            // while that small red text sits at the bottom. Dismissing keeps the inline copy, and
-            // the next identical failure raises this again (`errorNeedsAcknowledging`).
             .alert(String(localized: "feature_school_mail"), isPresented: Binding(
                 get: { viewModel.errorNeedsAcknowledging },
                 set: { if !$0 { viewModel.acknowledgeError() } })
@@ -145,8 +129,6 @@ struct MailComposeView: View {
             } message: {
                 Text(viewModel.error ?? "")
             }
-            // Mail cannot be recalled, so it does not go out on one mis-tap. Cancelling leaves the
-            // form exactly as it was with nothing sent.
             .confirmationDialog(String(localized: "school_mail_send_confirm_title"), isPresented: $showSendDialog, titleVisibility: .visible) {
                 Button(String(localized: "school_mail_send")) {
                     Task { await viewModel.send() }
@@ -180,9 +162,6 @@ struct MailComposeView: View {
                 if finished { dismiss() }
             }
             .task { await viewModel.prepare() }
-            // While a send/save is in flight, or there's something to lose, the sheet cannot be
-            // swiped away: the send is never cancelled halfway, and Cancel (above) refuses the
-            // same way.
             .interactiveDismissDisabled(viewModel.hasChanges || viewModel.isSending)
         }
     }
@@ -205,12 +184,6 @@ struct MailComposeView: View {
         MailRecipientTokenField(title: title, text: text, focus: $focused, field: field)
     }
 
-    // MARK: Attachments
-
-    /// The security-scoped access, the read and the UTType lookup all run off the main actor. A
-    /// failed read is reported the same way an over-budget attachment is, never silently dropped.
-    /// The read is bounded: a multi-GB pick is rejected as soon as it reads past the server's
-    /// encoded limit, never materialized in full just to be rejected.
     private func addFile(_ url: URL) async {
         let picked = await Task.detached {
             let scoped = url.startAccessingSecurityScopedResource()
@@ -226,25 +199,12 @@ struct MailComposeView: View {
         viewModel.addAttachment(filename: filename, mimeType: mimeType, data: data)
     }
 
-    /// Reads `url` in bounded chunks, rejecting (`nil`) as soon as the running total exceeds the
-    /// server's encoded-message limit -- `nonisolated` so it genuinely runs on the `Task.detached`
-    /// executor above rather than hopping back to the main actor by virtue of being declared on a
-    /// (module-default-MainActor-isolated) `View` type. A thin wrapper around `readBounded(read:)`
-    /// (below) supplying a real `FileHandle`'s `read(upToCount:)`.
     private nonisolated static func readBounded(_ url: URL) -> Data? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         return readBounded(read: handle.read(upToCount:))
     }
 
-    /// The bounded-read loop, seamed on `read` so a test can inject a reader that throws partway
-    /// through without touching the filesystem; not `private`, for that seam. `read` follows
-    /// `FileHandle.read(upToCount:)`: it may throw, and returns `nil` or empty `Data` at EOF. A
-    /// throw fails the whole read: `try?` would turn a mid-read I/O error (an iCloud URL going
-    /// unreachable, say) into the EOF `nil` and mail a truncated attachment at a plausible size.
-    /// `nonisolated` like its caller, because the module defaults to `MainActor` and the Swift 6
-    /// language mode rejects the `nonisolated` wrapper above calling a main-actor method. It
-    /// reads nothing but its `read` parameter.
     nonisolated static func readBounded(read: (Int) throws -> Data?) -> Data? {
         var data = Data()
         do {

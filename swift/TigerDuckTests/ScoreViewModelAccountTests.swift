@@ -3,21 +3,14 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// A report on screen belongs to whoever was signed in when it was read. Sign-out deletes the
-/// cached report, not the copy the screen holds, so the account change has to take that down,
-/// and a refresh still in flight for the previous account must not put it back. Each test hands
-/// its refreshes an indicator of its own, as other suites drive the app's one meanwhile.
 @MainActor
 struct ScoreViewModelAccountTests {
-    /// A sign-in that a test ends while a refresh waits.
     private final class SignIn: Sendable {
         private let signedIn = OSAllocatedUnfairLock(initialState: true)
         var isCurrent: Bool { signedIn.withLock { $0 } }
         func signOut() { signedIn.withLock { $0 = false } }
     }
 
-    /// Stands in for the reachability probe and the score fetch, and holds either until the
-    /// test releases it.
     @MainActor
     private final class School {
         var isOnline = true
@@ -32,7 +25,6 @@ struct ScoreViewModelAccountTests {
             return isOnline
         }
 
-        /// `cachedAt` is when the school gave the report: earlier for one the cache answers.
         func fetch(_ report: ScoreReport, cachedAt: Date = Date()) async -> (report: ScoreReport, cachedAt: Date) {
             fetches += 1
             if holdsFetch { await withCheckedContinuation { held.append($0) } }
@@ -45,7 +37,6 @@ struct ScoreViewModelAccountTests {
         }
     }
 
-    /// Stands in for `NTUSTSessionManager.shared`, the sync indicator a refresh drives.
     @MainActor
     private final class Indicator: LoadingIndicator {
         var loadingState: LoadingState = .idle {
@@ -73,7 +64,6 @@ struct ScoreViewModelAccountTests {
         )
     }
 
-    /// A student ID no real account has, so a cached report never collides with one.
     private static func testStudentId() -> String {
         "TEST\(UUID().uuidString)"
     }
@@ -110,8 +100,6 @@ struct ScoreViewModelAccountTests {
         )
     }
 
-    /// The status dot's last sync is when the school gave the report, which a refresh the
-    /// day-long cache answers does not move.
     @Test func aReportTheCacheAnsweredKeepsTheTimeItWasRead() async {
         let model = ScoreViewModel()
         let studentId = Self.testStudentId()
@@ -130,8 +118,6 @@ struct ScoreViewModelAccountTests {
         #expect(model.cachedAt == readAt)
     }
 
-    /// The cache answers with the time it read the report. Every request of the session fails, so
-    /// a fetch that asks the network fails the test, and nothing leaves the process.
     @Test func theDayLongCacheAnswersWithTheTimeItWasRead() async throws {
         try await Self.withCachedReport { studentId in
             let cached = try #require(DataCache.shared.loadScoreReport(studentId: studentId))
@@ -321,7 +307,6 @@ struct ScoreViewModelAccountTests {
     }
 }
 
-/// Fails every request, and holds no state another suite's stub could share.
 private nonisolated final class OfflineURLProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }

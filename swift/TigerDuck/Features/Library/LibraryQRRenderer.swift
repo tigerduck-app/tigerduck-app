@@ -2,12 +2,6 @@
 import CoreImage.CIFilterBuiltins
 import UIKit
 
-/// Rasterises a library QR payload.
-///
-/// Extracted from `LibraryViewModel` so every path that needs a code
-/// rasterises through exactly the same parameters — two renderers would
-/// eventually disagree on scale or correction level and produce codes that
-/// scan differently depending on which one made them.
 enum LibraryQRRenderer {
 
     /// One context for the app's lifetime — creating one per QR compiles

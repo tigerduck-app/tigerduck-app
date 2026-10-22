@@ -1,11 +1,8 @@
-// Which course colours the user picked: a sign-out loses a pick for good, while a generated colour
-// comes back with its course (https://github.com/tigerduck-app/tigerduck-app/issues/563).
 import Foundation
 import Testing
 @testable import TigerDuck
 
 struct CourseColorPickRecordTests {
-    /// The colour map and the picks, in memory.
     private final class Store: @unchecked Sendable {
         private let lock = NSLock()
         private var map: [String: UInt32]
@@ -88,7 +85,6 @@ struct CourseColorPickRecordTests {
         #expect(Self.makeCache(at: root).loadPickedCourseColors().isEmpty)
     }
 
-    /// Use Server in the re-enable dialog empties the map for the server's colours to take its place.
     @Test("a colour map emptied here leaves no picks")
     func anEmptiedMapLeavesNoPicks() {
         let root = FileManager.default.temporaryDirectory

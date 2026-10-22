@@ -61,16 +61,10 @@ struct MoreView: View {
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .notImplementedAlert(isPresented: $showNotImplementedAlert)
-            // Features pushed from here match their tab-bar pages: no back chevron, with the escape
-            // action in `MoreFeatureDestination`. The nav bar stays for titles and toolbar items.
-            // Settings is pushed by its own NavigationLink above, so it keeps its back button.
             .navigationDestination(for: AppFeature.self) { feature in
                 MoreFeatureDestination { moreDestination(for: feature) }
             }
         }
-        // Deep links from callers that cannot reach `navigationPath`: flip-to-Library when Library
-        // is not a tab, or a custom-push tap into Announcements. `initial: true` catches one set
-        // before the body renders. The path is replaced, not appended: a link means "go to X".
         .onChange(of: appState.pendingMoreDeepLink, initial: true) { _, new in
             guard let new else { return }
             var path = NavigationPath()
@@ -121,4 +115,3 @@ private struct MoreFeatureDestination<Content: View>: View {
             .accessibilityAction(.escape) { dismiss() }
     }
 }
-

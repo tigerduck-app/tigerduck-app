@@ -2,7 +2,6 @@
 import SwiftUI
 
 extension WhatsNewPage {
-    /// 2.4.0: class tables shared by QR code, and switched from the Class table tab.
     static let classTableSharing = WhatsNewPage.feature(
         id: "class-table-sharing",
         visual: .custom { WhatsNewClassTableSwitchDemo() },
@@ -13,7 +12,6 @@ extension WhatsNewPage {
         )
     )
 
-    /// 2.4.0: every assignment of a course ignored at once, with its due reminders.
     static let ignoreCourseAssignments = WhatsNewPage.feature(
         id: "ignore-course-assignments",
         visual: .custom { WhatsNewIgnoreAssignmentsDemo() },
@@ -25,8 +23,6 @@ extension WhatsNewPage {
     )
 }
 
-/// A small class table that a double tap on the Class table tab switches between the user's and a
-/// friend's. As on the real one, only the courses the two differ in fade; the rest stay put.
 struct WhatsNewClassTableSwitchDemo: View {
     @Environment(\.whatsNewLanguage) private var language
     @Environment(\.whatsNewPageIsCurrent) private var isCurrent
@@ -63,7 +59,6 @@ struct WhatsNewClassTableSwitchDemo: View {
         Block(name: WhatsNewText(en: "PE", zhHant: "體育"), hex: 0xF39C12, day: 4, period: 1, span: 2),
     ]
 
-    /// The class table's own fade: the old course out, then the new one in.
     private static let courseFade = AnyTransition.asymmetric(
         insertion: .opacity.animation(.easeOut(duration: 0.15).delay(0.1)),
         removal: .opacity.animation(.easeIn(duration: 0.1))
@@ -115,7 +110,6 @@ struct WhatsNewClassTableSwitchDemo: View {
             let width = (proxy.size.width - Self.gap * CGFloat(Self.days - 1)) / CGFloat(Self.days)
             let height = (proxy.size.height - Self.gap * CGFloat(Self.periods - 1)) / CGFloat(Self.periods)
             let blocks = showsFriend ? Self.friends : Self.mine
-            // As on the class table, a course's rows have no empty tile under them to show through.
             let covered = Set(blocks.flatMap { block in
                 (block.period..<(block.period + block.span)).map { $0 * Self.days + block.day }
             })
@@ -153,7 +147,6 @@ struct WhatsNewClassTableSwitchDemo: View {
         .animation(.linear(duration: 0.25), value: showsFriend)
     }
 
-    /// The Class table tab, rippling twice for the double tap that switches.
     private var tab: some View {
         VStack(spacing: 2) {
             Image(systemName: AppFeature.classTable.iconName)
@@ -180,8 +173,6 @@ struct WhatsNewClassTableSwitchDemo: View {
     }
 }
 
-/// A course block whose menu ignores its assignments: the assignment mark turns into the slashed
-/// book the class table shows, and the course's due reminders stop.
 struct WhatsNewIgnoreAssignmentsDemo: View {
     @Environment(\.whatsNewLanguage) private var language
     @Environment(\.whatsNewPageIsCurrent) private var isCurrent

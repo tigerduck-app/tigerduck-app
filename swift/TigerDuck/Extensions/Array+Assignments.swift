@@ -9,8 +9,6 @@ extension Array where Element == SDAssignment {
         contains { $0.courseNo == courseNo && !$0.isCompleted && !$0.isArchived && !$0.isLocallyCompleted }
     }
 
-    /// Returns incomplete assignments sorted by due date ascending.
-    /// Excludes locally archived and locally completed items, which the Incomplete tab hides.
     func upcomingSorted() -> [SDAssignment] {
         filter { !$0.isCompleted && !$0.isArchived && !$0.isLocallyCompleted }
             .sorted { $0.dueDate < $1.dueDate }
@@ -25,26 +23,10 @@ extension Array where Element == SDAssignment {
         contains { $0.isArchived }
     }
 
-    /// Time-agnostic candidate set for the All tab. Excludes locally archived rows, which belong
-    /// to the Ignored filter, unless Moodle has since marked the row submitted: the archive flag
-    /// persists apart from Moodle completion, and a row the school considers handed in has stopped
-    /// being work the user chose to hide. ``ignoredSorted()`` keys off the archive flag alone, so
-    /// the row stays reachable either way; this only decides whether All also shows it.
-    ///
-    /// Unsorted: the past/future split depends on the live clock and must be applied at render
-    /// time via `partitionedByDueDate(now:)`, not cached against a frozen `Date()`.
     func allCandidates() -> [SDAssignment] {
         filter { !$0.isArchived || $0.isCompleted }
     }
 
-    /// Splits assignments into future-first and past-second buckets
-    /// relative to `now`:
-    ///   • future bucket sorted ascending — the next deadline is on top
-    ///   • past bucket sorted descending — most-recently-due first so the
-    ///     just-passed work is right under the future cutoff
-    /// Call this from the view layer (paired with `TimelineView`) so a row
-    /// whose `dueDate` has just crossed `now` migrates to the past bucket
-    /// on the next minute tick instead of staying stuck in "future".
     func partitionedByDueDate(now: Date) -> [SDAssignment] {
         let future = filter { $0.dueDate >= now }.sorted { $0.dueDate < $1.dueDate }
         let past = filter { $0.dueDate < now }.sorted { $0.dueDate > $1.dueDate }

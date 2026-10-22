@@ -8,8 +8,6 @@ import Testing
 @Suite("Push API device preferences DTOs")
 struct PushAPIDTOTests {
 
-    // MARK: - Request: encodes to the wire keys the backend expects
-
     @Test("encoding syncAssignmentReminders and syncLiveActivity produces their snake_case wire keys")
     func requestEncodesNewFieldsToTheirWireKeys() throws {
         let request = PushAPI.DevicePreferencesRequest(
@@ -27,8 +25,6 @@ struct PushAPIDTOTests {
 
     @Test("omitted syncAssignmentReminders/syncLiveActivity do not appear on the wire at all")
     func requestOmitsNilNewFieldsEntirely() throws {
-        // A PATCH that only changes `serverPushEnabled` must not send these keys, not even as
-        // `null`; `requestOmitsNilBulletinPushEnabledEntirely` below says why.
         let request = PushAPI.DevicePreferencesRequest(serverPushEnabled: true)
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -53,9 +49,6 @@ struct PushAPIDTOTests {
 
     @Test("omitted bulletinPushEnabled does not appear on the wire at all")
     func requestOmitsNilBulletinPushEnabledEntirely() throws {
-        // `server/routes/user_devices.py` treats `null` as unchanged, like an absent key, but a
-        // PATCH body names only what the caller changed, and a `null` that today's handler
-        // happens to ignore is not that.
         let request = PushAPI.DevicePreferencesRequest(serverPushEnabled: true)
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -65,12 +58,8 @@ struct PushAPIDTOTests {
         #expect(object["bulletin_push_enabled"] == nil)
     }
 
-    // MARK: - Response: decodes the wire keys the backend actually sends
-
     @Test("decoding sync_assignment_reminders and sync_live_activity from the wire populates both properties")
     func responseDecodesNewFieldsFromTheirWireKeys() throws {
-        // Shape the backend actually returns (both fields non-null, per
-        // the `server_default` of migration `07b22743e0f1`).
         let json = Data("""
         {
           "device_id": "abc-123",
@@ -93,9 +82,6 @@ struct PushAPIDTOTests {
 
     @Test("a response from a backend without the two fields still decodes")
     func responseWithoutNewFieldsStillDecodes() throws {
-        // A backend without these columns (rolled back, or self-hosted) leaves them out of its
-        // PATCH answer. The client never reads them, so their absence must not turn a change the
-        // server applied into a reported failure.
         let json = Data("""
         {
           "device_id": "abc-123",
@@ -137,8 +123,6 @@ struct PushAPIDTOTests {
 
     @Test("a response without bulletin_push_enabled still decodes, leaving the field nil")
     func responseWithoutBulletinPushEnabledStillDecodes() throws {
-        // Like the two sync fields above: a backend without the column (rolled back, or
-        // self-hosted) omits it, which must not turn an applied change into a decode failure.
         let json = Data("""
         {
           "device_id": "abc-123",
@@ -155,10 +139,6 @@ struct PushAPIDTOTests {
 
         #expect(response.bulletinPushEnabled == nil)
     }
-
-    // MARK: - Register request: fields carried on every signed-in register
-    // call so a migrated value or a PATCH the server missed self-heals on
-    // the next launch, the way `cloud_sync_enabled` already does.
 
     @Test("encoding bulletin_push_enabled on the register request produces its wire key")
     func deviceRegisterRequestEncodesBulletinPushEnabledToItsWireKey() throws {

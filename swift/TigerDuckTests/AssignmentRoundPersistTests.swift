@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// What an assignment round writes, into a cache in a folder of its own: all it fetched while the
-/// account stays signed in and the round runs on, and nothing once either ends. Every id here is
-/// made up.
 @MainActor
 struct AssignmentRoundPersistTests {
     private static let account = "B11399001"

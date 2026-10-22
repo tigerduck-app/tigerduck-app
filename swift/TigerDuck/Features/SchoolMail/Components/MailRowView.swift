@@ -1,8 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// One mail in the list, styled like `BulletinCardView`: unread dot and semibold sender,
-/// an "external" pill, paperclip, `HH:mm` today / `M/d` otherwise.
 struct MailRowView: View {
     let summary: MailSummary
 
@@ -30,9 +28,6 @@ struct MailRowView: View {
                 }
                 Spacer(minLength: 0)
                 if summary.hasAttachments {
-                    // Labelled, not hidden: nothing else in the row says the mail has attachments,
-                    // and unlabelled, VoiceOver reads "paperclip". The unread dot above is hidden
-                    // instead, because the semibold sender already carries that.
                     Image(systemName: "paperclip")
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)

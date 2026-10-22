@@ -1,14 +1,6 @@
 import Observation
 import SwiftUI
 
-/// Screen for picking which backend the app talks to.
-///
-/// The backend is open source and self-hostable, so this is a supported user setting, not a
-/// developer hatch. Any host is accepted, subject to ``PushServerConfig/isOverrideAllowed(_:)``
-/// (HTTPS unless the address is private or loopback) and to ``EndpointHealthCheck`` finding a
-/// TigerDuck backend answering. Reached from Settings → Other settings on iPhone (every build),
-/// onboarding's sign-in page and the macOS Settings → Developer tab, so it has its own file: the
-/// rest of `DebugSettingsView.swift` is iPhone-only and DEBUG-only.
 struct DebugEndpointView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = DebugEndpointViewModel()
@@ -60,9 +52,6 @@ struct DebugEndpointView: View {
                         Task { await viewModel.save { await EndpointChangeSignOut(appState: appState).notes() } }
                     } label: {
                         if viewModel.isChecking {
-                            // Swapping the label keeps the row from resizing mid-probe and names
-                            // the wait: a bare spinner on "Save" reads as a hang while an
-                            // unreachable address sits out the 10 s timeout.
                             HStack(spacing: TigerDuckTheme.Spacing.sm) {
                                 ProgressView()
                                 Text(String(localized: "settings_api_endpoint_checking"))
@@ -120,7 +109,6 @@ struct DebugEndpointView: View {
 @MainActor
 @Observable
 final class DebugEndpointViewModel {
-    /// The endpoint store's calls, which tests replace.
     struct Backing {
         var currentOverride: () -> String? = { DebugEndpointStore.currentOverride() }
         var rejectedOverride: () -> String? = { DebugEndpointStore.storedButRejectedOverride() }
@@ -130,13 +118,9 @@ final class DebugEndpointViewModel {
         var clear: () -> Void = { DebugEndpointStore.clearOverride() }
     }
 
-    /// A change of endpoint the user is asked about first: a checked endpoint, or nil to go back to
-    /// the default.
     struct PendingChange: Equatable {
         let url: URL?
-        /// The typed https became http, as a private address takes it.
         var rewritten = false
-        /// What the sign-out deletes, in lines the alert adds.
         var notes: [String] = []
     }
 
@@ -146,11 +130,7 @@ final class DebugEndpointViewModel {
     private(set) var validationError: String?
     private(set) var statusNote: String?
     private(set) var effectiveURL: String
-    /// True while the health probe or a confirmed change is in flight. Disables both buttons: a
-    /// second Save landing mid-probe would race two writes to the same Keychain key with no
-    /// ordering guarantee.
     private(set) var isChecking = false
-    /// The change ``endpointChangeAlert(_:)`` asks about.
     var pendingChange: PendingChange?
     private let backing: Backing
 
@@ -164,8 +144,6 @@ final class DebugEndpointViewModel {
         self.effectiveURL = backing.effectiveURL().absoluteString
     }
 
-    /// Checks the typed endpoint. One that would move the app to another server waits for the
-    /// user's answer in ``pendingChange``, with `notes`; the one in use already is saved at once.
     func save(notes: () async -> [String] = { [] }) async {
         guard !isChecking else { return }
         isChecking = true
@@ -176,8 +154,6 @@ final class DebugEndpointViewModel {
         let submitted = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         switch await backing.check(submitted) {
         case .accepted(let url):
-            // Say so when the scheme was downgraded, rather than letting the field silently
-            // disagree with what was typed.
             let change = PendingChange(
                 url: url, rewritten: submitted.lowercased().hasPrefix("https://") && url.scheme == "http"
             )
@@ -193,7 +169,6 @@ final class DebugEndpointViewModel {
         }
     }
 
-    /// Asks before going back to the default, which moves the app to another server too.
     func resetToDefault(notes: () async -> [String] = { [] }) async {
         guard !isChecking else { return }
         isChecking = true
@@ -201,8 +176,6 @@ final class DebugEndpointViewModel {
         pendingChange = PendingChange(url: nil, notes: await notes())
     }
 
-    /// Makes `change` once the user agreed. `signOut` comes first and is waited for: the session
-    /// and its last calls belong to the endpoint in use, and no other server issued them.
     func confirm(_ change: PendingChange, signingOut signOut: () async -> Void) async {
         pendingChange = nil
         guard !isChecking else { return }
@@ -248,20 +221,14 @@ final class DebugEndpointViewModel {
     }
 }
 
-/// What an API endpoint change does to the accounts: the lines its alert adds and the sign-out
-/// that comes first, both through `AppState`.
 @MainActor
 struct EndpointChangeSignOut {
     let appState: AppState
 
-    /// Whether the change's sign-out ends a school account: one stored, or a backend session.
-    /// Without one, a full sign-out would only reset settings such as TigerSync for nobody.
     nonisolated static func endsSchoolAccount(hasCredentials: Bool, studentId: String?, backendSignedIn: Bool) -> Bool {
         hasCredentials || studentId != nil || backendSignedIn
     }
 
-    /// The lines the alert adds for what the sign-out deletes, as the sign-out's own confirmation
-    /// names them.
     func notes() async -> [String] {
         guard await endsSchoolAccount() else { return [] }
         var notes: [String] = []
@@ -272,9 +239,6 @@ struct EndpointChangeSignOut {
         return notes
     }
 
-    /// Signs out of every account signed in, and returns once the sign-out calls are done, an
-    /// earlier sign-out's too: a call still out would reach the new endpoint, which never issued
-    /// that session. With no school account, nothing else is reset.
     func run() async {
         let calls: Task<Void, Never>? = await endsSchoolAccount()
             ? appState.logoutNTUST() : appState.authService.signOutCalls
@@ -295,8 +259,6 @@ struct EndpointChangeSignOut {
 }
 
 extension View {
-    /// Asks before the API endpoint changes, and on Change signs out of every account first
-    /// (``DebugEndpointViewModel/confirm(_:signingOut:)``).
     func endpointChangeAlert(_ viewModel: DebugEndpointViewModel) -> some View {
         modifier(EndpointChangeAlert(viewModel: viewModel))
     }

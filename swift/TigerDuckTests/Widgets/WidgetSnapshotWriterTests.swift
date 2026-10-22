@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Only the app writes the widget snapshot, so whatever it carries must reach it through an
-/// event the writer observes; otherwise the widgets show the old value until the app is next
-/// brought to the foreground.
 @MainActor
 struct WidgetSnapshotWriterTests {
     private struct NoReload: WidgetReloadCoordinator.Reloader {
@@ -42,8 +39,6 @@ struct WidgetSnapshotWriterTests {
         withExtendedLifetime(writer) {}
     }
 
-    /// Every return to the app and every data change regenerates, and most change nothing a
-    /// widget shows; rewriting and reloading anyway would spend the widgets' reload budget.
     @Test func anUnchangedSnapshotIsNeitherRewrittenNorReloaded() throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
@@ -66,8 +61,6 @@ struct WidgetSnapshotWriterTests {
         withExtendedLifetime(writer) {}
     }
 
-    /// The widgets draw their own text in the new language, so a locale change reloads them
-    /// although the snapshot holds nothing that changed.
     @Test func aLocaleChangeReloadsAnUnchangedSnapshot() async throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
@@ -107,12 +100,10 @@ struct WidgetSnapshotWriterTests {
 
         #expect(store.readSnapshot() != nil)
         #expect(reloads.callCount == 1)
-        // Unchanged since, so another one sends nothing.
         writer.regenerateAndReloadNow()
         #expect(reloads.callCount == 1)
     }
 
-    /// The sync's own `dataDidUpdate` may have regenerated first and left its reload waiting.
     @Test func aReloadNowSendsTheReloadAnEarlierRegenerateLeftWaiting() async throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
@@ -133,14 +124,10 @@ struct WidgetSnapshotWriterTests {
         #expect(reloads.callCount == 1)
     }
 
-    // MARK: - Quiet days
-
     private static func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
         AcademicCalendar.calendar.date(from: DateComponents(year: year, month: month, day: day))!
     }
 
-    /// No class meets outside the term: between terms, or once the next term's timetable is in
-    /// but before its classes begin. The widgets and the Watch read these keys alone.
     @Test func daysOutsideTheTermAreQuiet() {
         let calendar = AcademicCalendar(
             revision: 1,
@@ -171,9 +158,6 @@ struct WidgetSnapshotWriterTests {
         #expect(keys.contains("2027-06-19"), "after the last published term")
     }
 
-    /// The days after the last published term never end, so the list stops a year and a week out.
-    /// With no term known every day counts as in term, so a device that never reached the backend
-    /// hides nothing.
     @Test func daysOutsideTheTermStopAYearAndAWeekOut() {
         let ended = AcademicCalendar(
             revision: 1,
@@ -190,9 +174,6 @@ struct WidgetSnapshotWriterTests {
         #expect(WidgetSnapshotWriter.quietDayKeys(calendar: .empty, optedIn: [], now: now).isEmpty)
     }
 
-    /// A snapshot is read for up to a year, and on each of those days the Next class widget looks
-    /// a week ahead for a class. On the year's last day, here also the term's last, the days after
-    /// the term lie past the year, and the widget must not offer a class on them.
     @Test func aYearOldSnapshotOffersNoClassAfterTheTerm() throws {
         let written = Self.day(2026, 10, 13).addingTimeInterval(9 * 3600)
         let lastDay = try #require(AcademicCalendar.calendar.date(byAdding: .day, value: 365, to: written))
@@ -224,8 +205,6 @@ struct WidgetSnapshotWriterTests {
         #expect(WidgetTimelineDerivation.derive(snapshot: snapshot, at: evening) == .noMoreClasses)
     }
 
-    /// Between terms the timetable's class for today does not meet, and in the week before the
-    /// next term the Next class widget offers that term's first class, named by its weekday.
     @Test func betweenTermsTheNextTermsFirstClassShows() {
         let calendar = AcademicCalendar(
             revision: 1,
@@ -235,8 +214,6 @@ struct WidgetSnapshotWriterTests {
             ],
             holidays: []
         )
-        // Thursday 10:40, inside the Thursday class, four days before the next term's first day,
-        // a Monday.
         let now = Self.day(2027, 2, 18).addingTimeInterval(10 * 3600 + 40 * 60)
         let snapshot = WidgetSnapshotBuilder.build(.init(
             courses: [
@@ -261,9 +238,6 @@ struct WidgetSnapshotWriterTests {
         }
     }
 
-    /// The Watch gets the same quiet days, may keep its last payload as long, and also looks a
-    /// week ahead: the evening before the term's last day it offers that day's class, and on the
-    /// last evening, a year after the payload, no class from the days after the term.
     @Test func aYearOldWatchPayloadOffersNoClassAfterTheTerm() throws {
         let written = Self.day(2026, 10, 13).addingTimeInterval(9 * 3600)
         let lastDay = try #require(AcademicCalendar.calendar.date(byAdding: .day, value: 365, to: written))
@@ -315,9 +289,6 @@ struct WidgetSnapshotWriterTests {
         #expect(store.readSnapshot() == nil)
     }
 
-    /// A language change behind the lock screen asks for a forced reload the lock drops. The
-    /// regenerate after the unlock is not forced and finds the snapshot unchanged, so it owes the
-    /// widgets that reload (https://github.com/tigerduck-app/tigerduck-app/issues/458).
     @Test func aForcedReloadAskedForBehindTheLockScreenComesAtTheUnlock() throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }

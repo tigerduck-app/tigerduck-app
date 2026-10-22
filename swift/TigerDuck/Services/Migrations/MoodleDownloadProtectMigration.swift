@@ -1,21 +1,10 @@
 import Foundation
 
-/// One-shot migration: gives the Moodle files on the device the protection a download gets since
-/// https://github.com/tigerduck-app/tigerduck-app/issues/444, closed while the device is locked.
-/// Copies from before kept the default class, readable behind the lock, and stay in use until
-/// Moodle lists a newer version, the user signs out or clears the downloads
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/503). Keep until no supported update
-/// can start from 2.4.x, whose downloads it mends.
 enum MoodleDownloadProtectMigration {
     private static let doneKey = "MoodleDownloadProtectMigration.v1.done"
-    /// Launches with the phone unlocked that still left a file without the class.
     private static let failedLaunchesKey = "MoodleDownloadProtectMigration.v1.failedLaunches"
-    /// A file that fails with the phone unlocked is unlikely to take the class at a later launch,
-    /// and each launch walks the whole folder again. Giving up leaves such a file as it was:
-    /// readable behind the lock and still used until Moodle lists a newer version.
     private static let maxFailedLaunches = 3
 
-    /// `protect` is replaced in tests, as a simulator keeps no protection class on a file.
     static func runIfNeeded(
         root: URL,
         isProtectedDataAvailable: Bool,
@@ -28,7 +17,6 @@ enum MoodleDownloadProtectMigration {
             return
         }
         AppLogger.breadcrumb("moodle download protection failed for \(failures) files", category: "moodle")
-        // Behind the lock a file may fail for want of the keys, which says nothing about the next launch.
         guard isProtectedDataAvailable else { return }
         let failedLaunches = UserDefaults.standard.integer(forKey: failedLaunchesKey) + 1
         UserDefaults.standard.set(failedLaunches, forKey: failedLaunchesKey)
@@ -38,8 +26,6 @@ enum MoodleDownloadProtectMigration {
         }
     }
 
-    /// The files and folders left without the class. One that cannot be reached, as before the
-    /// first unlock after a restart, counts; one deleted meanwhile needs nothing.
     private nonisolated static func failureCount(in root: URL, protect: (URL) throws -> Void) -> Int {
         guard FileManager.default.fileExists(atPath: root.path) else { return 0 }
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileProtectionKey]
@@ -70,8 +56,6 @@ enum MoodleDownloadProtectMigration {
         try FileManager.default.setAttributes(protectedAttributes(of: file), ofItemAtPath: file.path)
     }
 
-    /// The class, with the file's own modification date written back: `MoodleFileDownloads`
-    /// reads the date as the version Moodle listed.
     nonisolated static func protectedAttributes(of file: URL) throws -> [FileAttributeKey: Any] {
         var attributes: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUnlessOpen]
         attributes[.modificationDate] = try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]
@@ -84,7 +68,6 @@ enum MoodleDownloadProtectMigration {
             && [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code)
     }
 
-    /// Set from the enumerator's error handler, which it keeps.
     private nonisolated final class Failures {
         private(set) var count = 0
         func record() { count += 1 }

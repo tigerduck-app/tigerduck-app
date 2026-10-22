@@ -1,13 +1,6 @@
 #if DEBUG && os(iOS)
 import SwiftUI
 
-/// A What's New flow with one page of every template and a summary, for
-/// exercising the sheet before any release registers real pages.
-/// Presented from `Settings → Developer → Triggers`. The copy comes in
-/// both of What's New's languages, so switching the app language shows
-/// the zh-Hant / English split too; every answer lands in
-/// ``WhatsNewSampleState`` — nothing here touches a real setting or a
-/// real permission.
 enum WhatsNewSampleFlow {
     static func presentation() -> WhatsNewPresentation {
         let language = WhatsNewLanguage.current
@@ -94,8 +87,6 @@ enum WhatsNewSampleFlow {
         ]
     }
 
-    /// Stands in for a `whatsnew.json` entry already resolved to one
-    /// locale, the way ``WhatsNewRepository`` hands it over.
     private static func summary(_ language: WhatsNewLanguage) -> WhatsNewRepository.ResolvedWhatsNew {
         func text(_ en: String, _ zhHant: String) -> String {
             WhatsNewText(en: en, zhHant: zhHant).resolved(for: language)
@@ -124,8 +115,6 @@ enum WhatsNewSampleFlow {
     }
 }
 
-/// Where the sample's answers go, so revisiting a page shows the last
-/// pick without writing any real setting.
 @Observable
 final class WhatsNewSampleState {
     static let shared = WhatsNewSampleState()
@@ -160,7 +149,6 @@ private struct SampleInboxDemo: View {
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.xxl)
         .task {
-            // Rows drop in one at a time, then the inbox empties and refills.
             while !Task.isCancelled {
                 for row in 1...senders.count {
                     try? await Task.sleep(for: .milliseconds(450))

@@ -113,7 +113,6 @@ struct AfterFirstUnlockTests {
         withExtendedLifetime(launch) {}
     }
 
-    /// A fresh install has nothing stored, and its first launch comes after an unlock.
     @Test("A launch after the first unlock builds without asking whether stored data reads back")
     func aLaunchAfterTheUnlockDoesNotAskForStoredData() {
         var asked = false
@@ -163,8 +162,6 @@ struct AfterFirstUnlockTests {
         })
     }
 
-    /// The app's own launch, held back: its build would run the fresh-install purge and seed
-    /// What's New, both writes to stored data. Real Defaults: docs/decisions/0020-real-defaults-gate.md.
     @Test("TigerDuck's launch before the first unlock writes no stored data")
     func theAppsHeldBackLaunchWritesNothing() async {
         let installed = AppConstants.UserDefaultsKeys.appHasBeenInstalled
@@ -179,8 +176,6 @@ struct AfterFirstUnlockTests {
             }
             UserDefaults.standard.removeObject(forKey: installed)
             Defaults[.lastShownWhatsNewVersion] = nil
-            // Were the hold-back broken, a real `AppState` would be built here: before onboarding
-            // it contacts no backend.
             Defaults[.hasCompletedOnboarding] = false
 
             SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
@@ -193,8 +188,6 @@ struct AfterFirstUnlockTests {
         }
     }
 
-    /// The app's own launch with its real read-back check: no install flag ends the process at the
-    /// unlock and builds nothing. Real Defaults: docs/decisions/0020-real-defaults-gate.md.
     @Test("TigerDuck's held-back launch with nothing stored ends the process at the unlock")
     func theAppsHeldBackLaunchEndsWithoutStoredData() async {
         let installed = AppConstants.UserDefaultsKeys.appHasBeenInstalled

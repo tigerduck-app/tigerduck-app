@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// A course's materials in the order of its Moodle page, which teachers arrange by week or topic,
-/// so the screen keeps Moodle's sections rather than sorting by date or name.
 struct MoodleMaterialsView: View {
     let store: MoodleCourseStore
 

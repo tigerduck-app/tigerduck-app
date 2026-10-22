@@ -7,7 +7,6 @@ final class NextClassProviderTests: XCTestCase {
     private var tempDir: URL!
 
     override func setUpWithError() throws {
-        // `AppClock` is process-wide, so each test starts and leaves it on the real clock.
         AppClock.setOverride(nil)
         tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -38,7 +37,6 @@ final class NextClassProviderTests: XCTestCase {
         )
     }
 
-    /// Mon 2026-05-11 at `hhmm`, Taipei time; `dayOffset` moves to a later day.
     private func mondayAt(_ hhmm: String, dayOffset: Int = 0) -> Date {
         let parts = hhmm.split(separator: ":").compactMap { Int($0) }
         let day = DateComponents(year: 2026, month: 5, day: 11 + dayOffset, hour: parts[0], minute: parts[1])
@@ -121,8 +119,6 @@ final class NextClassProviderTests: XCTestCase {
         XCTAssertEqual(beforeC?.duration, 600)
     }
 
-    /// On today's date, the next class day's 08:10 would read as 20 minutes off at 07:50 on a
-    /// holiday, and as already started on a Friday evening.
     func test_relevance_staysLowForAClassOnALaterDay() {
         let monday = course("A", weekday: 1, start: "08:10", end: "09:00")
         let tuesday = course("B", weekday: 2, start: "08:10", end: "09:00")
@@ -149,7 +145,6 @@ final class NextClassProviderTests: XCTestCase {
         XCTAssertEqual(entry?.relevance?.duration, 1_200)
     }
 
-    /// A ticking override keeps a fixed offset between the app clock and the real one.
     func test_timeline_datesEntriesAndTheReloadOnTheRealClock() {
         let now = mondayAt("09:00")
         AppClock.setOverride(ClockOverride(
@@ -175,7 +170,6 @@ final class NextClassProviderTests: XCTestCase {
         XCTAssertEqual(AppClock.now(), fake.instant)
     }
 
-    /// A newer Watch build can leave a preset this one does not know in the cache.
     func test_loadSnapshot_unknownVisualPreset_keepsTheClasses() throws {
         let encoded = try JSONEncoder().encode(snapshot([course("A", weekday: 1, start: "10:20", end: "12:10")]))
         var cached = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])

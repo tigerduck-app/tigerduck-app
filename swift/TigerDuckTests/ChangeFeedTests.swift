@@ -85,8 +85,6 @@ struct ChangeFeedWatermarkTests {
     }
 }
 
-/// Each client gets an `APIVersionGate` of its own: the shared one latches for the process, and
-/// `SettingsDocumentClientTests` owns it.
 @MainActor
 struct ChangeFeedClientTests {
     @MainActor

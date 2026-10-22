@@ -1,21 +1,10 @@
 import Foundation
 import os
 
-/// Client for `GET/PUT /v3/settings/{namespace}` (`server/routes/settings_docs.py`).
 ///
-/// Copies the requests, auth header and errors of `PushAPIClient`
-/// (`Services/Push/PushAPIClient.swift`) rather than adding a second networking
-/// stack: an ephemeral session, `Bearer` from `authHeaderProvider` and `PushAPIError`.
-/// The document stays opaque `Data` for the caller to decode; this client wraps it
-/// in `schema_version`, `document` and `base_revision`, and unwraps `document` and
-/// `revision` from the reply, or from its `server` object on a 409.
 actor SettingsDocumentClient {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    /// Returns a `Bearer <token>` string for the v3 JWT auth flow, or `nil`
-    /// when the user is not logged in. See `PushAPIClient.authHeaderProvider`
-    /// for why unauthenticated requests are still attempted rather than
-    /// short-circuited client-side.
     private let authHeaderProvider: @Sendable () async -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Settings.API")
 
@@ -54,7 +43,6 @@ actor SettingsDocumentClient {
     }
 
     /// PUT `document` to `namespace`.
-    ///
     /// `baseRevision: nil` asks the backend to create the document; it
     /// 409s if one already exists. A non-nil value does a compare-and-swap
     /// and 409s if the server's revision has moved on since. Either way a
@@ -107,18 +95,10 @@ actor SettingsDocumentClient {
         return .written(revision: revision)
     }
 
-    // MARK: - Internals
-
     private func documentURL(for namespace: String) -> URL {
         baseURLProvider().appendingPathComponent("settings/\(Self.percentEncoded(namespace))")
     }
 
-    /// Every JSON failure in this client surfaces as
-    /// `PushAPIError.decodingFailed`, never as a raw `NSCocoaErrorDomain`
-    /// 3840 from `JSONSerialization`. The class's contract is that
-    /// transport and decoding failures come back as `PushAPIError`, and a
-    /// body that is not JSON at all — a proxy's HTML error page, a
-    /// truncated response — is the most likely way to hit one.
     private static func jsonDictionary(_ data: Data, context: @autoclosure () -> String) throws -> [String: Any] {
         let parsed: Any
         do {
@@ -170,9 +150,6 @@ actor SettingsDocumentClient {
         return .conflict(document: try documentData(documentObject), revision: revision)
     }
 
-    /// Attach the `Authorization: Bearer <token>` header when
-    /// `authHeaderProvider` returns a non-nil value — same no-op-when-
-    /// signed-out behaviour as `PushAPIClient.applyAuth`.
     private func applyAuth(to request: inout URLRequest) async {
         guard let header = await authHeaderProvider(), !header.isEmpty else { return }
         request.setValue(header, forHTTPHeaderField: "Authorization")
@@ -183,9 +160,6 @@ actor SettingsDocumentClient {
         guard let http = response as? HTTPURLResponse else {
             throw PushAPIError.invalidResponse
         }
-        // Our own backend, so every status goes to `APIVersionGate`, which is scoped by
-        // server, not endpoint. Reported here, not in `httpStatusError`, because the 404
-        // on read and 409 on write never reach that helper. Only 410 latches.
         await APIVersionGate.shared.note(statusCode: http.statusCode)
         return (data, http.statusCode)
     }
@@ -207,9 +181,6 @@ actor SettingsDocumentClient {
         return URLSession(configuration: config)
     }
 
-    /// Same allowlist as `PushAPIClient.percentEncoded`. Settings
-    /// namespaces are fixed identifiers (`SETTINGS_NAMESPACES`), but path
-    /// segments get the same treatment on principle.
     private static func percentEncoded(_ value: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
         guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
@@ -220,13 +191,6 @@ actor SettingsDocumentClient {
     }
 }
 
-/// Outcome of `SettingsDocumentClient.write`. A 409 is a result, not a thrown
-/// error, because the caller needs the winning server document to merge against.
-///
-/// `nonisolated` because the target defaults unannotated types to `@MainActor`
-/// (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`), and this value is returned from
-/// the `SettingsDocumentClient` actor, so its `Equatable` conformance must work
-/// from any isolation domain.
 nonisolated enum SettingsWriteResult: Equatable, Sendable {
     case written(revision: Int)
     case conflict(document: Data, revision: Int)

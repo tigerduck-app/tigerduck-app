@@ -14,8 +14,6 @@ import Valet
 /// `.whenUnlockedThisDeviceOnly` valet and lock that.
 @Suite(.serialized)
 struct SecureStoreLockedReadTests {
-    /// What registering a push-started Live Activity reads: the backend
-    /// session, the device id, and the endpoint the device was pointed at.
     static let readWhileLocked = [
         AuthTokenManager.accessTokenKey,
         AuthTokenManager.refreshTokenKey,
@@ -24,10 +22,8 @@ struct SecureStoreLockedReadTests {
         DebugEndpointStore.keychainKey,
     ]
 
-    /// Read with them, but never stored in ``shared``, so no copy there awaits a move.
     static let readWhileLockedSinceTheMove = [AuthTokenManager.refreshTokenUsesKey, AuthTokenManager.departingSessionKey]
 
-    /// Nothing that runs in the background needs these.
     static let unlockedOnly = [
         AppConstants.KeychainKeys.studentId,
         AppConstants.KeychainKeys.password,
@@ -69,9 +65,6 @@ struct SecureStoreLockedReadTests {
     func aSaveOverAnEarlierBuildsReadableCopyReplacesIt(key: String) throws {
         SecureStore.delete(key: key)
         defer { SecureStore.delete(key: key) }
-        // Unlocked, the earlier build's copy is readable: the save is the
-        // newer value and takes its place. (Locked, the save is refused so
-        // a stand-in cannot bury it: `aSecretNotYetMovedIsKeptForAnUnlockedRead`.)
         try earlierBuildsValet.setObject(Data("old".utf8), forKey: key)
 
         try SecureStore.save(Data("new".utf8), forKey: key)
@@ -80,17 +73,10 @@ struct SecureStoreLockedReadTests {
         #expect(accessibilityClasses(of: key) == [afterFirstUnlock])
     }
 
-    // MARK: Behind a locked screen
-
     /// Whether a locked phone also reports an item it does not hold as
     /// unreadable. A simulator cannot say, so the locked tests take both.
     static let absentReadsFailWhileLocked = [false, true]
 
-    /// The case the move is for. Once moved, a locked launch reads the
-    /// session and the device id, and when it refreshes the session, the
-    /// rotated refresh token is saved; lost, the next refresh would send
-    /// the spent one. That cannot hang on how the locked phone reports the
-    /// earlier build's copy that the move took away.
     @Test(arguments: readWhileLocked, absentReadsFailWhileLocked)
     func aMovedSecretCanBeReadAndReplacedWhileLocked(key: String, absentReadsFail: Bool) throws {
         SecureStore.delete(key: key)
@@ -99,7 +85,7 @@ struct SecureStoreLockedReadTests {
 
         try SecureStore.$sharedForTesting.withValue(earlierBuilds) {
             try earlierBuilds.setObject(Data("old".utf8), forKey: key)
-            _ = SecureStore.load(key: key)  // the first unlocked read moves it
+            _ = SecureStore.load(key: key)
 
             earlierBuilds.isLocked = true
             #expect(SecureStore.load(key: key) == Data("old".utf8))
@@ -108,10 +94,6 @@ struct SecureStoreLockedReadTests {
         }
     }
 
-    /// A launch behind a locked screen can find a stored session with no count of its refresh
-    /// token's sends. A refresh then counts each send, or a relaunch could send a token two lost
-    /// replies used a third time
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/604).
     @Test(arguments: absentReadsFailWhileLocked)
     func aLockedLaunchAfterTheUpdateCountsTheRefreshTokensSends(absentReadsFail: Bool) async throws {
         let keys = [
@@ -147,10 +129,6 @@ struct SecureStoreLockedReadTests {
         }
     }
 
-    /// The first launch after an update is often a locked one. It cannot
-    /// read what an earlier build kept, so it takes the secret for absent —
-    /// `PushIdentity` mints a fresh device id and saves it. That stand-in
-    /// must not take the real value's place.
     @Test(arguments: readWhileLocked, absentReadsFailWhileLocked)
     func aSecretNotYetMovedIsKeptForAnUnlockedRead(key: String, absentReadsFail: Bool) throws {
         SecureStore.delete(key: key)
@@ -172,7 +150,6 @@ struct SecureStoreLockedReadTests {
             #expect(SecureStore.load(key: key) == Data("real".utf8))
             #expect(earlierBuilds.storedObject(forKey: key) == nil)
 
-            // Moved: the next locked launch reads it.
             earlierBuilds.isLocked = true
             #expect(SecureStore.load(key: key) == Data("real".utf8))
         }
@@ -198,8 +175,6 @@ struct SecureStoreLockedReadTests {
         }
     }
 
-    /// `loadIfReadable` tells a read the Keychain refused from one that found nothing, which
-    /// `load` answers alike, so a cache of the answer keeps only the second.
     @Test func aReadWhileLockedThrowsAndAnAbsentItemDoesNot() throws {
         let key = AppConstants.KeychainKeys.studentId
         SecureStore.delete(key: key)
@@ -220,9 +195,6 @@ struct SecureStoreLockedReadTests {
         }
     }
 
-    /// The endpoint override keeps a read that found nothing until an unlock or a return to the
-    /// app, which a launch behind the lock may not get before its next request. An earlier build's
-    /// copy it cannot read yet is unreadable, not absent (https://github.com/tigerduck-app/tigerduck-app/issues/502).
     @Test(arguments: readWhileLocked, absentReadsFailWhileLocked)
     func aSecretNotYetMovedIsUnreadableWhileLocked(key: String, absentReadsFail: Bool) throws {
         SecureStore.delete(key: key)
@@ -255,7 +227,6 @@ struct SecureStoreLockedReadTests {
         }
     }
 
-    /// Where every earlier build wrote every secret.
     private let earlierBuildsValet = Valet.valet(
         with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
         accessibility: .whenUnlockedThisDeviceOnly
@@ -264,7 +235,6 @@ struct SecureStoreLockedReadTests {
     private let afterFirstUnlock = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
     private let whenUnlocked = kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
 
-    /// The protection class of every keychain item stored under `key`.
     private func accessibilityClasses(of key: String) -> [String] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -307,7 +277,6 @@ private final class LockablePhoneKeychain: KeychainStore, @unchecked Sendable {
         set { lock.withLock { locked = newValue } }
     }
 
-    /// What it holds for `key`, lock or not.
     func storedObject(forKey key: String) -> Data? {
         lock.withLock { items[key] }
     }

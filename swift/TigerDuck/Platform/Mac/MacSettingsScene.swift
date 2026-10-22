@@ -1,14 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// Mac-native Settings window (⌘,).
-///
-/// Covers the `AppState` settings that mean something on a Mac: appearance (accent and
-/// course palette), language, display and abbreviation toggles, link opening, the API
-/// endpoint override, TigerSync, and the Mac-only sidebar pins and their order. Push, Live
-/// Activity and library settings are left out as iOS-only or in `AppFeature.macHiddenFeatures`.
-///
-/// Debug builds add a Developer tab so QA can scrub fake time on the Mac as on the iPhone.
 struct MacSettingsScene: View {
     @Environment(AppState.self) private var appState
 
@@ -34,8 +26,6 @@ struct MacSettingsScene: View {
                 .tabItem { Label(String(localized: "settings_section_about"), systemImage: "info.circle") }
         }
         .frame(width: 580, height: 480)
-        // Separate scene from MacRootView, so the theme tint has to be
-        // applied here too or `.tint`-styled icons fall back to the system accent.
         .tint(appState.accentColor)
     }
 }

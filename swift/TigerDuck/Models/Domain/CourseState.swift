@@ -1,14 +1,6 @@
 import Foundation
 
 enum CourseState: Equatable {
-    /// Every slot whose window contains the resolved time.
-    ///
-    /// A list because two courses can clash (occupy the same period), and
-    /// keeping only the first match would silently drop one, picked by
-    /// timeline order rather than anything the reader can see. Ordered by
-    /// start, so a consumer that wants one class (a Live Activity shows one)
-    /// takes `first` and gets the earliest. Never empty: the other cases cover
-    /// having no class.
     case inClass([CourseTimeSlot])
     case between(previous: CourseTimeSlot?, next: CourseTimeSlot?)
     case beforeFirst(next: CourseTimeSlot)

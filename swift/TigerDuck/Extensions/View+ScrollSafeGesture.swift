@@ -7,11 +7,6 @@ extension View {
     /// Wraps the view in a borderless `Button`, whose tap wins iOS 18 gesture arbitration against
     /// an enclosing scroll view. `.contentShape` keeps the whole frame, transparent padding
     /// included, hittable, and `Button` supplies the `.isButton` accessibility trait.
-    ///
-    /// `onPressChanged` reports the press state: `true` at touch-down, before the action fires on
-    /// release, and `false` when the press lifts or cancels. Callers running a
-    /// `.simultaneousGesture` drag alongside use the touch-down edge as a per-interaction reset
-    /// that does not depend on callback ordering.
     func scrollSafeTapAction(
         onPressChanged: ((Bool) -> Void)? = nil,
         _ action: @escaping () -> Void
@@ -22,9 +17,6 @@ extension View {
         .buttonStyle(ScrollSafeButtonStyle(onPressChanged: onPressChanged))
     }
 
-    /// A 0.5 s long-press that enters an edit / reorder mode, attached as a
-    /// `.simultaneousGesture` so it never blocks child `Button` taps. Pass the
-    /// caller's `reduceMotion` so the enter animation honors the setting.
     func longPressToEdit(
         reduceMotion: Bool,
         perform action: @escaping () -> Void
@@ -37,16 +29,11 @@ extension View {
         )
     }
 
-    /// A tap anywhere on the view, attached as a `.simultaneousGesture` so the buttons and links
-    /// inside it still get their first tap.
     func simultaneousTapGesture(_ action: @escaping () -> Void) -> some View {
         simultaneousGesture(TapGesture().onEnded(action))
     }
 }
 
-/// Visually inert button style (no border, background, or press dimming —
-/// identical to `.plain` for the content cards `scrollSafeTapAction` wraps)
-/// that additionally forwards `configuration.isPressed` so callers can observe
 /// the press lifecycle. Reading `isPressed` requires a `ButtonStyle`; there is
 /// no plain-modifier equivalent.
 private struct ScrollSafeButtonStyle: ButtonStyle {

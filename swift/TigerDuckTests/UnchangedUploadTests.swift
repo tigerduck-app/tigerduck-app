@@ -1,5 +1,3 @@
-// `PushCoordinator.uploadCoursesIfChanged` and `uploadAssignmentsIfChanged`: every course fetch
-// and every assignment round used to upload its whole list, unchanged or not.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -133,7 +131,6 @@ struct UnchangedUploadTests {
         #expect(ledger.isDue(other, fingerprint: 3, now: now))
     }
 
-    /// A send that records which list went and parks while `holds`, until `release()`.
     @MainActor
     private final class Sends {
         private(set) var sent: [Int] = []
@@ -167,7 +164,6 @@ struct UnchangedUploadTests {
         let edit = Task { try await coordinator.uploadIfChanged(key, fingerprint: 2, always: false, isCurrent: { true }) { await sends.send(2) } }
         try await waitUntil { sends.isParked }
         let undo = Task { try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) { await sends.send(1) } }
-        // Let the undo reach its check while the edit's request is still out.
         for _ in 0..<50 { await Task.yield() }
         #expect(sends.isParked)
         sends.release()
@@ -204,4 +200,3 @@ struct UnchangedUploadTests {
         #expect(sends.sent == [1])
     }
 }
-

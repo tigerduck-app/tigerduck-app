@@ -9,11 +9,10 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
 
     struct OngoingInfo: nonisolated Equatable, Sendable {
         let course: SnapshotCourse
-        let startTime: String              // "HH:mm"
+        let startTime: String
         let endTime: String
-        let periodRange: String            // "B" or "B–C"
-        let progress: Double               // 0.0…1.0
-        /// This block's room, not every room of the course.
+        let periodRange: String
+        let progress: Double
         let classroom: String
     }
 
@@ -25,16 +24,9 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
         let classroom: String
     }
 
-    /// Which day a ``NextInfo`` falls on, relative to the instant the state was derived for.
-    ///
-    /// `tomorrowFirst` scans up to seven days ahead, so it is often not tomorrow: with no
-    /// weekend classes a Friday-evening viewer sees Monday, and a viewer whose only class today
-    /// was cancelled sees the same weekday next week. The view tells these apart so it does not
-    /// caption them "Tomorrow". Android does the same in `NextClassContent.futureDayLabel`.
     enum Day: nonisolated Equatable, Sendable {
         case today
         case tomorrow
-        /// Further out than tomorrow. 1 = Monday … 7 = Sunday.
         case later(weekday: Int)
     }
 }
@@ -49,14 +41,8 @@ enum WidgetTimelineDerivation {
         let order = snapshot.periodOrder
         let todayKey = dateKey(for: date)
 
-        // No class meets on a quiet day, such as a school holiday, so today has no ongoing or
-        // later class, but step 3 still offers the next class day, as on any evening. A nil set
-        // means a snapshot from a build without holidays: treat it as no quiet days.
         let isQuietToday = snapshot.quietDayKeys?.contains(todayKey) == true
 
-        // 1. Ongoing: only when `nowMin` falls inside a contiguous run of scheduled periods.
-        // Non-adjacent slots (A and C, B unscheduled) form separate runs, so the gap falls
-        // through to the next-class branch instead of keeping the course ongoing.
         let ongoing = snapshot.courses.compactMap { course -> WidgetDerivedState.OngoingInfo? in
             if isQuietToday || course.skippedDates.contains(todayKey) { return nil }
             guard let raw = course.schedule[weekday] else { return nil }
@@ -84,7 +70,6 @@ enum WidgetTimelineDerivation {
         }
         if !ongoing.isEmpty { return .ongoing(ongoing) }
 
-        // 2. Next today (any course whose first period today starts in the future)
         let candidates = snapshot.courses.compactMap { course -> (SnapshotCourse, Int, String)? in
             if isQuietToday || course.skippedDates.contains(todayKey) { return nil }
             guard let raw = course.schedule[weekday] else { return nil }
@@ -106,9 +91,6 @@ enum WidgetTimelineDerivation {
             ))
         }
 
-        // 3. First class on the next day that has one, up to a week ahead. `offset == 7` is
-        // today's weekday, so a one-class-a-week timetable does not drop to "no more classes"
-        // when that class is cancelled. Each result carries its `Day` for an accurate caption.
         let calendar = WidgetTaipei.calendar
         for offset in 1...7 {
             let target = ((weekday - 1 + offset) % 7) + 1
@@ -151,10 +133,8 @@ enum WidgetTimelineDerivation {
         return course.classroom(weekday: weekday, periods: block)
     }
 
-    /// One row of the Today widget: one contiguous block of a course's periods.
     struct TodayRow: nonisolated Equatable, Identifiable, Sendable {
         let course: SnapshotCourse
-        /// Never empty, in `periodOrder`.
         let periods: [String]
         let startTime: String
         let endTime: String
@@ -164,9 +144,6 @@ enum WidgetTimelineDerivation {
         var periodRange: String { periods.count > 1 ? "\(periods[0])–\(periods[periods.count - 1])" : periods[0] }
     }
 
-    /// Today's rows in start order, one per contiguous block, so a course meeting at periods
-    /// 3-4 and 7-8 gets two rows, as `derive` and the Watch payload split it. Courses skipped
-    /// today are left out, and a school holiday has no rows, as `derive` has no class today.
     static func todayRows(snapshot: WidgetSnapshot, at date: Date) -> [TodayRow] {
         let weekday = weekdayFor(date)
         let todayKey = dateKey(for: date)
@@ -190,11 +167,6 @@ enum WidgetTimelineDerivation {
         }
     }
 
-    /// `yyyy-MM-dd` in Asia/Taipei — must mirror `SDCourse.isoFormatter`
-    /// so a `Set<String>` lookup against `SnapshotCourse.skippedDates`
-    /// matches. Both sides pin to Taipei so a student traveling abroad
-    /// still sees their skipped-class state apply on the correct
-    /// Taiwan calendar day.
     static func dateKey(for date: Date) -> String {
         return Self.dateKeyFormatter.string(from: date)
     }
@@ -208,13 +180,6 @@ enum WidgetTimelineDerivation {
         return f
     }()
 
-    // MARK: - Helpers
-
-    /// Returns 1=Mon … 7=Sun. Pinned to gregorian + Asia/Taipei so neither
-    /// device locale calendars (ROC, Buddhist) nor the device timezone
-    /// shift weekday math against NTUST's gregorian-Taipei schedule. A
-    /// traveler in London at 22:00 Saturday is on Sunday 06:00 in Taipei,
-    /// and the widget must agree.
     static func weekdayFor(_ date: Date) -> Int {
         let raw = WidgetTaipei.calendar.component(.weekday, from: date)
         return raw == 1 ? 7 : raw - 1
@@ -234,8 +199,6 @@ enum WidgetTimelineDerivation {
         return h * 60 + m
     }
 
-    /// Sort a list of period IDs by their position in `order`. Period IDs not
-    /// present in `order` sink to the end (Int.max placeholder). Extracted to
     /// keep the call sites simple — inlining this in `.sorted(by:)` triggers
     /// "unable to type-check in reasonable time" because of the optional
     /// `firstIndex(of:)` + `?? .max` interaction with surrounding closures.
@@ -247,12 +210,6 @@ enum WidgetTimelineDerivation {
         }
     }
 
-    /// Split a chronologically sorted list of period IDs into contiguous runs
-    /// where each successive entry occupies the next slot in `order`. For
-    /// `order = ["A","B","C","D"]` and `periods = ["A","C","D"]` the result is
-    /// `[["A"], ["C","D"]]`, so the unscheduled gap at `B` is preserved
-    /// instead of being absorbed into a single envelope. Periods missing from
-    /// `order` always start a new run.
     static func contiguousRuns(_ periods: [String], by order: [String]) -> [[String]] {
         var runs: [[String]] = []
         var current: [String] = []
@@ -288,13 +245,6 @@ extension WidgetTimelineDerivation {
             ?? startOfDay.addingTimeInterval(86_400)
     }
 
-    /// Returns the dates at which the widget should refresh, deduplicated and sorted ascending:
-    ///   - `now` itself
-    ///   - the start and the end of every remaining period today
-    ///   - midnight at the start of tomorrow
-    ///
-    /// Callers build timeline entries from these so each entry's `derive(at:)` lands on a
-    /// boundary (period start or end, day change) and no refresh is spent mid-period.
     static func entryDates(
         snapshot: WidgetSnapshot,
         after now: Date,

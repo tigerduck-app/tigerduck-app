@@ -4,7 +4,6 @@ import WatchConnectivity
 import Combine
 import os
 
-/// Narrow protocol over WCSession so we can stub it in tests.
 protocol WatchSessionPushing: AnyObject {
     var isPaired: Bool { get }
     var isWatchAppInstalled: Bool { get }
@@ -41,14 +40,10 @@ final class WatchSyncCoordinator: NSObject {
     private var payloadSource: (@MainActor () -> Payload)?
     private var isActivated = false
     private let debounceInterval: Duration = .milliseconds(500)
-    /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
     private let sleep: @Sendable (Duration) async -> Void
     private let republishCredentials: @MainActor () -> Void
     private let isProtectedDataAvailable: @MainActor () -> Bool
-    /// A sync request arrived while the keychain could not be read, so its credentials are
-    /// still owed to the Watch, which does not ask again for them.
     private var owesCredentials = false
-    /// A push asked for behind the lock screen, sent at the unlock.
     private var owesStatePush = false
     private let notificationCenter: NotificationCenter
     private var observers: [NSObjectProtocol] = []
@@ -68,7 +63,6 @@ final class WatchSyncCoordinator: NSObject {
             ?? { UIApplication.shared.isProtectedDataAvailable }
         self.notificationCenter = notificationCenter
         super.init()
-        // An unlock may come while the app is suspended, so a return to the app retries too.
         observers = [
             UIApplication.protectedDataDidBecomeAvailableNotification,
             UIApplication.didBecomeActiveNotification,
@@ -92,17 +86,12 @@ final class WatchSyncCoordinator: NSObject {
         wcSession.activate()
     }
 
-    /// Sets what `pushCurrentState()` reads at each push. Installed at launch, so a sync
-    /// request from the Watch is answered when iOS launches the app in the background,
-    /// where no scene and so no `WatchSyncBridge` exists.
     func setPayloadSource(_ source: @escaping @MainActor () -> Payload) {
         payloadSource = source
     }
 
     func pushCurrentState(force: Bool = false) {
         guard let payloadSource else { return }
-        // The caches the payload reads cannot be opened behind the lock screen, and an empty
-        // payload would clear the Watch's classes.
         guard isProtectedDataAvailable() else {
             owesStatePush = true
             return
@@ -110,16 +99,12 @@ final class WatchSyncCoordinator: NSObject {
         scheduleDebouncedPush(payloadSource(), force: force)
     }
 
-    /// The Watch asked for a sync, so it may have lost what it had: send the current state
-    /// even if unchanged, and the library credentials, which go out only on such a request.
     func answerSyncRequest() {
         pushCurrentState(force: true)
         owesCredentials = true
         sendOwed()
     }
 
-    /// Sends what waited for the unlock: a Watch message can launch the app behind the lock
-    /// screen, where neither the caches nor the library password can be read.
     private func sendOwed() {
         guard isProtectedDataAvailable() else { return }
         if owesStatePush {
@@ -132,8 +117,6 @@ final class WatchSyncCoordinator: NSObject {
         }
     }
 
-    /// Push immediately (used in tests). Production code uses
-    /// `scheduleDebouncedPush(...)` to coalesce bursts.
     func push(
         courses: [SDCourse],
         customNames: [String: String],
@@ -151,8 +134,6 @@ final class WatchSyncCoordinator: NSObject {
                 visualPreset: visualPreset, quietDays: quietDays
             )
         }
-        // Only the stamp would differ, and every update wakes the Watch. A snapshot still
-        // pending, such as a failed answer to the Watch's request, goes out again instead.
         if !force, pendingSnapshot == nil, let last = lastDelivered, snapshot(last.syncedAt) == last {
             return
         }
@@ -204,8 +185,6 @@ final class WatchSyncCoordinator: NSObject {
     }
 }
 
-// MARK: - WCSessionDelegate (production only; ignored when session is a stub)
-
 extension WatchSyncCoordinator: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession,
@@ -254,9 +233,6 @@ extension WatchSyncCoordinator: WCSessionDelegate {
         Task { @MainActor in replyHandler(await Self.libraryQRReply()) }
     }
 
-    /// The answer to the Watch's library code request. A code fetched while the library account
-    /// signed out or changed is the departing account's, so it reaches neither the cache nor the
-    /// Watch.
     static func libraryQRReply(
         cache: LibraryQRCache = .shared,
         generation: @MainActor () -> Int = { LibraryService.loginGeneration },

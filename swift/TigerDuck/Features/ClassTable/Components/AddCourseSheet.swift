@@ -6,12 +6,6 @@ struct AddCourseSheet: View {
 
     let semester: String
     let existingCourseNos: Set<String>
-    /// Returns `true` iff the course was actually persisted. The sheet
-    /// uses this signal to gate `sessionAddedCourseNos` — without it, a
-    /// rejected add (duplicate, triple-period conflict, ...) would still
-    /// flip the row to a green checkmark and route the next tap through
-    /// `onRemove`, which on macOS deletes the existing user-added course
-    /// for the selected semester.
     let onAdd: (SDCourse) -> Bool
     var onRemove: ((String) -> Void)? = nil
 
@@ -20,8 +14,6 @@ struct AddCourseSheet: View {
     /// teacher query.
     private static let courseCodePattern = #"^[A-Za-z0-9]+$"#
 
-    /// Debounce window before firing an automatic search. Mirrors the Android
-    /// AddCourseSheet so the QueryCourse API isn't hammered on every keystroke.
     private static let liveSearchDebounce: Duration = .milliseconds(350)
 
     @State private var searchText = ""
@@ -46,8 +38,6 @@ struct AddCourseSheet: View {
             .task(id: submitTrigger) { await submitSearch() }
         #endif
     }
-
-    // MARK: - iOS body
 
     private var iosBody: some View {
         NavigationStack {
@@ -112,8 +102,6 @@ struct AddCourseSheet: View {
         // shows through. `.presentationBackground` paints the whole sheet container.
         .presentationBackground(Color.backgroundPrimary)
     }
-
-    // MARK: - macOS body
     // No `Form`: on macOS it makes the search field tiny and anchors the footer label
     // to the wrong side. The frame stays modest so the sheet does not dwarf the window.
 
@@ -234,8 +222,6 @@ struct AddCourseSheet: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: - Search task helpers
-
     private func debouncedSearch() async {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
@@ -302,13 +288,9 @@ struct AddCourseSheet: View {
                 }
                 .contentShape(Rectangle())
             }
-            // Courses the user already has are not removable here: tap-to-remove would
-            // be a dangerous escape hatch. Only courses added in this session toggle off.
             .disabled(isPreExisting && !isSessionAdded)
         }
     }
-
-    // MARK: - Search
 
     @MainActor
     private func runSearch(query: String) async {
@@ -318,9 +300,6 @@ struct AddCourseSheet: View {
         secondaryNamesByNo = [:]
 
         let isCourseCode = Self.looksLikeCourseCode(query)
-        // The primary name follows the UI language, not the query's: a Chinese UI shows
-        // "Chinese (English)", an English UI "English (Chinese)". The saved `courseName`
-        // also comes from this list, so an add on a Chinese device stores the Chinese name.
         let primaryLanguage = LanguageManager.resolvedCourseApiLanguage(
             appLanguage: Defaults[.appLanguage]
         )
@@ -344,9 +323,6 @@ struct AddCourseSheet: View {
             let primaryResultsRaw = primaryLanguage == "en" ? enResults : zhResults
             let secondaryResultsRaw = primaryLanguage == "en" ? zhResults : enResults
 
-            // Fast path: show primary-language matches at once, with whatever secondary
-            // names came back for the same codes. Don't wait for the `lookupCourse`
-            // fan-out: one request per missing code, often 3+ seconds on a broad query.
             if !primaryResultsRaw.isEmpty {
                 primaryResults = primaryResultsRaw
                 secondaryNamesByNo = Dictionary(
@@ -357,9 +333,6 @@ struct AddCourseSheet: View {
                 return
             }
 
-            // Slow path: the primary-language API returned nothing (the user
-            // typed in the other language). Cross-fill the primary list from
-            // the secondary results' codes so we can still display matches.
             let (zhFilled, enFilled) = await Self.fillCrossLanguage(
                 semester: semester, zhResults: zhResults, enResults: enResults
             )
@@ -379,9 +352,6 @@ struct AddCourseSheet: View {
                 errorMessage = String(localized: "add_course_not_found")
             }
         } catch is CancellationError {
-            // A newer keystroke superseded this search — leave isSearching
-            // alone (the next task will overwrite it) but avoid touching
-            // errorMessage so a transient cancel doesn't flash a red label.
             return
         } catch {
             AppLogger.captureError(error, context: [
@@ -457,8 +427,6 @@ struct AddCourseSheet: View {
         return (zhResults + (await zhExtras), enResults + (await enExtras))
     }
 
-    /// Merge name and teacher results preserving order; name results come first,
-    /// teacher-only results appear after, deduped by `(CourseNo, Node)`.
     private static func merge(
         _ primary: [CourseSearchResult],
         _ secondary: [CourseSearchResult]
@@ -474,8 +442,6 @@ struct AddCourseSheet: View {
         return merged
     }
 
-    // MARK: - Heuristics
-
     private static func looksLikeCourseCode(_ text: String) -> Bool {
         guard text.range(of: courseCodePattern, options: .regularExpression) != nil else { return false }
         return text.contains(where: { $0.isNumber })
@@ -487,8 +453,6 @@ struct AddCourseSheet: View {
         text.applyingTransform(hansHantTransform, reverse: false) ?? text
     }
 
-    // MARK: - Group & Add
-
     private struct GroupedCourse {
         let courseNo: String
         let primaryName: String
@@ -496,19 +460,11 @@ struct AddCourseSheet: View {
         let instructor: String
         let credits: Double
         let classroom: String
-        /// Per-(weekday, period) classroom map, mirroring the structure that
-        /// ``AppServiceBridge.buildSDCourse`` produces for the normal fetch
-        /// path. Required so a newly-added course that meets in different
-        /// rooms on different days shows the correct location in
-        /// ``CourseDetailSheet``, Home time cards, and the Live Activity
-        /// (all of which call ``SDCourse.classroom(for:)``).
         let classroomMap: [String: String]
         let enrolledCount: Int
         let maxCount: Int
         let schedule: [Int: [String]]
         let nodeDisplay: String
-        /// Carried straight from QueryCourse so a course added by hand shows
-        /// its dimension / term span without waiting for the next refresh.
         let dimension: String
         let allYear: String
         let requireOption: String
@@ -529,9 +485,6 @@ struct AddCourseSheet: View {
         for result in primaryResults {
             let key = result.CourseNo
             let partial = CourseLookupService.parseNodeToSchedule(result.Node)
-            // Mirror AppServiceBridge.buildSDCourse: dedupe a row's rooms and assign the
-            // joined string to every (day, period) the row covers, or `classroom(for:)`
-            // falls back to the combined room list and can show the wrong day's room.
             var rowSeen = Set<String>()
             let rowRoomParts = SDCourse.splitRoom(result.ClassRoomNo ?? "")
                 .filter { rowSeen.insert($0).inserted }
@@ -572,8 +525,6 @@ struct AddCourseSheet: View {
                     maxCount: existing.maxCount,
                     schedule: merged,
                     nodeDisplay: nodeStr,
-                    // Same first-non-empty rule as `buildSDCourse`: the row
-                    // that names the dimension may not be the one seen first.
                     dimension: existing.dimension.isEmpty ? (result.Dimension ?? "") : existing.dimension,
                     allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear,
                     requireOption: existing.requireOption.isEmpty ? (result.RequireOption ?? "") : existing.requireOption

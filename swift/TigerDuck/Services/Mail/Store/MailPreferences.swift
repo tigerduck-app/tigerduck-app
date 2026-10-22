@@ -8,8 +8,6 @@ nonisolated struct MailCheckRecord: Codable, Equatable, Sendable {
     var result: String
 }
 
-/// School Mail's non-secret state: the student ID (the signed-in signal), display name,
-/// the new-mail marker, and diagnostics. The password lives in `MailCredentialStore`.
 nonisolated protocol MailPreferences: AnyObject, Sendable {
     var studentID: String? { get set }
     var displayName: String? { get set }
@@ -20,32 +18,14 @@ nonisolated protocol MailPreferences: AnyObject, Sendable {
     var demoActive: Bool { get set }
     var lastCheckAt: Date? { get set }
     var diagnostics: [MailCheckRecord] { get set }
-    /// Set when sign-out starts wiping the on-disk caches, cleared when that wipe finishes.
-    /// The wipe is a directory delete running off the main actor, so killing the app in the
-    /// middle of it used to leave the signed-out student's mail on disk with nothing left in
-    /// the process to finish the job. Deliberately **not** cleared by `reset()`: it has to
-    /// outlive the sign-out that set it, and the next launch re-runs the wipe.
     var cacheWipePending: Bool { get set }
 
-    /// UIDs TigerDuck flagged `\Deleted` in `folder` and hasn't been able to expunge yet, still
-    /// waiting from the UIDVALIDITY generation they were recorded under. Empty when nothing is
-    /// stored for that folder+validity pair — including when the folder has a stored entry
-    /// recorded under a *different* UIDVALIDITY, since that entry no longer means anything once
-    /// the folder has been recreated server-side.
     func ownedDeleted(folder: String, uidValidity: UInt32) -> OwnedDeleted
-    /// Replaces whatever is stored for `owned.folder` (at any UIDVALIDITY) with `owned`. An empty
-    /// `uids` removes the folder's entry entirely rather than storing an empty one.
     func setOwnedDeleted(_ owned: OwnedDeleted)
 
     func reset()
 }
 
-/// Backed by the `Defaults` library, on a suite chosen at `init`. Production callers use the
-/// no-argument initializer (the app's real `UserDefaults.standard`); tests inject a per-test
-/// `UserDefaults(suiteName:)` so they never read, write or `reset()` the app's real
-/// `school_mail_*` keys — following this repo's existing isolation idiom
-/// (`CloudSyncPreferenceTests.withIsolatedKey`, `ClockCoreTests`'s per-test suite + persistent
-/// domain removal).
 nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sendable {
     /// The Codable twin of `OwnedDeleted` used only for persistence. `OwnedDeleted` itself is
     /// declared in `MailMover.swift` without `Codable`; Swift only synthesizes `Codable` for a
@@ -65,20 +45,10 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     private let authFailedKey: Defaults.Key<Bool>
     private let demoActiveKey: Defaults.Key<Bool>
     private let lastCheckAtKey: Defaults.Key<Date?>
-    /// JSON-encoded `[OwnedDeletedRecord]` — never a string key joined with a separator, since a
-    /// Mail2000 folder name (modified UTF-7, arbitrary bytes) can contain any character,
-    /// including whatever separator a joined key would pick.
     private let ownedDeletedKey: Defaults.Key<Data?>
     private let diagnosticsKey: Defaults.Key<Data?>
     private let cacheWipePendingKey: Defaults.Key<Bool>
 
-    /// Guards the `ownedDeletedRecords` read-modify-write in `setOwnedDeleted`: two concurrent
-    /// calls for different folders (a background check expunging one while the user deletes
-    /// mail in another) must not read one snapshot and each write back a list missing the
-    /// other's entry. Mirrors `MailCache`'s lock. The scalar properties need no lock: each is a
-    /// single `Defaults[key]` get or set. `static`, not per instance: `MailChecker.shared` and
-    /// `MailAccountManager.shared` each build their own `DefaultsMailPreferences()` over the
-    /// same `UserDefaults` keys, so a per-instance lock would let the two race.
     private static let lock = NSLock()
 
     init(defaults: UserDefaults = .standard) {
@@ -139,7 +109,6 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         set { Defaults[diagnosticsKey] = try? JSONEncoder().encode(newValue) }
     }
 
-    /// Not locked itself — only ever called from within a `lock.withLock` block below.
     private var ownedDeletedRecords: [OwnedDeletedRecord] {
         get {
             guard let data = Defaults[ownedDeletedKey] else { return [] }

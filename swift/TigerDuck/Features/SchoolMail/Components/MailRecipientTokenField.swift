@@ -1,14 +1,7 @@
 #if os(iOS)
 import SwiftUI
 
-/// The rules the compose screen's recipient field turns typing into bubbles by. Pure, so they
-/// can be tested without a view.
 nonisolated enum MailRecipientTokens {
-    /// Splits what has been typed into the recipients it finishes and what is still being typed.
-    ///
-    /// Nothing inside quotes or angle brackets ends a recipient: it is part of the name or the
-    /// address. Outside them `,` and `;` always do, and a space does once what came before it
-    /// holds an `@`, so `Da-Ming Wang <wang@mail.ntust.edu.tw>` can still be typed name first.
     static func consume(_ typed: String) -> (finished: [String], remainder: String) {
         var finished: [String] = []
         var current = ""
@@ -27,18 +20,13 @@ nonisolated enum MailRecipientTokens {
                 current.append(character)
             }
         }
-        // A leading space is never the start of an address.
         return (finished, String(current.drop { $0 == " " }))
     }
 
-    /// The field's whole value as the view model keeps it: every recipient, comma-separated.
     static func compose(_ tokens: [String], draft: String) -> String {
         (tokens + [draft.trimmingCharacters(in: .whitespaces)]).filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
-    /// A value set from outside the field — a reply's prefilled recipients, a draft reopened —
-    /// as bubbles. Only `,`/`;` split here: the value is already a list, and a space inside it
-    /// belongs to a name.
     static func tokens(of value: String) -> [String] {
         let (finished, remainder) = consumeSeparatorsOnly(value)
         return finished + [remainder].compactMap { $0.trimmingCharacters(in: .whitespaces).mailNonEmpty }
@@ -64,12 +52,6 @@ nonisolated enum MailRecipientTokens {
     }
 }
 
-/// A To, Cc or Bcc field that turns each recipient into a bubble as it is typed: `,`, `;`, a
-/// space after an address, Return, or leaving the field finishes one. A bubble the send would
-/// refuse is marked red. Tapping a bubble takes it back into the text to edit; its × removes it.
-///
-/// The view model still holds the field as one comma-separated string (`text`), so sending,
-/// validation, drafts and reply prefill are unchanged.
 struct MailRecipientTokenField<Focus: Hashable>: View {
     let title: String
     @Binding var text: String
@@ -83,8 +65,6 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.xs) {
             Text(title)
                 .foregroundStyle(.secondary)
-            // 6 between lines is the bulletin tags' own `FlowLayout` line spacing; the theme has no
-            // step between `xs` and `sm`.
             FlowLayout(spacing: TigerDuckTheme.Spacing.xs, lineSpacing: 6) {
                 ForEach(Array(tokens.enumerated()), id: \.offset) { index, token in
                     bubble(token, at: index)
@@ -105,7 +85,6 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         .simultaneousTapGesture { focus.wrappedValue = field }
         .onAppear { load(text) }
         .onChange(of: text) { _, value in
-            // Only a value this field did not write — a reply's recipients arriving, a reset.
             if value != MailRecipientTokens.compose(tokens, draft: draft) { load(value) }
         }
         .onChange(of: draft) { _, typed in
@@ -121,18 +100,13 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         }
     }
 
-    /// A capsule on one line — the radius is half a one-line bubble's height — that stays a
-    /// rounded box, rather than a stretched pill, when a long address wraps.
     private static var bubbleShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md, style: .continuous)
     }
 
     private func bubble(_ token: String, at index: Int) -> some View {
         let valid = MailComposeViewModel.sendableAddress(token) != nil
-        // Two buttons side by side, each holding its share of the bubble's padding, so a tap
-        // anywhere on the bubble edits it or removes it.
         return HStack(spacing: 0) {
-            // Wraps rather than truncating, so a long address is never shown cut short.
             Text(verbatim: token)
                 .fixedSize(horizontal: false, vertical: true)
                 .typesettingLanguage(MailRecipient.unhyphenatedLanguage)
@@ -176,7 +150,6 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         publish()
     }
 
-    /// Takes a bubble back into the text, finishing whatever was being typed first.
     private func edit(at index: Int) {
         finishDraft()
         guard tokens.indices.contains(index) else { return }

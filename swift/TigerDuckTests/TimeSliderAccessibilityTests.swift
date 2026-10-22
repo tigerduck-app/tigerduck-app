@@ -4,9 +4,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// VoiceOver skips the time slider's track, whose time-only value was hard to follow
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/570), and Score's trend summary keeps
-/// still with Reduce Motion on (https://github.com/tigerduck-app/tigerduck-app/issues/525).
 @MainActor
 @Suite(.serialized)
 struct TimeSliderAccessibilityTests {
@@ -23,7 +20,6 @@ struct TimeSliderAccessibilityTests {
             defer { window.isHidden = true }
             host.view.layoutIfNeeded()
 
-            // The text beside the track is exposed in the same pass the track would be.
             try await waitUntil { accessibilityElement(labeled: anchor, in: host.view) != nil }
             #expect(Set(exposedAccessibilityLabels(in: host.view)) == [anchor])
         }

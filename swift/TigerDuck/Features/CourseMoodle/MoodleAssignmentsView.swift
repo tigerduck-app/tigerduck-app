@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// A course's assignments as the last assignment round recorded them: those still to come by due
-/// time, then the ones with no due date, then the past ones, the latest first, each with what
-/// Moodle says of it on the right.
 struct MoodleAssignmentsView: View {
     let store: MoodleCourseStore
     let policy: VisualStylePolicy
@@ -17,7 +14,6 @@ struct MoodleAssignmentsView: View {
     }
 
     var body: some View {
-        // `TimelineView` runs on wall time; the rows read `AppClock`, so the debug clock applies.
         TimelineView(.periodic(from: .now, by: 60)) { _ in
             ScrollView {
                 card(Self.rows(of: store.assignments.list, now: AppClock.now()))
@@ -34,7 +30,6 @@ struct MoodleAssignmentsView: View {
         )
     }
 
-    /// Ties keep Moodle's order, which `entries` is in.
     static func rows(of entries: [MoodleCourseAssignments.Entry], now: Date) -> [Row] {
         let ordered = entries.enumerated().map { (order: $0.offset, entry: $0.element) }
         let isPast = { (entry: MoodleCourseAssignments.Entry) in entry.record.dueDate.map { $0 < now } ?? false }
@@ -51,8 +46,6 @@ struct MoodleAssignmentsView: View {
         }
     }
 
-    /// What Moodle says of the assignment, without the marks the user puts on Home's rows: handed
-    /// in on time or late, or overdue, and nothing while it is still to come.
     static func shownStatus(of assignment: SDAssignment, now: Date) -> AssignmentStatus? {
         switch assignment.moodleStatus(now: now) {
         case .submitted: .submitted
@@ -87,7 +80,6 @@ private struct MoodleAssignmentRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        // At accessibility sizes the time beside the title would leave the title no room.
         let stacked = dynamicTypeSize.isAccessibilitySize
         let layout = stacked
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
@@ -127,7 +119,6 @@ private struct MoodleAssignmentRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The Mac opens the assignment on Moodle, as it has no page of its own for it.
     #if os(macOS)
     private static let accessory = "arrow.up.right.square"
     #else

@@ -21,15 +21,8 @@ struct MailMessageView: View {
     @State private var pendingDelete: PendingDelete?
     @State private var compose: MailComposeContext?
 
-    /// Which of the two delete confirmations the Delete button raised. One optional backs both
-    /// dialogs, so exactly one of them can ever be up: deleting in Trash asks whether to destroy
-    /// the mail for good, and deleting anywhere else asks before moving it to Trash — a delete
-    /// never happens on a single tap either way.
     private enum PendingDelete { case toTrash, permanent }
 
-    /// A risky (or HTML/SVG) attachment the user asked to open or share, waiting on the
-    /// confirmation dialog. Opening and sharing both ask first, and `forSharing` records which
-    /// one to carry out once confirmed.
     private struct RiskyAttachment: Identifiable {
         let part: MailBodyPart
         let forSharing: Bool
@@ -125,13 +118,6 @@ struct MailMessageView: View {
         Binding(get: { pendingDelete == kind }, set: { if !$0 { pendingDelete = nil } })
     }
 
-    // MARK: Sections
-
-    /// `MailSourceTextView` scrolls itself — that is the whole point of it, since nothing
-    /// else can show a multi-megabyte document without laying all of it out. So when the
-    /// source is on screen the page is a plain `VStack` and the text view takes the height
-    /// that is left, rather than a scroll view nested inside another one. Every other mode
-    /// keeps the scrolling page it has always had.
     @ViewBuilder
     private var page: some View {
         if showsSource {
@@ -160,9 +146,6 @@ struct MailMessageView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Drawn from `viewModel.summary`, which the folder's cached page supplies while the body is
-    /// still being fetched — one header view, shown the moment anything is known about the mail
-    /// rather than only once the whole message has landed.
     @ViewBuilder
     private var header: some View {
         if let summary = viewModel.summary {
@@ -209,10 +192,6 @@ struct MailMessageView: View {
         }
     }
 
-    /// The sender's two header lines. The address goes on the second line only when a name took
-    /// the first: a sender with no display name used to have its address printed as the
-    /// headline and then again straight underneath. Blank values count as missing, so an empty
-    /// address (a bounce, a cache an older build wrote) never becomes an empty headline.
     nonisolated static func senderLines(name: String?, address: String?) -> (primary: String?, secondary: String?) {
         let name = name?.mailNonEmpty
         let address = address?.mailNonEmpty
@@ -220,8 +199,6 @@ struct MailMessageView: View {
         return (name, address)
     }
 
-    /// "To:" / "Cc:" on their own, in the reader's language: the localized "To: %1$@" with nothing
-    /// in the slot. Every translation puts the value last, so what is left is the label.
     static func fieldLabel(_ key: String.LocalizationValue) -> String {
         String(format: String(localized: key), "").trimmingCharacters(in: .whitespaces)
     }
@@ -302,8 +279,6 @@ struct MailMessageView: View {
         }
     }
 
-    /// Plain text with its links tappable. A mail with no HTML part shows only this, and the link
-    /// sheet takes its taps through the `openURL` action set on this view.
     private var plainBody: some View {
         Text(viewModel.linkedPlainText)
             .font(TigerDuckTheme.Typography.body)
@@ -319,18 +294,12 @@ struct MailMessageView: View {
                 Button { startCompose(.replyAll) } label: { Label(String(localized: "school_mail_reply_all"), systemImage: "arrowshape.turn.up.left.2") }
                 Button { startCompose(.forward) } label: { Label(String(localized: "school_mail_forward"), systemImage: "arrowshape.turn.up.right") }
             } label: {
-                // Labelled, like every other icon-only control in the feature: without this
-                // VoiceOver reads the SF Symbol's name, and these two menus are the message
-                // screen's only action affordances.
                 Image(systemName: "arrowshape.turn.up.left")
                     .accessibilityLabel(String(localized: "school_mail_reply_menu"))
             }
             .disabled(viewModel.detail == nil)
         }
         ToolbarItem(placement: .topBarTrailing) {
-            // Three groups, matching Android: the view modes, then the two reversible actions,
-            // then Delete on its own — the one entry here that loses mail sits behind a divider
-            // of its own rather than a thumb's width below Move to….
             Menu {
                 Section {
                     Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
@@ -339,9 +308,6 @@ struct MailMessageView: View {
                         }
                     }
                 }
-                // Right under the views it changes, but in a section of its own: a Picker and a
-                // Toggle both draw a checkmark, so sharing one would read as two selected views.
-                // On, the HTML is redrawn on white paper; off, back on the app's page.
                 if viewModel.offersLightMode {
                     Section {
                         Toggle(isOn: $viewModel.viewsInLightMode) {
@@ -355,9 +321,6 @@ struct MailMessageView: View {
                         Label(seen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
                               systemImage: seen ? "envelope.badge" : "envelope.open")
                     }
-                    // A move or delete is four to five round trips with nothing on screen to say so,
-                    // so both affordances (and the move sheet's rows) are disabled for the duration —
-                    // a second tap would otherwise COPY the mail again and file it into two folders.
                     Button { showMoveSheet = true } label: {
                         Label(String(localized: "school_mail_move_to"), systemImage: "folder")
                     }
@@ -365,9 +328,6 @@ struct MailMessageView: View {
                 }
                 Section {
                     Button(role: .destructive) {
-                        // Asynchronous because an account with no Trash gets one created here,
-                        // before the dialog is chosen — `prepareDelete()` explains why that has
-                        // to happen on this side of the confirmation rather than after it.
                         Task {
                             let isPermanent = await viewModel.prepareDelete()
                             pendingDelete = isPermanent ? .permanent : .toTrash
@@ -387,8 +347,6 @@ struct MailMessageView: View {
     private var moveSheet: some View {
         NavigationStack {
             List {
-                // The view model's map, not a copy captured at init: a folder created on demand
-                // since this screen opened belongs in this list.
                 ForEach(MailFolderRole.allCases.filter {
                     viewModel.folderRoles[$0] != nil && viewModel.folderRoles[$0] != viewModel.route.folder
                 }, id: \.self) { role in
@@ -410,8 +368,6 @@ struct MailMessageView: View {
         }
         .presentationDetents([.medium, .large])
     }
-
-    // MARK: Actions
 
     private func move(to folder: String) {
         showMoveSheet = false
@@ -452,9 +408,6 @@ struct MailMessageView: View {
         )
     }
 
-    /// The second gate on a tapped link's scheme, after `MailLinkTarget.canOpen` decided whether
-    /// to offer Open at all. Both, rather than one: this is the function that hands a URL to the
-    /// system, and it should be readable as safe without tracing where its argument came from.
     private func openLink(_ href: String) {
         guard MailLinkTarget.isOpenable(href), let url = URL(string: href) else { return }
         if url.scheme?.lowercased() == "mailto" {
@@ -477,9 +430,6 @@ struct MailMessageView: View {
         }
     }
 
-    /// A sender whose address the header never gave in a usable form carries an empty
-    /// `address` (`MailAddress.parseSender`), and a banner must not end in a dangling
-    /// space where the address would have been.
     private static func appending(_ address: String, to key: String.LocalizationValue) -> String {
         let title = String(localized: key)
         guard let address = address.mailNonEmpty else { return title }

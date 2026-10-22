@@ -1,9 +1,5 @@
 import Foundation
 
-/// The room of one block of a course's periods, read from its per-slot map (`"weekday-period"`
-/// to room). A course's flat `classroom` joins every room it meets in, which is only the
-/// fallback for a block the map has no room for. Compiled into the widget extension as well,
-/// which has no `SDCourse`, so it works on the map and strings alone.
 nonisolated enum CourseBlockRoom {
     static func room(
         weekday: Int,

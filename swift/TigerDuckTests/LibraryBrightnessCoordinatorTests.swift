@@ -29,11 +29,6 @@ struct LibraryBrightnessCoordinatorTests {
         #expect(panel.brightness == 0.4)
     }
 
-    /// The bug this type exists for. `LibraryView` is built three times —
-    /// the Library tab plus the embedded copies Home and More push — so two
-    /// instances can boost the same panel. With per-view state the second
-    /// captured the already-boosted 1.0 as the "pre-boost" value and the
-    /// panel could never be restored.
     @Test
     func secondHolderDoesNotCaptureTheBoostedValue() {
         let panel = FakePanel(0.4)
@@ -57,7 +52,6 @@ struct LibraryBrightnessCoordinatorTests {
         let c = LibraryBrightnessCoordinator()
         let token = UUID()
 
-        // onAppear, then a scene-phase change, then a screen report.
         c.boost(panel, token: token)
         c.boost(panel, token: token)
         c.boost(panel, token: token)
@@ -65,8 +59,6 @@ struct LibraryBrightnessCoordinatorTests {
         #expect(panel.brightness == 0.25)
     }
 
-    /// Moving between displays — a fold, or a window dragged to another
-    /// screen — has to hand the panel being left its brightness back.
     @Test
     func movingToAnotherScreenRestoresTheOneBeingLeft() {
         let inner = FakePanel(0.4), outer = FakePanel(0.7)
@@ -82,12 +74,6 @@ struct LibraryBrightnessCoordinatorTests {
         #expect(outer.brightness == 0.7)
     }
 
-    /// Two windows on two displays. The app ships with
-    /// `UIApplicationSupportsMultipleScenes`, so an iPad under Stage Manager
-    /// with an external screen can have a Library window on each. A single
-    /// global "boosted panel" made the second window's claim hand the first
-    /// display its brightness back while that window was still showing a
-    /// code — the QR the user was holding up to a scanner went dim.
     @Test
     func claimsOnSeparateDisplaysDoNotEvictEachOther() {
         let first = FakePanel(0.4), second = FakePanel(0.7)
@@ -107,8 +93,6 @@ struct LibraryBrightnessCoordinatorTests {
         #expect(first.brightness == 0.4)
     }
 
-    /// Releasing a token nobody registered must not restore anything — the
-    /// view calls this unconditionally from teardown paths.
     @Test
     func releasingAnUnknownTokenLeavesAnActiveBoostAlone() {
         let panel = FakePanel(0.4)
@@ -123,9 +107,6 @@ struct LibraryBrightnessCoordinatorTests {
         #expect(panel.brightness == 0.4)
     }
 
-    /// A panel can be unplugged while boosted. The coordinator holds it
-    /// weakly, so the restore finds nothing and must simply drop the state
-    /// rather than write into a dead object or strand the next boost.
     @Test
     func aDeallocatedScreenDropsTheOverrideCleanly() {
         let c = LibraryBrightnessCoordinator()
@@ -137,8 +118,6 @@ struct LibraryBrightnessCoordinatorTests {
         }
         c.release(token: token)
 
-        // The next boost must capture afresh rather than reuse the stale
-        // saved value from the screen that went away.
         let next = FakePanel(0.3)
         c.boost(next, token: token)
         #expect(next.brightness == 1.0)

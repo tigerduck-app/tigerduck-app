@@ -1,9 +1,6 @@
 import SwiftUI
 
 struct LoginSheet: View {
-    /// A link under the fields, e.g. School Mail's "Forgot your password? Go to
-    /// mail.ntust.edu.tw".
-    /// Opens the way bulletins do: in-app when the user prefers it, otherwise the browser.
     struct FooterLink {
         let title: String
         let url: URL
@@ -122,8 +119,6 @@ struct LoginSheet: View {
                     .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
                 }
             }
-            // Shared by the NTUST, library and School Mail sign-ins, so all three get the
-            // drag-to-dismiss gesture rather than only whichever one prompted it.
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -133,8 +128,6 @@ struct LoginSheet: View {
                 }
             }
             .onAppear {
-                // With both fields prefilled there is nothing to type, so focus nothing and
-                // leave the keyboard down rather than opening it over a filled-in form.
                 focusedField = username.isEmpty ? .username : (password.isEmpty ? .password : nil)
             }
             .interactiveDismissDisabled(isLoggingIn)

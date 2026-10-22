@@ -18,8 +18,6 @@ nonisolated struct OutgoingMail: Sendable {
     var references: [String]
     var attachments: [OutgoingAttachment]
 
-    /// SMTP `RCPT TO` list: To, Cc and Bcc, deduplicated case-insensitively. Bcc never
-    /// appears in the headers.
     var envelopeRecipients: [String] {
         var seen = Set<String>()
         return (to + cc + bcc).map(\.address).filter { seen.insert($0.lowercased()).inserted }
@@ -29,9 +27,6 @@ nonisolated struct OutgoingMail: Sendable {
 /// Builds the 7-bit RFC 5322 message TigerDuck sends: UTF-8 plain text in quoted-printable,
 /// RFC 2047 headers, RFC 2231 attachment names.
 nonisolated enum MailMessageBuilder {
-    /// The effective domain, not the school constant: the sent-copy dedupe searches Sent for
-    /// this exact Message-ID, so it has to be a value that makes sense on whichever server the
-    /// message was actually submitted to.
     static func makeMessageID() -> String {
         "<\(UUID().uuidString.lowercased())@\(MailServerConfig.effective.addressDomain)>"
     }
@@ -85,14 +80,6 @@ nonisolated enum MailMessageBuilder {
         return Data((lines.joined(separator: "\r\n") + "\r\n").utf8)
     }
 
-    // MARK: Headers
-
-    /// `address.address` is sanitized here as defense in depth: `MailAddress.isPlausible`
-    /// (used by the compose screen before send) and `MailAddress.parseList` already
-    /// reject a value with a plain-shape violation, but a `MailAddress` can also be
-    /// constructed directly (a cache, a demo fixture, a future call site) without going
-    /// through either gate, so this must never emit a raw control character regardless of
-    /// how the address got here.
     static func header(for address: MailAddress) -> String {
         let sanitizedAddress = sanitizedHeaderValue(address.address)
         guard let name = address.name?.mailNonEmpty else { return sanitizedAddress }
@@ -139,12 +126,6 @@ nonisolated enum MailMessageBuilder {
         return formatter.string(from: date)
     }
 
-    /// A header value (an address, a Message-ID token, a References chain) never
-    /// legitimately contains a control character; stripping every one (not just CR/LF)
-    /// defangs a CRLF header-injection attempt smuggled in through a hostile address,
-    /// Message-ID, In-Reply-To or References value. Bcc is never written as a header at
-    /// all (see `OutgoingMail.envelopeRecipients`), so this only has to keep every other
-    /// header from growing an extra line.
     private static func sanitizedHeaderValue(_ raw: String) -> String {
         String(raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
     }

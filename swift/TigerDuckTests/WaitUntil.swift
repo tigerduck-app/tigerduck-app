@@ -1,13 +1,6 @@
 import Foundation
 import Testing
 
-/// Polls `condition` until it holds or `timeout` passes, and records an issue
-/// at the caller if it never does.
-///
-/// For state that settles a hop or a debounce window after its cause. On a loaded CI runner the
-/// suite's shared main actor starves for a minute and more, holding back this loop and the work
-/// it waits for alike, so a wake late past its sleep counts a tenth of its length: a starved run
-/// gets up to ten times `timeout`. The last check covers work that lands with the final wake.
 func waitUntil(
     timeout: Duration = .seconds(60),
     _ condition: () -> Bool,
@@ -16,7 +9,6 @@ func waitUntil(
     try await waitUntil(timeout: timeout, clock: ContinuousClock(), condition, sourceLocation: sourceLocation)
 }
 
-/// ``waitUntil(timeout:_:sourceLocation:)`` on `clock`, which a test of the polling sets.
 func waitUntil<C: Clock<Duration>>(
     timeout: Duration,
     clock: C,

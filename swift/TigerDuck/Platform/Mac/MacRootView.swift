@@ -1,13 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// Root scene content for the macOS app.
-///
-/// Shows the login wall (`MacLoginView`) or the sidebar layout (`MacContentView`) by
-/// `authService.hasStoredCredentials`, bypassed for the session by `appState.didSkipMacLogin`
-/// ("Skip for now" on `MacLoginView`). The bypass is transient: first launch and logout show
-/// the wall again. Silent re-auth failures keep the sidebar and surface through
-/// `appState.ntustReauthErrorMessage`, as in the iOS cached-first contract.
 struct MacRootView: View {
     @Environment(AppState.self) private var appState
 
@@ -23,23 +16,11 @@ struct MacRootView: View {
     }
 }
 
-/// Sidebar-side selection model. Pinned features map 1:1 to
-/// `AppFeature` cases; `.more` is the synthetic destination that
-/// renders `MacMoreView`. Settings is intentionally not in this enum:
-/// it opens as a separate window via the system `Settings` scene
-/// (driven by `SettingsLink` at the bottom of the sidebar).
 enum MacSidebarItem: Hashable {
     case feature(AppFeature)
     case more
 }
 
-/// Main sidebar layout: configured features at the top, More plus
-/// Settings at the bottom, the active item's detail view on the right.
-///
-/// The sidebar is driven by `AppState.macConfiguredTabs` (filtered to
-/// drop features Mac doesn't surface — see `AppFeature.isAvailableOnMac`).
-/// Pinning happens in Settings → Sidebar; changes propagate live
-/// because `macConfiguredTabs` is `@Observable`.
 struct MacContentView: View {
     @Environment(AppState.self) private var appState
     @State private var selection: MacSidebarItem = .more
@@ -65,15 +46,10 @@ struct MacContentView: View {
         }
     }
 
-    /// Route incoming widget URLs to the matching sidebar selection.
-    /// Library is not surfaced on Mac (`macHiddenFeatures`), so library
-    /// taps fall back to More — the same place a user goes to enable
-    /// Library on iOS — even though the Mac currently offers no toggle.
     private func drainPendingWidgetDestination() {
         guard let destination = appState.pendingWidgetDestination else { return }
         switch destination {
         case .classTable:
-            // The widget draws the user's own class table.
             ImportedClassTableStore.shared.show(nil)
             if pinnedFeatures.contains(.classTable) {
                 selection = .feature(.classTable)
@@ -86,9 +62,6 @@ struct MacContentView: View {
         appState.clearPendingWidgetDestination()
     }
 
-    /// Mac sidebar pins live in `macConfiguredTabs`, kept distinct from
-    /// `configuredTabs` so Mac pinning doesn't leak past the iOS tab
-    /// bar's four-tab cap. First-launch sees `macDefaultTabs`.
     private var isUsingMacFallbackTabs: Bool {
         appState.macConfiguredTabs == AppFeature.macDefaultTabs
     }
@@ -97,14 +70,6 @@ struct MacContentView: View {
         appState.macConfiguredTabs
     }
 
-    // MARK: - Sidebar + detail
-
-    /// The sidebar uses a top-aligned `List` for navigation items plus a
-    /// pinned-bottom `VStack` for Settings. Putting Settings in its own
-    /// `Section` inside the `List` would push it up against the More
-    /// entry; the `Spacer` below the `List` is what holds the Settings
-    /// link at the bottom of the window regardless of how many items
-    /// are pinned above.
     @ViewBuilder
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -151,39 +116,22 @@ struct MacContentView: View {
         }
     }
 
-    // MARK: - Selection bookkeeping
-
     private var pinnedFeatures: [AppFeature] {
         sourceConfiguredTabs.filter { $0.isAvailableOnMac }
     }
 
-    /// Keep the current selection valid as pinned features mutate.
-    /// Two cases:
-    ///   1. First launch with no prior selection — land on the first
-    ///      pinned feature if any, otherwise on More so the user has a
-    ///      surface to pin from.
-    ///   2. User unpinned the currently-selected feature — fall back
-    ///      to the first remaining pinned feature, else More.
     private func seedSelectionIfNeeded() {
         if case .feature(let current) = selection, !pinnedFeatures.contains(current) {
             selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
         }
-        // First-launch on Mac: land on Home (the first pinned feature)
-        // rather than on More so the app opens to real content.
         if case .more = selection, !pinnedFeatures.isEmpty, isUsingMacFallbackTabs {
             selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
         }
     }
 }
 
-/// Switchboard between per-feature detail views.
-///
-/// The global refresh toolbar lives here so it follows the feature whether the sidebar shows
 /// it or `MacMoreView` pushes it. On the outer `NavigationSplitView` detail, the button
 /// would vanish on a push: on macOS More's inner `NavigationStack` owns the pushed view's toolbar.
-///
-/// Scores and Bulletins opt out: each has its own refresh button for data `backgroundSync`
-/// does not fetch, and a second button would double up in `.primaryAction`.
 struct MacFeatureDetail: View {
     let feature: AppFeature
 
@@ -208,8 +156,6 @@ struct MacFeatureDetail: View {
         switch feature {
         case .home: [.moodle, .backend]
         case .classTable: [.moodle, .courseSelection, .backend]
-        // Backend included for the same reason as the iPhone tab: the holiday
-        // and term-boundary rows come from its published academic calendar.
         case .calendar: [.moodle, .courseSelection, .backend]
         default: ServerKind.allCases
         }
@@ -237,8 +183,6 @@ struct MacFeatureDetail: View {
     }
 }
 
-/// True while a view in a feature answers ⌘R for what it shows, such as a Moodle list in the
-/// class table's course overlay, so the global refresh lets the shortcut go.
 struct MacRefreshShortcutClaimKey: PreferenceKey {
     static let defaultValue = false
 
@@ -247,11 +191,7 @@ struct MacRefreshShortcutClaimKey: PreferenceKey {
     }
 }
 
-/// Triggers `AppState.backgroundSync()` and swaps to a spinner while
-/// `sessionManager.loadingState == .loading`. The button stays mounted
-/// under the spinner so ⌘R keeps working without separate tracking.
 struct MacGlobalRefreshButton: View {
-    /// False while a view the feature shows answers ⌘R itself.
     var takesShortcut = true
 
     @Environment(AppState.self) private var appState

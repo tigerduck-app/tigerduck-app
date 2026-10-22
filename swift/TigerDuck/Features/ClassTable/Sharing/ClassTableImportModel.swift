@@ -2,13 +2,8 @@ import Foundation
 import Observation
 import Vision
 
-/// One import of a class table from a share code: the code the camera or an image gave, the
-/// prompts it raises, the nickname, the course lookup and the person it saves. The scanner, the
-/// Mac file importer and the confirm screen show it, and a test passes its own lookup.
-/// See docs/decisions/0023-class-table-share-code.md.
 @Observable
 final class ClassTableImportModel: Identifiable {
-    /// What a lookup imports: the code, and the nickname a new person is saved under.
     struct Job: Equatable {
         let code: ClassTableShareCode
         let nickname: String
@@ -17,11 +12,9 @@ final class ClassTableImportModel: Identifiable {
     /// The alerts that start a lookup carry its job, so their buttons work
     /// whether SwiftUI clears the alert before or after it runs them.
     enum Prompt: Equatable {
-        /// A wrong checksum, layout or course code, or a format version this app does not know.
         case invalid
         case noCode
         case ownCode
-        /// The code's student ID is imported already; updating keeps that person's nickname.
         case replace(Job)
         case lookupFailed(Job)
         case saveFailed(Job)
@@ -37,8 +30,6 @@ final class ClassTableImportModel: Identifiable {
         let value: String
     }
 
-    /// One term's courses from NTUST's course query, without the codes it does not know; it
-    /// throws when the query fails.
     typealias CourseLookup = (_ semester: String, _ courseNos: [String]) async throws -> [SDCourse]
 
     var prompt: Prompt?
@@ -46,8 +37,6 @@ final class ClassTableImportModel: Identifiable {
     var nickname = ""
     private(set) var isLookingUp = false
     private(set) var isReadingImage = false
-    /// Set once the person is saved, or once the account signed out during the lookup; the
-    /// screens close then.
     private(set) var isFinished = false
     @ObservationIgnored private(set) var lookupTask: Task<Void, Never>?
     @ObservationIgnored private var imageTask: Task<Void, Never>?
@@ -69,8 +58,6 @@ final class ClassTableImportModel: Identifiable {
         self.lookup = lookup
     }
 
-    /// An import for the account signed in now, which saves nothing once it signs out, as it does
-    /// before another student ID signs in.
     static func live(authService: AuthService) -> ClassTableImportModel {
         let generation = authService.loginGeneration
         return ClassTableImportModel(
@@ -87,10 +74,6 @@ final class ClassTableImportModel: Identifiable {
         !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLookingUp && !isFinished
     }
 
-    // MARK: - Reading a code
-
-    /// A QR code the camera read. Another app's code is passed over so scanning goes on, and so
-    /// is any code while something else is on screen. Returns whether the code was taken.
     @discardableResult
     func scanned(_ text: String) -> Bool {
         guard isIdle else { return false }
@@ -102,7 +85,6 @@ final class ClassTableImportModel: Identifiable {
         return true
     }
 
-    /// The QR codes found in a chosen image: its first share code, or a prompt when there is none.
     func imageRead(_ payloads: [String]) {
         guard isIdle else { return }
         let readings = payloads.map { Self.reading($0) }
@@ -113,7 +95,6 @@ final class ClassTableImportModel: Identifiable {
         }
     }
 
-    /// Reserves the import before loading a photo, so camera callbacks cannot replace its code.
     @discardableResult
     func readImage(load: @escaping () async -> Data?) -> Task<Void, Never>? {
         guard isIdle else { return nil }
@@ -190,15 +171,11 @@ final class ClassTableImportModel: Identifiable {
         pending = Pending(code: code)
     }
 
-    // MARK: - Importing
-
     func importPending() {
         guard let pending, canImport else { return }
         lookUp(Job(code: pending.code, nickname: nickname))
     }
 
-    /// Saves nothing until every term's lookup has answered, and nothing at all after a failure, a
-    /// cancel or a sign-out.
     func lookUp(_ job: Job) {
         guard !isLookingUp, !isFinished else { return }
         prompt = nil
@@ -239,18 +216,14 @@ final class ClassTableImportModel: Identifiable {
         }
     }
 
-    /// The alert one screen shows. While the confirm screen is up, its failed lookup alerts there:
-    /// the scanner under it, or the Mac class table, cannot present over the sheet.
     func promptShown(onConfirmScreen: Bool) -> Prompt? {
         (pending != nil) == onConfirmScreen ? prompt : nil
     }
 
-    /// Cancel on a failed lookup's alert leaves the confirm screen as it was.
     func dismissPrompt() {
         prompt = nil
     }
 
-    /// A lookup still running saves nothing once this returns, even if its answer comes later.
     func cancel() {
         imageTask?.cancel()
         imageTask = nil
@@ -262,10 +235,6 @@ final class ClassTableImportModel: Identifiable {
         prompt = nil
     }
 
-    // MARK: - Confirm screen
-
-    /// In order: the student ID, the terms, the number of courses and the share time, which
-    /// only our own format carries.
     static func rows(for code: ClassTableShareCode) -> [Row] {
         var rows: [Row] = []
         if let studentId = code.studentId {
@@ -288,12 +257,9 @@ final class ClassTableImportModel: Identifiable {
         return rows
     }
 
-    /// `1151` as `115-1`, as the semester picker shows it.
     private static func semesterLabel(_ semester: String) -> String {
         String(semester.dropLast()) + "-" + String(semester.suffix(1))
     }
-
-    // MARK: - Decoding
 
     private enum Reading {
         case notShareCode

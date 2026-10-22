@@ -3,33 +3,20 @@ import Foundation
 import SwiftSoup
 import os
 
-/// A sanitized mail document, ready to draw on either page with its unreadable text fixed.
-///
-/// On a page, a text colour under 7:1 (WCAG 2) against the backgrounds behind it moves to the
-/// nearest OKLCH lightness that reaches it, or as close as any colour gets, keeping its hue and
-/// as much chroma as sRGB holds. That covers colours the sender set, and the colour an element
-/// with a background, or a table caption, but no colour of its own inherits, which it is then
-/// given. Text on a background this cannot read keeps its colour. Only `color` values change,
-/// as `#rrggbb`.
 nonisolated struct MailReadableHTML {
     static let minimumContrast = 7.0
-    /// Distinct colours a page searches a fix for. A search costs a tenth of a millisecond or so,
-    /// and a mail can carry thousands of colours; past these, the better of white and black.
     static let maximumSearches = 2_000
 
-    /// Whether the mail sets a text or background colour of its own anywhere.
     let setsColors: Bool
     private let html: String
     /// Held whole: a node finds its output settings through its document, which a node alone
     /// does not keep alive.
     private let document: Document?
     private let nodes: [Node]
-    /// `html`'s link and image targets, which no page may change.
     private let targets: [String]
 
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Contrast")
 
-    /// Reads the document in one pass, outer elements first, carrying each one's backdrop down.
     init(_ html: String) {
         self.html = html
         targets = Self.targets(in: html)
@@ -43,7 +30,6 @@ nonisolated struct MailReadableHTML {
             var stack = (parsed.body()?.children().array() ?? []).reversed()
                 .map { Visit(element: $0, depth: 1, backdrop: Backdrop(), parent: nil) }
             while let visit = stack.popLast() {
-                // A screen that has gone cancels this, and the colours stay as sent.
                 guard !Task.isCancelled else {
                     nodes = []
                     break
@@ -78,8 +64,6 @@ nonisolated struct MailReadableHTML {
         self.nodes = nodes
     }
 
-    /// The document on `theme`'s page. Each call writes every colour it may change, so calls can
-    /// come in any order. Cancelled, or with a link or image target unlike `html`'s, it is `html`.
     func html(on theme: MailHTMLTheme) -> String {
         guard let body = document?.body(), !nodes.isEmpty else { return html }
         let page = RGBA(theme.background)
@@ -127,9 +111,6 @@ nonisolated struct MailReadableHTML {
         }
     }
 
-    // MARK: The document
-
-    /// One element in the pass, and what it inherits from above.
     private nonisolated struct Visit {
         let element: Element
         let depth: Int
@@ -137,9 +118,6 @@ nonisolated struct MailReadableHTML {
         let parent: Int?
     }
 
-    /// An element whose text colour can depend on the page: it sets its own, it is a link, or it
-    /// has a background of its own or is a table's caption, which sits off the table's background.
-    /// `parent` is the nearest such ancestor, whose colour it inherits.
     private nonisolated struct Node {
         nonisolated enum Kind {
             case own(Sent)
@@ -151,7 +129,6 @@ nonisolated struct MailReadableHTML {
         let kind: Kind
         let backdrop: Backdrop
         let parent: Int?
-        /// The `style` as sent, nil for none: what a given `color` joins, and what is left without one.
         let style: String?
 
         func give(_ color: RGBA?) throws {
@@ -160,8 +137,6 @@ nonisolated struct MailReadableHTML {
         }
     }
 
-    /// A colour the sender set: the attribute it is in, that attribute's value, and where in it
-    /// the colour is. `color` is nil when this cannot read it.
     private nonisolated struct Sent {
         let color: RGBA?
         let attribute: String
@@ -169,21 +144,17 @@ nonisolated struct MailReadableHTML {
         let range: Range<String.Index>
     }
 
-    /// The colour a node's text is meant to have, and the one it shows on this page; nil when unknown.
     private nonisolated struct Shown {
         var intended: RGBA?
         var displayed: RGBA?
     }
 
-    /// What an element paints behind its text.
     private nonisolated enum Layer {
         case none
         case unknown
         case color(RGBA)
     }
 
-    /// The sender's backgrounds behind an element, composited as a premultiplied colour and a
-    /// total alpha, so the page goes under them last. Unknown until an opaque layer covers it.
     private nonisolated struct Backdrop {
         var red = 0.0
         var green = 0.0
@@ -206,7 +177,6 @@ nonisolated struct MailReadableHTML {
             }
         }
 
-        /// What shows over the opaque `page`; nil when unknown.
         func over(_ page: RGBA) -> RGBA? {
             guard !isUnknown else { return nil }
             let kept = 1 - alpha
@@ -214,8 +184,6 @@ nonisolated struct MailReadableHTML {
         }
     }
 
-    /// A filtered `style` and its declarations. Each `value` is a slice of `text`, without
-    /// `!important`, so it can be replaced where it stands.
     private nonisolated struct Style {
         nonisolated struct Declaration {
             let property: String
@@ -242,7 +210,6 @@ nonisolated struct MailReadableHTML {
             }
         }
 
-        /// The declaration of `property` that applies: the last `!important` one, else the last.
         func effective(_ property: String) -> Declaration? {
             let matching = declarations.filter { $0.property == property }
             return matching.last(where: \.isImportant) ?? matching.last
@@ -259,14 +226,11 @@ nonisolated struct MailReadableHTML {
         return text
     }
 
-    /// A `bgcolor` or `<font color>` value; nil when HTML ignores it, blank or `transparent`.
     private static func legacyValue(_ name: String, of element: Element) throws -> Substring? {
         let value = trimmed(try element.attr(name)[...])
         return value.isEmpty || value.lowercased() == "transparent" ? nil : value
     }
 
-    /// Writes `value`, or removes the attribute for nil, only where it differs: an element left
-    /// alone keeps the bytes it came with.
     private static func set(_ name: String, of element: Element, to value: String?) throws {
         let current: String? = element.hasAttr(name) ? try element.attr(name) : nil
         guard current != value else { return }
@@ -277,9 +241,6 @@ nonisolated struct MailReadableHTML {
         style.effective("display").map { defaults.contains($0.value.lowercased()) } ?? true
     }
 
-    /// Whether `element` sets a text or background colour that shows. The `color` or
-    /// `background-color` that applies outranks `<font color>` or `bgcolor`, as in `sentColor` and
-    /// `layer`, and HTML reads either attribute as an opaque colour unless it is blank or `transparent`.
     private static func setsColor(_ element: Element, style: Style) throws -> Bool {
         let text = try style.effective("color").map { shows($0.value) }
             ?? (element.tagName() == "font" && legacyValue("color", of: element) != nil)
@@ -288,9 +249,6 @@ nonisolated struct MailReadableHTML {
         return text || background
     }
 
-    /// Whether a CSS colour value shows: one this reads with alpha above zero, or one it cannot
-    /// read that is not a keyword taking its colour from elsewhere. On a background `currentcolor`
-    /// paints the text colour, so there it shows, and `initial` is transparent, so there it does not.
     private static func shows(_ value: Substring, onBackground: Bool = false) -> Bool {
         guard let color = parse(value, legacy: false) else {
             let keyword = value.lowercased()
@@ -305,8 +263,6 @@ nonisolated struct MailReadableHTML {
     /// (https://github.com/w3c/csswg-drafts/issues/9274), so it counts as a colour.
     private static let colorlessKeywords: Set<String> = ["currentcolor", "inherit", "unset", "revert", "revert-layer"]
 
-    /// What `element` paints behind its text. A `border-image` paints over its background, and a
-    /// table's columns between it and its cells, so either makes it one this cannot read.
     private static func layer(of element: Element, style: Style) throws -> Layer {
         if style.declares(["border-image", "border-image-source"]) { return .unknown }
         if element.tagName() == "table", try paintsColumns(element) { return .unknown }
@@ -335,7 +291,6 @@ nonisolated struct MailReadableHTML {
         } else if case .color(let color) = layer, color.alpha > 0, !backdrop.isUnknown {
             kind = .background
         } else if element.tagName() == "caption", !backdrop.isUnknown {
-            // Off its table's background, it may need back the colour the table was given instead.
             kind = .background
         } else {
             return nil
@@ -344,8 +299,6 @@ nonisolated struct MailReadableHTML {
                     style: element.hasAttr("style") ? style.text : nil)
     }
 
-    /// The colour `element` sets for its own text: a `color` declaration, which outranks
-    /// `<font color>` even when this cannot read it, or a `<font color>` HTML does not ignore.
     private static func sentColor(of element: Element, style: Style) throws -> Sent? {
         if let declaration = style.effective("color") {
             return Sent(color: parse(declaration.value, legacy: false), attribute: "style", value: style.text,
@@ -365,31 +318,23 @@ nonisolated struct MailReadableHTML {
             .compactMap { Range($0.range, in: html).map { String(html[$0]) } }
     }
 
-    // MARK: Colours
-
-    /// An sRGB colour, each channel and the alpha from 0 to 1.
     nonisolated struct RGBA: Hashable {
         var red: Double
         var green: Double
         var blue: Double
         var alpha = 1.0
 
-        /// `#rrggbb`, from an opaque colour. Hex digits only, so the locale cannot change it.
         var css: String {
             let byte = { (channel: Double) in Int((channel * 255).rounded()) }
             return String(format: "#%02x%02x%02x", byte(red), byte(green), byte(blue))
         }
 
-        /// This colour drawn over the opaque `below`, in sRGB as browsers blend.
         func over(_ below: RGBA) -> RGBA {
             let mix = { (top: Double, bottom: Double) in top * alpha + bottom * (1 - alpha) }
             return RGBA(red: mix(red, below.red), green: mix(green, below.green), blue: mix(blue, below.blue))
         }
     }
 
-    /// A CSS colour: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` or a name. With
-    /// `legacy`, a `bgcolor` or `<font color>`, only `#rgb`, `#rrggbb` and names: HTML reads any
-    /// other form there by its own rules, not as CSS. Nil for anything else.
     static func parse(_ value: Substring, legacy: Bool) -> RGBA? {
         let value = value.lowercased()
         if value == "transparent" { return RGBA(red: 0, green: 0, blue: 0, alpha: 0) }
@@ -412,8 +357,6 @@ nonisolated struct MailReadableHTML {
         return RGBA(red: channels[0], green: channels[1], blue: channels[2], alpha: channels.count > 3 ? channels[3] : 1)
     }
 
-    /// `rgb()` or `rgba()` with commas or spaces; with commas the three channels are all numbers
-    /// or all percentages, as CSS requires.
     private static func function(_ value: String) -> RGBA? {
         guard let open = value.firstIndex(of: "("), value.hasSuffix(")"), ["rgb", "rgba"].contains(value[..<open]) else { return nil }
         let arguments = value[value.index(after: open)..<value.index(before: value.endIndex)]
@@ -449,25 +392,16 @@ nonisolated struct MailReadableHTML {
         return min(max(number / (isPercentage ? 100 : scale), 0), 1)
     }
 
-    // MARK: Contrast
-
-    /// The WCAG 2 contrast ratio of two opaque colours.
     static func contrast(_ first: RGBA, _ second: RGBA) -> Double {
         let (one, other) = (luminance(first), luminance(second))
         return (max(one, other) + 0.05) / (min(one, other) + 0.05)
     }
 
-    /// Whether `text` reads on `background`: at `minimumContrast`, or on a mid-tone where no colour
-    /// reaches that, as well as the better of white and black.
     static func reads(_ text: RGBA, on background: RGBA) -> Bool {
         let (white, black) = (contrast(RGBA(0xFFFFFF), background), contrast(RGBA(0x000000), background))
         return contrast(text, background) >= min(minimumContrast, max(white, black))
     }
 
-    /// The colour nearest `text` in OKLCH lightness that reaches `minimumContrast` on
-    /// `background`, or nil when `text` already reads there. Both opaque. Only the side of the
-    /// better of white and black can reach it, and on a mid-tone where neither does, that one is
-    /// the fix: no colour comes closer. It is the fix without `searching` too.
     static func readable(_ text: RGBA, on background: RGBA, searching: Bool = true) -> RGBA? {
         guard !reads(text, on: background) else { return nil }
         let (white, black) = (RGBA(0xFFFFFF), RGBA(0x000000))
@@ -476,9 +410,6 @@ nonisolated struct MailReadableHTML {
         return nearest(OKLab(text), towards: best == white ? 1 : 0, on: background) ?? best
     }
 
-    /// The first lightness from `lab`'s towards `end` that reaches `minimumContrast` on
-    /// `background`, found by halving; nil when even `end` does not. Twelve halvings are finer
-    /// than a byte step, and the channels round away from the background, so it still reaches it.
     private static func nearest(_ lab: OKLab, towards end: Double, on background: RGBA) -> RGBA? {
         let reaches = { (lightness: Double) in contrast(displayable(lab, lightness: lightness), background) >= minimumContrast }
         guard reaches(end) else { return nil }
@@ -493,7 +424,6 @@ nonisolated struct MailReadableHTML {
         return RGBA(red: byte(color.red), green: byte(color.green), blue: byte(color.blue))
     }
 
-    /// `lab` at `lightness`, with its hue and as much of its chroma as sRGB holds there.
     private static func displayable(_ lab: OKLab, lightness: Double) -> RGBA {
         let scaled = { (chroma: Double) in OKLab(lightness: lightness, a: lab.a * chroma, b: lab.b * chroma) }
         var (inside, outside) = (0.0, 1.0)
@@ -510,8 +440,6 @@ nonisolated struct MailReadableHTML {
         return RGBA(red: channel(red), green: channel(green), blue: channel(blue))
     }
 
-    /// `readable` once per text and background pair: mail paints one colour on one background
-    /// over and over.
     private nonisolated struct Fixes {
         private nonisolated struct Pair: Hashable {
             let text: RGBA
@@ -541,8 +469,6 @@ nonisolated struct MailReadableHTML {
         linear <= 0.0031308 ? linear * 12.92 : 1.055 * pow(linear, 1 / 2.4) - 0.055
     }
 
-    /// OKLab coordinates. OKLCH's chroma and hue are the length and angle of `(a, b)`, so scaling
-    /// both keeps the hue.
     private nonisolated struct OKLab {
         var lightness: Double
         var a: Double
@@ -577,7 +503,6 @@ nonisolated struct MailReadableHTML {
         }
     }
 
-    /// CSS Color 4's named colours, `0xRRGGBB`.
     private static let namedColors: [String: UInt32] = [
         "aliceblue": 0xF0F8FF, "antiquewhite": 0xFAEBD7, "aqua": 0x00FFFF, "aquamarine": 0x7FFFD4, "azure": 0xF0FFFF,
         "beige": 0xF5F5DC, "bisque": 0xFFE4C4, "black": 0x000000, "blanchedalmond": 0xFFEBCD, "blue": 0x0000FF,
@@ -617,7 +542,6 @@ nonisolated struct MailReadableHTML {
 }
 
 nonisolated extension MailReadableHTML.RGBA {
-    /// `0xRRGGBB`, opaque.
     init(_ rgb: UInt32) {
         self.init(red: Double((rgb >> 16) & 0xFF) / 255, green: Double((rgb >> 8) & 0xFF) / 255, blue: Double(rgb & 0xFF) / 255)
     }

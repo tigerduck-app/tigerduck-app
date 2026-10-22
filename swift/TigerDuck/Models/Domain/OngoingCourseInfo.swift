@@ -1,19 +1,11 @@
 import Foundation
 
-/// One currently-running course block. Mirrors the Android
-/// `OngoingCourseInfo` payload so the iOS "Current class" card has the
-/// same data shape (start/end minutes are minutes-of-day under Taipei
-/// time, so the progress bar can be computed without re-parsing
-/// "HH:mm").
 struct OngoingCourseInfo: Identifiable {
     let course: SDCourse
     let weekday: Int
     let firstPeriodId: String
-    /// The block's periods, for its own room where a day's rooms differ between blocks.
     let periods: [String]
-    /// Block start in minutes-of-day (Taipei).
     let startMinute: Int
-    /// Block end in minutes-of-day (Taipei).
     let endMinute: Int
 
     var id: String { "\(course.courseNo)-\(weekday)-\(firstPeriodId)" }
@@ -22,7 +14,6 @@ struct OngoingCourseInfo: Identifiable {
         course.classroom(weekday: weekday, periods: periods)
     }
 
-    /// "HH:mm - HH:mm" of this contiguous block, which the Current class card shows.
     var formattedTimeRange: String {
         func hm(_ m: Int) -> String { String(format: "%02d:%02d", m / 60, m % 60) }
         return "\(hm(startMinute)) - \(hm(endMinute))"
@@ -30,14 +21,6 @@ struct OngoingCourseInfo: Identifiable {
 }
 
 extension Array where Element == SDCourse {
-    /// Returns the contiguous-period block of each course running at the
-    /// given `weekday` / `minuteOfDay`, matching Android's shared
-    /// `computeOngoingCourses` so both show the same "Current class" set.
-    /// Periods adjacent in `AppConstants.Periods.chronologicalOrder` merge
-    /// even when the official times leave a break (P1 ends 09:00, P2 starts
-    /// 09:10), so the card stays up through the break and its progress bar
-    /// measures the whole class instead of resetting each period. Only the
-    /// first running block per course is returned.
     func ongoingCourses(weekday: Int, minuteOfDay: Int) -> [OngoingCourseInfo] {
         var results: [OngoingCourseInfo] = []
         for course in self {

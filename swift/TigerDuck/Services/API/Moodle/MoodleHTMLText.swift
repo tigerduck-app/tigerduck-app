@@ -1,27 +1,17 @@
 import Foundation
 import SwiftSoup
 
-/// Moodle's HTML, such as an announcement's message, as the app shows it: CommonMark for the
-/// body, which MarkdownUI draws with the school bulletins' theme, and one line of plain text for
-/// a preview.
 nonisolated enum MoodleHTMLText {
-    /// The text of `html` with every run of whitespace, line breaks included, as one space.
     static func plainText(fromHTML html: String) -> String {
         guard let body = try? SwiftSoup.parseBodyFragment(html).body() else { return collapsed(html) }
         return collapsed(visibleText(of: body))
     }
 
-    /// CommonMark for `html`: paragraphs, line breaks, headings, lists, quotes, emphasis and
-    /// links, with the text escaped so it never reads as Markdown. An image becomes a link to it.
-    /// Links resolve against `baseURL`, and only http, https and mailto ones stay links.
     static func markdown(fromHTML html: String, baseURL: URL = AppConstants.moodleBaseURL) -> String {
         guard let body = try? SwiftSoup.parseBodyFragment(html).body() else { return escaped(collapsed(html)) }
         return MarkdownWriter(baseURL: baseURL).blocks(in: body, depth: 0).joined(separator: "\n\n")
     }
 
-    /// `html` with each file Moodle keeps in the text's own area, written `@@PLUGINFILE@@/<path>`,
-    /// pointing at that file in `files`. An image whose file is not there is left out, and a link
-    /// keeps only its text.
     static func resolvingPluginFiles(in html: String, files: [MoodleFile]) -> String {
         let placeholder = "@@PLUGINFILE@@"
         guard html.contains(placeholder), let document = try? SwiftSoup.parseBodyFragment(html),
@@ -44,14 +34,8 @@ nonisolated enum MoodleHTMLText {
         return (try? body.html()) ?? html
     }
 
-    // MARK: Plain text
-
-    /// The text inside `element` without the skipped elements', and with a space around a block or
-    /// a break, which ends a word even where the HTML has no space around it. It walks a stack
-    /// instead of recursing, so HTML of any depth fits on a thread's stack.
     fileprivate static func visibleText(of element: Element) -> String {
         var text = ""
-        // An entry that `closes` puts its element's closing space after the element's children.
         var stack = element.getChildNodes().reversed().map { (node: $0, closes: false) }
         while let (node, closes) = stack.popLast() {
             if closes {
@@ -77,8 +61,6 @@ nonisolated enum MoodleHTMLText {
 
     fileprivate static let skippedTags: Set<String> = ["script", "style", "head", "title", "noscript", "template"]
 
-    // MARK: Markdown
-
     fileprivate static func collapsedKeepingEdges(_ text: String) -> String {
         var result = ""
         var lastWasSpace = false
@@ -94,7 +76,6 @@ nonisolated enum MoodleHTMLText {
         return result
     }
 
-    /// Backslash-escapes the ASCII punctuation Markdown would read as syntax anywhere in a line.
     fileprivate static func escaped(_ text: String) -> String {
         var result = ""
         for character in text {
@@ -104,8 +85,6 @@ nonisolated enum MoodleHTMLText {
         return result
     }
 
-    /// Escapes what reads as a list item, a heading underline or a thematic break only at the
-    /// start of a line.
     fileprivate static func escapedLineStart(_ text: String) -> String {
         if let first = text.first, "-+=".contains(first) { return "\\" + text }
         let digits = text.prefix { $0.isASCII && $0.isNumber }
@@ -125,8 +104,6 @@ private nonisolated struct MarkdownWriter {
         "form", "fieldset", "details", "summary",
     ]
 
-    /// The Markdown blocks of `element`'s children; inline runs between blocks become paragraphs.
-    /// Deeper than `AppConstants.maximumHTMLDepth`, the element is one paragraph of its text.
     func blocks(in element: Element, depth: Int) -> [String] {
         guard depth <= AppConstants.maximumHTMLDepth else { return paragraphs(ofTextIn: element) }
         var result: [String] = []
@@ -173,8 +150,6 @@ private nonisolated struct MarkdownWriter {
         return result
     }
 
-    // Outside blocks(in:depth:) and inline(of:depth:), these keep each level of their recursion
-    // small: in a Debug build, 256 levels of a 2 KB frame nearly fill a 512 KB thread stack.
     private static func heading(_ level: Int, _ inline: String) -> String? {
         let text = inline.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : String(repeating: "#", count: level) + " " + text
@@ -205,7 +180,6 @@ private nonisolated struct MarkdownWriter {
         return text.isEmpty ? [] : [text]
     }
 
-    /// Text in a paragraph: collapsed, escaped, and escaped again where it opens a line.
     private func appendText(_ raw: String, to paragraph: inout String) {
         var text = MoodleHTMLText.collapsedKeepingEdges(raw)
         let opensLine = paragraph.isEmpty || paragraph.hasSuffix("\n")
@@ -218,7 +192,6 @@ private nonisolated struct MarkdownWriter {
         }
     }
 
-    /// Deeper than `AppConstants.maximumHTMLDepth`, the element is its text.
     private func inline(of element: Element, depth: Int) -> String {
         guard depth <= AppConstants.maximumHTMLDepth else { return Self.text(of: element) }
         let tag = element.tagName().lowercased()
@@ -256,7 +229,6 @@ private nonisolated struct MarkdownWriter {
         MoodleHTMLText.escaped(MoodleHTMLText.collapsedKeepingEdges(MoodleHTMLText.visibleText(of: element)))
     }
 
-    /// `**text**` with the spaces at its edges moved outside, which emphasis needs to open and close.
     private func wrapped(_ content: String, in marker: String) -> String {
         let text = content.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return content }
@@ -282,7 +254,6 @@ private nonisolated struct MarkdownWriter {
 
     private func list(_ element: Element, ordered: Bool, depth: Int) -> String {
         var lines: [String] = []
-        // CommonMark numbers a list with at most nine digits, and a bound keeps `+= 1` from overflowing.
         var number = min(max(Int((try? element.attr("start")) ?? "") ?? 1, 0), 999_999_000)
         for item in element.children().array() where item.tagName().lowercased() == "li" {
             let marker = ordered ? "\(number). " : "- "
@@ -311,7 +282,6 @@ private nonisolated struct MarkdownWriter {
         return level
     }
 
-    /// The link `href` names, made absolute against `baseURL`, when it is http, https or mailto.
     static func linkURL(_ href: String, baseURL: URL) -> URL? {
         let trimmed = href.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let url = URL(string: trimmed, relativeTo: baseURL)?.absoluteURL,

@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The clock NTUST publishes for its 14 teaching periods. Asserted verbatim
-/// because every other time in the app — slot spans, "current class", widget
-/// timelines — is derived from it, so a single typo here is silently wrong
-/// everywhere at once.
 struct PeriodScheduleTests {
     private static let published: [(String, String, String)] = [
         ("1", "08:10", "09:00"),
@@ -33,8 +29,6 @@ struct PeriodScheduleTests {
         #expect(AppConstants.PeriodTimes.mapping.count == Self.published.count)
     }
 
-    /// `chronologicalOrder` is what every grid sorts by; if it ever drifts out
-    /// of clock order, rows render shuffled with no other symptom.
     @Test func chronologicalOrder_isActuallyChronological() {
         let minutes = AppConstants.Periods.chronologicalOrder.map { id -> (Int, Int) in
             guard let t = AppConstants.PeriodTimes.mapping[id] else {
@@ -49,16 +43,11 @@ struct PeriodScheduleTests {
         }
     }
 
-    /// The "always show all periods" toggle unions in `chronologicalOrder`, so
-    /// the default rows have to be a subset of it or the toggle would drop rows.
     @Test func defaultVisible_isSubsetOfChronologicalOrder() {
         #expect(Set(AppConstants.Periods.defaultVisible)
             .isSubset(of: Set(AppConstants.Periods.chronologicalOrder)))
     }
 
-    /// VoiceOver reads a class table cell through `a11y_timetable_cell`, whose Chinese
-    /// templates put the word for "weekday" before the label. A date formatter's short
-    /// weekday symbol carries that word too, so passing one reads the word twice.
     @Test func shortWeekdayLabel_isTheShortLabelForEachScheduleWeekday() {
         let expected = [
             "weekday_mon_short", "weekday_tue_short", "weekday_wed_short", "weekday_thu_short",

@@ -1,5 +1,3 @@
-// `AppState.courseUploadRequest`, the one builder of a course upload. The course refresh used to
-// build its own request, with colours, while every other path sent none.
 import Foundation
 import Testing
 @testable import TigerDuck

@@ -2,30 +2,23 @@ import CoreGraphics
 import Testing
 @testable import TigerDuck
 
-/// How far the class table scrolls when it switches to another class table, so that the period
-/// rows stay where they were on screen.
 struct TimetableRowTopsTests {
     private static func rows(_ tops: [String: CGFloat]) -> TimetableRowTops {
         TimetableRowTops(switchCount: 0, tops: tops)
     }
 
-    /// Someone else's class table has no Today carousel, so the whole grid moves up by its height.
     @Test func followsTheGridWhenTheContentAboveItGoes() {
         let before = Self.rows(["1": -80, "2": -25, "3": 30, "4": 85])
         let after = Self.rows(["1": -230, "2": -175, "3": -120, "4": -65])
         #expect(TimetableRowTops.shift(from: before, to: after, visibleTop: 0) == -150)
     }
 
-    /// The first row at or below the top stays put, not the one just above it, when a row the
-    /// other class table has sits between them.
     @Test func keepsTheFirstRowAtOrBelowTheTop() {
         let before = Self.rows(["3": -20, "4": 35, "5": 90])
         let after = Self.rows(["3": -20, "Z": 35, "4": 90, "5": 145])
         #expect(TimetableRowTops.shift(from: before, to: after, visibleTop: 0) == 55)
     }
 
-    /// A row under the status and navigation bars is out of sight, so the first row below them
-    /// stays put.
     @Test func keepsTheFirstRowBelowTheBars() {
         let before = Self.rows(["4": 40, "6": 95, "7": 150])
         let after = Self.rows(["4": 40, "5": 95, "6": 150, "7": 205])

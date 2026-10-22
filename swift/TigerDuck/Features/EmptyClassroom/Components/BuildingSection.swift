@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// One building's free rooms by floor, under a row of building chips with their free-room
-/// counts. A building with no free room offers the nearest ones that have one, and the next
-/// period.
 struct BuildingSection: View {
     let directory: BuildingDirectory
     let shown: String
@@ -11,7 +8,6 @@ struct BuildingSection: View {
     let policy: VisualStylePolicy
     let name: (String) -> String
     let onPick: (String) -> Void
-    /// Nil at the last period of the day.
     let onNextPeriod: (() -> Void)?
     let onRoom: (RoomUsage) -> Void
 
@@ -42,7 +38,6 @@ struct BuildingSection: View {
         }
     }
 
-    /// Scrolled to the building shown, which can sort past the screen's edge.
     private var chips: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -134,7 +129,6 @@ struct BuildingSection: View {
         .presetCard(policy: policy)
     }
 
-    /// The nearest buildings with a free room, and the next period.
     @ViewBuilder
     private var ways: some View {
         ForEach(directory.nearby(shown)) { building in

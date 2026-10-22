@@ -13,8 +13,6 @@ enum SemesterCatalog {
         "https://querycourse.ntust.edu.tw/QueryCourse/api/semestersinfo"
     )
 
-    /// Pinned as `CourseLookupService` is for the same host: the answer decides which term the
-    /// courses are filed under. Ephemeral, so no cookie from the shared jar goes along.
     static let session = URLSession(
         configuration: .ephemeral,
         delegate: TLSPinningDelegate.shared,
@@ -25,14 +23,8 @@ enum SemesterCatalog {
     private nonisolated static let selectionKey = "semesterCatalog.selectionSemester"
     private static let refreshedAtKey = "semesterCatalog.refreshedAt"
 
-    /// Term boundaries move on the scale of weeks, so this only has to beat
-    /// the month heuristic — hourly is plenty, and it keeps the fetch off the
-    /// hot path when several semesters warm at once.
     private static let refreshTTL: TimeInterval = 3600
 
-    /// Picker depth when the student id is unknown: six, because the catalogue
-    /// interleaves summer terms (`114H`) between the regular ones. With a known id
-    /// the picker reaches back to the admission term; see `terms(from:admissionYear:)`.
     private nonisolated static let pickerDepth = 6
 
     // Capitalised to match the wire format, same as `CourseSearchResult`.
@@ -43,9 +35,6 @@ enum SemesterCatalog {
     }
     // swiftlint:enable identifier_name
 
-    /// Split out from `fetch()` so the two things that actually matter about
-    /// the payload — its shape, and that the open term is picked by
-    /// `LoginEnable` rather than by position — are testable offline.
     static func decodeSemesters(_ data: Data) throws -> [SemesterInfo] {
         try JSONDecoder().decode([SemesterInfo].self, from: data)
     }
@@ -54,11 +43,6 @@ enum SemesterCatalog {
         list.first(where: \.LoginEnable)?.Semester
     }
 
-    /// Terms the picker offers, newest first: every catalogue term back to
-    /// the student's first one. A fixed depth of six stopped at 113-2 for a
-    /// student admitted in 113 once 114H and 113H took two of the slots.
-    /// Falls back to walking back from the month heuristic until the first
-    /// successful `refresh()`.
     nonisolated static func availableSemesters() -> [String] {
         let cached = UserDefaults.standard.stringArray(forKey: listKey) ?? []
         guard !cached.isEmpty else { return heuristicSemesters() }
@@ -79,53 +63,32 @@ enum SemesterCatalog {
         return catalogue.filter { (academicYear(of: $0) ?? -1) >= admissionYear }
     }
 
-    /// `1151` → 115, `114H` → 114, `99 1` → 99. The last character is the
-    /// term (1 / 2 / H); everything before it is the ROC academic year.
     nonisolated static func academicYear(of code: String) -> Int? {
         Int(code.dropLast().trimmingCharacters(in: .whitespaces))
     }
 
-    /// NTUST ids are one degree letter plus the three-digit admission year
-    /// (`B113…` → 113).
     nonisolated static func admissionYear(studentId: String?) -> Int? {
         guard let studentId, studentId.count >= 4 else { return nil }
         return Int(studentId.dropFirst().prefix(3))
     }
 
-    /// The term the picker should open on: the user's last pick, or the newest
-    /// published term when they have never picked one.
-    ///
-    /// The stored pick is passed in rather than read here so the rule stays
-    /// testable, and callers deliberately do *not* persist the fallback — an
-    /// untouched picker should keep tracking the newest term rather than
-    /// freezing on whichever one happened to be newest at first launch.
     nonisolated static func selectedSemester(storedPick: String?) -> String {
         storedPick
             ?? availableSemesters().first
             ?? CourseSelectionService.currentSemesterCode()
     }
 
-    /// The term the course-selection system is serving: the one whose enrolments
-    /// `CourseSelectionService.fetchEnrolledCourseNos` returns.
-    ///
-    /// It runs ahead of the term in session (selection for the next term opens weeks
-    /// before it starts), so it does not replace `currentSemesterCode()`. It only says
-    /// which term the selection list's course numbers belong to.
     nonisolated static func selectionSemesterCode() -> String {
         UserDefaults.standard.string(forKey: selectionKey)
             ?? CourseSelectionService.currentSemesterCode()
     }
 
-    /// Refreshes both cached values when the last successful fetch has aged
-    /// out. Safe to call from every course-fetch entry point.
     static func refreshIfStale() async {
         let last = UserDefaults.standard.double(forKey: refreshedAtKey)
         guard Date().timeIntervalSince1970 - last > refreshTTL else { return }
         await refresh()
     }
 
-    /// Refreshes both cached values. Failures are swallowed — every caller
-    /// degrades to the month heuristic, which is the pre-existing behaviour.
     static func refresh() async {
         guard let list = try? await fetch(), !list.isEmpty else { return }
         let defaults = UserDefaults.standard
@@ -146,8 +109,6 @@ enum SemesterCatalog {
         return try decodeSemesters(data)
     }
 
-    /// Pre-refresh fallback: the walk-back that `ClassTableViewModel`,
-    /// `MacClassTableView` and `AppServiceBridge` each used to reimplement.
     nonisolated private static func heuristicSemesters() -> [String] {
         var semesters: [String] = []
         var code = CourseSelectionService.currentSemesterCode()

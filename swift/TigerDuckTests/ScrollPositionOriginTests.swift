@@ -41,7 +41,6 @@ struct ScrollPositionOriginTests {
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
 
-        // Without a top inset the two origins are the same.
         try await waitUntil { (scroll.reading?.topInset ?? 0) > 0 }
 
         scroll.position.scrollTo(y: 400)

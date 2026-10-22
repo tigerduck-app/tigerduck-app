@@ -2,17 +2,11 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The App-Group-backed stores (`WidgetSnapshotStore`, `CourseCardFontScaleStore`)
-/// promise in their doc comments to crash in DEBUG rather than let a missing
-/// `com.apple.security.application-groups` entry ship.
-///
 /// A `UserDefaults(suiteName:) != nil` gate cannot keep that promise: the initializer
 /// returns nil only for reserved names (this process's bundle identifier, `NSGlobalDomain`).
 /// An unentitled group gets a valid but process-local store, so the extension never
 /// sees the app's writes and neither the assertion nor `logger.error` fires.
 struct AppGroupEntitlementTests {
-    /// Shaped like a real App Group so nothing can pass this by sniffing the
-    /// identifier, but no target in this project is entitled to it.
     private static let unentitled = "group.org.ntust.app.TigerDuck.unentitled-probe"
 
     @Test func unentitledGroupIsReportedUnavailable() {
@@ -28,10 +22,6 @@ struct AppGroupEntitlementTests {
         #expect(UserDefaults(suiteName: Self.unentitled) != nil)
     }
 
-    /// The stores only demand a reachable container for the App Group they
-    /// actually ship with; an injected identifier stays a plain suite so
-    /// tests (e.g. `CourseCardFontScaleTests`) can still inject one without
-    /// tripping the DEBUG assertion.
     @Test func injectedSuiteIsNotHeldToTheEntitlementRequirement() {
         let suite = "AppGroupEntitlementTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }

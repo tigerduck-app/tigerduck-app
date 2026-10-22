@@ -3,13 +3,6 @@ import AppKit
 import UserNotifications
 import os
 
-/// macOS equivalent of `PushAppDelegate`. Captures APNs device tokens
-/// via `NSApplicationDelegate` and forwards them to `PushCoordinator`
-/// through the `PushTokenSource` protocol.
-///
-/// macOS does not have Live Activities (no PTS token) or background
-/// fetch — the delegate only handles device-token registration and
-/// silent sync-trigger pushes.
 final class MacPushAppDelegate: NSObject, NSApplicationDelegate, PushTokenSource {
     var forwardToken: ((Data) -> Void)? {
         didSet {

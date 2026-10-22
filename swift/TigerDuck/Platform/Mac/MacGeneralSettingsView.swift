@@ -3,14 +3,10 @@ import SwiftUI
 import AppKit
 import Defaults
 
-/// General tab — language, what the schedule shows, name-abbreviation
-/// toggles, and how links open. One of the six tabs assembled by
-/// `MacSettingsScene`.
 struct MacGeneralSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
-    /// Every language the app ships, in the order of their own names.
     private static let languageTags: [String] = LanguageManager.supportedLocaleTags()
         .sorted {
             LanguageManager.displayName(for: $0)
@@ -49,8 +45,6 @@ struct MacGeneralSettingsView: View {
                 .buttonStyle(.plain)
             }
 
-            // The iPhone's Display toggles in the same order, except today's courses, which the
-            // Mac class table does not show.
             Section(String(localized: "settings_section_display")) {
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
                 Toggle(
@@ -73,9 +67,6 @@ struct MacGeneralSettingsView: View {
             }
 
             Section(String(localized: "desktop_settings_section_links")) {
-                // No first-party Moodle app exists for Mac, but the iPad app from the Mac App
-                // Store registers `moodlemobile://`, so its users can opt in. The default stays
-                // `.browser`: without the app, that URL fails with "no app handles this URL".
                 Picker(String(localized: "desktop_settings_moodle_open_in"), selection: $state.macMoodleOpenTarget) {
                     Text(String(localized: "desktop_settings_moodle_open_in_browser")).tag(MoodleOpenTarget.browser)
                     Text(String(localized: "desktop_settings_moodle_open_in_app")).tag(MoodleOpenTarget.app)

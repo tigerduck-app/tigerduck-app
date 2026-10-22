@@ -1,19 +1,13 @@
-// Runs on the real keys, which are the migration's whole job, inside `withExclusiveRealDefaults`.
-// Each key is restored as present or absent, as the migration reads an absent key as never set.
 import Foundation
 import Testing
 @testable import TigerDuck
 
-/// 2.6.2 and earlier stopped every automatic post of the stored password after one refusal, until
-/// the user signed in again (https://github.com/tigerduck-app/tigerduck-app/issues/768).
 @MainActor
 @Suite(.serialized)
 struct StoredPasswordLatchRetryMigrationTests {
     static let doneKey = "StoredPasswordLatchRetryMigration.v1.done"
     static let latchKey = "ntustStoredPasswordRejected"
 
-    /// Runs `body` before the migration, with the old latch up when `latched` and no refusals, then
-    /// puts back the migration's keys and the refusals. It takes no gate, so its caller holds one.
     static func withLatch(_ latched: Bool, _ body: () async throws -> Void) async rethrows {
         let defaults = UserDefaults.standard
         let saved = [doneKey, latchKey].map { ($0, defaults.object(forKey: $0)) }

@@ -44,17 +44,11 @@ enum SSOLoginService {
             }
         }
         if let s = String(data: data, encoding: .utf8) { return s }
-        // Last-ditch: try Big5 even if not declared.
         let big5 = String.Encoding(rawValue:
             CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue)))
         return String(data: data, encoding: big5)
     }
 
-    /// How many times in a row the school refused the stored password in sign-ins the user did not
-    /// start, and when it last did. Each refusal counts toward the account's lockout, so the next
-    /// such sign-in waits ``storedPasswordRetryDelay(afterRefusals:)`` before it posts the password
-    /// again. A sign-in the user typed never waits and clears the count, as a post the school
-    /// accepts and a sign-out do.
     nonisolated static var storedPasswordRefusals: (count: Int, last: Date?) {
         get { (Defaults[.ntustStoredPasswordRefusals], Defaults[.ntustStoredPasswordRefusedAt]) }
         set {
@@ -63,15 +57,9 @@ enum SSOLoginService {
         }
     }
 
-    /// Posted on `NotificationCenter.default` when automatic posts of the stored password have to
-    /// wait: at each refusal ``storedPasswordRefusals`` counts and at each post one holds back, so
-    /// `AuthService` arms a try for when the wait is over, after a relaunch too. Its `userInfo`
-    /// holds that time under ``storedPasswordRetryAtKey``.
     nonisolated static let storedPasswordPostWaits = Notification.Name("TigerDuck.storedPasswordPostWaits")
     nonisolated static let storedPasswordRetryAtKey = "retryAt"
 
-    /// The waits after the first refusals in a row. Every later wait is
-    /// ``storedPasswordRetryInterval``, so a password changed elsewhere then goes out four times a day.
     nonisolated static let storedPasswordQuickRetries: [TimeInterval] = [10, 60, 5 * 60]
     nonisolated static let storedPasswordRetryInterval: TimeInterval = 6 * 60 * 60
 
@@ -81,8 +69,6 @@ enum SSOLoginService {
             : storedPasswordQuickRetries[max(refusals, 1) - 1]
     }
 
-    /// When an automatic post of the stored password may go next, or nil when no refusal holds one
-    /// back. Measured from the last refusal, so a clock set back does not stretch the wait.
     nonisolated static func storedPasswordRetryAt(refusals: Int, lastRefusal: Date?, now: Date) -> Date? {
         guard refusals > 0 else { return nil }
         guard let lastRefusal, lastRefusal <= now else { return now }
@@ -94,8 +80,6 @@ enum SSOLoginService {
         return storedPasswordRetryAt(refusals: refusals.count, lastRefusal: refusals.last, now: now)
     }
 
-    /// Whether an automatic post of the stored password has to wait at `now`, which
-    /// ``storedPasswordPostWaits`` announces.
     nonisolated static func storedPasswordPostMustWait(now: Date = Date()) -> Bool {
         guard let retryAt = storedPasswordRetryAt(now: now), retryAt > now else { return false }
         announceStoredPasswordWait(until: retryAt)
@@ -108,8 +92,6 @@ enum SSOLoginService {
         announceStoredPasswordWait(until: now.addingTimeInterval(storedPasswordRetryDelay(afterRefusals: count)))
     }
 
-    /// From the main actor: off it, the post would hold this thread until the main queue ran the
-    /// observer.
     private nonisolated static func announceStoredPasswordWait(until retryAt: Date) {
         Task { @MainActor in
             NotificationCenter.default.post(
@@ -124,7 +106,6 @@ enum SSOLoginService {
 
     private nonisolated static let storedPasswordPosts = AsyncSerialLock()
 
-    /// How many automatic posts of the stored password wait for the one under way.
     nonisolated static func storedPasswordPostsWaiting() async -> Int {
         await storedPasswordPosts.waiterCount
     }
@@ -171,13 +152,6 @@ enum SSOLoginService {
         return try await body()
     }
 
-    /// Ensures the user is signed in to `serviceURL` through NTUST SSO, as the Python
-    /// `NtustSsoBridge.ensure_service_login` flow does. `generation` is
-    /// ``NTUSTSessionManager/generation`` when the credentials were read; once a sign-out moves
-    /// it, the login throws `CancellationError` before its next request. `interactive` marks a
-    /// sign-in the user started; any other posts no password while the school's refusals hold it
-    /// back (``storedPasswordRefusals``), and runs under ``postingStoredPassword(_:)``. `now`
-    /// times the refusals, and `logFailure` gets each failure but a cancellation.
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
@@ -240,8 +214,6 @@ enum SSOLoginService {
         logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
-            // Steps 1 and 2: Visit service URL (follows redirects automatically) and resolve any
-            // OIDC bridge forms
             var (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
 
             // Step 3: Check if we're on the SSO login page. A live session would let a password the
@@ -273,7 +245,6 @@ enum SSOLoginService {
                 .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }
                 .forEach { jar?.deleteCookie($0) }
 
-            // Re-visit service URL
             let (data2, response2) = try await session.data(from: serviceURL)
             guard let resp2 = response2 as? HTTPURLResponse,
                   let html2 = decodeHTML(data2, response: resp2) else {
@@ -292,7 +263,6 @@ enum SSOLoginService {
                 return true
             }
 
-            // Step 5: Submit SSO login form
             guard let form = HTMLParser.findFormById(currentHTML, id: "loginForm") else {
                 throw SSOLoginError.loginFormNotFound
             }
@@ -305,7 +275,6 @@ enum SSOLoginService {
             }
 
             let actionURL = resolveURL(form.action, base: currentURL)
-            // Nothing is posted, so the sign-in does not ask the user to check the password.
             guard CredentialPost.isSignInTarget(actionURL) else {
                 AppLogger.auth.error(
                     "Sign-in form action refused: \(CredentialPost.schemeLabel(of: actionURL), privacy: .public) \(actionURL.host ?? "", privacy: .private)"
@@ -316,8 +285,6 @@ enum SSOLoginService {
                 session: session, url: actionURL, fields: payload, generation: generation,
                 delegate: CredentialPostDelegate()
             )
-            // The POST stops at a redirect it may not follow (`CredentialPostDelegate`), which is no
-            // answer to the sign-in, and no refusal of the password either.
             guard let loginResp = loginResponse as? HTTPURLResponse,
                   !(300..<400).contains(loginResp.statusCode),
                   let loginHTML = decodeHTML(loginData, response: loginResp) else {
@@ -326,12 +293,10 @@ enum SSOLoginService {
             currentURL = loginResp.url ?? actionURL
             currentHTML = loginHTML
 
-            // Step 6: Resolve OIDC bridge forms after login
             (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
                 session: session, html: currentHTML, baseURL: currentURL, generation: generation
             )
 
-            // Step 7: Check if still on SSO page → login failed
             if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if !interactive, NTUSTSessionManager.shared.generation == generation {
                     noteStoredPasswordRefused(at: now())
@@ -342,8 +307,6 @@ enum SSOLoginService {
             guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                 throw SSOLoginError.invalidResponse
             }
-            // The school took the stored password. A live session that lets a sign-in through
-            // without a post says nothing of the password, so those returns leave the refusals.
             if !interactive { forgetStoredPasswordRefusals() }
             return true
         } catch SSOLoginError.loginFailed(let reason) {
@@ -365,8 +328,6 @@ enum SSOLoginService {
         )
     }
 
-    /// Whether a page that is not the ssoam2 form came with a live SSO session. A maintenance
-    /// page, an error page or the campus portal lands here as well as the service itself.
     private static func isSignedIn(html: String, url: URL, session: URLSession) async throws -> Bool {
         if HTMLParser.isNetIQLoginPage(html: html, url: url) {
             throw SSOLoginError.interactiveLoginRequired
@@ -376,7 +337,6 @@ enum SSOLoginService {
         return true
     }
 
-    /// Follow OIDC bridge form chain (max 3 steps), mirroring Python's _resolve_oidc_bridge_forms
     private static func resolveOIDCBridgeForms(
         session: URLSession,
         html: String,
@@ -407,8 +367,6 @@ enum SSOLoginService {
                 session: session, url: actionURL, fields: form.inputs, generation: generation,
                 delegate: CredentialPostDelegate()
             )
-            // Stopped at a redirect it may not follow: the service got nothing, though a live SSO
-            // session would let the sign-in pass for done. Checked before the body, whatever it is.
             if let resp = response as? HTTPURLResponse, (300..<400).contains(resp.statusCode) {
                 throw SSOLoginError.invalidResponse
             }
@@ -423,9 +381,6 @@ enum SSOLoginService {
         return (currentHTML, currentURL)
     }
 
-    /// POST form-encoded data. Each POST signs in, with the credentials or an OIDC form, so it
-    /// stops once a sign-out moves the generation. `delegate` is the task's, for the
-    /// credentials' POST a `CredentialPostDelegate`.
     private static func postForm(
         session: URLSession,
         url: URL,
@@ -460,8 +415,6 @@ enum SSOLoginService {
     }()
 
     private static func urlEncode(_ string: String) -> String {
-        // On encoder failure return "" rather than the raw string: the value is a username or
-        // password, and silently sending its cleartext bytes is far worse than a failed login.
         guard let percentEncoded = string
             .addingPercentEncoding(withAllowedCharacters: formAllowed) else {
             assertionFailure("urlEncode failed for value of length \(string.count)")

@@ -5,9 +5,6 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// The course detail's Moodle section laid out in a window and measured, as
-/// `MoodleDiscussionCardTests` measures its card: with nothing to show it adds no view and no
-/// spacing, a summary alone brings it, and the closed summary stops at four lines.
 @MainActor
 struct MoodleCourseSectionTests {
     private static let policy = VisualStylePolicy(preset: .default)
@@ -60,7 +57,6 @@ struct MoodleCourseSectionTests {
         return host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
     }
 
-    /// `section` between two bars in a stack with no spacing, as the course detail lays it out.
     private func stacked(_ section: MoodleCourseSection?) -> some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: 10)

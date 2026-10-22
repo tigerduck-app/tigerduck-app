@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The API endpoint changes only once the user agrees, and every account is signed out before it
-/// does, so no session reaches a server that did not issue it.
 @MainActor
 struct DebugEndpointViewModelTests {
     @MainActor

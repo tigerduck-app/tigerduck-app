@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// What an assignment's page reads from Moodle: the description and attachments the assignment
-/// list brings, the submission, its comments and the group's name. The calls go to
-/// `SettingsAPIStub` on a site that does not exist; the answers follow the shapes Moodle 4.5
-/// documents for these functions, and every name in them is made up.
 struct MoodleAssignmentServiceTests {
     private static let site = URL(string: "https://moodle-stub.invalid")!
 
@@ -15,7 +11,6 @@ struct MoodleAssignmentServiceTests {
         return URLSession(configuration: config)
     }
 
-    /// The token keeps the URL unique to one test.
     private static func endpoint(_ function: String, token: String) -> URL {
         URL(string: "https://moodle-stub.invalid/webservice/rest/server.php"
             + "?moodlewsrestformat=json&wsfunction=\(function)&wstoken=\(token)")!
@@ -35,8 +30,6 @@ struct MoodleAssignmentServiceTests {
             + #""fileurl": "https://moodle-stub.invalid/webservice/pluginfile.php/123/\#(area)/\#(item)/\#(name)", "#
             + #""timemodified": \#(time), "mimetype": "\#(type)", "isexternalfile": false}"#
     }
-
-    // MARK: - The assignment list
 
     static let assignments = #"""
     {"courses": [{"id": 20119, "fullname": "Data Structures", "shortname": "DS", "timemodified": 1790000000,
@@ -76,8 +69,6 @@ struct MoodleAssignmentServiceTests {
         #expect(records[1].introAttachments.isEmpty)
         #expect(records[1].teamSubmission)
     }
-
-    // MARK: - The submission
 
     private static func submission(_ json: String) throws -> MoodleAssignmentSubmission {
         try JSONDecoder().decode(RawSubmissionStatusResponse.self, from: Data(json.utf8)).submission
@@ -279,8 +270,6 @@ struct MoodleAssignmentServiceTests {
         #expect(imageOnly.onlineText != nil)
     }
 
-    // MARK: - Comments and groups
-
     @Test("comments are asked for on the assignment's module and the submission's record, and read oldest first")
     func comments() async throws {
         let token = UUID().uuidString
@@ -314,7 +303,6 @@ struct MoodleAssignmentServiceTests {
         ])
     }
 
-    /// A page of comments as Moodle answers it, newest first, with the submission's total.
     private static func commentsPage(_ ids: [Int], count: Int) -> String {
         let comments = ids.map { id in
             #"{"id": \#(id), "content": "<p>Note \#(id)</p>", "format": 1, "timecreated": \#(1_790_500_000 + id), "#
@@ -335,7 +323,6 @@ struct MoodleAssignmentServiceTests {
     func commentPages() async throws {
         let token = UUID().uuidString
         let function = MoodleAssignmentService.commentsFunction
-        // Comment 18 came in after the first request and moved comment 3 onto the second page.
         Self.answer(Self.commentsPage(Array((3...17).reversed()), count: 17), function: function, token: token)
         Self.answer(Self.commentsPage([3, 2, 1], count: 18), function: function, token: token)
         Self.answer(Self.commentsPage([], count: 18), function: function, token: token)

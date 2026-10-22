@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuckWatch_Watch_App
 
-/// The day a later class meets, as Now & Next and the complications caption it, in the iPhone
-/// widgets' words.
 @MainActor
 struct NextClassDayCaptionTests {
 
@@ -64,8 +62,6 @@ struct NextClassDayCaptionTests {
         #expect(CornerView(entry: entry(next: tuesday, day: .today)).timeText == "08:10")
     }
 
-    /// The Watch app and the complication each carry their own copy of the app-translation
-    /// strings, so both need every caption key, in every language they ship.
     @Test func captionKeysResolveInTheWatchAppAndTheComplication() throws {
         let keys = [
             "watch_next", "widget_tomorrow", "widget_tomorrow_time",

@@ -2,21 +2,14 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The custom `ColorPicker` reports every step of a drag, and each applied colour writes the
-/// colour map, reloads three screens and the Live Activity, and queues a sync. Only the colour
-/// a drag pauses on is applied. The waits are a `ManualSleeper`, so a pause ends when the test
-/// fires it.
 @MainActor
 struct CustomColorPickDebouncerTests {
     private final class Applied {
         var hexes: [UInt32] = []
     }
 
-    /// The course's colour before the drag.
     private static let appliedHex: UInt32 = 0xAAAAAA
 
-    /// A preset applies at once, and not after the account that opened the sheet signed out
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/482).
     @Test func aPresetAfterASignOutSavesNothing() {
         let applied = Applied()
         var signedIn = true
@@ -51,7 +44,6 @@ struct CustomColorPickDebouncerTests {
         #expect(await timer.requestedDurations == [Duration](repeating: .milliseconds(300), count: 3))
         #expect(applied.hexes.isEmpty)
 
-        // Each pick cancelled the wait before it; firing ends the last.
         await timer.fire()
         for window in windows { await window.value }
 
@@ -91,14 +83,12 @@ struct CustomColorPickDebouncerTests {
         picks.pick(Self.appliedHex)
         await window.value
         #expect(picks.pendingTask == nil)
-        // What the sheet does as it closes.
         picks.flush()
 
         #expect(applied.hexes.isEmpty)
     }
 
     @Test func showingTheAppliedColourAppliesNothing() async throws {
-        // The picker reports the course's own colour when it first shows it.
         let applied = Applied()
         let picks = CustomColorPickDebouncer(
             apply: { applied.hexes.append($0) },
@@ -130,7 +120,6 @@ struct CustomColorPickDebouncerTests {
         signedIn = false
         await timer.fire()
         await window.value
-        // What the sheet does as it closes.
         picks.flush()
 
         #expect(applied.hexes.isEmpty)
@@ -150,7 +139,6 @@ struct CustomColorPickDebouncerTests {
 
         picks.select(0x654321)
         await window.value
-        // What the sheet does as it closes after the preset tap.
         picks.flush()
 
         #expect(applied.hexes == [0x654321])

@@ -3,8 +3,6 @@ import Observation
 import Testing
 @testable import TigerDuck
 
-/// The class table's "today" carousel shows courses only on a class day: in
-/// term, and not a holiday the user has left quiet.
 @MainActor
 struct ClassTableTodayCoursesTests {
     private static let everyDay = SDCourse(
@@ -33,8 +31,6 @@ struct ClassTableTodayCoursesTests {
     }
 
     @Test func holidayToggle_redrawsTodaysCourses() {
-        // A "still have class" toggle changes what `isClassDay` answers and no course, so the
-        // carousel must not wait for the next minute to drop or bring back today's classes.
         let viewModel = ClassTableViewModel(isClassDay: { _ in true })
         let redrawn = Flag()
         withObservationTracking {
@@ -47,8 +43,6 @@ struct ClassTableTodayCoursesTests {
 
         #expect(redrawn.raised)
     }
-
-    // MARK: - What counts as a class day
 
     private static func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
         AcademicCalendar.calendar.date(from: DateComponents(year: year, month: month, day: day))!
@@ -71,9 +65,7 @@ struct ClassTableTodayCoursesTests {
     @Test func classDay_isInTermAndNotAQuietHoliday() {
         #expect(Self.calendar.isClassDay(Self.day(2026, 9, 24), optedIn: []))
         #expect(!Self.calendar.isClassDay(Self.day(2026, 9, 25), optedIn: []))
-        // "Still have class?" on that holiday.
         #expect(Self.calendar.isClassDay(Self.day(2026, 9, 25), optedIn: [1]))
-        // Before the term begins.
         #expect(!Self.calendar.isClassDay(Self.day(2026, 8, 3), optedIn: []))
     }
 }

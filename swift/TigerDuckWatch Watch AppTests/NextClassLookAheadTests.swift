@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuckWatch_Watch_App
 
-/// With no class on and none left today, Now & Next and the complications show the first class
-/// of the next class day within a week (https://github.com/tigerduck-app/tigerduck-app/issues/364).
 struct NextClassLookAheadTests {
 
     private func course(
@@ -17,7 +15,6 @@ struct NextClassLookAheadTests {
         )
     }
 
-    /// Mon 2026-05-11 at `hhmm`, Taipei time; `dayOffset` moves to a later day.
     private func mondayAt(_ hhmm: String, dayOffset: Int = 0) -> Date {
         let parts = hhmm.split(separator: ":").compactMap { Int($0) }
         let day = DateComponents(year: 2026, month: 5, day: 11 + dayOffset, hour: parts[0], minute: parts[1])
@@ -76,7 +73,6 @@ struct NextClassLookAheadTests {
         #expect(r.nextDay == .later(weekday: 1))
     }
 
-    /// Tuesday is quiet, so B next meets eight days on, past the week the look-ahead covers.
     @Test func nothingWithinSevenDays_givesNoNextClass() {
         let tuesday = course("B", weekday: 2, start: "08:10", end: "09:00")
 

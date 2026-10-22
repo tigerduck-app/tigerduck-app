@@ -2,13 +2,7 @@
 import SwiftUI
 import UIKit
 
-/// School Mail notifications: the new-mail switch and the check log, reached from Settings →
-/// Notifications alongside the app's other notification screens rather than from the School
-/// Mail settings screen.
 ///
-/// The switch was **moved** here out of `MailSettingsView`, not mirrored: one screen owns
-/// `MailAccountManager.notificationsEnabled`, so there is no second copy of the control
-/// that could show a different state than the one the background refresh actually reads.
 struct MailNotificationSettingsView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -19,7 +13,6 @@ struct MailNotificationSettingsView: View {
     /// Injectable purely so tests can drive a throwaway account instead of the app's real
     /// singleton (which reaches the real `UserDefaults`). Every caller in the app uses the
     /// default.
-    ///
     /// Optional-defaulted-to-`nil` rather than `= .shared`: a default argument expression is
     /// type-checked in a nonisolated context, and `MailAccountManager.shared` is main-actor
     /// isolated, so spelling the singleton there is an isolation violation in the Swift 6
@@ -37,20 +30,10 @@ struct MailNotificationSettingsView: View {
         isLoggedIn && !authFailed
     }
 
-    /// Whether the Settings row that opens this screen is tappable. Signed out there is no
-    /// mailbox to be notified about, so the row stays visible but dimmed and inert — no
-    /// explanatory subtitle, by the owner's choice: the School Mail account row further up the
-    /// same screen already says the account is signed out.
-    ///
-    /// Demo mode is signed in as far as this is concerned — `isLoggedIn` is the student ID
-    /// being present, which a demo login sets like any other.
     static func settingsRowIsEnabled(isLoggedIn: Bool) -> Bool {
         isLoggedIn
     }
 
-    /// The binding the switch below is built from, lifted out so a test can drive the real
-    /// control the way a tap does rather than poke the model behind it and hope the view
-    /// is wired to the same property.
     @MainActor
     static func notificationsBinding(for account: MailAccountManager) -> Binding<Bool> {
         @Bindable var account = account
@@ -85,9 +68,6 @@ struct MailNotificationSettingsView: View {
                     Text(String(localized: "school_mail_settings_no_checks"))
                         .foregroundStyle(.secondary)
                 } else {
-                    // Records keep the English `MailCheckOutcome.diagnosticText` and raw trigger
-                    // value on disk. Gated only on `SchoolMailAvailability.isEnabled`, this is
-                    // not a Debug screen and must not show raw enum text in a zh-TW-primary app.
                     ForEach(Array(records.enumerated()), id: \.offset) { _, record in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(MailCheckOutcome.displayText(forStored: record.result))

@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `AppServiceBridge.uploadVisibleCourses`: what a course refresh sends to the server
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/650).
 @MainActor
 struct CourseRefreshUploadTests {
     private static let courses = ["CS1", "CS2", "CS3"].map { SDCourse(courseNo: $0, courseName: $0) }

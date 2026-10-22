@@ -1,16 +1,7 @@
 #if os(macOS)
 import SwiftUI
 
-/// The grid itself: the glass card, its weekday columns, and the cells.
-///
-/// A weekday is one VStack, not a Grid row, because consecutive periods of
-/// the same course render as a single spanning block and SwiftUI Grid has no
-/// row spanning. Each column walks `visiblePeriods` top to bottom and decides
-/// per period whether it is a block start, a covered row, or empty (`ClassTableCellRole`).
-///
-/// MacClassTableView.swift holds the state, data reads and page chrome around this card.
 extension MacClassTableView {
-    // MARK: - Glass grid card
 
     var glassGridCard: some View {
         VStack(spacing: rowSpacing) {
@@ -68,9 +59,6 @@ extension MacClassTableView {
 
     private func periodLabel(_ period: String) -> some View {
         let times = AppConstants.PeriodTimes.mapping[period]
-        // Start above, the period number in the middle, end below, so the row
-        // reads as the span it occupies rather than as a number followed by
-        // two loose timestamps. Matches the iOS grid and Android.
         return VStack(alignment: .trailing, spacing: 2) {
             if let times {
                 Text(times.start)
@@ -89,10 +77,6 @@ extension MacClassTableView {
         .padding(.trailing, 4)
     }
 
-    /// One vertical stack of cells for `weekday`. Walks `visiblePeriods` one
-    /// row at a time; `ClassTableLayout.cellRole` says when a row starts a
-    /// multi-row block (a solo course or a conflict cluster), so contiguous
-    /// runs render as one tall block, the same partitioning the iPhone uses.
     @ViewBuilder
     private func weekdayColumn(_ weekday: Int) -> some View {
         let periods = visiblePeriods
@@ -118,15 +102,10 @@ extension MacClassTableView {
         case .empty:
             emptyCell.frame(height: cellHeight)
         case let .solo(course, spanCount):
-            // Only the solo case gets the room hint: a conflict cluster splits
-            // the cell into columns with no room left for a third line.
             courseCell(course, roomHint: roomHint(course, weekday: weekday, periodId: periodId))
                 .frame(height: blockHeight(spanCount))
                 .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday, periodId: periodId) }
         case let .conflictStart(a, spanA, offsetA, b, spanB, offsetB, combinedSpan):
-            // A two-course conflict splits into two columns, each sized to its course's span
-            // and placed at its offset in the cluster. A full-height column would draw a shorter
-            // course, and make it clickable, in rows where the two courses do not meet.
             HStack(spacing: rowSpacing) {
                 conflictColumn(
                     course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan,
@@ -139,9 +118,6 @@ extension MacClassTableView {
             }
             .frame(height: blockHeight(combinedSpan))
         case let .conflictMany(segments, combinedSpan, laneCount):
-            // The same offset-aware columns as the two-course case, one per lane: courses that
-            // never meet share a lane, so a chain of three takes two columns. A column's spacers
-            // are clear and take no clicks, so a lane's courses stack in one ZStack.
             HStack(spacing: rowSpacing) {
                 ForEach(0..<laneCount, id: \.self) { lane in
                     ZStack(alignment: .top) {
@@ -164,8 +140,6 @@ extension MacClassTableView {
         }
     }
 
-    /// `nil` unless the user asked for room hints and this slot's room is
-    /// one of the short codes that survives a grid cell — see `CourseRoomHint`.
     private func roomHint(_ course: SDCourse, weekday: Int, periodId: String) -> String? {
         guard appState.showClassroomInClassTable else { return nil }
         return CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
@@ -175,9 +149,6 @@ extension MacClassTableView {
         CGFloat(span) * cellHeight + CGFloat(max(span - 1, 0)) * rowSpacing
     }
 
-    /// One column of a conflict cluster. Empty spacers above and below the
-    /// course block reserve the rows the course isn't scheduled in, so an
-    /// overlap that meets in only part of the cluster doesn't extend to the rest.
     @ViewBuilder
     private func conflictColumn(
         course: SDCourse, span: Int, offset: Int, combinedSpan: Int, weekday: Int, periodId: String
@@ -212,7 +183,6 @@ extension MacClassTableView {
         ignoredAssignmentCourses.contains(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo))
     }
 
-    /// A conflict column's label replaces what its cell reads, so it names the ignored mark too.
     private func spokenName(_ course: SDCourse) -> String {
         guard ignoresAssignments(course) else { return course.displayName }
         return course.displayName + ", " + String(localized: "a11y_class_table_cell_assignments_ignored")
@@ -263,9 +233,6 @@ extension MacClassTableView {
         .ignoredAssignmentsBadge(show: ignored, iconSize: Self.ignoredMarkSize, padding: 8)
         .contentShape(Rectangle())
         .courseEditMenu(isEditable: shownPerson == nil) {
-            // Rename writes to a courseNo-keyed store shared across semesters;
-            // only expose it from the current semester to avoid leaking aliases
-            // into other terms. See `isViewingCurrentSemester`.
             if isViewingCurrentSemester {
                 Button {
                     startRename(course)
@@ -279,7 +246,6 @@ extension MacClassTableView {
                 Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
             }
             if isViewingCurrentSemester {
-                // Assignments are fetched for the current term only.
                 Button {
                     setIgnoresAssignments(!ignored, for: course)
                 } label: {

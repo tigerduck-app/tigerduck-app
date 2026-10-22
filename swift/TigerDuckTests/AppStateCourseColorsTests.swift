@@ -1,6 +1,3 @@
-// Course colours follow course sync both ways (`AppState+CourseColors.swift`); without
-// that, the disabled colours toggle stays ON while `applyCourseOverrides` keeps applying
-// server colours. Tested on the function: there is no SwiftUI view inspection here.
 import Testing
 @testable import TigerDuck
 

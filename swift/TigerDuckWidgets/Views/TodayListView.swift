@@ -7,17 +7,8 @@ struct TodayListView: View {
     let palette: WidgetPalette
     let maxRows: Int
 
-    /// User-chosen multiplier for course-name font, read from the App
-    /// Group at struct init. The main app reloads widget timelines after
-    /// changing the value, so the next render picks up the new scale.
     private let userScale: CGFloat = CGFloat(CourseCardFontScale.renderScale(CourseCardFontScaleStore().read()))
 
-    /// Dynamic-Type-anchored baseline for the system `.caption` font.
-    /// `@ScaledMetric(relativeTo:)` keeps the course-name label moving
-    /// with the user's system text-size preference so the surrounding
-    /// `.caption.weight(.bold)` / `.caption2` row metadata (still
-    /// semantic) doesn't drift away from it under Accessibility text
-    /// sizes.
     @ScaledMetric(relativeTo: .caption) private var captionBase: CGFloat = 12
 
     var body: some View {
@@ -77,9 +68,6 @@ struct TodayListView: View {
     private func row(_ todayRow: WidgetTimelineDerivation.TodayRow, isOngoing: Bool) -> some View {
         let course = todayRow.course
 
-        // The ongoing row uses the course color, not a token, so it branches on rendering mode
-        // here. Outside `.fullColor` it takes the week grid's 0.25 wash (still reads as running,
-        // no opaque slab) and palette label colors, since white only suited the saturated fill.
         let rowFill: Color
         let primary: Color
         let secondary: Color
@@ -138,8 +126,6 @@ struct TodayListView: View {
         }
     }
 
-    /// A block by course and start time, so only the block in progress of a course that
-    /// meets twice today is drawn as ongoing.
     private struct BlockKey: Hashable {
         let courseNo: String
         let startTime: String

@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// Presents a login-required prompt on surfaces that need an NTUST portal
-/// session. Supports two layouts:
-///
-/// - ``Layout/page``: full-page placeholder used when an entire screen is
-///   gated (e.g. the Class Table tab).
-/// - ``Layout/section``: compact card used inline when only a section of a
-///   screen is gated (e.g. Home's time slider and upcoming assignments).
 struct LoginRequiredView: View {
     enum Layout {
         case page
