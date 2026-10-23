@@ -422,5 +422,47 @@
         }
       ]
     }
+  },
+  "2.6.4": {
+    "zh-TW": {
+      "title": "2.6.4 更新內容",
+      "items": [
+        {
+          "symbol": "person.crop.circle",
+          "title": "帳號策略",
+          "body": "學校、信箱、與圖書館帳號各自完全獨立。"
+        },
+        {
+          "symbol": "tablecells",
+          "title": "三校聯盟",
+          "body": "在臺大、臺師大修的課現在也會出現在課表。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "圖書館登入被拒後會稍後再試，並修正手動加入的課程、登出提醒與信件顯示的問題。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.6.4",
+      "items": [
+        {
+          "symbol": "person.crop.circle",
+          "title": "Account policy",
+          "body": "School, mail and library accounts are now fully independent."
+        },
+        {
+          "symbol": "tablecells",
+          "title": "NTU System",
+          "body": "Courses taken at NTU or NTNU now also show in the class table."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Library sign-in tries again later after a refusal, with fixes for hand-added courses, the sign-out warning and mail display."
+        }
+      ]
+    }
   }
 }
