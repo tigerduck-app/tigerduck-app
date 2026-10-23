@@ -48,7 +48,6 @@ struct WidgetSnapshotCodableTests {
         let snapshot = try JSONDecoder().decode(WidgetSnapshot.self, from: data)
         #expect(snapshot.version == 1)
         #expect(!snapshot.courses.isEmpty)
-        // The fixture predates the per-slot room map, which then decodes empty.
         #expect(snapshot.courses.allSatisfy { $0.classroomMap.isEmpty })
     }
 

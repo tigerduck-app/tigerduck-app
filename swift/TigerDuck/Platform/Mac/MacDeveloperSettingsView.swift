@@ -1,13 +1,7 @@
 #if os(macOS)
 import SwiftUI
 
-// Developer tab and its clock-override view model, DEBUG builds only: the body is inside
-// `#if DEBUG`, so a release build compiles it away and `MacSettingsScene` drops the tab.
-// Plain `//`, not `///`: the next line is `#if DEBUG`, not a declaration.
 #if DEBUG
-/// Mac surface for the debug clock override. Mirrors iPhone's
-/// DebugSettingsView, minus the "fake local notification" button —
-/// notifications are intentionally absent from the Mac app.
 struct MacDeveloperSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = MacDebugClockViewModel()
@@ -56,8 +50,6 @@ struct MacDeveloperSettingsView: View {
                 Text("Notes")
             }
 
-            // MARK: Server failure simulation
-
             Section("Server failure simulation") {
                 ForEach(ServerKind.allCases) { server in
                     Picker(server.label, selection: Binding(
@@ -80,11 +72,6 @@ struct MacDeveloperSettingsView: View {
                 }
             }
 
-            // MARK: TigerSync status
-
-            // Raw `PushDiagnostic` fields the Account tab does not show; iOS has them in
-            // `TigerSyncStatusView`. Device ID repeats here to spare a tab switch in bug reports.
-            // No Live Activity or notification authorization rows: macOS registers for neither.
             Section("TigerSync status") {
                 if let s = snapshot {
                     LabeledContent("Started") { Text(s.isStarted ? "true" : "false") }

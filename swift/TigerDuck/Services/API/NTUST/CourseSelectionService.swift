@@ -20,7 +20,6 @@ enum CourseServiceError: LocalizedError {
 enum CourseSelectionService {
     private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
     private static let courseListURL = URL.knownGood("https://courseselection.ntust.edu.tw/ChooseList/D01/D01")
-    private static let courseNoRegex = /<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*<\/td>/
 
     static func fetchEnrolledCourseNos(
         session: URLSession,
@@ -77,25 +76,31 @@ enum CourseSelectionService {
             if retryHost != courseListURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw CourseServiceError.redirectedToSSO
             }
-            let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }
-            // Guarded write: see persistGuard rationale on
-            // NTUSTScoreService.fetchScoreReport — same in-flight
-            // logout / account-swap protection.
+            let retryCourseNos = courseNos(inListPage: retryHTML)
             if persistGuard?() ?? true {
                 saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
             }
             return retryCourseNos
         }
 
-        let courseNos = html.matches(of: courseNoRegex).map { String($0.1) }
+        let courseNos = courseNos(inListPage: html)
         if persistGuard?() ?? true {
             saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
         }
         return courseNos
     }
 
-    /// Whether fetching `semester` would scrape the course-selection list, the one sync fetch
-    /// that needs the SSO session. The list serves a single term, and a day-long cache covers it.
+    /// NTUST's course-number shape: a head, then six or seven letters or digits. The head is `3` and
+    /// two letters, two letters, or `3` and one letter, as for a course taken at NTU or NTNU
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/766).
+    nonisolated static func isCourseNo(_ text: Substring) -> Bool {
+        text.wholeMatch(of: /(?:3[A-Z]{2}|[A-Z]{2}|3[A-Z])[A-Z0-9]{6,7}/) != nil
+    }
+
+    nonisolated static func courseNos(inListPage html: String) -> [String] {
+        html.matches(of: /<tr>\s*<td>\s*([A-Z0-9]+)\s*<\/td>/).map { String($0.1) }.filter { isCourseNo($0[...]) }
+    }
+
     nonisolated static func needsSchoolSession(studentId: String, semester: String) -> Bool {
         semester == SemesterCatalog.selectionSemesterCode()
             && loadEnrolledCoursesCache(studentId: studentId, semester: semester) == nil
@@ -105,8 +110,6 @@ enum CourseSelectionService {
 
     nonisolated private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"
 
-    // Serializes read-modify-write of the per-(studentId,semester) cache dict
-    // so concurrent fetches/invalidations cannot lose updates.
     nonisolated private static let cacheLock = OSAllocatedUnfairLock()
 
     nonisolated private struct CachedCourseNos: Codable {
@@ -164,39 +167,23 @@ enum CourseSelectionService {
         }
     }
 
-    /// Approximation of NTUST's academic-calendar boundaries based on the
-    /// gregorian month. Note this is a heuristic — actual term cutovers
-    /// vary year-to-year, especially in late August (fall registration
-    /// hasn't opened yet) and early February (spring courses not posted).
-    /// During those windows callers may briefly see the previous term's
-    /// data; if precision is required, prefer a server-driven term code.
     nonisolated static func currentSemesterCode() -> String {
         semesterCode(on: Date())
     }
 
-    /// The term the app takes as current on `day`.
     nonisolated static func semesterCode(on day: Date, calendar: AcademicCalendar = .cached) -> String {
-        // The school's published calendar comes first, not a guess or a pinned constant. The
-        // month heuristic mislabels a term the school opens early, so it is only the last
-        // resort for a device that has never reached the backend.
         calendar.currentTerm(on: day)?.code ?? heuristicSemesterCode(on: day)
     }
 
-    /// The month-based guess, used only until the published calendar has
-    /// been fetched once.
     nonisolated static func heuristicSemesterCode(on day: Date) -> String {
-        // Gregorian in Taipei: Calendar.current returns ROC or Buddhist-era years on a TW device,
-        // which would shift the rocYear math, and the days this is asked about are Taipei days.
         let cal = AcademicCalendar.calendar
         let year = cal.component(.year, from: day)
         let month = cal.component(.month, from: day)
         let rocYear = year - 1911
 
         if month >= 2 && month <= 7 {
-            // Feb 1 – Jul 31 → spring semester
             return "\(rocYear - 1)2"
         } else {
-            // Aug 1 – Jan 31 → fall semester
             let academicYear = month >= 8 ? rocYear : rocYear - 1
             return "\(academicYear)1"
         }

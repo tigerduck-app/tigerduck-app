@@ -3,10 +3,6 @@ import Observation
 import SwiftUI
 import UserNotifications
 
-/// Developer-only screen for the debug time override. Reached from the
-/// bottom of Settings; the entry point itself is also `#if DEBUG` so
-/// production users never see it. Strings are hardcoded English on purpose
-/// (no need to localize a debug menu into 50+ languages).
 struct DebugSettingsView: View {
     @State private var viewModel = DebugSettingsViewModel()
 
@@ -78,10 +74,7 @@ struct DebugNotificationsView: View {
 final class DebugNotificationsViewModel {
     private(set) var lastSimulatedPushStatus: String?
 
-    /// One kind of notification, and so one stack: what the real one says, and the thread
-    /// iOS stacks it by.
     struct Kind: Identifiable {
-        /// The button's label.
         let id: String
         let threadIdentifier: String
         let title: String
@@ -89,9 +82,6 @@ final class DebugNotificationsViewModel {
         var userInfo: [String: Any] = [:]
     }
 
-    /// One per stack. Classes, homework and bulletins come from the server, so their thread is
-    /// the server's `thread-id` (its push channel, tigerduck-backend `server/push/`) and their
-    /// wording follows its copy; mail is posted on the device by `MailNotifier`.
     static let kinds: [Kind] = {
         var kinds = [
             Kind(id: "Send class reminder", threadIdentifier: "course",
@@ -101,7 +91,6 @@ final class DebugNotificationsViewModel {
                  body: { "24 hours left! Preview Course \"Preview Assignment\"" }),
         ]
         #if os(iOS)
-        // No uid, so a tap opens the inbox rather than a mail that does not exist.
         kinds.append(Kind(id: "Send new mail", threadIdentifier: MailConstants.notificationThread,
                           title: "Preview mail", body: { "Debug Menu" },
                           userInfo: ["kind": MailConstants.notificationKind, "folder": MailConstants.inbox]))
@@ -111,12 +100,6 @@ final class DebugNotificationsViewModel {
         return kinds
     }()
 
-    /// Fires a local notification ~3 s from real-now to simulate what a
-    /// backend APNs push would look like. Backend pushes can't honor the
-    /// debug clock (the server has no idea time is faked), so this exists
-    /// purely so QA can visually confirm a "push arrived" while the LA /
-    /// widget pipeline is running under a fake-clock override — and which
-    /// stack it arrived in.
     func sendSimulatedPush(_ kind: Kind) async {
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()

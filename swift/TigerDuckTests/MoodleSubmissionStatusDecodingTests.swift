@@ -26,7 +26,6 @@ struct MoodleSubmissionStatusDecodingTests {
         #expect(try Self.status(#"{"lastattempt":{"teamsubmission":{"status":"submitted"}}}"#).isSubmitted)
     }
 
-    /// The assignment round reads this answer for Home and the reminders.
     @Test("feedback in a shape the app does not expect costs the grade, not the submission's status")
     func unreadableFeedback() throws {
         let json = #"{"lastattempt":{"submission":{"status":"submitted","timemodified":1790000000}},"#

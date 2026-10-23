@@ -1,13 +1,9 @@
-// `WhatsNewFlowBuilder`: how the What's New pages stack across skipped versions after
-// an upgrade, and what Settings → What's New replays. The catalog, summary and seen
-// marker are passed in, so nothing here touches `Defaults` or the bundled JSON.
 import Foundation
 import Testing
 @testable import TigerDuck
 
 @MainActor
 struct WhatsNewFlowBuilderTests {
-    // MARK: - Upgrade
 
     @Test func pagesFromEverySkippedReleaseComeOldestFirst() throws {
         let flow = try #require(upgrade(
@@ -83,8 +79,6 @@ struct WhatsNewFlowBuilderTests {
         #expect(flow.pages.map(\.id) == ["ok"])
     }
 
-    // MARK: - Replay
-
     @Test func replayShowsTheNewestReleaseWithItsSummary() throws {
         let flow = try #require(WhatsNewFlowBuilder.replay(
             language: .en,
@@ -138,8 +132,6 @@ struct WhatsNewFlowBuilderTests {
         #expect(flow.pages.map(\.id) == ["keep"])
     }
 
-    /// A newest release whose pages all drop out doesn't hide an older
-    /// release's pages and summary.
     @Test func replayFallsBackPastAReleaseWhosePagesAllDropOut() throws {
         let flow = try #require(WhatsNewFlowBuilder.replay(
             language: .en,
@@ -189,8 +181,6 @@ struct WhatsNewFlowBuilderTests {
             isApplicable: { _ in true }
         ) == nil)
     }
-
-    // MARK: - Helpers
 
     private func upgrade(
         from lastSeen: String?,

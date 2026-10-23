@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Bottom sheet shown when the user taps a conflict cell. Lets the user
-/// disambiguate which overlapping course to inspect — the L-cluster only
-/// draws two, but a 3+ chain can be passed here so every conflicting
-/// course stays reachable.
 struct ConflictCoursePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 

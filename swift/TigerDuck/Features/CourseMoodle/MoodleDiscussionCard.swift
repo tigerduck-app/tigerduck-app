@@ -1,17 +1,13 @@
 import SwiftUI
 
-/// Accessibility text sizes need a separate metadata line to avoid compressing the title.
 struct MoodleDiscussionCard: View {
     let discussion: MoodleDiscussion
-    /// The time the card shows: the posting time for an announcement, the latest post's for a
-    /// forum's discussion.
     let date: Date
     let policy: VisualStylePolicy
     var showsFooter = false
     var now: Date = AppClock.now()
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    /// Lifts the unread dot's centre to the middle of the title's capitals.
     @ScaledMetric(relativeTo: .headline) private var dotLift: CGFloat = 6
 
     private var isUnread: Bool { discussion.unreadCount > 0 }
@@ -152,8 +148,6 @@ struct MoodleDiscussionCard: View {
     }
 }
 
-/// The first line of a Moodle card. `trailing`, the time, keeps its whole width and stays on the
-/// first line of `leading`'s text however long that runs; `leading` takes the width left.
 struct MoodleCardFirstLine<Leading: View, Trailing: View>: View {
     @ViewBuilder let leading: Leading
     @ViewBuilder let trailing: Trailing

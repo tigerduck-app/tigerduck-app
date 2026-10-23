@@ -1,28 +1,22 @@
 import Foundation
 import Observation
 
-/// Someone whose class table the user imported from a share code.
 struct ImportedPerson: Identifiable {
     struct Term {
-        /// The app's semester code, such as `1151`.
         let semester: String
         let courseNos: [String]
-        /// The courses' names, times and rooms from NTUST's course query.
         let courses: [SDCourse]
     }
 
     let id: UUID
-    /// Nil when the share code carried none.
     let studentId: String?
     let nickname: String
     let importedAt: Date
     let sharedAt: Date?
     let terms: [Term]
 
-    /// Newest first, as the term picker lists them.
     var semesters: [String] { terms.map(\.semester).sorted(by: >) }
 
-    /// The term to open this class table on: `current` when the person has it, else their latest.
     func semester(keeping current: String) -> String {
         semesters.contains(current) ? current : semesters.first ?? current
     }
@@ -32,10 +26,6 @@ struct ImportedPerson: Identifiable {
     }
 }
 
-/// The class tables imported from share codes, kept on this device only: never in TigerSync, the
-/// backend, the App Group or the Watch's data. A sign-out empties it, and so does another student
-/// ID signing in; a renewed session and TigerSync turned off leave it alone.
-/// See docs/decisions/0023-class-table-share-code.md.
 @Observable
 final class ImportedClassTableStore {
     static let shared = ImportedClassTableStore(
@@ -44,25 +34,18 @@ final class ImportedClassTableStore {
             .appendingPathComponent("imported_class_tables.json")
     )
 
-    /// In import order.
     private(set) var people: [ImportedPerson] = []
 
-    /// Whose class table the class table shows, nil for the user's own. Kept in memory only, so
-    /// each launch opens on the user's own.
     private(set) var shownPersonID: UUID? {
         didSet {
             if shownPersonID != oldValue { previousShownID = .some(oldValue) }
         }
     }
 
-    /// The class table shown before the current one, `.some(nil)` for the user's own, and nil
-    /// before the first switch.
     @ObservationIgnored private var previousShownID: UUID?? = nil
 
     var shownPerson: ImportedPerson? { people.first { $0.id == shownPersonID } }
 
-    /// Changes when another class table is shown, or the shown one is imported or looked up again,
-    /// for every class table page to follow.
     var shownTable: ShownTable {
         ShownTable(personID: shownPersonID, importedAt: shownPerson?.importedAt, lookups: lookups)
     }
@@ -73,17 +56,13 @@ final class ImportedClassTableStore {
         let lookups: Int
     }
 
-    /// Counts `updateCourses` writes, which leave the person's id and import time as they were.
     private var lookups = 0
 
     var hasImportedClassTables: Bool { !people.isEmpty }
 
-    /// The student ID signed in when the people were imported.
     @ObservationIgnored private var owner: String?
     private let fileURL: URL
     private let signedInStudentId: () -> String?
-    /// Off after the file was there but could not be read or decoded, so no write replaces what
-    /// it holds, such as people a newer version of the app wrote.
     @ObservationIgnored private var mayWrite = true
 
     init(
@@ -101,9 +80,6 @@ final class ImportedClassTableStore {
         people.first { $0.studentId == studentId }
     }
 
-    /// Adds the person `code` is from, each term with its course details from `courses`, keyed
-    /// by semester. A student ID already here keeps its entry, place and nickname, and takes the
-    /// code's terms, its share time and `importedAt`. Nil for a blank nickname or a failed save.
     @discardableResult
     func add(
         _ code: ClassTableShareCode,
@@ -142,8 +118,6 @@ final class ImportedClassTableStore {
         return person
     }
 
-    /// What a change to a person did. One deleted or imported again since the change began is
-    /// skipped, which is not a failure; a failed save keeps the person as it was.
     enum Change: Equatable { case saved, skipped, failed }
 
     @discardableResult
@@ -161,9 +135,6 @@ final class ImportedClassTableStore {
         return .saved
     }
 
-    /// Swaps in a new lookup of `courseNos`, one term's course codes, for that term of `id`, as
-    /// imported at `importedAt`. A person imported again while the lookup ran, with the same codes or
-    /// others, keeps the new import's courses.
     @discardableResult
     func updateCourses(
         _ id: UUID, semester: String, courseNos: [String], courses: [SDCourse], importedAt: Date
@@ -188,8 +159,6 @@ final class ImportedClassTableStore {
         return .saved
     }
 
-    /// Shows the class table shown before the current one, or the next one when there is none to
-    /// go back to: before the first switch, or once that person is deleted.
     func showPrevious() {
         if case .some(let previous) = previousShownID,
            previous == nil || people.contains(where: { $0.id == previous }) {
@@ -199,8 +168,6 @@ final class ImportedClassTableStore {
         }
     }
 
-    /// Shows the class table after the shown one: the user's own, then each person in import
-    /// order, then the user's own again.
     func showNext() {
         let order: [UUID?] = [nil] + people.map { $0.id }
         let index = order.firstIndex(of: shownPersonID) ?? 0
@@ -219,15 +186,11 @@ final class ImportedClassTableStore {
         return .saved
     }
 
-    /// Shows `id`'s class table, or the user's own for nil; an id not in the store is ignored.
     func show(_ id: UUID?) {
         guard id == nil || people.contains(where: { $0.id == id }) else { return }
         shownPersonID = id
     }
 
-    /// The account rows' sign-out deletes the data TigerSync does not keep (`unsyncedData`) and the
-    /// imported class tables, so with either it calls `confirm` with the lines that ask first, in
-    /// that order; otherwise it signs out at once.
     func requestSignOut(unsyncedData: Bool, confirm: ([String]) -> Void, signOut: () -> Void) {
         let lines = [
             unsyncedData ? String(localized: "settings_sign_out_unsynced_data") : nil,
@@ -236,7 +199,6 @@ final class ImportedClassTableStore {
         if lines.isEmpty { signOut() } else { confirm(lines) }
     }
 
-    /// For a sign-out by the user: an expired session and TigerSync turned off must not call it.
     func removeAll() {
         people = []
         shownPersonID = nil
@@ -252,8 +214,6 @@ final class ImportedClassTableStore {
         }
     }
 
-    /// Another student ID than the one the people were imported under empties the store; a store
-    /// filled while no one was signed in becomes this account's.
     func accountDidSignIn(studentId: String) {
         guard !people.isEmpty else { return }
         if let owner, owner != studentId {
@@ -263,8 +223,6 @@ final class ImportedClassTableStore {
             save(people: people, owner: owner)
         }
     }
-
-    // MARK: - File
 
     private func load() {
         let data: Data
@@ -305,7 +263,6 @@ final class ImportedClassTableStore {
             // reads the file once, and a read refused while the phone is locked would leave it
             // empty for the rest of the run.
             try data.write(to: replacement, options: [.completeFileProtectionUntilFirstUserAuthentication])
-            // The replacement must be protected and excluded before it becomes the durable copy.
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             try replacement.setResourceValues(values)

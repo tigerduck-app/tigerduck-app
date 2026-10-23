@@ -2,16 +2,9 @@ import Foundation
 import UserNotifications
 import os
 
-/// Routes incoming `UNNotificationResponse`s to whatever state the rest
-/// of the app subscribes to. The wiring is split so this delegate has no
-/// dependency on AppState — `TigerDuckApp` hands it closures at launch.
-///
 /// Lifetime: `UNUserNotificationCenter` holds its delegate weakly, so
 /// `PushAppDelegate` keeps the strong reference. The delegate itself
-/// lives for the whole app process.
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
-    /// Invoked when the user taps a notification (either from the lock
-    /// screen / banner or from Notification Center). Assignment drains
     /// any responses buffered while the closure was still nil — covers
     /// the cold-launch case where iOS delivers `didReceive` before
     /// SwiftUI's `.onAppear` runs to wire this closure.
@@ -24,8 +17,6 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    /// Decide whether to show a banner / play a sound when a push arrives
-    /// while the app is in the foreground. Defaults to banner+sound+list.
     var allowForegroundPresentation: ((UNNotification) -> UNNotificationPresentationOptions)?
 
     /// Buffer for responses delivered before `routeTap` is wired. UN
@@ -56,9 +47,6 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if let routeTap {
             routeTap(response)
         } else {
-            // On a cold launch onAppear has not installed `routeTap` yet, so hold the
-            // response for `routeTap.didSet` to drain. Only the latest tap matters, and
-            // a single slot cannot grow if onAppear is delayed.
             pendingResponses = [response]
         }
         completionHandler()

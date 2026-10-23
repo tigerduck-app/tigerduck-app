@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The table `LiveActivityScenarioResolverTests` runs: Tuesday 2026-09-22 in Taipei, with
-/// the class and deadline layout each case names.
 enum LiveActivityScenarioCases {
     static func tuesday(_ hour: Int, _ minute: Int = 0, _ second: Int = 0) -> Date {
         AppConstants.taipeiCalendar.date(from: DateComponents(
@@ -11,8 +9,6 @@ enum LiveActivityScenarioCases {
         ))!
     }
 
-    /// Tuesday periods: CS101 meets 10:20-12:10, CS102 13:20-15:10, and CS103 11:20-12:10,
-    /// which overlaps CS101's second period.
     static let tuesdayPeriods: [String: [String]] = [
         "CS101": ["3", "4"],
         "CS102": ["6", "7"],
@@ -193,13 +189,8 @@ enum LiveActivityScenarioCases {
     ]
 }
 
-/// Pins which snapshot `LiveActivityScenarioResolver.resolve` picks: a deadline before the class
-/// in progress before the class about to start, holidays and days outside the term silencing
-/// classes but not deadlines, skipped classes, and the lead-time edges.
 @MainActor
 struct LiveActivityScenarioResolverTests {
-
-    // MARK: - Fixtures
 
     private static func courses(_ courseNos: [String], skipped: Set<String>) -> [SDCourse] {
         courseNos.map { courseNo in
@@ -229,8 +220,6 @@ struct LiveActivityScenarioResolverTests {
         )
     }
 
-    /// The case's calendar: a holiday on its day, with id 1, when it names one, and outside the
-    /// term a term that begins the week after. With no term known every day counts as in term.
     private static func calendar(for c: LiveActivityScenarioCases.Case) -> AcademicCalendar {
         let day = AcademicCalendar.startOfDay(c.now)
         let holidays = c.holiday == .none
@@ -268,8 +257,6 @@ struct LiveActivityScenarioResolverTests {
         )
     }
 
-    // MARK: - Which scenario
-
     @Test(arguments: LiveActivityScenarioCases.cases)
     func picksTheScenario(_ c: LiveActivityScenarioCases.Case) async {
         await NotificationSettingsFixtures.withStore { store in
@@ -279,11 +266,7 @@ struct LiveActivityScenarioResolverTests {
         }
     }
 
-    // MARK: - What the snapshot carries
-
     @Test func inClassCoversTheBlockInProgress() throws {
-        // Periods 3-4 and 7-8 in two rooms: during the second block the countdown, progress,
-        // subtitle and room cover that block alone, not the day's first-to-last span.
         let course = SDCourse(
             courseNo: "CS200",
             courseName: "Compilers",
@@ -358,8 +341,6 @@ struct LiveActivityScenarioResolverTests {
     }
 
     @Test func assignmentTapOpensTigerDuck() {
-        // The tap goes to TigerDuck's own link, which `TigerDuckApp` opens in the Moodle app or
-        // the web page, rather than to the `moodlemobile://` one the assignment has.
         let assignment = SDAssignment(
             assignmentId: "42",
             courseNo: "CS101",

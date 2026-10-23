@@ -1,20 +1,12 @@
 import Foundation
 
-/// A course's summary on Moodle, with the course's names there, which tell a summary of its own
-/// from one that only repeats them.
 nonisolated struct MoodleCourseSummary: Codable, Sendable, Equatable {
-    /// HTML, already through Moodle's text filters.
     let html: String
-    /// The summary as one line of text, kept with it so the sheet does not parse HTML as it draws.
     let text: String
     let names: [String]
 
-    /// A course without a summary, or on a site that does not allow the call.
     static let empty = MoodleCourseSummary(html: "", text: "", names: [])
 
-    /// Whether the summary says something the course detail does not: it has a letter or Han
-    /// character, and it is not just a name of the course or one of `codes`, ignoring case and
-    /// spaces. An NTUST course's summary can be its idnumber and nothing else.
     func isWorthShowing(besides codes: [String]) -> Bool {
         guard text.contains(where: \.isLetter) else { return false }
         let summary = Self.comparable(text)
@@ -26,14 +18,9 @@ nonisolated struct MoodleCourseSummary: Codable, Sendable, Equatable {
     }
 }
 
-/// `core_course_get_courses_by_field` for a course's summary. The call takes the token, so the
-/// caller runs it inside `MoodleWebserviceClient.withToken`.
 nonisolated enum MoodleCourseSummaryService {
     static let coursesFunction = "core_course_get_courses_by_field"
 
-    /// ``MoodleCourseSummary/empty`` when Moodle does not list the course, as for one the account
-    /// cannot see. `moodlewssettingfilter` runs the text through the site's filters, as the Moodle
-    /// app asks for text it shows.
     static func summary(
         courseId: Int,
         token: String,

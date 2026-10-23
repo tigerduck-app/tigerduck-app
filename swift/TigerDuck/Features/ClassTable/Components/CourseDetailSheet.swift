@@ -5,14 +5,6 @@ import UIKit
 import AppKit
 #endif
 
-/// Modal detail for a single course row. Visual structure:
-///   1. Color bar and course title, with an optional Moodle jump button
-///   2. Two emphasis cards side by side: classroom | time
-///   3. Flat InfoRow list: instructor, code, dimension, duration, course type, credits, enrollment
-///   4. Outstanding assignments, then the course's Moodle section, whose rows push here
-///
-/// Classroom and time get their own cards because they are the fields users
-/// glance at most when tapping a course, so they stay out of the metadata list.
 struct CourseDetailSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
@@ -22,11 +14,8 @@ struct CourseDetailSheet: View {
     let assignments: [SDAssignment]
     var timeRange: String? = nil
     var weekday: Int? = nil
-    /// The tapped block's periods. A course can meet twice a day in two rooms.
     var periods: [String]? = nil
-    /// The Mac overlay passes its own, so Escape can go back a screen before it closes.
     var moodlePath: Binding<[MoodleCourseRoute]>? = nil
-    /// Off for a course on someone else's class table: the Moodle course is the user's.
     var showsMoodle = true
 
     @State private var ownMoodlePath: [MoodleCourseRoute] = []
@@ -36,17 +25,12 @@ struct CourseDetailSheet: View {
     @State private var detent: PresentationDetent = .medium
     #endif
 
-    /// Drives the copy row's glyph; flipped back after a beat so the sheet
-    /// does not sit in a "copied" state for as long as it stays open.
     @State private var codeCopied = false
-    /// Bumped on every copy so the haptic fires again on a repeat tap.
     @State private var copyFeedback = 0
 
     var body: some View {
         NavigationStack(path: routes) {
             ScrollView {
-                // No spacing above the Moodle section: one with no rows adds nothing, and its rows
-                // bring their own gap.
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                         headerSection
@@ -63,7 +47,6 @@ struct CourseDetailSheet: View {
                 .moodleSectionRefresh(moodle)
             }
             .background(Color.backgroundPrimary)
-            // The course summary's links open as a pushed Moodle screen's do.
             .moodleLinkOpening()
             #if os(iOS)
             .courseDetailRootBar()
@@ -80,18 +63,14 @@ struct CourseDetailSheet: View {
         )) {
             moodle = makeMoodleStore()
         }
-        // On iPad another window can sign out or in, and the pushed screens hold the store of the
-        // account that opened them.
         .onChange(of: appState.authService.loginGeneration) {
             routes.wrappedValue = []
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
-            // A sheet opened before the first sync finds no Moodle course id; a sync may bring it.
             if let moodle { moodle.assignments.reload() } else { moodleAttempt += 1 }
         }
         #if os(iOS)
         .presentationDetents([.medium, .large], selection: $detent)
-        // A pushed screen is a list or an article, which the medium height would cut in half.
         .onChange(of: routes.wrappedValue) { _, path in
             if !path.isEmpty { detent = .large }
         }
@@ -104,7 +83,6 @@ struct CourseDetailSheet: View {
     struct MoodleStoreKey: Equatable {
         let courseNo: String
         let attempt: Int
-        /// A new sign-in builds a store for its own account, and a sign-out builds none.
         let generation: Int
     }
 
@@ -149,7 +127,6 @@ struct CourseDetailSheet: View {
         }
     }
 
-    /// Nil for a course with no Moodle course, such as one added by hand, or when signed out.
     private func makeMoodleStore() -> MoodleCourseStore? {
         guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
               let courseId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber),
@@ -169,15 +146,10 @@ struct CourseDetailSheet: View {
         )
     }
 
-    /// The codes a course's Moodle summary is checked against: every idnumber the Moodle course
-    /// `courseId` goes by in `idMap`, since a co-listed course answers to each department's, the
-    /// course number in each, and `idnumber` and `courseNo` from the class table.
     static func moodleCourseCodes(idnumber: String, courseNo: String, courseId: Int, idMap: [String: Int]) -> [String] {
         let idnumbers = [idnumber] + idMap.filter { $0.value == courseId }.map(\.key)
         return idnumbers + idnumbers.map(SDCourse.courseNoFromMoodleId) + [courseNo]
     }
-
-    // MARK: - Header
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
@@ -204,13 +176,6 @@ struct CourseDetailSheet: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    // MARK: - Emphasis cards
-
-    /// Side by side normally; stacked at accessibility text sizes. Each card
-    /// holds its value on one line by shrinking it, and half the sheet is not
-    /// enough room to shrink a room list or a time range into at those sizes —
-    /// it would have to truncate. Full width is, so the pair gives up being a
-    /// pair before the values give up being readable.
     private var emphasisCards: some View {
         let layout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.md))
@@ -236,24 +201,17 @@ struct CourseDetailSheet: View {
         return resolved.isEmpty ? "—" : resolved
     }
 
-    /// The block's room when the caller knows the block, else the day's rooms, else every room.
     static func classroom(of course: SDCourse, weekday: Int?, periods: [String]?) -> String {
         guard let weekday else { return SDCourse.dedup(course.classroom) }
         guard let periods, !periods.isEmpty else { return course.classroom(for: weekday) }
         return course.classroom(weekday: weekday, periods: periods)
     }
 
-    /// Prefer the explicit time range supplied by the caller (ClassTable
-    /// knows the precise slot). When omitted — e.g. HomeView's TimeSlider
-    /// only hands us the weekday — derive it from the course schedule for
-    /// that weekday so the card never collapses to a dash unnecessarily.
     private var timeValue: String {
         if let timeRange, !timeRange.isEmpty { return timeRange }
         if let weekday, let derived = course.timeRange(for: weekday) { return derived }
         return "—"
     }
-
-    // MARK: - Secondary info
 
     private var secondaryInfo: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
@@ -323,8 +281,6 @@ struct CourseDetailSheet: View {
         }
     }
 
-    // MARK: - Assignments (preserved exactly as before)
-
     @ViewBuilder
     private var assignmentsSection: some View {
         if !assignments.isEmpty {
@@ -365,16 +321,12 @@ struct CourseDetailSheet: View {
         }
     }
 
-    // MARK: - Actions
-
-    /// The Mac opens an assignment on Moodle, as it has no page of its own for it.
     #if os(macOS)
     private static let assignmentAccessory = "arrow.up.right.square"
     #else
     private static let assignmentAccessory = "chevron.right"
     #endif
 
-    /// Its page, pushed here; on Moodle on the Mac, or before an assignment round has recorded it.
     private func openListed(_ assignment: SDAssignment) {
         #if os(iOS)
         if let entry = moodle?.assignments.entry(for: assignment) {
@@ -387,7 +339,6 @@ struct CourseDetailSheet: View {
         Task { await openURL(url, fallback: web) }
     }
 
-    /// Its page, pushed here; on Moodle on the Mac, which has no page for it.
     private func openAssignment(_ entry: MoodleCourseAssignments.Entry) {
         #if os(iOS)
         routes.wrappedValue.append(.assignment(entry))
@@ -396,7 +347,6 @@ struct CourseDetailSheet: View {
         #endif
     }
 
-    /// A pull on the list, or Refresh on the Mac, asks Moodle about every submission again.
     private func refreshAssignments() async {
         _ = await AppServiceBridge.fetchAssignments(authService: appState.authService, recheckSubmissions: true)
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
@@ -413,8 +363,6 @@ struct CourseDetailSheet: View {
         Task { await openURL(url, fallback: web) }
     }
 
-    /// The course code is what students paste into course add/drop, the portal
-    /// search and group chats, so the row that shows it also hands it over.
     private func copyCourseCode() {
         #if canImport(UIKit)
         UIPasteboard.general.string = course.courseNo
@@ -423,9 +371,6 @@ struct CourseDetailSheet: View {
         NSPasteboard.general.setString(course.courseNo, forType: .string)
         #endif
         copyFeedback += 1
-        // The checkmark and the haptic are both invisible to VoiceOver, so
-        // without this the row gives a screen-reader user no sign the copy
-        // happened at all.
         AccessibilityNotification.Announcement(
             String(localized: "course_detail_code_copied")
         ).post()
@@ -433,21 +378,12 @@ struct CourseDetailSheet: View {
         withAnimation { codeCopied = true }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
-            // A second copy inside the window owns the checkmark now, and
-            // this timer would otherwise clear it a beat early — which reads
-            // as the repeat tap having done nothing.
             guard copyFeedback == generation else { return }
             withAnimation { codeCopied = false }
         }
     }
 }
 
-// MARK: - Emphasis card
-
-/// Big-text card used for the two fields that earn visual emphasis
-/// (classroom and time). Label sits small on top, value renders large
-/// with a rounded display font so the two cards read as a single
-/// at-a-glance pair.
 private struct EmphasisCard: View {
     let label: String
     let value: String
@@ -462,9 +398,6 @@ private struct EmphasisCard: View {
             Text(value)
                 .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
                 .foregroundStyle(Color.textPrimary)
-                // A classroom or time range reads wrong split across lines, so it shrinks
-                // instead of wrapping, never below half size. The caller widens the card at
-                // accessibility sizes so a multi-room classroom still fits, not ellipsised.
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .allowsTightening(true)
@@ -477,15 +410,10 @@ private struct EmphasisCard: View {
     }
 }
 
-// MARK: - Label/value row
-
 private struct InfoRow: View {
     let label: String
     let value: String
-    /// Shows the copy glyph as a checkmark right after a successful copy.
     var copied: Bool = false
-    /// Non-nil turns the whole row into a button; the trailing glyph is
-    /// what tells the reader the row is tappable at all.
     var onTap: (() -> Void)? = nil
 
     var body: some View {
@@ -500,16 +428,11 @@ private struct InfoRow: View {
     }
 
     private var content: some View {
-        // Baseline-aligned rather than top-aligned so the smaller glyph sits
-        // on the value's first line instead of floating above it.
         HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
             Spacer()
-            // Leading the value, not trailing it: the value is the thing
-            // being copied, so the glyph reads as a marker on it rather
-            // than as a separate control parked at the row's edge.
             if onTap != nil {
                 if copied {
                     Image(systemName: "checkmark")

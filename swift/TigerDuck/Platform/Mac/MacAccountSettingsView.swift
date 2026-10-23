@@ -1,10 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// Account tab — NTUST sign-in state only: signed in with a sign-out
-/// button, or signed out with a sign-in button. TigerSync has its own tab
-/// (`MacTigerSyncSettingsView`). One of the tabs assembled by
-/// `MacSettingsScene`.
 struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var showSignIn = false
@@ -23,7 +19,6 @@ struct MacAccountSettingsView: View {
                     Button(role: .destructive) {
                         Task {
                             let unsynced = await appState.signOutDeletesUnsyncedData()
-                            // Another click may have signed out while this one looked.
                             guard appState.authService.hasStoredCredentials else { return }
                             ImportedClassTableStore.shared.requestSignOut(
                                 unsyncedData: unsynced,

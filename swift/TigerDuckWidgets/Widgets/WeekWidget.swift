@@ -2,12 +2,7 @@ import WidgetKit
 import SwiftUI
 
 struct WeekEntry: TimelineEntry {
-    /// Real wall-clock instant WidgetKit should treat this entry as current.
     let date: Date
-    /// App-clock "now" used to drive the rendered grid state (e.g. which
-    /// weekday is underlined). Diverges from `date` only when the debug
-    /// clock is overridden — kept separate so WidgetKit's scheduling stays
-    /// on the real clock while the UI follows the fake one.
     let appNow: Date
     let snapshot: WidgetSnapshot
 }
@@ -28,11 +23,7 @@ struct WeekProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WeekEntry>) -> Void) {
-        // The cells do not depend on time of day, so one entry refreshed at midnight, when the
-        // "today" underline moves, is enough.
         let snap = store.readSnapshot() ?? Self.emptySnapshot
-        // Pin to Taipei so the refresh fires at Taiwan's midnight — that's
-        // when the "today" underline rolls over in the rendered grid.
         let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps

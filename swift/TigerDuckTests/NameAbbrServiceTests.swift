@@ -4,9 +4,6 @@ import Defaults
 
 @MainActor
 final class NameAbbrServiceTests: XCTestCase {
-    // The name-abbr JSON files ship in the app bundle via the Xcode
-    // build's bundle step.
-    // These tests verify the service can load and apply abbreviations.
 
     func test_abbreviateName_unknownName_returnsOriginal() {
         let svc = NameAbbrService.shared
@@ -15,14 +12,12 @@ final class NameAbbrServiceTests: XCTestCase {
     }
 
     func test_abbreviateName_knownName_returnsShortened() {
-        // ".NET Programming" → ".NET Prog" per class-name-abbr.json
         let svc = NameAbbrService.shared
         let result = svc.abbreviateName(".NET Programming")
         XCTAssertEqual(result, ".NET Prog")
     }
 
     func test_abbreviateClassroom_alphanumericRoom_returnsUnchanged() {
-        // "TR-313" has no Mandarin, short = "TR-313"; should be returned as-is
         let svc = NameAbbrService.shared
         let result = svc.abbreviateClassroom("TR-313", display: "original")
         XCTAssertEqual(result, "TR-313")

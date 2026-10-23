@@ -1,7 +1,5 @@
 import Foundation
 
-/// Decoded watch-side view of one applicationContext push. Lives in the
-/// shared App Group file so the widget can read it without WC.
 public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
     public let version: Int
     public let courses: [WatchCourse]
@@ -9,20 +7,8 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
     public let syncedAtMs: Int64
     public let loggedIn: Bool
     public let languageTag: String?
-    /// User's selected visual style preset on the phone. The watch UI
-    /// reads this to keep its course cards visually aligned with the
-    /// main-app cards (TigerDuck = tinted; Apple = neutral + accent
-    /// stripe). Defaults to `.default` for payloads from older phones
-    /// that don't yet carry the field.
     public let visualPreset: VisualPreset
-    /// JSON-encoded `ClockOverride` payload. Carried as an opaque string
-    /// so this struct does not need to know about `ClockOverride`
-    /// (`ClockOverride` is not in the `Shared/` target). The watch
-    /// decodes it via `JSONDecoder().decode(ClockOverride.self, ...)`.
-    /// `nil` when no debug override is active.
     public let clockOverrideJSON: String?
-    /// `yyyy-MM-dd` days classes do not meet: holidays the user has not opted back into, and
-    /// days outside the term. Empty in a payload from a phone that does not send them.
     public let quietDays: Set<String>
 
     public static let defaultAccentHex = "#FF8800"
@@ -49,9 +35,6 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
         self.quietDays = quietDays
     }
 
-    // Cached JSON from older builds can lack `visualPreset`, `clockOverrideJSON` and `quietDays`.
-    // Synthesised `Codable` ignores the init's defaults and would throw `keyNotFound`,
-    // leaving the watch on its empty sign-in state until the next WatchConnectivity push.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.version = try c.decode(Int.self, forKey: .version)

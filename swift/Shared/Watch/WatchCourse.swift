@@ -1,24 +1,16 @@
 import Foundation
 
-/// One concrete weekly session of a course on the watch. A class that meets
-/// twice a week is serialised as two `WatchCourse` rows — the watch never has
-/// to expand multi-weekday schedules itself.
-///
-/// Wire-format DTO. Decoupled from `SDCourse` so phone-side schema churn does
-/// not ripple to the watch unless this struct's fields change.
 public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable {
-    public let id: String         // "<courseNo>-<weekday>-<firstPeriod>"
+    public let id: String
     public let courseNo: String
     public let name: String
     public let teacher: String
     public let classroom: String
-    public let colorHex: String   // "#RRGGBB"
-    public let weekday: Int       // 1 = Mon … 7 = Sun (ISO)
-    public let startHHmm: String  // first-period start, e.g. "10:20"
-    public let endHHmm: String    // last-period end, e.g. "11:10"
-    public let periodLabel: String // human-readable e.g. "3-4" or "A"
-    /// `yyyy-MM-dd` days the user skips this course. Optional so a snapshot cached by an
-    /// older build, which has no such key, still decodes.
+    public let colorHex: String
+    public let weekday: Int
+    public let startHHmm: String
+    public let endHHmm: String
+    public let periodLabel: String
     public let skippedDates: Set<String>?
 
     public init(

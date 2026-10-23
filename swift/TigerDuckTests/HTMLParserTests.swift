@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Hand-made pages in the shape of the school's: the ssoam2 sign-in form, the OIDC and SAML
-/// forms that carry a sign-in back to a service, a maintenance page and the NetIQ form on ssoam.
 enum SSOPageFixtures {
     static let ssoam2LoginURL = URL(
         string: "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback"
@@ -30,8 +28,6 @@ enum SSOPageFixtures {
     </html>
     """
 
-    /// The sign-in form again, as the school answers a rejected password, with its reason
-    /// beside the field.
     static let ssoam2LoginRejected = ssoam2Login.replacingOccurrences(
         of: #"<input id="Password" name="Password" type="password" />"#,
         with: #"<input id="Password" name="Password" type="password" />"#

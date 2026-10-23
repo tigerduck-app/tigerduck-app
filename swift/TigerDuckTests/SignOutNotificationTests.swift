@@ -4,9 +4,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// What a school sign-out leaves in Notification Center for whoever uses the phone next
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/564). The center is a stand-in, so the
-/// test host's own notifications are left alone.
 @MainActor
 struct SignOutNotificationTests {
     @Test func aSignOutTakesTheAccountsRemindersAndBulletins() async {
@@ -19,12 +16,9 @@ struct SignOutNotificationTests {
 
         await AuthService.removeAccountNotifications(from: center)
 
-        // The mail account may be another student's, which the sign-out keeps.
         #expect(center.delivered.map(\.identifier) == ["new-mail"])
     }
 
-    /// The backend can push to the account until the device's unregister, one of the sign-out's
-    /// calls, lands.
     @Test func aSignOutClearsAtOnceAndAgainAfterItsCalls() async throws {
         let center = DeliveredNotificationsStub([("bulletin", "other")])
         let auth = AuthService(
@@ -39,8 +33,6 @@ struct SignOutNotificationTests {
         )
         auth.accountNotifications = center
 
-        // The sign-out deletes the stored account and lowers the credentials mirror, here in a
-        // keychain of the test's own, with the mirror put back.
         try await withExclusiveRealDefaults {
             let saved = Defaults[.ntustCredentialsPresent]
             defer { Defaults[.ntustCredentialsPresent] = saved }
@@ -55,7 +47,6 @@ struct SignOutNotificationTests {
     }
 }
 
-/// Notification Center for a test: notifications of its own, so the test host's are left alone.
 @MainActor
 final class DeliveredNotificationsStub: DeliveredNotificationCenter {
     var delivered: [(identifier: String, thread: String)]

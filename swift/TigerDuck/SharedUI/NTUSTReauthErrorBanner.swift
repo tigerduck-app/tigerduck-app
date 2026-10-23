@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// Compact banner shown at the top of protected surfaces when a silent
-/// re-authentication attempt failed (e.g. the portal password was
-/// changed). Credentials are intentionally kept — the banner lets the
-/// user decide between retrying via the login sheet and dismissing to
-/// stay on cached data.
 struct NTUSTReauthErrorBanner: View {
     let message: String
     let onRetry: () -> Void

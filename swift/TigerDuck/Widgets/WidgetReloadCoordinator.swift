@@ -19,10 +19,8 @@ final class WidgetReloadCoordinator {
 
     nonisolated private let reloader: Reloader
     nonisolated private let debounce: TimeInterval
-    /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
     nonisolated private let sleep: @Sendable (Duration) async -> Void
     private(set) var pendingTask: Task<Void, Never>?
-    /// Whether `pendingTask` has yet to reload. A finished task is still held there.
     private var reloadIsDue = false
 
     nonisolated init(
@@ -49,7 +47,6 @@ final class WidgetReloadCoordinator {
         }
     }
 
-    /// Ends the debounce early: the reload it waits for goes out now. Nothing goes out when none waits.
     func reloadNowIfPending() {
         guard reloadIsDue else { return }
         reloadIsDue = false

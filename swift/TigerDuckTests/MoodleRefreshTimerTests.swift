@@ -3,14 +3,11 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// `MoodleRefreshTimer` with a stand-in clock and `ManualSleeper` waits, so each refresh happens
-/// when the test fires a wait and the test can check how long each wait was.
 @MainActor
 struct MoodleRefreshTimerTests {
     private static let start = Date(timeIntervalSince1970: 1_800_000_000)
     private static let ttl: TimeInterval = 300
 
-    /// What the screen holds: when its data was fetched, and how often it was refreshed.
     private final class Screen {
         var fetchedAt: Date?
         var refreshes = 0
@@ -36,8 +33,6 @@ struct MoodleRefreshTimerTests {
         #expect(MoodleRefreshTimer.wait(fetchedAt: now - 60, lastTry: nil, ttl: 300, now: now) == 240)
         #expect(MoodleRefreshTimer.wait(fetchedAt: now - 300, lastTry: nil, ttl: 300, now: now) == 0)
         #expect(MoodleRefreshTimer.wait(fetchedAt: now - 900, lastTry: now - 10, ttl: 300, now: now) == 290)
-        // A clock set back leaves the data stamped in the future; it is fetched again, but a try
-        // just made still holds the next one back, and a try stamped ahead waits no more than the TTL.
         #expect(MoodleRefreshTimer.wait(fetchedAt: now + 60, lastTry: nil, ttl: 300, now: now) == 0)
         #expect(MoodleRefreshTimer.wait(fetchedAt: now + 60, lastTry: now - 10, ttl: 300, now: now) == 290)
         #expect(MoodleRefreshTimer.wait(fetchedAt: nil, lastTry: now + 60, ttl: 300, now: now) == 300)

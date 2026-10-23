@@ -4,7 +4,6 @@ import SwiftUI
 import AppKit
 #endif
 
-/// The owner is part of where a copy is kept, so a file alone does not say which copy is its.
 nonisolated struct MoodleFileRef: Hashable, Sendable {
     let file: MoodleFile
     let owner: MoodleFileOwner
@@ -26,9 +25,6 @@ extension MoodleCourseMaterials {
     }
 }
 
-/// What a screen of Moodle files does with them. A file that finishes downloading opens only
-/// while the screen shows and only for the latest action, so several taps in a row do not open
-/// one preview after another, and a Share does not also open a preview.
 @Observable
 @MainActor
 final class MoodleFileOpener {
@@ -36,10 +32,8 @@ final class MoodleFileOpener {
     private(set) var previewItems: [URL] = []
     var shared: MoodleSharedItem?
     @ObservationIgnored var isOnScreen = false
-    /// Moves on with every tap, share and link, so a download's end opens only the latest one.
     @ObservationIgnored private var latestAction = 0
 
-    /// `opened` runs each time the file opens, for its view on Moodle.
     func tap(
         _ ref: MoodleFileRef,
         among neighbours: [MoodleFileRef],
@@ -75,8 +69,6 @@ final class MoodleFileOpener {
         present(link)
     }
 
-    /// For a link or a Moodle page about to open over or out of the screen: a file still
-    /// downloading then no longer opens over it.
     func forgetPendingOpen() {
         _ = nextAction()
     }
@@ -152,7 +144,6 @@ private struct MoodleFilePresentation: ViewModifier {
 }
 
 #if os(macOS)
-/// The share menu at the pointer, where the menu that asked for it was.
 private enum MacSharePicker {
     static func show(_ item: URL) {
         guard let window = NSApp.keyWindow, let view = window.contentView else { return }

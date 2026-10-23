@@ -1,16 +1,6 @@
 import Foundation
 
-/// Resolved time window of a single course on a specific day.
-///
-/// Lives in `Models/Domain` so cross-platform code (Mac UI, future
-/// widgets, future watch derivations) can derive timelines without
-/// pulling in the iOS-only TimeSlider view model.
 struct CourseTimeSlot: Identifiable, Equatable {
-    /// Number of days on each side of the focus date that
-    /// `buildMultiDaySlots` materialises by default. The iOS time-slider
-    /// view exposes the same value through `TimeSliderMetrics` so the
-    /// horizontal scroll viewport and the in-memory slot set stay in
-    /// lockstep.
     static let defaultDayRadius: Int = 28
 
     static func == (lhs: CourseTimeSlot, rhs: CourseTimeSlot) -> Bool {
@@ -21,18 +11,9 @@ struct CourseTimeSlot: Identifiable, Equatable {
     let course: SDCourse
     let start: Date
     let end: Date
-    /// The calendar date this slot belongs to (for display purposes).
     let date: Date
     var periods: [String] = []
 
-    /// Build slots for a single day: one per contiguous run of periods
-    /// (consecutive in `AppConstants.Periods.chronologicalOrder`), not one
-    /// first-to-last span, which would merge a course at P1 and P3 with P2
-    /// free into one slot and make `CourseTimelineResolver` report `.inClass`
-    /// in the P2 gap. The merge rule matches
-    /// `OngoingCourseInfo.ongoingCourses(weekday:minuteOfDay:)`, so the time
-    /// slider, Live Activity and Mac dashboard cards draw the same blocks as
-    /// the "Current class" carousel.
     static func buildSlots(from courses: [SDCourse], weekday: Int, on date: Date = AppClock.now()) -> [CourseTimeSlot] {
         let calendar = AppConstants.taipeiCalendar
         var slots: [CourseTimeSlot] = []
@@ -56,9 +37,6 @@ struct CourseTimeSlot: Identifiable, Equatable {
                    let startDate = Self.dateFromTimeString(firstTime.start, on: date, calendar: calendar),
                    let endDate = Self.dateFromTimeString(lastTime.end, on: date, calendar: calendar) {
                     slots.append(CourseTimeSlot(
-                        // Suffix the run's first period so two disjoint
-                        // blocks on the same day yield distinct ids
-                        // (Identifiable + LiveActivity sourceId).
                         id: "\(course.courseNo)_\(dayKey)_\(firstPeriod)",
                         course: course,
                         start: startDate,
@@ -74,8 +52,6 @@ struct CourseTimeSlot: Identifiable, Equatable {
         return slots.sorted { $0.start < $1.start }
     }
 
-    /// `buildSlots` for the day of `date`, less the courses skipped that day, and empty on a
-    /// day `isClassDay` rejects: outside the term, or a holiday the user has not opted back into.
     static func meetingSlots(
         from courses: [SDCourse],
         on date: Date,
@@ -86,8 +62,6 @@ struct CourseTimeSlot: Identifiable, Equatable {
             .filter { !$0.course.isSkipped(on: $0.date) }
     }
 
-    /// Whether the slot `id` names, as `buildSlots` writes it, is of a course skipped that day. A
-    /// class Live Activity carries only that id (`LiveActivitySnapshot.sourceId`).
     static func isSkipped(slotId id: String, in courses: [SDCourse]) -> Bool {
         let parts = id.split(separator: "_", omittingEmptySubsequences: false)
         guard parts.count >= 3, let day = dayKeyFormatter.date(from: String(parts[parts.count - 2])) else {
@@ -101,7 +75,6 @@ struct CourseTimeSlot: Identifiable, Equatable {
         AppConstants.Periods.chronologicalOrder.firstIndex(of: periodId) ?? Int.max
     }
 
-    /// Build a multi-day timeline centered on `centerDate`, spanning ±`dayRadius` days.
     static func buildMultiDaySlots(
         from courses: [SDCourse],
         centerDate: Date,

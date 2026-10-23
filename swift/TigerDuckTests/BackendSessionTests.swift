@@ -1,6 +1,3 @@
-// `AuthTokenManager` and `AuthService` through `SettingsAPIStub`. The backend rotates the refresh
-// token on every refresh, takes the old one again for 24 hours while its successor is unused, and
-// any other reuse for theft (https://github.com/tigerduck-app/tigerduck-app/issues/375).
 import Defaults
 import Foundation
 import Testing
@@ -26,8 +23,6 @@ struct BackendTokenRefreshTests {
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 2)
     }
 
-    /// Both sends may have reached the backend, the second rotating the token once more, and a
-    /// third use is taken for theft (https://github.com/tigerduck-app/tigerduck-app/issues/594).
     @Test("a token whose two sends got no reply goes out no more, and the next refresh signs in again")
     func secondLostReplyGivesUp() async throws {
         let backend = BackendFixture()
@@ -57,9 +52,6 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
     }
 
-    /// The count lives with the tokens, so the app ending between the second lost reply and the
-    /// next sign-in does not send the token a third time
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/604).
     @Test("after a relaunch, a token whose two sends got no reply goes out no more")
     func theUseCountOutlivesARelaunch() async throws {
         let backend = BackendFixture()
@@ -73,7 +65,6 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
     }
 
-    /// A send can end with the app before its reply comes back.
     @Test("a refresh counts its send on disk before the request goes out, and a new pair clears it")
     func theCountIsSavedBeforeTheSend() async throws {
         let gate = SettingsAPIStub.ReplyGate()
@@ -89,7 +80,6 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
     }
 
-    /// A count the Keychain did not take would not outlive the app, so the token does not go out.
     @Test("a refresh whose count could not be saved sends nothing")
     func anUnsavedCountSendsNothing() async throws {
         let backend = BackendFixture()
@@ -109,7 +99,6 @@ struct BackendTokenRefreshTests {
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
     }
 
-    /// Sent while the spent token stayed on disk, the new token would leave its count on that one.
     @Test("a new token the Keychain refused goes out only once it is stored, and the old one never again")
     func aRefusedNewTokenWaitsUntilStored() async throws {
         let backend = BackendFixture()
@@ -183,7 +172,6 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
     }
 
-    /// The count belongs to the token the refresh sent, not to the next account's.
     @Test("a refresh a sign-out overtook writes no count for the next account's token")
     func anOvertakenRefreshWritesNoCount() async throws {
         let gate = SettingsAPIStub.ReplyGate()
@@ -219,8 +207,6 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
     }
 
-    /// The backend's per-IP limit answers before it looks at the token, and a campus network puts
-    /// many students behind one IP.
     @Test("a refresh turned away by the rate limit uses none of the token's sends")
     func rateLimitedRefreshesUseNothing() async throws {
         let backend = BackendFixture()
@@ -239,7 +225,6 @@ struct BackendTokenRefreshTests {
         .init(statusCode: 0, body: Data(), failure: .notConnectedToInternet)
     }
 
-    /// Offline, the request never leaves the device, so the backend cannot have used the token.
     @Test("a refresh that never leaves the device uses none of the token's sends")
     func offlineRefreshesUseNothing() async throws {
         let backend = BackendFixture()
@@ -305,7 +290,6 @@ struct BackendTokenRefreshTests {
     func aNewPairStartsTheCountOver() async throws {
         let backend = BackendFixture()
         SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
-        // Expired at once, so the next call refreshes it.
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", expiresIn: 0), for: backend.refreshURL)
         SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
         SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
@@ -342,7 +326,6 @@ struct BackendTokenRefreshTests {
         #expect(relogins.value == 0)
         #expect(await backend.manager.isLoggedIn)
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
-        // An answer, even an error, is no lost reply, so nothing is sent again.
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 1)
     }
 
@@ -438,14 +421,10 @@ struct BackendTokenRefreshTests {
         #expect(await !manager.isLoggedIn)
     }
 
-    /// Sign-out unregisters the device as the departing account
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/411), while the session has already
-    /// ended for everything else, the keychain included.
     @Test("a sign-out ends the session at once, and only its own calls still carry the account's token")
     func signOutEndsTheSessionButItsCallsGoOut() async throws {
         let backend = BackendFixture()
         let registration = RegistrationFixture(manager: backend.manager)
-        // A0 has expired, so the token kept for the sign-out's calls is refreshed first.
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
         SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: registration.unregisterURL)
 
@@ -463,8 +442,6 @@ struct BackendTokenRefreshTests {
         #expect(unregister.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
     }
 
-    /// The refresh is out only when the token would not outlast the unregister. Another call meanwhile
-    /// would go as the departing account, and the TigerSync-off PATCH deletes its synced data.
     @Test("while a sign-out refreshes the token for its unregister, no one else has a session")
     func signOutRefreshLeavesNoSession() async throws {
         let gate = SettingsAPIStub.ReplyGate()
@@ -647,11 +624,6 @@ struct BackendTokenRefreshTests {
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).count == 1)
     }
 
-    // MARK: - Refreshes a sign-out meets (https://github.com/tigerduck-app/tigerduck-app/issues/468)
-
-    /// The refresh already out may be the retry after a lost reply, the token's second use; one
-    /// more from the sign-out is taken for theft and revokes the device's sessions, the unregister
-    /// with them.
     @Test("a sign-out while a refresh is out takes that refresh's token instead of sending another")
     func signOutDuringARefreshTakesItsToken() async throws {
         let gate = SettingsAPIStub.ReplyGate()
@@ -674,8 +646,6 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == nil)
     }
 
-    /// Sent once, the token may go once more: the backend rotates it again while nothing has used
-    /// the pair a lost reply carried, and a server error may not have rotated it at all.
     @Test("a sign-out whose refresh got no reply or a server error sends the token once more", arguments: [
         SettingsAPIStub.StubResponse.noReply,
         SettingsAPIStub.StubResponse(statusCode: 503, body: Data()),
@@ -725,8 +695,6 @@ struct BackendTokenRefreshTests {
         #expect(try backend.sentRefreshTokens() == ["R0", "R0"])
     }
 
-    /// Turned down, the token is dead, and one more use of it is taken for theft, which revokes
-    /// every session of the device, a sign-in's after this one included.
     @Test("a sign-out sends nothing more for a refresh the backend turned down")
     func signOutSendsNothingAfterARefusal() async throws {
         let gate = SettingsAPIStub.ReplyGate()
@@ -764,15 +732,12 @@ struct BackendTokenRefreshTests {
         #expect(!backend.relaunched().hasDepartingSession)
     }
 
-    /// The 401 came before the sign-out, so no reply was overtaken, and the sign-out sent the
-    /// refused token once more.
     @Test("a sign-out during the relogin after a 401 sends the refused token no more")
     func signOutDuringTheReloginSendsTheRefusedTokenNoMore() async throws {
         let backend = BackendFixture()
         let manager = backend.manager
         let ending = OSAllocatedUnfairLock<Task<String?, Never>?>(initialState: nil)
         await manager.setRefreshFailedHandler {
-            // The account signs out while the relogin runs, which then fails.
             ending.withLock { $0 = Task { await manager.endSession() } }
             while await manager.isLoggedIn { try? await Task.sleep(for: .milliseconds(5)) }
             return false
@@ -824,7 +789,6 @@ struct BackendTokenRefreshTests {
         SettingsAPIStub.enqueue(BackendFixture.reuseDetected, for: backend.refreshURL)
         SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
         await manager.setRefreshFailedHandler {
-            // The account signs out and the next one signs in while the relogin runs, which fails.
             await manager.logout()
             _ = try? await manager.login(
                 studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
@@ -838,8 +802,6 @@ struct BackendTokenRefreshTests {
         #expect(await manager.isLoggedIn)
     }
 
-    /// The request that asked for the departing account's token gets none, rather than the token
-    /// of the account that signed in after it.
     @Test("a relogin that a sign-out outlived hands out no token")
     func reloginASignOutOutlivedHandsOutNoToken() async throws {
         let backend = BackendFixture()
@@ -859,7 +821,6 @@ struct BackendTokenRefreshTests {
         #expect(await manager.validAccessToken() == "B1")
     }
 
-    /// The replies a refresh gets, in order.
     enum Outcome: String, CaseIterable, CustomTestStringConvertible {
         case success, lostThenSuccess, lostTwice, serverError, unauthorized
 
@@ -902,11 +863,8 @@ struct BackendTokenRefreshTests {
     }
 }
 
-/// A sign-out's unregister that did not land: the session it ended stays for a later launch to send
-/// the unregister as that account (https://github.com/tigerduck-app/tigerduck-app/issues/460).
 @Suite("The session a sign-out keeps for its unregister")
 struct DepartingSessionTests {
-    /// The kept session's refresh token, its sends and the backend it belongs to, or nil with none kept.
     private static func kept(_ backend: BackendFixture) throws -> (token: String, uses: Int, baseURL: String?)? {
         guard let json = backend.recorder.stored(AuthTokenManager.departingSessionKey) else { return nil }
         let session = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
@@ -916,7 +874,6 @@ struct DepartingSessionTests {
         )
     }
 
-    /// Signed in with an access token that outlasts the sign-out's calls, so the sign-out sends nothing.
     private static func signedOut() async -> BackendFixture {
         let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
         _ = await backend.manager.endSession()
@@ -986,8 +943,6 @@ struct DepartingSessionTests {
         #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
     }
 
-    /// The endpoint can change between the sign-out and that launch, and the other server never
-    /// issued the session.
     @Test("a kept session is refreshed and unregistered on the backend it was kept against, after the endpoint changed")
     func theRetryGoesToTheBackendTheSessionWasKeptAgainst() async throws {
         let backend = await Self.signedOut()
@@ -1018,8 +973,6 @@ struct DepartingSessionTests {
         #expect(!backend.relaunched().hasDepartingSession)
     }
 
-    /// The backend takes a third use for theft, which revokes the device's sessions but leaves its
-    /// push tokens, so the unregister could never go after it.
     @Test("a kept session sent twice with no reply goes out no more, and is forgotten")
     func aKeptSessionGoesOutNoThirdTime() async throws {
         let backend = await Self.signedOut()
@@ -1125,13 +1078,7 @@ struct BackendSignInTests {
             moodleTokens: .standIn(harvests: harvests)
         )
         auth.authTokenManager = backend.manager
-        let keychain = MemoryKeychain.signedIn()
-        // A live library token skips the library sign-in, which would reach the library's server.
-        let expiry = Int64(Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000)
-        try keychain.setObject(Data("library-token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
-        try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
-
-        await SecureStore.$sharedForTesting.withValue(keychain) {
+        await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
             await auth.signInToServices(
                 studentId: "B11000000", password: "password", generation: auth.loginGeneration &- 1
             )
@@ -1141,9 +1088,6 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
     }
 
-    /// Once the school has signed the account in and its credentials are stored, a cancel from the
-    /// sign-in sheet lets the rest finish, so Moodle and the backend are not left half signed in
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/589).
     @Test("a sign-in cancelled after the school step still signs in to the backend")
     func signInCancelledAfterTheSchoolStepFinishes() async throws {
         try await withExclusiveRealDefaults {
@@ -1164,7 +1108,6 @@ struct BackendSignInTests {
                         drop: { stored.withLock { $0 = nil } }
                     ),
                     harvest: { _, _ in
-                        // The user cancels the sheet while the Moodle token is fetched.
                         await MainActor.run { sheet.task?.cancel() }
                         return .init(signature: "", wstoken: "harvested", privatetoken: nil)
                     }
@@ -1174,7 +1117,6 @@ struct BackendSignInTests {
             )
             auth.authTokenManager = backend.manager
             let keychain = MemoryKeychain.locked()
-            // A live library token skips the library sign-in, which would reach the library's server.
             let expiry = Int64(Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000)
             try keychain.setObject(Data("library-token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
             try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
@@ -1247,14 +1189,8 @@ struct BackendSignInTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
     }
 
-    // MARK: - Signing in again after the backend revoked the session
-    // https://github.com/tigerduck-app/tigerduck-app/issues/385
-
-    /// How a test reaches a backend sign-in.
     enum SignInPath: String, CaseIterable, CustomTestStringConvertible {
-        /// The relogin after a refresh the backend answers 401.
         case relogin
-        /// `ensureBackendSignedIn()` with no session.
         case signIn
 
         var testDescription: String { rawValue }
@@ -1431,8 +1367,6 @@ struct BackendSignInTests {
                 await push.register()
             }
 
-            // The first attempt and its three retries each ask for a session. The failed sign-in
-            // holds off the later ones, and the announce, which needs none, goes every time.
             #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
             #expect(SettingsAPIStub.requests(for: push.registerURL).isEmpty)
             #expect(SettingsAPIStub.requests(for: push.announceURL).count == 4)
@@ -1460,10 +1394,6 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
     }
 
-    // MARK: - Asking the user to sign in again
-    // https://github.com/tigerduck-app/tigerduck-app/issues/385
-
-    /// The condition of asking to sign in again that a test turns the other way, or none.
     enum SignInAgainCondition: String, CaseIterable, CustomTestStringConvertible {
         case none, syncOff, credentialsUnreadable, backendSignedIn, signingIn, registrationSent
 
@@ -1497,7 +1427,6 @@ struct BackendSignInTests {
             let keychain = MemoryKeychain.locked()
 
             try await SecureStore.$sharedForTesting.withValue(keychain) {
-                // Behind a locked screen the sign-in finds no credentials, and nothing is sent.
                 await push.register()
                 let unsent = await push.service.snapshot()
                 try #require(unsent.lastAttemptFoundNoSession)
@@ -1555,15 +1484,12 @@ struct BackendSignInTests {
         #expect(!asks)
     }
 
-    /// A registration that went unsent for want of a session.
     private static let unsentRegistration = PushRegistrationSnapshot(
         ptsTokenLength: 0, deviceTokenLength: 6, lastError: "register: x",
         lastAttemptFoundNoSession: true, lastRegisteredAt: nil
     )
 }
 
-/// An `AuthTokenManager` on `SettingsAPIStub` whose access token has expired, so its next
-/// `validAccessToken()` refreshes with refresh token R0.
 struct BackendFixture {
     let manager: AuthTokenManager
     let recorder: Recorder
@@ -1573,7 +1499,8 @@ struct BackendFixture {
     let refreshTimeout: TimeInterval
 
     /// `accessTokenExpiry` is when A0 runs out; the default has it expired. A request the stub
-    /// holds outlasts the app's 20 seconds on a busy CI run, so the tests give it far longer.
+    /// holds must outlast a busy runner's stall, over 88 s in CI, so requests here time out after
+    /// ten minutes unless a test sets `refreshTimeout` (https://github.com/tigerduck-app/tigerduck-app/issues/416).
     init(
         signedIn: Bool = true,
         accessTokenExpiry: Date = Date(timeIntervalSince1970: 0),
@@ -1598,8 +1525,6 @@ struct BackendFixture {
         manager = Self.manager(baseURL: baseURL, recorder: recorder, refreshTimeout: refreshTimeout)
     }
 
-    /// A manager on the same Keychain, as after the app ends and starts again, on `baseURL` when
-    /// given, as after the endpoint changed.
     func relaunched(at baseURL: URL? = nil) -> AuthTokenManager {
         Self.manager(
             baseURL: baseURL ?? refreshURL.deletingLastPathComponent().deletingLastPathComponent(),
@@ -1607,8 +1532,6 @@ struct BackendFixture {
         )
     }
 
-    /// A manager on the same Keychain, which refuses every write of the refresh token while
-    /// `refused` holds and reports it where the store can.
     func refusingRefreshToken(while refused: OSAllocatedUnfairLock<Bool>) -> AuthTokenManager {
         let keychain = recorder.tokenStore
         let refuses = { @Sendable (key: String) in key == AuthTokenManager.refreshTokenKey && refused.withLock { $0 } }
@@ -1638,6 +1561,7 @@ struct BackendFixture {
     ) -> AuthTokenManager {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
+        config.timeoutIntervalForRequest = 600
         return AuthTokenManager(
             baseURLProvider: { baseURL },
             deviceUUID: "test-device",
@@ -1648,7 +1572,6 @@ struct BackendFixture {
         )
     }
 
-    /// The refresh token each refresh request carried, in order.
     func sentRefreshTokens() throws -> [String] {
         try SettingsAPIStub.requests(for: refreshURL).map { request in
             let body = try #require(SettingsAPIStub.bodyData(from: request))
@@ -1657,7 +1580,6 @@ struct BackendFixture {
         }
     }
 
-    /// Each login request's body, in order.
     func sentLoginBodies() throws -> [[String: Any]] {
         try SettingsAPIStub.requests(for: loginURL).map { request in
             let body = try #require(SettingsAPIStub.bodyData(from: request))
@@ -1665,7 +1587,6 @@ struct BackendFixture {
         }
     }
 
-    /// The Moodle token each login request carried, in order.
     func sentMoodleTokens() throws -> [String?] {
         try sentLoginBodies().map { $0["moodle_token"] as? String }
     }
@@ -1692,15 +1613,12 @@ struct BackendFixture {
     }
 }
 
-/// A registration service whose requests carry `manager`'s session, as `PushCoordinator` wires
-/// it, with its debounce and backoff ending at once.
 private struct RegistrationFixture {
     let service: PushRegistrationService
     let announceURL: URL
     let registerURL: URL
     let unregisterURL: URL
 
-    /// On `baseURL`, the endpoint its requests go to unless told otherwise.
     init(manager: AuthTokenManager, baseURL: URL = SettingsAPIStub.uniqueBaseURL()) {
         announceURL = baseURL.appendingPathComponent("devices/anonymous")
         registerURL = baseURL.appendingPathComponent("devices/register")
@@ -1731,15 +1649,12 @@ private struct RegistrationFixture {
         )
     }
 
-    /// Registers the standard token and waits for the attempt and the retries it schedules.
     func register() async {
         await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
         await service.awaitPendingRegistration()
     }
 }
 
-/// The Keychain and the UIKit background task in one, so it can tell whether a token write
-/// happened while a background task ran.
 nonisolated final class Recorder: @unchecked Sendable {
     struct BackgroundTasks {
         var begun = 0
@@ -1785,7 +1700,6 @@ nonisolated final class Recorder: @unchecked Sendable {
     var writesOutsideABackgroundTask: Int { lock.withLock { outsideWrites } }
 }
 
-/// The sign-in a sign-in sheet started, which a test cancels as the sheet's Cancel does.
 @MainActor
 private final class SheetSignIn {
     var task: Task<Bool, Never>?
@@ -1799,8 +1713,6 @@ private nonisolated final class CallCount: @unchecked Sendable {
 }
 
 private extension MoodleTokenService {
-    /// Has no token stored. Its harvest hands out "harvested", or fails with `failure`, and
-    /// reaches no school server.
     static func standIn(
         harvests: CallCount,
         failure: MoodleWebserviceError? = nil
@@ -1822,8 +1734,6 @@ private extension MoodleTokenService {
     }
 }
 
-/// Runs `body` with `syncPreferencesPushPending`, which a registration that goes through reads,
-/// cleared, then puts it back. It is a real `Defaults` key, so this takes the shared gate.
 private func withNoSyncPreferencesPending<T>(_ body: () async throws -> T) async rethrows -> T {
     try await withExclusiveRealDefaults {
         let saved = Defaults[.syncPreferencesPushPending]
@@ -1833,8 +1743,6 @@ private func withNoSyncPreferencesPending<T>(_ body: () async throws -> T) async
     }
 }
 
-/// Runs `body` with no refusals of the stored password, which can hold a harvest back, then puts
-/// them back. They are real `Defaults` keys, so this takes the shared gate.
 private func withNoPasswordRefusals<T>(_ body: () async throws -> T) async rethrows -> T {
     try await withExclusiveRealDefaults {
         let saved = SSOLoginService.storedPasswordRefusals
@@ -1844,8 +1752,6 @@ private func withNoPasswordRefusals<T>(_ body: () async throws -> T) async rethr
     }
 }
 
-/// `SecureStore`'s `.whenUnlockedThisDeviceOnly` valet in memory, holding the NTUST account and
-/// Moodle token a backend sign-in sends.
 nonisolated final class MemoryKeychain: KeychainStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: Data] = [:]
@@ -1856,7 +1762,6 @@ nonisolated final class MemoryKeychain: KeychainStore, @unchecked Sendable {
         return keychain
     }
 
-    /// Reads nothing, as behind a locked screen, until `unlock`.
     static func locked() -> MemoryKeychain {
         MemoryKeychain()
     }

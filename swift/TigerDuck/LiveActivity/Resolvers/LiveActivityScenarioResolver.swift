@@ -1,13 +1,5 @@
 import Foundation
 
-/// Picks the one Live Activity snapshot to show now, or nil when none qualifies or
-/// Live Activity is unavailable (`effectiveLiveActivityEnabled`). Assignments come
-/// first, a product decision, so a due-soon warning still shows during class; users
-/// who turn off `showAssignmentScenario` get class-first behavior. In priority order:
-/// 1. assignmentUrgent: the outstanding assignment due soonest within `assignmentLiveActivityLeadTime`.
-/// 2. inClass: the current non-skipped course. Overlapping slots come back in timeline
-///    order and one activity shows one class, so the earliest start wins.
-/// 3. classPreparing: the soonest non-skipped course within `classPreparingLeadTime`.
 struct LiveActivityScenarioResolver {
     let timelineResolver: CourseTimelineResolver
 
@@ -23,22 +15,14 @@ struct LiveActivityScenarioResolver {
         cloudSyncEnabled: Bool,
         accentHex: Int,
         now: Date = AppClock.now(),
-        /// Days classes do not meet. Passed in rather than read from the
-        /// store so this stays a pure function of its inputs and can be
-        /// tested without a `@MainActor` singleton.
         calendar: AcademicCalendar = .empty,
         optedInHolidayIDs: Set<Int> = []
     ) -> LiveActivitySnapshot? {
-        // Cloud sync off makes Live Activity unavailable, like the user's own
-        // switch off. `effectiveLiveActivityEnabled` is the one place that
-        // combined answer is computed.
         guard effectiveLiveActivityEnabled(
             isLiveActivityEnabled: preferences.isLiveActivityEnabled,
             cloudSyncEnabled: cloudSyncEnabled
         ) else { return nil }
 
-        // The class scenarios go quiet outside the term and on a holiday the user has left
-        // quiet. The assignment scenario does not: a deadline on a day off is still a deadline.
         let classesQuiet = !calendar.isClassDay(now, optedIn: optedInHolidayIDs)
 
         let timeline = timelineResolver.timeline(for: courses, around: now)
@@ -75,16 +59,11 @@ struct LiveActivityScenarioResolver {
     }
     #endif
 
-    // MARK: - Snapshot factories (static, pure — easy to unit test)
-
     static func inClassSnapshot(slot: CourseTimeSlot, now: Date, accentHex: Int) -> LiveActivitySnapshot {
         let weekday = slot.date.scheduleWeekday
         return LiveActivitySnapshot(
             scenario: .inClass,
             title: slot.course.displayName,
-            // The active block's own range, not the day's first-to-last span. For a
-            // course split within a day, such as P3-P4 plus P7-P8, countdown and progress
-            // cover this slot, and the subtitle must match rather than span the gap.
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.course.classroom(weekday: weekday, periods: slot.periods),
             instructor: nonEmpty(slot.course.instructor),
@@ -101,9 +80,6 @@ struct LiveActivityScenarioResolver {
         return LiveActivitySnapshot(
             scenario: .classPreparing,
             title: slot.course.displayName,
-            // Same reason as inClassSnapshot: the upcoming slot is one
-            // specific block, so subtitle must reflect that block — not
-            // an earlier block plus the gap leading to this one.
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.course.classroom(weekday: weekday, periods: slot.periods),
             instructor: nonEmpty(slot.course.instructor),
@@ -145,8 +121,6 @@ struct LiveActivityScenarioResolver {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    // MARK: - Selection helpers
-
     static func nextNonSkippedSlot(in timeline: [CourseTimeSlot], after time: Date) -> CourseTimeSlot? {
         timeline
             .filter { !$0.course.isSkipped(on: $0.date) && $0.start > time }
@@ -164,8 +138,6 @@ struct LiveActivityScenarioResolver {
             .min { $0.dueDate < $1.dueDate }
     }
 
-    /// Whether `assignment` can start the "due soon" activity: not submitted, not ignored and
-    /// not marked done here, the assignments the backend's reminders are sent for.
     static func isOutstanding(_ assignment: SDAssignment) -> Bool {
         !assignment.isCompleted && !assignment.isArchived && !assignment.isLocallyCompleted
     }

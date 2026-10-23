@@ -1,9 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// The signed-out mail page, styled like Library's `loginPrompt`. The mail login is separate
-/// from the NTUST one, since a Mail2000 password is set in webmail and need not match SSO; what
-/// it still prefills, and the limits on that, are `MailCredentialPrefill`'s to decide.
 struct MailLoginCard: View {
     private enum Field: Hashable { case studentID, password }
 
@@ -16,14 +13,6 @@ struct MailLoginCard: View {
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
     private let account = MailAccountManager.shared
 
-    /// The configured address domain, prefilled into the empty field as `@domain` so the form
-    /// says what it expects instead of leaving it to be guessed.
-    ///
-    /// On the school server a bare `B10000000` is right, because the app knows the domain and
-    /// supplies it. Under an override the domain comes from the Developer → Email screen, and
-    /// without the suffix a bare local part looks just as plausible but is rejected by the server
-    /// as a wrong password. The suffix is ordinary editable text, so a server that wants a bare
-    /// username still works once it is deleted.
     private var prefilledDomainSuffix: String {
         #if DEBUG
         let config = MailServerConfig.effective
@@ -39,11 +28,6 @@ struct MailLoginCard: View {
             : "you\(prefilledDomainSuffix)"
     }
 
-    /// Whether the username this field collects is an email address rather than a student ID.
-    ///
-    /// Only the DEBUG developer override can point the app at a server whose usernames are
-    /// addresses; against the school it is always a student ID, so this is `false` in every
-    /// Release build and the field keeps exactly the behaviour it has always had.
     private var usernameIsAnAddress: Bool {
         #if DEBUG
         return MailServerConfig.effective.isOverridden
@@ -112,19 +96,12 @@ struct MailLoginCard: View {
         .sheet(isPresented: $showWebmail) {
             InAppBrowserView(url: MailConstants.webmailURL).ignoresSafeArea()
         }
-        // Only ever seeds an empty field, so it cannot overwrite something half-typed when the
-        // view re-appears.
         .onAppear { seedFields() }
         #if DEBUG
-        // Re-seeds when the override changes, taking the school's password out of a form now aimed
-        // at another server. `.onAppear` misses this: the card keeps its `@State` while an override
-        // is applied in Settings, and `SchoolMailView`'s `generation` hook resets only the list.
         .onChange(of: DevMailServerSettings.shared.generation) { _, _ in seedFields() }
         #endif
     }
 
-    /// Puts `MailCredentialPrefill`'s answer into the two fields. Every carve-out lives in that
-    /// function, which is pure and tested; this is only the wiring.
     private func seedFields() {
         let auth = appState.authService
         let fields = MailCredentialPrefill.fields(

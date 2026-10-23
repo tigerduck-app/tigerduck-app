@@ -8,11 +8,6 @@ nonisolated enum HTMLParser {
         let inputs: [(name: String, value: String)]
     }
 
-    // MARK: - Public API
-
-    /// Check if a response landed on the NTUST SSO login page.
-    /// Host comparison is exact — a substring match would let
-    /// `evil-ssoam2.ntust.edu.tw.attacker.com` impersonate the SSO host.
     static func isSSOLoginPage(html: String, url: URL) -> Bool {
         guard url.host == "ssoam2.ntust.edu.tw" else { return false }
         return looksLikeSSOLoginBody(html)
@@ -25,8 +20,6 @@ nonisolated enum HTMLParser {
     /// would miss that case and the HTML parser would fall through
     /// to `.empty`.
     static func looksLikeSSOLoginBody(_ html: String) -> Bool {
-        // Most pages checked are the service's own. One without either marker cannot match the
-        // selectors below, whose attribute values match in any case, so only a hit is parsed.
         guard html.contains("loginForm") || html.range(of: "username", options: .caseInsensitive) != nil,
               let doc = try? SwiftSoup.parse(html) else { return false }
 
@@ -45,7 +38,6 @@ nonisolated enum HTMLParser {
                 (try? doc.select("input[name=Ecom_Password]").first()) != nil)
     }
 
-    /// Find a form by its id attribute and extract action + input fields
     static func findFormById(_ html: String, id: String) -> FormData? {
         guard let doc = try? SwiftSoup.parse(html),
               let forms = try? doc.select("form") else {
@@ -61,7 +53,6 @@ nonisolated enum HTMLParser {
         return nil
     }
 
-    /// Find an OIDC bridge form (has code/state/iss or SAMLResponse fields, excludes logout)
     static func findOIDCBridgeForm(_ html: String) -> FormData? {
         guard let doc = try? SwiftSoup.parse(html),
               let forms = try? doc.select("form") else {
@@ -88,8 +79,6 @@ nonisolated enum HTMLParser {
         return nil
     }
 
-    /// The message a sign-in page shows for a rejected attempt, as plain text: the first
-    /// element with text, trying the error classes in order.
     static func loginErrorMessage(in html: String) -> String? {
         guard let doc = try? SwiftSoup.parse(html) else { return nil }
         for className in loginErrorClassNames {
@@ -100,7 +89,51 @@ nonisolated enum HTMLParser {
         return nil
     }
 
-    // MARK: - Helpers
+    /// The text of `nodes` and of what they hold, without the elements `skipped` names, and with a
+    /// space around each element `separates` names, which ends a word even where the HTML has no
+    /// space. It walks a stack instead of recursing, so HTML of any depth fits on a thread's stack.
+    static func visibleText(of nodes: [Node], skipping skipped: Set<String>, separating separates: (String) -> Bool) -> String {
+        var text = ""
+        var stack = nodes.reversed().map { (node: $0, closes: false) }
+        while let (node, closes) = stack.popLast() {
+            if closes {
+                text += " "
+            } else if let textNode = node as? TextNode {
+                text += textNode.getWholeText()
+            } else if let element = node as? Element {
+                let tag = element.tagName().lowercased()
+                if skipped.contains(tag) { continue }
+                if separates(tag) {
+                    text += " "
+                    stack.append((node: element, closes: true))
+                }
+                stack += element.getChildNodes().reversed().map { (node: $0, closes: false) }
+            }
+        }
+        return text
+    }
+
+    /// Replaces each element nested deeper than `AppConstants.maximumHTMLDepth` inside `root` with
+    /// its `visibleText`. SwiftSoup finds a node's document by recursing once per ancestor on every
+    /// change, so a tree must be this shallow before it is changed
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/758).
+    static func flattenPastTheDepthCap(
+        _ root: Element, skipping skipped: Set<String>, separating separates: (String) -> Bool
+    ) throws {
+        var deep: [Element] = []
+        var stack = root.children().array().map { (element: $0, depth: 1) }
+        while let (element, depth) = stack.popLast() {
+            if depth > AppConstants.maximumHTMLDepth {
+                deep.append(element)
+            } else {
+                stack += element.children().array().map { (element: $0, depth: depth + 1) }
+            }
+        }
+        for element in deep {
+            let text = visibleText(of: [element], skipping: skipped, separating: separates)
+            try element.replaceWith(TextNode(text, element.getBaseUri()))
+        }
+    }
 
     private static let loginErrorClassNames = [
         "field-validation-error",

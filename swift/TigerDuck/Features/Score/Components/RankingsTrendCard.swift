@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// The iPhone's GPA trend card: a title, a picker between the per-semester
-/// and cumulative views — they answer different questions ("how did I do
-/// last term" vs. "how am I trending") — and `GPATrendChart`, which draws
-/// the line and the readout under it.
 struct RankingsTrendCard: View {
     @Environment(AppState.self) private var appState
 

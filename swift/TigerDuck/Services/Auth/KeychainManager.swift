@@ -13,10 +13,6 @@ nonisolated enum KeychainManager {
         SecureStore.delete(key: key)
     }
 
-    /// Returns true when the item is gone after the call (deleted now or
-    /// already absent). The fresh-install cleanup in `AppState.init` uses
-    /// this so a partial failure doesn't flip `appHasBeenInstalled` and
-    /// permanently strand the cleanup.
     static func deleteReportingSuccess(key: String) -> Bool {
         SecureStore.deleteReportingSuccess(key: key)
     }
@@ -26,8 +22,6 @@ nonisolated enum KeychainManager {
         return String(data: data, encoding: .utf8)
     }
 
-    /// ``loadString(key:)``, but a throw when the Keychain cannot be read now; see
-    /// ``SecureStore/loadIfReadable(key:)``.
     static func loadStringIfReadable(key: String) throws -> String? {
         try SecureStore.loadIfReadable(key: key).flatMap { String(data: $0, encoding: .utf8) }
     }
@@ -37,12 +31,6 @@ nonisolated enum KeychainManager {
         save(key: key, data: data)
     }
 
-    /// Like ``saveString(key:value:)`` but surfaces the Keychain write
-    /// status to the caller. Returns true only when the new value is
-    /// confirmed written; false on any encoding or Keychain error.
-    /// Use when a silent persistence failure would mislead the user —
-    /// e.g. the Debug endpoint override, which must not pretend to have
-    /// saved a URL it never actually stored.
     static func saveStringReportingSuccess(key: String, value: String) -> Bool {
         guard let data = value.data(using: .utf8) else { return false }
         do {

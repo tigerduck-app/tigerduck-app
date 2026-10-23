@@ -1,6 +1,3 @@
-// `PushCoordinator.syncNow`, which a sync trigger's handler calls in the background to send the
-// Live Activity schedule before it answers the push, after which iOS may suspend the app
-// (https://github.com/tigerduck-app/tigerduck-app/issues/663). The backend is `SettingsAPIStub`.
 import Foundation
 import Testing
 import UIKit
@@ -72,7 +69,6 @@ struct ScheduleSendNowTests {
         await push.disable()
     }
 
-    /// A sign-out's unregister waits only for a POST already under way.
     @Test("Once a sign-out has stopped the push stack, sending now sends nothing")
     func sendingNowAfterASignOutSendsNothing() async {
         let backend = Backend()
@@ -100,7 +96,6 @@ struct ScheduleSendNowTests {
         await push.disable()
     }
 
-    /// In the foreground the debounced `requestPushScheduleSync` that the sync's changes start sends it.
     @Test("A sync trigger's handler sends the schedule only after a sync that synced, with the app in the background",
           arguments: [FullSyncOutcome.synced, .skipped, .failed],
           [UIApplication.State.background, .inactive, .active])

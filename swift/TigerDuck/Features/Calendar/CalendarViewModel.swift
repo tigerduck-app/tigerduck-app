@@ -19,7 +19,6 @@ final class CalendarViewModel {
     @ObservationIgnored
     private nonisolated(unsafe) var dataObserver: Any? = nil
 
-    /// Pre-grouped events by day for O(1) lookups in the month grid.
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] = [:]
 
     var eventsForSelectedDate: [SDCalendarEvent] {
@@ -53,7 +52,6 @@ final class CalendarViewModel {
 
         setEvents(DataCache.shared.loadCalendarEvents())
 
-        // backgroundSync() on app launch handles the network refresh
         dataObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.dataDidUpdate,
             object: nil,
@@ -88,9 +86,6 @@ final class CalendarViewModel {
     func refresh(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
         let startGeneration = authService.loginGeneration
-        // Pre-flight captive-portal probe so a hotel/campus Wi-Fi login
-        // page doesn't surface as an opaque ATS pin failure from the
-        // actual Moodle / ICS fetch downstream.
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
@@ -103,9 +98,6 @@ final class CalendarViewModel {
         let (moodle, school) = await (moodleEvents, schoolEvents)
 
         await MainActor.run {
-            // Bail out if logout happened mid-fetch — otherwise the previous
-            // user's moodle events would be saved back into the calendar
-            // cache after AppState.clearUserScopedData() already purged it.
             guard authService.loginGeneration == startGeneration else {
                 manager.loadingState = .loaded
                 return
@@ -130,7 +122,7 @@ final class CalendarViewModel {
         let cal = AppConstants.taipeiCalendar
         let start = month.startOfMonth
         let daysInMonth = month.daysInMonth
-        let firstWeekday = month.firstWeekdayOfMonth // 1=Sunday
+        let firstWeekday = month.firstWeekdayOfMonth
 
         var days: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
         for day in 1...daysInMonth {
@@ -143,9 +135,6 @@ final class CalendarViewModel {
     }
 
     private func setEvents(_ newEvents: [SDCalendarEvent]) {
-        // Merged here because every load path, the sign-out reset included, goes
-        // through this funnel. Both academic sources are rebuilt from the feed, so a
-        // cached boundary an older build filed under `.holiday` does not linger.
         let newEvents = newEvents.filter { $0.source != .holiday && $0.source != .semester }
             + AcademicCalendarStore.shared.calendar.calendarEvents()
         events = newEvents

@@ -5,13 +5,6 @@ enum ConflictLOrientation {
     case leftTailBottomBar
 }
 
-/// Two interlocking L-shapes that tile the conflict cell without overlap.
-///
-/// The two inner corners at the bar/tail boundary use matching arcs — same
-/// circle, opposite sweep — so Γ and mirror-L meet pixel-perfectly there. When
-/// the courses share an outer top/bottom edge (pure overlap), both shapes have
-/// a convex corner pointing the same way; rounding both would leave a wedge,
-/// so callers set `sharpTopOuter` / `sharpBottomOuter` to keep that edge sharp.
 struct ConflictLShape: Shape {
     let orientation: ConflictLOrientation
     var soloAboveFraction: CGFloat = 0
@@ -95,7 +88,6 @@ struct ConflictLShape: Shape {
                 delta: .degrees(90)
             )
             path.addLine(to: CGPoint(x: 0, y: overlapEndY + r))
-            // Convex step-out at (0, overlapEndY)
             path.addRelativeArc(
                 center: CGPoint(x: r, y: overlapEndY + r),
                 radius: r,
@@ -103,7 +95,6 @@ struct ConflictLShape: Shape {
                 delta: .degrees(90)
             )
             path.addLine(to: CGPoint(x: tailLeftX - r, y: overlapEndY))
-            // Concave step at (tailLeftX, overlapEndY)
             path.addRelativeArc(
                 center: CGPoint(x: tailLeftX - r, y: overlapEndY - r),
                 radius: r,
@@ -123,7 +114,6 @@ struct ConflictLShape: Shape {
         }
 
         path.addLine(to: CGPoint(x: tailLeftX, y: barBottomY + r))
-        // Concave at (tailLeftX, barBottomY) — matches mirror-L's convex
         path.addRelativeArc(
             center: CGPoint(x: tailLeftX - r, y: barBottomY + r),
             radius: r,
@@ -132,7 +122,6 @@ struct ConflictLShape: Shape {
         )
 
         path.addLine(to: CGPoint(x: tailW + r, y: barBottomY))
-        // Convex at (tailW, barBottomY) — matches mirror-L's concave
         path.addRelativeArc(
             center: CGPoint(x: tailW + r, y: barBottomY - r),
             radius: r,
@@ -142,7 +131,6 @@ struct ConflictLShape: Shape {
 
         path.addLine(to: CGPoint(x: tailW, y: overlapTopY + r))
         if hasSoloAbove {
-            // Concave step at (tailW, overlapTopY)
             path.addRelativeArc(
                 center: CGPoint(x: tailW - r, y: overlapTopY + r),
                 radius: r,
@@ -150,7 +138,6 @@ struct ConflictLShape: Shape {
                 delta: .degrees(-90)
             )
             path.addLine(to: CGPoint(x: r, y: overlapTopY))
-            // Convex step at (0, overlapTopY)
             path.addRelativeArc(
                 center: CGPoint(x: r, y: overlapTopY - r),
                 radius: r,
@@ -158,7 +145,6 @@ struct ConflictLShape: Shape {
                 delta: .degrees(90)
             )
             path.addLine(to: CGPoint(x: 0, y: r))
-            // Top-left cell corner
             path.addRelativeArc(
                 center: CGPoint(x: r, y: r),
                 radius: r,
@@ -205,7 +191,6 @@ struct ConflictLShape: Shape {
                 delta: .degrees(90)
             )
             path.addLine(to: CGPoint(x: w, y: overlapTopY - r))
-            // Convex step at (w, overlapTopY)
             path.addRelativeArc(
                 center: CGPoint(x: w - r, y: overlapTopY - r),
                 radius: r,
@@ -213,7 +198,6 @@ struct ConflictLShape: Shape {
                 delta: .degrees(90)
             )
             path.addLine(to: CGPoint(x: tailRightX + r, y: overlapTopY))
-            // Concave step at (tailRightX, overlapTopY)
             path.addRelativeArc(
                 center: CGPoint(x: tailRightX + r, y: overlapTopY + r),
                 radius: r,
@@ -233,7 +217,6 @@ struct ConflictLShape: Shape {
         }
 
         path.addLine(to: CGPoint(x: tailW, y: barTopY - r))
-        // Concave at (tailW, barTopY) — matches Γ's convex
         path.addRelativeArc(
             center: CGPoint(x: tailW + r, y: barTopY - r),
             radius: r,
@@ -242,7 +225,6 @@ struct ConflictLShape: Shape {
         )
 
         path.addLine(to: CGPoint(x: barRightX - r, y: barTopY))
-        // Convex at (barRightX, barTopY) — matches Γ's concave
         path.addRelativeArc(
             center: CGPoint(x: barRightX - r, y: barTopY + r),
             radius: r,
@@ -253,7 +235,6 @@ struct ConflictLShape: Shape {
         path.addLine(to: CGPoint(x: barRightX, y: overlapEndY - r))
 
         if hasSoloBelow {
-            // Concave step at (barRightX, overlapEndY)
             path.addRelativeArc(
                 center: CGPoint(x: barRightX + r, y: overlapEndY - r),
                 radius: r,
@@ -261,7 +242,6 @@ struct ConflictLShape: Shape {
                 delta: .degrees(-90)
             )
             path.addLine(to: CGPoint(x: w - r, y: overlapEndY))
-            // Convex step at (w, overlapEndY)
             path.addRelativeArc(
                 center: CGPoint(x: w - r, y: overlapEndY + r),
                 radius: r,
@@ -320,8 +300,6 @@ struct ConflictLShape: Shape {
     }
 }
 
-/// Where the runs of a lane layout fall in the cluster's frame. Lanes are as wide as the frame
-/// allows with `rowSpacing` between them, the same seam the rows have.
 struct ConflictLaneGeometry {
     let width: CGFloat
     let laneCount: Int
@@ -340,9 +318,6 @@ struct ConflictLaneGeometry {
     }
 }
 
-/// One course of a lane layout: a single rounded outline around its runs, top to bottom, with
-/// the seam between two runs bridged across their shared width, so a course that widens where
-/// it meets no other reads as one shape and keeps its seam to the courses beside it.
 struct ConflictLaneShape: Shape {
     let runs: [CGRect]
     let cornerRadius: CGFloat
@@ -359,7 +334,6 @@ struct ConflictLaneShape: Shape {
             }
             strips.append(run)
         }
-        // Down the right edges and back up the left ones; every edge is level or upright.
         var points: [CGPoint] = []
         for strip in strips {
             points.append(CGPoint(x: strip.maxX, y: strip.minY))
@@ -372,7 +346,6 @@ struct ConflictLaneShape: Shape {
         return Self.roundedOutline(through: Self.corners(of: points), radius: cornerRadius)
     }
 
-    /// The outline's corners: no repeated point, and no point midway along a straight edge.
     static func corners(of points: [CGPoint]) -> [CGPoint] {
         var corners = points
         var changed = true
@@ -394,7 +367,6 @@ struct ConflictLaneShape: Shape {
         return corners
     }
 
-    /// Rounds each corner, convex or not, by at most half of either edge it joins.
     private static func roundedOutline(through corners: [CGPoint], radius: CGFloat) -> Path {
         var path = Path()
         guard corners.count > 2 else { return path }

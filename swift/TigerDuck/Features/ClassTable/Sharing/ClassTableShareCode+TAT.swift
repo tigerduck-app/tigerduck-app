@@ -62,7 +62,7 @@ nonisolated extension ClassTableShareCode {
         var written = Set<String>()
         let chunks = courses.compactMap { course -> String? in
             let courseNo = course.courseNo.uppercased()
-            guard courseNo.utf8.count == tatCourseNoLength, isCourseNo(courseNo[...]),
+            guard courseNo.utf8.count == tatCourseNoLength, CourseSelectionService.isCourseNo(courseNo[...]),
                   written.insert(courseNo).inserted else { return nil }
             return courseNo + course.schedule.keys.sorted().map { weekday in
                 tatDay(weekday, periods: course.schedule[weekday] ?? [])
@@ -82,7 +82,6 @@ nonisolated extension ClassTableShareCode {
         return "." + String(weekday) + String(indices.map { tatPeriodCodes[$0] })
     }
 
-    /// A weekday part: the weekday and at least one period.
     private static func isTATDay(_ part: Substring) -> Bool {
         guard let weekday = part.first, ("1"..."7").contains(weekday), part.count > 1 else { return false }
         return part.dropFirst().allSatisfy(tatPeriodCodes.contains)

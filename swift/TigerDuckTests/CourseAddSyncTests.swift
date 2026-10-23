@@ -1,5 +1,3 @@
-// A course added here goes to the server through the outbox, which keeps it until it lands, and a
-// full sync keeps the course here as long (https://github.com/tigerduck-app/tigerduck-app/issues/727).
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -21,8 +19,6 @@ struct CourseAddSyncTests {
             .appendingPathComponent("CourseAddSyncTests-\(UUID().uuidString)", isDirectory: true)
     }
 
-    /// A device holding `portal` as 1151's fetched courses and `userAdded` as its hand-added ones,
-    /// with `hidden` hidden.
     private static func makeCache(userAdded: [SDCourse], portal: [SDCourse] = [], hidden: [String] = []) -> DataCache {
         let root = freshDirectory()
         let cache = DataCache(
@@ -46,7 +42,6 @@ struct CourseAddSyncTests {
         return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
     }
 
-    /// No colours go up, so a list's fingerprint does not follow the real Defaults.
     private static func makeCoordinator(
         _ backend: Backend, cache: DataCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
         push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true },
@@ -87,7 +82,6 @@ struct CourseAddSyncTests {
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
 
         #expect(backend.uploads.count == 1)
-        // The sign-out warning counts it, and a snapshot that lists the term without it keeps it.
         #expect(await coordinator.holdsUnsentEdits())
         let adding = await coordinator.courseAddKeys(unlandedAt: fetchedAt)
         let unlisted = AppState.unlistedCourses(
@@ -105,15 +99,12 @@ struct CourseAddSyncTests {
         let body = try #require(SettingsAPIStub.bodyData(from: upload))
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["force_keys"] as? [String] == ["client:1151:GE1010001"])
-        // The term as shown here: a term whose roster had not reached the server gets all of it.
         let sent = (json["courses"] as? [[String: Any]])?.compactMap { $0["course_no"] as? String }
         #expect(sent?.sorted() == ["CS1001301", "GE1010001"])
-        // A snapshot fetched before the upload landed may still lack the course; a later one has it.
         #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
-    /// Use Server takes the server's courses over the adds still on their way up.
     @Test("Use Server for courses drops a course add still queued, and other categories keep it")
     func useServerDropsAQueuedAdd() async {
         let backend = Backend()
@@ -128,7 +119,6 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
-    /// Behind the lock screen the course list reads as empty, and the add would be dropped as gone.
     @Test("A course add waits in the outbox while protected data is locked, and goes after unlock")
     func addWaitsBehindTheLock() async {
         let backend = Backend()
@@ -148,7 +138,6 @@ struct CourseAddSyncTests {
         #expect(backend.uploads.count == 1)
     }
 
-    /// The drain samples the lock once per pass, and the lock can land before the add's turn comes.
     @Test("A course add waits when the lock lands during the drain's pass")
     func addWaitsWhenTheLockLandsMidPass() async {
         let backend = Backend()
@@ -164,7 +153,6 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast) == ["1151:GE1010001"])
     }
 
-    /// A sign-out while the add waits in the term's upload chain leaves its list with the departing account.
     @Test("A course add is not sent once the login has changed since its list was read")
     func addOfAnEarlierLoginIsNotSent() async {
         let backend = Backend()
@@ -180,7 +168,6 @@ struct CourseAddSyncTests {
         #expect(backend.uploads.isEmpty)
     }
 
-    /// The course is saved here before its add reaches the outbox, which a full sync can read meanwhile.
     @Test("An add on its way into the outbox already counts for a full sync and for the sign-out warning")
     func addOnItsWayInCounts() async {
         let backend = Backend()
@@ -194,7 +181,6 @@ struct CourseAddSyncTests {
         await add.value
     }
 
-    /// Taken back in Add Course, or deleted or hidden here, before its upload went.
     @Test("An add whose course is gone or hidden here when it goes is dropped unsent", arguments: [false, true])
     func addOfAGoneCourseIsDropped(hidden: Bool) async {
         let backend = Backend()
@@ -240,7 +226,6 @@ struct CourseAddSyncTests {
         #expect(courseNo == "GE1010001")
     }
 
-    /// The other course keys name the same courses in another term, which an add here does not cover.
     @Test("A course a filled term's snapshot does not list goes, by tombstone, by absence or as hand-added, unless its add from here had not landed",
           arguments: [false, true])
     func unlistedCourseStaysWhileItsAddIsOut(adding: Bool) {
@@ -268,7 +253,6 @@ struct CourseAddSyncTests {
         #expect(unlisted.drop.isEmpty)
     }
 
-    /// A 5xx says nothing about most edits, but a whole-term upload can fail on its payload alone.
     @Test("An add the server keeps failing with 5xx spends its attempts and parks, so the ops behind it still go")
     func failingAddDoesNotHoldTheQueue() async {
         let backend = Backend()
@@ -287,7 +271,6 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()) == ["1151:GE1010001"])
     }
 
-    /// As when the Mac's "All courses" switch goes off while an add waits offline.
     @Test("An add that comes due once course uploads are off is dropped unsent")
     func addAfterAnOptOutIsDropped() async {
         let backend = Backend()
@@ -305,8 +288,6 @@ struct CourseAddSyncTests {
         #expect(!(await coordinator.holdsUnsentEdits()))
     }
 
-    /// The chain every upload of the term takes, so the one queued last lands last. It notes the list
-    /// as taken, which lets an edit that sends the same list after it skip it.
     @Test("An add goes up through its term's upload chain")
     func addGoesThroughItsTermsUploadChain() async throws {
         let backend = Backend()
@@ -322,7 +303,6 @@ struct CourseAddSyncTests {
         #expect(backend.uploads.count == 1)
     }
 
-    /// Sent beside the delete, the upload could land first and the delete remove the course again.
     @Test("A course added back while its delete is being sent goes up once that delete has landed")
     func addGoesAfterAnInFlightDelete() async throws {
         let backend = Backend()

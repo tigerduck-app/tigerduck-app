@@ -6,7 +6,6 @@ enum WatchLibraryServiceError: LocalizedError {
     case loginFailed(String)
     case qrGenerationFailed(String)
     case networkError(Error)
-    /// No phone in range and the watch's own link failed the pre-flight.
     case offline
 
     var errorDescription: String? {
@@ -18,8 +17,6 @@ enum WatchLibraryServiceError: LocalizedError {
         case .loginFailed(let m):
             return String(format: String(localized: "error_library_sign_in_failed_format"), m)
         case .qrGenerationFailed:
-            // Server-side detail is logged in generateQRCode(); the
-            // user-facing message stays short to fit the watch screen.
             return String(localized: "library_qr_generate_failed")
         case .networkError(let e):
             return String(format: String(localized: "error_network_format"), e.localizedDescription)
@@ -27,12 +24,6 @@ enum WatchLibraryServiceError: LocalizedError {
     }
 }
 
-/// Watch-side mirror of phone `LibraryService`. Reads credentials from
-/// `WatchLibraryCredentialsStore` (the only authority for what the
-/// watch knows). Caches the bearer token in the watch keychain via
-/// the store; refreshes by hitting `/passport/login` directly when
-/// expired. Same URLSession hygiene as the phone — ephemeral session,
-/// 15s/30s timeouts, no caching.
 enum WatchLibraryService {
     private static let baseURL = "https://api.lib.ntust.edu.tw/v1"
     private static let logger = WatchAppLogger.wc
@@ -43,9 +34,6 @@ enum WatchLibraryService {
         config.timeoutIntervalForResource = 30
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        // Mirror the phone's pinning so a watch refresh over hostile
-        // Wi-Fi (the watch falls back to its own Wi-Fi when out of
-        // BT range of the phone) doesn't downgrade the trust path.
         return URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
@@ -69,12 +57,6 @@ enum WatchLibraryService {
         }
     }
 
-    // MARK: - Token validity
-
-    /// True when a non-empty token is cached and its expiry is at least
-    /// 60s away. Same 60s safety margin as the phone — if the token is
-    /// about to expire mid-request, we proactively log in again so the
-    /// QR the user sees isn't rejected on first scan.
     @MainActor
     static var isTokenValid: Bool {
         guard let (_, expiryMs) = WatchLibraryCredentialsStore.shared.loadToken() else {
@@ -84,11 +66,6 @@ enum WatchLibraryService {
         return safeNowMs < expiryMs
     }
 
-    // MARK: - Public API
-
-    /// Returns a valid token, logging in with stored credentials if cached
-    /// token is missing/expired. Throws `.credentialsNotFound` if the
-    /// watch has no credentials (or they are past TTL).
     @MainActor
     static func ensureToken() async throws -> String {
         guard let creds = WatchLibraryCredentialsStore.shared.loadCredentialsRespectingTTL() else {
@@ -102,17 +79,27 @@ enum WatchLibraryService {
         return try await login(username: creds.username, password: creds.password)
     }
 
+    typealias Send = (URLRequest, (any URLSessionTaskDelegate)?) async throws -> (Data, URLResponse)
+
+    static func sendOnPinnedSession(
+        _ request: URLRequest, _ delegate: (any URLSessionTaskDelegate)?
+    ) async throws -> (Data, URLResponse) {
+        try await session.data(for: request, delegate: delegate)
+    }
+
     @MainActor
     static func generateQRCode() async throws -> String {
-        let token = try await ensureToken()
+        try await requestQRCode(token: try await ensureToken())
+    }
 
+    static func requestQRCode(token: String, send: Send = sendOnPinnedSession) async throws -> String {
         let url = URL(string: "\(baseURL)/virtual-code/generate")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(LibraryQRRequest(token: token))
 
-        let (data, urlResponse) = try await session.data(for: request)
+        let (data, urlResponse) = try await send(request, CredentialPostDelegate())
         try validateHTTP(urlResponse)
         let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
 
@@ -126,11 +113,20 @@ enum WatchLibraryService {
         return payload
     }
 
-    // MARK: - Internal
-
     @discardableResult
     @MainActor
     private static func login(username: String, password: String) async throws -> String {
+        let loginData = try await requestToken(username: username, password: password)
+        WatchLibraryCredentialsStore.shared.storeToken(
+            loginData.token,
+            expiryMs: loginData.expirationTimeStamp
+        )
+        return loginData.token
+    }
+
+    static func requestToken(
+        username: String, password: String, send: Send = sendOnPinnedSession
+    ) async throws -> LibraryLoginData {
         let url = URL(string: "\(baseURL)/passport/login")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -139,7 +135,7 @@ enum WatchLibraryService {
             LibraryLoginRequest(username: username, password: password)
         )
 
-        let (data, urlResponse) = try await session.data(for: request)
+        let (data, urlResponse) = try await send(request, CredentialPostDelegate())
         try validateHTTP(urlResponse)
         let response = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
 
@@ -150,11 +146,6 @@ enum WatchLibraryService {
         guard let loginData = response.data else {
             throw WatchLibraryServiceError.loginFailed("missing data")
         }
-
-        WatchLibraryCredentialsStore.shared.storeToken(
-            loginData.token,
-            expiryMs: loginData.expirationTimeStamp
-        )
-        return loginData.token
+        return loginData
     }
 }

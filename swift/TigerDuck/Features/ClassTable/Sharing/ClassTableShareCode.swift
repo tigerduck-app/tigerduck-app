@@ -2,9 +2,6 @@ import Compression
 import Foundation
 import zlib
 
-/// A class table share code read from a QR code: whose class table it is and the course codes
-/// of each term it shares.
-/// See docs/decisions/0023-class-table-share-code.md.
 nonisolated struct ClassTableShareCode: Equatable, Sendable {
     enum Format: Equatable, Sendable {
         case tigerDuck
@@ -15,22 +12,17 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
     }
 
     struct Term: Equatable, Sendable {
-        /// The app's semester code, such as `1151`, or `114H` for a summer term.
         let semester: String
         let courseNos: [String]
     }
 
     let format: Format
-    /// Nil only for a TAT code whose sharer left it blank.
     let studentId: String?
-    /// To the minute; only TigerDuck codes carry it.
     let sharedAt: Date?
     let terms: [Term]
 
     static let prefix = "HTTPS://TIGERDUCK.APP/T/"
 
-    /// Reads any share code the app accepts, ignoring surrounding whitespace and letter case, and
-    /// throws a `ClassTableShareCodeError` for anything else.
     static func decode(_ text: String) throws -> ClassTableShareCode {
         let code = text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if code.hasPrefix(prefix) { return try decodeTigerDuck(code) }
@@ -38,16 +30,14 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         throw ClassTableShareCodeError.unknownPrefix
     }
 
-    /// Our code for `terms`: one of the user's terms, or every term that has courses. Course
-    /// codes outside NTUST's shape are left out, and so is a term left without courses; nil
-    /// when no course is left or the student ID cannot be written.
     static func encode(studentId: String, sharedAt: Date, terms: [Term]) -> String? {
         let id = studentId.uppercased()
         guard isUpperAlphanumerics(id[...]) else { return nil }
         var semesters = Set<String>()
         let kept = terms.compactMap { term -> Term? in
             let semester = term.semester.uppercased()
-            let courseNos = Set(term.courseNos.map { $0.uppercased() }.filter { isCourseNo($0[...]) }).sorted()
+            let courseNos = Set(term.courseNos.map { $0.uppercased() }.filter { CourseSelectionService.isCourseNo($0[...]) })
+                .sorted()
             guard isSemester(semester[...]), !courseNos.isEmpty, semesters.insert(semester).inserted else {
                 return nil
             }
@@ -59,8 +49,6 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         let body = prefix + fields.joined(separator: ".")
         return body + "." + checksum(of: body[...])
     }
-
-    // MARK: - Our format, version 1
 
     private static func decodeTigerDuck(_ code: String) throws -> ClassTableShareCode {
         let fields = code.dropFirst(prefix.count).split(separator: ".", omittingEmptySubsequences: false)
@@ -90,7 +78,6 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         return ClassTableShareCode(format: .tigerDuck, studentId: String(fields[1]), sharedAt: sharedAt, terms: terms)
     }
 
-    /// `yyyyMMddHHmm` in Taipei time.
     private static func stamp(_ date: Date) -> String {
         let parts = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         return String(
@@ -113,26 +100,15 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         return date
     }
 
-    // MARK: - Shared rules
-
-    /// NTUST's course-number shape, the one `CourseSelectionService.courseNoRegex` reads from the
-    /// course-selection list: an optional `3`, two letters, then six or seven letters or digits.
-    static func isCourseNo(_ text: Substring) -> Bool {
-        text.wholeMatch(of: /3?[A-Z]{2}[A-Z0-9]{6,7}/) != nil
-    }
-
-    /// The ROC year and the term: `1151`, `1142`, `114H`.
     static func isSemester(_ text: Substring) -> Bool {
         text.utf8.count == 4 && isDigits(text.prefix(3)) && isUpperAlphanumerics(text.suffix(1))
     }
 
-    /// One term's course codes. An empty or repeated one, which no encoder writes, makes the
-    /// code malformed; one outside NTUST's shape is an invalid course code.
     static func checkedCourseNos(_ items: [Substring]) throws -> [String] {
         guard !items.contains(where: \.isEmpty), Set(items).count == items.count else {
             throw ClassTableShareCodeError.malformed
         }
-        if let bad = items.first(where: { !isCourseNo($0) }) {
+        if let bad = items.first(where: { !CourseSelectionService.isCourseNo($0) }) {
             throw ClassTableShareCodeError.invalidCourseCode(String(bad))
         }
         return items.map(String.init)
@@ -152,17 +128,12 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         }
     }
 
-    // MARK: - Checksum, compression and Base32
-
-    /// CRC-32 as zlib computes it, written big-endian in Base32.
     private static func checksum(of text: Substring) -> String {
         let bytes = Array(text.utf8)
         let crc = UInt32(truncatingIfNeeded: crc32(0, bytes, uInt(bytes.count)))
         return base32([24, 16, 8, 0].map { UInt8(truncatingIfNeeded: crc >> $0) })
     }
 
-    /// No class table's course codes come near this, and a payload that inflates past it is
-    /// refused rather than read in full.
     private static let inflatedLimit = 65_536
 
     /// Raw DEFLATE (RFC 1951), which `COMPRESSION_ZLIB` reads and writes.
@@ -181,7 +152,6 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         let count = compression_decode_buffer(
             &output, output.count, compressed, compressed.count, nil, COMPRESSION_ZLIB
         )
-        // A full buffer may hold a cut-off text.
         guard count > 0, count < output.count, output.prefix(count).allSatisfy({ $0 < 0x80 }) else {
             throw ClassTableShareCodeError.malformed
         }
@@ -227,12 +197,8 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
     }
 }
 
-/// Why a share code was refused. The import screen shows one message for all but
-/// `unknownPrefix`, which a scanner skips, but they stay apart for tests and logs.
 nonisolated enum ClassTableShareCodeError: Error, Equatable, Sendable {
-    /// Not a share code, such as another app's QR code.
     case unknownPrefix
-    /// A share code in a format version this app does not know yet.
     case unknownVersion
     case malformed
     case checksumMismatch

@@ -1,6 +1,3 @@
-// Ignoring every assignment of a course (https://github.com/tigerduck-app/tigerduck-app/issues/210).
-// The setting is applied wherever an assignment row is built, so Home, the badges, course details,
-// the Live Activity and the list the server starts it from all follow without code of their own.
 import Defaults
 import Foundation
 import Testing
@@ -29,7 +26,6 @@ struct CourseIgnoredAssignmentsTests {
         )
     }
 
-    /// Two assignments of CS1, which the user ignores, and one of EE2.
     private static func cacheIgnoringCS1() -> DataCache {
         let cache = makeCache()
         cache.saveAssignments([
@@ -59,8 +55,6 @@ struct CourseIgnoredAssignmentsTests {
         #expect(cache.loadAssignments(semester: "1152").filter(\.isArchived).isEmpty)
     }
 
-    /// The cache keeps last term's assignments while Moodle has no course for the new term yet, and
-    /// a retaken course has the same number in both terms.
     @Test("An assignment kept from last term falls under last term's setting, not this term's")
     func keptAssignmentsFollowTheTermTheyCameFrom() {
         let cache = Self.makeCache()
@@ -199,9 +193,6 @@ struct CourseIgnoredAssignmentsTests {
     }
 }
 
-/// The class table side: which course shows the mark, what VoiceOver reads, and which term offers
-/// the long-press items. Synchronous on the main actor, so the stored term pick the test moves is
-/// back before another test can read it.
 @MainActor
 struct ClassTableIgnoredCourseTests {
     @Test("A cell's label ends with the ignored mark, after the room")
@@ -240,8 +231,6 @@ struct ClassTableIgnoredCourseTests {
     }
 }
 
-/// Home's rows: one ignored with its course offers no swipe, so it cannot be marked done or
-/// stop being ignored on its own; the class table undoes the setting.
 @MainActor
 struct HomeIgnoredCourseRowTests {
     private static let now = Date(timeIntervalSince1970: 1_790_000_000)

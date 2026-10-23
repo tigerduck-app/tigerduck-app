@@ -15,7 +15,6 @@ struct MailSourceTextView: UIViewRepresentable {
     var textStyle: UIFont.TextStyle = .caption1
     var color: Color = .textPrimary
 
-    /// Read so a Dynamic Type change re-runs `updateUIView` and re-resolves the font.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     func makeUIView(context: Context) -> UITextView {
@@ -69,8 +68,6 @@ struct MailSourceTextView: UIViewRepresentable {
         var appliedText: String?
     }
 
-    /// The `UIFont` equivalent of `.font(.system(textStyle, design: .monospaced))`, kept
-    /// scalable so `adjustsFontForContentSizeCategory` still tracks Dynamic Type.
     private static func monospacedFont(for textStyle: UIFont.TextStyle) -> UIFont {
         let base = UIFont.preferredFont(forTextStyle: textStyle)
         guard let descriptor = base.fontDescriptor.withDesign(.monospaced) else { return base }

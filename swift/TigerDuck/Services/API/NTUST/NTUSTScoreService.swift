@@ -16,25 +16,14 @@ enum NTUSTScoreServiceError: LocalizedError {
     }
 }
 
-/// Fetches the NTUST StuScoreQueryServ "DisplayAll" HTML, parses it into a
-/// ``ScoreReport``, and caches the result on disk for up to 24h.
-///
-/// Mirrors the cache + SSO retry flow of ``CourseSelectionService`` so users
-/// of cached-first gates get consistent behavior across screens.
 enum NTUSTScoreService {
     private static let scoreRootURL = URL.knownGood("https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/")
     private static let scoreDisplayURL = URL.knownGood(
         "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery/DisplayAll"
     )
 
-    /// Disk-cache TTL before the service refetches the live HTML. Mirrors the
-    /// CourseSelectionService 24h window — deliberately long because grade
-    /// updates are a weeks-to-months cadence, so stale-hit dominates.
     static let scoreReportCacheTTL: TimeInterval = 86_400
 
-    /// Load the student's score report and when it was read from the school. Honors a 24h disk
-    /// cache unless `forceRefresh` is set (e.g. pull-to-refresh, which shares the same semantics
-    /// as ``CourseSelectionService.fetchEnrolledCourseNos``).
     static func fetchScoreReport(
         session: URLSession,
         studentId: String,
@@ -49,7 +38,6 @@ enum NTUSTScoreService {
         }
 
         let generation = NTUSTSessionManager.shared.generation
-        // Through the session handed in, so no request of this fetch goes out another way.
         if !(await NTUSTSessionManager.shared.probeCookiesValid(using: session)) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
@@ -64,8 +52,6 @@ enum NTUSTScoreService {
         let html = try await fetchHTML(
             session: session, studentId: studentId, password: password, generation: generation
         )
-        // Parse off the main actor — SwiftSoup over a full transcript is
-        // tens of milliseconds on an older phone.
         let report = await Task.detached(priority: .userInitiated) {
             NTUSTScoreParser.parse(html: html)
         }.value
@@ -77,17 +63,12 @@ enum NTUSTScoreService {
             throw NTUSTScoreServiceError.parseFailed
         }
 
-        // `persistGuard` runs after the long network hop, so a logout or account swap
-        // between fetch and persist never leaves the previous account's score report in
-        // the cache for the next account to inherit.
         if persistGuard?() ?? true {
             DataCache.shared.saveScoreReport(report, studentId: studentId)
         }
         return (report, Date())
     }
 
-    /// Cached snapshot without the network call. Used by the view model to
-    /// render instantly on first appearance while a background refresh runs.
     static func cachedScoreReport(studentId: String) -> (report: ScoreReport, cachedAt: Date)? {
         DataCache.shared.loadScoreReport(studentId: studentId)
     }
@@ -95,8 +76,6 @@ enum NTUSTScoreService {
     static func invalidateCache(studentId: String) {
         DataCache.shared.invalidateScoreReport(studentId: studentId)
     }
-
-    // MARK: - Private
 
     private static func fetchHTML(
         session: URLSession,

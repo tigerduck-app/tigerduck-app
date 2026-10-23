@@ -1,6 +1,3 @@
-// `AuthService.login` while an account is stored, as from the prompt a failed silent sign-in shows
-// (https://github.com/tigerduck-app/tigerduck-app/issues/398). The school sign-in is a stand-in that
-// fails, so no request leaves the process and nothing after it runs.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -11,7 +8,6 @@ struct StoredAccountSignInTests {
     @MainActor
     private final class Calls {
         var signOuts = 0
-        /// Each school sign-in's student ID, and how many sign-outs had finished when it began.
         var schoolSignIns: [(studentId: String, signOutsBefore: Int)] = []
     }
 
@@ -20,7 +16,6 @@ struct StoredAccountSignInTests {
         var isDone = false
     }
 
-    /// Its sign-out drops the stored account from `keychain`, as `AppState.logoutNTUST()` does.
     private static func auth(recording calls: Calls, keychain: MemoryKeychain) -> AuthService {
         let auth = AuthService(
             keychainHasCredentials: { false },
@@ -31,7 +26,6 @@ struct StoredAccountSignInTests {
             }
         )
         auth.signOutStoredAccount = {
-            // The app's sign-out suspends while the backend and push state settle.
             await Task.yield()
             try? keychain.removeObject(forKey: AppConstants.KeychainKeys.studentId)
             try? keychain.removeObject(forKey: AppConstants.KeychainKeys.password)
@@ -75,9 +69,13 @@ struct StoredAccountSignInTests {
         #expect(stored.1 == "password")
     }
 
-    /// The sign-out's unregister goes out as the departing account after its session ended, and
-    /// landing after this sign-in it would revoke the session and push tokens this one registers
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/469).
+    @Test("the sign-in sheets ask first for the sign-ins that sign the stored account out, and only those")
+    func sheetsAskBeforeTheSignOutsOfLogin() {
+        #expect(AuthService.replacesStoredAccount(stored: "B11000000", signingInAs: "B11099999"))
+        #expect(!AuthService.replacesStoredAccount(stored: "B11000000", signingInAs: " b11000000 "))
+        #expect(!AuthService.replacesStoredAccount(stored: nil, signingInAs: "B11099999"))
+    }
+
     @Test("a sign-in right after a sign-out waits for the calls the sign-out still has out")
     func signInWaitsForTheSignOutsCalls() async throws {
         let calls = Calls()
@@ -101,8 +99,6 @@ struct StoredAccountSignInTests {
         #expect(calls.schoolSignIns.map(\.studentId) == ["B11000000"])
     }
 
-    /// Two windows signing out at once each start calls. The first one's unregister, landing after
-    /// a sign-in that waited only for the second's, would revoke that sign-in's session.
     @Test("a sign-in waits for the calls of every sign-out still out, not only the last one's")
     func signInWaitsForEverySignOutsCalls() async throws {
         let calls = Calls()

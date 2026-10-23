@@ -1,28 +1,14 @@
 #if DEBUG && os(iOS)
 import SwiftUI
 
-/// Developer-only screen for re-triggering one-shot UI surfaces that are hard to retest once
-/// dismissed, reached from `Settings → Developer → Triggers`. The entry point and this file are
-/// both `#if DEBUG`, so Release builds see neither.
-///
-/// Each section uses the smallest hook that simulates a real fire: clearing a persisted gate,
-/// arming a debug-only flag, or replaying the closure a real sensor would call. Do not go around
-/// the production code paths; a shortcut here can mask real bugs in the surface under test.
 struct TriggersDebugView: View {
     @Environment(AppState.self) private var appState
     @State private var statusMessage: String?
-    /// Tick that refreshes the disabled-button state when the static
-    /// armed-flag flips. The actual task lives on
-    /// ``TriggersDebugArming`` (a MainActor singleton) so it survives
-    /// this view being popped and re-pushed — `@State` is destroyed on
-    /// pop, which is what allowed the same button to spawn a second
-    /// in-flight task when the user navigated away and back.
     @State private var armedTick = UUID()
     @State private var samplePresentation: WhatsNewPresentation?
 
     var body: some View {
         Form {
-            // MARK: - What's New
             Section {
                 Button("Trigger What's New on next open") {
                     UserDefaults.standard.removeObject(
@@ -39,7 +25,6 @@ struct TriggersDebugView: View {
                 Text("Trigger clears the seen flag so `evaluateWhatsNewOnLaunch(in:)` re-fires on the next launch / foreground — with no flag that's the running version's pages and summary only. Preview shows one page of every template plus a summary, writing no real setting.")
             }
 
-            // MARK: - Update prompt
             Section {
                 Button("Trigger Update Available on next open") {
                     UpdateNotifyCoordinator.armDebugSimulatedUpdate()
@@ -56,7 +41,6 @@ struct TriggersDebugView: View {
                 Text("Skips iTunes Lookup and surfaces a fake `PendingUpdate` (v99.0.0 → apps.apple.com). One-shot per arm.")
             }
 
-            // MARK: - Flip-to-Library first trigger
             Section {
                 Button("Flip offer after 3 sec") {
                     triggerFirstLibraryFlip()
@@ -92,9 +76,6 @@ struct TriggersDebugView: View {
             }
             .whatsNewSheetPresentation()
         }
-        // The arming task is not cancelled on disappear: the 3-second delay lets the tester leave
-        // the page, since which tab the prompt overlays is under test. `TriggersDebugArming` holds
-        // it across a pop, so re-entry shows it scheduled and blocks a second prompt.
     }
 
     private var canTriggerFlip: Bool {
@@ -105,19 +86,12 @@ struct TriggersDebugView: View {
         FirstTriggerPromptCenter.shared.reset(.flipToLibrary)
         statusMessage = "Reset first-trigger flag. Prompt fires in 3 seconds."
         TriggersDebugArming.shared.armFlipPrompt(appState: appState) { [self] in
-            // Rotate the tick so the body re-evaluates the disabled
-            // state if the view is still mounted when the timer fires.
             armedTick = UUID()
         }
         armedTick = UUID()
     }
 }
 
-/// MainActor singleton that owns the debug "arm flip prompt" task
-/// beyond a single view's lifetime. `TriggersDebugView`'s `@State` is
-/// destroyed when the user pops the page, which previously let a second
-/// tap on re-entry spawn a duplicate in-flight task. Anchoring the task
-/// here keeps the "scheduled" indication consistent across navigation.
 @MainActor
 final class TriggersDebugArming {
     static let shared = TriggersDebugArming()
@@ -126,11 +100,6 @@ final class TriggersDebugArming {
     private var flipTask: Task<Void, Never>?
     var isFlipArmed: Bool { flipTask != nil }
 
-    /// Schedule the flip-to-library first-trigger prompt to fire after
-    /// 3 seconds. No-ops if a previous arm is still in flight.
-    /// `completion` is invoked on the MainActor when the task ends
-    /// (either fired or already-armed-skip) so the caller can refresh
-    /// any view-local state.
     func armFlipPrompt(appState: AppState, completion: @escaping () -> Void) {
         guard flipTask == nil else {
             completion()

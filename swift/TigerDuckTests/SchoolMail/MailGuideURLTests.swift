@@ -47,7 +47,6 @@ struct MailGuideURLTests {
         #expect(!MailGuide.isGuideURL(URL(string: url)))
     }
 
-    /// A subframe's own navigation is not a link the user tapped, so it never reaches the browser.
     @Test func onlyTheMainFrameOpensTheBrowser() {
         let offSite = URL(string: "https://example.com/")
         #expect(MailGuide.decision(for: offSite, isMainFrame: true) == .openExternally)

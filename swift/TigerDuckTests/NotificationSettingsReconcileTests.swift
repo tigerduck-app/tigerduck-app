@@ -1,6 +1,3 @@
-// `NotificationSettingsSync.reconcile`, the one reader of the `notification` document, on a
-// real store and `SettingsDocumentClient` over `SettingsAPIStub`. A request a regression
-// would add still gets a queued response, so it fails an assertion, not the transport.
 import Defaults
 import Foundation
 import Testing
@@ -11,10 +8,6 @@ import Testing
 struct NotificationSettingsReconcileTests {
     private typealias Fixtures = NotificationSettingsFixtures
 
-    // MARK: - Fixtures
-
-    /// What a 2.0.x user who switched reminders off and trimmed the offsets
-    /// holds on the device.
     private static func setDeviceValues(_ store: LiveActivityPreferencesStore) {
         store.isAssignmentReminderEnabled = false
         store.assignmentReminderOffsets = [.hr8, .min30]
@@ -27,7 +20,6 @@ struct NotificationSettingsReconcileTests {
         store.classReminderLeadMinutes = 30
     }
 
-    /// Server sections that differ from `setDeviceValues` in every field.
     private static func serverAssignments() -> [String: Any] {
         ["enabled": true, "reminder_offsets_hours": [24, 2], "reminder_offsets_minutes": [1440, 120, 15]]
     }
@@ -46,7 +38,6 @@ struct NotificationSettingsReconcileTests {
         ["enabled": true, "reminder_offsets_minutes": [5]]
     }
 
-    /// A document with every section this app owns.
     private static func serverDocument() -> [String: Any] {
         ["assignments": serverAssignments(), "live_activity": serverLiveActivity(), "courses": serverCourses()]
     }
@@ -71,8 +62,6 @@ struct NotificationSettingsReconcileTests {
         )
     }
 
-    // MARK: - 1. No document: seed from the device
-
     @Test("no document: every synced section is written from the device's values, reminders switched off included")
     func noDocumentSeedsTheDevicesValues() async throws {
         try await Fixtures.withStore { store in
@@ -88,13 +77,10 @@ struct NotificationSettingsReconcileTests {
             #expect(outcome == .settled(adopted: [], seeded: [.assignments, .liveActivity, .courses]))
             let requests = SettingsAPIStub.requests(for: url)
             try #require(requests.map(\.httpMethod) == ["GET", "PUT"])
-            // A create: there was no document to compare-and-swap against.
             #expect(try Fixtures.sentEnvelope(requests[1])["base_revision"] is NSNull)
             let document = try Fixtures.sentDocument(requests[1])
             #expect(Set(document.keys) == ["assignments", "courses", "live_activity"])
 
-            // Off on the device, so off on the server. Left unseeded, the
-            // backend reads a missing document as "reminders on".
             let assignments = try #require(document["assignments"] as? [String: Any])
             #expect(assignments["enabled"] as? Bool == false)
             #expect(assignments["reminder_offsets_minutes"] as? [Int] == [480, 30])
@@ -111,12 +97,9 @@ struct NotificationSettingsReconcileTests {
             #expect(courses["enabled"] as? Bool == false)
             #expect(courses["reminder_offsets_minutes"] as? [Int] == [30])
 
-            // Seeding never changes the device itself.
             #expect(NotificationSettingsSync.LocalPreferences(from: store) == before)
         }
     }
-
-    // MARK: - 2 and 3. Present sections are adopted, only missing ones written
 
     @Test("the server has every section: each is adopted, field by field, and nothing is written")
     func presentDocumentIsAdoptedAndNothingWritten() async throws {
@@ -165,7 +148,6 @@ struct NotificationSettingsReconcileTests {
             #expect(try Fixtures.sentEnvelope(requests[1])["base_revision"] as? Int == 3)
             let sent = try Fixtures.sentDocument(requests[1])
 
-            // The server's assignments are adopted, and go back untouched.
             #expect(store.isAssignmentReminderEnabled == true)
             #expect(store.assignmentReminderOffsets == [.hr24, .hr2, .min15])
             let assignments = try #require(sent["assignments"] as? [String: Any])
@@ -173,7 +155,6 @@ struct NotificationSettingsReconcileTests {
             #expect(assignments["reminder_offsets_minutes"] as? [Int] == [1440, 120, 15])
             #expect(assignments["reminder_offsets_hours"] as? [Int] == [24, 2])
 
-            // The missing section is written from the device, which keeps it.
             let liveActivity = try #require(sent["live_activity"] as? [String: Any])
             #expect(liveActivity["show_class_preparing"] as? Bool == false)
             #expect(liveActivity["class_preparing_lead_seconds"] as? Int == 1800)
@@ -181,16 +162,12 @@ struct NotificationSettingsReconcileTests {
             #expect(store.showInClassScenario == true)
             #expect(store.assignmentLiveActivityLeadTime == 5400)
 
-            // The adopted courses section goes back untouched, and so does a key this app does
-            // not own.
             #expect(store.isClassReminderEnabled == true)
             #expect(store.classReminderLeadMinutes == 10)
             #expect((sent["courses"] as? [String: Any])?["reminder_offsets_minutes"] as? [Int] == [10])
             #expect((sent["future_section"] as? [String: Any])?["x"] as? Int == 1)
         }
     }
-
-    // MARK: - 4. A pending local edit wins
 
     @Test("a local edit still waiting to go up: nothing is read, adopted or written")
     func pendingEditSuppressesTheRead() async throws {
@@ -235,7 +212,6 @@ struct NotificationSettingsReconcileTests {
             )
             SettingsAPIStub.enqueue(try Fixtures.written(revision: 3), for: url)
 
-            // Clear when the read goes out, set by the time it comes back.
             var checks = 0
             let outcome = try await Self.reconcile(
                 store,
@@ -266,9 +242,6 @@ struct NotificationSettingsReconcileTests {
                 for: url
             )
             SettingsAPIStub.enqueue(try Fixtures.written(revision: 3), for: url)
-            // The user moves a slider while the GET is out. The client asks
-            // for its auth header right before sending, which is as close to
-            // mid-request as the stub lets a test get.
             let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
                 await MainActor.run { store.assignmentLiveActivityLeadTime = 3600 }
                 return nil
@@ -278,22 +251,17 @@ struct NotificationSettingsReconcileTests {
 
             #expect(outcome == .deferredToPendingPush)
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
-            // The user's value, not the server's 7200 — and nothing else
-            // from the server either.
             #expect(store.assignmentLiveActivityLeadTime == 3600)
             #expect(store.isAssignmentReminderEnabled == false)
             #expect(store.assignmentReminderOffsets == [.hr8, .min30])
         }
     }
 
-    // MARK: - 5. Only synced sections, and only with sync on
-
     @Test("a section whose device switch is off is neither adopted nor written")
     func unsyncedSectionIsLeftAlone() async throws {
         try await Fixtures.withStore { store in
             Self.setDeviceValues(store)
 
-            // The server has every section; `live_activity` does not sync here.
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let url = Fixtures.documentURL(baseURL)
             SettingsAPIStub.enqueue(try Fixtures.found(Self.serverDocument(), revision: 1), for: url)
@@ -309,7 +277,6 @@ struct NotificationSettingsReconcileTests {
             #expect(store.showInClassScenario == true)
             #expect(store.assignmentLiveActivityLeadTime == 5400)
 
-            // Missing from the server, it is not written either.
             let missingBaseURL = SettingsAPIStub.uniqueBaseURL()
             let missingURL = Fixtures.documentURL(missingBaseURL)
             SettingsAPIStub.enqueue(
@@ -366,13 +333,10 @@ struct NotificationSettingsReconcileTests {
             let sent = try Fixtures.sentDocument(requests[1])
             #expect(Set(sent.keys) == ["assignments", "courses"])
             #expect((sent["courses"] as? [String: Any])?["enabled"] as? Bool == false)
-            // The assignments section does not sync here: neither adopted nor written over.
             #expect(store.isAssignmentReminderEnabled == false)
             #expect((sent["assignments"] as? [String: Any])?["enabled"] as? Bool == true)
         }
     }
-
-    // MARK: - 6. Another device wrote first
 
     @Test("a 409 on the write settles against the winner: what it now has is adopted, only what it lacks is written")
     func conflictSettlesAgainstTheWinner() async throws {
@@ -380,8 +344,6 @@ struct NotificationSettingsReconcileTests {
             Self.setDeviceValues(store)
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let url = Fixtures.documentURL(baseURL)
-            // No document when this device read it; another device created
-            // one before this write landed.
             SettingsAPIStub.enqueue(Fixtures.notFound(), for: url)
             SettingsAPIStub.enqueue(
                 try Fixtures.conflict(
@@ -400,25 +362,20 @@ struct NotificationSettingsReconcileTests {
             #expect(try Fixtures.sentEnvelope(requests[2])["base_revision"] as? Int == 5)
             let retry = try Fixtures.sentDocument(requests[2])
 
-            // The winner's assignments stand: adopted here, not overwritten.
             let assignments = try #require(retry["assignments"] as? [String: Any])
             #expect(assignments["enabled"] as? Bool == true)
             #expect(assignments["reminder_offsets_minutes"] as? [Int] == [1440, 120, 15])
             #expect(store.isAssignmentReminderEnabled == true)
             #expect(store.assignmentReminderOffsets == [.hr24, .hr2, .min15])
 
-            // So do its class reminders.
             #expect((retry["courses"] as? [String: Any])?["reminder_offsets_minutes"] as? [Int] == [5])
             #expect(store.isClassReminderEnabled == true)
             #expect(store.classReminderLeadMinutes == 5)
 
-            // What it still lacks comes from the device.
             let liveActivity = try #require(retry["live_activity"] as? [String: Any])
             #expect(liveActivity["assignment_lead_seconds"] as? Int == 5400)
         }
     }
-
-    // MARK: - 7. A malformed field
 
     @Test("a malformed field keeps its local value while the fields beside it are adopted")
     func malformedFieldKeepsItsLocalValue() async throws {
@@ -436,8 +393,6 @@ struct NotificationSettingsReconcileTests {
 
             let outcome = try await Self.reconcile(store, client: SettingsAPIStub.makeClient(baseURL: baseURL))
 
-            // Every section is there, readable or not, so none is
-            // written over.
             #expect(outcome == .settled(adopted: [.assignments, .liveActivity, .courses], seeded: []))
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
             #expect(store.isAssignmentReminderEnabled == false)
@@ -449,15 +404,11 @@ struct NotificationSettingsReconcileTests {
         }
     }
 
-    // MARK: - 8. Sign-in
-
     @Test("sign-in reads the new account's document before any write, and adopts it instead of overwriting it")
     func signInReadsBeforeWriting() async throws {
         try await Fixtures.withStore { store in
-            // The device still holds what the previous account left on it.
             Self.setDeviceValues(store)
 
-            // The new account already has settings, from its other devices.
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let url = Fixtures.documentURL(baseURL)
             SettingsAPIStub.enqueue(try Fixtures.found(Self.serverDocument(), revision: 12), for: url)
@@ -471,8 +422,6 @@ struct NotificationSettingsReconcileTests {
             #expect(store.assignmentReminderOffsets == [.hr24, .hr2, .min15])
             #expect(store.assignmentLiveActivityLeadTime == 7200)
 
-            // An account with nothing saved yet is read first too, and only
-            // then created.
             let freshBaseURL = SettingsAPIStub.uniqueBaseURL()
             let freshURL = Fixtures.documentURL(freshBaseURL)
             SettingsAPIStub.enqueue(Fixtures.notFound(), for: freshURL)
@@ -485,8 +434,6 @@ struct NotificationSettingsReconcileTests {
             #expect(try Fixtures.sentEnvelope(freshRequests[1])["base_revision"] is NSNull)
         }
     }
-
-    // MARK: - The copy a full sync fetched
 
     @Test("the document a full sync already fetched is adopted without reading it again")
     func snapshotDocumentIsAdoptedWithoutARead() async throws {
@@ -547,4 +494,3 @@ struct NotificationSettingsReconcileTests {
         }
     }
 }
-

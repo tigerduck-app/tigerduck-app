@@ -1,5 +1,3 @@
-// Runs on the real keys, which are the migration's whole job, inside `withExclusiveRealDefaults`.
-// Each key is restored as present or absent, as the migration reads an absent key as never set.
 #if os(iOS)
 import Defaults
 import Foundation
@@ -10,9 +8,6 @@ import Testing
 private let doneKey = "FlipToLibraryDefaultOffMigration.v1.done"
 private let seenKey = "firstTriggerPromptSeen.flipToLibrary"
 
-/// 2.5.0 turns flip-to-library off by default. A user who kept it at 2.4's first-flip prompt never
-/// stored it and keeps it on; one who chose either way is not asked again
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/434).
 @Suite(.serialized)
 @MainActor
 struct FlipToLibraryDefaultOffMigrationTests {
@@ -20,7 +15,6 @@ struct FlipToLibraryDefaultOffMigrationTests {
 
     private static func withRealKeys(_ body: () -> Void) async {
         await withExclusiveRealDefaults {
-            // The done and seen flags are in the standard suite; the switch is in its key's suite.
             let stores = [(UserDefaults.standard, doneKey), (UserDefaults.standard, seenKey), (switchKey.suite, switchKey.name)]
             let saved = stores.map { store, key in (store, key, Self.storedValue(store, key)) }
             defer {

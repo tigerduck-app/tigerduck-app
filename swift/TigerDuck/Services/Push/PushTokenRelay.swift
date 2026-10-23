@@ -14,9 +14,6 @@ import os
 @MainActor
 final class PushTokenRelay {
     private let registration: PushRegistrationService
-    // nonisolated(unsafe) so deinit (non-isolated) can cancel without
-    // violating Swift 6 strict concurrency. Mutations stay on MainActor
-    // through start()/stop(), and Task is itself thread-safe.
     private nonisolated(unsafe) var task: Task<Void, Never>?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Relay")
 
@@ -38,9 +35,6 @@ final class PushTokenRelay {
                     enabled = true
                     break
                 }
-                // Ending without a `true` means `stop()` cancelled this task
-                // or the sequence finished; either way there is nothing to
-                // relay.
                 guard enabled else { return }
                 logger.info("Live Activities enabled; starting PTS token relay")
             }

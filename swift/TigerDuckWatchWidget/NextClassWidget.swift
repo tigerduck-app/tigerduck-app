@@ -5,9 +5,6 @@ struct NextClassWidget: Widget {
     let kind: String = "NextClassWidget"
 
     var body: some WidgetConfiguration {
-        // Snapshot-derived locale drives the static configuration strings.
-        // The per-entry view re-applies `entry.locale` so the locale survives
-        // even if the snapshot file isn't readable at widget-config time.
         let metaLocale = Self.snapshotLocale()
         return StaticConfiguration(kind: kind, provider: NextClassProvider()) { entry in
             NextClassWidgetEntryView(entry: entry)

@@ -2,13 +2,9 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The share code formats, against the vectors in docs/decisions/0023-class-table-share-code.md.
-/// The TigerDuck vectors were written by a separate encoder from the decision record, one of them
-/// with a stored DEFLATE block, so these tests read other platforms' codes, not only our own.
 struct ClassTableShareCodeTests {
     private typealias Term = ClassTableShareCode.Term
 
-    /// 2026-10-13 14:05 and 2026-02-20 09:30, Taipei time.
     private static let october = Date(timeIntervalSince1970: 1_791_871_500)
     private static let february = Date(timeIntervalSince1970: 1_771_551_000)
 
@@ -23,8 +19,6 @@ struct ClassTableShareCodeTests {
         format: .tigerDuck, studentId: "B11300001", sharedAt: october,
         terms: [Term(semester: "1151", courseNos: ["CS1010001", "CS1010002", "EE1010001", "MA1010001", "PE1010001"])]
     )
-
-    // MARK: - Our format
 
     @Test("one term comes back as it went in, in QR alphanumeric characters only")
     func oneTermRoundTrip() throws {
@@ -57,6 +51,21 @@ struct ClassTableShareCodeTests {
             Term(semester: "1151", courseNos: ["3CS1010002", "CS1010001", "GE1010001"]),
             Term(semester: "114H", courseNos: ["MA1010002"]),
             Term(semester: "1142", courseNos: ["CS1010003", "EE1010002", "GE1010002", "PE1010002"]),
+        ])
+    }
+
+    @Test("courses taken at NTU or NTNU are shared and read back, in either code")
+    func coursesOfOtherSchools() throws {
+        let code = try #require(ClassTableShareCode.encode(
+            studentId: "B11300001", sharedAt: Self.october,
+            terms: [Term(semester: "1151", courseNos: ["CS1010001", "3T1010004", "3N1010003"])]
+        ))
+
+        #expect(try ClassTableShareCode.decode(code).terms == [
+            Term(semester: "1151", courseNos: ["3N1010003", "3T1010004", "CS1010001"]),
+        ])
+        #expect(try ClassTableShareCode.decode("HTTPS://NTUST-TAT.WEB.APP/S/TAT11151B113000013N1010003-CS1010001").terms == [
+            Term(semester: "1151", courseNos: ["3N1010003", "CS1010001"]),
         ])
     }
 
@@ -138,8 +147,6 @@ struct ClassTableShareCodeTests {
             #expect(throws: ClassTableShareCodeError.unknownVersion) { try ClassTableShareCode.decode(newer) }
         }
     }
-
-    // MARK: - TAT
 
     @Test("a TAT version 2 code keeps its term, student ID and course codes and drops the class times")
     func tatVersion2() throws {

@@ -2,15 +2,9 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// NTUST issues 0.5-credit courses. Credits used to be an `Int` end to end,
-/// so every one of them parsed to zero: absent from the class table's total,
-/// absent from the transcript row, and weightless in the GPA.
 @MainActor
 struct HalfCreditTests {
 
-    /// Minimal shape of the transcript table the parser walks: a `div.box`
-    /// whose header names the list, then one header row and one course row
-    /// of at least nine cells.
     private static func transcriptHTML(credits: String) -> String {
         """
         <html><body>
@@ -35,9 +29,6 @@ struct HalfCreditTests {
         #expect(course.creditType == .normal)
     }
 
-    /// The bracketed credit types share the same pattern list, so a half
-    /// credit has to survive those too rather than falling through to
-    /// `.unknown` with no credit at all.
     @Test("a bracketed half credit keeps both its value and its type")
     func parsesBracketedHalfCredit() throws {
         let report = NTUSTScoreParser.parse(html: Self.transcriptHTML(credits: "[0.5]"))
@@ -62,7 +53,6 @@ struct HalfCreditTests {
                 geDimension: nil, distanceLearning: false
             )
         }
-        // A+ (4.3) over 0.5 credits and C (2.0) over 1.5 → weighted 2.575.
         let gpa = try #require(NTUSTGradePoints.gpa(of: [
             graded("A", credits: 0.5, grade: "A+"),
             graded("B", credits: 1.5, grade: "C"),
@@ -70,8 +60,6 @@ struct HalfCreditTests {
         #expect(abs(gpa - (4.3 * 0.5 + 2.0 * 1.5) / 2.0) < 1e-9)
     }
 
-    /// Locale-safe: assert the shape, not the glyphs. A whole number carries
-    /// no fraction; a half does, and reads differently from zero.
     @Test("credits print without a trailing .0")
     func formatsCredits() {
         let separator = Locale.current.decimalSeparator ?? "."

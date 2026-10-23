@@ -20,8 +20,6 @@ actor MoodleTokenService {
         harvest: { try await performOidcLogin(studentId: $0, password: $1) }
     )
 
-    /// The keychain's NTUST account and Moodle token, and the OIDC harvest. Tests pass stand-ins,
-    /// so no request reaches the school.
     private let storedCredentials: @Sendable () -> (studentId: String, password: String)?
     private let tokens: TokenStore
     private let harvest: @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
@@ -58,27 +56,15 @@ actor MoodleTokenService {
         + "MoodleMobile 5.1.1 (51100)"
     )
 
-    /// Key the in-flight obtain task by `(studentId, password)` so that
-    /// two concurrent calls under different credentials do NOT collapse
-    /// onto the same task — previously the second caller (different
-    /// account) silently received the first caller's token.
     private struct ObtainKey: Hashable {
         let studentId: String
         let passwordHash: Int
     }
     private var inFlightTokenTask: (key: ObtainKey, task: Task<String, Error>)?
     private var inFlightRefreshTask: Task<String, Error>?
-    /// Moved by ``signOut()``: a harvest that started before a sign-out stores nothing, or
-    /// the departing account's token would be back in the keychain for the next one.
     private var signInGeneration = 0
-    /// The last renewal's failure, other than a refused password, which
-    /// `SSOLoginService.storedPasswordRefusals` counts instead, or the network. Each Moodle screen
-    /// that appears without a token asks for one, so for
-    /// ``harvestPause`` they get this error back and the password is not sent again.
     private var lastHarvestFailure: (at: Date, error: any Error)?
     nonisolated static let harvestPause: TimeInterval = 5 * 60
-
-    // MARK: - Compiled regexes (compile once, reuse across login attempts)
 
     private static let formBlockRegex = try! NSRegularExpression(
         pattern: "<form[^>]*>([\\s\\S]+?)</form>",
@@ -123,11 +109,8 @@ actor MoodleTokenService {
         self.now = now
     }
 
-    /// How long one harvest may run. Each request stops after a minute, but a harvest makes up to
-    /// seven in turn while it holds the stored-password lock every automatic sign-in waits for.
     nonisolated static let harvestDeadline: Duration = .seconds(60)
 
-    /// Runs `work` for at most `deadline`, then cancels it and fails as a request timeout does.
     private nonisolated static func withinDeadline<T: Sendable>(
         _ deadline: Duration, _ work: @escaping @Sendable () async throws -> T
     ) async throws -> T {
@@ -143,19 +126,12 @@ actor MoodleTokenService {
         }
     }
 
-    // MARK: - Public API
-
-    /// Obtain a new Moodle webservice token using explicit credentials.
-    /// Concurrent calls share the same in-flight task.
     func obtainToken(studentId: String, password: String) async throws -> String {
         let normalizedId = studentId
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
         let key = ObtainKey(studentId: normalizedId, passwordHash: password.hashValue)
         if let existing = inFlightTokenTask {
-            // Same identity → safe to share. Different identity → must
-            // run a fresh task; refusing here would surprise callers,
-            // so just await the previous one to finish and proceed.
             if existing.key == key {
                 return try await existing.task.value
             }
@@ -176,10 +152,6 @@ actor MoodleTokenService {
         return try await task.value
     }
 
-    /// Silently refresh the Moodle token using stored NTUST credentials, unless another call has
-    /// already replaced `rejected`: then the stored token comes back. Moodle keeps no token it
-    /// calls invalid, so a rejected one still stored is dropped before the harvest rather than
-    /// sent to the backend. Concurrent calls share the same in-flight refresh task.
     func refreshTokenIfNeeded(replacing rejected: String? = nil) async throws -> String {
         if let existing = inFlightRefreshTask {
             return try await existing.value
@@ -188,11 +160,9 @@ actor MoodleTokenService {
             guard current == rejected else { return current }
             tokens.drop()
         }
-        // The harvest posts the stored password, so it waits out a refusal as the SSO sign-ins do.
         guard !SSOLoginService.storedPasswordPostMustWait(now: now()) else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
         }
-        // Measured from the failure, so a clock set back does not stretch the pause.
         if let failure = lastHarvestFailure,
            case let age = now().timeIntervalSince(failure.at), age >= 0, age < Self.harvestPause {
             throw failure.error
@@ -205,7 +175,6 @@ actor MoodleTokenService {
             guard signInGeneration == generation else { throw CancellationError() }
             tokens.save(triple)
             lastHarvestFailure = nil
-            // A token a live session handed out without a post says nothing of the password.
             if triple.postedPassword { SSOLoginService.forgetStoredPasswordRefusals() }
             return triple.wstoken
         }
@@ -216,10 +185,7 @@ actor MoodleTokenService {
         return try await task.value
     }
 
-    /// The harvest with the stored password, run under `SSOLoginService.postingStoredPassword`, so
-    /// the refusals are checked again here: an SSO sign-in that held it first may have counted one.
     private func harvestWithStoredCredentials(generation: Int) async throws -> TokenTriple {
-        // Signed out while this waited for the lock: the stored account may be the next one's.
         guard signInGeneration == generation else { throw CancellationError() }
         guard !SSOLoginService.storedPasswordPostMustWait(now: now()) else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
@@ -234,7 +200,6 @@ actor MoodleTokenService {
             return try await harvest(normalizedId, creds.password)
         } catch {
             if case MoodleWebserviceError.ssoLoginRejected = error {
-                // A sign-in with a new password can finish while this harvest runs on the old one.
                 if signInGeneration == generation, storedCredentials()?.password == creds.password {
                     SSOLoginService.noteStoredPasswordRefused(at: now())
                 }
@@ -245,14 +210,11 @@ actor MoodleTokenService {
         }
     }
 
-    /// Offline the harvest mostly stops before the password goes out, and a pause would outlast
-    /// the network coming back.
     private static func isNetworkFailure(_ error: any Error) -> Bool {
         if case MoodleWebserviceError.transientNetwork = error { return true }
         return false
     }
 
-    /// Called on logout. A harvest in flight is cancelled and stores nothing.
     func signOut() async {
         signInGeneration += 1
         lastHarvestFailure = nil
@@ -263,13 +225,8 @@ actor MoodleTokenService {
         await clearToken()
     }
 
-    /// Sign-out only. A renewal leaves the cookies alone, since a harvest that another call
-    /// started may be using them.
     private func clearToken() async {
         tokens.drop()
-        // Purge SSO and Moodle cookies so stale anti-forgery and session cookies do not bleed
-        // into the next login. Parent domains count, since `Domain=ntust.edu.tw` applies to
-        // ssoam2; other NTUST subdomains share the jar (WebView sessions) and keep theirs.
         let purgeHosts: Set<String> = ["ssoam2.ntust.edu.tw", "moodle2.ntust.edu.tw"]
         HTTPCookieStorage.shared.cookies?
             .filter { cookie in
@@ -281,19 +238,14 @@ actor MoodleTokenService {
         await MoodleSiteInfoService.shared.invalidateCache()
     }
 
-    /// Return the currently stored token, or nil if none.
     func currentToken() async -> String? {
         tokens.load()
     }
-
-    // MARK: - OIDC flow
 
     struct TokenTriple: Sendable {
         let signature: String
         let wstoken: String
         let privatetoken: String?
-        /// Whether the harvest posted the password on its way to the token. A live SSO or Moodle
-        /// session in the shared cookie jar lets `launch.php` hand the token out without one.
         var postedPassword = false
     }
 
@@ -324,9 +276,6 @@ actor MoodleTokenService {
         password: String
     ) async throws -> TokenTriple {
         let config = harvestConfiguration()
-        // SPKI pinning: this session POSTs the raw NTUST password and gets the moodlemobile
-        // token triple back, so a MITM here is the worst case. `invalidateAndCancel()` in the
-        // defer below releases the session's strong reference to the delegate.
         let session = URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
@@ -368,8 +317,6 @@ actor MoodleTokenService {
         )
     }
 
-    // MARK: - Networking helper
-
     private nonisolated static func dataTask(
         session: URLSession,
         request: URLRequest,
@@ -403,8 +350,6 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func urlEncodedForm(_ fields: [(String, String)]) -> Data? {
-        // RFC-3986-unreserved only; anything else gets percent-encoded.
-        // Conservative so passwords/tokens with `+ @ & = ? /` etc. are safe.
         let unreserved = CharacterSet(
             charactersIn:
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~",
@@ -417,8 +362,6 @@ actor MoodleTokenService {
         return pairs.joined(separator: "&").data(using: .utf8)
     }
 
-    // MARK: - HTML parsers
-
     private struct SSOLoginFields {
         let action: String
         let antiforgery: String
@@ -428,7 +371,6 @@ actor MoodleTokenService {
     }
 
     private struct OIDCBridge {
-        /// Resolved once, so the POST goes where the check looked.
         let action: URL
         let payload: [String: String]
     }
@@ -454,8 +396,6 @@ actor MoodleTokenService {
         }
 
         if let bridge = parseOIDCBridge(from: html) {
-            // Found but not posted: Moodle's code would go out unencrypted. No refusal either, so
-            // the renewal pauses as other failures do.
             guard CredentialPost.isSchoolTarget(bridge.action) else {
                 throw MoodleWebserviceError.malformedResponse(detail: "OIDC bridge posts over plain HTTP")
             }
@@ -485,8 +425,6 @@ actor MoodleTokenService {
 
         if responseURL.host == "ssoam2.ntust.edu.tw" {
             let fields = parseSSOLoginFields(from: html)
-            // Without the form no password goes out, so a page at the sign-in path without one,
-            // such as a maintenance page, is no refusal: it pauses the renewal as other failures do.
             if fields.antiforgery.isEmpty {
                 throw MoodleWebserviceError.malformedResponse(
                     detail: "SSO login form missing anti-forgery token",
@@ -495,7 +433,6 @@ actor MoodleTokenService {
 
             let postURL = URL(string: fields.action, relativeTo: responseURL)?
                 .absoluteURL ?? ssoBaseURL
-            // Nothing is posted, so this is no refusal: it pauses the renewal as other failures do.
             guard CredentialPost.isSignInTarget(postURL) else {
                 throw MoodleWebserviceError.malformedResponse(
                     detail: "SSO login form posts outside ssoam2",
@@ -524,8 +461,6 @@ actor MoodleTokenService {
                 ("ReturnUrl", fields.returnUrl),
                 ("Uri", fields.uri),
             ])
-            // A redirect the POST may not follow (`CredentialPostDelegate`) is its answer, which
-            // `assertOK` refuses.
             let (nextData, nextResp) = try await dataTask(
                 session: session,
                 request: postReq,
@@ -571,9 +506,6 @@ actor MoodleTokenService {
         if padding != 0 {
             standardized.append(String(repeating: "=", count: 4 - padding))
         }
-        // The wstoken signature is a binary digest base64-encoded — use
-        // isoLatin1 to keep all 0–255 byte values intact (ASCII rejects
-        // anything ≥128, corrupting the signature).
         guard let decodedData = Data(base64Encoded: standardized),
               let decoded = String(data: decodedData, encoding: .isoLatin1) else {
             throw MoodleWebserviceError.malformedResponse(
@@ -630,9 +562,6 @@ actor MoodleTokenService {
                 return
             }
             let payload = extractInputPairs(from: formBody)
-            // Resolve the action against the SSO/Moodle base so substring
-            // tricks like `https://attacker/auth/oidc` cannot pose as the
-            // OIDC bridge; the resolved host must be Moodle's.
             guard let resolvedActionURL = URL(string: action, relativeTo: ssoBaseURL)?.absoluteURL else { return }
             let isOidcAction = resolvedActionURL.host == "moodle2.ntust.edu.tw"
                 && resolvedActionURL.path.hasPrefix("/auth/oidc")
@@ -703,9 +632,6 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func extractMoodleMobileToken(from html: String) -> String? {
-        // Match only inside a quoted JS string (`window.location = "moodlemobile://token=..."`)
-        // so a poisoned page cannot plant a chosen token as plain page text. Base64 characters
-        // only; `decodeTokenTriple` then re-validates the decoded shape.
         let ns = html as NSString
         guard let m = moodleMobileTokenRegex.firstMatch(
             in: html,

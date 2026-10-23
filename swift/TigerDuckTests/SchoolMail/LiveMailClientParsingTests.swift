@@ -4,9 +4,6 @@ import SwiftMail
 import Testing
 @testable import TigerDuck
 
-/// Feeds the `.eml` corpus shared with Android's `AngusMailSessionReadTest` through SwiftMail's
-/// offline `EMLParser`, so nested multipart, Big5 and RFC 2231 parsing get real coverage without
-/// a socket.
 struct LiveMailClientParsingTests {
     @Test func decodesNestedMultipartAlternative() throws {
         let data = try SchoolMailFixtures.rawEML("multipart-alternative")
@@ -38,9 +35,6 @@ struct LiveMailClientParsingTests {
         #expect(MailRawHeaders.value(named: "subject", in: data) == "中文")
         let part = try #require(message.parts.first)
         let body = try #require(part.decodedData())
-        // The fixture's QP-encoded line has no soft line break, so the file's trailing
-        // newline decodes as a literal byte — trimmed here as every other body assertion
-        // in this file already does.
         #expect(
             MailCharset.decode(body, label: part.declaredCharset)
                 .trimmingCharacters(in: .whitespacesAndNewlines) == "中文郵件"
@@ -56,11 +50,6 @@ struct LiveMailClientParsingTests {
         #expect(inline.decodedData() == Data(base64Encoded: "iVBORw0KGgo="))
     }
 
-    /// A reduced Mail2000 delivery-failure notice (the real one the author received, with
-    /// the student's own address replaced by this corpus's `b10000001` and the returned
-    /// message stripped out). Its `From` is a display name over a bare local part with no
-    /// `@domain`, which the strict list parser drops whole — name and all — leaving the row
-    /// reading "(No sender)". `parseSender` keeps the name and no address.
     @Test func keepsTheSenderNameOfAMail2000Bounce() throws {
         let data = try SchoolMailFixtures.rawEML("bounce-no-domain")
         let from = try #require(MailRawHeaders.value(named: "from", in: data))
@@ -74,9 +63,6 @@ struct LiveMailClientParsingTests {
         #expect(sender.displayName == "Mail Deliver System")
     }
 
-    /// The same fixture's `Return-Path: <>`. That header, written by the receiving server, is
-    /// the only thing the app treats as a bounce marker — never "Mail Deliver System", which is
-    /// a display name anyone can type.
     @Test func readsTheNullReversePathOfAMail2000Bounce() throws {
         let data = try SchoolMailFixtures.rawEML("bounce-no-domain")
         let returnPath = MailRawHeaders.value(named: "return-path", in: data)
@@ -97,7 +83,6 @@ struct LiveMailClientParsingTests {
             ]
         )
         #expect(LiveMailClient.returnPath(from: info) == "<>")
-        // The fallback fetch (`detailInfo`) carries no header section at all.
         #expect(LiveMailClient.returnPath(from: MessageInfo(sequenceNumber: SequenceNumber(1))) == nil)
     }
 
@@ -107,7 +92,6 @@ struct LiveMailClientParsingTests {
             additionalHeaderFields: [HeaderField(name: "Reply-To", value: "=?UTF-8?B?5pWZ5YuZ6JmV?= <office@mail.ntust.edu.tw>")]
         )
         #expect(LiveMailClient.replyTo(from: info) == "教務處 <office@mail.ntust.edu.tw>")
-        // A header section without the field says there is none; no section says nothing.
         let without = MessageInfo(sequenceNumber: SequenceNumber(1), additionalHeaderFields: [HeaderField(name: "Received", value: "x")])
         #expect(LiveMailClient.replyTo(from: without) == "")
         #expect(LiveMailClient.replyTo(from: MessageInfo(sequenceNumber: SequenceNumber(1))) == nil)

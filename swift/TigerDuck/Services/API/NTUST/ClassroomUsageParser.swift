@@ -1,15 +1,12 @@
 import Foundation
 import SwiftSoup
 
-/// What a room is doing in one period.
 nonisolated enum RoomSlotUse: Equatable, Sendable {
     case free
-    /// Lent through the booking system. The booker is a person, so the name is never kept.
     case booked
     case course(name: String, teacher: String)
 }
 
-/// One room's day: the use of each period, 1-10 then A-D.
 nonisolated struct RoomUsage: Equatable, Sendable, Identifiable {
     let room: String
     let slots: [RoomSlotUse]
@@ -20,8 +17,6 @@ nonisolated struct RoomUsage: Equatable, Sendable, Identifiable {
         slots.indices.contains(period) && slots[period] == .free
     }
 
-    /// The last period of the free run that starts at `period`, or nil when the room is in use
-    /// then.
     func freeUntil(from period: Int) -> Int? {
         guard isFree(at: period) else { return nil }
         var last = period
@@ -30,7 +25,6 @@ nonisolated struct RoomUsage: Equatable, Sendable, Identifiable {
     }
 }
 
-/// The main campus's rooms on one date, with the building names the site gives each code.
 nonisolated struct CampusUsage: Equatable, Sendable {
     let rooms: [RoomUsage]
     let buildingNames: [String: String]
@@ -50,21 +44,17 @@ nonisolated enum ClassroomUsageParser {
 
     struct Grid: Equatable, Sendable {
         let rooms: [RoomUsage]
-        /// The page shown, which the pager writes without a link.
         let page: Int
         let pageLinks: [Int: Postback]
     }
 
     struct Page: Sendable {
         let fields: [FormField]
-        /// Day numbers the calendar links, and the day numbers of the months it steps to.
         let calendarDays: Set<Int>
         let monthSteps: [Int]
-        /// Nil when the page has no grid: a sign-in page, the bridge to one or an error page.
         let grid: Grid?
         let buildingNames: [String: String]
 
-        /// The campus the page's list has chosen.
         var campus: String? {
             fields.first { $0.name == ClassroomUsageParser.campusField }?.value
         }
@@ -93,8 +83,6 @@ nonisolated enum ClassroomUsageParser {
         )
     }
 
-    /// The calendar's argument for a date: days since 2000-01-01, counted in UTC so a time-zone
-    /// offset cannot move it by a day.
     static func dayNumber(of date: Date, in calendar: Calendar = AppConstants.taipeiCalendar) -> Int {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         var utc = Calendar(identifier: .gregorian)
@@ -119,14 +107,10 @@ nonisolated enum ClassroomUsageParser {
         return step.map { Postback(target: calendarTarget, argument: "V\($0)") }
     }
 
-    // MARK: - Grid
-
     private static func grid(in doc: Document) -> Grid? {
         guard let table = try? doc.getElementById("showinfo_grd") else { return nil }
         let rows = directRows(of: table)
         var rooms: [RoomUsage] = []
-        // The first row heads the columns. A row of one cell is the pager or a no-data line; any
-        // other count means the grid changed shape, which must not read as rooms all free or none.
         for row in rows.dropFirst() {
             let cells = row.children().array().filter { $0.tagName() == "td" }
             if cells.count <= 1 { continue }
@@ -138,7 +122,6 @@ nonisolated enum ClassroomUsageParser {
         return Grid(rooms: rooms, page: pager.page, pageLinks: pager.links)
     }
 
-    /// Rows of the grid itself, not of the small table inside every cell.
     private static func directRows(of table: Element) -> [Element] {
         table.children().array().flatMap { child -> [Element] in
             switch child.tagName() {
@@ -155,20 +138,18 @@ nonisolated enum ClassroomUsageParser {
     /// wrong cells of a second page.
     private static func slotUse(_ cell: Element) -> RoomSlotUse {
         var parts = [""]
-        func read(_ node: Node) {
-            for child in node.getChildNodes() {
-                if let text = child as? TextNode {
-                    parts[parts.count - 1] += text.getWholeText()
-                } else if let element = child as? Element {
-                    switch element.tagName() {
-                    case "br": parts.append("")
-                    case "table": break
-                    default: read(element)
-                    }
+        var stack = Array(cell.getChildNodes().reversed())
+        while let node = stack.popLast() {
+            if let text = node as? TextNode {
+                parts[parts.count - 1] += text.getWholeText()
+            } else if let element = node as? Element {
+                switch element.tagName() {
+                case "br": parts.append("")
+                case "table": break
+                default: stack += element.getChildNodes().reversed()
                 }
             }
         }
-        read(cell)
         let lines = parts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -179,8 +160,6 @@ nonisolated enum ClassroomUsageParser {
         return .course(name: first, teacher: lines.dropFirst().joined(separator: " "))
     }
 
-    /// Parts of the words for a booking: confirmed, pending, applied for, under review or held.
-    /// A course whose name holds one shows as booked, which still keeps the room taken.
     private static let bookingMarks = ["借用", "預約", "申請", "審核", "核准", "保留"]
 
     private static func pager(in row: Element?) -> (page: Int, links: [Int: Postback]) {
@@ -199,8 +178,6 @@ nonisolated enum ClassroomUsageParser {
         }
         return (page, links)
     }
-
-    // MARK: - Form
 
     private static func postback(in link: Element) -> Postback? {
         guard let href = try? link.attr("href"),
@@ -222,8 +199,6 @@ nonisolated enum ClassroomUsageParser {
         return (days, months)
     }
 
-    /// What a browser would submit: every named input except buttons and unticked boxes, and
-    /// each list's chosen option.
     private static func formFields(in doc: Document) -> [FormField] {
         guard let form = try? doc.select("form").first() else { return [] }
         var fields: [FormField] = []

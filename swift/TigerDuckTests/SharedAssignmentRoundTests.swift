@@ -4,8 +4,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// One round at a time, and how a status an assignment's page fetched joins the rounds' writes,
-/// into a cache in a folder of its own. Every id here is made up.
 @MainActor
 @Suite(.serialized)
 struct SharedAssignmentRoundTests {
@@ -87,7 +85,6 @@ struct SharedAssignmentRoundTests {
         var isCurrent = true
     }
 
-    /// A Home pull asks Moodle about every submission, long enough to sign out meanwhile.
     @Test("a round its account signed out of hands back the cache, not that account's list")
     func aRoundOutlivedBySignOutHandsBackTheCache() async {
         AppServiceBridge.cancelAssignmentRound()
@@ -128,8 +125,6 @@ struct SharedAssignmentRoundTests {
         await pull.value
     }
 
-    /// A pull waits out a round that skips submissions, then runs its own; not once its account
-    /// has signed out, when the next account's round may already be running.
     @Test("a pull whose account signed out while it waited starts no round")
     func aWaiterOutlivedBySignOutStartsNoRound() async throws {
         AppServiceBridge.cancelAssignmentRound()
@@ -162,8 +157,6 @@ struct SharedAssignmentRoundTests {
         _ = await (departing.value, next.value)
     }
 
-    // MARK: - A status the assignment's page fetched
-
     @MainActor
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
@@ -179,15 +172,12 @@ struct SharedAssignmentRoundTests {
     private static let due = Date(timeIntervalSince1970: 1_800_000_000)
     private static let submittedAt = due - 600
 
-    /// The answers the bridge keeps last for an assignment outlive a test, so each takes its own.
     private static func newId() -> Int { Int.random(in: 100_000...999_999_999) }
 
     private static func handedIn(_ id: Int) -> MoodleSubmissionStatus {
         MoodleSubmissionStatus(assignId: id, submissionStatus: "submitted", gradingStatus: nil, submittedAt: submittedAt)
     }
 
-    /// A round that asked Moodle about `id` at `askedAt` and heard it was not handed in, which it
-    /// writes unless the account signed out meanwhile.
     @discardableResult
     private static func round(
         of id: Int, askedAt: ContinuousClock.Instant, in cache: DataCache, isCurrent: Bool = true
@@ -246,7 +236,6 @@ struct SharedAssignmentRoundTests {
         let pageAskedAt = ContinuousClock.now
         Self.round(of: id, askedAt: pageAskedAt - .seconds(60), in: cache)
         let rounds = Rounds()
-        // Asked Moodle before the page did, and writes once it ends.
         let pull = Task {
             _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { true }) {
                 _ = await rounds.run("pull")
@@ -263,7 +252,6 @@ struct SharedAssignmentRoundTests {
                 Self.handedIn(id), askedAt: pageAskedAt, cache: cache, isCurrent: { true }
             )
         }
-        // The page ran up to its first wait before the flag reads true.
         try await waitUntil { asked.isSet }
         #expect(Self.isCompleted(id, in: cache) == false)
         rounds.open()
@@ -357,7 +345,6 @@ struct SharedAssignmentRoundTests {
         var requests: [PushAPI.AssignmentUploadRequest] = []
     }
 
-    /// Reads and sets `cloudSyncEnabled` (docs/decisions/0020-real-defaults-gate.md).
     @Test("a status that changes the list sends it on for the reminders, with TigerSync on")
     func pageStatusIsUploaded() async {
         await withExclusiveRealDefaults {

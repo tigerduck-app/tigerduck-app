@@ -1,6 +1,3 @@
-// Syncing a course's "ignore assignments" setting
-// (https://github.com/tigerduck-app/tigerduck-backend/pull/33): the outbox op that sends it, and
-// what a full sync does with the server's copy.
 import Foundation
 import Testing
 import os
@@ -116,14 +113,12 @@ struct CourseIgnoreOutboxTests {
         await outbox.enqueue(Self.setting(true))
         await outbox.enqueue(Self.colour)
 
-        // Refused once, then discarded while the colour's request is out: no copy is kept.
         await outbox.drain { op in
             if case .courseIgnore = op { throw PushAPIError.httpStatus(404, body: "") }
             await outbox.discard(where: Self.isSetting)
         }
         #expect(await outbox.snapshot().isEmpty)
 
-        // Discarded while its own request is out, on the attempt that would park it.
         await outbox.enqueue(Self.setting(true))
         for _ in 0..<(SyncOutbox.maxAttempts - 1) {
             await outbox.drain { _ in throw PushAPIError.httpStatus(404, body: "") }
@@ -156,7 +151,6 @@ struct CourseIgnoreCoordinatorTests {
             SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(body.utf8)), for: url(path))
         }
 
-        /// The answer of a backend that predates the setting and drops it from the request.
         func answerWithoutTheSetting(_ path: String) {
             let body = #"{"id":1,"color_hex":null,"custom_names":{},"updated_at":"2026-10-13T00:00:00+00:00"}"#
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(body.utf8)), for: url(path))
@@ -323,10 +317,8 @@ extension CourseIgnoreCoordinatorTests {
     }
 }
 
-/// What a full sync reads from the snapshot's `course_overrides` (`AppState+BackendSync.swift`).
 @MainActor
 struct CourseIgnorePullTests {
-    /// A row of `course_overrides`; `setAt` is when a device last set the course's setting.
     private static func row(
         _ courseNo: String, semester: String = "1151", ignored: Bool? = true, setAt: String? = nil,
         moodleCourseId: Int? = nil
@@ -398,7 +390,6 @@ struct CourseIgnorePullTests {
         #expect(differ([], ["1151:CS1"], ["1151:CS1"]))
         #expect(!differ([], [], ["1142:CS1"]))
         #expect(!differ(nil, [], ["1151:CS1"]))
-        // The server lost it: a pull keeps it and sends it again.
         #expect(!differ([], [], ["1151:CS1"]))
     }
 
@@ -430,19 +421,13 @@ struct CourseIgnorePullTests {
         #expect(rows == ["1151:CS1": 7])
     }
 
-    /// Re-adding a course makes a new server row. A row of its term that kept its id proves the term
-    /// was not reset, nor every row dropped as while no device syncs courses: both make them all new.
     @Test("A course that came back as a new row while another row of its term kept its id was deleted and added back")
     func recreatedCoursesAreTheNewRowsBesideSurvivors() {
         let seen = ["1151:CS1": 1, "1151:EE2": 2, "1142:GE3": 3]
 
         #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 2, "1142:GE3": 3], seen: seen) == ["1151:CS1"])
-        // A term whose rows are all new was reset, by Keep Local among others, which keeps the
-        // settings it wiped; a row of another term keeping its id says nothing about that.
         #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 3], seen: seen).isEmpty)
-        // Every row new: the server may have dropped them all, so nothing counts as re-added.
         #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 11], seen: seen).isEmpty)
-        // A course this device has not seen listed may be one the drop lost.
         #expect(AppState.recreatedCourses(listed: ["1151:CS1": 1, "1151:PE4": 12], seen: seen).isEmpty)
         #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9], seen: [:]).isEmpty)
     }
@@ -457,16 +442,12 @@ struct CourseIgnorePullTests {
 
         #expect(pull.ignored == ["1151:EE2"])
         #expect(pull.resend == ["1151:EE2"])
-        // So the re-enabled switch's check asks about it rather than send it again.
         #expect(AppState.ignoredCoursesDiffer(
             server: [], decided: recreated, listed: ["1151:CS1", "1151:EE2"], local: ["1151:CS1", "1151:EE2"],
             snapshotSemesters: ["1151"]
         ))
     }
 
-    /// Keep Local for courses resets every term a device caches courses for, which takes the
-    /// settings of that term's courses with their rows. Whether it ran here or on a device that
-    /// lacked this ignore, the term's rows are all new while 1142's kept their ids.
     @Test("After Keep Local resets a term, here or on another device, the next pull keeps the ignores there and sends them again")
     func keepLocalsTermResetKeepsTheIgnores() {
         let seen = ["1142:GE3": 3, "1151:CS1": 1, "1151:EE2": 2]
@@ -480,8 +461,6 @@ struct CourseIgnorePullTests {
         #expect(pull.resend == ["1151:CS1"])
     }
 
-    /// The class table's reset of a term clears this device's ignores there before the term's rows
-    /// come back new (`resetLocalCourses`).
     @Test("After the class table resets a term here, the next pull keeps and sends nothing there, and another term's ignore stays")
     func classTableResetLeavesNothingThere() {
         let seen = ["1142:GE3": 3, "1151:CS1": 1, "1151:EE2": 2]
@@ -503,8 +482,6 @@ struct CourseIgnorePullTests {
             local: ["1151:CS1", "1151:EE2", "1151:GE3", "1151:PE4"], protected: ["1151:PE4"],
             snapshotSemesters: ["1151"]
         )
-        // CS1 the server lost; EE2 another device stopped ignoring; GE3 is gone from the server;
-        // PE4 is on its way up already.
         #expect(pull.ignored == ["1151:CS1", "1151:PE4"])
         #expect(pull.resend == ["1151:CS1"])
     }
@@ -521,8 +498,6 @@ struct CourseIgnorePullTests {
             listed: ["1151:CS1", "1151:EE2", "1142:GE3", "1142:PE4"], local: ["1142:PE4"],
             protected: left, snapshotSemesters: ["1151", "1142"]
         )
-        // EE2 stands for a course hidden here that another device added back: it is not being
-        // deleted here, so its setting applies.
         #expect(pull.ignored == ["1151:EE2", "1142:PE4"])
         #expect(pull.resend.isEmpty)
     }

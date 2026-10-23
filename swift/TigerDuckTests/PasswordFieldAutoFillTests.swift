@@ -21,11 +21,9 @@ struct PasswordFieldAutoFillTests {
     final class Credentials {
         var account = ""
         var password = ""
-        /// When `LoginSheet` enables Sign in, apart from a sign-in already running.
         var canSignIn: Bool { !account.isEmpty && !password.isEmpty }
     }
 
-    /// `LoginSheet`'s form as AutoFill sees it, without the `AppState` the sheet needs.
     private struct SignInForm: View {
         enum Field: Hashable { case account, password }
 
@@ -95,8 +93,6 @@ struct PasswordFieldAutoFillTests {
         }
     }
 
-    /// Runs `body` with the capture wrapper on, which Settings → Developer can store as off in the
-    /// simulator, and puts the stored value back afterwards.
     private func withCaptureProtectionOn(_ body: () async throws -> Void) async rethrows {
         let defaults = UserDefaults.standard
         let key = ScreenCaptureProtectionDebugFlag.userDefaultsKey
@@ -118,7 +114,6 @@ struct PasswordFieldAutoFillTests {
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.rootViewController = UIHostingController(rootView: SignInForm(credentials: credentials))
         window.makeKeyAndVisible()
-        // The password field joins the window once the capture wrapper has laid out its canvas.
         try await waitUntil { window.descendants(ofType: UITextField.self).contains { $0.textContentType == .password } }
 
         let fields = window.descendants(ofType: UITextField.self)

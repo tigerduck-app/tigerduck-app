@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct MailListViewModelTests {
-    /// What the poll reported to the notification marker.
     final class SeenLog {
         var noted: [MailboxStatusInfo] = []
     }
@@ -23,17 +22,12 @@ struct MailListViewModelTests {
     /// `nonisolated` already, so the value has nothing main-actor about it.
     nonisolated static let sent = MailFolderRole.sent.imapName
 
-    /// `sentUIDs` seeds Sent, which All mail merges with the inbox. The folder itself always
-    /// exists (the server has it whether or not the student has sent anything), so the All mail
-    /// chip is offered in every harness; only the merged tests put mail in it.
     static func harness(
         inboxCount: UInt32 = 60,
         sentUIDs: [UInt32] = [],
         includeSent: Bool = true,
         open: (() async throws -> any MailClient)? = nil,
         signOutEvents: NotificationCenter = NotificationCenter(),
-        // Never starts unless a test says otherwise, so tests that count `page` calls are not
-        // counting a background warm's as well.
         warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) }
     ) -> Harness {
         let inbox = (UInt32(1)...inboxCount).map { FakeMailClient.message(uid: $0, subject: "公告 \($0)", seen: $0 % 2 == 0) }
@@ -92,8 +86,6 @@ struct MailListViewModelTests {
         #expect(h.model.serverStatus == .failed)
     }
 
-    /// The status dot's last sync is when the folders on screen last had their newest page
-    /// fetched. The cache keeps it, and a sign-out takes it with the list.
     @Test func theLastSyncIsWhenTheNewestPageArrived() async throws {
         let h = Self.harness()
         let before = Date()
@@ -108,7 +100,6 @@ struct MailListViewModelTests {
         #expect(h.model.syncedAt == nil)
     }
 
-    /// Offline, the list from the cache shows when it was fetched, not that it never was.
     @Test func theCachedListKeepsItsTimeWhenOffline() async throws {
         let h = Self.harness(open: { throw MailClientError.unreachable })
         let fetchedAt = Date().addingTimeInterval(-3600)
@@ -122,7 +113,6 @@ struct MailListViewModelTests {
         #expect(abs(syncedAt.timeIntervalSince(fetchedAt)) < 0.001)
     }
 
-    /// A page an earlier build cached carries no fetch time and still loads.
     @Test func aPageCachedWithoutAFetchTimeStillLoads() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         let url = cache.pageURL(folder: "INBOX")
@@ -152,8 +142,6 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.contains("search INBOX 公告 7"))
     }
 
-    /// A server search that matches more than a page shows the newest page first; scrolling to the
-    /// end of the results fetches the rest, so the older matches are not out of reach.
     @Test func searchResultsPastThePageLoadAtTheEnd() async throws {
         let h = Self.harness()
         await h.model.load()
@@ -166,9 +154,6 @@ struct MailListViewModelTests {
         #expect(h.model.displayedRows.last?.uid == 1)
     }
 
-    /// The matches a search leaves for later are UIDs of the folder's generation at search time. If
-    /// the folder is recreated before the user scrolls to them, those UIDs name other mail: the
-    /// page is refused rather than listed as matches, and the folder's stale results go with it.
     @Test func aFolderRecreatedBeforeTheNextSearchPageIsNotListedAsMatches() async throws {
         let h = Self.harness()
         await h.model.load()
@@ -180,9 +165,6 @@ struct MailListViewModelTests {
         #expect(h.model.searchResults?.isEmpty == true)
     }
 
-    /// The same recreation one step earlier, between the search and its first page. The pinned
-    /// fetch refuses the matched UIDs, and the cached page a fallback would search is the old
-    /// generation too — so nothing from the folder is listed, rather than pre-recreation mail.
     @Test func aFolderRecreatedBetweenTheSearchAndItsFirstPageListsNoStaleMail() async {
         let h = Self.harness()
         await h.model.load()
@@ -198,9 +180,6 @@ struct MailListViewModelTests {
         #expect(!h.model.searchUsedLocalFallback)
     }
 
-    /// A page of matches can add nothing that shows — here the newest fifty are all `\Deleted` —
-    /// and then no last row appears to ask for the next page. Paging carries on until something
-    /// shows or the matches run out.
     @Test func aSearchPageWithNothingToShowDoesNotStallThePaging() async {
         let h = Self.harness()
         await h.model.load()
@@ -245,8 +224,6 @@ struct MailListViewModelTests {
         #expect(h.seen.noted.map(\.uidNext) == [5])
     }
 
-    /// A mail read on webmail before the poll is not new to the notification side, but the list
-    /// has still not shown it.
     @Test func thePollReloadsForMailAlreadyReadElsewhere() async {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -255,8 +232,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.first?.uid == 4)
     }
 
-    /// A deleted newest mail leaves UIDNEXT above the newest UID for good. Judged by the newest
-    /// UID, every poll would reload a list that is already current.
     @Test func thePollLeavesACurrentListAloneAfterTheNewestMailWasDeleted() async {
         let h = Self.harness(inboxCount: 3)
         await h.fake.update {
@@ -269,8 +244,6 @@ struct MailListViewModelTests {
         #expect(h.seen.noted.map(\.uidNext) == [4])
     }
 
-    /// A poll that finds no new mail shows the inbox was current when the server answered, so
-    /// the status dot's time moves up to it without a reload.
     @Test func aPollWithNoNewMailMovesTheLastUpdateUp() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -280,7 +253,6 @@ struct MailListViewModelTests {
         #expect(try #require(h.model.syncedAt) > loadedAt)
     }
 
-    /// The cache keeps the moved-up time, so a relaunch that paints from it offline shows it too.
     @Test func aPollsMovedUpTimeIsCached() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -293,8 +265,6 @@ struct MailListViewModelTests {
         }
     }
 
-    /// Rows still painted from the cache after a failed load are a previous visit's, so a poll
-    /// that finds nothing new leaves the time the cache gave them.
     @Test func aPollAfterAFailedLoadKeepsTheCachedTime() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -315,7 +285,6 @@ struct MailListViewModelTests {
         #expect(abs(syncedAt.timeIntervalSince(cachedAt)) < 0.001)
     }
 
-    /// All mail shows Sent too, so mail sent from webmail reloads it like new inbox mail.
     @Test func thePollReloadsAllMailForMailSentElsewhere() async {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -325,7 +294,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.contains { $0.folder == Self.sent && $0.uid == 1 })
     }
 
-    /// Sent mail the reload failed to fetch keeps All mail's time, though the inbox was current.
     @Test func aPollWhoseSentReloadFailedKeepsTheLastUpdate() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -338,7 +306,6 @@ struct MailListViewModelTests {
         #expect(h.model.syncedAt == loadedAt)
     }
 
-    /// Sent's STATUS failing does not stop the poll finding new inbox mail.
     @Test func aFailedSentStatusStillLetsThePollFindNewMail() async {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -350,7 +317,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.contains { $0.folder == "INBOX" && $0.uid == 4 })
     }
 
-    /// New mail the reload failed to fetch is not shown, so the list was not current.
     @Test func aPollWhoseReloadFailedKeepsTheLastUpdate() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -363,8 +329,6 @@ struct MailListViewModelTests {
         #expect(h.model.syncedAt == loadedAt)
     }
 
-    /// A reload that failed has not shown the new mail, so the marker stays for the checks that
-    /// notify.
     @Test func aFailedReloadLeavesTheMarker() async {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -399,11 +363,6 @@ struct MailListViewModelTests {
         #expect(MailDateFormatter.listString(for: now.addingTimeInterval(-13 * 3600), now: now) == "9/15")
     }
 
-    // MARK: Controller additions (2026-09-16 dispatch)
-
-    /// `MailClientError.folderChanged` from a list operation (here `toggleRead` → `setFlag`)
-    /// drops the folder's cached page and reloads the first page fresh from the server,
-    /// instead of leaving the optimistic local change stuck against a server that rejected it.
     @Test func settingFlagsAfterAFolderChangeDropsTheCacheAndReloads() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -415,12 +374,6 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == h.model.rows.count)
     }
 
-    /// Isolates the drop itself from the reload that follows it: a reload that *succeeds*
-    /// would re-save correct data over a stale cache regardless of whether the drop actually
-    /// ran, so this seeds a page the reload can never reproduce (wrong uidValidity, an extra
-    /// summary the fake server doesn't have) and then makes the recovery reload itself fail —
-    /// the only way that seeded page can be gone afterwards is that `recoverFromFolderChange`
-    /// really did delete the cache file.
     @Test func aFolderChangeDropsTheCacheEvenWhenTheRecoveryReloadFails() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
@@ -435,9 +388,6 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX") == nil)
     }
 
-    /// While the account is auth-failed, `openSession()` throws `.authenticationFailed`
-    /// without a LOGIN: the list shows the auth-failure state, and polling never even runs
-    /// the page check (let alone loops retrying it).
     @Test func authFailureShowsTheErrorAndNeverLoops() async {
         let h = Self.harness(open: { throw MailClientError.authenticationFailed })
         await h.model.load()
@@ -446,19 +396,13 @@ struct MailListViewModelTests {
         #expect(h.seen.noted.isEmpty)
     }
 
-    // MARK: Merging refreshes and discarding stale results
-
-    /// Switching folders while a server search is still in flight must never let that stale
-    /// search land on top of the folder the user actually switched to. `search` is gated so the
-    /// folder switch deterministically lands while the search is still awaiting the server,
-    /// rather than racing wall-clock timing.
     @Test func switchingFoldersWhileASearchIsInFlightDiscardsTheStaleResults() async throws {
         let h = Self.harness()
         await h.model.load()
         h.model.searchText = "公告 7"
         await h.fake.update { $0.holdSearch = true }
         let searchTask = Task { await h.model.submitSearch() }
-        await h.fake.waitForArrival("search") // the search is held at the gate, really in flight
+        await h.fake.waitForArrival("search")
         await h.model.select(.real(MailFolderRole.trash.imapName))
         await h.fake.releaseSearch()
         await searchTask.value
@@ -467,12 +411,6 @@ struct MailListViewModelTests {
         #expect(h.model.selection == .real(MailFolderRole.trash.imapName))
     }
 
-    /// A poll-triggered (or pull-to-refresh-triggered) reload must merge the refreshed first
-    /// page into what's loaded rather than replacing it; otherwise every automatic refresh
-    /// would silently throw away everything the user had paginated into. It also covers an
-    /// entry older than the fresh page's window surviving a refresh: every one of the 10
-    /// paginated-in messages below is below `fresh.summaries.last?.uid` on the second,
-    /// poll-triggered fetch, and all 10 are still there afterwards.
     @Test func pollingReloadDoesNotDiscardPaginatedOlderMail() async throws {
         let h = Self.harness()
         await h.model.load()
@@ -486,8 +424,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.last?.uid == 1)
     }
 
-    /// A refresh after the user paginated to the end keeps the merged page's cursor, so the next
-    /// scroll to the bottom does not fetch the older pages again.
     @Test func aRefreshAfterPaginatingKeepsThePaginationCursor() async throws {
         let h = Self.harness()
         await h.model.load()
@@ -504,12 +440,6 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == pagesAfterPoll)
     }
 
-    /// Pagination merges the next page into the one already held and dedupes by UID — and a UID
-    /// only means anything within one UIDVALIDITY generation. A folder recreated between the two
-    /// requests reuses those numbers for entirely different messages, so merging across the two
-    /// would keep rows that point at mail the server no longer has *and* drop the genuinely new
-    /// mail whose UIDs were reused, as duplicates of it. The generation change has to run the
-    /// same recovery `MailClientError.folderChanged` does.
     @Test func paginatingAcrossAFolderRecreationRecoversInsteadOfMerging() async throws {
         let h = Self.harness(inboxCount: 60)
         await h.model.load()
@@ -520,16 +450,11 @@ struct MailListViewModelTests {
             fake.folders["INBOX"] = (UInt32(1)...3).map { FakeMailClient.message(uid: $0, subject: "新信 \($0)") }
         }
         await h.model.loadMoreIfNeeded(after: last)
-        // Only the new generation's mail, and all of it: nothing from the old one survived the
-        // dedupe, and nothing new was dropped by it.
         #expect(h.model.rows.map(\.uid) == [3, 2, 1])
         #expect(h.model.rows.allSatisfy { $0.summary.subject?.hasPrefix("新信") == true })
         #expect(h.cache.loadPage(folder: "INBOX")?.uidValidity == 2)
     }
 
-    /// A second `load()` for the same folder while one is already running (a pull-to-refresh
-    /// landing during the 60 s poll's own reload, say) must not issue a redundant
-    /// `listFolders`/`page` pair on the one serialized connection.
     @Test func aSecondLoadForTheSameFolderWhileOneIsInFlightIsANoOp() async throws {
         let h = Self.harness()
         async let first: Void = h.model.load()
@@ -538,12 +463,6 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
     }
 
-    // MARK: Keeping the list in step with the server
-
-    /// A message expunged, moved or `\Deleted` elsewhere (webmail, another device) is inside
-    /// the fresh page's window (its UID is at or above `fresh.summaries.last?.uid`) but is no
-    /// longer in `fresh.summaries` — the merge must drop it, not keep it forever because it
-    /// was once loaded, and the drop must make it into the cache too.
     @Test func aRefreshRemovesAMessageDeletedElsewhereWithinItsWindow() async throws {
         let h = Self.harness(inboxCount: 5)
         await h.model.load()
@@ -554,10 +473,6 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.map(\.uid) == [5, 4, 2, 1])
     }
 
-    /// An empty fresh page from a folder the server reports as empty (`messageCount == 0`,
-    /// everything in it deleted) must empty the list and its cache rather than leave stale
-    /// entries behind. An empty window over a folder that still holds mail, all `\Deleted` or a
-    /// transient empty read, keeps the rows instead; the next test covers that case.
     @Test func anEmptyFreshPageEmptiesTheList() async throws {
         let h = Self.harness(inboxCount: 5)
         await h.model.load()
@@ -568,11 +483,6 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
     }
 
-    /// A first page whose whole window is `\Deleted` — the state a partly failed delete
-    /// manufactures, and the one TigerDuck reaches on its own after 50 deletes while an expunge
-    /// is blocked — must not blank a list that is holding real mail, nor overwrite its cache with
-    /// an empty page. The folder still has hundreds of messages; the newest 50 just aren't
-    /// visible.
     @Test func anAllDeletedWindowKeepsTheLoadedListInsteadOfBlankingIt() async throws {
         let h = Self.harness(inboxCount: 60)
         await h.model.load()
@@ -587,16 +497,11 @@ struct MailListViewModelTests {
         await h.model.load()
         #expect(!h.model.rows.isEmpty)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == false)
-        // And pagination still reaches the mail the server does still serve.
         let last = try #require(h.model.rows.last)
         await h.model.loadMoreIfNeeded(after: last)
         #expect(h.model.rows.contains { $0.uid == 10 })
     }
 
-    /// The same window with nothing already loaded (a first open, or a reload after the folder's
-    /// cache was dropped): there is no last row for pagination to hang off, so the list has to
-    /// walk further back itself rather than settle on an empty mailbox the user cannot scroll
-    /// out of.
     @Test func anAllDeletedWindowWalksBackToMailTheServerStillServes() async throws {
         let h = Self.harness(inboxCount: 60)
         await h.fake.update { fake in
@@ -611,10 +516,6 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == 10)
     }
 
-    /// A previous visit cached rows below the newest window, and a refresh renews only the window.
-    /// Paging back lists those rows again, so mail read on webmail since shows read and mail
-    /// deleted there goes, instead of both staying as cached on every later launch. 71 and 70 sit
-    /// at the edges of the two windows, where no visible row of either one bounds them.
     @Test func pagingBackRelistsTheRowsAPreviousVisitCached() async throws {
         let h = Self.harness(inboxCount: 120)
         h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 120,
@@ -636,13 +537,10 @@ struct MailListViewModelTests {
         await h.model.loadMoreIfNeeded(after: last)
         #expect(h.model.rows.first { $0.uid == 69 }?.summary.isSeen == true)
         #expect(!h.model.rows.contains { deleted.contains($0.uid) })
-        // The relisted rows added no last row to page from, so the same call went on to older mail.
         #expect(h.model.rows.last?.uid == 1)
         #expect(h.model.rows.count == 117)
     }
 
-    /// A page of nothing but `\Deleted` mail adds no last row either, and must not end the paging
-    /// while older mail is still there.
     @Test func aPageOfOnlyDeletedMailDoesNotEndThePaging() async throws {
         let h = Self.harness(inboxCount: 110)
         await h.fake.update { fake in
@@ -660,9 +558,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.count == 60)
     }
 
-    /// However far a folder was paged, its cache keeps the newest rows only, and that copy pages
-    /// back from the newest window: the dropped rows' cursor would skip the mail between them and
-    /// the last row kept.
     @Test func theCacheKeepsTheNewestRowsAndPagesBackFromTheNewestWindow() async throws {
         let h = Self.harness(inboxCount: 260)
         await h.model.load()
@@ -675,19 +570,12 @@ struct MailListViewModelTests {
         let cached = try #require(h.cache.loadPage(folder: "INBOX"))
         #expect(cached.summaries.map(\.uid) == Array((UInt32(61)...260).reversed()))
         #expect(cached.oldestLoadedSequence == 211)
-        // The list on screen keeps everything it was paged to.
         #expect(h.model.rows.count == 260)
     }
-    /// A UID is only unique within its folder. `removeLocally`/`markSeenLocally` are called by
-    /// the *message* screen, which can still be reporting on INBOX after a deep link switched
-    /// the list to another folder — matching on UID alone stripped a same-UID row of a different
-    /// message and wrote that to the other folder's cache.
     @Test func changesReportedForAFolderTheListNoLongerShowsAreIgnored() async {
         let h = Self.harness(inboxCount: 4)
         await h.model.load()
         let trash = MailFolderRole.trash.imapName
-        // A single-folder selection, stated rather than inherited: the list opens on All mail,
-        // and the merged case has its own test below.
         await h.model.select(.real("INBOX"))
         #expect(h.model.selection == .real("INBOX"))
 
@@ -696,15 +584,12 @@ struct MailListViewModelTests {
         h.model.markSeenLocally(folder: trash, uid: 3, seen: true)
         #expect(h.model.rows.first { $0.uid == 3 }?.summary.isSeen == false)
 
-        // The same calls for the folder actually on screen still act.
         h.model.markSeenLocally(folder: "INBOX", uid: 3, seen: true)
         #expect(h.model.rows.first { $0.uid == 3 }?.summary.isSeen == true)
         h.model.removeLocally(folder: "INBOX", uid: 4)
         #expect(h.model.rows.map(\.uid) == [3, 2, 1])
     }
 
-    /// After a UIDVALIDITY change every UID on screen is from a generation the server threw away,
-    /// so the poll reloads even though UIDNEXT may well have gone down.
     @Test func aNewUIDValidityFromThePollReloadsTheList() async {
         let h = Self.harness(inboxCount: 4)
         await h.model.load()
@@ -722,13 +607,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.filter { $0.folder == "INBOX" }.map(\.uid) == [1])
     }
 
-    // MARK: All mail — the client-side merge of Inbox and Sent
-
-    /// Sent's UIDs deliberately collide with the inbox's: that is the normal case, not an
-    /// edge one — a UID means something only inside its own folder. Its dates are nudged half a
-    /// second later than the inbox mail of the same number, so the merged order has something to
-    /// interleave by and the assertions below read as a genuine interleave rather than one
-    /// folder after the other.
     static func mergedHarness(inboxCount: UInt32 = 5, sentUIDs: [UInt32] = [1, 2, 3]) async -> Harness {
         let h = harness(inboxCount: inboxCount, sentUIDs: sentUIDs)
         await h.fake.update { fake in
@@ -741,7 +619,6 @@ struct MailListViewModelTests {
         return h
     }
 
-    /// Names each row by folder (inbox or sent) and UID, the only honest name for a merged row.
     static func labels(_ rows: [MailListRow]) -> [String] {
         rows.map { "\($0.folder == "INBOX" ? "收" : "寄")\($0.uid)" }
     }
@@ -763,16 +640,10 @@ struct MailListViewModelTests {
         await h.model.select(.allMail)
         #expect(h.model.selection == .allMail)
         #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
-        // One page per folder and no more: the list already opened here, so the `select` above
-        // only states this test's subject and costs nothing. A second `page INBOX` would mean
-        // the opening load had read Inbox alone and then thrown that away to read both.
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
         #expect(await h.fake.calls.filter { $0 == "page \(Self.sent)" }.count == 1)
     }
 
-    /// A UID alone names two different mails here. The row identity the list keys on — and that
-    /// the swipe gesture and the in-place update after an action find a row again by — has to be
-    /// the folder and the UID together.
     @Test func aMergedRowIsIdentifiedByItsFolderAndUIDTogether() async {
         let h = await Self.mergedHarness()
         await h.model.load()
@@ -784,9 +655,6 @@ struct MailListViewModelTests {
         #expect(Set(h.model.rows.map(\.id)).count == h.model.rows.count)
     }
 
-    /// The governing rule, and the one the UIDVALIDITY pin makes testable: each folder is given
-    /// its own generation here, so an action that pinned the *selected* view's idea of a folder
-    /// rather than the row's own would be refused by the server as `folderChanged` and revert.
     @Test func markingAMergedRowReadActsOnItsOwnFolderWithThatFoldersPin() async throws {
         let h = await Self.mergedHarness()
         await h.fake.update { $0.uidValidity = ["INBOX": 11, Self.sent: 22] }
@@ -797,7 +665,6 @@ struct MailListViewModelTests {
         #expect(inboxRow.summary.isSeen == false)
         await h.model.toggleRead(inboxRow)
         #expect(h.model.rows.first { $0.id == inboxRow.id }?.summary.isSeen == true)
-        // The Sent mail that shares the number is untouched — in the list and on the server.
         #expect(h.model.rows.first { $0.folder == Self.sent && $0.uid == 3 }?.summary.isSeen == false)
         #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 3 }?.summary.isSeen == true)
         #expect(await h.fake.folders[Self.sent]?.first { $0.summary.uid == 3 }?.summary.isSeen == false)
@@ -809,9 +676,6 @@ struct MailListViewModelTests {
         #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 1 }?.summary.isSeen == false)
     }
 
-    /// No new persisted model and no migration: the merge is composed at read time from the two
-    /// folders' existing cache entries, each still keyed by its own folder and carrying its own
-    /// UIDVALIDITY — which is exactly what the message screen reads to pin a move or a delete.
     @Test func theMergedViewLeavesEachFolderItsOwnCachedPage() async {
         let h = await Self.mergedHarness()
         await h.fake.update { $0.uidValidity = ["INBOX": 11, Self.sent: 22] }
@@ -823,9 +687,6 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: Self.sent)?.summaries.allSatisfy { $0.subject?.hasPrefix("寄件") == true } == true)
     }
 
-    /// One cursor per folder: the merged list ends only once *both* folders genuinely have,
-    /// never merely because the sparser of the two did. Note the sentinel row load-more hangs
-    /// off here belongs to Sent, which ran out first — the inbox still advances.
     @Test func theMergedListEndsOnlyWhenBothFoldersAreExhausted() async throws {
         let h = await Self.mergedHarness(inboxCount: 60, sentUIDs: [1, 2, 3])
         await h.model.load()
@@ -838,16 +699,12 @@ struct MailListViewModelTests {
         #expect(h.model.rows.count == 63)
         #expect(Self.labels(h.model.rows).last == "收1")
 
-        // Both are exhausted now, so a further load-more asks the server nothing at all.
         last = try #require(h.model.rows.last)
         let before = await h.fake.calls.count
         await h.model.loadMoreIfNeeded(after: last)
         #expect(await h.fake.calls.count == before)
     }
 
-    /// Two round trips per refresh however far the merged list has been scrolled — Mail2000 caps
-    /// connections and starts answering "The mail server is busy" under load — and the refresh
-    /// keeps what was paginated in rather than replacing it.
     @Test func refreshingTheMergedViewCostsOnePagePerFolderHoweverFarItIsScrolled() async throws {
         let h = await Self.mergedHarness(inboxCount: 60, sentUIDs: [1, 2, 3])
         await h.model.load()
@@ -862,8 +719,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.count == 63)
     }
 
-    /// All mail is not a folder name and must never become one: everything the merged view asks
-    /// the server names a folder the server actually has.
     @Test func theMergedViewNeverNamesASyntheticFolderToTheServer() async {
         let h = await Self.mergedHarness()
         await h.model.load()
@@ -877,8 +732,6 @@ struct MailListViewModelTests {
         #expect(named.allSatisfy { $0.contains("INBOX") || $0.contains(Self.sent) })
     }
 
-    /// One SEARCH per folder, merged the same way the list is, and each result keeps the folder
-    /// it was found in so opening it still goes to the right place.
     @Test func searchingTheMergedViewAsksBothFoldersAndKeepsTheirFolders() async {
         let h = await Self.mergedHarness()
         await h.model.load()
@@ -891,8 +744,6 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.displayedRows) == ["寄3"])
     }
 
-    /// A folder whose server refused the search still contributes its locally matched mail, and
-    /// the note appears as soon as any one of them fell back.
     @Test func aRefusedSearchInOneMergedFolderFallsBackForThatFolderOnly() async {
         let h = await Self.mergedHarness()
         await h.model.load()
@@ -904,9 +755,6 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.displayedRows) == ["寄3", "收3"])
     }
 
-    /// A change reported for one of the merged folders finds its row inside that folder's own
-    /// page, never by UID across the merged list; a folder All mail does not merge is ignored
-    /// outright, exactly as it is for a single-folder selection.
     @Test func changesReportedForAMergedFolderActOnThatFolderAlone() async {
         let h = await Self.mergedHarness()
         await h.model.load()
@@ -927,9 +775,6 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows) == before)
     }
 
-    /// The 60 s poll reloads whenever the inbox is on screen, and All mail has it on screen.
-    /// Written as `selection == .real(inbox)` the guard would silently stop firing on the very
-    /// screen the list opens on, and new mail would only ever appear on a pull-to-refresh.
     @Test func thePollReloadsTheMergedViewBecauseTheInboxIsInIt() async {
         let h = await Self.mergedHarness()
         await h.model.load()
@@ -937,11 +782,9 @@ struct MailListViewModelTests {
         let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
         await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 1_000)) }
         await h.model.pollOnce()
-        // Both merged folders, because that is what the screen is showing.
         #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before + 2)
     }
 
-    /// ...and a folder the inbox is not in still never reloads off the poll.
     @Test func thePollLeavesAFolderWithoutTheInboxAlone() async {
         let h = await Self.mergedHarness()
         await h.model.load()
@@ -953,10 +796,6 @@ struct MailListViewModelTests {
         #expect(await !h.fake.calls.contains("status INBOX"))
     }
 
-    // MARK: The selection the list opens on
-
-    /// All mail, as soon as `LIST` says there are two folders to merge — never before, because
-    /// until then it resolves to no folders at all.
     @Test func theListOpensOnTheMergedView() async {
         let h = await Self.mergedHarness()
         #expect(h.model.selection == .real("INBOX"))
@@ -968,8 +807,6 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
     }
 
-    /// No Sent means no All mail chip, and a default that resolved to it anyway would leave
-    /// the list reading nothing with no chip on screen to leave it by. It stays on Inbox.
     @Test func theListOpensOnTheInboxWhenThereIsNothingToMerge() async {
         let h = Self.harness(inboxCount: 4, includeSent: false)
         await h.model.load()
@@ -978,8 +815,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.map(\.uid) == [4, 3, 2, 1])
     }
 
-    /// The server never answered, so nothing is known about its folders — the list stays on the
-    /// one selection that can read anything at all without a `LIST`, and paints its cache.
     @Test func theListStaysOnTheInboxWhenTheFoldersAreNeverKnown() async {
         let h = Self.harness(open: { throw MailClientError.unreachable })
         h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1,
@@ -989,10 +824,6 @@ struct MailListViewModelTests {
         #expect(h.model.rows.map(\.uid) == [9])
     }
 
-    /// A tapped notification names the folder the mail is actually in and selects it directly
-    /// (`SchoolMailView.drainDeepLink`). It can land before `LIST` comes back — and when the
-    /// folder it names is Inbox, it does not even change the selection — so the default must
-    /// recognise it as a choice, not as the placeholder it happens to match, and leave it alone.
     @Test func aDeepLinkedFolderSurvivesTheDefault() async {
         let h = await Self.mergedHarness()
         await h.model.select(.real("INBOX"))
@@ -1006,7 +837,6 @@ struct MailListViewModelTests {
         #expect(other.model.selection == .real(MailFolderRole.trash.imapName))
     }
 
-    /// The chip standing for what is on screen is the first one read.
     @Test func theMergedChipComesFirst() async {
         let h = await Self.mergedHarness()
         await h.model.load()
@@ -1022,19 +852,12 @@ struct MailListViewModelTests {
         ])
     }
 
-    /// Without the chip there is nothing to put first, and the roles still lead.
     @Test func theChipsAreJustTheFoldersWhenThereIsNothingToMerge() {
         let entries = MailFolderChipBar.entries(roles: [.inbox: "INBOX"], others: [], showsAllMail: false)
         #expect(entries == [.role(.inbox, folder: "INBOX")])
     }
 
-    // MARK: The DEBUG developer server override
-
     #if DEBUG
-    /// Everything resolved against the previous server goes, because none of it means anything
-    /// on the next one: the folder names came from that server's `LIST`, the UIDs from its
-    /// mailboxes. Signing out (which is what actually happens alongside this) clears the
-    /// account, the on-disk caches and the markers; this is the half that lives only here.
     @Test func aServerChangeDropsTheResolvedRolesPagesAndRows() async {
         let h = Self.harness()
         await h.model.load()
@@ -1053,14 +876,10 @@ struct MailListViewModelTests {
         #expect(!h.model.unreadOnly)
         #expect(h.model.loadState == .idle)
         #expect(h.model.serverStatus == .unknown)
-        // The selection goes back to the default, not to whatever chip was last tapped: that
-        // chip named a folder on a server this page is no longer talking to.
         #expect(h.model.selection == .real("INBOX"))
         #expect(!h.model.showsAllMailChip)
     }
 
-    /// The reset leaves the page able to load again rather than stuck — the next `load()` walks
-    /// the whole resolve-folders-then-page path from the start.
     @Test func thePageLoadsAgainAfterAServerChange() async {
         let h = Self.harness()
         await h.model.load()
@@ -1072,10 +891,6 @@ struct MailListViewModelTests {
     }
     #endif
 
-    // MARK: Sign-out
-
-    /// The screen keeps its view model across a sign-out, so the previous student's list must
-    /// not be the next student's first frame.
     @Test func aSignOutClearsTheList() async {
         let center = NotificationCenter()
         let h = Self.harness(inboxCount: 4, signOutEvents: center)
@@ -1088,11 +903,8 @@ struct MailListViewModelTests {
         #expect(h.model.serverStatus == .unknown)
     }
 
-    /// A load on the wire when the student signs out lands after the reset: it must neither put
-    /// their mail back on screen nor write it into a cache that stamps the next student.
     @Test func aLoadASignOutOvertookWritesNothing() async {
         let center = NotificationCenter()
-        // Inbox only, so the reset's own move back to Inbox is not what stops the stale load.
         let h = Self.harness(inboxCount: 4, includeSent: false, signOutEvents: center)
         await h.model.load()
         await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 5)) }
@@ -1110,13 +922,10 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
     }
 
-    /// Saves the list queued before a sign-out can still be waiting when its wipe runs, and none
-    /// of them may land after it (https://github.com/tigerduck-app/tigerduck-app/issues/632).
     @Test func savesQueuedBeforeASignOutLandNothingAfterItsWipe() async {
         let center = NotificationCenter()
         let h = Self.harness(includeSent: false, signOutEvents: center)
         await h.model.load()
-        // A backlog of fire-and-forget saves, so that some are still queued when the wipe runs.
         for seen in Array(repeating: [true, false], count: 20).joined() {
             h.model.markSeenLocally(folder: "INBOX", uid: 1, seen: seen)
         }
@@ -1128,9 +937,6 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX") == nil)
     }
 
-    // MARK: Warm
-
-    /// Holds a warm at its start delay until the test opens it.
     actor DelayGate {
         private var isOpen = false
         private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -1147,7 +953,6 @@ struct MailListViewModelTests {
 
     nonisolated static let trash = MailFolderRole.trash.imapName
 
-    /// All mail shows the inbox and Sent; Trash is the one role folder left to warm.
     @Test func openingTheListWarmsTheFoldersItIsNotShowing() async {
         let h = Self.harness(warmDelay: {})
         await h.model.refresh()
@@ -1158,7 +963,6 @@ struct MailListViewModelTests {
         #expect(requests.filter { $0.hasPrefix(Self.trash) }.count == 1)
         #expect(requests.contains("INBOX \(MailConstants.pageSize)"))
         #expect(h.cache.loadPage(folder: Self.trash)?.summaries.count == 1)
-        // Nothing about the screen itself moved.
         #expect(h.model.rows.allSatisfy { $0.folder != Self.trash })
     }
 
@@ -1172,8 +976,6 @@ struct MailListViewModelTests {
         #expect(h.model.serverStatus == .ok)
     }
 
-    /// A warm fetches a short first page; a cache the user already paged further into is worth
-    /// more than it.
     @Test func aWarmNeverShortensADeeperCache() async {
         let h = Self.harness(warmDelay: {})
         let deep = (1...30).map { SchoolMailTestDoubles.summary(uid: UInt32($0)) }
@@ -1193,11 +995,9 @@ struct MailListViewModelTests {
         #expect(MailListViewModel.warmShouldWrite(page(20), over: page(10)))
         #expect(MailListViewModel.warmShouldWrite(page(20), over: page(20)))
         #expect(!MailListViewModel.warmShouldWrite(page(20), over: page(50)))
-        // Another generation: the deeper cache names mail that no longer exists.
         #expect(MailListViewModel.warmShouldWrite(page(20), over: page(50, validity: 2)))
     }
 
-    /// Moving onto Trash makes the inbox and Sent the folders worth warming.
     @Test func aFolderSwitchWarmsWhatTheUserLeft() async {
         let h = Self.harness(warmDelay: {})
         await h.model.refresh()
@@ -1207,11 +1007,9 @@ struct MailListViewModelTests {
         let requests = await h.fake.pageRequests
         #expect(requests.contains("INBOX \(MailConstants.warmPageSize)"))
         #expect(requests.contains("\(Self.sent) \(MailConstants.warmPageSize)"))
-        // The inbox cache holds the fifty the list loaded; a twenty-row warm does not replace it.
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == 50)
     }
 
-    /// Leaving inside the start delay cancels the warm; coming back starts it again, once.
     @Test func comingBackResumesAWarmThatNeverRan() async {
         let gate = DelayGate()
         let h = Self.harness(warmDelay: { await gate.wait() })
@@ -1221,7 +1019,6 @@ struct MailListViewModelTests {
         h.model.startPolling()
         await h.model.waitForWarm()
         #expect(await h.fake.pageRequests.filter { $0.hasPrefix(Self.trash) }.count == 1)
-        // Finished: another visit has nothing left to warm and does not go and check.
         h.model.stopPolling()
         let before = await h.fake.pageRequests.count
         h.model.startPolling()
@@ -1230,24 +1027,19 @@ struct MailListViewModelTests {
         h.model.stopPolling()
     }
 
-    /// A refresh in the first moments after the paint must not queue behind the warm.
     @Test func aRefreshStopsTheWarmBeforeItStarts() async {
         let gate = DelayGate()
         let h = Self.harness(warmDelay: { await gate.wait() })
         await h.model.refresh()
         let before = await h.fake.pageRequests.count
         await h.model.refresh()
-        // The second refresh's own pages went out while the first warm was still held.
         let afterRefresh = await h.fake.pageRequests
         #expect(afterRefresh.count > before)
         #expect(!afterRefresh.contains { $0.hasPrefix(Self.trash) })
         await gate.open()
         await h.model.waitForWarm()
-        // One warm ran — the second refresh's — not two.
         #expect(await h.fake.pageRequests.filter { $0.hasPrefix(Self.trash) }.count == 1)
     }
-
-    // MARK: Poll body prefetch
 
     @Test func aPolledArrivalsBodyIsCached() async {
         let h = Self.harness(inboxCount: 4, includeSent: false)

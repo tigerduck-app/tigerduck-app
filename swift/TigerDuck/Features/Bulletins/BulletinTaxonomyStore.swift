@@ -2,19 +2,9 @@ import Foundation
 import Observation
 import os
 
-/// Process-level cache for the taxonomy lookup. The orgs and tags change only when the server
-/// enums evolve, so they are fetched on first use and kept in memory for the app's lifetime.
-///
-/// A shared singleton because the Home widget re-creates `BulletinsView` on every push, and
-/// re-fetching on each entry would block the filter chips behind a network round-trip. On error
-/// it falls back to an empty taxonomy: the list shows no filter chips, and the subscription
-/// editor surfaces the error so the user can retry.
 @MainActor
 @Observable
 final class BulletinTaxonomyStore {
-    /// Shared instance. Safe to hold a direct reference in views: SwiftUI
-    /// tracks `@Observable` property access regardless of whether the
-    /// instance is `@State`-owned.
     static let shared = BulletinTaxonomyStore()
 
     enum State: Sendable {
@@ -37,9 +27,6 @@ final class BulletinTaxonomyStore {
         self.apiClient = apiClient ?? BulletinAPIClient()
     }
 
-    /// Fetch the taxonomy if we do not already have a loaded copy. Safe
-    /// to call repeatedly; a concurrent second caller will see the final
-    /// state after the first call resolves.
     func loadIfNeeded() async {
         if case .loaded = state { return }
         if case .loading = state { return }
@@ -53,7 +40,6 @@ final class BulletinTaxonomyStore {
         }
     }
 
-    /// Force a refresh regardless of current state.
     func refresh() async {
         state = .loading
         do {
@@ -64,17 +50,12 @@ final class BulletinTaxonomyStore {
         }
     }
 
-    /// Lookup a human-readable label for an org id. Returns the raw id if
-    /// the taxonomy has not loaded yet or the id is unknown, so the UI
-    /// still has something to render.
     func orgLabel(for rawId: String) -> String {
         guard case .loaded(let tax) = state else { return rawId }
         return tax.orgs.first(where: { $0.rawId == rawId })?.label ?? rawId
     }
 
     func tagLabel(for rawId: String) -> String {
-        // Operator-issued "server" notifications need a per-locale label, unlike every other tag,
-        // which the server ships in Chinese only, so this one id gets the localized string.
         if rawId == "server_notification" {
             return String(localized: "tag_server_notification")
         }

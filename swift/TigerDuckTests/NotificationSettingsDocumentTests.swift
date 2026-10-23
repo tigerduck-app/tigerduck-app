@@ -19,9 +19,6 @@ struct NotificationSettingsDocumentTests {
 
     @Test("a document written before live_activity existed still decodes")
     func decodesWithoutLiveActivity() throws {
-        // The backend has been reading `assignments` and `courses` since
-        // phase 4a. Any user who has synced before this ships has a document
-        // with no live_activity key, and it must not fail to decode.
         let json = Data("""
         {"assignments":{"enabled":true,"reminder_offsets_hours":[24]},
          "courses":{"enabled":false,"reminder_offsets_minutes":[]}}
@@ -32,18 +29,12 @@ struct NotificationSettingsDocumentTests {
 
     @Test("every section and every field is optional, so no partial document fails to decode")
     func decodesEveryPartialShape() throws {
-        // Three clients write this namespace and the backend validates nothing. One
-        // required property would make one of these throw `keyNotFound`, which on the
-        // push path aborts with only a log line, on every attempt.
         let shapes = [
-            // Android's first write (spec W6): `live_activity` only.
             #"{"live_activity":{"show_in_class":true,"show_assignment":false,"show_class_preparing":true,"class_preparing_lead_seconds":3600,"assignment_lead_seconds":28800}}"#,
-            // A section present but half-populated.
             #"{"assignments":{"enabled":true}}"#,
             #"{"assignments":{"reminder_offsets_hours":[24]}}"#,
             #"{"courses":{"enabled":true}}"#,
             #"{"live_activity":{"show_in_class":true}}"#,
-            // Nothing at all.
             "{}",
         ]
         for shape in shapes {
@@ -52,8 +43,6 @@ struct NotificationSettingsDocumentTests {
             }
         }
 
-        // And an absent field reads as absent, not as a default that would
-        // overwrite the local value on a pull.
         let partial = try JSONDecoder().decode(
             NotificationSettingsDocument.self,
             from: Data(#"{"assignments":{"enabled":true}}"#.utf8)
@@ -66,8 +55,6 @@ struct NotificationSettingsDocumentTests {
 
     @Test("courses decodes field by field: a bad field reads as absent, a bad element is dropped")
     func coursesDecodesFieldByField() throws {
-        // Decoded whole, one wrong type would fail the section and with it the whole document,
-        // so a pull would adopt nothing at all.
         let json = Data(#"{"courses":{"enabled":"no","reminder_offsets_minutes":[10,"15",30.5]}}"#.utf8)
         let doc = try JSONDecoder().decode(NotificationSettingsDocument.self, from: json)
         #expect(doc.courses?.enabled == nil)
@@ -103,9 +90,6 @@ struct NotificationSettingsDocumentTests {
 
     @Test("keys this build does not model, beside and inside the sections it reads, leave every modeled field readable")
     func unknownKeysLeaveModeledFieldsReadable() throws {
-        // A newer client or Android may add a section or field this build does not know;
-        // failing or blanking a section over one would stop a pull adopting anything.
-        // Writes keep such keys; see `NotificationSettingsSyncTests.pushPreservesUnknownKeys`.
         let json = Data("""
         {"assignments":{"enabled":false,"reminder_offsets_minutes":[1440,30],"future_field":{"a":1}},
          "live_activity":{"show_in_class":false,"assignment_lead_seconds":3600,"another_future_field":[1,2]},

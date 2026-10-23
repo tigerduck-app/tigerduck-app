@@ -25,8 +25,6 @@ enum ServerKind: String, CaseIterable, Identifiable {
     }
 }
 
-/// `nonisolated`: a plain value with no actor affinity, compared from
-/// anywhere — `SyncStatusDot.summary` and its tests among them.
 nonisolated enum ServerStatus: Equatable {
     case unknown
     case ok
@@ -40,44 +38,21 @@ final class ServerStatusTracker {
     var statuses: [ServerKind: ServerStatus] = [:]
     private(set) var notes: [ServerKind: String] = [:]
 
-    /// `note` is shown under the status rows; a report without one clears the last.
     func set(_ status: ServerStatus, for server: ServerKind, note: String? = nil) {
         statuses[server] = status
         notes[server] = note
     }
 
-    /// Report whether a *public* backend call got through.
-    ///
-    /// The academic calendar refresh reports here: an unauthenticated GET that,
-    /// unlike the also-public bulletin feed, runs on every app open whatever the
-    /// TigerSync setting. With sync off the backend row then reads minimal or
-    /// failed instead of grey. Ignored while sync is on: the sync is the more
-    /// demanding call and its result is authoritative, so a later public GET
-    /// must not paint over a sync failure the dot exists to surface.
     func noteBackendReachable(_ reachable: Bool) {
         guard !Defaults[.cloudSyncEnabled] else { return }
         set(reachable ? .ok : .failed, for: .backend)
     }
 
-    /// Report the outcome of a full sync, or of a change feed read that made one unnecessary.
-    ///
-    /// The mirror of ``noteBackendReachable(_:)``, and ignored for the mirror
-    /// reason: a sync started while TigerSync was on can finish after it has
-    /// been switched off, and its result no longer describes what the row now
-    /// means. Without this guard a request that fails on the way out shows up
-    /// in the freshly cleared dot as a public-backend failure that no public
-    /// fetch ever saw, and sits there until the next calendar refresh.
     func noteSyncResult(_ ok: Bool) {
         guard Defaults[.cloudSyncEnabled] else { return }
         set(ok ? .ok : .failed, for: .backend)
     }
 
-    /// Drop the backend reading when sync is switched on or off.
-    ///
-    /// The slot means a different thing on each side of that flip — a full
-    /// sync result vs. a public GET's reachability — so a reading taken under
-    /// the old meaning must not survive it. The next fetch of either kind
-    /// fills it back in.
     func clearBackendStatus() {
         statuses[.backend] = nil
     }
@@ -95,8 +70,6 @@ final class ServerStatusTracker {
         notes.removeAll()
     }
 }
-
-// MARK: - Simulated failures (DEBUG only)
 
 #if DEBUG
 enum SimulatedFailure: String, CaseIterable, Identifiable {

@@ -4,8 +4,6 @@ import Foundation
 import os
 import UserNotifications
 
-/// School Mail's Background App Refresh. iOS decides when it runs, often hours apart, so the
-/// UI never promises timing.
 nonisolated enum MailBackgroundRefresh {
     /// Must run before `application(_:didFinishLaunchingWithOptions:)` returns.
     static func register() {
@@ -34,11 +32,6 @@ nonisolated enum MailBackgroundRefresh {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: MailConstants.backgroundTaskIdentifier)
     }
 
-    /// Whether a background task that just ran, or was about to, should submit the next request:
-    /// only while background checks are still wanted (signed in, notifications on and allowed by
-    /// iOS, no rejected password, the feature enabled), so a signed-out or locked-out account
-    /// stops waking the app for nothing. A pure function of that state, so it is testable without
-    /// `BGTaskScheduler` or `UserDefaults`.
     static func shouldRescheduleAfterHandling(
         featureEnabled: Bool,
         signedIn: Bool,
@@ -88,7 +81,6 @@ nonisolated enum MailBackgroundRefresh {
         return await check().isSuccess
     }
 
-    /// Calls `setTaskCompleted` exactly once, whichever of expiry and completion is first.
     private final class TaskCompletion: @unchecked Sendable {
         private let lock = NSLock()
         private let task: BGAppRefreshTask
@@ -112,7 +104,6 @@ nonisolated enum MailForegroundCheck {
         return now.timeIntervalSince(lastCheck) >= throttle
     }
 
-    /// Every return to the foreground, at most once a minute.
     static func runIfDue(prefs: any MailPreferences = DefaultsMailPreferences(), now: Date = Date()) async {
         guard SchoolMailAvailability.isEnabled, isDue(lastCheck: prefs.lastCheckAt, now: now) else { return }
         _ = await MailChecker.shared.check(trigger: .foreground)
@@ -132,8 +123,6 @@ nonisolated enum MailNotificationPermission {
         return denied
     }
 
-    /// What the last ``isDenied()`` found, `false` before any. Leaving the foreground decides
-    /// from this: iOS can suspend the app before a fresh read returns, and no refresh is asked for.
     static var lastKnownDenied: Bool { lastRead.withLock { $0 } }
 
     private static let lastRead = OSAllocatedUnfairLock(initialState: false)

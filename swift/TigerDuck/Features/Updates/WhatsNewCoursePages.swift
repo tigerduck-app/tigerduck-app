@@ -2,7 +2,6 @@
 import SwiftUI
 
 extension WhatsNewPage {
-    /// 2.4.0: a course's Moodle announcements, materials, forums, members and grades in its detail.
     static let moodleInCourseDetail = WhatsNewPage.feature(
         id: "moodle-in-course-detail",
         visual: .custom { WhatsNewMoodleSectionsDemo() },
@@ -13,7 +12,6 @@ extension WhatsNewPage {
         )
     )
 
-    /// 2.4.0: class reminders can be turned off or moved earlier or later.
     static let classReminderSettings = WhatsNewPage.feature(
         id: "class-reminder-settings",
         visual: .custom { WhatsNewClassReminderDemo() },
@@ -24,7 +22,6 @@ extension WhatsNewPage {
         )
     )
 
-    /// 2.4.0: the next class on the Apple Watch face.
     static let watchComplication = WhatsNewPage.feature(
         id: "watch-complication",
         visual: .custom { WhatsNewWatchComplicationDemo() },
@@ -36,7 +33,6 @@ extension WhatsNewPage {
     )
 }
 
-/// A course detail whose Moodle rows arrive one after another, with the icons the real section uses.
 struct WhatsNewMoodleSectionsDemo: View {
     @Environment(\.whatsNewLanguage) private var language
     @Environment(\.whatsNewPageIsCurrent) private var isCurrent
@@ -102,7 +98,6 @@ struct WhatsNewMoodleSectionsDemo: View {
     }
 }
 
-/// A class reminder that comes again as the lead time moves through the choices on offer.
 struct WhatsNewClassReminderDemo: View {
     @Environment(\.whatsNewLanguage) private var language
     @Environment(\.whatsNewPageIsCurrent) private var isCurrent
@@ -195,7 +190,6 @@ struct WhatsNewClassReminderDemo: View {
     }
 }
 
-/// A watch face whose rectangular complication shows the next class, then the one after.
 struct WhatsNewWatchComplicationDemo: View {
     @Environment(\.whatsNewLanguage) private var language
     @Environment(\.whatsNewPageIsCurrent) private var isCurrent

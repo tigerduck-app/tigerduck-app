@@ -12,8 +12,6 @@ struct MailTextRulesTests {
         text.data(using: cfEncoding(.big5))!
     }
 
-    // MARK: A.5 charsets
-
     @Test func big5IsDecodedAsItsHKSCSSuperset() {
         // 0x88 0x40 exists only in HKSCS; a plain Big5 decoder rejects the whole body.
         let decoded = MailCharset.decode(Self.big5("中文") + Data([0x88, 0x40]), label: "big5")
@@ -54,14 +52,10 @@ struct MailTextRulesTests {
         #expect(MailCharset.decode(Data("hello 🎓 世界".utf8), label: label) == "hello 🎓 世界")
     }
 
-    /// The other direction, which the UTF-8 fallback above must not cost: a body that really is
-    /// in its labelled charset is decoded with that charset, not guessed at.
     @Test func aGenuinelyBig5BodyStillDecodesAsBig5() {
         #expect(MailCharset.decode(Self.big5("親愛的同學您好"), label: "big5") == "親愛的同學您好")
         #expect(MailCharset.decode(Self.big5("課程公告"), label: "Big5") == "課程公告")
     }
-
-    // MARK: RFC 2047
 
     @Test func decodesUTF8Base64Words() {
         #expect(RFC2047.decode("=?utf-8?B?546L5aSn5piO?=") == "王大明")
@@ -86,8 +80,6 @@ struct MailTextRulesTests {
         #expect(RFC2047.decode("Re: =?utf-8?B?546L?= x") == "Re: 王 x")
     }
 
-    // MARK: Modified UTF-7 (A.1 names)
-
     @Test(arguments: [
         ("&W8RO9lCZTv1TIw-", "寄件備份匣"),
         ("&g0l6P1Mj-", "草稿匣"),
@@ -101,8 +93,6 @@ struct MailTextRulesTests {
         #expect(ModifiedUTF7.decode(raw) == expected)
     }
 
-    // MARK: A.3
-
     @Test func stripsBidiControls() {
         #expect(MailTextCleaner.clean("invoice\u{202E}fdp.exe") == "invoicefdp.exe")
         let all = "\u{202A}\u{202B}\u{202C}\u{202D}\u{202E}\u{2066}\u{2067}\u{2068}\u{2069}\u{200E}\u{200F}\u{061C}"
@@ -115,10 +105,6 @@ struct MailTextRulesTests {
         #expect(MailTextCleaner.clean("a\u{000B}\u{000C}\u{001F}\u{007F}b") == "ab")
     }
 
-    /// Android's `CONTROLS` leaves `\t`, `\n` and `\r` out of the delete set on purpose, so the
-    /// whitespace collapse turns a run of them into a single space. Deleting them instead would
-    /// join two words the collapse keeps apart — `verify\naccount` would read as one token and
-    /// stop matching the keyword `verify your account` spelled with a line break in it.
     @Test func collapsesTabsAndNewlinesInsteadOfDeletingThem() {
         #expect(MailTextCleaner.clean("verify\tyour\naccount") == "verify your account")
         #expect(MailTextCleaner.clean("a  \r\n\t b") == "a b")
@@ -166,13 +152,9 @@ struct MailTextRulesTests {
 
     @Test func visibleTextKeepsCharactersTheReaderCanSee() {
         #expect(MailTextCleaner.visibleText("課程 公告 a1.") == "課程 公告 a1.")
-        // A combining mark that changes what the reader sees is not invisible: stripping every
-        // `Mn` would rewrite accented Latin, Vietnamese and Indic text.
         #expect(MailTextCleaner.visibleText("cafe\u{0301}.pdf") == "cafe\u{0301}.pdf")
         #expect(MailTextCleaner.visibleText("中\u{3000}文") == "中\u{3000}文")
     }
-
-    // MARK: A.1 folders
 
     @Test func mapsMail2000FoldersByTheirIMAPNames() {
         let available = ["INBOX", "&W8RO9lCZTv1TIw-", "&g0l6P1Mj-", "&Vt5lNntS-", "&XuNUSk,hUyM-",
@@ -192,8 +174,6 @@ struct MailTextRulesTests {
         #expect(map[.trash] == nil)
     }
 
-    // MARK: Addresses and raw headers
-
     @Test func parsesAddressLists() {
         let parsed = MailAddress.parseList("\"Wang, Da-Ming\" <dm@mail.ntust.edu.tw>; b@x.org ,  王 <c@y.tw>")
         #expect(parsed == [
@@ -205,10 +185,6 @@ struct MailTextRulesTests {
         #expect(!MailAddress(name: nil, address: "not an address").isPlausible)
     }
 
-    /// A token whose address portion carries a smuggled CR/LF (header-injection bait) or
-    /// any other whitespace/control character must never become a `MailAddress` — it's
-    /// dropped, not merely flagged, matching the plain `local@domain` shape
-    /// `AddressParser.looksLikeAddress` requires on Android.
     @Test func rejectsAddressesCarryingControlCharacters() {
         #expect(MailAddress.parseList("a@x.tw\r\nBcc: b@y.tw") == [])
         #expect(MailAddress.parseList("ok@x.tw, a@x.tw\r\nBcc: b@y.tw, also@x.tw") == [
@@ -218,11 +194,6 @@ struct MailTextRulesTests {
         #expect(!MailAddress(name: nil, address: "a@x.tw\r\nBcc: b@y.tw").isPlausible)
     }
 
-    /// `From: "Mail Deliver System" <MAILER-DAEMON>` — a bare local part with no `@domain`,
-    /// which is what Mail2000 puts on every delivery-failure notice. The strict list parser
-    /// still drops it (it may never become a recipient), but `parseSender` keeps the display
-    /// name the header plainly gave, with **no** address: the raw `MAILER-DAEMON` token is
-    /// not passed through, and the empty address keeps `isPlausible` false.
     @Test func keepsTheDisplayNameOfASenderWithNoParsableAddress() {
         let raw = "\"Mail Deliver System\" <MAILER-DAEMON>"
         #expect(MailAddress.parseList(raw) == [])
@@ -232,9 +203,6 @@ struct MailTextRulesTests {
         #expect(sender?.isPlausible == false)
     }
 
-    /// `parseSender` only rescues a name. A From that is nothing but a malformed address,
-    /// or one carrying a smuggled CR/LF, stays dropped exactly as before, and a well-formed
-    /// From is unaffected.
     @Test func senderParsingRescuesNamesOnlyAndNeverInventsAnAddress() {
         #expect(MailAddress.parseSender("MAILER-DAEMON") == nil)
         #expect(MailAddress.parseSender("<MAILER-DAEMON>") == nil)
@@ -255,7 +223,7 @@ struct MailTextRulesTests {
     /// and the whole message rendered as mojibake.
     @Test func aLabelledBodyWithOneBadByteStillDecodesAsThatCharset() {
         var bytes = Array("這是中文測試".utf8)
-        bytes.insert(0xE4, at: 6) // a stray UTF-8 lead byte between the second and third characters
+        bytes.insert(0xE4, at: 6)
         let text = MailCharset.decode(Data(bytes), label: "utf-8")
         #expect(text.contains("這是"))
         #expect(text.contains("中文測試"))

@@ -1,9 +1,6 @@
 import MarkdownUI
 import SwiftUI
 
-/// One announcement, laid out as a school bulletin is: author and time, title, the message,
-/// its attachments, and a capsule to open it in Moodle. Its content came with the list, so it
-/// has nothing to load. Opening it tells Moodle once that it was read.
 struct MoodleAnnouncementView: View {
     let store: MoodleCourseStore
     let discussion: MoodleDiscussion
@@ -12,7 +9,6 @@ struct MoodleAnnouncementView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
-    /// Coming back from a screen pushed over this one is not another opening.
     @State private var didOpen = false
     @State private var files = MoodleFileOpener()
 
@@ -58,7 +54,6 @@ struct MoodleAnnouncementView: View {
         .moodleFilePresentation(files)
     }
 
-    /// The author opens their member page where the course's members have them.
     private var authorRow: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
             if let name = discussion.authorName.map(MoodlePersonName.displayName), !name.isEmpty {

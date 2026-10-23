@@ -2,9 +2,7 @@ import Foundation
 
 enum ClassroomUsageError: LocalizedError, Equatable {
     case notSignedIn
-    /// A page without the room grid, even after signing in again.
     case unreadable
-    /// The site's calendar offers no link to the date.
     case dateUnavailable
 
     var errorDescription: String? {
@@ -44,7 +42,6 @@ final class ClassroomUsageService {
         }
     )
 
-    /// Bookings change during the day; the timetable under them does not.
     static let todayLifetime: TimeInterval = 15 * 60
     static let laterLifetime: TimeInterval = 3 * 60 * 60
     /// Past this a kept day is too old to stand in for the day, so a failed reload shows the
@@ -54,7 +51,6 @@ final class ClassroomUsageService {
     private static let maxPages = 20
     private static let maxMonthSteps = 3
 
-    /// A day's rooms and when the site gave them.
     nonisolated struct KeptUsage: Equatable, Sendable {
         let usage: CampusUsage
         let fetchedAt: Date
@@ -63,8 +59,6 @@ final class ClassroomUsageService {
     struct Credentials: Sendable {
         let studentId: String
         let password: String
-        /// `NTUSTSessionManager.generation`, read with the credentials. A sign-out moves it, so a
-        /// read for an older one stops before it could sign the departed account in again.
         let generation: Int
     }
 
@@ -75,19 +69,13 @@ final class ClassroomUsageService {
     private let queryURL: URL
     private let sessionGeneration: @MainActor () -> Int
     private let signIn: SignIn
-    /// The posts wait 15 s, as the SSO posts do; `URLRequest`'s default, kept for the page loads,
-    /// is 60 s. Tests that hold a reply pass more, as a busy runner can stall them past either.
     private let timeouts: (load: TimeInterval, post: TimeInterval)
     private let now: @MainActor () -> Date
     private let logFailure: LogFailure
 
     private var kept: [Int: KeptUsage] = [:]
-    /// How the site answered the last read that asked it, for the finder's dot on any screen. A
-    /// kept day answers without asking and leaves it; a new school session and ``forget()`` reset it.
     private(set) var siteStatus = ServerStatus.unknown
-    /// The school session `kept` came from.
     private var stateGeneration: Int?
-    /// Moved by ``forget()``, so a fetch running across it writes nothing back.
     private var epoch = 0
     private var isFetching = false
     private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -110,8 +98,6 @@ final class ClassroomUsageService {
         self.logFailure = logFailure
     }
 
-    /// The day as last read in this school session, to show while it refreshes; nil once it is
-    /// older than ``staleLimit``.
     func keptUsage(on day: Date) -> KeptUsage? {
         adoptSession()
         guard let entry = kept[ClassroomUsageParser.dayNumber(of: day)],
@@ -126,8 +112,6 @@ final class ClassroomUsageService {
         try check(ticket)
         if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
         return try await oneAtATime {
-            // A sign-out while this read waited ends it before any request; a read that waited
-            // may also find the day the one before it read.
             try check(ticket)
             if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
             let usage: CampusUsage
@@ -145,15 +129,11 @@ final class ClassroomUsageService {
         }
     }
 
-    /// Sign-out calls this, as an account change does through it. The cour01 cookies go when
-    /// the sign-out empties the session's cookie jar.
     func forget() {
         kept = [:]
         siteStatus = .unknown
         epoch &+= 1
     }
-
-    // MARK: - Reading a day
 
     private struct Ticket {
         let generation: Int
@@ -168,7 +148,6 @@ final class ClassroomUsageService {
         stateGeneration = generation
     }
 
-    /// A read the user ended, or one for a session since ended, says nothing about the site.
     private func noteFailure(_ error: any Error, for ticket: Ticket) {
         guard Self.isWorthLogging(error), (try? check(ticket)) != nil else { return }
         siteStatus = .failed
@@ -184,8 +163,6 @@ final class ClassroomUsageService {
         return now().timeIntervalSince(entry.fetchedAt) < lifetime ? entry : nil
     }
 
-    /// A page without the grid means the cour01 session lapsed, so the read starts over once from
-    /// a new sign-in.
     private func fetch(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
         do {
             return try await read(day, credentials: credentials, ticket: ticket)
@@ -201,7 +178,6 @@ final class ClassroomUsageService {
         }
     }
 
-    /// A read the user ended, by choosing another day, pulling or signing out, is no failure.
     nonisolated static func isWorthLogging(_ error: any Error) -> Bool {
         !AppLogger.isCancellation(error)
     }
@@ -237,7 +213,6 @@ final class ClassroomUsageService {
         return CampusUsage(rooms: rooms.keys.sorted().flatMap { rooms[$0] ?? [] }, buildingNames: page.buildingNames)
     }
 
-    /// The query page with the main campus chosen, reached by signing in when the session lapsed.
     private func campusPage(credentials: Credentials, ticket: Ticket) async throws -> ClassroomUsageParser.Page {
         var html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))
         if html.map(ClassroomUsageParser.isQueryPage) != true {
@@ -287,15 +262,12 @@ final class ClassroomUsageService {
         return next
     }
 
-    /// A page from cour01, or nil when the request ended on another host, such as the sign-in
-    /// page a lapsed session is sent to.
     private func load(_ request: URLRequest) async throws -> String? {
         let (data, response) = try await session.data(for: request)
         guard (response as? HTTPURLResponse)?.url?.host == queryURL.host else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    /// Off the main actor: the campus page runs to hundreds of kilobytes.
     private static func parse(_ html: String) async -> ClassroomUsageParser.Page {
         await Task.detached(priority: .userInitiated) { ClassroomUsageParser.page(html) }.value
     }

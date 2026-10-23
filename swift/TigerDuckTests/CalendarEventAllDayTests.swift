@@ -1,6 +1,3 @@
-// `SDCalendarEvent.isAllDay`: which calendar rows are a whole day, and so show no time.
-// A school-calendar row carries no flag of its own: a feed date with no time is parsed to
-// midnight in Taipei, and that is the only trace it leaves.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -34,8 +31,6 @@ struct CalendarEventAllDayTests {
         #expect(!Self.event(.moodle, at: Self.midnight).isAllDay)
     }
 
-    /// The iPhone day list hid the time only for holidays, so term boundaries and school events
-    /// with no time showed "00:00" (https://github.com/tigerduck-app/tigerduck-app/issues/519).
     @MainActor @Test("the iPhone day list shows no time on a whole day's row")
     func theDayListShowsNoTimeOnAWholeDay() {
         #expect(!EventRowView.showsTime(of: Self.event(.semester, at: Self.midnight)))

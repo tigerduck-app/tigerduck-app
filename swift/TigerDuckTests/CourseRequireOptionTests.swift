@@ -3,9 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// QueryCourse's `RequireOption` ("R" required, "E" elective) rides along with each course from
-/// the lookup into the term's cache, as `dimension` and `allYear` do, and names the course type
-/// in its details and outlines a required course on the class table.
 @MainActor
 struct CourseRequireOptionTests {
 
@@ -18,7 +15,6 @@ struct CourseRequireOptionTests {
         )
     }
 
-    /// A course split across rows may carry the value on only some of them.
     @Test func theLookupCarriesTheFirstValueAnyRowHas() async {
         let row = await AppServiceBridge.refreshedCourseData(
             courseNo: "CS1003301",
@@ -36,8 +32,6 @@ struct CourseRequireOptionTests {
         #expect(row?.requireOption == "R")
     }
 
-    /// Through the manual-course file, which shares the term cache's row type but not its
-    /// per-language file name, so the app language another test sets cannot move it.
     @Test func theCourseCacheKeepsIt() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseRequireOptionTests-\(UUID().uuidString)", isDirectory: true)
@@ -65,7 +59,6 @@ struct CourseRequireOptionTests {
         }
     }
 
-    /// An unknown value, the empty string of a row merged from another device included, shows no row.
     @Test func theDetailRowNamesOnlyRequiredAndElective() {
         #expect(CourseDetailSheet.requireOptionText("R") == String(localized: "course_detail_require_option_required"))
         #expect(CourseDetailSheet.requireOptionText("e") == String(localized: "course_detail_require_option_elective"))

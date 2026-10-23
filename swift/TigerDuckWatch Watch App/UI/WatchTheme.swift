@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Root-level modifier that applies the phone-pushed accent colour + locale.
-/// Use as `.modifier(WatchTheme(snapshot: store.snapshot))` on the root view.
 struct WatchTheme: ViewModifier {
     let snapshot: WatchSnapshot?
 
@@ -25,7 +23,6 @@ struct WatchTheme: ViewModifier {
 }
 
 extension Color {
-    /// Parse "#RRGGBB" or "#AARRGGBB". Returns nil on malformed input.
     init?(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }

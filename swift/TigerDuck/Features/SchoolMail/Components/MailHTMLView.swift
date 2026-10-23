@@ -2,11 +2,6 @@
 import SwiftUI
 import WebKit
 
-/// Sanitized mail HTML, grown to its content height so the message scrolls as one page. `html`
-/// must already be `MailHTMLSanitizer.rewriteLinks`' output, as the view model's `formattedHTML`
-/// is with only its colours changed: every `<a href>` in it is `https://link.invalid/<n>`, and
-/// `onLinkTap` is called with `n`, never a URL, so no WebKit canonicalization quirk can retarget
-/// a tap.
 struct MailHTMLView: UIViewRepresentable {
     let html: String
     let linkCount: Int
@@ -16,19 +11,8 @@ struct MailHTMLView: UIViewRepresentable {
     @Binding var contentHeight: CGFloat
     let onLinkTap: (Int) -> Void
 
-    /// The tallest this view will grow, whatever the document's content size says.
-    ///
-    /// `height` and `min-height` are in `MailCSSFilter.allowedProperties`, so the sender writes
-    /// `scrollView.contentSize.height`, which feeds `.frame(height:)`. Without this cap a message
-    /// could ask for an arbitrarily tall view. 50 000 points is far past any real mail (roughly
-    /// sixty screens) and far short of a size that costs anything to lay out. `nonisolated`
-    /// because the project defaults every declaration to `@MainActor`, and `clampedHeight`,
-    /// which reads it, is nonisolated so the clamp can be unit-tested off the main actor.
     nonisolated static let maximumContentHeight: CGFloat = 50_000
 
-    /// The observed content size, made safe to put in a frame: clamped at both ends, and with
-    /// a non-finite value (which `contentSize` can carry mid-layout) treated as "nothing known
-    /// yet" rather than propagated into the layout.
     nonisolated static func clampedHeight(_ raw: CGFloat) -> CGFloat {
         guard raw.isFinite else { return 1 }
         return min(max(raw, 1), maximumContentHeight)
@@ -55,8 +39,6 @@ struct MailHTMLView: UIViewRepresentable {
         context.coordinator.load(into: webView)
     }
 
-    /// The page's own colour underneath as well as in the document, so nothing of another colour
-    /// shows before the first paint or past the document's edge.
     static func paint(_ webView: WKWebView, with theme: MailHTMLTheme) {
         webView.backgroundColor = theme.backgroundColor
         webView.scrollView.backgroundColor = theme.backgroundColor
@@ -67,14 +49,8 @@ struct MailHTMLView: UIViewRepresentable {
         var parent: MailHTMLView
         let cidHandler: MailCIDSchemeHandler
         private(set) var loadedKey: String?
-        /// Bumped by every load; a load whose compile finishes after a newer one started drops
-        /// itself instead of installing its rules and document over the newer ones.
         private var loadGeneration = 0
-        /// The compile-and-install in flight, if any. Readable so a test can wait for it.
         private(set) var loadTask: Task<Void, Never>?
-        /// The image allowance the rule list on the web view was compiled for — `nil` until one
-        /// is installed, and again after a compile fails, so the next load tries again. The rules
-        /// depend on nothing else, so a load that keeps the allowance keeps the list.
         private(set) var installedRulesAllowRemoteImages: Bool?
         private var heightObservation: NSKeyValueObservation?
 
@@ -97,17 +73,7 @@ struct MailHTMLView: UIViewRepresentable {
             }
         }
 
-        /// "Load images" loads twice in quick succession (the image allowance flips, then the
-        /// re-sanitized HTML arrives), and each load compiles its rule list asynchronously. The
-        /// compiles are unordered, so the first could finish last and put the image-stripped
-        /// document back under an images-on allowance, with the banner already gone. So only the
-        /// newest load installs anything, and it installs its rules, page colour and document
-        /// together: a light mode switch repaints in the same step as the matching document. A
-        /// load under the installed rules' allowance has nothing to compile, so it paints and loads
-        /// at once. It still cancels any compile in flight, which was for another allowance.
         func load(into webView: WKWebView) {
-            // A cached body can come without its inline images, which the detail replacing it
-            // brings; the handler serves the newest, and their arrival loads the page again.
             cidHandler.images = parent.inlineImages
             let images = parent.inlineImages.keys.sorted()
             let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)|\(images)"
@@ -143,7 +109,6 @@ struct MailHTMLView: UIViewRepresentable {
                 }
                 return .cancel
             }
-            // Only the initial loadHTMLString document (about:blank) may load.
             return navigationAction.request.url?.absoluteString == "about:blank" ? .allow : .cancel
         }
     }

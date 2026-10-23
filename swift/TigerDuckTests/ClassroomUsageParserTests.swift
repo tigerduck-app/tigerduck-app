@@ -2,15 +2,11 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Hand-made pages in the shape of the booking system's room-use page: the ASP.NET form, the
-/// date calendar, the room grid with a small table in every cell, and the pager. The courses,
-/// teachers and the booker are made up.
 enum ClassroomPageFixtures {
     static let header = "<tr align=\"center\"><td>教室</td>"
         + (1...14).map { "<td style=\"width:2.2cm;\">第\($0)節</td>" }.joined()
         + "</tr>"
 
-    /// One period's cell. `text` is what follows the cell's small table, `</br>` included.
     static func cell(_ text: String, row: Int = 3, column: Int = 2) -> String {
         """
         <td nowrap="nowrap" style="font-size:10pt;">
@@ -27,7 +23,6 @@ enum ClassroomPageFixtures {
     static let namelessBooking = "</br></br> 已借用"
     static func course(_ name: String, _ teacher: String) -> String { "\(name)</br>\(teacher)" }
 
-    /// A room's row from 14 marks: `.` free, `b` booked, `c` the room's class.
     static func row(_ room: String, _ marks: String) -> String {
         let cells = marks.enumerated().map { index, mark -> String in
             switch mark {
@@ -49,10 +44,7 @@ enum ClassroomPageFixtures {
         + "<a href=\"\(postback("showinfo_grd$_ctl42$_ctl0", ""))\">1</a>&nbsp;<span>2</span></td></tr>"
     static let onlyPage = "<tr align=\"left\"><td colspan=\"15\"><span>1</span></td></tr>"
 
-    /// The calendar of the month of 2026-10-14, linking that day to 2026-11-07, with the steps
-    /// to September and November.
     static let october = calendar(days: 9783...9807, months: [9740, 9801])
-    /// The next month's view, which links every day it shows.
     static let november = calendar(days: 9794...9835, months: [9770, 9831])
 
     static func calendar(days: ClosedRange<Int>, months: [Int]) -> String {
@@ -160,6 +152,16 @@ struct ClassroomUsageParserTests {
             .free,
         ])
         #expect(!String(describing: grid).contains("林小美"))
+    }
+
+    @Test("a cell nested far deeper than any page nests is still read")
+    func deepCell() throws {
+        let deep = String(repeating: "<span>", count: 10_000) + Pages.course("微積分", "王大明") + String(repeating: "</span>", count: 10_000)
+        let row = "<tr nowrap=\"nowrap\"><td nowrap=\"nowrap\">TR-214   </td>"
+            + Pages.cell(deep) + String(repeating: Pages.cell(Pages.free), count: 13) + "</tr>"
+        let grid = try #require(ClassroomUsageParser.page(Pages.page(rows: [row])).grid)
+
+        #expect(grid.rooms.first?.slots.first == .course(name: "微積分", teacher: "王大明"))
     }
 
     @Test("a grid whose rows changed shape is unreadable, not a day without rooms")
@@ -276,7 +278,6 @@ struct ClassroomUsageParserTests {
         #expect(step(9812, days: Set(9794...9835), months: [9770, 9831]) == "9812")
         #expect(step(9789, days: Set(9794...9835), months: [9770, 9831]) == "V9770")
         #expect(step(9800, days: [], months: [9770, 9831]) == "V9770")
-        // A day the calendar leaves unlinked among the ones it links cannot be posted.
         #expect(step(9784, days: [9783, 9785]) == nil)
         #expect(ClassroomUsageParser.calendarStep(toward: 9790, days: Set(9783...9807), monthSteps: [9740, 9801])
             == .init(target: "date_cal", argument: "9790"))

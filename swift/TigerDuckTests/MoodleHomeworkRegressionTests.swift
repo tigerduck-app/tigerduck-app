@@ -43,7 +43,6 @@ struct MoodleHomeworkRegressionTests {
                 )
             },
             signInGeneration: { 0 },
-            // A wait for the key that never ends on its own, so a slow runner still signs in.
             sleep: { await ManualSleeper().sleep(for: $0) }
         )
     }
@@ -60,7 +59,6 @@ struct MoodleHomeworkRegressionTests {
         let deepLink = try #require(assignment.moodleDeepLink)
         let webPage = try #require(assignment.moodleWebURL)
         let opened = OpenedURLs()
-        // No Moodle app: nothing takes `moodlemobile://`, a browser takes the web page.
         let openURL = OpenURLAction { url in
             opened.urls.append(url)
             return url.scheme == "https" ? .handled : .discarded
@@ -90,7 +88,6 @@ struct MoodleHomeworkRegressionTests {
         #expect(await requests.count == 0)
     }
 
-    /// The Mac's browser setting hands the web page over as the link and as its fallback.
     @Test func moodleLink_opensAWebPageLinkSignedInOnce() async throws {
         let webPage = try #require(URL(string: "https://moodle2.ntust.edu.tw/course/view.php?id=7"))
         let opened = OpenedURLs()
@@ -164,9 +161,6 @@ struct MoodleHomeworkRegressionTests {
 
     /// A co-listed course: Moodle gives it one idnumber (the first-listed
     /// department's) and buries the second department's code in `fullname`.
-    /// A student enrolled through that second code must still resolve to the
-    /// same Moodle course, or the class table's "open in Moodle" button and
-    /// the assignment→course join both fall through.
     @Test func moodleEnrolledCourse_coListedCourseAnswersToBothCodes() {
         let course = MoodleEnrolledCourse(
             id: 19739,
@@ -186,8 +180,6 @@ struct MoodleHomeworkRegressionTests {
         ])
     }
 
-    /// The alias scan must not read an all-caps word out of a bilingual
-    /// course title as a course number.
     @Test func moodleEnrolledCourse_ordinaryCourseHasNoAliases() {
         let course = MoodleEnrolledCourse(
             id: 1,
@@ -199,8 +191,6 @@ struct MoodleHomeworkRegressionTests {
         )
         #expect(course.courseNos == ["CS5164701"])
 
-        // All-caps tokens, including digit-bearing ones of course-number
-        // length, must not be read as course numbers.
         let acronyms = MoodleEnrolledCourse(
             id: 2,
             fullname: "115.1【電機系】EE5428701 VLSI CAD FPGA ASIC HTML5 SQL92 Design",
@@ -212,11 +202,37 @@ struct MoodleHomeworkRegressionTests {
         #expect(acronyms.courseNos == ["EE5428701"])
     }
 
-    /// Continuing-education (night school) course numbers carry a leading `3`,
-    /// which the rest of the codebase already accepts. The fullname is matched
-    /// by whole tokens: a substring scan finds `CS3003302` inside `3CS3003302`
-    /// and mints an alias for a course number that does not exist, which would
-    /// point an ordinary course's Moodle button at a different course.
+    @Test func moodleEnrolledCourse_coListedCourseOfAnotherSchoolIsAnAlias() {
+        let course = MoodleEnrolledCourse(
+            id: 5,
+            fullname: "115.1【資工系】CS5140701 機器學習 / 【臺大】3N1010003 機器學習",
+            shortname: "",
+            idnumber: "1151CS5140701",
+            startDate: nil,
+            endDate: nil
+        )
+
+        #expect(course.courseNos == ["CS5140701", "3N1010003"])
+    }
+
+    @Test func assignmentCourseName_dropsACourseNumberOfAnotherSchool() {
+        let record = MoodleAssignmentRecord(
+            assignId: 1, cmId: 1, courseId: 10, name: "HW1", dueDate: Date(timeIntervalSince1970: 1_790_000_000),
+            cutoffDate: nil, allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
+        )
+        let rows = AppServiceBridge.assignments(
+            from: [record],
+            moodleCoursesById: [10: MoodleEnrolledCourse(id: 10, fullname: "3N1010003 機器學習", shortname: "",
+                                                         idnumber: "11513N1010003", startDate: nil, endDate: nil)],
+            courseNoByMoodleId: [10: "3N1010003"],
+            statuses: [:],
+            confirmed: [:],
+            marks: AssignmentMarks(archivedIds: [], locallyCompletedIds: [], ignoredCourses: [], semester: "1151")
+        )
+
+        #expect(rows.map(\.courseName) == ["機器學習"])
+    }
+
     @Test func moodleEnrolledCourse_leadingThreeCourseNoIsNotTruncated() {
         let nightSchool = MoodleEnrolledCourse(
             id: 4,
@@ -232,9 +248,6 @@ struct MoodleHomeworkRegressionTests {
         #expect(nightSchool.idnumbers == ["11413CS3003302"])
     }
 
-    /// An assignment is filed under the code the class table holds, so a
-    /// co-listed course reached through the student's own department still
-    /// joins to their row. With nothing local known, the course's own code wins.
     @Test func assignmentCourseNo_prefersTheLocallyKnownCode() {
         let coListed = MoodleEnrolledCourse(
             id: 19739,
@@ -256,14 +269,11 @@ struct MoodleHomeworkRegressionTests {
                 for: coListed, localCourseNos: ["AS5140701"]
             ) == "AS5140701"
         )
-        // Cold launch: course cache empty → the authoritative code.
         #expect(
             AppServiceBridge.assignmentCourseNo(for: coListed, localCourseNos: []) == "AS5140701"
         )
     }
 
-    /// A course's own idnumber outranks another course's fullname alias when
-    /// the two collide, whichever order they arrive in.
     @Test func moodleCourseIdMap_realIdnumberBeatsAlias() {
         let coListed = MoodleEnrolledCourse(
             id: 100,
@@ -313,13 +323,9 @@ struct MoodleHomeworkRegressionTests {
             endDate: nil
         )
 
-        // Normalised for term comparisons, which run against NTUST's "114H".
         #expect(summer.semester == "114H")
         #expect(summer.courseNo == "GD3115301")
-        // Rebuilt ids keep Moodle's own spelling so they match a real idnumber.
         #expect(summer.idnumbers == ["114hGD3115301"])
-        // The map key is normalised so a row holding NTUST's "114H" spelling
-        // still resolves; `lookupMoodleCourseId` normalises the same way.
         #expect(AppServiceBridge.moodleCourseIdMap([summer]) == ["114HGD3115301": 3])
         #expect(SDCourse.normalizedMoodleId("114hGD3115301") == "114HGD3115301")
         #expect(SDCourse.normalizedMoodleId("1151AS5140701") == "1151AS5140701")
@@ -331,11 +337,9 @@ struct MoodleHomeworkRegressionTests {
         #expect(SDCourse.semesterPrefix(ofMoodleId: "1151AS5140701") == "1151")
         #expect(SDCourse.semesterPrefix(ofMoodleId: "114hGD3115301") == "114H")
         #expect(SDCourse.semesterPrefix(ofMoodleId: "114HGD3115301") == "114H")
-        // Not a term prefix: letters in the year, too short, nothing at all.
         #expect(SDCourse.semesterPrefix(ofMoodleId: "moodle:42") == nil)
         #expect(SDCourse.semesterPrefix(ofMoodleId: "1151") == nil)
         #expect(SDCourse.semesterPrefix(ofMoodleId: "") == nil)
-        // An unparseable id is handed back whole rather than silently truncated.
         #expect(SDCourse.courseNoFromMoodleId("moodle:42") == "moodle:42")
     }
 
@@ -350,8 +354,6 @@ struct MoodleHomeworkRegressionTests {
         #expect(!new.isSubmitted)
         #expect(!absent.isSubmitted)
     }
-
-    // MARK: - AssignmentStatus
 
     @Test func assignmentStatus_pendingWhenFutureAndNotSubmitted() {
         let now = Date()
@@ -373,8 +375,6 @@ struct MoodleHomeworkRegressionTests {
     }
 
     @Test func assignmentStatus_submittedOnTimeWhenSubmittedAtMissing() {
-        // When Moodle did not give us timemodified, default to .submitted
-        // rather than mis-flagging the row as late.
         let due = Date()
         let assignment = SDAssignment(
             assignmentId: "s2", courseNo: "C", courseName: "C", title: "T",
@@ -426,8 +426,6 @@ struct MoodleHomeworkRegressionTests {
     }
 
     @Test func assignmentStatus_lateSubmissionBeatsCutoff() {
-        // A late but accepted submission renders as `.submittedLate` (orange),
-        // not `.overdueRejected`, even when now is past the cutoff.
         let due = Date().addingTimeInterval(-86400)
         let cutoff = Date().addingTimeInterval(-3600)
         let submittedAt = Date().addingTimeInterval(-7200)
@@ -461,7 +459,6 @@ struct MoodleHomeworkRegressionTests {
     }
 
     @Test func assignmentStatus_archivedBeatsLocallyCompleted() {
-        // isArchived is checked first in status(); if both flags are somehow set, archived wins.
         let now = Date()
         let assignment = SDAssignment(
             assignmentId: "al1", courseNo: "C", courseName: "C", title: "T",
@@ -482,13 +479,6 @@ struct MoodleHomeworkRegressionTests {
         #expect(assignment.status(now: Date()) == .submittedLate)
     }
 
-    /// Pins which localization key each case reaches for, plus the two
-    /// structural rules the view layer relies on: `.pending` is the only case
-    /// without a badge, and no two cases share a label.
-    ///
-    /// It does not assert display copy: `badgeLabel` uses `String(localized:)`,
-    /// so a literal would check whatever language the test process resolves
-    /// (`en` here). Copy belongs to the translation submodule, not to a test.
     @Test func assignmentStatus_badgeMetadataMatchesCase() {
         #expect(AssignmentStatus.pending.badgeLabel == nil)
         #expect(AssignmentStatus.submitted.badgeLabel
@@ -504,9 +494,6 @@ struct MoodleHomeworkRegressionTests {
         #expect(AssignmentStatus.locallyCompleted.badgeLabel
                 == String(localized: "assignment_mark_complete"))
 
-        // `UpcomingAssignmentsView` force-unwraps `badgeLabel` for the
-        // archived / locally-completed / overdue rows, so a new case landing
-        // in the `nil` branch would crash the row rather than render blank.
         let labelled: [AssignmentStatus] = [
             .submitted, .submittedLate, .overdueAcceptable,
             .overdueRejected, .archived, .locallyCompleted,
@@ -526,7 +513,6 @@ struct MoodleHomeworkRegressionTests {
         #expect(!AssignmentStatus.submittedLate.isSwipeActionEligible)
         #expect(AssignmentStatus.overdueAcceptable.isSwipeActionEligible)
         #expect(AssignmentStatus.overdueRejected.isSwipeActionEligible)
-        // Archived and locally-completed rows stay swipeable so the user can undo.
         #expect(AssignmentStatus.archived.isSwipeActionEligible)
         #expect(AssignmentStatus.locallyCompleted.isSwipeActionEligible)
     }
@@ -585,13 +571,9 @@ struct MoodleHomeworkRegressionTests {
         )
 
         let candidates = [normal, archived, locallyDone].allCandidates()
-        // archived (uncompleted) removed; locallyDone + normal both kept
-        // (filter is time-agnostic at this layer).
         #expect(Set(candidates.map(\.assignmentId)) == ["1", "3"])
 
         let partitioned = candidates.partitionedByDueDate(now: now)
-        // Both items are past; past bucket sorts descending so the
-        // more-recently due `locallyDone` (-1800s) lands above `normal` (-3600s).
         #expect(partitioned.map(\.assignmentId) == ["3", "1"])
     }
 
@@ -601,9 +583,6 @@ struct MoodleHomeworkRegressionTests {
             assignmentId: "ignored", courseNo: "C", courseName: "C", title: "Ignored",
             dueDate: now.addingTimeInterval(-3600), isCompleted: false, isArchived: true
         )
-        // Reachable real-world state: user swipes-to-ignore (isArchived=true),
-        // later submits on Moodle so the next sync flips isCompleted=true
-        // without clearing the local archive flag.
         let ignoredThenSubmitted = SDAssignment(
             assignmentId: "ignored+submitted", courseNo: "C", courseName: "C",
             title: "IgnoredThenSubmitted",
@@ -611,24 +590,13 @@ struct MoodleHomeworkRegressionTests {
             isCompleted: true, isArchived: true
         )
 
-        // `.all` must surface the submitted row (its status renders as
-        // .submitted, not .archived). The row that is only ignored stays out;
-        // it belongs to the `.ignored` filter.
         let all = [ignoredOnly, ignoredThenSubmitted].allCandidates()
         #expect(all.map(\.assignmentId) == ["ignored+submitted"])
 
-        // `.ignored` keys only off the local archive flag, so the submitted row is
-        // in it too and reachable from both filters, matching Android's ignored tab.
-        // Ordered by due date ascending, so the older row comes first.
         let ignored = [ignoredOnly, ignoredThenSubmitted].ignoredSorted()
         #expect(ignored.map(\.assignmentId) == ["ignored+submitted", "ignored"])
     }
 
-    /// `ignoredSorted` filters on the local archive flag alone, without
-    /// `!isCompleted`, to match Android, whose ignored tab is
-    /// `all.filter { it.assignmentId in ignoredIds }`. Ignoring is the user
-    /// saying "stop showing me this", and Moodle later recording a submission
-    /// is not them taking it back.
     @Test func arrayIgnoredSorted_includesEveryArchivedRowByDueDate() {
         let now = Date()
         let ignoredLater = SDAssignment(
@@ -649,12 +617,8 @@ struct MoodleHomeworkRegressionTests {
         )
 
         let result = [ignoredLater, ignoredEarlier, normal, completedIgnored].ignoredSorted()
-        // "3" is the only row without the archive flag, so it is the only one
-        // left out; the rest come back oldest-due first.
         #expect(result.map(\.assignmentId) == ["2", "4", "1"])
         #expect([ignoredLater, ignoredEarlier, normal, completedIgnored].hasIgnored())
-        // `hasIgnored` reads the same flag, so an archived-then-submitted row
-        // on its own still lights up the `.ignored` tab.
         #expect([normal, completedIgnored].hasIgnored())
         #expect(![normal].hasIgnored())
     }
@@ -678,9 +642,6 @@ struct MoodleHomeworkRegressionTests {
             dueDate: now.addingTimeInterval(3600), isCompleted: true
         )
 
-        // The `.all` tab partitions by time, not completion: future bucket ascending (c2 at
-        // +3600, then i2 at +7200), then past bucket descending (i1 at -3600, then c1 at -7200).
-        // The partition is re-applied on every TimelineView tick; this pins the order at one `now`.
         let result = [completedA, incompleteB, completedB, incompleteA]
             .partitionedByDueDate(now: now)
         #expect(result.map(\.assignmentId) == ["c2", "i2", "i1", "c1"])
@@ -697,21 +658,14 @@ struct MoodleHomeworkRegressionTests {
             dueDate: now.addingTimeInterval(3600), isCompleted: false
         )
 
-        // At `now`, both are future and sort ascending.
         let before = [crossingSoon, laterFuture].partitionedByDueDate(now: now)
         #expect(before.map(\.assignmentId) == ["x", "y"])
 
-        // Two minutes later `crossingSoon` has slipped into the past bucket, below
-        // `laterFuture`. Guards against a time-frozen list: the same input must
-        // re-bucket from a fresher `now` alone.
         let after = [crossingSoon, laterFuture]
             .partitionedByDueDate(now: now.addingTimeInterval(120))
         #expect(after.map(\.assignmentId) == ["y", "x"])
     }
 
-    // ClassTableViewModel is not in the macOS slice of the app target (the Mac
-    // build draws its timetable from MacClassTableView), so this case is iOS-only
-    // while the rest of the file is platform-neutral.
 #if os(iOS)
     @Test func classTableViewModel_displayLabel_formatsSemesterCode() {
         let vm = ClassTableViewModel()
@@ -735,7 +689,6 @@ struct MoodleHomeworkRegressionTests {
         #expect(AssignmentFilter.visibleFilters(hasIgnored: true) == [.incomplete, .all, .ignored])
     }
 
-    // HomeViewModel is iOS-only, like ClassTableViewModel above.
 #if os(iOS)
     @Test func homeCourseSheet_listsTheCourseWorkUnderTheIgnoredFilter() {
         let savedFilter = Defaults[.homeAssignmentFilter]

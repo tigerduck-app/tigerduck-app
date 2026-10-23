@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Moodle message HTML, shaped as NTUST's announcements use it (`p`, `div`, `span`, `br`, lists,
-/// links and `h3`), turned into the Markdown and the preview the app shows.
 struct MoodleHTMLTextTests {
     @Test("paragraphs and divs become blocks, and a break stays a line break")
     func blocks() {
@@ -80,8 +78,6 @@ struct MoodleHTMLTextTests {
         #expect(MoodleHTMLText.plainText(fromHTML: html) == "Exam on 11/4. Room TR-412 Bring ID")
     }
 
-    /// A writer that recursed once per level would overflow the stack thousands of levels down
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/705).
     @Test("HTML nested far deeper than the cap keeps its text",
           arguments: [("<div>", "</div>"), ("<span>", "</span>"), ("<blockquote>", "</blockquote>"), ("<ul><li>", "</li></ul>")])
     func deepNesting(open: String, close: String) {
@@ -90,7 +86,6 @@ struct MoodleHTMLTextTests {
         #expect(MoodleHTMLText.plainText(fromHTML: html) == "deep")
     }
 
-    /// Quotes, code, links and nested inline runs come out as they did before the depth cap.
     @Test("ordinary nesting is written as before")
     func ordinaryNesting() {
         let html = "<h4>Week 3</h4><blockquote><p>Quoted <em>note</em></p><ul><li>one</li>"
@@ -118,7 +113,6 @@ struct MoodleHTMLTextTests {
             == "Week 3 Quoted note one two forum let x = 1 print(x) Run make test before Friday. Nested bold both text")
     }
 
-    /// The bold run sits at the deepest depth written, then one deeper, where it is plain text.
     @Test("an element deeper than the cap is written as its plain text")
     func pastTheCap() {
         for (wrappers, written) in [(AppConstants.maximumHTMLDepth - 1, "**x** y"), (AppConstants.maximumHTMLDepth, "x y")] {
@@ -127,8 +121,72 @@ struct MoodleHTMLTextTests {
         }
     }
 
-    /// The innermost wrapper is past the cap, where its text still leaves out what the writers
-    /// skip (https://github.com/tigerduck-app/tigerduck-app/pull/759).
+    @Test("paragraphs inside the cap stay apart, and past it they are one paragraph of text")
+    func blocksPastTheCap() {
+        for (wrappers, written) in [(AppConstants.maximumHTMLDepth, "a\n\nb"), (AppConstants.maximumHTMLDepth + 1, "a b")] {
+            let html = String(repeating: "<div>", count: wrappers) + "<p>a</p><p>b</p>" + String(repeating: "</div>", count: wrappers)
+            #expect(MoodleHTMLText.markdown(fromHTML: html) == written, "\(wrappers) wrappers")
+        }
+    }
+
+    @Test("quotes nest five deep, and a quote deeper than that is written as what it holds")
+    func quotesPastTheirCap() {
+        let html = (1...6).map { "<blockquote>\($0)" }.joined() + String(repeating: "</blockquote>", count: 6)
+        let markdown = MoodleHTMLText.markdown(fromHTML: html)
+        #expect(markdown.contains("\n> > > > > 6"))
+        #expect(!markdown.contains("> > > > > >"))
+    }
+
+    @Test("lists and quotes count against one cap")
+    func listsAndQuotesPastTheirCap() {
+        let html = String(repeating: "<blockquote><ul><li>x", count: 3) + String(repeating: "</li></ul></blockquote>", count: 3)
+        #expect(MoodleHTMLText.markdown(fromHTML: html) == """
+        > - x
+        >   > - x
+        >   >   > x
+        """)
+    }
+
+    @Test("lists nest five deep, and a list deeper than that is written as its items")
+    func listsPastTheirCap() {
+        let html = (1...6).map { "<ul><li>\($0)" }.joined() + String(repeating: "</li></ul>", count: 6)
+        #expect(MoodleHTMLText.markdown(fromHTML: html) == """
+        - 1
+          - 2
+            - 3
+              - 4
+                - 5
+                  6
+        """)
+    }
+
+    @Test("past the cap, a list keeps a list or text it holds outside its items")
+    func listContentOutsideItemsPastTheCap() {
+        let html = (1...5).map { "<ul><li>\($0)" }.joined() + "<ul><li>a</li><ul><li>b</li></ul>c</ul>"
+            + String(repeating: "</li></ul>", count: 5)
+        #expect(MoodleHTMLText.markdown(fromHTML: html) == """
+        - 1
+          - 2
+            - 3
+              - 4
+                - 5
+                  a
+                  b
+                  c
+        """)
+    }
+
+    @Test("files are resolved in HTML nested far deeper than the cap, cut to the cap")
+    func pluginFilesInDeepNesting() {
+        let image = "<img src=\"@@PLUGINFILE@@/a.png\">"
+        let html = image + String(repeating: "<div>", count: 10_000) + "deep" + image + String(repeating: "</div>", count: 10_000)
+        let files = [MoodleFile(name: "a.png", size: 1, url: "https://moodle2.ntust.edu.tw/a.png", mimeType: nil, modified: nil, path: "/")]
+        let resolved = MoodleHTMLText.resolvingPluginFiles(in: html, files: files)
+        #expect(resolved.hasPrefix(#"<img src="https://moodle2.ntust.edu.tw/a.png" />"#))
+        #expect(resolved.components(separatedBy: "<div>").count - 1 == AppConstants.maximumHTMLDepth)
+        #expect(resolved.contains("deep"))
+    }
+
     @Test("past the cap, a template's or a noscript's text stays out",
           arguments: ["div", "span"], ["template", "noscript"])
     func skippedPastTheCap(wrapper: String, skipped: String) {

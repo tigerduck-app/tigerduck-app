@@ -1,6 +1,3 @@
-// Runs on the real `Defaults` keys inside `withExclusiveRealDefaults`. `doneKey` mirrors the
-// migration's private flag literal, and is restored as present or absent, because the migration
-// reads an absent one as "not run yet".
 import Defaults
 import Foundation
 import Testing
@@ -8,8 +5,6 @@ import Testing
 
 private let doneKey = "SyncedAccountSeedMigration.v1.done"
 
-/// `SyncedAccountSeedMigration`: which installs keep the re-enable check after the update, before
-/// a full sync has recorded the account's categories on this version.
 @MainActor
 struct SyncedAccountSeedMigrationTests {
     private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
@@ -19,8 +14,6 @@ struct SyncedAccountSeedMigrationTests {
 
     private static var synced: Set<String> { categories.filter { AppState.hasSynced($0) } }
 
-    /// As 2.3.0 leaves an install: the migration not run yet, no category recorded, and every
-    /// switch on.
     private static func withUpdatedInstall(_ body: () -> Void) async {
         await withExclusiveRealDefaults {
             let saved = (
@@ -60,7 +53,6 @@ struct SyncedAccountSeedMigrationTests {
 
             #expect(Self.synced == ["courses", "course_colors", "course_names", "assignments"])
 
-            // As a sign-out leaves it: a later launch must not count the next account as synced.
             Defaults[.categoriesSyncedOnce] = []
             SyncedAccountSeedMigration.runIfNeeded(signedIn: true)
 
@@ -71,7 +63,6 @@ struct SyncedAccountSeedMigrationTests {
     @Test("An install signed out at the update, as a fresh install reads, drops the checks a sign-out left and counts nothing as synced, even after a later sign-in")
     func signedOutAtTheUpdateDropsLeftChecksAndCountsNothing() async {
         await Self.withUpdatedInstall {
-            // 2.3.0 keeps the departing account's pending checks at sign-out.
             Defaults[.pendingConflictCategories] = ["assignments"]
 
             SyncedAccountSeedMigration.runIfNeeded(signedIn: false)
@@ -79,7 +70,6 @@ struct SyncedAccountSeedMigrationTests {
             #expect(Defaults[.pendingConflictCategories].isEmpty)
             #expect(Self.synced.isEmpty)
 
-            // The next launch, signed in on this version.
             SyncedAccountSeedMigration.runIfNeeded(signedIn: true)
 
             #expect(Self.synced.isEmpty)
@@ -89,7 +79,6 @@ struct SyncedAccountSeedMigrationTests {
     @Test("Turning TigerSync back on before the first sync since the update checks every category of an account signed in at the update")
     func signedInAtTheUpdateKeepsTheReenableCheck() async {
         await Self.withUpdatedInstall {
-            // A check the account left pending before the update stays.
             Defaults[.pendingConflictCategories] = ["courses"]
 
             SyncedAccountSeedMigration.runIfNeeded(signedIn: true)

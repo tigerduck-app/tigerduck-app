@@ -8,7 +8,6 @@ import Testing
 struct ClassTableShareModelTests {
     private typealias Term = ClassTableShareModel.Term
 
-    /// 2026-10-13 14:05, Taipei time.
     private static let now = Date(timeIntervalSince1970: 1_791_871_500)
 
     private static func label(_ semester: String) -> String {
@@ -121,7 +120,6 @@ struct ClassTableShareModelTests {
 
 @MainActor
 struct ClassTableShareTermsTests {
-    /// A cache in folders of its own, removed when the test ends.
     @MainActor
     private final class Cache {
         let root = FileManager.default.temporaryDirectory
@@ -219,8 +217,6 @@ struct ClassTableShareTermsTests {
         ), "the term on screen answers without the caches")
     }
 
-    /// The actions menu and the Mac toolbar ask on every redraw, and the answer can decode every term's
-    /// files (https://github.com/tigerduck-app/tigerduck-app/issues/422).
     @Test("the menu item's answer is worked out again only once the term on screen or the caches change")
     func menuItemKeepsItsAnswer() throws {
         let store = Cache()
@@ -234,7 +230,6 @@ struct ClassTableShareTermsTests {
         store.cache.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142")
         #expect(canShare(empty))
 
-        // Removed behind the cache's back, so only a fresh read could tell.
         try FileManager.default.removeItem(at: store.root.appendingPathComponent("cache", isDirectory: true))
         #expect(canShare(empty))
 
@@ -327,13 +322,8 @@ struct ClassTableShareTermsTests {
     }
 }
 
-/// The QR code Core Image draws for a share code: a detector reads the code back, and it stays in
-/// alphanumeric mode at error correction level M, as docs/decisions/0023-class-table-share-code.md
-/// counts its size.
 @MainActor
 struct ClassTableShareQRCodeTests {
-    /// 8 terms of 10 courses of random departments and digits, from a fixed seed: the code the
-    /// decision record sizes, a version 18 symbol.
     static func eightTermsCode() throws -> String {
         var seed: UInt64 = 382
         func random(_ count: UInt64) -> Int {
@@ -350,7 +340,6 @@ struct ClassTableShareQRCodeTests {
         return try #require(ClassTableShareCode.encode(studentId: "B11300000", sharedAt: Date(), terms: terms))
     }
 
-    /// What a QR detector reads from `image`, drawn eight pixels a module so it sees whole modules.
     static func scan(_ image: CGImage, enlargedBy factor: CGFloat = 8) -> CIQRCodeFeature? {
         let enlarged = CIImage(cgImage: image)
             .transformed(by: CGAffineTransform(scaleX: factor, y: factor))
@@ -420,7 +409,6 @@ struct ClassTableShareSheetTests {
         return window
     }
 
-    /// A phone's screenshot, three pixels a point, after a chat app has halved it.
     private func halvedScreenshot(_ window: UIWindow) -> CGImage? {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1.5
@@ -463,7 +451,6 @@ struct ClassTableShareSheetTests {
         }
     }
 
-    /// Reads `window`'s screenshot until a line holds `text`, as `waitUntil` would if it could await.
     private func lines(
         in window: UIWindow,
         words: [String],
@@ -595,10 +582,8 @@ struct ClassTableShareSheetTests {
             return read != nil
         }
         let feature = try #require(read)
-        // Measured before the recognition awaits, so the frames are the screenshot's.
         let visible = presented.view.convert(presented.view.bounds, to: window).intersection(window.bounds)
         let sheet = presented.view.bounds
-        // Screenshot pixels verify visible text without relying on accessibility-tree initialization.
         let captured = try #require(screenshot)
         let recognized = try await Self.lines(in: captured, words: [model.studentId, "115-1"])
         let caption = try #require(recognized.first { $0.text.contains("B11300000") && $0.text.contains("115-1") })

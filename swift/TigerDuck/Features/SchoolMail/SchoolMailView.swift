@@ -1,13 +1,7 @@
 #if os(iOS)
 import SwiftUI
 
-/// The School Mail page.
 ///
-/// The page header follows `HomeView` / `ClassTableView`, not the navigation-bar title
-/// `BulletinsView` uses: the title is the first row of the scrolling content, in
-/// `Typography.title`, with the status dot and the action buttons on the same row. That puts
-/// School Mail's title and buttons at the same height as every other page; a `.navigationTitle`
-/// plus `.toolbar` items sits a navigation bar higher and one type size larger.
 struct SchoolMailView: View {
     var embedded: Bool = false
 
@@ -18,15 +12,10 @@ struct SchoolMailView: View {
     @State private var showGuide = false
     @State private var route: MailMessageRoute?
     @State private var compose: MailComposeContext?
-    /// Whether the search row is out — see `searchField`.
     @State private var isSearchRevealed = false
-    /// Between appearing and disappearing. A tab the user left still sees scene-phase changes.
     @State private var isOnScreen = false
     @FocusState private var isSearchFocused: Bool
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
-    /// See the compose button in the header row: the glyph's own vertical bias, measured at
-    /// the default text size, and scaled here because the symbol itself grows with the text
-    /// size.
     @ScaledMetric(relativeTo: .body) private var composeGlyphLift: CGFloat = 1.5
     private let account = MailAccountManager.shared
 
@@ -47,9 +36,6 @@ struct SchoolMailView: View {
         .navigationDestination(isPresented: $showGuide) { MailGuideView() }
         .sheet(isPresented: $showLoginSheet) { MailLoginSheet(isPresented: $showLoginSheet) }
         #if DEBUG
-        // Reading `generation` here is also what registers this page as an observer of it, so
-        // the banner below re-evaluates the moment the override changes rather than waiting
-        // for the next unrelated redraw.
         .onChange(of: DevMailServerSettings.shared.generation) { _, _ in
             viewModel.resetForServerChange()
         }
@@ -110,17 +96,11 @@ struct SchoolMailView: View {
             .padding(.bottom, TigerDuckTheme.Spacing.xl)
         }
         .background(Color.backgroundPrimary)
-        // The sign-in card lives in here, so this is what dismisses its keyboard on a drag.
         .scrollDismissesKeyboard(.interactively)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
     }
 
-    /// The page header, in the shape `HomeView` and `ClassTableView` use: title text as
-    /// scroll content, everything else trailing on the same row.
     ///
-    /// Signed out the row is the title alone — the same rule `ClassTableView` applies when
-    /// the page has nothing to act on yet. The row keeps `headerActionHeight` either way, so
-    /// the title does not hop when the buttons arrive on sign-in.
     private var titleBar: some View {
         HStack {
             Text(String(localized: "feature_school_mail"))
@@ -139,20 +119,14 @@ struct SchoolMailView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    /// Matches `ClassTableView.headerActionHeight`, and for the same reason: the header row
-    /// is as tall as its controls, so two pages whose controls differ in height put their
-    /// titles at different heights. The glyphs inside stay the size they were in the toolbar
-    /// — only the box around them is pinned.
     private static var headerActionHeight: CGFloat {
         if #available(iOS 26, *) { 36 } else { 40 }
     }
-    /// Wider than tall, so three adjacent cells read as one capsule rather than three circles.
     private static let headerActionWidth: CGFloat = 44
 
     /// Unread-only filter, guide and compose, sharing one capsule — the backing the toolbar
     /// used to supply on iOS 26. The status dot stays outside it: it reports on the server,
     /// it does not act on the mailbox.
-    ///
     /// Each button is `.borderless` because the row is a `List` row now: the default style
     /// there gives the whole row one tap target and drops the tint, so three `.automatic`
     /// buttons would render untinted and fire as one. `MailFolderChipBar` and `SyncStatusDot`
@@ -186,15 +160,11 @@ struct SchoolMailView: View {
         if #available(iOS 26, *) {
             row.glassEffect(.regular.interactive(), in: .capsule)
         } else {
-            // Below 26 nothing supplies a backing, and three bare glyphs over the list read
-            // as part of it rather than as controls acting on it. `.secondarySystemFill` is
-            // what `.bordered` fills with, which is what `ClassTableView` matches there too.
             row.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
         }
     }
 
     /// Search, in the list's own content rather than `.searchable`.
-    ///
     /// `.searchable` puts its field in the navigation bar, which hides it at rest only under a
     /// large `.navigationTitle`. This page has no navigation title (its title is content, so it
     /// and the buttons sit where Home's and Class table's do), so the field would sit alone in
@@ -227,8 +197,6 @@ struct SchoolMailView: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    /// `contentShape` is explicit because the glyph is smaller than its cell: without it the
-    /// tappable area is the symbol's own bounds, not the padding that shapes the capsule.
     private func headerIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
             .font(.body)
@@ -250,8 +218,6 @@ struct SchoolMailView: View {
                     .listRowInsets(EdgeInsets())
             }
             #endif
-            // The row modifiers sit inside the conditional, so a hidden field leaves no empty
-            // row behind — see `developerServerBanner`.
             if isSearchRevealed || !viewModel.searchText.isEmpty {
                 searchField
                     .listRowBackground(Color.clear)
@@ -270,9 +236,6 @@ struct SchoolMailView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
-            // The mail went out; only its copy did not reach Sent. A banner rather than the
-            // load-failure state, because nothing here failed to load — and dismissible, because
-            // it is about one send and the user may simply not care.
             if let notice = viewModel.sentCopyNotice {
                 MailWarningBanner(
                     message: notice,
@@ -348,11 +311,6 @@ struct SchoolMailView: View {
         }
     }
 
-    /// The row reports the mail server's state, in the same three words every other source in
-    /// this popover uses — not `MailConstants.host`, which is a constant and says the same
-    /// thing whether the server is answering or down. The library page keeps its own wording
-    /// because signed-in / not-signed-in genuinely is a different distinction; a mail server
-    /// has no equivalent.
     private var statusDot: some View {
         SyncStatusDot(
             status: viewModel.serverStatus,
@@ -393,9 +351,6 @@ struct SchoolMailView: View {
         }
     }
 
-    /// The row's own folder decides everything, never the selected chip: opened from All mail,
-    /// a Sent mail has to behave exactly as it would had the user opened Sent itself — and the
-    /// chip is not a folder there at all.
     private func row(_ row: MailListRow) -> some View {
         Button {
             if row.folder == viewModel.folderRoles[.drafts] {
@@ -434,13 +389,10 @@ struct SchoolMailView: View {
             .listRowInsets(EdgeInsets())
     }
 
-    /// A tapped mail notification (Task 13): switch folder, then open the message.
     private func drainDeepLink() {
         guard case .schoolMail(let folder, let uid, let uidValidity) = appState.pendingDeepLink, account.isLoggedIn else { return }
         appState.pendingDeepLink = nil
         Task {
-            // A notification names a real folder (only INBOX ever posts one), so the list goes
-            // to that folder itself rather than to the merged view.
             await viewModel.select(.real(folder))
             if let uid { route = MailMessageRoute(folder: folder, uid: uid, uidValidity: uidValidity) }
         }

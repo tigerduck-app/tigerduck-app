@@ -6,9 +6,9 @@ struct WidgetItem: Identifiable, Equatable, Codable {
     var size: WidgetSize
 
     enum WidgetSize: String, Codable, CaseIterable {
-        case small  // 1x1
-        case medium // 2x1
-        case large  // 2x2
+        case small
+        case medium
+        case large
 
         var columns: Int {
             switch self {

@@ -25,7 +25,6 @@ struct ClassReminderSettingsView: View {
         }
         .navigationTitle(String(localized: "settings_class_reminder"))
         .task {
-            // Show what another device last saved. Queued, so it does not wait for the prompt.
             appState.reconcileNotificationSettings()
             await appState.requestNotificationAuthorization()
         }

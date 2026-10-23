@@ -30,8 +30,6 @@ struct EnrolledCourseNosTests {
     }
 }
 
-/// The add/drop half of the same rule. Course selection owning its term is not
-/// enough, because the backend keeps serving a course nobody deleted explicitly.
 struct SelectionDropsTests {
     @Test("A course the answer no longer names is recorded as dropped")
     func dropIsWitnessed() {

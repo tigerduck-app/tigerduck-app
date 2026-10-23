@@ -1,5 +1,3 @@
-// What a sign-out deletes that TigerSync does not keep, which its confirmation names
-// (https://github.com/tigerduck-app/tigerduck-app/issues/563).
 import Testing
 @testable import TigerDuck
 
@@ -8,7 +6,6 @@ struct SignOutUnsyncedDataTests {
 
     private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
 
-    /// Each kind of data, with the categories that must all keep it.
     private static let kinds: [(data: Held, needs: Set<String>)] = [
         (Held(courses: true), ["courses"]),
         (Held(courseNames: true), ["course_names"]),
@@ -75,5 +72,22 @@ struct SignOutUnsyncedDataTests {
     @Test("with none of the user's data here, a sign-out loses nothing, TigerSync off too")
     func nothingHeldLosesNothing() {
         #expect(!Self.deletes(Held(), cloudSyncEnabled: false, switchedOn: [], synced: []))
+    }
+
+    @Test("a course name that never syncs is lost however the switches stand")
+    func localOnlyNamesAreLost() {
+        #expect(Self.deletes(Held(localOnlyCourseNames: true)))
+    }
+
+    @MainActor
+    @Test("only a name on a course this device holds without a Moodle ID stays on this device")
+    func namesWithoutAMoodleIdStayHere() {
+        let handAdded = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: "1151")
+        let enrolled = SDCourse(courseNo: "CS1001301", courseName: "Algorithms", moodleIdNumber: "1151CS1001301")
+
+        #expect(AppState.holdsLocalOnlyCourseNames(["GE1010001": ["zh": "Art"]], courses: [handAdded, enrolled]))
+        #expect(!AppState.holdsLocalOnlyCourseNames(["CS1001301": ["zh": "Algo"]], courses: [handAdded, enrolled]))
+        #expect(!AppState.holdsLocalOnlyCourseNames(["GE1010001": [:]], courses: [handAdded]))
+        #expect(!AppState.holdsLocalOnlyCourseNames(["MA1010003": ["zh": "Gone"]], courses: [handAdded]))
     }
 }

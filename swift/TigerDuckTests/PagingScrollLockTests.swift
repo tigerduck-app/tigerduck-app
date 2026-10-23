@@ -8,12 +8,6 @@ import UIKit
 /// real pager in a window and check the walk still lands on it.
 @MainActor
 struct PagingScrollLockTests {
-    /// The lock used to set `isScrollEnabled = false`, which froze the page
-    /// in *both* directions — a user who had not ticked the onboarding
-    /// checkboxes could not swipe back to the previous page either. Only
-    /// forward motion is gated now, so the pager must stay scrollable
-    /// whether or not the lock is engaged; forward drags are refused
-    /// individually, in the pan handler.
     @Test(arguments: [true, false])
     func pagerStaysScrollableWhileLocked(isLocked: Bool) async throws {
         let pager = TabView {
@@ -27,13 +21,10 @@ struct PagingScrollLockTests {
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.layoutIfNeeded()
-        // The pager may build its pages after this pass, so wait for the lock to attach.
         try await waitUntil { host.view.descendants(ofType: PagingScrollLock.LockView.self).first?.attachedPager != nil }
 
         let lock = try #require(host.view.descendants(ofType: PagingScrollLock.LockView.self).first, "the representable should be in the hierarchy")
 
-        // Without this the rest of the test passes vacuously: a lock that
-        // never found the pager also never disables anything.
         let attached = try #require(
             lock.attachedPager, "the superview walk should reach the pager's scroll view"
         )

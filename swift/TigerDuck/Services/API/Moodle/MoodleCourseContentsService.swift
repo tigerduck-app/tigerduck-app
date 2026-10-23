@@ -1,11 +1,8 @@
 import Foundation
 
-/// A course's materials as its Moodle page lists them: the sections in Moodle's order, each with
-/// its files, folders and links. Other activities have screens of their own or open in Moodle.
 nonisolated struct MoodleCourseMaterials: Codable, Sendable, Equatable {
     var sections: [MoodleMaterialSection]
 
-    /// What the course detail counts: files and links, a folder by the files in it.
     var count: Int {
         sections.reduce(0) { total, section in section.materials.reduce(total) { $0 + $1.count } }
     }
@@ -24,11 +21,8 @@ nonisolated struct MoodleMaterial: Codable, Sendable, Hashable, Identifiable {
         case link(URL)
     }
 
-    /// The course module, which Moodle's pages take as `id`.
     let id: Int
-    /// The resource, folder or URL the module shows, which its view call takes.
     let instance: Int
-    /// Moodle's name for the kind of module: `resource`, `folder` or `url`.
     let module: String
     let name: String
     let content: Content
@@ -41,8 +35,6 @@ nonisolated struct MoodleMaterial: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// `core_course_get_contents`, which lists a course's sections and the modules in each. The call
-/// takes the token, so the caller runs it inside `MoodleWebserviceClient.withToken`.
 nonisolated enum MoodleCourseContentsService {
     static let contentsFunction = "core_course_get_contents"
 
@@ -63,14 +55,12 @@ nonisolated enum MoodleCourseContentsService {
         return MoodleCourseMaterials(sections: sections.compactMap(\.model))
     }
 
-    /// The call that logs a view of each kind of module, with the name it takes the instance by.
     static let viewCalls: [String: (function: String, parameter: String)] = [
         "resource": ("mod_resource_view_resource", "resourceid"),
         "folder": ("mod_folder_view_folder", "folderid"),
         "url": ("mod_url_view_url", "urlid"),
     ]
 
-    /// Logs a view of `material` on Moodle, which may count toward the activity's completion.
     static func markViewed(
         _ material: MoodleMaterial,
         token: String,
@@ -89,15 +79,12 @@ nonisolated enum MoodleCourseContentsService {
     }
 }
 
-// MARK: - Answers
-
 private nonisolated struct RawSection: Decodable, Sendable {
     let id: Int
     let name: String?
     let uservisible: Bool?
     let modules: [RawModule]?
 
-    /// Nil for a section the account cannot open or with nothing to show.
     var model: MoodleMaterialSection? {
         guard uservisible != false else { return nil }
         let materials = (modules ?? []).compactMap(\.model)
@@ -114,8 +101,6 @@ private nonisolated struct RawModule: Decodable, Sendable {
     let uservisible: Bool?
     let contents: [RawContent]?
 
-    /// A file, folder or link the account can open, else nil. A resource shows its first file,
-    /// which Moodle lists as the main one; a link only an http or https address.
     var model: MoodleMaterial? {
         guard uservisible != false, let instance else { return nil }
         let files = (contents ?? []).filter { $0.type == "file" }.compactMap(\.file.model)

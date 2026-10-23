@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `MoodleWebserviceClient` against `SettingsAPIStub` on a site that does not exist, and with
-/// stand-in tokens, so no request reaches Moodle.
 struct MoodleWebserviceClientTests {
     private static let site = URL(string: "https://moodle-stub.invalid")!
 
@@ -17,7 +15,6 @@ struct MoodleWebserviceClientTests {
         return URLSession(configuration: config)
     }
 
-    /// The URL `call` posts `function` to; the token keeps it unique to one test.
     private static func endpoint(_ function: String, token: String) -> URL {
         URL(string: "https://moodle-stub.invalid/webservice/rest/server.php"
             + "?moodlewsrestformat=json&wsfunction=\(function)&wstoken=\(token)")!
@@ -100,8 +97,6 @@ struct MoodleWebserviceClientTests {
         await #expect(throws: MoodleWebserviceError.siteMaintenance) { try await call(token: token) }
     }
 
-    // MARK: - Assignments
-
     @Test("the assignment fetch asks only for courses the user can submit to")
     func assignmentsNeedTheSubmitCapability() async throws {
         let token = UUID().uuidString
@@ -119,8 +114,6 @@ struct MoodleWebserviceClientTests {
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
         #expect(body == "courseids%5B0%5D=7&courseids%5B1%5D=9&capabilities%5B0%5D=mod%2Fassign%3Asubmit")
     }
-
-    // MARK: - Token
 
     private actor TokenLog {
         private(set) var events: [String] = []

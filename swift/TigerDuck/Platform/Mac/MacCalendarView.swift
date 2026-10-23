@@ -1,13 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// macOS Calendar surface: a hand-rolled grid laid out like the iPhone `MonthCalendarView`, with
-/// cells sized for a Mac sidebar surface; `DatePicker(.graphical)` looks cramped and unfamiliar.
-///
-/// Events come from `DataCache.loadCalendarEvents()`, filled by `appState.backgroundSync()`, plus
-/// the academic calendar's own rows (`allEvents`). Holidays and semester boundaries are shown but
-/// not actionable: the iPhone's "still remind me" toggle on a holiday turns class
-/// reminders back on, and macOS delivers no class reminders.
 struct MacCalendarView: View {
     @Environment(AppState.self) private var appState
 
@@ -28,20 +21,12 @@ struct MacCalendarView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
     private let cellHeight: CGFloat = 64
 
-    /// Cached network events plus the academic calendar's own rows.
-    ///
-    /// The academic rows are never cached, so they are merged in here, as `CalendarViewModel`
-    /// does on every load; `DataCache` alone has no semester boundaries or holidays. As on iPhone,
-    /// drop anything stale under those two sources, then rebuild from the in-memory calendar.
-    /// `AcademicCalendarStore` posts `dataDidUpdate` after a successful fetch, so `cacheRevision`
-    /// re-reads this when the calendar lands.
     private var allEvents: [SDCalendarEvent] {
         let cached = DataCache.shared.loadCalendarEvents()
             .filter { $0.source != .holiday && $0.source != .semester }
         return cached + AcademicCalendarStore.shared.calendar.calendarEvents()
     }
 
-    /// Every day cell reads this, so the cache file is decoded once per `cacheRevision`.
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] {
         eventsMemo.value(for: cacheRevision) {
             let cal = AppConstants.taipeiCalendar
@@ -90,8 +75,6 @@ struct MacCalendarView: View {
             cacheRevision &+= 1
         }
     }
-
-    // MARK: - Month card
 
     private var monthCard: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -178,8 +161,6 @@ struct MacCalendarView: View {
         }
     }
 
-    // MARK: - Day events card
-
     private var dayCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(selectedDate, format: .dateTime.weekday(.wide).month(.wide).day())
@@ -247,8 +228,6 @@ struct MacCalendarView: View {
         )
     }
 
-    // MARK: - Helpers
-
     private func events(on date: Date) -> [SDCalendarEvent] {
         let key = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day], from: date)
         return eventsByDay[key] ?? []
@@ -259,9 +238,6 @@ struct MacCalendarView: View {
         case .moodle: return .blue
         case .school: return .orange
         case .exam: return .red
-        // Listed on the Mac, not actionable: macOS delivers no class
-        // reminders, so there is nothing for a "still remind me" toggle to
-        // turn on. The row still says the day is a holiday.
         case .holiday: return .green
         case .semester: return .indigo
         }
@@ -277,10 +253,6 @@ struct MacCalendarView: View {
         }
     }
 
-    /// Mirror of `CalendarViewModel.buildCalendarDays` so the Mac
-    /// surface produces the same Sunday-leading 7-column layout as
-    /// iPhone. Kept inline because the iOS `CalendarViewModel` is not
-    /// in the Mac build.
     private static func buildCalendarDays(for month: Date) -> [Date?] {
         let cal = AppConstants.taipeiCalendar
         let start = month.startOfMonth
@@ -298,8 +270,6 @@ struct MacCalendarView: View {
     }
 }
 
-// MARK: - Day cell
-
 private struct DayCell: View {
     let date: Date
     let isSelected: Bool
@@ -308,8 +278,6 @@ private struct DayCell: View {
     let cellHeight: CGFloat
     let onTap: () -> Void
 
-    /// `a11y_calendar_day`'s date argument in the app's Taipei calendar, as on iOS, so the
-    /// spoken date matches the cell for a user west of Taiwan.
     private var accessibleDateString: String {
         date.formatted(Date.FormatStyle(
             date: .complete,
@@ -326,8 +294,6 @@ private struct DayCell: View {
                     .font(.callout.weight(isToday || isSelected ? .semibold : .regular))
                     .foregroundStyle(textColor)
                     .frame(width: 28, height: 28)
-                    // Selection is the filled circle alone, as on iOS, and `strokeBorder` keeps
-                    // the today ring inside the 28 pt frame, so neither crowds the cell's edge.
                     .background {
                         if isSelected {
                             Circle().fill(.tint)
@@ -371,11 +337,6 @@ private struct DayCell: View {
         return AnyShapeStyle(.primary)
     }
 
-    /// `order` has to name every source: it is the whitelist the result is
-    /// filtered through, so anything missing from it never gets a dot no
-    /// matter how many events the day holds. Holidays and boundaries sit
-    /// last — a Moodle deadline is the thing worth seeing first when the
-    /// `prefix(3)` cap bites.
     private func dedupedSources() -> [EventSource] {
         let order: [EventSource] = [.moodle, .school, .exam, .holiday, .semester]
         var seen = Set<EventSource>()
@@ -392,9 +353,6 @@ private struct DayCell: View {
         case .moodle: return .blue
         case .school: return .orange
         case .exam: return .red
-        // Listed on the Mac, not actionable: macOS delivers no class
-        // reminders, so there is nothing for a "still remind me" toggle to
-        // turn on. The row still says the day is a holiday.
         case .holiday: return .green
         case .semester: return .indigo
         }

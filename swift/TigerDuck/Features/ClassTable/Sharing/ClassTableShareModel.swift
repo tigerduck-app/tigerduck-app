@@ -3,7 +3,6 @@ import CoreImage.CIFilterBuiltins
 import Foundation
 import Observation
 
-/// Share codes exclude names and display preferences; see docs/decisions/0023-class-table-share-code.md.
 @Observable
 final class ClassTableShareModel: Identifiable {
     struct Term {
@@ -21,8 +20,6 @@ final class ClassTableShareModel: Identifiable {
 
     var selection: Selection {
         didSet {
-            // TAT's code holds one term, so all semesters turns the switch off, as does a term
-            // whose course codes TAT cannot carry.
             if isTATCompatible, tatCode() == nil {
                 isTATCompatible = false
             } else {
@@ -40,7 +37,6 @@ final class ClassTableShareModel: Identifiable {
 
     private(set) var offersTAT = false
     private(set) var code: String?
-    /// One pixel per module, for the sheet to scale up without smoothing.
     private(set) var qrCode: CGImage?
 
     private let semesterLabel: (String) -> String
@@ -108,8 +104,6 @@ final class ClassTableShareModel: Identifiable {
 }
 
 extension ClassTableShareModel {
-    /// A refreshed displayed term can be newer than disk, including an empty roster.
-    /// Other terms still use cached data so sharing does not require another network request.
     static func terms(in semesters: [String], cache: DataCache = .shared, shownTerm: Term? = nil) -> [Term] {
         let hidden = Set(cache.loadDeletedCourseNos())
         return semesters.compactMap { semester in
@@ -137,8 +131,6 @@ extension ClassTableShareModel {
         }
     }
 
-    /// What the answer of `canShare` comes from. The cache files behind it change only through
-    /// `DataCache`, which moves its revision with each write.
     struct Availability: Equatable {
         let studentId: String?
         let semester: String
@@ -149,8 +141,6 @@ extension ClassTableShareModel {
 
     typealias AvailabilityMemo = ViewMemo<Availability, Bool>
 
-    /// `canShare` for the class table's actions menu and the Mac toolbar, which ask on every redraw:
-    /// kept in `memo` until the term on screen or a cache write changes it.
     static func canShare(
         studentId: String?,
         shownTerm: Term,
@@ -172,7 +162,6 @@ extension ClassTableShareModel {
     ) -> [SDCourse] {
         guard ClassTableShareCode.isSemester(semester.uppercased()[...]) else { return [] }
         if let shownTerm {
-            // The grid shares these reference objects; a canonical merge would rewrite their aliases.
             return shownTerm.courses.filter {
                 carriesCode($0) && !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden)
             }
@@ -186,13 +175,11 @@ extension ClassTableShareModel {
         ).filter(carriesCode)
     }
 
-    /// A share code carries only course codes of NTUST's shape, the ones the importer can look up.
     private static func carriesCode(_ course: SDCourse) -> Bool {
-        ClassTableShareCode.isCourseNo(course.courseNo.uppercased()[...])
+        CourseSelectionService.isCourseNo(course.courseNo.uppercased()[...])
     }
 }
 
-/// A valid share code can exceed a QR symbol's capacity.
 nonisolated enum ClassTableShareError: Error {
     case noCode
     case noQRCode

@@ -2,13 +2,6 @@
 import SwiftUI
 import UserNotifications
 
-/// Developer-only push diagnostics, reached from Settings → Developer → TigerSync status. The
-/// entry point and this file are both `#if DEBUG`, so Release builds see neither. Strings are
-/// hardcoded English, since a debug menu needs no translation into 50+ languages.
-///
-/// The user-facing TigerSync screen (`CloudSyncSettingsView`) shows only registration status, the
-/// latest error and the device ID. This screen shows the raw `PushDiagnostic` behind it, including
-/// `isStarted` and `resolvedServerURL`, which nothing else in the UI surfaces.
 struct TigerSyncStatusView: View {
     @Environment(AppState.self) private var appState
     @State private var snapshot: PushDiagnostic?

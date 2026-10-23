@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// How a Moodle file is fetched: the key goes into the URL only for the Moodle site, and a reply
-/// that is not the file fails. Downloads run against `SettingsAPIStub`, so nothing leaves the
-/// process, and one at a time, since a test counts the temporary files every download leaves.
 @Suite(.serialized)
 struct MoodleFileTransferTests {
     private static let site = URL(string: "https://moodle2.ntust.edu.tw")!

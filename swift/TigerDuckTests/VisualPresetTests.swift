@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// A newer build can save or send a preset this one does not know, and a downgrade reads back
-/// whatever the newer build stored.
 struct VisualPresetTests {
     @Test("A preset this build does not know decodes as TigerDuck, and its neighbours keep theirs")
     func unknownPresetDecodesAsTigerDuck() throws {

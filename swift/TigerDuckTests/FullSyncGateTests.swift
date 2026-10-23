@@ -1,14 +1,9 @@
-// `FullSyncGate`, which runs one full sync at a time. A sync trigger push that arrived during a
-// pull used to be turned away, and the change it announced stayed unfetched in the background.
 import Foundation
 import Testing
 @testable import TigerDuck
 
 @MainActor
 struct FullSyncGateTests {
-    /// A full sync whose runs in `parking` park until `release()` or until their task is cancelled.
-    /// The first run syncs and later ones fail. Records when each run starts and ends, whether it
-    /// ended cancelled, and what the callers note.
     @MainActor
     private final class Pull {
         private(set) var events: [String] = []
@@ -68,13 +63,10 @@ struct FullSyncGateTests {
         #expect(await trigger.value == .failed)
         #expect(await first.value == .synced)
 
-        // The call that ran the first pull returns without waiting for the follow-up.
         #expect(pull.events == ["start 1", "end 1", "first returned", "start 2", "end 2", "trigger returned"])
         #expect(!gate.isRunning)
     }
 
-    /// A sync trigger's time limit cancels its own pull, and a trigger that came later still has
-    /// time left (https://github.com/tigerduck-app/tigerduck-app/issues/682).
     @Test("A follow-up is not cancelled with the call whose pull came before it")
     func aFollowUpOutlivesTheCallBeforeIt() async throws {
         let gate = FullSyncGate()
@@ -124,7 +116,6 @@ struct FullSyncGateTests {
 
         trigger.cancel()
         try await waitUntil(timeout: .seconds(5)) { pull.events.contains("end 2, cancelled") }
-        // Ends the follow-up if the cancel did not.
         pull.release()
 
         #expect(await trigger.value == .skipped)

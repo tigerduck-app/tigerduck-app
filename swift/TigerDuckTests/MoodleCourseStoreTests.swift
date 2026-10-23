@@ -7,9 +7,6 @@ import Testing
 import UIKit
 #endif
 
-/// `MoodleCourseStore` over a stand-in `MoodleCourseAPI` and a `DataCache` in a folder of its
-/// own: the cache comes first, writes stop at a sign-out, the site's functions gate each call,
-/// only opening an announcement tells Moodle it was read, and only graded items make a grades row.
 @MainActor
 struct MoodleCourseStoreTests {
     private nonisolated static let courseId = 20119
@@ -31,7 +28,6 @@ struct MoodleCourseStoreTests {
         )
     }
 
-    /// The calls the store made, and what the stand-in site answers.
     private final class Site: @unchecked Sendable {
         private let lock = NSLock()
         private var _functions: Set<String> = MoodleCourseStoreTests.allFunctions
@@ -67,8 +63,6 @@ struct MoodleCourseStoreTests {
         var gradeCalls: [Int] { lock.withLock { _gradeCalls } }
         var summaryCalls: [Int] { lock.withLock { _summaryCalls } }
 
-        /// `beforePage` runs before each page answers, with the page and how many times it was
-        /// asked for before; the other hooks can suspend or fail their requests.
         func api(
             beforeForums: @escaping @Sendable () async throws -> Void = {},
             beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in },
@@ -106,7 +100,6 @@ struct MoodleCourseStoreTests {
         }
     }
 
-    /// A cache in a folder of its own, removed when the test ends.
     @MainActor
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
@@ -143,8 +136,6 @@ struct MoodleCourseStoreTests {
             )
         )
     }
-
-    // MARK: - Cache
 
     @Test("what was fetched is shown from the cache the next time, before anything is asked")
     func cacheFirst() async {
@@ -209,8 +200,6 @@ struct MoodleCourseStoreTests {
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
     }
 
-    // MARK: - Status
-
     @Test("a course detail opened again reads OK on a copy still fresh, and unknown only where a fetch is due at once")
     func cachedCopyStatus() async throws {
         let folder = Folder()
@@ -221,7 +210,6 @@ struct MoodleCourseStoreTests {
         await first.refreshForums()
         await first.announcementPages?.refresh()
 
-        // Within the freshness, at its end, past it, and stamped ahead of a clock set back.
         for (age, fresh) in [(0.0, true), (60, true), (299, true), (300, false), (3_600, false), (-60, false)] {
             let now = fetched + age
             let reopened = Self.store(folder, site: Site(), now: { now })
@@ -272,8 +260,6 @@ struct MoodleCourseStoreTests {
         #expect(store.forums.status == .ok)
     }
 
-    // MARK: - Functions
-
     @Test("a site that does not allow the forum calls hides the announcements without asking for forums")
     func gatedByFunctions() async {
         let folder = Folder()
@@ -306,8 +292,6 @@ struct MoodleCourseStoreTests {
         }
     }
 
-    // MARK: - Announcements
-
     @Test("announcements come an explicit page at a time, the next one only at the end of the list")
     func paging() async {
         let folder = Folder()
@@ -326,7 +310,6 @@ struct MoodleCourseStoreTests {
         #expect(store.announcementPages?.list?.discussions.count == MoodleForumService.discussionsPerPage + 1)
         #expect(store.announcementPages?.list?.hasMore == false)
 
-        // A refresh fetches as many pages as the list shows, so it keeps its length.
         await store.announcementPages?.refresh()
         #expect(site.discussionPages == [0, 1, 0, 1])
         #expect(store.announcementPages?.list?.discussions.count == MoodleForumService.discussionsPerPage + 1)
@@ -350,7 +333,6 @@ struct MoodleCourseStoreTests {
         let paging = Task { await store.announcementPages?.loadMore(after: store.announcementPages?.list?.sorted.last?.id) }
         try await nextPage.waitUntilArmed()
         let refresh = Task { await store.announcementPages?.refresh() }
-        // A refresh not held back would start here, sized to the list before the next page.
         for _ in 0..<5 { await Task.yield() }
         await nextPage.fire()
         await paging.value
@@ -402,7 +384,6 @@ struct MoodleCourseStoreTests {
         #expect(store.announcementPages?.pageFailure != nil)
         #expect(store.announcementPages?.list?.hasMore == true)
 
-        // A page asked for by a row that is no longer the last one is not loaded.
         await store.announcementPages?.loadMore(after: 999)
         #expect(site.discussionPages == [0, 1])
 
@@ -436,8 +417,6 @@ struct MoodleCourseStoreTests {
         #expect(store.announcementPages?.list?.discussions == [])
         #expect(store.sectionRows.isEmpty)
     }
-
-    // MARK: - Opening
 
     @Test("opening an announcement tells Moodle once and reads it here; the list never tells Moodle")
     func openSendsTheViewOnce() async {
@@ -477,8 +456,6 @@ struct MoodleCourseStoreTests {
         #expect(store.announcementPages?.list?.discussions.first?.unreadCount == 0)
     }
 
-    // MARK: - Grades
-
     private nonisolated static func gradeItem(
         _ id: Int, type: String = "mod", module: String? = "assign", grade: String? = "90.00", hidden: Bool = false
     ) -> MoodleGradeItem {
@@ -488,8 +465,6 @@ struct MoodleCourseStoreTests {
         )
     }
 
-    /// One line of each kind: two graded items, which the row counts, then an ungraded item, a
-    /// hidden grade, a category's subtotal and the course total, which it does not.
     private nonisolated static let gradebook = [
         gradeItem(3001),
         gradeItem(3002, module: "quiz", grade: nil),
@@ -738,8 +713,6 @@ struct MoodleCourseStoreTests {
     }
     #endif
 
-    // MARK: - Summary
-
     private nonisolated static let summary = MoodleCourseSummary(
         html: "<p>Layers and protocols, from <strong>HTTP</strong> to TCP.</p>",
         text: "Layers and protocols, from HTTP to TCP.",
@@ -826,7 +799,6 @@ struct MoodleCourseStoreTests {
         }
     }
 
-    /// On iPad another window can sign out or in under an open course detail.
     @Test("the course detail builds its Moodle store again for each sign-in")
     func detailStorePerSignIn() {
         let key = CourseDetailSheet.MoodleStoreKey(courseNo: "CS3105301", attempt: 0, generation: 1)

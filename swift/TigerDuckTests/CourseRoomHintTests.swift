@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The timetable prints a room in the corner of a cell only when the room is
-/// short enough to survive there. The gate is a pattern match, so these pin
-/// both sides of it: the codes that must appear, and the prose NTUST also
-/// files under "classroom" that must not.
 @MainActor
 struct CourseRoomHintTests {
 
@@ -16,7 +12,6 @@ struct CourseRoomHintTests {
         }
     }
 
-    /// The co-listed NTU / NTNU rooms write the same thing in Chinese.
     @Test("Chinese building-and-number rooms are previewable")
     func acceptsChineseCodes() {
         for room in ["共101", "博雅205", "管二304", "人文B106", "電二143",
@@ -28,26 +23,22 @@ struct CourseRoomHintTests {
     @Test("rooms that would not fit the cell are dropped")
     func rejectsEverythingElse() {
         for room in [
-            "",                      // no room recorded
-            "Heping Cheng 101",      // NTNU prose form
+            "",
+            "Heping Cheng 101",
             "Gongguan Track and Field Ground",
-            "系上自行安排",            // "ask the department" — no room number
-            "林一",                   // a plot of forest, not a room
+            "系上自行安排",
+            "林一",
             "體育-游泳池",             // reads like AA-999 only if \w is Unicode
-            "綜合-大講堂",             // same shape, same reason
-            "綜合大講堂",              // facility name, no number to anchor on
-            "115研討室",              // number first, then prose
-            "IB-1006",               // four-digit room
-            "TR-313, TR-409",        // two rooms in one slot
+            "綜合-大講堂",
+            "綜合大講堂",
+            "115研討室",
+            "IB-1006",
+            "TR-313, TR-409",
         ] {
             #expect(!CourseRoomHint.isShortCode(room), "expected \(room) to be dropped")
         }
     }
 
-    /// A per-slot room wins over the day-level aggregate, so a course that
-    /// meets twice on one day in two rooms still labels each block with its
-    /// own room instead of falling back to the joined pair (which the gate
-    /// would then reject).
     @Test("per-slot room beats the day aggregate")
     func prefersTheSlotRoom() {
         let course = SDCourse(
@@ -59,13 +50,9 @@ struct CourseRoomHintTests {
         )
         #expect(CourseRoomHint.room(for: course, weekday: 1, periodId: "3") == "TR-313")
         #expect(CourseRoomHint.room(for: course, weekday: 3, periodId: "6") == "TR-409")
-        // Nothing mapped for this slot, and the flat fallback is two rooms.
         #expect(CourseRoomHint.room(for: course, weekday: 5, periodId: "2") == nil)
     }
 
-    /// A slot the map skips is a slot whose room the portal never gave. The
-    /// day's other block must not lend it one — labelling a block with the
-    /// wrong room is worse than labelling it with nothing.
     @Test("an unmapped slot does not borrow the other block's room")
     func doesNotBorrowAnotherBlocksRoom() {
         let course = SDCourse(
@@ -79,8 +66,6 @@ struct CourseRoomHintTests {
         #expect(CourseRoomHint.room(for: course, weekday: 1, periodId: "6") == nil)
     }
 
-    /// A course with no per-slot map at all — a cloud-restored row, say —
-    /// still falls back to the flat classroom, which is all it has.
     @Test("a course with no map falls back to its flat classroom")
     func fallsBackWhenNoMapExists() {
         let course = SDCourse(

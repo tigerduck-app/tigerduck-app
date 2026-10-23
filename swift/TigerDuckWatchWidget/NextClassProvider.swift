@@ -3,7 +3,6 @@ import Foundation
 import os
 
 nonisolated struct NextClassProvider: TimelineProvider {
-    /// Where the Watch app saves the phone's last push. Tests point it at a file of their own.
     var snapshotFileURL = SharedAppGroup.snapshotFileURL
 
     func placeholder(in context: Context) -> NextClassEntry {
@@ -33,14 +32,8 @@ nonisolated struct NextClassProvider: TimelineProvider {
     func timeline(for snapshot: WatchSnapshot?, now: Date) -> Timeline<NextClassEntry> {
         let courses = snapshot?.courses ?? []
         let quietDays = snapshot?.quietDays ?? []
-        // A Taipei calendar keeps class start/end and the 04:00 reload on Taiwan time, matching the
-        // resolver and the iOS app. A device-zone calendar would shift the day anchors and reload
-        // for a traveling wearer, leaving the face stale across class changes and midnight.
         let cal = SharedTaipei.calendar
 
-        // Cover today, the coming midnight and tomorrow, so from midnight the face shows the new
-        // day's first class without waiting for the 04:00 reload. Only classes that meet add a
-        // boundary: a holiday or a skipped date has nothing to change for.
         var boundaries: Set<Date> = [now]
         if let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) {
             boundaries.insert(midnight)
@@ -56,8 +49,6 @@ nonisolated struct NextClassProvider: TimelineProvider {
             entry(for: snapshot, at: boundary, date: AppClock.realTime(forApp: boundary))
         }
 
-        // Reload tomorrow at 04:00. We've already emitted tomorrow's entries
-        // above, so the bridge across midnight–04:00 is in-timeline.
         let reloadAt = cal.nextDate(
             after: now,
             matching: DateComponents(hour: 4, minute: 0),
@@ -66,8 +57,6 @@ nonisolated struct NextClassProvider: TimelineProvider {
 
         return Timeline(entries: entries, policy: .after(AppClock.realTime(forApp: reloadAt)))
     }
-
-    // MARK: - Helpers
 
     /// The phone's last push as the Watch app saved it. Also applies the push's debug clock
     /// override: the widget runs in its own process, so its `AppClock` follows the phone's only
@@ -86,8 +75,6 @@ nonisolated struct NextClassProvider: TimelineProvider {
         return snapshot
     }
 
-    /// The state at `appNow` on the app clock, shown from `date` on the real clock. Holidays and
-    /// skipped dates leave no class that day, as on the Watch's Now & Next tab.
     private func entry(for snapshot: WatchSnapshot?, at appNow: Date, date: Date) -> NextClassEntry {
         let r = NextClassResolver.resolve(
             courses: snapshot?.courses ?? [], now: appNow, quietDays: snapshot?.quietDays ?? []
@@ -104,9 +91,6 @@ nonisolated struct NextClassProvider: TimelineProvider {
     }
 
     private func combine(hhmm: String, with anchor: Date) -> Date? {
-        // Must match the calendar in `timeline(for:now:)` so the date taken from `anchor` and the
-        // hh:mm put back share one time zone; otherwise a device outside Taipei time produces
-        // start and end instants offset from what the resolver expects.
         let cal = SharedTaipei.calendar
         let parts = hhmm.split(separator: ":")
         guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
@@ -115,8 +99,6 @@ nonisolated struct NextClassProvider: TimelineProvider {
         return cal.date(from: dc)
     }
 
-    /// The start time goes on the day the class meets: a later day's class put on today's date can
-    /// look about to start or already started.
     private func relevance(for r: NextClassResolver.Result, now: Date) -> TimelineEntryRelevance? {
         let low = TimelineEntryRelevance(score: 30, duration: 0)
         let daysAhead: Int

@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The finder's screen state against made-up pages: where it opens, the days it never asks the
-/// site about, and what a read leaves on screen.
 @MainActor
 struct EmptyClassroomViewModelTests {
     private typealias Pages = ClassroomPageFixtures
@@ -12,7 +10,6 @@ struct EmptyClassroomViewModelTests {
     @MainActor
     private final class SignIn {
         var isCurrent = true
-        /// Each read of the site first asks whom it reads for.
         var reads = 0
     }
 
@@ -40,7 +37,6 @@ struct EmptyClassroomViewModelTests {
         let now: Now
         let service: ClassroomUsageService
         let model: EmptyClassroomViewModel
-        /// Another screen on the same service, as each visit from More or Home builds one.
         let newScreen: @MainActor () -> EmptyClassroomViewModel
 
         init(at time: Date, holiday: Holiday? = nil, isInSession: @escaping @MainActor (Date) -> Bool = { _ in true }) {
@@ -85,7 +81,6 @@ struct EmptyClassroomViewModelTests {
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(html.utf8), gate: gate), for: url)
         }
 
-        /// The sign-in, the campus postback and the day's one page.
         func serveDay(_ rows: [String]) {
             serve(Pages.page(campus: ""))
             serve(Pages.page(viewState: "campus"))
@@ -141,7 +136,6 @@ struct EmptyClassroomViewModelTests {
 
     @Test("a weekday outside the term shows no data without asking the site, and is passed over")
     func outsideTheTerm() {
-        // The term ends on Thursday 10/15 and the next one starts on Monday 10/26.
         let harness = Harness(at: Self.time(15, 22, 30), isInSession: { $0 < Self.day(16) || $0 >= Self.day(26) })
         harness.model.appear()
         #expect(harness.model.selectedDay == Self.day(26))
@@ -216,7 +210,6 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
         #expect(harness.model.siteStatus == .failed)
 
-        // The answer was the account before's: a sign-out drops it, then the screen hears.
         harness.service.forget()
         harness.model.accountChanged()
         #expect(harness.model.siteStatus == .unknown)
@@ -249,7 +242,6 @@ struct EmptyClassroomViewModelTests {
 
         let again = harness.newScreen()
         again.appear()
-        // At once, before the screen's own read has ended.
         #expect(again.siteStatus == .ok)
         try await waitUntil { !again.isReading }
         #expect(again.usage?.rooms.map(\.room) == ["IB-508"])
@@ -288,7 +280,6 @@ struct EmptyClassroomViewModelTests {
         try await waitUntil { harness.model.content == .failed(offline: false) }
         #expect(harness.model.siteStatus == .failed)
 
-        // Wednesday is kept and still fresh, so the site is not asked again.
         let requests = harness.requestCount
         harness.model.select(day: Self.day(14))
         try await waitUntil { !harness.model.isReading }
@@ -313,13 +304,11 @@ struct EmptyClassroomViewModelTests {
         await harness.model.refresh()
         #expect(harness.model.syncedAt == read)
 
-        // A day the site answers with no rooms was still read.
         harness.serveDay([])
         harness.model.select(day: Self.day(15))
         try await waitUntil { harness.model.content == .noData }
         #expect(try #require(harness.model.syncedAt) >= read)
 
-        // A weekend is never asked about, and a day kept from earlier brings its own time back.
         harness.model.select(day: Self.day(17))
         #expect(harness.model.syncedAt == nil)
         harness.model.select(day: Self.day(14))
@@ -391,7 +380,6 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.pickedBuilding == "IB")
         #expect(Harness(at: Self.time(14, 10, 5)).model.pickedBuilding == "IB")
 
-        // A sign-out clears the stored pick, as AppState.logoutNTUST() does, then the screen hears.
         Defaults[.emptyClassroomBuilding] = nil
         harness.model.accountChanged()
         #expect(harness.model.pickedBuilding == nil)
@@ -405,7 +393,6 @@ struct EmptyClassroomViewModelTests {
         try await waitUntil { harness.model.usage != nil }
         harness.model.disappear()
 
-        // A sign-out drops the kept days, then a sign-in from Settings reaches a hidden tab.
         harness.service.forget()
         harness.model.accountChanged()
         #expect(harness.model.content == .loading)
@@ -435,7 +422,6 @@ struct EmptyClassroomViewModelTests {
         await harness.model.refresh()
         #expect(harness.model.openRoom == nil)
 
-        // The room back in a later read does not open the sheet again.
         harness.serveDay([Pages.row("TR-214", "..............")])
         await harness.model.refresh()
         #expect(harness.model.openRoom == nil)
@@ -469,14 +455,12 @@ struct EmptyClassroomViewModelTests {
         harness.model.appear()
         #expect(harness.model.selectedPeriod == 0)
 
-        // A pinned tab tapped again in the afternoon.
         harness.model.disappear()
         harness.now.date = Self.time(14, 13, 40)
         harness.model.appear()
         #expect(harness.model.selectedDay == Self.day(14))
         #expect(harness.model.selectedPeriod == 5)
 
-        // A period still to come stays, and so does one on a later day.
         harness.model.select(period: 9)
         harness.model.appear()
         #expect(harness.model.selectedPeriod == 9)
@@ -486,7 +470,6 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.selectedDay == Self.day(15))
         #expect(harness.model.selectedPeriod == 0)
 
-        // After the last period it moves to the next teaching day.
         harness.model.select(day: Self.day(14))
         harness.now.date = Self.time(14, 22, 30)
         harness.model.appear()
@@ -494,7 +477,6 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.selectedPeriod == 0)
     }
 
-    /// Wednesday's sign-in and campus pages, and its one page of rooms held until `gate` opens.
     private static func serveHeldWednesday(_ harness: Harness, gate: SettingsAPIStub.ReplyGate) {
         harness.serve(Pages.page(campus: ""))
         harness.serve(Pages.page(viewState: "campus"))
@@ -509,7 +491,6 @@ struct EmptyClassroomViewModelTests {
         harness.model.appear()
         try await waitUntil { harness.requestCount == 3 }
 
-        // A pinned tab keeps its model across the visits.
         harness.model.disappear()
         harness.model.appear()
         gate.open()
@@ -566,7 +547,6 @@ struct EmptyClassroomViewModelTests {
         harness.serve(Pages.page(viewState: "campus"))
         harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]), gate: thursday)
         harness.model.select(day: Self.day(15))
-        // Thursday's read starts only once Wednesday's has ended, so its handling has run.
         try await waitUntil { harness.requestCount == 6 }
         #expect(harness.model.content == .loading)
 
@@ -597,7 +577,6 @@ struct EmptyClassroomViewModelTests {
         harness.serve(Pages.page(viewState: "campus"))
         harness.serve(Pages.page(rows: [Pages.row("TR-209", "..............")]), gate: friday)
         harness.model.select(day: Self.day(16))
-        // Friday's read starts once Thursday's has ended, so its handling has run.
         try await waitUntil { harness.requestCount == 9 }
         #expect(harness.service.siteStatus == .ok)
 
@@ -612,7 +591,6 @@ struct EmptyClassroomViewModelTests {
         harness.model.appear()
         try await waitUntil { harness.model.usage != nil }
 
-        // Off screen, a return to the app reads nothing.
         harness.model.disappear()
         harness.now.date = Self.time(15, 8, 30)
         harness.model.returnToApp()
@@ -630,8 +608,6 @@ struct EmptyClassroomViewModelTests {
         #expect(harness.model.selectedDay == Self.day(16))
     }
 
-    /// A building has only a Chinese and an English name, which the app gives by code; the site's
-    /// list, Chinese in every language, names the rest.
     @Test("a building goes by the app's name for its code, and by the site's for a code it has none for")
     func buildingNames() async throws {
         let harness = Harness(at: Self.time(14, 10, 5))

@@ -15,8 +15,6 @@ nonisolated struct PushIdentity: Sendable {
         ), !existing.isEmpty {
             return PushIdentity(uuid: existing)
         }
-        // Migrate: if the old pushUserId exists, adopt it as the new
-        // canonical UUID to avoid orphaning the server-side record.
         if let legacy = KeychainManager.loadString(
             key: "push_user_id"
         ), !legacy.isEmpty {

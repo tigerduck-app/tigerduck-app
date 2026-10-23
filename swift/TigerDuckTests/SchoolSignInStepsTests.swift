@@ -1,6 +1,3 @@
-// `AuthService.login` and the sign-ins after the school's, against stand-ins that keep every request
-// in the process. Saving an account writes real `Defaults` keys, so each test holds the gate in
-// `docs/decisions/0020-real-defaults-gate.md` and puts them back.
 import Defaults
 import Foundation
 import Testing
@@ -10,10 +7,7 @@ import Testing
 struct SchoolSignInStepsTests {
     @MainActor
     private final class Calls {
-        /// The student ID of each library sign-in request.
-        var librarySignIns: [String] = []
         var harvests = 0
-        /// Runs inside the stand-in school sign-in, after the school's answer came back.
         var onSchoolAnswer: () -> Void = {}
     }
 
@@ -36,11 +30,6 @@ struct SchoolSignInStepsTests {
                 await MainActor.run { calls.onSchoolAnswer() }
                 return true
             },
-            librarySignIn: { username, _ in
-                calls.librarySignIns.append(username)
-                let expiry = Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000
-                return LibraryLoginData(username: username, token: "library-token", expirationTimeStamp: Int64(expiry))
-            },
             endSchoolSession: { _ in }
         )
         #if os(iOS)
@@ -49,17 +38,13 @@ struct SchoolSignInStepsTests {
         return auth
     }
 
-    /// Runs `body` with a keychain of its own, holding the library account of `libraryAccount`
-    /// with no live token, and `rejected` as the library's refusal of its stored password.
     private static func withKeychain(
         libraryAccount: String?,
-        rejected: Bool = false,
         _ body: (MemoryKeychain) async throws -> Void
     ) async throws {
         try await withExclusiveRealDefaults {
-            let saved = (LibraryService.storedPasswordRejected, Defaults[.ntustCredentialsPresent])
-            LibraryService.storedPasswordRejected = rejected
-            defer { (LibraryService.storedPasswordRejected, Defaults[.ntustCredentialsPresent]) = saved }
+            let saved = Defaults[.ntustCredentialsPresent]
+            defer { Defaults[.ntustCredentialsPresent] = saved }
             let keychain = MemoryKeychain.locked()
             if let libraryAccount {
                 try keychain.setObject(Data(libraryAccount.utf8), forKey: AppConstants.KeychainKeys.libraryUsername)
@@ -69,62 +54,47 @@ struct SchoolSignInStepsTests {
         }
     }
 
-    // MARK: - The library step (https://github.com/tigerduck-app/tigerduck-app/issues/542)
+    private static let libraryAccounts: [String?] = [nil, student, anotherStudent]
 
-    /// Its token ran out, but its stored credentials sign in again behind the code, so Settings
-    /// shows it signed in and a school sign-out would keep it.
-    @Test func anotherStudentsLibraryAccountStaysOnceItsTokenRunsOut() async throws {
+    @Test("a school sign-in leaves the library account as it found it", arguments: libraryAccounts)
+    func aSchoolSignInLeavesTheLibraryAlone(libraryAccount: String?) async throws {
         let calls = Calls()
-        try await Self.withKeychain(libraryAccount: Self.anotherStudent) { _ in
+        try await Self.withKeychain(libraryAccount: libraryAccount) { keychain in
             let auth = Self.auth(recording: calls)
-            await auth.signInToServices(studentId: Self.student, password: "school", generation: auth.loginGeneration)
 
-            #expect(calls.librarySignIns.isEmpty)
-            #expect(LibraryService.storedUsername == Self.anotherStudent)
+            #expect(await auth.login(studentId: Self.student, password: "school"))
+
+            #expect(LibraryService.storedUsername == libraryAccount)
+            #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.libraryPassword))
+                == libraryAccount.map { _ in Data("library".utf8) })
+            #expect(LibraryService.storedToken == nil)
         }
         #expect(calls.harvests == 1)
     }
 
-    @Test func aLibraryAccountTheLibraryRefusedTakesTheSchoolAccount() async throws {
+    #if os(iOS)
+    /// The sign-out's service steps alone: the call that took the mail with it was in
+    /// `AppState.logoutNTUST`, which tests cannot build.
+    @Test func aSchoolSignOutLeavesSchoolMailSignedIn() async throws {
         let calls = Calls()
-        try await Self.withKeychain(libraryAccount: Self.anotherStudent, rejected: true) { _ in
-            let auth = Self.auth(recording: calls)
-            await auth.signInToServices(studentId: Self.student, password: "school", generation: auth.loginGeneration)
-
-            #expect(calls.librarySignIns == [Self.student])
-            #expect(LibraryService.storedUsername == Self.student)
-        }
-    }
-
-    @Test func withNoLibraryAccountTheSchoolAccountSignsIn() async throws {
-        let calls = Calls()
+        let mail = MailAccountManagerTests.harness()
+        await mail.manager.login(studentID: Self.student, password: "mail")
+        try #require(mail.manager.isLoggedIn)
         try await Self.withKeychain(libraryAccount: nil) { _ in
             let auth = Self.auth(recording: calls)
-            await auth.signInToServices(studentId: Self.student, password: "school", generation: auth.loginGeneration)
+            #expect(await auth.login(studentId: Self.student, password: "school"))
 
-            #expect(calls.librarySignIns == [Self.student])
-            #expect(LibraryService.storedUsername == Self.student)
+            auth.logout()
+            LibraryService.schoolAccountDidSignOut()
+
+            #expect(mail.manager.isLoggedIn)
+            #expect(mail.manager.studentID == Self.student)
+            #expect(mail.hooks.signedOut == 0)
+            #expect(mail.secrets.load(forKey: MailCredentialStore.passwordKey) == "mail")
         }
     }
+    #endif
 
-    /// The school has just checked this password, so this student's library account takes it in
-    /// place of the stored one, which a changed school password leaves behind.
-    @Test func theSameStudentsLibraryAccountSignsInWithTheSchoolPassword() async throws {
-        let calls = Calls()
-        try await Self.withKeychain(libraryAccount: Self.student) { _ in
-            let auth = Self.auth(recording: calls)
-            await auth.signInToServices(studentId: Self.student, password: "school", generation: auth.loginGeneration)
-
-            #expect(calls.librarySignIns == [Self.student])
-            #expect(LibraryService.storedPasswordIfAvailable() == "school")
-        }
-    }
-
-    // MARK: - A sign-out as the school step ends (https://github.com/tigerduck-app/tigerduck-app/issues/500)
-
-    /// A sign-out from another window that lands after the school's answer came back, but before
-    /// the sign-in took it in, leaves the departed account's credentials unsaved and signs it in
-    /// to nothing else.
     @Test func aSignOutAsTheSchoolStepEndsKeepsNothing() async throws {
         let calls = Calls()
         try await Self.withKeychain(libraryAccount: nil) { keychain in
@@ -136,7 +106,6 @@ struct SchoolSignInStepsTests {
             #expect(!signedIn)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.password)) == nil)
-            #expect(calls.librarySignIns.isEmpty)
             #expect(!auth.isLoggingIn)
         }
         #expect(calls.harvests == 0)
@@ -151,14 +120,10 @@ struct SchoolSignInStepsTests {
 
             #expect(signedIn)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == Data(Self.student.utf8))
-            #expect(calls.librarySignIns == [Self.student])
         }
         #expect(calls.harvests == 1)
     }
 
-    // MARK: - Cancelling the sign-in sheet (https://github.com/tigerduck-app/tigerduck-app/issues/589)
-
-    /// The sign-in the sheet started, which the test cancels as the sheet's Cancel does.
     @MainActor
     private final class SheetSignIn {
         var task: Task<Bool, Never>?
@@ -170,7 +135,6 @@ struct SchoolSignInStepsTests {
         (try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == Data(Self.anotherStudent.utf8)
     }
 
-    /// A sign-in first waits for a sign-out's calls, a minute and more on a stalled network.
     @Test func aSignInCancelledWhileItWaitsSignsNothingOutOrIn() async throws {
         let calls = Calls()
         try await Self.withKeychain(libraryAccount: nil) { keychain in
@@ -190,7 +154,6 @@ struct SchoolSignInStepsTests {
 
             #expect(await sheet.task?.value == false)
             #expect(Self.storedAccountIsUntouched(keychain))
-            #expect(calls.librarySignIns.isEmpty)
             #expect(auth.loginError == nil)
             #expect(!auth.isLoggingIn)
         }
@@ -215,7 +178,6 @@ struct SchoolSignInStepsTests {
 
             #expect(await sheet.task?.value == false)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
-            #expect(calls.librarySignIns.isEmpty)
             #expect(auth.loginError == nil)
         }
         #expect(calls.harvests == 0)
@@ -232,14 +194,11 @@ struct SchoolSignInStepsTests {
 
             #expect(await sheet.task?.value == false)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
-            #expect(calls.librarySignIns.isEmpty)
             #expect(!auth.isLoggingIn)
         }
         #expect(calls.harvests == 0)
     }
 
-    /// A sign-out from another window cancels the school step's requests, which end in a
-    /// cancellation the user did not cause (https://github.com/tigerduck-app/tigerduck-app/issues/581).
     @Test func aSignOutFromAnotherWindowDuringTheSchoolStepShowsNoError() async throws {
         for failure in [URLError(.cancelled) as any Error, CancellationError()] {
             try await Self.withKeychain(libraryAccount: nil) { _ in

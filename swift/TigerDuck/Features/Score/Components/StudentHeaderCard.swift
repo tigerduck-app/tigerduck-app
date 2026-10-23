@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Hero strip at the top of the score screen — student name + current-term
-/// badge. Behaves gracefully when the parser could not recover either value
-/// (new student, malformed HTML) by hiding the badge and falling back to a
-/// generic title.
 struct StudentHeaderCard: View {
     @Environment(AppState.self) private var appState
 

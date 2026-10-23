@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// A made-up Wednesday on the main campus: the user has a class at periods 1-2 in TR-214, at
-/// 5-6 in TR-309 and at 8-9 in IB-503. Rooms by period: `.` free, `c` a class, `b` booked.
 struct RoomSuggestionTests {
     static let day: [String: String] = [
         "TR-209": "cccc.cc.cc....", "TR-210": "cc..cc..cc....", "TR-211": "cccc..cc......",

@@ -1,8 +1,5 @@
 import Foundation
 
-/// Fixed reminder points before an assignment's due date.
-/// Ordered from longest lead time to shortest so UI rendering and
-/// scheduling iterate in a stable direction.
 nonisolated enum AssignmentReminderOffset: String, CaseIterable, Identifiable, Codable, Sendable {
     case hr48
     case hr24
@@ -34,7 +31,6 @@ nonisolated enum AssignmentReminderOffset: String, CaseIterable, Identifiable, C
         }
     }
 
-    /// Short user-facing label for the settings list, such as "24 hours before".
     var label: String {
         switch self {
         case .hr48: return String(localized: "assignment_reminder_offset_48h")

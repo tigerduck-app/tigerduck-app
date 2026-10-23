@@ -2,26 +2,12 @@ import SwiftUI
 
 struct OnboardingPageView<Content: View, Actions: View>: View {
     enum IconAnimation {
-        /// Default — the whole symbol pulses once on appear.
         case pulse
-        /// Cycles per-layer color: on multi-layer symbols (e.g.
-        /// `lock.shield.fill`), the inner layer reads as flashing.
         case layerFlash
     }
 
-    /// What sits at the top of the page.
-    ///
-    /// `ExpressibleByStringLiteral` so the symbol pages keep reading as
-    /// `icon: "lock.shield.fill"` — only the welcome page, which shows the
-    /// app's own artwork rather than a stand-in glyph, has to spell out a
-    /// case.
     enum Hero: ExpressibleByStringLiteral {
-        /// An SF Symbol name, tinted with `accentColor` and animated per
-        /// `iconAnimation`.
         case symbol(String)
-        /// An asset-catalog image name. Rendered at its own colours —
-        /// tinting the logo would flatten it to a silhouette — and so
-        /// `accentColor` and `iconAnimation` don't apply.
         case image(String)
 
         init(stringLiteral value: String) { self = .symbol(value) }
@@ -32,8 +18,6 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     let subtitle: String
     var accentColor: Color = .onboardingAccent
     var iconAnimation: IconAnimation = .pulse
-    /// Fill both margins instead of centring — for the pages whose
-    /// subtitle is a paragraph of terms rather than a one-line tagline.
     var justifiesSubtitle = false
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
@@ -97,8 +81,6 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     private var iconView: some View {
         switch icon {
         case .image(let name):
-            // Larger than the symbol hero: the artwork fills its square edge to edge, where an SF
-            // Symbol has optical padding, so equal point sizes would make the logo look smaller.
             Image(name)
                 .resizable()
                 .scaledToFit()

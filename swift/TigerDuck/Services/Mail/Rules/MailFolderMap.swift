@@ -43,8 +43,6 @@ nonisolated enum MailFolderRole: String, CaseIterable, Sendable {
 }
 
 nonisolated enum MailFolderMap {
-    /// Exact IMAP-name match first, then one exact match on the decoded name. A role with
-    /// neither is absent, and its chip is hidden.
     static func resolve(available: [String]) -> [MailFolderRole: String] {
         var result: [MailFolderRole: String] = [:]
         for role in MailFolderRole.allCases {
@@ -57,7 +55,6 @@ nonisolated enum MailFolderMap {
         return result
     }
 
-    /// Everything not mapped to a role, sorted by decoded name — the "More…" list.
     static func otherFolders(available: [String]) -> [String] {
         let mapped = Set(resolve(available: available).values)
         return available

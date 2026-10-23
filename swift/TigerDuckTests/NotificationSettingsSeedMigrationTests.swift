@@ -1,6 +1,3 @@
-// `NotificationSettingsSeedMigration`, the once-after-upgrade trigger for the notification
-// settings reconcile. `.serialized`, and each test clears the done flag first, because
-// the flag lives in the real, process-wide `UserDefaults.standard`.
 import Defaults
 import Foundation
 import Testing
@@ -17,8 +14,6 @@ struct NotificationSettingsSeedMigrationTests {
         UserDefaults.standard.removeObject(forKey: doneKey)
     }
 
-    /// Runs the migration the way the app does, with the real routine
-    /// standing in for `AppState.reconcileNotificationSettings`.
     private static func runMigration(
         store: LiveActivityPreferencesStore,
         client: SettingsDocumentClient
@@ -43,7 +38,6 @@ struct NotificationSettingsSeedMigrationTests {
     @Test("an upgrade with no document seeds it from the device's values, reminders switched off included")
     func upgradeWithNoDocumentSeedsIt() async throws {
         try await Fixtures.withStore { store in
-            // A 2.0.x user who switched reminders off.
             store.isAssignmentReminderEnabled = false
             store.assignmentReminderOffsets = [.hr48, .hr2, .min10]
             store.showClassPreparingScenario = true
@@ -92,7 +86,6 @@ struct NotificationSettingsSeedMigrationTests {
                 ),
                 for: url
             )
-            // Served only if a write went out anyway.
             SettingsAPIStub.enqueue(try Fixtures.written(revision: 5), for: url)
 
             await Self.runMigration(store: store, client: SettingsAPIStub.makeClient(baseURL: baseURL))
@@ -109,7 +102,6 @@ struct NotificationSettingsSeedMigrationTests {
     @Test("an upgrade whose routine does not settle is not marked done, and runs again next launch")
     func unsettledUpgradeRunsAgain() {
         var runs = 0
-        // Offline, signed out or course sync off: the routine never settles.
         NotificationSettingsSeedMigration.runIfNeeded { _ in runs += 1 }
         NotificationSettingsSeedMigration.runIfNeeded { _ in runs += 1 }
 

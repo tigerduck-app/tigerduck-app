@@ -3,15 +3,9 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The term list refreshes while the app runs (`SemesterCatalog.refreshIfStale`), so a term
-/// published mid-session has to reach the class table without a relaunch.
-///
-/// Serialized, and synchronous on the main actor: the tests swap the process-wide catalogue
-/// cache and the stored pick, and put both back before anything else can read them.
 @Suite(.serialized)
 @MainActor
 struct ClassTableSemesterTests {
-    /// `SemesterCatalog.listKey`, which is private to the catalogue.
     private static let catalogueKey = "semesterCatalog.semesters"
 
     private static func withCatalogue(_ terms: [String], storedPick: String?, _ body: () -> Void) {
@@ -41,7 +35,6 @@ struct ClassTableSemesterTests {
 
             #expect(viewModel.availableSemesters.first == "1152")
             #expect(viewModel.currentSemester == "1152")
-            // Following the newest term is not a pick, or the table would freeze on it.
             #expect(Defaults[.classTableSelectedSemester] == nil)
         }
     }
@@ -60,7 +53,6 @@ struct ClassTableSemesterTests {
     }
 
     @Test func aClearedPickFollowsTheNewestTermOnTheNextReload() {
-        // Sign-out clears the stored pick, then posts `dataDidUpdate`, which reloads the table.
         Self.withCatalogue(["1151", "1142", "1141"], storedPick: "1142") {
             let viewModel = ClassTableViewModel()
 

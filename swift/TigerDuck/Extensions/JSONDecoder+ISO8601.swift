@@ -1,12 +1,7 @@
 import Foundation
 
-/// Shared ISO-8601 decoding strategy that accepts both
-/// `2026-04-22T02:10:00.123+00:00` and `2026-04-22T02:10:00+00:00`.
-///
 /// The Python backend emits `datetime.isoformat()` which may include
 /// fractional seconds depending on the source timestamp. Keeping this
-/// in one place means every JSON-decoding HTTP client in the app
-/// consistently accepts both shapes.
 extension JSONDecoder.DateDecodingStrategy {
     static var iso8601WithFractionalSecondsFallback: Self {
         .custom { decoder in

@@ -67,9 +67,6 @@ final class WatchPayloadEncoderTests: XCTestCase {
     }
 
     func test_resolvesPeriodBellTimes() {
-        // Assumes AppConstants.PeriodTimes.mapping["3"] = (start:"10:20", end:"11:10")
-        // and ["4"] = (start:"11:20", end:"12:10"). If those constants change,
-        // update this assertion to match.
         let c = makeCourse(schedule: [1: ["3", "4"]])
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",
@@ -85,8 +82,6 @@ final class WatchPayloadEncoderTests: XCTestCase {
             courses: [c], customNames: [:], accentHex: "#FF8800",
             syncedAt: Date(), loggedIn: true, languageTag: nil, visualPreset: .default
         )
-        // Encoder must use the user-visible per-course palette, not the
-        // global accent — otherwise the watch swatch drifts from the phone.
         XCTAssertEqual(
             snap.courses.first?.colorHex,
             TigerDuckTheme.courseColorHex(for: "X1")
@@ -108,9 +103,6 @@ final class WatchPayloadEncoderTests: XCTestCase {
     }
 
     func test_loggedOut_dropsCachedCourses() {
-        // Logout posts a data update before SwiftData rows are deleted, and the watch shows
-        // non-empty `courses` ahead of its signed-out state, so the encoder must strip courses
-        // when `loggedIn` is false or the previous user's schedule leaks.
         let c = makeCourse()
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",
@@ -131,12 +123,10 @@ final class WatchPayloadEncoderTests: XCTestCase {
         XCTAssertEqual(snap.courses.first?.skippedDates, ["2026-10-09"])
     }
 
-    /// The Watch keys today with `SharedTaipei.dayKey`, and the phone sends holidays keyed by
-    /// the widget's `dateKey`; the two must agree, including on a device outside Taiwan.
     func test_watchDayKeyMatchesTheWidgetKey() {
         let days = [
             Date(timeIntervalSince1970: 1_790_000_000),
-            Date(timeIntervalSince1970: 1_767_196_800),  // 2025-12-31 16:00 UTC, Taipei midnight
+            Date(timeIntervalSince1970: 1_767_196_800),
             Date(timeIntervalSince1970: 1_767_196_799),
         ]
         for day in days {
