@@ -357,7 +357,7 @@ struct ClassTableShareQRCodeTests {
     @Test("the QR code reads back as the code, in alphanumeric mode at level M", arguments: Sample.allCases)
     func readsBack(sample: Sample) throws {
         let text = switch sample {
-        case .ours: "HTTPS://TIGERDUCK.APP/T/1.B11300001.202610131405.1151.OMHDMNBQGQYDAMGUOGDLFDDULROWCYV6RYYFMACMBQAA.E2YUDIQ"
+        case .ours: "HTTPS://SHARE.TIGERDUCK.APP/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78"
         case .tat: "HTTPS://NTUST-TAT.WEB.APP/S/TAT21151B11300000CS1010001.134-EE1010002.256"
         case .eightTerms: try Self.eightTermsCode()
         }
@@ -477,12 +477,14 @@ struct ClassTableShareSheetTests {
             return Int((seed >> 33) % count)
         }
         let departments = ["CS", "EE", "EC", "MA", "PE", "GE", "FE", "CH", "ME", "TX", "DT", "MI"]
+        // Letters in a course number take the packed layout's longest tail shape.
+        let characters = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
         let semesters = ["1151"] + (107...114).reversed().flatMap { ["\($0)H", "\($0)2", "\($0)1"] }
         return ClassTableShareModel(
             studentId: "B10700000",
             terms: semesters.prefix(24).map { semester in
                 .init(semester: semester, courses: (0..<20).map { _ in
-                    let code = departments[random(12)] + (0..<7).map { _ in String(random(10)) }.joined()
+                    let code = departments[random(12)] + String((0..<7).map { _ in characters[random(36)] })
                     return SDCourse(courseNo: code, courseName: code)
                 })
             },

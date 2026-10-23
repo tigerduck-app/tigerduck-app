@@ -35,6 +35,11 @@ struct MacMoreView: View {
                     .navigationTitle(feature.displayName)
             }
         }
+        .onChange(of: appState.pendingMoreDeepLink, initial: true) { _, page in
+            guard let page else { return }
+            path = NavigationPath([page])
+            appState.pendingMoreDeepLink = nil
+        }
     }
 
     private var header: some View {

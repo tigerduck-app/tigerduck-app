@@ -23,6 +23,8 @@ struct ContentView: View {
 private struct ClassTableImportHost: ViewModifier {
     @Environment(AppState.self) private var appState
     @State private var importModel: ClassTableImportModel?
+    /// A link's import, shown over the class table with no camera under it, as on the Mac.
+    @State private var linkModel: ClassTableImportModel?
 
     func body(content: Content) -> some View {
         content
@@ -30,7 +32,54 @@ private struct ClassTableImportHost: ViewModifier {
                 guard importModel == nil else { return }
                 importModel = .live(authService: appState.authService)
             }
+            .overlay {
+                if linkModel?.isUpdating == true {
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        ProgressView().controlSize(.large)
+                    }
+                }
+            }
             .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
+            .classTableImportPrompts(linkModel, onConfirmScreen: false)
+            .sheet(item: Binding(get: { linkModel?.pending }, set: { if $0 == nil { linkModel?.cancel() } })) { pending in
+                if let linkModel {
+                    ClassTableImportConfirmView(model: linkModel, code: pending.code)
+                }
+            }
+            .onChange(of: linkModel?.isFinished) { _, isFinished in
+                if isFinished == true { linkModel = nil }
+            }
+            .task(id: HeldShareLink.mayOpen(in: appState) ? HeldShareLink.shared.link?.id : nil) {
+                while !openHeldLink(), !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+            }
+    }
+
+    /// False while the link waits: the import's sheet would close a sheet or alert open in a tab,
+    /// and would race a What's New or update sheet about to show.
+    private func openHeldLink() -> Bool {
+        // A link replaces what an open scanner, or an earlier link's import, shows, inside it.
+        let inPlace: ClassTableImportModel? = if let importModel, !importModel.isFinished {
+            importModel
+        } else if let linkModel, !linkModel.isIdle, !linkModel.isFinished {
+            linkModel
+        } else {
+            nil
+        }
+        if let inPlace {
+            if let text = HeldShareLink.shared.take(in: appState) { inPlace.linkOpened(text) }
+            return true
+        }
+        let othersUp = UIApplication.shared.foregroundRoot?.presentedViewController != nil
+            || appState.updateNotifyCoordinator.activeNotifySheet != nil
+        if othersUp, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: appState) { return false }
+        guard let text = HeldShareLink.shared.take(in: appState) else { return true }
+        let model = ClassTableImportModel.live(authService: appState.authService)
+        linkModel = model
+        model.linkOpened(text)
+        return true
     }
 }
 
