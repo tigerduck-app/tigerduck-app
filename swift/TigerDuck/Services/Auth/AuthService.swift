@@ -2,6 +2,7 @@ import Defaults
 import Foundation
 import os
 #if os(iOS)
+import SafariServices
 import UIKit
 import UserNotifications
 #elseif os(macOS)
@@ -557,6 +558,17 @@ final class AuthService {
         ClassroomUsageService.shared.forget()
         NTUSTSessionManager.shared.invalidateSession()
         CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId)
+        forgetSchoolPages()
+    }
+
+    /// Drops the school pages the shared URL cache kept and what the in-app browser kept from
+    /// Moodle and NTUST, so the next account never sees them. Library and School Mail requests
+    /// keep nothing in either; the browser's store goes whole, as a webmail page opened there does.
+    static func forgetSchoolPages(cache: URLCache = .shared) {
+        cache.removeAllCachedResponses()
+        #if os(iOS)
+        SFSafariViewController.DataStore.default.clearWebsiteData(completionHandler: nil)
+        #endif
     }
 
     func clearReauthError() {
