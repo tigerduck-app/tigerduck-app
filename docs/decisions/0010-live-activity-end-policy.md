@@ -24,8 +24,8 @@ activities from a schedule uploaded earlier.
 
 - Not being the current resolved target is never a reason to end an activity; it ends by its
   backend end job or its own countdown (`scheduleAutomaticEnd`).
-- `LiveActivityCoordinator.pruneRunningActivities` runs on every `apply` and for each element
-  of `Activity.activityUpdates`, and ends only:
+- `LiveActivityCoordinator.pruneRunningActivities` runs on every `apply`, for each element of
+  `Activity.activityUpdates` and once when the coordinator starts, and ends only:
   - activities whose countdown target has passed;
   - extra live copies of one `activityId`, keeping the one with an APNs update token, else the
     lowest `Activity.id`;
