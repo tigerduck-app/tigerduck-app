@@ -160,6 +160,22 @@ struct MoodleHTMLTextTests {
         """)
     }
 
+    @Test("past the cap, a list keeps a list or text it holds outside its items")
+    func listContentOutsideItemsPastTheCap() {
+        let html = (1...5).map { "<ul><li>\($0)" }.joined() + "<ul><li>a</li><ul><li>b</li></ul>c</ul>"
+            + String(repeating: "</li></ul>", count: 5)
+        #expect(MoodleHTMLText.markdown(fromHTML: html) == """
+        - 1
+          - 2
+            - 3
+              - 4
+                - 5
+                  a
+                  b
+                  c
+        """)
+    }
+
     @Test("files are resolved in HTML nested far deeper than the cap, cut to the cap")
     func pluginFilesInDeepNesting() {
         let image = "<img src=\"@@PLUGINFILE@@/a.png\">"

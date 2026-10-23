@@ -94,7 +94,7 @@ private nonisolated struct MarkdownWriter {
     private static let blockTags: Set<String> = [
         "p", "div", "section", "article", "main", "aside", "header", "footer", "nav", "center", "address",
         "figure", "figcaption", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "dl", "dt", "dd",
-        "form", "fieldset", "details", "summary",
+        "form", "fieldset", "details", "summary", "li",
     ]
 
     func blocks(in element: Element, depth: Int) -> [String] {
@@ -120,14 +120,9 @@ private nonisolated struct MarkdownWriter {
             } else if let level = Self.headingLevel(tag) {
                 endParagraph()
                 if let heading = Self.heading(level, inline(of: child, depth: depth + 1)) { result.append(heading) }
-            } else if tag == "blockquote", nesting >= Self.maximumNesting {
+            } else if ["ul", "ol", "blockquote"].contains(tag), nesting >= Self.maximumNesting {
                 endParagraph()
                 result += blocks(in: child, depth: depth + 1)
-            } else if tag == "ul" || tag == "ol", nesting >= Self.maximumNesting {
-                endParagraph()
-                for item in child.children().array() where item.tagName().lowercased() == "li" {
-                    result += blocks(in: item, depth: depth + 2)
-                }
             } else if tag == "ul" || tag == "ol" {
                 endParagraph()
                 let list = nested.list(child, ordered: tag == "ol", depth: depth + 1)
