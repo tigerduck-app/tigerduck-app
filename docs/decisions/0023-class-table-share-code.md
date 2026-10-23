@@ -34,7 +34,10 @@ codes, and imported class tables stay on the device.
      for `123456789` is `CBF43926`) over the ASCII bytes of everything before the last `.`, the
      prefix included, written as 4 bytes big-endian in Base32 without padding: 7 characters.
 - Each term lists at least one course and no course code twice. A course code has NTUST's shape,
-  `3?[A-Z]{2}[A-Z0-9]{6,7}`, the one the app reads from the course-selection list.
+  the one the app reads from the course-selection list: a head, then six or seven characters of
+  `0-9A-Z`. The head is `3` and two letters, two letters, or `3` and one letter, the last for a
+  course taken at NTU or NTNU (`3N1010001`); as a whole,
+  `(3[A-Z]{2}|[A-Z]{2}|3[A-Z])[A-Z0-9]{6,7}`.
 - Only course codes go in: no class times, course names, rooms, custom names or colours.
 - The app's encoder shares one term, or every term of the user's that has courses. It upper-cases
   the student ID, terms and course codes, sorts each term's course codes, and leaves out codes
@@ -139,3 +142,6 @@ codes in clear would take 888 characters.
 - A layout change takes a new version number, and decoders keep reading version 1, which is
   already handed out. A decoder that meets a newer version can ask the user to update the app.
 - Whoever sees a share code learns its sharer's student ID and courses.
+- Decoders from before the `3` and one-letter head was allowed
+  (https://github.com/tigerduck-app/tigerduck-app/issues/766) refuse a code that holds such a
+  course as an invalid course code.

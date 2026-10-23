@@ -36,7 +36,8 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         var semesters = Set<String>()
         let kept = terms.compactMap { term -> Term? in
             let semester = term.semester.uppercased()
-            let courseNos = Set(term.courseNos.map { $0.uppercased() }.filter { isCourseNo($0[...]) }).sorted()
+            let courseNos = Set(term.courseNos.map { $0.uppercased() }.filter { CourseSelectionService.isCourseNo($0[...]) })
+                .sorted()
             guard isSemester(semester[...]), !courseNos.isEmpty, semesters.insert(semester).inserted else {
                 return nil
             }
@@ -99,12 +100,6 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         return date
     }
 
-    /// NTUST's course-number shape, the one `CourseSelectionService.courseNoRegex` reads from the
-    /// course-selection list: an optional `3`, two letters, then six or seven letters or digits.
-    static func isCourseNo(_ text: Substring) -> Bool {
-        text.wholeMatch(of: /3?[A-Z]{2}[A-Z0-9]{6,7}/) != nil
-    }
-
     static func isSemester(_ text: Substring) -> Bool {
         text.utf8.count == 4 && isDigits(text.prefix(3)) && isUpperAlphanumerics(text.suffix(1))
     }
@@ -113,7 +108,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         guard !items.contains(where: \.isEmpty), Set(items).count == items.count else {
             throw ClassTableShareCodeError.malformed
         }
-        if let bad = items.first(where: { !isCourseNo($0) }) {
+        if let bad = items.first(where: { !CourseSelectionService.isCourseNo($0) }) {
             throw ClassTableShareCodeError.invalidCourseCode(String(bad))
         }
         return items.map(String.init)

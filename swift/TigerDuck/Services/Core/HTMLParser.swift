@@ -89,6 +89,52 @@ nonisolated enum HTMLParser {
         return nil
     }
 
+    /// The text of `nodes` and of what they hold, without the elements `skipped` names, and with a
+    /// space around each element `separates` names, which ends a word even where the HTML has no
+    /// space. It walks a stack instead of recursing, so HTML of any depth fits on a thread's stack.
+    static func visibleText(of nodes: [Node], skipping skipped: Set<String>, separating separates: (String) -> Bool) -> String {
+        var text = ""
+        var stack = nodes.reversed().map { (node: $0, closes: false) }
+        while let (node, closes) = stack.popLast() {
+            if closes {
+                text += " "
+            } else if let textNode = node as? TextNode {
+                text += textNode.getWholeText()
+            } else if let element = node as? Element {
+                let tag = element.tagName().lowercased()
+                if skipped.contains(tag) { continue }
+                if separates(tag) {
+                    text += " "
+                    stack.append((node: element, closes: true))
+                }
+                stack += element.getChildNodes().reversed().map { (node: $0, closes: false) }
+            }
+        }
+        return text
+    }
+
+    /// Replaces each element nested deeper than `AppConstants.maximumHTMLDepth` inside `root` with
+    /// its `visibleText`. SwiftSoup finds a node's document by recursing once per ancestor on every
+    /// change, so a tree must be this shallow before it is changed
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/758).
+    static func flattenPastTheDepthCap(
+        _ root: Element, skipping skipped: Set<String>, separating separates: (String) -> Bool
+    ) throws {
+        var deep: [Element] = []
+        var stack = root.children().array().map { (element: $0, depth: 1) }
+        while let (element, depth) = stack.popLast() {
+            if depth > AppConstants.maximumHTMLDepth {
+                deep.append(element)
+            } else {
+                stack += element.children().array().map { (element: $0, depth: depth + 1) }
+            }
+        }
+        for element in deep {
+            let text = visibleText(of: [element], skipping: skipped, separating: separates)
+            try element.replaceWith(TextNode(text, element.getBaseUri()))
+        }
+    }
+
     private static let loginErrorClassNames = [
         "field-validation-error",
         "validation-summary-errors",

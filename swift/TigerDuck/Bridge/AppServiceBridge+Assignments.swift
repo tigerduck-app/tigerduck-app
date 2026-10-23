@@ -416,18 +416,11 @@ extension AppServiceBridge {
         return freshAssignments
     }
 
-    private static let courseNoPrefixRegex: NSRegularExpression = {
-        try! NSRegularExpression(pattern: "^3?[A-Z]{2}[A-Z0-9]{6,7}$")
-    }()
-
     private static func courseName(from fullname: String) -> String {
         let parts = fullname.components(separatedBy: " ")
         guard parts.count >= 2 else { return fullname }
 
-        if let index = parts.firstIndex(where: { part in
-            let range = NSRange(part.startIndex..<part.endIndex, in: part)
-            return courseNoPrefixRegex.firstMatch(in: part, range: range) != nil
-        }), index + 1 < parts.count {
+        if let index = parts.firstIndex(where: { CourseSelectionService.isCourseNo($0[...]) }), index + 1 < parts.count {
             return parts[(index + 1)...].joined(separator: " ")
         }
 

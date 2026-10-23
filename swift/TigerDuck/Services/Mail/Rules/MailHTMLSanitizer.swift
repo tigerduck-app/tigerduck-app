@@ -90,6 +90,11 @@ nonisolated enum MailHTMLSanitizer {
     static func sanitize(_ html: String, allowRemoteImages: Bool) -> SanitizedHTML {
         do {
             let dirty = try SwiftSoup.parse(html, "")
+            if let body = dirty.body() {
+                try HTMLParser.flattenPastTheDepthCap(
+                    body, skipping: Set(removedWithContent), separating: { $0 == "br" || blockTags.contains($0) }
+                )
+            }
             try dirty.select(removedWithContent.joined(separator: ",")).remove()
             let clean = try Cleaner(headWhitelist: nil, bodyWhitelist: try makeWhitelist()).clean(dirty)
             clean.outputSettings().prettyPrint(pretty: false)
