@@ -127,6 +127,7 @@ final class LibraryViewModel {
 
     private func fetchAndDisplayQR() {
         Task { @MainActor in
+            runShownCodesClock()
             isLoadingQR = qrCodeImage == nil
             errorMessage = nil
             let generation = LibraryService.loginGeneration
@@ -153,9 +154,6 @@ final class LibraryViewModel {
                 } else {
                     consecutiveErrors += 1
                     rescheduleAfterError()
-                    // The shown code's clock runs through the wait, which a page shown again had stopped.
-                    let age = codeFetchedAt.map { Int(Date().timeIntervalSince($0)) } ?? LibraryQRCache.lifetime
-                    restartCountdown(from: max(0, LibraryQRCache.lifetime - age))
                 }
             }
         }
@@ -241,15 +239,30 @@ final class LibraryViewModel {
             Task { @MainActor in
                 if self.countdown > 0 {
                     self.countdown -= 1
-                }
-                // A code past its time no longer scans, and during the wait no new one replaces it.
-                if self.countdown == 0, self.isWaitingToRetry {
-                    self.qrCodeImage = nil
-                    self.qrPayload = nil
-                    self.countdownTimer?.invalidate()
+                } else {
+                    self.dropExpiredCode()
                 }
             }
         }
+    }
+
+    /// A request runs the clock from when the shown code was issued, as reopening the page keeps
+    /// that code's expiry.
+    private func runShownCodesClock() {
+        let age = codeFetchedAt.map { Int(Date().timeIntervalSince($0)) } ?? .max
+        if age > LibraryQRCache.lifetime {
+            dropExpiredCode()
+        } else {
+            restartCountdown(from: LibraryQRCache.lifetime - age)
+        }
+    }
+
+    /// A code past its time no longer scans, so it leaves the page while a request is slow or failed.
+    private func dropExpiredCode() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        qrCodeImage = nil
+        qrPayload = nil
     }
 
     private func dropCodeForAccountChange() {

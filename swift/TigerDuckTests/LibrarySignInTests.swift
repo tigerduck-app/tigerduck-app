@@ -487,32 +487,17 @@ struct LibrarySignInTests {
         }
     }
 
-    /// During the wait an expired code is taken off the page, so neither the page nor a retry's
-    /// loading state offers it to a scanner. A request a timer starts runs outside the test's
-    /// keychain, so the failure here follows the page being shown again, which stops the clock.
     @Test func aCodeThatExpiresDuringTheWaitLeavesThePage() async throws {
         try await Self.withStoredAccount { keychain in
-            let expiry = Int64((Date().timeIntervalSince1970 + 3_600) * 1_000)
-            try keychain.setObject(Data("token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
-            try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
-            LibraryQRCache.shared.clear()
             let calls = Calls()
             let model = LibraryViewModel()
             defer { model.stopTimers() }
-            model.backoffSchedule = [300]
             model.fetchCode = {
                 calls.count += 1
                 if calls.count == 1 { return "code-1" }
                 throw URLError(.timedOut)
             }
-            model.load()
-            model.onAppear()
-            try await waitUntil { model.qrCodeImage != nil }
-            LibraryQRCache.shared.clear()
-            model.onDisappear()
-            model.onAppear()
-            try await waitUntil { model.isWaitingToRetry }
-            #expect(model.qrCodeImage != nil)
+            try await Self.reopenIntoAFailure(model, keychain: keychain)
 
             model.countdown = 1
 
@@ -522,21 +507,51 @@ struct LibrarySignInTests {
         }
     }
 
-    @Test func aCodeAtTheEndOfItsTimeStaysForItsRefresh() async throws {
-        try await Self.withStoredAccount { _ in
-            LibraryQRCache.shared.clear()
+    @Test func aCodeThatExpiresWhileRetryAsksLeavesThePage() async throws {
+        try await Self.withStoredAccount { keychain in
+            let calls = Calls()
             let model = LibraryViewModel()
-            defer { model.stopTimers() }
-            model.fetchCode = { "code-1" }
-            model.load()
-            model.onAppear()
-            try await waitUntil { model.qrCodeImage != nil }
+            defer {
+                calls.isOpen = true
+                model.stopTimers()
+            }
+            model.fetchCode = {
+                calls.count += 1
+                if calls.count == 1 { return "code-1" }
+                if calls.count == 2 { throw URLError(.timedOut) }
+                while !calls.isOpen { try await Task.sleep(for: .milliseconds(20)) }
+                return "code-3"
+            }
+            try await Self.reopenIntoAFailure(model, keychain: keychain)
+            model.retryNow()
+            try await waitUntil { calls.count == 3 }
+            #expect(!model.isWaitingToRetry)
 
             model.countdown = 0
-            try await Task.sleep(for: .milliseconds(1_200))
 
-            #expect(model.qrCodeImage != nil)
+            try await waitUntil { model.qrCodeImage == nil }
+            #expect(model.qrPayload == nil)
+            calls.isOpen = true
+            try await waitUntil { model.qrPayload == "code-3" }
         }
+    }
+
+    /// Shows code-1, then fails a request with it still on the page. A request a timer starts runs
+    /// outside the test's keychain, so the failure follows the page being shown again.
+    private static func reopenIntoAFailure(_ model: LibraryViewModel, keychain: MemoryKeychain) async throws {
+        let expiry = Int64((Date().timeIntervalSince1970 + 3_600) * 1_000)
+        try keychain.setObject(Data("token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
+        try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
+        LibraryQRCache.shared.clear()
+        model.backoffSchedule = [300]
+        model.load()
+        model.onAppear()
+        try await waitUntil { model.qrCodeImage != nil }
+        LibraryQRCache.shared.clear()
+        model.onDisappear()
+        model.onAppear()
+        try await waitUntil { model.isWaitingToRetry }
+        #expect(model.qrCodeImage != nil)
     }
 
     private static func refusedOnceAndDue() {
