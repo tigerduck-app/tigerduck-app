@@ -55,7 +55,8 @@ nonisolated enum MoodleAssignmentService {
     /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
     /// or at ``commentPageLimit``. A total that drops while paging means a comment was deleted and
     /// the later pages moved back by one, keeping the deleted one and missing the one moved onto a
-    /// page already read, so every page is read once more. Oldest first, as a conversation reads.
+    /// page already read, so every page is read once more; a total that drops again throws, so the
+    /// page keeps the comments it showed. Oldest first, as a conversation reads.
     static func comments(
         cmid: Int,
         submissionId: Int,
@@ -97,6 +98,7 @@ nonisolated enum MoodleAssignmentService {
         }
         var read = try await readPages()
         if read.shrank { read = try await readPages() }
+        if read.shrank { throw MoodleWebserviceError.transientNetwork(underlying: "comments changed while paging") }
         var byId = read.byId
         let total = read.total
         if byId.count < total {
