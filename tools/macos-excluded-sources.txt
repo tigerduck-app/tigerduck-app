@@ -362,6 +362,7 @@ MailCSSFilter.swift
 MailCharset.swift
 MailFolderMap.swift
 MailHTMLSanitizer.swift
+MailMuteRules.swift
 MailRawHeaders.swift
 MailTextCleaner.swift
 MailTextLinkifier.swift

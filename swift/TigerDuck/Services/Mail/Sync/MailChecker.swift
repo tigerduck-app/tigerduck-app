@@ -206,7 +206,11 @@ actor MailChecker {
         // `marker:*` always includes the last message, even when its UID is below marker.
         let fetched = try await client.summaries(folder: MailConstants.inbox, fromUID: marker)
             .filter { $0.uid >= marker }
+        let mute = prefs.muteSettings
+        let checkedAt = now()
+        // A muted mail is passed over like a notified one: the marker moves past it.
         let fresh = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
+            .filter { !mute.mutes($0, arrivedAt: $0.arrivedAt ?? checkedAt) }
         guard stillSignedIn(as: account) else { return nil }
         let unnotified = await notifier.notify(fresh, uidValidity: status.uidValidity)
         if !stillSignedIn(as: account) { await notifier.removeAll() }

@@ -19,6 +19,7 @@ nonisolated protocol MailPreferences: AnyObject, Sendable {
     var lastCheckAt: Date? { get set }
     var diagnostics: [MailCheckRecord] { get set }
     var cacheWipePending: Bool { get set }
+    var muteSettings: MailMuteSettings { get set }
 
     func ownedDeleted(folder: String, uidValidity: UInt32) -> OwnedDeleted
     func setOwnedDeleted(_ owned: OwnedDeleted)
@@ -48,6 +49,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     private let ownedDeletedKey: Defaults.Key<Data?>
     private let diagnosticsKey: Defaults.Key<Data?>
     private let cacheWipePendingKey: Defaults.Key<Bool>
+    private let muteSettingsKey: Defaults.Key<Data?>
 
     private static let lock = NSLock()
 
@@ -63,6 +65,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         ownedDeletedKey = Defaults.Key<Data?>("school_mail_owned_deleted", suite: defaults)
         diagnosticsKey = Defaults.Key<Data?>("school_mail_diagnostics", suite: defaults)
         cacheWipePendingKey = Defaults.Key<Bool>("school_mail_cache_wipe_pending", default: false, suite: defaults)
+        muteSettingsKey = Defaults.Key<Data?>("school_mail_mute_settings", suite: defaults)
     }
 
     var studentID: String? {
@@ -108,6 +111,13 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         }
         set { Defaults[diagnosticsKey] = try? JSONEncoder().encode(newValue) }
     }
+    var muteSettings: MailMuteSettings {
+        get {
+            guard let data = Defaults[muteSettingsKey] else { return MailMuteSettings() }
+            return (try? JSONDecoder().decode(MailMuteSettings.self, from: data)) ?? MailMuteSettings()
+        }
+        set { Defaults[muteSettingsKey] = try? JSONEncoder().encode(newValue) }
+    }
 
     private var ownedDeletedRecords: [OwnedDeletedRecord] {
         get {
@@ -140,7 +150,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         Defaults.reset(
             studentIDKey, displayNameKey, notificationsEnabledKey,
             inboxUIDValidityKey, inboxNextUIDKey, authFailedKey,
-            demoActiveKey, lastCheckAtKey, ownedDeletedKey, diagnosticsKey
+            demoActiveKey, lastCheckAtKey, ownedDeletedKey, diagnosticsKey, muteSettingsKey
         )
     }
 }
