@@ -76,7 +76,11 @@ struct MoodleAssignmentView: View {
         .moodleFilePresentation(files)
     }
 
-    private static let markdownCache = NSCache<NSString, NSString>()
+    private static let markdownCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 300
+        return cache
+    }()
 
     /// The page draws again at each download-progress tick, so each piece of HTML, up to 150
     /// comments of it, is converted once and then read back by its text.
