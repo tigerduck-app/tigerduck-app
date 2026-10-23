@@ -209,6 +209,32 @@ struct MailHTMLSanitizerTests {
         #expect(MailHTMLSanitizer.plainText(fromHTML: html) == "deep")
     }
 
+    @Test(arguments: [("<div>", "</div>"), ("<span>", "</span>"), ("<blockquote>", "</blockquote>"), ("<ul><li>", "</li></ul>")])
+    func htmlNestedFarDeeperThanTheCapIsCleanedToTheCap(open: String, close: String) {
+        let html = String(repeating: open, count: 10_000) + "deep" + String(repeating: close, count: 10_000)
+        let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: false).html
+        let levels = open.filter { $0 == "<" }.count
+        #expect(sanitized.components(separatedBy: open).count - 1 == AppConstants.maximumHTMLDepth / levels)
+        #expect(sanitized.contains("deep"))
+        #expect(MailHTMLSanitizer.rewriteLinks(sanitized).html.contains("deep"))
+    }
+
+    @Test func anElementPastTheCapIsCleanedToItsText() {
+        for (wrappers, written) in [(AppConstants.maximumHTMLDepth - 1, "<div><b>a</b></div>"), (AppConstants.maximumHTMLDepth, "<div>a</div>")] {
+            let html = String(repeating: "<div>", count: wrappers) + "<b>a</b>" + String(repeating: "</div>", count: wrappers)
+            #expect(MailHTMLSanitizer.sanitize(html, allowRemoteImages: false).html.contains(written), "\(wrappers) wrappers")
+        }
+    }
+
+    @Test func pastTheCapTheTextOfARemovedElementStaysOut() {
+        let wrappers = AppConstants.maximumHTMLDepth
+        let html = String(repeating: "<div>", count: wrappers) + "<span><noscript>hidden</noscript>visible</span>"
+            + String(repeating: "</div>", count: wrappers)
+        let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: false).html
+        #expect(sanitized.contains("<div>visible</div>"))
+        #expect(!sanitized.contains("hidden"))
+    }
+
     @Test func plainTextPastTheCapIsTheElementsText() {
         for (wrappers, written) in [(AppConstants.maximumHTMLDepth - 1, "a\nb"), (AppConstants.maximumHTMLDepth, "a b")] {
             let html = String(repeating: "<div>", count: wrappers) + "<p>a<br>b</p>" + String(repeating: "</div>", count: wrappers)

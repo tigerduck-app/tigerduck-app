@@ -14,8 +14,9 @@ nonisolated enum MoodleHTMLText {
 
     static func resolvingPluginFiles(in html: String, files: [MoodleFile]) -> String {
         let placeholder = "@@PLUGINFILE@@"
-        guard html.contains(placeholder), let document = try? SwiftSoup.parseBodyFragment(html),
-              let body = document.body(), let elements = try? body.getAllElements() else { return html }
+        guard html.contains(placeholder), let document = try? SwiftSoup.parseBodyFragment(html), let body = document.body(),
+              (try? HTMLParser.flattenPastTheDepthCap(body, skipping: skippedTags, separating: separates)) != nil,
+              let elements = try? body.getAllElements() else { return html }
         document.outputSettings().prettyPrint(pretty: false)
         let urls = Dictionary(files.map { (($0.path ?? "/") + $0.name, $0.url) }, uniquingKeysWith: { first, _ in first })
         for element in elements.array() {
@@ -35,24 +36,11 @@ nonisolated enum MoodleHTMLText {
     }
 
     fileprivate static func visibleText(of element: Element) -> String {
-        var text = ""
-        var stack = element.getChildNodes().reversed().map { (node: $0, closes: false) }
-        while let (node, closes) = stack.popLast() {
-            if closes {
-                text += " "
-            } else if let textNode = node as? TextNode {
-                text += textNode.getWholeText()
-            } else if let child = node as? Element {
-                let tag = child.tagName().lowercased()
-                if skippedTags.contains(tag) { continue }
-                if tag == "br" || MarkdownWriter.separatesText(tag) {
-                    text += " "
-                    stack.append((node: child, closes: true))
-                }
-                stack += child.getChildNodes().reversed().map { (node: $0, closes: false) }
-            }
-        }
-        return text
+        HTMLParser.visibleText(of: element.getChildNodes(), skipping: skippedTags, separating: separates)
+    }
+
+    private static func separates(_ tag: String) -> Bool {
+        tag == "br" || MarkdownWriter.separatesText(tag)
     }
 
     private static func collapsed(_ text: String) -> String {

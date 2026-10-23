@@ -121,6 +121,25 @@ struct MoodleHTMLTextTests {
         }
     }
 
+    @Test("paragraphs inside the cap stay apart, and past it they are one paragraph of text")
+    func blocksPastTheCap() {
+        for (wrappers, written) in [(AppConstants.maximumHTMLDepth, "a\n\nb"), (AppConstants.maximumHTMLDepth + 1, "a b")] {
+            let html = String(repeating: "<div>", count: wrappers) + "<p>a</p><p>b</p>" + String(repeating: "</div>", count: wrappers)
+            #expect(MoodleHTMLText.markdown(fromHTML: html) == written, "\(wrappers) wrappers")
+        }
+    }
+
+    @Test("files are resolved in HTML nested far deeper than the cap, cut to the cap")
+    func pluginFilesInDeepNesting() {
+        let image = "<img src=\"@@PLUGINFILE@@/a.png\">"
+        let html = image + String(repeating: "<div>", count: 10_000) + "deep" + image + String(repeating: "</div>", count: 10_000)
+        let files = [MoodleFile(name: "a.png", size: 1, url: "https://moodle2.ntust.edu.tw/a.png", mimeType: nil, modified: nil, path: "/")]
+        let resolved = MoodleHTMLText.resolvingPluginFiles(in: html, files: files)
+        #expect(resolved.hasPrefix(#"<img src="https://moodle2.ntust.edu.tw/a.png" />"#))
+        #expect(resolved.components(separatedBy: "<div>").count - 1 == AppConstants.maximumHTMLDepth)
+        #expect(resolved.contains("deep"))
+    }
+
     @Test("past the cap, a template's or a noscript's text stays out",
           arguments: ["div", "span"], ["template", "noscript"])
     func skippedPastTheCap(wrapper: String, skipped: String) {
