@@ -119,6 +119,76 @@ struct UnchangedUploadTests {
         #expect(!coordinator.holdsUnsentCourseUploads)
     }
 
+    @Test("A refused edit undone before it went again leaves nothing unsent")
+    func refusedEditUndoneIsNotUnsent() async throws {
+        let backend = Backend()
+        backend.answer()
+        backend.answer(status: 503)
+        let coordinator = backend.makeCoordinator()
+        let taken = Self.courses(Self.entry("CS1"))
+
+        #expect(try await coordinator.uploadCoursesIfChanged(taken, semester: "1151", isCurrent: { true }))
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", isCurrent: { true })
+        }
+        #expect(coordinator.holdsUnsentCourseUploads)
+        #expect(try await !coordinator.uploadCoursesIfChanged(taken, semester: "1151", isCurrent: { true }))
+
+        #expect(!coordinator.holdsUnsentCourseUploads)
+        #expect(backend.uploads == 2)
+    }
+
+    @MainActor
+    private final class Account {
+        var isSignedIn = true
+    }
+
+    @Test("A course upload cancelled, or failing after its account signed out, leaves nothing unsent")
+    func cancelledOrSignedOutFailureIsNotUnsent() async {
+        let coordinator = Backend().makeCoordinator()
+        let key = UploadLedger.courses("1151")
+        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+            throw CancellationError()
+        }
+        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+            throw URLError(.cancelled)
+        }
+        #expect(!coordinator.holdsUnsentCourseUploads)
+
+        let account = Account()
+        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { account.isSignedIn }) {
+            account.isSignedIn = false
+            throw URLError(.timedOut)
+        }
+        #expect(!coordinator.holdsUnsentCourseUploads)
+
+        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+            throw URLError(.timedOut)
+        }
+        #expect(coordinator.holdsUnsentCourseUploads)
+    }
+
+    @Test("A course list out again unchanged, as a resend of what the server took, is not unsent")
+    func unchangedResendInFlightIsNotUnsent() async throws {
+        let coordinator = Backend().makeCoordinator()
+        let sends = Sends()
+        let key = UploadLedger.courses("1151")
+        #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+            await sends.send(1)
+        })
+
+        sends.holds = true
+        let resend = Task {
+            try await coordinator.uploadIfChanged(key, fingerprint: 1, always: true, isCurrent: { true }) {
+                await sends.send(1)
+            }
+        }
+        try await waitUntil { sends.isParked }
+        #expect(!coordinator.holdsUnsentCourseUploads)
+        sends.release()
+        #expect(try await resend.value)
+    }
+
     @Test("A course list counts as unsent while it is out, and an assignment list does not")
     func courseListInFlightIsUnsent() async throws {
         let coordinator = Backend().makeCoordinator()

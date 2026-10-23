@@ -203,7 +203,7 @@ final class PushCoordinator {
     nonisolated static let unchangedUploadInterval: TimeInterval = 6 * 3600
 
     private var uploads = UploadLedger()
-    private var lastUploads: [String: Task<Void, Never>] = [:]
+    private var lastUploads: [String: (task: Task<Void, Never>, fingerprint: Int)] = [:]
 
     nonisolated static func uploadIsDue(accepted: (fingerprint: Int, at: Date)?, fingerprint: Int, now: Date) -> Bool {
         guard let accepted, accepted.fingerprint == fingerprint else { return true }
@@ -248,25 +248,30 @@ final class PushCoordinator {
         isCurrent: @escaping @MainActor () -> Bool,
         send: @escaping @MainActor () async throws -> Void
     ) async throws -> Bool {
-        let previous = lastUploads[key]
+        let previous = lastUploads[key]?.task
         let upload = Task { @MainActor [weak self] () async throws -> Bool in
             await previous?.value
             guard let self, isCurrent() else { return false }
             let now = Date()
-            guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else { return false }
+            guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else {
+                self.uploads.forgetFailure(key)
+                return false
+            }
             let started = self.uploads.generation(of: key)
             do {
                 try await send()
             } catch {
-                self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: started)
+                if !AppLogger.isCancellation(error), isCurrent() {
+                    self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: started)
+                }
                 throw error
             }
             self.uploads.record(key, fingerprint: fingerprint, at: now, startedIn: started)
             return true
         }
         let ended = Task<Void, Never> { _ = try? await upload.value }
-        lastUploads[key] = ended
-        defer { if lastUploads[key] == ended { lastUploads[key] = nil } }
+        lastUploads[key] = (ended, fingerprint)
+        defer { if lastUploads[key]?.task == ended { lastUploads[key] = nil } }
         return try await upload.value
     }
 
@@ -276,7 +281,9 @@ final class PushCoordinator {
 
     var holdsUnsentCourseUploads: Bool {
         let prefix = UploadLedger.courses("")
-        return lastUploads.keys.contains { $0.hasPrefix(prefix) } || uploads.holdsFailure(prefix: prefix)
+        return uploads.holdsFailure(prefix: prefix) || lastUploads.contains {
+            $0.key.hasPrefix(prefix) && !uploads.accepts($0.key, fingerprint: $0.value.fingerprint)
+        }
     }
 
     static func fingerprint(of request: PushAPI.CourseUploadRequest) -> Int {
@@ -447,9 +454,17 @@ nonisolated struct UploadLedger {
         failed[key] = fingerprint
     }
 
+    mutating func forgetFailure(_ key: String) {
+        failed[key] = nil
+    }
+
+    func accepts(_ key: String, fingerprint: Int) -> Bool {
+        accepted[key]?.fingerprint == fingerprint
+    }
+
     /// A failed list the server took earlier, as an unchanged resend that failed, is not unsent.
     func holdsFailure(prefix: String) -> Bool {
-        failed.contains { $0.key.hasPrefix(prefix) && accepted[$0.key]?.fingerprint != $0.value }
+        failed.contains { $0.key.hasPrefix(prefix) && !accepts($0.key, fingerprint: $0.value) }
     }
 
     mutating func forget(_ key: String?) {
