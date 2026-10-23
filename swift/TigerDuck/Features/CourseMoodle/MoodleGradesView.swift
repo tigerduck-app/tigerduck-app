@@ -104,7 +104,7 @@ struct MoodleGradeTotalCard: View {
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
             HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
-                Text(total.grade ?? "")
+                Text(total.shownGrade ?? "")
                     .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
                     .foregroundStyle(Color.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -230,7 +230,7 @@ struct MoodleGradeRow: View {
     }
 
     private var gradeText: some View {
-        Text(item.grade ?? "")
+        Text(item.shownGrade ?? "")
             .font(.title3.weight(.semibold))
             .monospacedDigit()
             .foregroundStyle(Color.textPrimary)
@@ -271,6 +271,21 @@ extension MoodleGradeItem {
         }
     }
 
+    /// Points as Moodle writes them, "85.00", read without the zeros ending their decimals, as the
+    /// assignment page shows a score. A letter, a percentage or a scale's word stays whole.
+    var shownGrade: String? {
+        guard let grade, grade.wholeMatch(of: /-?[0-9]+([.,][0-9]+)?/) != nil else { return grade }
+        return Self.withoutTrailingZeros(grade)
+    }
+
+    static func withoutTrailingZeros(_ number: String) -> String {
+        guard number.contains(where: { $0 == "." || $0 == "," }) else { return number }
+        var trimmed = number
+        while trimmed.last == "0" { trimmed.removeLast() }
+        if trimmed.last == "." || trimmed.last == "," { trimmed.removeLast() }
+        return trimmed
+    }
+
     var maxText: String? {
         guard let maxGrade, let grade, grade.wholeMatch(of: /-?[0-9]+([.,][0-9]+)?/) != nil else { return nil }
         return maxGrade.formatted(
@@ -279,7 +294,7 @@ extension MoodleGradeItem {
     }
 
     var spokenGrade: String {
-        guard let grade else { return "" }
+        guard let grade = shownGrade else { return "" }
         guard let maxText else { return grade }
         let maximum = String(format: String(localized: "course_moodle_grade_out_of"), maxText)
         return "\(grade), \(maximum)"
