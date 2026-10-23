@@ -30,8 +30,8 @@ struct PushAppDelegateTests {
     }
 
     /// Holds the main actor by polling, not on a semaphore: a main thread waiting on a lower-QoS
-    /// signal trips the Thread Performance Checker, and in CI its report stalled every running test
-    /// for a minute (https://github.com/tigerduck-app/tigerduck-app/issues/428).
+    /// signal trips the Thread Performance Checker, whose report can hold every running test for a
+    /// minute (https://github.com/tigerduck-app/tigerduck-app/issues/428).
     private static func hold(until answered: () -> Bool, atMost seconds: Int) -> Bool {
         let deadline = ContinuousClock.now + .seconds(seconds)
         while !answered() {

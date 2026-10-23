@@ -259,10 +259,10 @@ jobs:
 
       # Run from the .xctestrun the build wrote, so xcodebuild does not load the project and
       # resolve packages again. Newest first: the restored DerivedData can hold an older one.
-      # Not quiet, so the log shows each test start and end. A run hung with no output until the
-      # job's limit (#428), so one still going after 30 minutes, several times a normal run, is
-      # taken for hung: the step lists the tests that started and did not end, samples the test
-      # host, keeps both with the simulator's log in hang/ and fails.
+      # Not quiet, so the log shows each test start and end. A run still going after 30 minutes,
+      # several times a normal run, is taken for hung rather than left to the job's limit: the step
+      # lists the tests that started and did not end, samples the test host, keeps both with the
+      # simulator's log in hang/ and fails.
       - name: Unit tests (${{ matrix.leg }})
         if: steps.changes.outputs.run == 'true'
         id: tests
