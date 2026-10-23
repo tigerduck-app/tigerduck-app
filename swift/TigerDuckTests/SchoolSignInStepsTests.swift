@@ -73,8 +73,7 @@ struct SchoolSignInStepsTests {
     }
 
     #if os(iOS)
-    /// The sign-out's service steps alone: the call that took the mail with it was in
-    /// `AppState.logoutNTUST`, which tests cannot build.
+    /// Tests cannot construct `AppState`, so this checks only the service steps.
     @Test func aSchoolSignOutLeavesSchoolMailSignedIn() async throws {
         let calls = Calls()
         let mail = MailAccountManagerTests.harness()
