@@ -182,6 +182,7 @@ final class AppState {
         authService.signOutStoredAccount = { [weak self] in
             await self?.logoutNTUST().value
         }
+        authService.forgetPages = { await AuthService.forgetSchoolPages() }
 
         cloudSyncPreference.onChange { [weak self] enabled in
             self?.cloudSyncEnabledDidChange(to: enabled)

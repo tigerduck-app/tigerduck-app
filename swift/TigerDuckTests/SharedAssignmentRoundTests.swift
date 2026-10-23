@@ -227,6 +227,58 @@ struct SharedAssignmentRoundTests {
         #expect(heard.withLock { $0 } == 1)
     }
 
+    @Test("an extension the page fetched sets the cached due date, longer, shorter or taken back, and one before it writes nothing")
+    func pageExtensionIsWritten() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let id = Self.newId()
+        let now = ContinuousClock.now
+        Self.round(of: id, askedAt: now - .seconds(60), in: folder.cache)
+        var status = MoodleSubmissionStatus(
+            assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil, extensionDueDate: Self.due - 60
+        )
+        #expect(await !AppServiceBridge.takeSubmissionStatus(status, askedAt: now, cache: folder.cache, isCurrent: { true }))
+
+        for (step, extensionDate) in [Self.due + 2 * 86_400, Self.due + 86_400, nil].enumerated() {
+            status.extensionDueDate = extensionDate
+            #expect(await AppServiceBridge.takeSubmissionStatus(
+                status, askedAt: now + .seconds(step + 1), cache: folder.cache, isCurrent: { true }
+            ))
+            let cached = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
+            #expect(cached?.dueDate == extensionDate ?? Self.due)
+            #expect(cached?.originalDueDate == Self.due)
+            #expect(cached?.extensionDueDate == extensionDate)
+            let event = folder.cache.loadCalendarEvents().first { $0.eventId == "moodle-\(id)" }
+            #expect(event?.date == extensionDate ?? Self.due)
+        }
+    }
+
+    @Test("an extension the page fetched past a closed assignment's cutoff has rounds ask about it again")
+    func pageExtensionReopensAClosedAssignment() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let id = Self.newId()
+        let now = ContinuousClock.now
+        let due = Date() - 2 * 86_400
+        let closedAt = due + 86_400
+        AppServiceBridge.persistRound(
+            [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
+                          dueDate: due, cutoffDate: due + 3600)],
+            records: [], closed: [String(id): closedAt, "1": closedAt], answered: [id: now - .seconds(60)],
+            account: "B11399001", fetchedAt: closedAt, cache: folder.cache, isCurrent: { true }
+        )
+
+        #expect(await AppServiceBridge.takeSubmissionStatus(
+            MoodleSubmissionStatus(
+                assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil,
+                extensionDueDate: Date() + 86_400
+            ),
+            askedAt: now, cache: folder.cache, isCurrent: { true }
+        ))
+
+        #expect(folder.cache.loadClosedUnsubmittedAssignments() == ["1": closedAt])
+    }
+
     @Test("a round running when the page's status comes is waited out, and its older answer does not replace it")
     func pageStatusWaitsOutARound() async throws {
         AppServiceBridge.cancelAssignmentRound()

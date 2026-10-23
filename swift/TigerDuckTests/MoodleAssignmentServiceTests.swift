@@ -270,6 +270,23 @@ struct MoodleAssignmentServiceTests {
         #expect(imageOnly.onlineText != nil)
     }
 
+    @Test("a student's extension comes with the submission and its status, and a null or zero one is none")
+    func studentExtension() throws {
+        func response(_ extensionDate: String) throws -> RawSubmissionStatusResponse {
+            try JSONDecoder().decode(RawSubmissionStatusResponse.self, from: Data(#"""
+            {"lastattempt": {"submission": {"id": 5501, "status": "new", "timemodified": 0, "plugins": []},
+              "gradingstatus": "notgraded", "extensionduedate": \#(extensionDate)}}
+            """#.utf8))
+        }
+        let extended = try response("1790700000")
+        #expect(extended.submission.extensionDueDate == Date(timeIntervalSince1970: 1_790_700_000))
+        #expect(extended.toMoodleSubmissionStatus(assignId: 701).extensionDueDate == Date(timeIntervalSince1970: 1_790_700_000))
+        for none in ["null", "0"] {
+            #expect(try response(none).submission.extensionDueDate == nil)
+            #expect(try response(none).toMoodleSubmissionStatus(assignId: 701).extensionDueDate == nil)
+        }
+    }
+
     @Test("comments are asked for on the assignment's module and the submission's record, and read oldest first")
     func comments() async throws {
         let token = UUID().uuidString
@@ -334,6 +351,24 @@ struct MoodleAssignmentServiceTests {
 
         #expect(comments.map(\.id) == Array(1...18))
         #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=2", "page=0"])
+    }
+
+    @Test("a comment deleted between pages is left out, and the one it moved onto a page already read is kept")
+    func commentDeletedWhilePaging() async throws {
+        let token = UUID().uuidString
+        let function = MoodleAssignmentService.commentsFunction
+        let remaining = Array((1...25).reversed()).filter { $0 != 20 }
+        Self.answer(Self.commentsPage(Array((11...25).reversed()), count: 25), function: function, token: token)
+        Self.answer(Self.commentsPage(Array(remaining.dropFirst(15)), count: 24), function: function, token: token)
+        Self.answer(Self.commentsPage(Array(remaining.prefix(15)), count: 24), function: function, token: token)
+        Self.answer(Self.commentsPage(Array(remaining.dropFirst(15)), count: 24), function: function, token: token)
+
+        let comments = try await MoodleAssignmentService.comments(
+            cmid: 9101, submissionId: 5501, token: token, session: Self.session(), siteURL: Self.site
+        )
+
+        #expect(comments.map(\.id) == Array(remaining.reversed()))
+        #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=0", "page=1"])
     }
 
     @Test("a site that answers every page with the first stops the paging at the second")

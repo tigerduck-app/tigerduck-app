@@ -53,7 +53,9 @@ nonisolated enum MoodleAssignmentService {
     /// Moodle keeps a submission's comments on the assignment's module, under the submission's
     /// record, and answers a page at a time, newest first, with the total in `count`. Paging ends
     /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
-    /// or at ``commentPageLimit``. Oldest first, as a conversation reads.
+    /// or at ``commentPageLimit``. A total that drops while paging means a comment was deleted and
+    /// the later pages moved back by one, keeping the deleted one and missing the one moved onto a
+    /// page already read, so every page is read once more. Oldest first, as a conversation reads.
     static func comments(
         cmid: Int,
         submissionId: Int,
@@ -78,15 +80,25 @@ nonisolated enum MoodleAssignmentService {
                 siteURL: siteURL
             )
         }
-        var byId: [Int: MoodleSubmissionComment] = [:]
-        var total = 0
-        for number in 0..<commentPageLimit {
-            let answer = try await page(number)
-            let known = byId.count
-            for comment in answer.comments { byId[comment.id] = comment.model }
-            total = answer.count ?? 0
-            guard byId.count > known, byId.count < total else { break }
+        func readPages() async throws -> (byId: [Int: MoodleSubmissionComment], total: Int, shrank: Bool) {
+            var byId: [Int: MoodleSubmissionComment] = [:]
+            var total: Int?
+            var shrank = false
+            for number in 0..<commentPageLimit {
+                let answer = try await page(number)
+                let known = byId.count
+                for comment in answer.comments { byId[comment.id] = comment.model }
+                let count = answer.count ?? 0
+                if let total, count < total { shrank = true }
+                total = count
+                guard byId.count > known, byId.count < count else { break }
+            }
+            return (byId, total ?? 0, shrank)
         }
+        var read = try await readPages()
+        if read.shrank { read = try await readPages() }
+        var byId = read.byId
+        let total = read.total
         if byId.count < total {
             for comment in try await page(0).comments { byId[comment.id] = comment.model }
         }
@@ -170,6 +182,7 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         let teamsubmission: Submission?
         let gradingstatus: String?
         let submissiongroup: Int?
+        let extensionduedate: Int?
 
         struct Submission: Decodable {
             let id: Int?
@@ -231,7 +244,8 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
             assignId: assignId,
             submissionStatus: attempt?.status,
             gradingStatus: lastattempt?.gradingstatus,
-            submittedAt: submittedAt
+            submittedAt: submittedAt,
+            extensionDueDate: extensionDueDate
         )
     }
 
@@ -249,9 +263,12 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
             id: record?.id,
             takesComments: plugins.contains { $0.type == "comments" },
             groupId: lastattempt?.submissiongroup,
-            grade: grade
+            grade: grade,
+            extensionDueDate: extensionDueDate
         )
     }
+
+    private var extensionDueDate: Date? { lastattempt?.extensionduedate.flatMap(Self.date) }
 
     /// Moodle writes "-" for no grade.
     private var grade: MoodleAssignmentGrade? {

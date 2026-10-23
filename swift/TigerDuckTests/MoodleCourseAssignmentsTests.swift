@@ -246,6 +246,21 @@ struct MoodleCourseAssignmentsTests {
         ])
     }
 
+    @Test("an assignment extended for the student stays with those to come until its extension")
+    func extendedStaysToCome() throws {
+        let day: TimeInterval = 86_400
+        let extended = Self.entry(1, due: -1 * day)
+        let listed = try #require(extended.listed)
+        listed.extend(to: Self.due + 2 * day)
+
+        let rows = MoodleAssignmentsView.rows(
+            of: [Self.entry(2, due: -2 * day), extended, Self.entry(3, due: 3 * day)], now: Self.due
+        )
+
+        #expect(rows.map(\.id) == [1, 3, 2])
+        #expect(rows.map(\.status) == [nil, nil, .overdueAcceptable])
+    }
+
     @Test("an assignment's page shows the submission it showed last time until the fetch answers")
     func submissionCacheFirst() async {
         let folder = Folder()

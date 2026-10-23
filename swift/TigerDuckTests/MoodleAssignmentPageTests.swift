@@ -40,7 +40,9 @@ struct MoodleAssignmentPageTests {
     static func store(
         in root: URL,
         answer: MoodleAssignmentSubmission = submission("submitted"),
-        fetches: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: 0)
+        fetches: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: 0),
+        asked: OSAllocatedUnfairLock<[Int]> = OSAllocatedUnfairLock(initialState: []),
+        answering answered: Int = .max
     ) -> MoodleCourseStore {
         MoodleCourseStore(
             courseId: 20119,
@@ -58,8 +60,10 @@ struct MoodleAssignmentPageTests {
                 forums: { _ in [] },
                 discussions: { _, _ in [] },
                 markViewed: { _, _ in },
-                submission: { _ in
-                    fetches.withLock { $0 += 1 }
+                submission: { id in
+                    let count = fetches.withLock { $0 += 1; return $0 }
+                    asked.withLock { $0.append(id) }
+                    guard count <= answered else { throw MoodleWebserviceError.httpStatus(code: 503) }
                     return answer
                 }
             )
@@ -104,6 +108,23 @@ struct MoodleAssignmentPageTests {
         #expect(MoodleAssignmentView.isSubmitted(record: offline, listed: handedIn, submission: nil) == nil)
     }
 
+    @Test("the due date counts a later extension, the fetched one once there is one, else the one Home's row has")
+    func dueWithExtension() {
+        let extended = Self.due + 86_400
+        let listed = Self.assignment(submittedAt: nil)
+        listed.extend(to: extended)
+        let withRow = MoodleCourseAssignments.Entry(record: Self.record, listed: listed)
+        let withoutRow = MoodleCourseAssignments.Entry(record: Self.record, listed: nil)
+        var answer = Self.submission("new")
+
+        #expect(MoodleAssignmentView.due(of: withRow, submission: nil) == extended)
+        #expect(MoodleAssignmentView.due(of: withRow, submission: answer) == Self.due)
+        answer.extensionDueDate = extended
+        #expect(MoodleAssignmentView.due(of: withoutRow, submission: answer) == extended)
+        answer.extensionDueDate = Self.due - 60
+        #expect(MoodleAssignmentView.due(of: withoutRow, submission: answer) == Self.due)
+    }
+
     @Test("the badge says not submitted, submitted, or how early or late against the due date")
     func badge() {
         let due = Self.due
@@ -142,13 +163,13 @@ struct MoodleAssignmentPageTests {
             == String(format: String(localized: "assignment_detail_overdue_by"), MoodleAssignmentView.durationText(60)))
     }
 
-    @Test("each badge and deadline line has its colour, and only the urgent and the overdue lines are bold")
+    @Test("each badge and deadline line has its colour, late in Home's, and only the urgent and the overdue lines are bold")
     func colours() {
         let badges: [(MoodleAssignmentView.Badge, text: Color, fill: Color)] = [
             (.notSubmitted, Color.textSecondary, Color.textSecondary.opacity(0.16)),
             (.submitted, .green, Color.green.opacity(0.16)),
             (.early(60), .green, Color.green.opacity(0.16)),
-            (.late(60), Color.badgeRedText, Color.badgeRed.opacity(0.16)),
+            (.late(60), AssignmentStatus.submittedLate.tint, AssignmentStatus.submittedLate.tint.opacity(0.16)),
         ]
         for (badge, text, fill) in badges {
             #expect(badge.tint == text, "\(badge)")
@@ -266,6 +287,64 @@ struct MoodleAssignmentPageTests {
         phase.value = .active
         try await waitUntil { fetches.withLock { $0 } == 2 }
         #expect(store.assignments.submission(of: Self.record).value?.isSubmitted == true)
+    }
+
+    @Observable
+    final class Shown {
+        var entry: MoodleCourseAssignments.Entry
+
+        init(_ record: MoodleAssignmentRecord) {
+            entry = MoodleCourseAssignments.Entry(record: record, listed: nil)
+        }
+    }
+
+    private struct SwitchingHost: View {
+        let shown: Shown
+        let store: MoodleCourseStore
+
+        var body: some View {
+            NavigationStack {
+                MoodleAssignmentView(
+                    store: store, entry: shown.entry, courseName: "Data Structures",
+                    policy: VisualStylePolicy(preset: .default), accent: .blue
+                )
+            }
+        }
+    }
+
+    @Test("a page that another assignment takes over in place fetches that assignment")
+    func switchedPageFetches() async throws {
+        let root = Self.folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let asked = OSAllocatedUnfairLock<[Int]>(initialState: [])
+        let store = Self.store(in: root, asked: asked)
+        let shown = Shown(Self.record)
+        let scene = try #require(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 800)
+        window.rootViewController = UIHostingController(rootView: SwitchingHost(shown: shown, store: store))
+        window.isHidden = false
+        defer { window.isHidden = true }
+
+        try await waitUntil { asked.withLock { $0 } == [701] }
+        shown.entry = MoodleCourseAssignments.Entry(record: MoodleAssignmentRecord(
+            assignId: 702, cmId: 9702, courseId: 20119, name: "HW 3", dueDate: Self.due, cutoffDate: nil,
+            allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
+        ), listed: nil)
+        try await waitUntil(timeout: .seconds(10)) { asked.withLock { $0 } == [701, 702] }
+    }
+
+    @Test("each piece of HTML is converted once, however often the page draws it")
+    func htmlIsConvertedOnce() {
+        let html = "<p>\(UUID().uuidString)</p>"
+        var conversions = 0
+        let convert = { (_: String) -> String in
+            conversions += 1
+            return "Converted"
+        }
+        #expect(MoodleAssignmentView.markdown(ofHTML: html, convert: convert) == "Converted")
+        #expect(MoodleAssignmentView.markdown(ofHTML: html, convert: convert) == "Converted")
+        #expect(conversions == 1)
     }
 
     @Test("an assignment opened while the course sheet covers Home closes the sheet, then shows over Home")

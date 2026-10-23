@@ -23,16 +23,11 @@ extension MoodleAssignmentView {
             switch self {
             case .notSubmitted: Color.textSecondary
             case .submitted, .early: .green
-            case .late: Color.badgeRedText
+            case .late: AssignmentStatus.submittedLate.tint
             }
         }
 
-        var fill: Color {
-            switch self {
-            case .late: Color.badgeRed.opacity(0.16)
-            case .notSubmitted, .submitted, .early: tint.opacity(0.16)
-            }
-        }
+        var fill: Color { tint.opacity(0.16) }
 
         var symbol: String { self == .notSubmitted ? "circle" : "checkmark" }
     }
@@ -113,15 +108,9 @@ extension MoodleAssignmentView {
         guard parts.count == 2, parts.allSatisfy({ $0.wholeMatch(of: /-?[0-9]+([.,][0-9]+)?/) != nil }) else {
             return Score(value: grade, max: nil)
         }
-        return Score(value: withoutTrailingZeros(parts[0]), max: withoutTrailingZeros(parts[1]))
-    }
-
-    private static func withoutTrailingZeros(_ number: String) -> String {
-        guard number.contains(where: { $0 == "." || $0 == "," }) else { return number }
-        var trimmed = number
-        while trimmed.last == "0" { trimmed.removeLast() }
-        if trimmed.last == "." || trimmed.last == "," { trimmed.removeLast() }
-        return trimmed
+        return Score(
+            value: MoodleGradeItem.withoutTrailingZeros(parts[0]), max: MoodleGradeItem.withoutTrailingZeros(parts[1])
+        )
     }
 
     static func durationText(_ seconds: TimeInterval, locale: Locale = .autoupdatingCurrent) -> String {
