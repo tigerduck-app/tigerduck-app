@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import TigerDuck
 
 private let doneKey = "CourseColorPickSeedMigration.v1.done"
@@ -49,11 +50,41 @@ struct CourseColorPickSeedMigrationTests {
         let file = root.appendingPathComponent("persistent/course_color_map.json")
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
 
-        CourseColorPickSeedMigration.runIfNeeded(cache: cache)
+        CourseColorPickSeedMigration.runIfNeeded(cache: cache, center: NotificationCenter())
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
         #expect(cache.loadPickedCourseColors().isEmpty)
 
         CourseColorPickSeedMigration.runIfNeeded(cache: cache)
         #expect(cache.loadPickedCourseColors() == ["CS1010001"])
+    }
+
+    /// Unlocking resumes the process that read the map as locked, so the seed cannot wait for the
+    /// next launch: a sign-out before it would see no picks
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/736).
+    @Test(
+        "a colour map that cannot be read yet is seeded once it can, without another launch",
+        arguments: [UIApplication.protectedDataDidBecomeAvailableNotification, UIApplication.didBecomeActiveNotification]
+    )
+    @MainActor
+    func anUnreadableMapIsSeededOnceItReads(readable: Notification.Name) throws {
+        defer { cleanUp() }
+        let cache = makeCache()
+        let center = NotificationCenter()
+        cache.saveCourseColorMap(["CS1010001": 0x123456])
+        let file = root.appendingPathComponent("persistent/course_color_map.json")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+
+        CourseColorPickSeedMigration.runIfNeeded(cache: cache, center: center)
+        center.post(name: readable, object: nil)
+        #expect(cache.loadPickedCourseColors().isEmpty)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+        center.post(name: readable, object: nil)
+        #expect(cache.loadPickedCourseColors() == ["CS1010001"])
+
+        cache.savePickedCourseColors([])
+        center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+        center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        #expect(cache.loadPickedCourseColors().isEmpty)
     }
 }

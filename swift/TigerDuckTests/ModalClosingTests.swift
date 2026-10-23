@@ -44,11 +44,11 @@ struct ModalClosingTests {
         let courseDismissals: Int
     }
 
-    private static func show(_ sheets: Sheets) throws -> UIWindow {
+    private static func show(_ sheets: Sheets, host: HostWindow = HostWindow()) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 800)
-        window.rootViewController = UIHostingController(rootView: Host(sheets: sheets))
+        window.rootViewController = UIHostingController(rootView: Host(sheets: sheets).readsHostWindow(into: host))
         window.makeKeyAndVisible()
         return window
     }
@@ -193,6 +193,79 @@ struct ModalClosingTests {
         try await waitUntil(timeout: .seconds(10)) { told.closedAll != nil }
         #expect(told.closedAll == true)
         #expect(root.presentedViewController == nil)
+    }
+
+    @Test("a link closes the sheets of the window its page opens in, not those of the key window")
+    func ownWindowsSheetsClose() async throws {
+        let keySheets = Sheets()
+        let keyWindow = try Self.show(keySheets)
+        defer { keyWindow.isHidden = true }
+        let keyRoot = try #require(keyWindow.rootViewController)
+        let sheets = Sheets()
+        let host = HostWindow()
+        let window = UIWindow(windowScene: try #require(keyWindow.windowScene))
+        window.frame = keyWindow.frame
+        window.rootViewController = UIHostingController(rootView: Host(sheets: sheets).readsHostWindow(into: host))
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        keySheets.course = true
+        sheets.course = true
+        try await waitUntil { keyRoot.presentedViewController != nil && root.presentedViewController != nil }
+        try await waitUntil { host.window === window }
+
+        let told = Told()
+        host.closePresentations { told.closedAll = $0 }
+
+        try await waitUntil(timeout: .seconds(10)) { told.closedAll != nil }
+        #expect(told.closedAll == true)
+        #expect(root.presentedViewController == nil)
+        #expect(!sheets.course)
+        #expect(keyRoot.presentedViewController != nil)
+        #expect(keySheets.course)
+        keySheets.course = false
+        try await waitUntil { keyRoot.presentedViewController == nil }
+    }
+
+    enum Link: String, CaseIterable {
+        case bulletin, schoolMail
+
+        var deepLink: AppState.DeepLink {
+            switch self {
+            case .bulletin: .bulletin(4821)
+            case .schoolMail: .schoolMail(folder: "INBOX", uid: 7)
+            }
+        }
+
+        var tab: AppFeature { self == .bulletin ? .announcements : .schoolMail }
+    }
+
+    @Test("a bulletin or School Mail link opens its tab once its window's sheets are closed", arguments: Link.allCases)
+    func linkOpensItsTabOverClosedSheets(link: Link) async throws {
+        let sheets = Sheets()
+        let host = HostWindow()
+        let window = try Self.show(sheets, host: host)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        sheets.course = true
+        try await waitUntil { root.presentedViewController.map { !$0.isBeingPresented } == true && host.window === window }
+
+        let opened = Opened()
+        MainTabView.route(link.deepLink, in: host) { tab in
+            opened.tab = tab
+            opened.withSheetUp = root.presentedViewController != nil
+        }
+
+        try await waitUntil(timeout: .seconds(10)) { opened.tab != nil }
+        #expect(opened.tab == link.tab)
+        #expect(opened.withSheetUp == false)
+        #expect(!sheets.course)
+    }
+
+    @MainActor
+    private final class Opened {
+        var tab: AppFeature?
+        var withSheetUp: Bool?
     }
 
     @MainActor

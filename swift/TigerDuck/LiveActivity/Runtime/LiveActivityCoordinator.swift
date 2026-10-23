@@ -37,6 +37,9 @@ final class LiveActivityCoordinator {
 
     init() {
         startActivityObserver()
+        // `activityUpdates` does not report an activity the backend started before this
+        // coordinator was built, as before the first unlock, so its token would wait for an apply.
+        Task { [weak self] in await self?.pruneRunningActivities(now: AppClock.now()) }
     }
 
     deinit {

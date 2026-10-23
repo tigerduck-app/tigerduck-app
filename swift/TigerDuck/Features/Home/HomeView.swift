@@ -9,6 +9,7 @@ struct HomeView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
+    @Environment(\.hostWindow) private var hostWindow
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
@@ -151,8 +152,7 @@ struct HomeView: View {
             guard case .assignment(let id) = link else { return }
             appState.pendingDeepLink = nil
             guard let assignment = DataCache.shared.loadAssignments().first(where: { $0.assignmentId == id }) else { return }
-            guard let root = UIApplication.shared.foregroundRoot else { return openAssignment(assignment) }
-            root.closePresentations { closedAll in openAssignment(assignment, closingSheet: closedAll) }
+            hostWindow.closePresentations { closedAll in openAssignment(assignment, closingSheet: closedAll) }
         }
         .sheet(item: $viewModel.selectedCourse, onDismiss: viewModel.courseSheetDismissed) { course in
             let slot = viewModel.selectedCourseSlot

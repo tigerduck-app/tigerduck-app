@@ -120,6 +120,7 @@ struct MainTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppFeature = .home
     @State private var showTimezoneAlert: Bool = false
+    @State private var hostWindow = HostWindow()
 
     private var visibleTabs: [AppFeature] { appState.configuredTabs }
 
@@ -169,9 +170,7 @@ struct MainTabView: View {
         }
         #if os(iOS)
         .onChange(of: appState.pendingDeepLink, initial: true) { _, new in
-            routeBulletinDeepLinkIfNeeded(new)
-            routeSchoolMailDeepLinkIfNeeded(new)
-            routeAssignmentDeepLinkIfNeeded(new)
+            Self.route(new, in: hostWindow, open: open)
         }
         #endif
         .onChange(of: scenePhase) { _, newPhase in
@@ -188,6 +187,8 @@ struct MainTabView: View {
         .flipToLibraryAttached()
         .firstTriggerPromptHost()
         .updateNotifySheetHost()
+        .readsHostWindow(into: hostWindow)
+        .environment(\.hostWindow, hostWindow)
         #endif
     }
 
@@ -198,19 +199,14 @@ struct MainTabView: View {
     }
 
     #if os(iOS)
-    private func routeBulletinDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
-        guard case .bulletin = link else { return }
-        open(.announcements)
-    }
-
-    private func routeSchoolMailDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
-        guard case .schoolMail = link, SchoolMailAvailability.isEnabled else { return }
-        open(.schoolMail)
-    }
-
-    private func routeAssignmentDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
-        guard case .assignment = link else { return }
-        open(.home)
+    /// An assignment link opens Home at once, as the page it pushes closes the sheets itself.
+    static func route(_ link: AppState.DeepLink?, in host: HostWindow, open: @escaping (AppFeature) -> Void) {
+        switch link {
+        case .bulletin: host.closePresentations { _ in open(.announcements) }
+        case .schoolMail where SchoolMailAvailability.isEnabled: host.closePresentations { _ in open(.schoolMail) }
+        case .assignment: open(.home)
+        case .schoolMail, nil: break
+        }
     }
     #endif
 

@@ -29,8 +29,16 @@ struct PushAppDelegateTests {
         }
     }
 
-    private static func hold(until signal: DispatchSemaphore, atMost seconds: Int) -> Bool {
-        signal.wait(timeout: .now() + .seconds(seconds)) == .success
+    /// Holds the main actor by polling, not on a semaphore: a main thread waiting on a lower-QoS
+    /// signal trips the Thread Performance Checker, whose report can hold every running test for a
+    /// minute (https://github.com/tigerduck-app/tigerduck-app/issues/428).
+    private static func hold(until answered: () -> Bool, atMost seconds: Int) -> Bool {
+        let deadline = ContinuousClock.now + .seconds(seconds)
+        while !answered() {
+            guard ContinuousClock.now < deadline else { return false }
+            usleep(1_000)
+        }
+        return true
     }
 
     /// Far past what a test waits: the main actor can be held for over a minute on a busy runner,
@@ -167,16 +175,12 @@ struct PushAppDelegateTests {
     @Test("The limit answers while the sync holds the main actor")
     func theLimitAnswersWhileTheMainActorIsBusy() async {
         let answers = Answers()
-        let answered = DispatchSemaphore(value: 0)
         var heldUntilAnswered: Bool?
 
         PushAppDelegate.run({
-            heldUntilAnswered = Self.hold(until: answered, atMost: 10)
+            heldUntilAnswered = Self.hold(until: { !answers.results.isEmpty }, atMost: 10)
             return .newData
-        }, within: .milliseconds(20)) { result in
-            answers.record(result)
-            answered.signal()
-        }
+        }, within: .milliseconds(20), then: answers.record)
         while heldUntilAnswered == nil { try? await Task.sleep(for: .milliseconds(20)) }
 
         #expect(heldUntilAnswered == true)
