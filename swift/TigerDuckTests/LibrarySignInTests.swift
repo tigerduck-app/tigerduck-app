@@ -376,6 +376,11 @@ struct LibrarySignInTests {
             model.load()
             model.onAppear()
             try await waitUntil { calls.count >= 4 }
+
+            // A request still running would store its code in the shared cache during the next test.
+            model.stopTimers()
+            await Task.yield()
+            try await waitUntil { model.qrPayload == "code-\(calls.count)" }
         }
     }
 
