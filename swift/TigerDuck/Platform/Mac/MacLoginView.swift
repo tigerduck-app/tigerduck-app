@@ -140,8 +140,8 @@ struct MacLoginView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .alert(String(localized: "action_sign_out"), isPresented: $confirmsSwitch) {
-            Button(String(localized: "action_sign_out"), role: .destructive) { Task { await logIn() } }
+        .alert(String(localized: "sign_in_change_account_title"), isPresented: $confirmsSwitch) {
+            Button(String(localized: "action_change"), role: .destructive) { Task { await logIn() } }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
             Text(switchLines.joined(separator: "\n"))

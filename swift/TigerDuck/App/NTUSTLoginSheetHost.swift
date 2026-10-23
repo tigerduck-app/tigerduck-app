@@ -26,8 +26,8 @@ struct NTUSTLoginSheetHost: ViewModifier {
                     appState.dismissNTUSTLogin()
                 }
             )
-            .alert(String(localized: "action_sign_out"), isPresented: $confirmsSwitch) {
-                Button(String(localized: "action_sign_out"), role: .destructive) { switchAccount() }
+            .alert(String(localized: "sign_in_change_account_title"), isPresented: $confirmsSwitch) {
+                Button(String(localized: "action_change"), role: .destructive) { switchAccount() }
                 Button(String(localized: "action_cancel"), role: .cancel) {}
             } message: {
                 Text(switchLines.joined(separator: "\n"))
