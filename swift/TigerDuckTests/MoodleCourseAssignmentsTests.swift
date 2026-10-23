@@ -251,8 +251,7 @@ struct MoodleCourseAssignmentsTests {
         let day: TimeInterval = 86_400
         let extended = Self.entry(1, due: -1 * day)
         let listed = try #require(extended.listed)
-        listed.extensionDueDate = Self.due + 2 * day
-        listed.dueDate = Self.due + 2 * day
+        listed.extend(to: Self.due + 2 * day)
 
         let rows = MoodleAssignmentsView.rows(
             of: [Self.entry(2, due: -2 * day), extended, Self.entry(3, due: 3 * day)], now: Self.due

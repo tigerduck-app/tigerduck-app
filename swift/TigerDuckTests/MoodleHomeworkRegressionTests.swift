@@ -261,6 +261,7 @@ struct MoodleHomeworkRegressionTests {
         // 2 was not answered and keeps the extension it had; 3's answer has none now.
         #expect(rows.map(\.dueDate) == [extended, extended, due, due])
         #expect(rows.map(\.extensionDueDate) == [extended, extended, nil, due - 86_400])
+        #expect(rows.allSatisfy { $0.originalDueDate == due })
         #expect(rows[0].moodleStatus(now: extended) == .submitted)
         #expect(rows[1].moodleStatus(now: due + 86_400) == .pending)
         #expect(rows[2].moodleStatus(now: due + 86_400) == .overdueAcceptable)

@@ -275,17 +275,12 @@ extension AppServiceBridge {
         statusAskedAt[id] = askedAt
         let assignments = cache.loadAssignments()
         guard let assignment = assignments.first(where: { $0.assignmentId == id }) else { return false }
-        // Only a later date can be applied: an extension taken back leaves the assignment's own due
-        // date, which the next round has.
-        let extended = status.extensionDueDate.flatMap { $0 > assignment.dueDate ? $0 : nil }
+        let dueBefore = assignment.dueDate
+        assignment.extend(to: status.extensionDueDate)
         guard assignment.isCompleted != status.isSubmitted || assignment.submittedAt != status.submittedAt
-            || extended != nil else { return false }
+            || assignment.dueDate != dueBefore else { return false }
         assignment.isCompleted = status.isSubmitted
         assignment.submittedAt = status.submittedAt
-        if let extended {
-            assignment.dueDate = extended
-            assignment.extensionDueDate = extended
-        }
         cache.saveAssignments(assignments)
         uploadForReminders(assignments)
         center.post(name: AppConstants.dataDidUpdate, object: nil)
@@ -327,7 +322,7 @@ extension AppServiceBridge {
             let status = statuses[record.assignId]
             let assignmentId = String(record.assignId)
             let extensionDate = status == nil ? extensions[assignmentId] : status?.extensionDueDate
-            guard let dueDate = record.dueDate(extendedTo: extensionDate) else { return nil }
+            guard let dueDate = record.dueDate else { return nil }
             guard !record.noSubmissions else { return nil }
 
             let moodleCourse = moodleCoursesById[record.courseId]

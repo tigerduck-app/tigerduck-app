@@ -112,7 +112,7 @@ struct MoodleAssignmentPageTests {
     func dueWithExtension() {
         let extended = Self.due + 86_400
         let listed = Self.assignment(submittedAt: nil)
-        listed.extensionDueDate = extended
+        listed.extend(to: extended)
         let withRow = MoodleCourseAssignments.Entry(record: Self.record, listed: listed)
         let withoutRow = MoodleCourseAssignments.Entry(record: Self.record, listed: nil)
         var answer = Self.submission("new")
