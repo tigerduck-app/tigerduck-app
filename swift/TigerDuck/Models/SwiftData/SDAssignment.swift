@@ -15,6 +15,9 @@ final class SDAssignment {
     var moodleUrl: String?
     var cutoffDate: Date?
     var submittedAt: Date?
+    /// Moodle's extension for this student, which `dueDate` already counts. A round that does not
+    /// ask Moodle about the assignment again takes it from here.
+    @Transient var extensionDueDate: Date? = nil
     @Transient var isIgnoredByCourse = false
     @Transient var semester: String? = nil
 
@@ -30,6 +33,7 @@ final class SDAssignment {
         moodleUrl: String? = nil,
         cutoffDate: Date? = nil,
         submittedAt: Date? = nil,
+        extensionDueDate: Date? = nil,
         semester: String? = nil
     ) {
         self.assignmentId = assignmentId
@@ -43,6 +47,7 @@ final class SDAssignment {
         self.moodleUrl = moodleUrl
         self.cutoffDate = cutoffDate
         self.submittedAt = submittedAt
+        self.extensionDueDate = extensionDueDate
         self.semester = semester
     }
 

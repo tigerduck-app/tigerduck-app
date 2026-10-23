@@ -32,13 +32,13 @@ struct MoodleAssignmentsView: View {
 
     static func rows(of entries: [MoodleCourseAssignments.Entry], now: Date) -> [Row] {
         let ordered = entries.enumerated().map { (order: $0.offset, entry: $0.element) }
-        let isPast = { (entry: MoodleCourseAssignments.Entry) in entry.record.dueDate.map { $0 < now } ?? false }
+        let isPast = { (entry: MoodleCourseAssignments.Entry) in entry.dueDate.map { $0 < now } ?? false }
         let toCome = ordered.filter { !isPast($0.entry) }.sorted {
-            let lhs = $0.entry.record.dueDate ?? .distantFuture, rhs = $1.entry.record.dueDate ?? .distantFuture
+            let lhs = $0.entry.dueDate ?? .distantFuture, rhs = $1.entry.dueDate ?? .distantFuture
             return lhs == rhs ? $0.order < $1.order : lhs < rhs
         }
         let past = ordered.filter { isPast($0.entry) }.sorted {
-            let lhs = $0.entry.record.dueDate ?? .distantPast, rhs = $1.entry.record.dueDate ?? .distantPast
+            let lhs = $0.entry.dueDate ?? .distantPast, rhs = $1.entry.dueDate ?? .distantPast
             return lhs == rhs ? $0.order < $1.order : lhs > rhs
         }
         return (toCome + past).map { item in
@@ -98,7 +98,7 @@ private struct MoodleAssignmentRow: View {
                             .font(TigerDuckTheme.Typography.caption.weight(.semibold))
                             .foregroundStyle(status.tint)
                     }
-                    if let due = row.entry.record.dueDate {
+                    if let due = row.entry.dueDate {
                         Text(due.absoluteMinuteString)
                             .font(TigerDuckTheme.Typography.caption)
                             .monospacedDigit()

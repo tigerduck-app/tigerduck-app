@@ -25,11 +25,12 @@ struct MoodleAssignmentView: View {
         let feed = store.assignments.submission(of: record)
         let submission = feed.value
         let isSubmitted = Self.isSubmitted(record: record, listed: entry.listed, submission: submission)
+        let due = Self.due(of: entry, submission: submission)
         let description = Self.markdown(ofHTML: record.intro)
         ScrollView {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xl) {
                 header
-                summaryCard(isSubmitted: isSubmitted, group: submission?.groupName)
+                summaryCard(due: due, isSubmitted: isSubmitted, group: submission?.groupName)
                 if !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     section(String(localized: "assignment_detail_description")) { markdown(description) }
                 }
@@ -44,7 +45,7 @@ struct MoodleAssignmentView: View {
                     submissionSection(feed, badge: Self.badge(
                         isSubmitted: isSubmitted,
                         submittedAt: Self.submittedAt(of: entry.listed, submission: submission),
-                        due: record.dueDate
+                        due: due
                     ))
                 }
                 if let grade = submission?.grade {
@@ -89,6 +90,12 @@ struct MoodleAssignmentView: View {
         return converted
     }
 
+    /// The fetched submission says whether the student has an extension, else Home's row does.
+    static func due(of entry: MoodleCourseAssignments.Entry, submission: MoodleAssignmentSubmission?) -> Date? {
+        guard let submission else { return entry.dueDate }
+        return entry.record.dueDate(extendedTo: submission.extensionDueDate)
+    }
+
     static func submittedAt(of listed: SDAssignment?, submission: MoodleAssignmentSubmission?) -> Date? {
         guard let submission else { return listed?.isCompleted == true ? listed?.submittedAt : nil }
         return submission.submittedAt
@@ -108,16 +115,16 @@ struct MoodleAssignmentView: View {
     }
 
     @ViewBuilder
-    private func summaryCard(isSubmitted: Bool?, group: String?) -> some View {
-        if record.dueDate != nil || group != nil {
+    private func summaryCard(due: Date?, isSubmitted: Bool?, group: String?) -> some View {
+        if due != nil || group != nil {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-                if let due = record.dueDate {
+                if let due {
                     TimelineView(.everyMinute) { _ in
                         deadline(due, Self.deadline(due: due, isSubmitted: isSubmitted, now: AppClock.now()))
                     }
                 }
                 if let group {
-                    if record.dueDate != nil { Divider() }
+                    if due != nil { Divider() }
                     groupRow(group)
                 }
             }

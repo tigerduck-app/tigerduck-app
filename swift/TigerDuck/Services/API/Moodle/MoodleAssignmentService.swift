@@ -182,6 +182,7 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
         let teamsubmission: Submission?
         let gradingstatus: String?
         let submissiongroup: Int?
+        let extensionduedate: Int?
 
         struct Submission: Decodable {
             let id: Int?
@@ -243,7 +244,8 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
             assignId: assignId,
             submissionStatus: attempt?.status,
             gradingStatus: lastattempt?.gradingstatus,
-            submittedAt: submittedAt
+            submittedAt: submittedAt,
+            extensionDueDate: extensionDueDate
         )
     }
 
@@ -261,9 +263,12 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
             id: record?.id,
             takesComments: plugins.contains { $0.type == "comments" },
             groupId: lastattempt?.submissiongroup,
-            grade: grade
+            grade: grade,
+            extensionDueDate: extensionDueDate
         )
     }
+
+    private var extensionDueDate: Date? { lastattempt?.extensionduedate.flatMap(Self.date) }
 
     /// Moodle writes "-" for no grade.
     private var grade: MoodleAssignmentGrade? {

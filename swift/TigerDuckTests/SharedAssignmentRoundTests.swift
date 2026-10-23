@@ -227,6 +227,27 @@ struct SharedAssignmentRoundTests {
         #expect(heard.withLock { $0 } == 1)
     }
 
+    @Test("an extension the page fetched moves the cached due date later, and one before it writes nothing")
+    func pageExtensionIsWritten() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let id = Self.newId()
+        let now = ContinuousClock.now
+        Self.round(of: id, askedAt: now - .seconds(60), in: folder.cache)
+        var status = MoodleSubmissionStatus(
+            assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil, extensionDueDate: Self.due - 60
+        )
+        #expect(await !AppServiceBridge.takeSubmissionStatus(status, askedAt: now, cache: folder.cache, isCurrent: { true }))
+
+        status.extensionDueDate = Self.due + 86_400
+        #expect(await AppServiceBridge.takeSubmissionStatus(
+            status, askedAt: now + .seconds(1), cache: folder.cache, isCurrent: { true }
+        ))
+        let cached = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
+        #expect(cached?.dueDate == Self.due + 86_400)
+        #expect(cached?.extensionDueDate == Self.due + 86_400)
+    }
+
     @Test("a round running when the page's status comes is waited out, and its older answer does not replace it")
     func pageStatusWaitsOutARound() async throws {
         AppServiceBridge.cancelAssignmentRound()

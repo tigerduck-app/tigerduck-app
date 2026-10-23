@@ -233,6 +233,39 @@ struct MoodleHomeworkRegressionTests {
         #expect(rows.map(\.courseName) == ["機器學習"])
     }
 
+    @Test func assignmentRound_countsAStudentsLaterExtension() {
+        let due = Date(timeIntervalSince1970: 1_790_000_000)
+        let extended = due + 3 * 86_400
+        let records = [1, 2, 3, 4].map {
+            MoodleAssignmentRecord(
+                assignId: $0, cmId: $0, courseId: 10, name: "HW\($0)", dueDate: due, cutoffDate: nil,
+                allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
+            )
+        }
+        let rows = AppServiceBridge.assignments(
+            from: records,
+            moodleCoursesById: [:],
+            courseNoByMoodleId: [:],
+            statuses: [
+                1: MoodleSubmissionStatus(assignId: 1, submissionStatus: "submitted", gradingStatus: nil,
+                                          submittedAt: due + 86_400, extensionDueDate: extended),
+                3: MoodleSubmissionStatus(assignId: 3, submissionStatus: "new", gradingStatus: nil, submittedAt: nil),
+                4: MoodleSubmissionStatus(assignId: 4, submissionStatus: "new", gradingStatus: nil, submittedAt: nil,
+                                          extensionDueDate: due - 86_400),
+            ],
+            confirmed: [:],
+            extensions: ["2": extended, "3": extended],
+            marks: AssignmentMarks(archivedIds: [], locallyCompletedIds: [], ignoredCourses: [], semester: "1151")
+        )
+
+        // 2 was not answered and keeps the extension it had; 3's answer has none now.
+        #expect(rows.map(\.dueDate) == [extended, extended, due, due])
+        #expect(rows.map(\.extensionDueDate) == [extended, extended, nil, due - 86_400])
+        #expect(rows[0].moodleStatus(now: extended) == .submitted)
+        #expect(rows[1].moodleStatus(now: due + 86_400) == .pending)
+        #expect(rows[2].moodleStatus(now: due + 86_400) == .overdueAcceptable)
+    }
+
     @Test func moodleEnrolledCourse_leadingThreeCourseNoIsNotTruncated() {
         let nightSchool = MoodleEnrolledCourse(
             id: 4,

@@ -270,6 +270,23 @@ struct MoodleAssignmentServiceTests {
         #expect(imageOnly.onlineText != nil)
     }
 
+    @Test("a student's extension comes with the submission and its status, and a null or zero one is none")
+    func studentExtension() throws {
+        func response(_ extensionDate: String) throws -> RawSubmissionStatusResponse {
+            try JSONDecoder().decode(RawSubmissionStatusResponse.self, from: Data(#"""
+            {"lastattempt": {"submission": {"id": 5501, "status": "new", "timemodified": 0, "plugins": []},
+              "gradingstatus": "notgraded", "extensionduedate": \#(extensionDate)}}
+            """#.utf8))
+        }
+        let extended = try response("1790700000")
+        #expect(extended.submission.extensionDueDate == Date(timeIntervalSince1970: 1_790_700_000))
+        #expect(extended.toMoodleSubmissionStatus(assignId: 701).extensionDueDate == Date(timeIntervalSince1970: 1_790_700_000))
+        for none in ["null", "0"] {
+            #expect(try response(none).submission.extensionDueDate == nil)
+            #expect(try response(none).toMoodleSubmissionStatus(assignId: 701).extensionDueDate == nil)
+        }
+    }
+
     @Test("comments are asked for on the assignment's module and the submission's record, and read oldest first")
     func comments() async throws {
         let token = UUID().uuidString

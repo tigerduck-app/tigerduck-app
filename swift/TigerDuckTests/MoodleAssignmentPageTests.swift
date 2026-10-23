@@ -108,6 +108,23 @@ struct MoodleAssignmentPageTests {
         #expect(MoodleAssignmentView.isSubmitted(record: offline, listed: handedIn, submission: nil) == nil)
     }
 
+    @Test("the due date counts a later extension, the fetched one once there is one, else the one Home's row has")
+    func dueWithExtension() {
+        let extended = Self.due + 86_400
+        let listed = Self.assignment(submittedAt: nil)
+        listed.extensionDueDate = extended
+        let withRow = MoodleCourseAssignments.Entry(record: Self.record, listed: listed)
+        let withoutRow = MoodleCourseAssignments.Entry(record: Self.record, listed: nil)
+        var answer = Self.submission("new")
+
+        #expect(MoodleAssignmentView.due(of: withRow, submission: nil) == extended)
+        #expect(MoodleAssignmentView.due(of: withRow, submission: answer) == Self.due)
+        answer.extensionDueDate = extended
+        #expect(MoodleAssignmentView.due(of: withoutRow, submission: answer) == extended)
+        answer.extensionDueDate = Self.due - 60
+        #expect(MoodleAssignmentView.due(of: withoutRow, submission: answer) == Self.due)
+    }
+
     @Test("the badge says not submitted, submitted, or how early or late against the due date")
     func badge() {
         let due = Self.due
