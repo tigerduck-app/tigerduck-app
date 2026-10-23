@@ -30,6 +30,27 @@ struct SignOutCallsTests {
         #expect(steps.taken == ["begin", "calls", "end"])
     }
 
+    @Test("a sign-out forgets the school's pages within its calls, which a sign-in waits for, before the rest")
+    func theCallsForgetTheSchoolPages() async {
+        let steps = Steps()
+        let auth = AuthService(
+            keychainHasCredentials: { false },
+            notificationCenter: NotificationCenter(),
+            schoolSignIn: { _, _ in false }
+        )
+        #if os(iOS)
+        auth.accountNotifications = DeliveredNotificationsStub()
+        #endif
+        auth.beginSignOutBackgroundTask = { {} }
+        auth.forgetPages = { steps.taken.append("pages") }
+
+        let calls = auth.startSignOutCalls { steps.taken.append("calls") }
+
+        #expect(auth.signOutCalls == calls)
+        await calls.value
+        #expect(steps.taken == ["pages", "calls"])
+    }
+
     @Test("a launch sends the unregister a sign-out left unsent only past onboarding and signed out")
     func theLaunchRetriesOnlyPastOnboardingAndSignedOut() {
         #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, sessionKept: true))

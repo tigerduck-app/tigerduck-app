@@ -158,6 +158,7 @@ final class AuthService {
     @ObservationIgnored var beginSignOutBackgroundTask: @Sendable () async -> @Sendable () async -> Void = {
         await AuthTokenManager.beginBackgroundTask(named: "Sign-out")
     }
+    @ObservationIgnored var forgetPages: @MainActor () async -> Void = { await AuthService.forgetSchoolPages() }
 
     func startSignOutCalls(_ calls: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let previous = signOutCalls
@@ -165,6 +166,8 @@ final class AuthService {
         let task = Task { @MainActor in
             let endBackgroundTask = await beginBackgroundTask()
             await previous?.value
+            // A sign-in waits for these calls, so the clearing cannot reach the next account's pages.
+            await forgetPages()
             await calls()
             #if os(iOS)
             await Self.removeAccountNotifications(from: accountNotifications)
@@ -558,16 +561,15 @@ final class AuthService {
         ClassroomUsageService.shared.forget()
         NTUSTSessionManager.shared.invalidateSession()
         CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId)
-        forgetSchoolPages()
     }
 
     /// Drops the school pages the shared URL cache kept and what the in-app browser kept from
     /// Moodle and NTUST, so the next account never sees them. Library and School Mail requests
     /// keep nothing in either; the browser's store goes whole, as a webmail page opened there does.
-    static func forgetSchoolPages(cache: URLCache = .shared) {
+    static func forgetSchoolPages(cache: URLCache = .shared) async {
         cache.removeAllCachedResponses()
         #if os(iOS)
-        SFSafariViewController.DataStore.default.clearWebsiteData(completionHandler: nil)
+        await SFSafariViewController.DataStore.default.clearWebsiteData()
         #endif
     }
 

@@ -19,7 +19,7 @@ struct SignOutNotificationTests {
         #expect(center.delivered.map(\.identifier) == ["new-mail"])
     }
 
-    @Test func aSignOutDropsTheSchoolPagesTheURLCacheKept() throws {
+    @Test func aSignOutDropsTheSchoolPagesTheURLCacheKept() async throws {
         let cache = URLCache(memoryCapacity: 1 << 20, diskCapacity: 0)
         let url = try #require(URL(string: "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery"))
         let request = URLRequest(url: url)
@@ -30,7 +30,7 @@ struct SignOutNotificationTests {
         cache.storeCachedResponse(CachedURLResponse(response: response, data: Data("<p>B11399001</p>".utf8)), for: request)
         try #require(cache.cachedResponse(for: request) != nil)
 
-        AuthService.forgetSchoolPages(cache: cache)
+        await AuthService.forgetSchoolPages(cache: cache)
 
         #expect(cache.cachedResponse(for: request) == nil)
     }
