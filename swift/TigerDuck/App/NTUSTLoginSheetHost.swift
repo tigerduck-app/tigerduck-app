@@ -3,6 +3,7 @@ import SwiftUI
 struct NTUSTLoginSheetHost: ViewModifier {
     @Environment(AppState.self) private var appState
     @State private var signIn: Task<Void, Never>?
+    @State private var isSigningIn = false
     @State private var confirmsSwitch = false
     @State private var switchLines: [String] = []
     @State private var switchAccount: () -> Void = {}
@@ -35,8 +36,11 @@ struct NTUSTLoginSheetHost: ViewModifier {
     }
 
     private func requestSignIn(_ studentId: String, _ password: String) {
+        guard !isSigningIn else { return }
+        isSigningIn = true
         let go = { signIn = Task { await logIn(studentId, password) } }
         signIn = Task {
+            defer { isSigningIn = false }
             guard AuthService.replacesStoredAccount(
                 stored: appState.authService.storedStudentId, signingInAs: studentId
             ) else { return await logIn(studentId, password) }

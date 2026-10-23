@@ -13,6 +13,7 @@ struct MacLoginView: View {
     @State private var password = ""
     @State private var isPasswordVisible = false
     @State private var confirmsSwitch = false
+    @State private var isSigningIn = false
     @State private var switchLines: [String] = []
     @FocusState private var focused: Field?
 
@@ -155,11 +156,14 @@ struct MacLoginView: View {
     private var canSubmit: Bool {
         !studentId.trimmingCharacters(in: .whitespaces).isEmpty &&
         !password.isEmpty &&
-        !appState.authService.isLoggingIn
+        !appState.authService.isLoggingIn &&
+        !isSigningIn
     }
 
     private func attemptLogin() async {
         guard canSubmit else { return }
+        isSigningIn = true
+        defer { isSigningIn = false }
         guard AuthService.replacesStoredAccount(
             stored: appState.authService.storedStudentId, signingInAs: studentId
         ) else { return await logIn() }
