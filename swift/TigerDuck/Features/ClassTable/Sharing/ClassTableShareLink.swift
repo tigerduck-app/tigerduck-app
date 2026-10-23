@@ -45,7 +45,8 @@ final class HeldShareLink {
         link = Link(text: text, loginGeneration: loginGeneration)
     }
 
-    /// Whether a link's import may open: someone is signed in and onboarding is finished.
+    /// Imports are filed under the signed-in account, which also tells the user's own code apart,
+    /// and until onboarding ends there is no class table to open them over.
     static func mayOpen(in appState: AppState) -> Bool {
         appState.hasCompletedOnboarding && appState.authService.hasStoredCredentials
     }
