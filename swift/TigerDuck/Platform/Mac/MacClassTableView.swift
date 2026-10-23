@@ -500,10 +500,14 @@ struct MacClassTableView: View {
         showImportPicker = true
     }
 
-    /// A link replaces any import this class table shows.
+    /// In the shown import's model, which closes an alert it shows before the link's own: a new
+    /// model's alert would replace it in one update, and the old job's buttons would stay.
     private func openHeldLink() {
         guard let text = HeldShareLink.shared.take(in: appState) else { return }
-        importModel?.cancel()
+        if let importModel, !importModel.isFinished {
+            importModel.linkOpened(text)
+            return
+        }
         let model = ClassTableImportModel.live(authService: appState.authService)
         importModel = model
         model.linkOpened(text)

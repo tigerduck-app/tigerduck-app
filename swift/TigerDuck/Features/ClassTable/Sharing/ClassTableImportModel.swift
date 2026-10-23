@@ -42,6 +42,7 @@ final class ClassTableImportModel: Identifiable {
     private(set) var isFinished = false
     @ObservationIgnored private(set) var lookupTask: Task<Void, Never>?
     @ObservationIgnored private var imageTask: Task<Void, Never>?
+    private(set) var linkTask: Task<Void, Never>?
 
     private let store: ImportedClassTableStore
     private let signedInStudentId: () -> String?
@@ -70,7 +71,9 @@ final class ClassTableImportModel: Identifiable {
         )
     }
 
-    var isIdle: Bool { prompt == nil && pending == nil && !isLookingUp && !isReadingImage && !isFinished }
+    var isIdle: Bool {
+        prompt == nil && pending == nil && linkTask == nil && !isLookingUp && !isReadingImage && !isFinished
+    }
 
     /// An update of a person imported already, whose lookup has no confirm screen to show on.
     var isUpdating: Bool { isLookingUp && pending == nil }
@@ -96,7 +99,22 @@ final class ClassTableImportModel: Identifiable {
     /// there to try another code with.
     func linkOpened(_ text: String) {
         guard !isFinished else { return }
+        let closesAlert = prompt != nil || linkTask != nil
         cancel()
+        guard closesAlert else {
+            read(link: text)
+            return
+        }
+        // An alert replaced in one update stays up with the old job's buttons, so it closes first.
+        linkTask = Task {
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            linkTask = nil
+            read(link: text)
+        }
+    }
+
+    private func read(link text: String) {
         if !scanned(text) { prompt = .invalid }
     }
 
@@ -243,6 +261,8 @@ final class ClassTableImportModel: Identifiable {
     }
 
     func cancel() {
+        linkTask?.cancel()
+        linkTask = nil
         imageTask?.cancel()
         imageTask = nil
         isReadingImage = false

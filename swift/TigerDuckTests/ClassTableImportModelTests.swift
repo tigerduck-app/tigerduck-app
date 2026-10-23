@@ -182,8 +182,35 @@ struct ClassTableImportModelTests {
         #expect(model.prompt == .invalid)
         #expect(model.pending == nil)
         model.linkOpened(try Self.code("B11300003"))
+        await model.linkTask?.value
         #expect(model.prompt == nil)
         #expect(model.pending?.code.studentId == "B11300003")
+    }
+
+    @Test("a link over a shown alert closes it before showing its own, so Update carries the newer code")
+    func linkOverAlertClosesItFirst() async throws {
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300002")), nickname: "小華", courses: [:])
+        let model = makeModel()
+        model.linkOpened(try Self.code("B11300001", [Self.spring]))
+        #expect(model.prompt?.title == String(format: String(localized: "class_table_import_replace_title"), "小明"))
+
+        model.linkOpened(try Self.code("B11300002", [Self.spring]))
+        #expect(model.prompt == nil, "the first alert closes before the next one shows")
+        #expect(!model.isIdle)
+        #expect(!model.scanned(try Self.code("B11300003")), "a camera code cannot take the gap")
+        model.linkOpened(try Self.code("B11300002"))
+        await model.linkTask?.value
+
+        guard case .replace(let job) = model.prompt else {
+            Issue.record("expected the replace prompt, got \(String(describing: model.prompt))")
+            return
+        }
+        #expect(job.nickname == "小華")
+        #expect(job.code.terms == [Self.fall], "the newest link wins")
+
+        model.cancel()
+        #expect(model.isIdle)
     }
 
     @Test("the user's own code is refused, compared with the signed-in student ID in any case")
