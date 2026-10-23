@@ -183,6 +183,34 @@ struct MoodleAssignmentPageStateTests {
         #expect(texts.contains(where: Read.exactly(Self.key("assignment_detail_submit_on_moodle")).matches))
     }
 
+    @Test("a refresh that fails over the submission the page shows puts up the failure note")
+    func refreshFailureNote() async throws {
+        let root = MoodleAssignmentPageTests.folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let record = Self.record(due: AppClock.now() + 86_400)
+        let store = MoodleAssignmentPageTests.store(in: root, answering: 1)
+        let page = MoodleAssignmentView(
+            store: store, entry: MoodleCourseAssignments.Entry(record: record, listed: nil),
+            courseName: "Data Structures", policy: VisualStylePolicy(preset: .default), accent: .blue
+        )
+        try await withAccessibilityAutomation {
+            let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+            let window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+            let host = UIHostingController(rootView: NavigationStack { page })
+            window.rootViewController = host
+            window.isHidden = false
+            defer { window.isHidden = true }
+            let note = Self.key("course_moodle_refresh_failed")
+            try await waitUntil { store.assignments.submission(of: record).value != nil }
+            #expect(accessibilityElement(labeled: note, in: host.view) == nil)
+
+            await store.assignments.refreshSubmission(of: record)
+
+            try await waitUntil(timeout: .seconds(10)) { accessibilityElement(labeled: note, in: host.view) != nil }
+        }
+    }
+
     @Test("with no due date there is no deadline card, and a hand-in reads as submitted")
     func noDueDate() async throws {
         let submitted = Self.key("assignment_status_submitted")

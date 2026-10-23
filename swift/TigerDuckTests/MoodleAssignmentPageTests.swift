@@ -41,7 +41,8 @@ struct MoodleAssignmentPageTests {
         in root: URL,
         answer: MoodleAssignmentSubmission = submission("submitted"),
         fetches: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: 0),
-        asked: OSAllocatedUnfairLock<[Int]> = OSAllocatedUnfairLock(initialState: [])
+        asked: OSAllocatedUnfairLock<[Int]> = OSAllocatedUnfairLock(initialState: []),
+        answering answered: Int = .max
     ) -> MoodleCourseStore {
         MoodleCourseStore(
             courseId: 20119,
@@ -60,8 +61,9 @@ struct MoodleAssignmentPageTests {
                 discussions: { _, _ in [] },
                 markViewed: { _, _ in },
                 submission: { id in
-                    fetches.withLock { $0 += 1 }
+                    let count = fetches.withLock { $0 += 1; return $0 }
                     asked.withLock { $0.append(id) }
+                    guard count <= answered else { throw MoodleWebserviceError.httpStatus(code: 503) }
                     return answer
                 }
             )

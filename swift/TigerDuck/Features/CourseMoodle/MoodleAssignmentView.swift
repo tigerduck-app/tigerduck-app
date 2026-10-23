@@ -61,6 +61,7 @@ struct MoodleAssignmentView: View {
         .safeAreaInset(edge: .bottom) {
             if !record.noSubmissions { submitButton }
         }
+        .moodleRefreshFailureNote(feed, hasContent: submission != nil)
         .moodleArticleChrome()
         .task(id: record.assignId) {
             guard openedId != record.assignId else { return }
