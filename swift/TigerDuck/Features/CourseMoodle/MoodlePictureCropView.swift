@@ -1,4 +1,5 @@
 #if os(iOS)
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -13,11 +14,14 @@ struct MoodlePictureCropView: View {
     static let outputSide: CGFloat = 512
     static let maxScale: CGFloat = 5
     static let jpegQuality: CGFloat = 0.85
+    /// A few times the output, enough to zoom in, without holding a full camera photo in memory.
+    nonisolated static let maxPickedPixels = 2048
 
     @State private var scale: CGFloat = 1
     @State private var offset: CGSize = .zero
     @GestureState private var pinch: CGFloat = 1
     @GestureState private var drag: CGSize = .zero
+    @State private var isDone = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -65,9 +69,12 @@ struct MoodlePictureCropView: View {
                     Spacer()
                     Button(String(localized: "action_done")) {
                         let rect = Self.cropRect(imageSize: image.size, diameter: diameter, scale: scale, offset: offset)
-                        if let jpeg = Self.jpeg(image, cropping: rect) { onDone(jpeg) }
+                        guard !isDone, let jpeg = Self.jpeg(image, cropping: rect) else { return }
+                        isDone = true
+                        onDone(jpeg)
                     }
                     .fontWeight(.semibold)
+                    .disabled(isDone)
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, TigerDuckTheme.Spacing.xl)
@@ -113,13 +120,30 @@ struct MoodlePictureCropView: View {
         )
     }
 
+    /// A picked photo decoded at ``maxPickedPixels`` at most and turned upright.
+    nonisolated static func downsampled(_ data: Data) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPickedPixels,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
+    /// Transparent parts come out white, not JPEG's black.
     static func jpeg(_ image: UIImage, cropping rect: CGRect) -> Data? {
         guard rect.width > 0 else { return nil }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
+        format.opaque = true
+        let side = CGSize(width: outputSide, height: outputSide)
         let factor = outputSide / rect.width
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: outputSide, height: outputSide), format: format)
-        return renderer.jpegData(withCompressionQuality: jpegQuality) { _ in
+        let renderer = UIGraphicsImageRenderer(size: side, format: format)
+        return renderer.jpegData(withCompressionQuality: jpegQuality) { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: side))
             image.draw(in: CGRect(x: -rect.minX * factor, y: -rect.minY * factor,
                                   width: image.size.width * factor, height: image.size.height * factor))
         }

@@ -1,7 +1,9 @@
 import Foundation
 #if os(iOS)
+import ImageIO
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 #endif
 import Testing
 @testable import TigerDuck
@@ -105,6 +107,64 @@ struct MoodleOwnProfileTests {
         #expect(decoded.width == 512)
         #expect(decoded.height == 512)
         #expect(jpeg.starts(with: [0xFF, 0xD8]))
+    }
+
+    @Test("a transparent picture uploads on white, not black")
+    func transparentPartsTurnWhite() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        let clear = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 10), format: format).image { _ in }
+        let jpeg = try #require(MoodlePictureCropView.jpeg(clear, cropping: CGRect(x: 0, y: 0, width: 10, height: 10)))
+        let decoded = try #require(UIImage(data: jpeg)?.cgImage)
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try #require(CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                             space: CGColorSpaceCreateDeviceRGB(),
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(decoded, in: CGRect(x: -256, y: -256, width: 512, height: 512))
+        #expect(pixel[0] > 240 && pixel[1] > 240 && pixel[2] > 240, "\(pixel)")
+    }
+
+    @Test("a picked photo is decoded at 2048 px at most, the right way up")
+    func aPickedPhotoIsDownsampled() throws {
+        let big = UIGraphicsImageRenderer(size: CGSize(width: 3000, height: 2000), format: {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            return format
+        }()).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 3000, height: 2000))
+        }
+        let image = try #require(big.cgImage)
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil))
+        // Orientation 6: the camera held upright, so the stored landscape pixels show as portrait.
+        CGImageDestinationAddImage(destination, image, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        #expect(CGImageDestinationFinalize(destination))
+
+        let picked = try #require(MoodlePictureCropView.downsampled(data as Data))
+        #expect(picked.height == MoodlePictureCropView.maxPickedPixels)
+        #expect(abs(picked.width - 1365) <= 1)
+        #expect(MoodlePictureCropView.downsampled(Data("not an image".utf8)) == nil)
+    }
+
+    @Test("a second tap on Done uploads nothing more")
+    func doneUploadsOnce() async throws {
+        try await withAccessibilityAutomation {
+            var uploads = 0
+            let photo = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30)).image { _ in }
+            let window = try show(MoodlePictureCropView(image: photo, onCancel: {}, onDone: { _ in uploads += 1 }))
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController?.view)
+            let done = String(localized: "action_done")
+            try await waitUntil { accessibilityElement(labeled: done, in: root) != nil }
+
+            _ = accessibilityElement(labeled: done, in: root)?.accessibilityActivate()
+            _ = accessibilityElement(labeled: done, in: root)?.accessibilityActivate()
+            try await waitUntil { accessibilityElement(labeled: done, in: root)?.accessibilityTraits.contains(.notEnabled) == true }
+            _ = accessibilityElement(labeled: done, in: root)?.accessibilityActivate()
+
+            #expect(uploads == 1)
+        }
     }
 
     private func show(_ view: some View) throws -> UIWindow {

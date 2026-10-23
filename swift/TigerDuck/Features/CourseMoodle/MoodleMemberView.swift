@@ -135,15 +135,23 @@ struct MoodleMemberView: View {
     }
 
     private func crop(_ item: PhotosPickerItem) async {
+        let data: Data?
         do {
-            guard let data = try await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
-            cropping = PhotoToCrop(image: image)
+            data = try await item.loadTransferable(type: Data.self)
         } catch {
-            pictureFailure = error.localizedDescription
+            AppLogger.captureError(error, context: ["phase": "moodlePicture.loadPhoto"])
+            data = nil
         }
+        let picked = await Task.detached { data.flatMap { MoodlePictureCropView.downsampled($0) } }.value
+        guard let picked else {
+            pictureFailure = String(localized: "empty_classroom_load_failed")
+            return
+        }
+        cropping = PhotoToCrop(image: UIImage(cgImage: picked))
     }
 
     private func upload(_ jpeg: Data) {
+        guard !isUploadingPicture else { return }
         isUploadingPicture = true
         Task {
             defer { isUploadingPicture = false }
