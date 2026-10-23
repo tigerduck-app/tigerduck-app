@@ -20,6 +20,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         MoodleMemberList(ownId: nil, members: [])
     }
     var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
+    var updatePicture: @Sendable (_ jpeg: Data) async throws -> Void = { _ in throw CancellationError() }
     var gradeItems: @Sendable (_ courseId: Int) async throws -> [MoodleGradeItem] = { _ in [] }
     var summary: @Sendable (_ courseId: Int) async throws -> MoodleCourseSummary = { _ in .empty }
     var submission: @Sendable (_ assignId: Int) async throws -> MoodleAssignmentSubmission = { _ in
@@ -82,6 +83,9 @@ nonisolated struct MoodleCourseAPI: Sendable {
                 let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
                 return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
             }
+        },
+        updatePicture: { jpeg in
+            try await MoodleWebserviceClient.withToken { try await MoodleProfilePictureService.update(jpeg: jpeg, token: $0) }
         },
         gradeItems: { courseId in
             try await MoodleWebserviceClient.withToken { token in
@@ -602,6 +606,17 @@ final class MoodleCourseStore {
                 return MoodleMemberList(ownId: nil, members: [])
             }
         }
+    }
+
+    func allowsPictureChange() async -> Bool {
+        (try? await api.functions())?.contains(MoodleProfilePictureService.updateFunction) == true
+    }
+
+    /// Sets the account's picture, then fetches the members again for its new address.
+    func updatePicture(_ jpeg: Data) async throws {
+        try await api.updatePicture(jpeg)
+        guard context.isCurrent() else { return }
+        await refreshMembers()
     }
 
     private(set) var pictures: [URL: CGImage] = [:]

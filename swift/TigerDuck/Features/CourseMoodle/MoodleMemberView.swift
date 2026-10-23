@@ -1,3 +1,6 @@
+#if os(iOS)
+import PhotosUI
+#endif
 import QuickLook
 import SwiftUI
 
@@ -12,7 +15,19 @@ struct MoodleMemberView: View {
     #if os(iOS)
     @State private var mail: MemberMail?
     @State private var sentCopyNotice: String?
+    @State private var canChangePicture = false
+    @State private var isPickingPhoto = false
+    @State private var photo: PhotosPickerItem?
+    @State private var cropping: PhotoToCrop?
+    @State private var isUploadingPicture = false
+    @State private var pictureFailure: String?
+    @State private var profileEditor: ProfileEditorPage?
+    @State private var isOpeningProfileEditor = false
     #endif
+
+    /// The list's copy, so a new picture shows once the members are fetched again.
+    private var shown: MoodleMember { store.member(member.id) ?? member }
+    private var isOwn: Bool { member.id == store.members.value?.ownId }
 
     var body: some View {
         ScrollView {
@@ -28,23 +43,51 @@ struct MoodleMemberView: View {
                 }
                 #endif
                 MoodleMemberProfile(
-                    member: member,
-                    picture: member.pictureURL.flatMap { store.pictures[$0] },
+                    member: shown,
+                    picture: shown.pictureURL.flatMap { store.pictures[$0] },
                     policy: appState.visualStylePolicy,
                     writeTo: writeTo,
                     isOpeningPicture: isOpeningPicture,
-                    openPicture: openPicture
+                    openPicture: openPicture,
+                    changePicture: changePicture,
+                    isUploadingPicture: isUploadingPicture
                 )
-                .task(id: member.pictureURL) { await store.loadPicture(of: member) }
+                .task(id: shown.pictureURL) { await store.loadPicture(of: shown) }
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             .padding(.top, TigerDuckTheme.Spacing.xxl)
-            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+            .padding(.bottom, TigerDuckTheme.Spacing.xxl + editButtonRoom)
         }
         .background(Color.backgroundPrimary)
         .moodleArticleChrome(page: .profile(userId: member.id, courseId: store.courseId))
         .quickLookPreview($picturePreview)
         #if os(iOS)
+        .overlay(alignment: .bottomTrailing) {
+            if isOwn { editOnMoodleButton }
+        }
+        .task(id: isOwn) {
+            if isOwn { canChangePicture = await store.allowsPictureChange() }
+        }
+        .photosPicker(isPresented: $isPickingPhoto, selection: $photo, matching: .images)
+        .onChange(of: photo) { _, item in
+            guard let item else { return }
+            photo = nil
+            Task { await crop(item) }
+        }
+        .fullScreenCover(item: $cropping) { photo in
+            MoodlePictureCropView(image: photo.image, onCancel: { cropping = nil }) { jpeg in
+                cropping = nil
+                upload(jpeg)
+            }
+        }
+        .sheet(item: $profileEditor, onDismiss: { Task { await store.refreshMembers() } }) { page in
+            InAppBrowserView(url: page.url)
+                .ignoresSafeArea()
+        }
+        .alert(pictureFailure ?? "", isPresented: Binding(
+            get: { pictureFailure != nil },
+            set: { if !$0 { pictureFailure = nil } }
+        )) {}
         .sheet(item: $mail) { mail in
             MailComposeView(
                 context: mail.context,
@@ -57,6 +100,65 @@ struct MoodleMemberView: View {
         }
         #endif
     }
+
+    #if os(iOS)
+    private var changePicture: (() -> Void)? {
+        isOwn && canChangePicture ? { isPickingPhoto = true } : nil
+    }
+
+    private var editOnMoodleButton: some View {
+        Button(action: openProfileEditor) {
+            Image(systemName: "pencil")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: Self.editButtonSize, height: Self.editButtonSize)
+                .background(Circle().fill(.tint))
+                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "course_member_edit_on_moodle"))
+        .padding(TigerDuckTheme.Spacing.lg)
+    }
+
+    private static let editButtonSize: CGFloat = 56
+
+    /// Lets the end of the page scroll clear of the edit button.
+    private var editButtonRoom: CGFloat { isOwn ? Self.editButtonSize + TigerDuckTheme.Spacing.lg : 0 }
+
+    private func openProfileEditor() {
+        guard !isOpeningProfileEditor, profileEditor == nil, let url = MoodlePage.profileEditor.webURL else { return }
+        isOpeningProfileEditor = true
+        Task {
+            profileEditor = ProfileEditorPage(url: await MoodleAutologinService.shared.url(for: url))
+            isOpeningProfileEditor = false
+        }
+    }
+
+    private func crop(_ item: PhotosPickerItem) async {
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
+            cropping = PhotoToCrop(image: image)
+        } catch {
+            pictureFailure = error.localizedDescription
+        }
+    }
+
+    private func upload(_ jpeg: Data) {
+        isUploadingPicture = true
+        Task {
+            defer { isUploadingPicture = false }
+            do {
+                try await store.updatePicture(jpeg)
+            } catch {
+                pictureFailure = MoodleFirstLoadView.message(for: error)
+            }
+        }
+    }
+    #else
+    private var changePicture: (() -> Void)? { nil }
+    private var isUploadingPicture: Bool { false }
+    private var editButtonRoom: CGFloat { 0 }
+    #endif
 
     private func openPicture() {
         guard !isOpeningPicture else { return }
@@ -86,8 +188,12 @@ struct MoodleMemberProfile: View {
     let writeTo: (String) -> Void
     var isOpeningPicture = false
     let openPicture: () -> Void
+    /// Shows the camera button on the account's own page, where the site allows a new picture.
+    var changePicture: (() -> Void)? = nil
+    var isUploadingPicture = false
 
     private static let avatarSize: CGFloat = 88
+    private static let badgeSize: CGFloat = 28
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
@@ -127,8 +233,28 @@ struct MoodleMemberProfile: View {
         .frame(maxWidth: .infinity)
     }
 
-    @ViewBuilder
     private var avatar: some View {
+        pictureButton
+            .overlay { if isUploadingPicture { ProgressView() } }
+            .overlay(alignment: .bottomTrailing) {
+                if let changePicture {
+                    Button(action: changePicture) {
+                        Image(systemName: "camera.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: Self.badgeSize, height: Self.badgeSize)
+                            .background(Circle().fill(.tint))
+                            .overlay(Circle().stroke(Color.backgroundPrimary, lineWidth: 3))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isUploadingPicture)
+                    .accessibilityLabel(String(localized: "course_member_change_picture"))
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var pictureButton: some View {
         let image = MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
         if picture != nil {
             Button(action: openPicture) {
@@ -235,6 +361,16 @@ struct MoodleMemberProfile: View {
 }
 
 #if os(iOS)
+private struct PhotoToCrop: Identifiable {
+    let image: UIImage
+    let id = UUID()
+}
+
+private struct ProfileEditorPage: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
 private struct MemberMail: Identifiable {
     let context: MailComposeContext
     let session = MailPageSession()
