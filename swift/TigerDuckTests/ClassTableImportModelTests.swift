@@ -82,6 +82,9 @@ struct ClassTableImportModelTests {
 
         #expect(!model.scanned("https://example.com/menu"))
         #expect(!model.scanned("WIFI:S:Library;T:WPA;P:secret;;"))
+        #expect(!model.scanned(
+            "HTTPS://TIGERDUCK.APP/T/1.B11300001.202610131405.1151.OMHDMNBQGQYDAMGUOGDLFDDULROWCYV6RYYFMACMBQAA.E2YUDIQ"
+        ), "the old prefix is not a share code")
 
         #expect(model.prompt == nil)
         #expect(model.pending == nil)
@@ -90,17 +93,20 @@ struct ClassTableImportModelTests {
         #expect(model.pending?.code.studentId == "B11300001")
     }
 
+    private nonisolated static let damaged = "HTTPS://SHARE.TIGERDUCK.APP/CLASSTABLE/HELLO"
+    private nonisolated static let newer = "HTTPS://SHARE.TIGERDUCK.APP/FRIEND/1ABC"
+
     @Test(
-        "a damaged, edited or newer share code is refused with one message, and scanning goes on",
+        "a damaged or edited share code is refused with one message, and scanning goes on",
         arguments: [
-            "HTTPS://TIGERDUCK.APP/T/1.B11300001.202610131405.1151.PMHDMNBQGQYDAMGUOGDLFDDULROWCYV6RYYFMACMBQAA.E2YUDIQ",
-            "HTTPS://TIGERDUCK.APP/T/1.B11300001.202610131405.1151.OMHDMNBQGQYDAMGUOGDLAAA.5GDOVTY",
-            "HTTPS://TIGERDUCK.APP/T/2.B11300001.202610131405.1151.OMHDMNBQGQYDAMAEAA.O6Y5T6Y",
-            "HTTPS://TIGERDUCK.APP/T/1.B11300001",
+            "HTTPS://SHARE.TIGERDUCK.APP/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZA78",
+            "HTTPS://SHARE.TIGERDUCK.APP/CLASSTABLE/1M4Z51AJB234O09283GA15X5HB8LS",
+            damaged,
+            "HTTPS://SHARE.TIGERDUCK.APP",
             "HTTPS://NTUST-TAT.WEB.APP/S/TAT21151B11300001CS10",
         ]
     )
-    func damagedCodeIsRefused(text: String) {
+    func damagedCodeIsRefused(text: String) throws {
         let model = makeModel()
 
         #expect(model.scanned(text))
@@ -109,7 +115,28 @@ struct ClassTableImportModelTests {
         #expect(model.prompt?.title == String(localized: "class_table_import_failed"))
         #expect(model.prompt?.message == String(localized: "class_table_import_invalid_message"))
         #expect(model.pending == nil)
-        #expect(!model.scanned("HTTPS://TIGERDUCK.APP/T/1.B11300001"), "nothing is read while the alert is up")
+        #expect(!model.scanned(try Self.code("B11300001")), "nothing is read while the alert is up")
+        model.dismissPrompt()
+        #expect(model.isIdle)
+    }
+
+    @Test(
+        "a code of a newer version or type asks for a newer app, under the same title",
+        arguments: [
+            "HTTPS://SHARE.TIGERDUCK.APP/CLASSTABLE/2KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78",
+            newer,
+            "HTTPS://NTUST-TAT.WEB.APP/S/TAT31151B11300001CS1010001",
+        ]
+    )
+    func newerCodeNeedsUpdate(text: String) {
+        let model = makeModel()
+
+        #expect(model.scanned(text))
+
+        #expect(model.prompt == .needsUpdate)
+        #expect(model.prompt?.title == String(localized: "class_table_import_failed"))
+        #expect(model.prompt?.message == String(localized: "share_code_needs_update_message"))
+        #expect(model.pending == nil)
         model.dismissPrompt()
         #expect(model.isIdle)
     }
@@ -289,15 +316,18 @@ struct ClassTableImportModelTests {
         #expect(missing.prompt == .noCode)
     }
 
-    @Test("an image's first readable share code wins, and one holding only a damaged code is refused as damaged")
+    @Test("an image's first readable share code wins, then a newer code's update, then a damaged code's message")
     func imageWithSeveralCodes() throws {
-        let damaged = "HTTPS://TIGERDUCK.APP/T/1.B11300001"
         let valid = makeModel()
-        valid.imageRead(["https://example.com/menu", damaged, try Self.code("B11300002")])
+        valid.imageRead(["https://example.com/menu", Self.newer, Self.damaged, try Self.code("B11300002")])
         #expect(valid.pending?.code.studentId == "B11300002")
 
+        let newer = makeModel()
+        newer.imageRead([Self.damaged, "https://example.com/menu", Self.newer])
+        #expect(newer.prompt == .needsUpdate)
+
         let refused = makeModel()
-        refused.imageRead(["https://example.com/menu", damaged])
+        refused.imageRead(["https://example.com/menu", Self.damaged])
         #expect(refused.prompt == .invalid)
     }
 
@@ -482,7 +512,7 @@ struct ClassTableImportModelTests {
     @Test("an alert shows on the screen in front: the confirm screen's failed lookup there, the rest under it")
     func promptsShowOnTheScreenInFront() async throws {
         let refused = makeModel()
-        refused.scanned("HTTPS://TIGERDUCK.APP/T/1.B11300001")
+        refused.scanned(Self.damaged)
         #expect(refused.promptShown(onConfirmScreen: false) == .invalid)
         #expect(refused.promptShown(onConfirmScreen: true) == nil)
 

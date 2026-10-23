@@ -14,6 +14,8 @@ final class ClassTableImportModel: Identifiable {
     enum Prompt: Equatable {
         case invalid
         case noCode
+        /// A code a newer app wrote: a format version or a share type this one does not know.
+        case needsUpdate
         case ownCode
         case replace(Job)
         case lookupFailed(Job)
@@ -80,6 +82,7 @@ final class ClassTableImportModel: Identifiable {
         switch Self.reading(text) {
         case .notShareCode: return false
         case .invalid: prompt = .invalid
+        case .needsUpdate: prompt = .needsUpdate
         case .code(let code): open(code)
         }
         return true
@@ -90,8 +93,11 @@ final class ClassTableImportModel: Identifiable {
         let readings = payloads.map { Self.reading($0) }
         if let code = readings.lazy.compactMap(\.code).first {
             open(code)
+        } else if readings.contains(.needsUpdate) {
+            // The app can read a newer code once updated, so that comes before a damaged one.
+            prompt = .needsUpdate
         } else {
-            prompt = readings.contains { $0.isInvalid } ? .invalid : .noCode
+            prompt = readings.contains(.invalid) ? .invalid : .noCode
         }
     }
 
@@ -261,17 +267,14 @@ final class ClassTableImportModel: Identifiable {
         String(semester.dropLast()) + "-" + String(semester.suffix(1))
     }
 
-    private enum Reading {
+    private enum Reading: Equatable {
         case notShareCode
         case invalid
+        case needsUpdate
         case code(ClassTableShareCode)
 
         var code: ClassTableShareCode? {
             if case .code(let code) = self { code } else { nil }
-        }
-
-        var isInvalid: Bool {
-            if case .invalid = self { true } else { false }
         }
     }
 
@@ -280,6 +283,8 @@ final class ClassTableImportModel: Identifiable {
             return .code(try ClassTableShareCode.decode(text))
         } catch ClassTableShareCodeError.unknownPrefix {
             return .notShareCode
+        } catch ClassTableShareCodeError.unknownVersion, ClassTableShareCodeError.unknownType {
+            return .needsUpdate
         } catch {
             AppLogger.breadcrumb("share code refused: \(error)", category: "classTableImport")
             return .invalid
@@ -290,7 +295,7 @@ final class ClassTableImportModel: Identifiable {
 extension ClassTableImportModel.Prompt {
     var title: String {
         switch self {
-        case .invalid, .noCode, .ownCode, .saveFailed:
+        case .invalid, .noCode, .needsUpdate, .ownCode, .saveFailed:
             String(localized: "class_table_import_failed")
         case .replace(let job):
             String(format: String(localized: "class_table_import_replace_title"), job.nickname)
@@ -303,6 +308,7 @@ extension ClassTableImportModel.Prompt {
         switch self {
         case .invalid: String(localized: "class_table_import_invalid_message")
         case .noCode: String(localized: "class_table_import_no_code_message")
+        case .needsUpdate: String(localized: "share_code_needs_update_message")
         case .ownCode: String(localized: "class_table_import_own_code_message")
         case .replace: String(localized: "class_table_import_replace_message")
         case .lookupFailed, .saveFailed: nil

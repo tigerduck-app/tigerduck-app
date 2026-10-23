@@ -74,7 +74,7 @@ private struct ClassTableImportPrompts: ViewModifier {
             presenting: prompt
         ) { prompt in
             switch prompt {
-            case .invalid, .noCode, .ownCode:
+            case .invalid, .noCode, .needsUpdate, .ownCode:
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             case .replace(let job):
                 Button(String(localized: "action_cancel"), role: .cancel) {}
