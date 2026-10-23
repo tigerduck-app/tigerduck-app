@@ -28,7 +28,9 @@ with no rows for the term and a tombstone for every course it held.
   and releases it on the author's next upload without `force_keys` that lists the course.
   The author removes the course without a local hide (`DataCache.deleteCourse`), so once
   course selection lists it the class table shows it and the roster upload names it. Every
-  other device stays bound until then.
+  other device stays bound until then. Only a course added by hand on this device, which has
+  no Moodle ID, counts: one merged from another device's row carries a Moodle ID and is hidden,
+  since the server may not have recorded it as `user_added`.
 - A term with no server rows (a first sync, or another device mid-reset) is uploaded from what
   the tombstones leave visible, instead of being read as deleted elsewhere.
 - The resetting device keeps the term in `resettingSemesters` across the DELETE and the local

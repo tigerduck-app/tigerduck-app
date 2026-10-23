@@ -56,6 +56,22 @@ struct CourseDeleteHideTests {
         #expect(after.uploaded == ["GE1010001"])
     }
 
+    @Test("A course merged from another device's row stays hidden after a delete, its term's roster not cached here")
+    func aMergedCourseStaysHidden() {
+        let cache = Self.makeCache()
+        let merged = SDCourse(
+            courseNo: "MA1010003", courseName: "Calculus", moodleIdNumber: "1151MA1010003", semester: Self.term
+        )
+        cache.saveUserAddedCourses([Self.handAdded, merged])
+
+        cache.deleteCourse(merged.courseNo, semester: Self.term)
+
+        #expect(cache.loadDeletedCourseNos() == ["1151:MA1010003"])
+        let after = Self.afterSelectionLists(["CS1001301", "MA1010003"], in: cache)
+        #expect(after.shown == ["CS1001301", "GE1010001"])
+        #expect(after.uploaded == ["CS1001301"])
+    }
+
     @Test("A hand-added course the school has listed since counts as enrolled when it is deleted")
     func aHandAddedCourseTheRosterListsIsHidden() {
         let cache = Self.makeCache()

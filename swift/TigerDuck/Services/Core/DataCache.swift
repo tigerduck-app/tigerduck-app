@@ -305,13 +305,17 @@ final class DataCache {
         save(courseNos, to: "deleted_courses.json", in: persistentDir)
     }
 
-    /// Hides the course only when the school lists it for the term. A hand-added one is just
-    /// removed, so the roster that lists it once the student enrolls shows and uploads it
-    /// (docs/decisions/0005-course-tombstones.md).
+    /// Hides the course unless it was added by hand here: one with no Moodle ID that the school
+    /// does not list for the term. That one is just removed, so the roster that lists it once the
+    /// student enrolls shows and uploads it. A course merged from another device's row carries a
+    /// Moodle ID and hides as before (docs/decisions/0005-course-tombstones.md).
     func deleteCourse(_ courseNo: String, semester: String) {
         let userAdded = loadUserAddedCourses()
-        let kept = userAdded.filter { !($0.courseNo == courseNo && Self.userAddedCourse($0, belongsTo: semester)) }
-        let isHandAdded = kept.count != userAdded.count
+        let isThisCourse = { (course: SDCourse) in
+            course.courseNo == courseNo && Self.userAddedCourse(course, belongsTo: semester)
+        }
+        let kept = userAdded.filter { !isThisCourse($0) }
+        let isHandAdded = userAdded.contains { isThisCourse($0) && $0.moodleIdNumber == nil }
             && !loadCourses(semester: semester).contains { $0.courseNo == courseNo }
         if !isHandAdded {
             let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
