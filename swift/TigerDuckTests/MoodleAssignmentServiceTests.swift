@@ -371,6 +371,25 @@ struct MoodleAssignmentServiceTests {
         #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=0", "page=1"])
     }
 
+    @Test("a second comment deleted while the pages are read again fails the read, keeping what the page showed")
+    func commentsDeletedTwiceWhilePaging() async throws {
+        let token = UUID().uuidString
+        let function = MoodleAssignmentService.commentsFunction
+        let remaining = Array((1...25).reversed()).filter { $0 != 20 }
+        let fewer = remaining.filter { $0 != 5 }
+        Self.answer(Self.commentsPage(Array((11...25).reversed()), count: 25), function: function, token: token)
+        Self.answer(Self.commentsPage(Array(remaining.dropFirst(15)), count: 24), function: function, token: token)
+        Self.answer(Self.commentsPage(Array(remaining.prefix(15)), count: 24), function: function, token: token)
+        Self.answer(Self.commentsPage(Array(fewer.dropFirst(15)), count: 23), function: function, token: token)
+
+        await #expect(throws: MoodleWebserviceError.self) {
+            try await MoodleAssignmentService.comments(
+                cmid: 9101, submissionId: 5501, token: token, session: Self.session(), siteURL: Self.site
+            )
+        }
+        #expect(Self.pages(asked: token) == ["page=0", "page=1", "page=0", "page=1"])
+    }
+
     @Test("a site that answers every page with the first stops the paging at the second")
     func pageIgnored() async throws {
         let token = UUID().uuidString

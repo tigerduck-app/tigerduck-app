@@ -31,8 +31,8 @@ nonisolated final class SchoolNetworkGuard: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var captured: [Blocked]?
 
-    /// Puts the guard in front of every seam that reaches a school server: first in each session
-    /// configuration, the School Mail client's stand-in, and the Watch's library seam.
+    /// Runs from the bundle's principal class before any test, so no test reaches a school server
+    /// before the guard is in place.
     static func install() { _ = installed }
 
     private static let installed: Void = {
