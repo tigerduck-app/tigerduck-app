@@ -99,6 +99,19 @@ struct MailMuteRulesTests {
         #expect(decoded == settings)
     }
 
+    @Test func storedSettingsMissingAFieldKeepTheRest() throws {
+        let stored = Data(#"""
+            {"quietHours":{"isEnabled":true,"end":360},"rules":[{"field":"subject","op":"is","value":"Digest"}]}
+            """#.utf8)
+        let decoded = try JSONDecoder().decode(MailMuteSettings.self, from: stored)
+        #expect(decoded.quietHours == MailQuietHours(isEnabled: true, start: 23 * 60, end: 360, weekdays: Set(1...7)))
+        #expect(decoded.presets.isEmpty)
+        #expect(decoded.rules.map(\.field) == [.subject])
+        #expect(decoded.rules.map(\.op) == [.is])
+        #expect(decoded.rules.map(\.value) == ["Digest"])
+        #expect(try JSONDecoder().decode(MailMuteSettings.self, from: Data("{}".utf8)) == MailMuteSettings())
+    }
+
     // MARK: Quiet hours
 
     @Test func aWindowInsideOneDay() {

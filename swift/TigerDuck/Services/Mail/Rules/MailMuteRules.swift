@@ -98,4 +98,37 @@ nonisolated struct MailMuteRule: Codable, Equatable, Identifiable, Sendable {
         (mail.to ?? []) + (mail.cc ?? [])
     }
 }
+
+// Every field decodes with its default when missing, so a field added later keeps the stored rules.
+extension MailMuteSettings {
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = MailMuteSettings()
+        quietHours = try container.decodeIfPresent(MailQuietHours.self, forKey: .quietHours) ?? defaults.quietHours
+        presets = try container.decodeIfPresent(Set<MailMutePreset>.self, forKey: .presets) ?? defaults.presets
+        rules = try container.decodeIfPresent([MailMuteRule].self, forKey: .rules) ?? defaults.rules
+    }
+}
+
+extension MailQuietHours {
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = MailQuietHours()
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? defaults.isEnabled
+        start = try container.decodeIfPresent(Int.self, forKey: .start) ?? defaults.start
+        end = try container.decodeIfPresent(Int.self, forKey: .end) ?? defaults.end
+        weekdays = try container.decodeIfPresent(Set<Int>.self, forKey: .weekdays) ?? defaults.weekdays
+    }
+}
+
+extension MailMuteRule {
+    /// A rule without its text decodes with none, which matches no mail.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        field = try container.decodeIfPresent(Field.self, forKey: .field) ?? .from
+        op = try container.decodeIfPresent(Operator.self, forKey: .op) ?? .contains
+        value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+    }
+}
 #endif
