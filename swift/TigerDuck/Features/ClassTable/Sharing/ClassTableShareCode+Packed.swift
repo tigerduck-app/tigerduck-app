@@ -185,6 +185,7 @@ nonisolated extension ClassTableShareCode {
         _ = try r.get(32)
         let sharedAt = epoch.addingTimeInterval(TimeInterval(try r.get(timeBits) * 60))
         let order = try readTerms(&r, sharedAt: sharedAt)
+        guard order.allSatisfy({ isSemester($0[...]) }) else { throw ClassTableShareCodeError.malformed }
         let studentId = try readStudentId(&r, oldestYear: order.map(year).min() ?? 0)
         let heads = try readHeads(&r)
 
