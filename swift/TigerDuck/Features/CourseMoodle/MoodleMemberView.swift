@@ -18,6 +18,7 @@ struct MoodleMemberView: View {
     @State private var canChangePicture = false
     @State private var isPickingPhoto = false
     @State private var photo: PhotosPickerItem?
+    @State private var photoLoad: Task<Void, Never>?
     @State private var cropping: PhotoToCrop?
     @State private var isUploadingPicture = false
     @State private var pictureFailure: String?
@@ -72,7 +73,8 @@ struct MoodleMemberView: View {
         .onChange(of: photo) { _, item in
             guard let item else { return }
             photo = nil
-            Task { await crop(item) }
+            photoLoad?.cancel()
+            photoLoad = Task { await crop(item) }
         }
         .fullScreenCover(item: $cropping) { photo in
             MoodlePictureCropView(image: photo.image, onCancel: { cropping = nil }) { jpeg in
@@ -139,10 +141,13 @@ struct MoodleMemberView: View {
         do {
             data = try await item.loadTransferable(type: Data.self)
         } catch {
+            guard !Task.isCancelled else { return }
             AppLogger.captureError(error, context: ["phase": "moodlePicture.loadPhoto"])
             data = nil
         }
         let picked = await Task.detached { data.flatMap { MoodlePictureCropView.downsampled($0) } }.value
+        // A later pick cancels this one, which a slow photo could otherwise replace.
+        guard !Task.isCancelled else { return }
         guard let picked else {
             pictureFailure = String(localized: "empty_classroom_load_failed")
             return
@@ -172,7 +177,7 @@ struct MoodleMemberView: View {
         guard !isOpeningPicture else { return }
         isOpeningPicture = true
         Task {
-            picturePreview = await store.picturePreview(of: member)
+            picturePreview = await store.picturePreview(of: shown)
             isOpeningPicture = false
         }
     }
@@ -196,7 +201,8 @@ struct MoodleMemberProfile: View {
     let writeTo: (String) -> Void
     var isOpeningPicture = false
     let openPicture: () -> Void
-    /// Shows the camera button on the account's own page, where the site allows a new picture.
+    /// Nil hides the camera button: Moodle changes only the signed-in account's picture, and only
+    /// on a site that lists `core_user_update_picture`.
     var changePicture: (() -> Void)? = nil
     var isUploadingPicture = false
 

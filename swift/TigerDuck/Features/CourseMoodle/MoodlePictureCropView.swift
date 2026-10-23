@@ -120,7 +120,8 @@ struct MoodlePictureCropView: View {
         )
     }
 
-    /// A picked photo decoded at ``maxPickedPixels`` at most and turned upright.
+    /// Decodes straight to ``maxPickedPixels`` so a full camera photo never sits in memory, and
+    /// applies the photo's orientation, which a bare `CGImage` would lose.
     nonisolated static func downsampled(_ data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
