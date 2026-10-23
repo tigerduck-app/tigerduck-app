@@ -60,6 +60,9 @@ jobs:
               TigerDuckTests/LibraryWaitLayoutTests
               TigerDuckTests/ModalClosingTests
               TigerDuckTests/MoodleAssignmentPageStateTests
+              TigerDuckTests/MoodleAssignmentPageTests/fetchesOnReturn()
+              TigerDuckTests/MoodleAssignmentPageTests/switchedPageFetches()
+              TigerDuckTests/MoodleCourseStoreTests/sectionFetchesGrades()
               TigerDuckTests/MoodleCourseMembersTests/aKeyThatMatchesNobodyKeepsTheSearchField()
               TigerDuckTests/MoodleCourseMembersTests/aMembersOwnPictureOpensFromTheirPage()
               TigerDuckTests/MoodleCourseMembersTests/aRowTellsTheDepartmentAfterTheStudentId()
@@ -305,15 +308,18 @@ jobs:
               elsif (/Test Case \x27(.+)\x27 started\./) { $open{$1} = 1 }
               elsif (/Test Case \x27(.+)\x27 (?:passed|failed) \(/) { delete $open{$1} }
               END { print "$_\n" for sort keys %open }' "$log" | tee hang/running.txt
+          # A wedged diagnostic must not hold the step to the job's limit; macOS has no `timeout`.
+          bounded() { perl -e 'alarm shift; exec @ARGV or exit 127' "$@"; }
           for pid in $(pgrep -f "CoreSimulator/Devices/$UDID/data/Containers/Bundle/Application/"); do
-            sample "$pid" 10 -file "hang/sample-$pid.txt" > /dev/null 2>&1
+            bounded 40 sample "$pid" 10 -file "hang/sample-$pid.txt" > /dev/null 2>&1
             echo "-- call graph of $(ps -o comm= -p "$pid")"
             sed -n '/^Call graph:/,/^$/p' "hang/sample-$pid.txt" | head -n 80
           done
-          xcrun simctl spawn "$UDID" log show --last 15m --style compact \
+          bounded 120 xcrun simctl spawn "$UDID" log show --last 15m --style compact \
             --predicate 'process BEGINSWITH "TigerDuck"' > hang/simulator.log 2>&1
           find Tests.xcresult -name 'Session-*.log' -exec cp {} hang/ \; 2>/dev/null
-          # SIGINT first, so xcodebuild can close the result bundle.
+          # INT, not TERM: xcodebuild catches INT even as a background job and closes the result
+          # bundle in about 30 s, while TERM ends it at once with the bundle left open.
           kill -INT "$tests"
           for _ in $(seq 18); do kill -0 "$tests" 2>/dev/null || break; sleep 5; done
           kill -KILL "$tests" 2>/dev/null
