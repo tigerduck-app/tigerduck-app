@@ -26,16 +26,30 @@ struct ClassTableShareLinkTests {
         #expect(try Self.text(Self.code) == Self.code, "passed on as it came; the decoder upper-cases it")
     }
 
+    @Test("a query or fragment a chat app or the share page adds is left out, so the code still reads")
+    func queryAndFragment() throws {
+        let expected = try ClassTableShareCode.decode(Self.code)
+        for link in [
+            Self.code + "?fbclid=IwAR0abc",
+            "https://share.tigerduck.app/" + Self.rest + "?openExternalBrowser=1#top",
+            "https://share.tigerduck.app/" + Self.rest.lowercased() + "#",
+            "tigerduck://share/" + Self.rest + "?utm_source=line#x",
+        ] {
+            let text = try #require(try Self.text(link), "\(link)")
+            #expect(try ClassTableShareCode.decode(text) == expected, "\(link)")
+        }
+    }
+
     @Test("everything on the share host goes to the import, which has a message for what it cannot read")
     func shareHostLinks() throws {
         for link in [
             "https://share.tigerduck.app",
-            "https://share.tigerduck.app/?from=mail",
             "https://share.tigerduck.app:443/" + Self.rest,
             "https://share.tigerduck.app/FRIEND/1ABC",
         ] {
             #expect(try Self.text(link) == link)
         }
+        #expect(try Self.text("https://share.tigerduck.app/?from=mail") == "https://share.tigerduck.app/")
         #expect(try Self.text("tigerduck://share") == "HTTPS://SHARE.TIGERDUCK.APP/")
         #expect(try Self.text("tigerduck://share/friend/1abc?from=mail") == "HTTPS://SHARE.TIGERDUCK.APP/friend/1abc")
         #expect(try Self.text("tigerduck://share//x") == "HTTPS://SHARE.TIGERDUCK.APP//x")

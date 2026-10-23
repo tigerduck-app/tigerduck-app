@@ -14,7 +14,8 @@ nonisolated enum ClassTableShareLink {
     /// reaches the decoder, which asks for an update, and a URL with no share code gets a message.
     static func codeText(_ url: URL) -> String? {
         if url.scheme?.lowercased() == "https", url.host()?.uppercased() == shareHostName {
-            return url.absoluteString
+            // Chat apps add a query such as `fbclid`, which no code holds; the share page reads only the path too.
+            return String(url.absoluteString.prefix { $0 != "?" && $0 != "#" })
         }
         // Matched as written, as `WidgetURLRouter` matches the widgets' links.
         guard url.scheme == scheme, url.host() == host else { return nil }
