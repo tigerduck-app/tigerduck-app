@@ -29,7 +29,10 @@ struct LibrarySignInTests {
         try await withExclusiveRealDefaults {
             let saved = LibraryService.storedPasswordRefusals
             LibraryService.storedPasswordRefusals = (0, nil)
-            defer { LibraryService.storedPasswordRefusals = saved }
+            defer {
+                LibraryService.cancelStoredPasswordRetry()
+                LibraryService.storedPasswordRefusals = saved
+            }
             let keychain = MemoryKeychain.locked()
             try keychain.setObject(Data(username.utf8), forKey: AppConstants.KeychainKeys.libraryUsername)
             try keychain.setObject(Data("password".utf8), forKey: AppConstants.KeychainKeys.libraryPassword)
@@ -483,6 +486,103 @@ struct LibrarySignInTests {
             #expect(calls.count == 0)
             model.onAppear()
             try await waitUntil { model.qrPayload == "code-1" }
+        }
+    }
+
+    @Test func aRefusalArmsATryForTheEndOfItsWaitThatSignsInAPageOnTheForm() async throws {
+        let calls = Calls()
+        let sleeper = ManualSleeper()
+        let signIn: @MainActor (String, String) async throws -> LibraryLoginData = { _, _ in
+            calls.count += 1
+            if calls.count == 1 { throw LibraryServiceError.loginFailed("wrong password") }
+            return Self.answer()
+        }
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            _ = try? await LibraryService.ensureToken(signIn: signIn, retrySleep: { await sleeper.sleep(for: $0) })
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = { "code-1" }
+            model.load()
+            model.onAppear()
+            #expect(!model.isLoggedIn)
+
+            let waiting = try #require(LibraryService.storedPasswordRetry)
+            try await sleeper.waitUntilArmed()
+            let wait = try #require(await sleeper.requestedDurations.first)
+            #expect(wait > .seconds(9) && wait <= .seconds(10))
+
+            Self.refusedOnceAndDue()
+            await sleeper.fire()
+            await waiting.value
+
+            #expect(calls.count == 2)
+            #expect(model.isLoggedIn)
+            try await waitUntil { model.qrPayload == "code-1" }
+        }
+    }
+
+    @Test func anAutomaticSignInHeldBackArmsATryForWhatIsLeftOfTheWait() async throws {
+        let calls = Calls()
+        let sleeper = ManualSleeper()
+        try await Self.withStoredAccount { _ in
+            LibraryService.storedPasswordRefusals = (2, Date().addingTimeInterval(-20))
+            let signedIn = await LibraryService.signInIfCredentialed(
+                signIn: { _, _ in
+                    calls.count += 1
+                    return Self.answer()
+                },
+                retrySleep: { await sleeper.sleep(for: $0) }
+            )
+            #expect(!signedIn)
+            try await sleeper.waitUntilArmed()
+            let wait = try #require(await sleeper.requestedDurations.first)
+            #expect(wait > .seconds(39) && wait <= .seconds(40))
+
+            await sleeper.fire()
+            try await sleeper.waitUntilArmed(atLeast: 2)
+            #expect(calls.count == 0)
+        }
+    }
+
+    enum RetryEnd: String, CaseIterable, CustomTestStringConvertible {
+        case savedCredentials
+        case signOut
+        case typedSignIn
+
+        var testDescription: String { rawValue }
+    }
+
+    @Test(arguments: RetryEnd.allCases)
+    func aWaitingTryIsDroppedByNewCredentialsASignOutOrATypedSignIn(end: RetryEnd) async throws {
+        let calls = Calls()
+        let sleeper = ManualSleeper()
+        try await Self.withStoredAccount { _ in
+            let username = try #require(LibraryService.storedUsername)
+            _ = try? await LibraryService.ensureToken(
+                signIn: { _, _ in
+                    calls.count += 1
+                    throw LibraryServiceError.loginFailed("wrong password")
+                },
+                retrySleep: { await sleeper.sleep(for: $0) }
+            )
+            let waiting = try #require(LibraryService.storedPasswordRetry)
+
+            switch end {
+            case .savedCredentials:
+                LibraryService.saveCredentials(username: username, password: "new")
+            case .signOut:
+                LibraryService.clearCredentials()
+            case .typedSignIn:
+                _ = try? await LibraryService.login(username: username, password: "typed", request: { _, _ in
+                    throw LibraryServiceError.loginFailed("wrong password")
+                })
+            }
+            #expect(LibraryService.storedPasswordRetry == nil)
+
+            await sleeper.fire()
+            await waiting.value
+            #expect(calls.count == 1)
         }
     }
 
