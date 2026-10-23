@@ -82,7 +82,7 @@ struct MoodleMemberView: View {
                 upload(jpeg)
             }
         }
-        .sheet(item: $profileEditor, onDismiss: { Task { await store.refreshMembers() } }) { page in
+        .sheet(item: $profileEditor, onDismiss: { Task { await store.refetchMembers() } }) { page in
             InAppBrowserView(url: page.url)
                 .ignoresSafeArea()
         }
