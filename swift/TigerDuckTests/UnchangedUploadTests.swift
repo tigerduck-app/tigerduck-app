@@ -275,7 +275,7 @@ struct UnchangedUploadTests {
         }
     }
 
-    @Test("An edit undone while its upload is out still goes up after it")
+    @Test("An edit undone while its upload is out still goes up after it, and both count as unsent until done")
     func undoneEditStillGoes() async throws {
         let coordinator = Backend().makeCoordinator()
         let sends = Sends()
@@ -288,11 +288,13 @@ struct UnchangedUploadTests {
         let undo = Task { try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) { await sends.send(1) } }
         for _ in 0..<50 { await Task.yield() }
         #expect(sends.isParked)
+        #expect(coordinator.holdsUnsentCourseUploads)
         sends.release()
 
         #expect(try await edit.value)
         #expect(try await undo.value)
         #expect(sends.sent == [1, 2, 1])
+        #expect(!coordinator.holdsUnsentCourseUploads)
     }
 
     @Test("An upload queued behind another is dropped if its account signs out while it waits")
