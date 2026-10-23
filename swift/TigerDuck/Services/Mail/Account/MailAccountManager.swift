@@ -203,13 +203,6 @@ final class MailAccountManager {
         onSignedOut?()
     }
 
-    @discardableResult
-    func logout(ifSchoolAccount studentId: String) -> Bool {
-        guard let studentID, studentID.caseInsensitiveCompare(studentId) == .orderedSame else { return false }
-        logout()
-        return true
-    }
-
     private func startCacheWipe() {
         let performClear = clearCache
         let prefs = self.prefs

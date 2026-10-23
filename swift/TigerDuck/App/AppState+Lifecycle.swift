@@ -8,6 +8,7 @@ extension AppState {
         SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)
         CourseColorPickSeedMigration.runIfNeeded()
         StoredPasswordLatchRetryMigration.runIfNeeded()
+        LibraryPasswordLatchRetryMigration.runIfNeeded()
         #if os(iOS)
         BulletinPushOptOutMigration.runIfNeeded()
         if DefaultTabsPinMigration.runIfNeeded() {

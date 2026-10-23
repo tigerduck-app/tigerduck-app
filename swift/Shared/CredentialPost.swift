@@ -39,6 +39,8 @@ nonisolated enum CredentialPost {
 }
 
 nonisolated final class CredentialPostDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Auth")
+
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
@@ -48,7 +50,7 @@ nonisolated final class CredentialPostDelegate: NSObject, URLSessionTaskDelegate
     ) {
         let next = CredentialPost.request(following: response, proposed: request)
         if next == nil {
-            AppLogger.auth.error(
+            Self.logger.error(
                 "Sign-in POST stopped at a \(response.statusCode, privacy: .public) redirect to \(request.url?.host ?? "", privacy: .private)"
             )
         }

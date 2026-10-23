@@ -30,8 +30,6 @@ final class AuthService {
     @ObservationIgnored private(set) var storedPasswordRetry: Task<Void, Never>?
     @ObservationIgnored private var storedPasswordRetryMisses = 0
 
-    private let librarySignIn: @MainActor (_ username: String, _ password: String) async throws -> LibraryLoginData
-
     private let endSchoolSession: @MainActor (_ departingStudentId: String?) -> Void
 
     private var credentialObservers: [any NSObjectProtocol] = []
@@ -53,8 +51,6 @@ final class AuthService {
         schoolSessionIsLive: @escaping () async -> Bool = { await NTUSTSessionManager.shared.probeCookiesValid() },
         renewSchoolSignIn: @escaping (_ studentId: String, _ password: String, _ generation: Int) async throws -> Bool
             = AuthService.renewSignInToSchool,
-        librarySignIn: @escaping @MainActor (_ username: String, _ password: String) async throws -> LibraryLoginData
-            = LibraryService.requestToken(username:password:),
         endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
             = AuthService.endSchoolSession(departing:),
         now: @escaping () -> Date = { Date() },
@@ -65,7 +61,6 @@ final class AuthService {
         self.schoolSignIn = schoolSignIn
         self.schoolSessionIsLive = schoolSessionIsLive
         self.renewSchoolSignIn = renewSchoolSignIn
-        self.librarySignIn = librarySignIn
         self.endSchoolSession = endSchoolSession
         self.now = now
         self.retrySleep = retrySleep
@@ -316,7 +311,6 @@ final class AuthService {
     }
 
     func signInToServices(studentId: String, password: String, generation: Int) async {
-        await loginToLibraryIfNeeded(studentId: studentId, password: password)
         guard loginGeneration == generation else { return }
         do {
             _ = try await moodleTokens.obtainToken(studentId: studentId, password: password)
@@ -534,21 +528,6 @@ final class AuthService {
         guard (try? await moodleTokens.refreshTokenIfNeeded()) != nil, loginGeneration == generation else { return false }
         await signInToBackendAgain()
         return true
-    }
-
-    private func loginToLibraryIfNeeded(studentId: String, password: String) async {
-        guard !LibraryService.isTokenValid, !LibraryService.hasAccount(otherThan: studentId) else { return }
-        let generation = loginGeneration
-        do {
-            _ = try await LibraryService.login(
-                username: studentId,
-                password: password,
-                stillCurrent: { self.loginGeneration == generation },
-                request: librarySignIn
-            )
-        } catch {
-            AppLogger.captureError(error, context: ["flow": "libraryAutoLogin"])
-        }
     }
 
     func logout() {

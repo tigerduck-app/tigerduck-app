@@ -40,7 +40,7 @@ struct LibraryViewModelAccountTests {
             try? keychain.removeObject(forKey: AppConstants.KeychainKeys.studentId)
             try? keychain.removeObject(forKey: AppConstants.KeychainKeys.password)
 
-            #expect(!LibraryService.clearCredentials(ifSchoolAccount: "B11000000"))
+            LibraryService.schoolAccountDidSignOut()
 
             #expect(model.libUsername.isEmpty)
         }

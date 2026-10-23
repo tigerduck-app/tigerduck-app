@@ -7,7 +7,6 @@ import Testing
 struct SchoolSignInStepsTests {
     @MainActor
     private final class Calls {
-        var librarySignIns: [String] = []
         var harvests = 0
         var onSchoolAnswer: () -> Void = {}
     }
@@ -31,11 +30,6 @@ struct SchoolSignInStepsTests {
                 await MainActor.run { calls.onSchoolAnswer() }
                 return true
             },
-            librarySignIn: { username, _ in
-                calls.librarySignIns.append(username)
-                let expiry = Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000
-                return LibraryLoginData(username: username, token: "library-token", expirationTimeStamp: Int64(expiry))
-            },
             endSchoolSession: { _ in }
         )
         #if os(iOS)
@@ -46,13 +40,11 @@ struct SchoolSignInStepsTests {
 
     private static func withKeychain(
         libraryAccount: String?,
-        rejected: Bool = false,
         _ body: (MemoryKeychain) async throws -> Void
     ) async throws {
         try await withExclusiveRealDefaults {
-            let saved = (LibraryService.storedPasswordRejected, Defaults[.ntustCredentialsPresent])
-            LibraryService.storedPasswordRejected = rejected
-            defer { (LibraryService.storedPasswordRejected, Defaults[.ntustCredentialsPresent]) = saved }
+            let saved = Defaults[.ntustCredentialsPresent]
+            defer { Defaults[.ntustCredentialsPresent] = saved }
             let keychain = MemoryKeychain.locked()
             if let libraryAccount {
                 try keychain.setObject(Data(libraryAccount.utf8), forKey: AppConstants.KeychainKeys.libraryUsername)
@@ -62,50 +54,46 @@ struct SchoolSignInStepsTests {
         }
     }
 
-    @Test func anotherStudentsLibraryAccountStaysOnceItsTokenRunsOut() async throws {
-        let calls = Calls()
-        try await Self.withKeychain(libraryAccount: Self.anotherStudent) { _ in
-            let auth = Self.auth(recording: calls)
-            await auth.signInToServices(studentId: Self.student, password: "school", generation: auth.loginGeneration)
+    private static let libraryAccounts: [String?] = [nil, student, anotherStudent]
 
-            #expect(calls.librarySignIns.isEmpty)
-            #expect(LibraryService.storedUsername == Self.anotherStudent)
+    @Test("a school sign-in leaves the library account as it found it", arguments: libraryAccounts)
+    func aSchoolSignInLeavesTheLibraryAlone(libraryAccount: String?) async throws {
+        let calls = Calls()
+        try await Self.withKeychain(libraryAccount: libraryAccount) { keychain in
+            let auth = Self.auth(recording: calls)
+
+            #expect(await auth.login(studentId: Self.student, password: "school"))
+
+            #expect(LibraryService.storedUsername == libraryAccount)
+            #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.libraryPassword))
+                == libraryAccount.map { _ in Data("library".utf8) })
+            #expect(LibraryService.storedToken == nil)
         }
         #expect(calls.harvests == 1)
     }
 
-    @Test func aLibraryAccountTheLibraryRefusedTakesTheSchoolAccount() async throws {
+    #if os(iOS)
+    /// The sign-out's service steps alone: the call that took the mail with it was in
+    /// `AppState.logoutNTUST`, which tests cannot build.
+    @Test func aSchoolSignOutLeavesSchoolMailSignedIn() async throws {
         let calls = Calls()
-        try await Self.withKeychain(libraryAccount: Self.anotherStudent, rejected: true) { _ in
-            let auth = Self.auth(recording: calls)
-            await auth.signInToServices(studentId: Self.student, password: "school", generation: auth.loginGeneration)
-
-            #expect(calls.librarySignIns == [Self.student])
-            #expect(LibraryService.storedUsername == Self.student)
-        }
-    }
-
-    @Test func withNoLibraryAccountTheSchoolAccountSignsIn() async throws {
-        let calls = Calls()
+        let mail = MailAccountManagerTests.harness()
+        await mail.manager.login(studentID: Self.student, password: "mail")
+        try #require(mail.manager.isLoggedIn)
         try await Self.withKeychain(libraryAccount: nil) { _ in
             let auth = Self.auth(recording: calls)
-            await auth.signInToServices(studentId: Self.student, password: "school", generation: auth.loginGeneration)
+            #expect(await auth.login(studentId: Self.student, password: "school"))
 
-            #expect(calls.librarySignIns == [Self.student])
-            #expect(LibraryService.storedUsername == Self.student)
+            auth.logout()
+            LibraryService.schoolAccountDidSignOut()
+
+            #expect(mail.manager.isLoggedIn)
+            #expect(mail.manager.studentID == Self.student)
+            #expect(mail.hooks.signedOut == 0)
+            #expect(mail.secrets.load(forKey: MailCredentialStore.passwordKey) == "mail")
         }
     }
-
-    @Test func theSameStudentsLibraryAccountSignsInWithTheSchoolPassword() async throws {
-        let calls = Calls()
-        try await Self.withKeychain(libraryAccount: Self.student) { _ in
-            let auth = Self.auth(recording: calls)
-            await auth.signInToServices(studentId: Self.student, password: "school", generation: auth.loginGeneration)
-
-            #expect(calls.librarySignIns == [Self.student])
-            #expect(LibraryService.storedPasswordIfAvailable() == "school")
-        }
-    }
+    #endif
 
     @Test func aSignOutAsTheSchoolStepEndsKeepsNothing() async throws {
         let calls = Calls()
@@ -118,7 +106,6 @@ struct SchoolSignInStepsTests {
             #expect(!signedIn)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.password)) == nil)
-            #expect(calls.librarySignIns.isEmpty)
             #expect(!auth.isLoggingIn)
         }
         #expect(calls.harvests == 0)
@@ -133,7 +120,6 @@ struct SchoolSignInStepsTests {
 
             #expect(signedIn)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == Data(Self.student.utf8))
-            #expect(calls.librarySignIns == [Self.student])
         }
         #expect(calls.harvests == 1)
     }
@@ -168,7 +154,6 @@ struct SchoolSignInStepsTests {
 
             #expect(await sheet.task?.value == false)
             #expect(Self.storedAccountIsUntouched(keychain))
-            #expect(calls.librarySignIns.isEmpty)
             #expect(auth.loginError == nil)
             #expect(!auth.isLoggingIn)
         }
@@ -193,7 +178,6 @@ struct SchoolSignInStepsTests {
 
             #expect(await sheet.task?.value == false)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
-            #expect(calls.librarySignIns.isEmpty)
             #expect(auth.loginError == nil)
         }
         #expect(calls.harvests == 0)
@@ -210,7 +194,6 @@ struct SchoolSignInStepsTests {
 
             #expect(await sheet.task?.value == false)
             #expect((try? keychain.object(forKey: AppConstants.KeychainKeys.studentId)) == nil)
-            #expect(calls.librarySignIns.isEmpty)
             #expect(!auth.isLoggingIn)
         }
         #expect(calls.harvests == 0)

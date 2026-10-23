@@ -24,59 +24,43 @@
 TigerDuck is a campus companion app built by a group of students at **NTUST**.  
 It was created to solve common pain points: scattered resources, delayed notifications, and unintuitive interfaces.
 
-### 📚 **Assignments**
-- See how many **assignments are still due** at a glance
-- **Fully automatic** sync of assignments and deadlines from Moodle — no more surprise due dates!
-- **Dynamic Island** and push notifications — don't wait until the last hour for Moodle alerts
+### 📚 **Assignments & Moodle**
+- Assignments and deadlines sync from Moodle automatically, so you see what is still due at a glance, team submissions included
+- Read an assignment's description, attachments, submission and feedback in the app, and a course's announcements, materials, forums, members and grades in one place
+- Server-sent reminders and a Live Activity before the deadline, silenced once you submit, and whole courses you can ignore
 
 ### 📋 **Class Table**
-- Synced directly from the course enrollment system — no more **Moodle delay**
-- Dynamic Island and Live Activity show you where your next class is!
+- Synced from the course selection system for the latest term, with custom names, colors, hand-added courses and a TAT grid style
+- Share, import and switch class tables by QR code, or export one as an image
+- Class reminders, plus the Dynamic Island and Live Activities showing where your next class is
 
-### 🗓️ **Calendar**
-- School events and Moodle assignment deadlines in one place
-- Month view, date switching, pull to sync
-
-### 📣 **Bulletins**
-- Server-side **LLM classification and de-duplication** — no more spam from every department
-- Subscribe to categories, filter unread, and receive **push notifications** for what matters
+### 🗓️ **Calendar & Bulletins**
+- School events, holidays and Moodle deadlines in one calendar, with no class reminders on holidays
+- Bulletins classified, cleaned up and de-duplicated by an LLM on the server, with category subscriptions, an unread filter and push for what matters
 
 ### 📊 **GPA & Rankings**
-- Per-semester / cumulative GPA, rankings, and per-course grades in one place
-- Interactive charts to track grade trends over time
+- Semester and cumulative GPA, rankings, every course's grade and interactive trend charts, with an estimated GPA before rankings are out
 
-### 🏛️ **Library**
-- Instant library entry QR code with zero delay
+### 🏛️ **Free Classrooms & Library**
+- Free classrooms for the next two weeks, with a room to wait in between your classes
+- The library entry QR code opens instantly at full brightness, or when you flip the phone face down
 
 ### 📬 **School Mail** (iOS)
-- Read and send your NTUST Mail2000 mail in the app: Inbox, Sent, Drafts, Trash, Junk and All mail
-- Search, reply, forward, attachments, move and delete, with new-mail notifications
+- Read and send NTUST Mail2000 mail in the app, with search, reply, forward, attachments, move and delete, and new-mail notifications
 - The phone talks to the school's mail server directly, never through TigerDuck's servers, and the password stays encrypted on this device
 
-### ⌚ **Apple Watch**
-- **Now & Next** home screen: the current and next class, with progress for the one in session
-- **Today** list and per-course detail
-- Raise your wrist for the **library entry QR code** — fullscreen, with idle-fade page dots
-- **Complication** puts the next class on the watch face (circular / rectangular / inline / corner)
-- Schedule and credentials sync over WatchConnectivity — no separate sign-in on the Watch
+### ☁️ **TigerSync**
+- Class tables, assignment marks, course colors and notification settings sync across your iPhone, Mac and other devices in real time, with conflict handling
 
-### 🧩 **Widgets**
-- **Next class** (small / medium), **today's** and **this week's** timetable (large / extra large)
-- Lock Screen accessories (inline / circular / rectangular) and a library QR shortcut
-- The same widget bundle serves iOS and macOS
+### ⌚ **Apple Watch** · 🧩 **Widgets** · 💻 **macOS**
+- Apple Watch shows Now & Next, today's classes and the library QR code, puts the next class on the watch face, and takes its sign-in from the iPhone
+- Widgets for the next class, today's and this week's timetable, the Lock Screen and a library QR shortcut, shared by iOS and macOS
+- A native Mac app (not Catalyst) with sidebar navigation and a Mac layout on every page
 
-### 💻 **macOS**
-- A native Mac app (not Catalyst) with sidebar navigation and Mac-specific layouts throughout
-- Sidebar pins are stored separately from the iOS tab configuration
-- Cloud sync, sharing one account with the iPhone
-
-### 🌏 **Multilingual**
-- Built-in support for **67 locales** — follows the system language or set per-app
-- Course / classroom names are **automatically abbreviated**
-
-### 🎨 **Customization**
-- Add what you want, remove what you don't
-- Drag-and-drop section ordering, editable tabs, and accent color theming
+### 🎨 **Appearance & Accessibility**
+- 67 built-in locales, with automatic course and classroom abbreviations
+- Drag sections on Home, edit the tabs, and pick an accent color and interface style
+- VoiceOver, Dynamic Type and Reduce Motion support, with passwords and QR codes hidden in screenshots and recordings
 
 <br clear="right"/>
 
@@ -108,112 +92,9 @@ It was created to solve common pain points: scattered resources, delayed notific
 
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
 
-<br/>
-
-## Release History
-> Full notes on [GitHub Releases](https://github.com/tigerduck-app/tigerduck-app/releases).
-
-| Version | Date | Highlights |
-|:---:|:---:|---|
-| `v2.6.3` | 2026-10-22 | Automatic sign-in tries again on a schedule after a refusal instead of stopping for good |
-| `v2.6.2` | 2026-10-18 | Times on a 24-hour clock everywhere, courses added offline upload once back online, a fix for a crash on deeply nested text |
-| `v2.6.1` | 2026-10-18 | Redesigned assignment page, departments and picture previews in course members, a note when a Moodle refresh fails, a sign-out warning for unsynced data, a confirmation and sign-out before the API endpoint changes, fixes for images in Moodle text and more |
-| `v2.6.0` | 2026-10-17 | In-app assignment page and course assignment list, readable mail in dark mode, sync conflict answers and background sync pushes, background launches before the first unlock after a restart, fixes |
-| `v2.5.3` | 2026-10-16 | Fixes the keyboard closing in a course's member search |
-| `v2.5.2` | 2026-10-16 | The status dot shows when each page was last updated; fixes for sync, sign-in, Mail, bulletins and Live Activities |
-| `v2.5.1` | 2026-10-15 | Fixes for the class table, free classrooms, Library, Mail, sync and sign-in |
-| `v2.5.0` | 2026-10-14 | Free classroom finder, TAT style, team assignment status fix, flip-to-library off by default and offered after a library sign-in, no status dot in a course's Moodle section, fixes and package updates |
-| `v2.4.0` | 2026-10-13 | Share, import and switch class tables by QR code, Moodle announcements, materials, forums, members and grades in course details, class reminder settings, ignore a course's assignments, next-class Apple Watch complication |
-| `v2.3.0` | 2026-10-04 | Redesigned What's New, class table export as an image, notifications stacked by type, light mode for HTML mail, update prompt fix |
-| `v2.2.0` | 2026-09-30 | School Mail on iOS: read and send NTUST Mail2000 mail, with new-mail notifications |
-| `v2.1.4` | 2026-09-25 | No class Live Activities or class lists on holidays |
-| `v2.1.3` | 2026-09-24 | New Others page with open-source licenses in the app, library QR display and brightness fixes |
-| `v2.1.2` | 2026-09-19 | Classroom preview in class table cells, GE dimension and course duration in course details, half-credit courses counted correctly |
-| `v2.1.1` | 2026-09-18 | Fixed cross-listed classes not linking to Moodle and assignments |
-| `v2.1.0` | 2026-09-12 | Assignment reminders sent by the server, no reminders for submitted assignments, notification settings synced across devices |
-| `v2.0.3` | 2026-09-11 | Option to show every period in the class table, evening period times fixed, Live Activity and widget appearance fixes |
-| `v2.0.2` | 2026-09-10 | Academic calendar, class Live Activities started by server push, period start and end times in the class table |
-| `v2.0.1` | 2026-09-07 | Semester picker lists only terms since admission, theme color in more places, dropped courses no longer come back |
-| `v2.0.0` | 2026-08-23 | Cloud sync: courses and assignments synced in real time, macOS push and account sync |
-| `v1.8.1` | 2026-08-21 | The library QR no longer locks the whole device at full brightness |
-| `v1.8.0` | 2026-08-20 | Bulletin push notifications, update prompts, flip the phone face down to open the library QR, passwords and the QR hidden in screenshots and recordings |
-| `v1.7.3` | 2026-08-20 | Manually added courses stay in the semester they were added to |
-| `v1.7.2` | 2026-08-20 | Home time slider and Today's courses shown only during the semester |
-| `v1.7.1` | 2026-08-20 | Semester list from the university's course query API, two semesters no longer merged into one class table |
-| `v1.7.0` | 2026-05-18 | Apple Watch app with the library QR, conflicting classes shown side by side, library QR at full brightness |
-| `v1.6.1` | 2026-05-01 | Android push delivery on the backend, API path moved to `/v2` |
-| `v1.6.0` | 2026-05-01 | 67+ languages with an in-app switcher, right-to-left layout fixes, course and classroom abbreviations |
-| `v1.5.2` | 2026-04-24 | Better Live Activity push token retry and cleanup |
-| `v1.5.1` | 2026-04-24 | Today's courses and assignment list fixes |
-| `v1.5.0` | 2026-04-24 | Bulletins redesign: served by the server, classified and de-duplicated, subscribable categories |
-| `v1.4.0` | 2026-04-22 | Push backend, Live Activities started by push |
-| `v1.3.6` | 2026-04-22 | GPA and rankings in the main tabs, with interactive charts |
-| `v1.3.3` | 2026-04-21 | Color-coded assignment status |
-| `v1.3.2` | 2026-04-21 | Support for the new Moodle sign-in, course cache extended to 24 hours |
-| `v1.3.0` | 2026-04-17 | Redesigned Live Activity, Settings polish |
+What changed in each version is on [Releases](https://github.com/tigerduck-app/tigerduck-app/releases), and what is planned is on [Milestones](https://github.com/tigerduck-app/tigerduck-app/milestones).
 
 <br/>
-
-## Roadmap
-
-### 🎓 Academics & Learning
-- [x] **Assignments** — Fully automatic Moodle assignment sync `v1.0`
-- [x] **Assignments+** — Notifications and Dynamic Island `v1.3.0`
-- [x] **Assignment status tracking** — submission / cutoff plumbing, semantic color badges `v1.3.3`
-- [ ] **Assignments++** — Change app icon based on remaining time, tribute to Duolingo
-- [x] **Class Table** — Fetched from the course enrollment system `v1.0`
-- [x] **Class Table+** — Editable course names, deletable courses `v1.0`
-- [x] **Class Table++** — Dynamic Island course status `v1.3.0`
-- [x] **Calendar** — Aggregated events from school announcements, Moodle, etc. `v1.0`
-- [ ] **Calendar+** — Track study room bookings, lectures, and club events
-- [x] **Historical GPA & Rankings** — Per-semester / cumulative / per-course grades + interactive charts `v1.3.6`
-- [ ] **Graduation Credit Calculator** — Check completion status for general education categories, college credits, department credits, PE, Chinese, English, and other requirements
-
-### 📝 Course Enrollment
-- [ ] **Course Search** — Display GPA alongside results for better enrollment decisions
-- [ ] **Lottery Probability & Preference Suggestions** — Estimate admission odds based on capacity and current enrollment; auto-reorder preferences
-
-### 📚 Library Services
-- [x] **Library Entry QR Code** — Quick access to the library entry QR code `v1.0`
-- [ ] **Study Room Booking** — Reserve and check availability of library study rooms
-- [ ] **NTUST Library Events** — Event registration and lookup (campus network required)
-
-### 📣 Campus Information
-- [x] **Department & Office Announcements** — Aggregated announcements `v1.0`
-- [x] **LLM-classified bulletins + subscriptions** — Server-side classification & de-duplication, subscribable categories, unread filter `v1.5.0`
-- [x] **School Mail** — Read and send NTUST Mail2000 mail in the app, with new-mail notifications (iOS) `v2.2.0`
-- [ ] **Scholarships** — Filterable by eligibility (low-income, indigenous, etc.)
-- [ ] **Daily Club Activities** — Curated daily club event listings
-- [x] **Empty Classroom Finder** — Quickly find currently available classrooms `v2.5.0`
-
-### 🍱 Campus Life
-- [ ] **Free Lunch Notifications** — Anyone can register (real-name); aggregates info from NTUST and NTU with push notifications
-
-### 🌏 Localization & Accessibility
-- [x] **Multilingual (67 locales)** — Follows system language or per-app override `v1.6.0`
-- [x] **Course / Classroom name abbreviations** — One-tap toggle, fully reversible `v1.6.0`
-- [x] **RTL layout fixes** — Arabic / Hebrew and other right-to-left scripts `v1.6.0`
-
-### 🔔 Notifications & Privacy
-- [x] **Push backend** — APNs Push-to-Start, schedule sync `v1.4.0`
-- [x] **Bulletin push** — Device registration, push preferences, bulletin deep links `v1.8.0`
-- [x] **Update prompt + What's New sheet** — Shows what changed after installing `v1.8.0`
-- [x] **Sensitive-screen masking** — Passwords and the library QR hidden from screenshots and recordings `v1.8.0`
-- [x] **TLS SPKI pinning** — NTUST and Library traffic `v1.8.0`
-- [x] **Assignment reminders sent by the server** — on time with the app closed, withdrawn once submitted on Moodle `v2.1.0`
-- [x] **Notification permission settings** — Notifications and Live Activities authorization at a glance, a tap away from System Settings `v2.1.0`
-
-### ☁️ Cloud Sync
-- [x] **Account and multi-device sync** — Live course / assignment upload, 401 auto-recovery `v2.0.0`
-- [x] **Server push channel settings** `v2.0.0`
-- [x] **Notification settings sync** — assignment reminder and Live Activity settings across devices `v2.1.0`
-
-### ⌚ Apple Watch / 🧩 Widgets / 💻 macOS
-- [x] **Apple Watch app** — Library QR, WatchConnectivity credential sync `v1.7.0`
-- [x] **Watch Now & Next / Today / course detail** `v1.7.0`
-- [x] **Watch complication** — Next class straight on the watch face `v2.4.0`
-- [x] **iOS / macOS widgets** — Next class, today's and this week's timetable, Lock Screen accessories, library QR shortcut `v1.7.0`
-- [x] **macOS app** — Native sidebar layout `v1.7.0`, push and account sync `v2.0.0`
 
 ## System Requirements
 | Item | Requirement |

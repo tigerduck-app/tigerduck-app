@@ -27,9 +27,9 @@ struct LibrarySignInTests {
         _ body: (MemoryKeychain) async throws -> Void
     ) async throws {
         try await withExclusiveRealDefaults {
-            let saved = LibraryService.storedPasswordRejected
-            LibraryService.storedPasswordRejected = false
-            defer { LibraryService.storedPasswordRejected = saved }
+            let saved = LibraryService.storedPasswordRefusals
+            LibraryService.storedPasswordRefusals = (0, nil)
+            defer { LibraryService.storedPasswordRefusals = saved }
             let keychain = MemoryKeychain.locked()
             try keychain.setObject(Data(username.utf8), forKey: AppConstants.KeychainKeys.libraryUsername)
             try keychain.setObject(Data("password".utf8), forKey: AppConstants.KeychainKeys.libraryPassword)
@@ -62,7 +62,7 @@ struct LibrarySignInTests {
         }
     }
 
-    @Test func credentialsTheLibraryRefusedAreNotSentAgain() async throws {
+    @Test func aRefusedPasswordWaitsAndARetryTheLibraryAcceptsEndsTheWait() async throws {
         let calls = Calls()
         let announcements = Calls()
         try await Self.withStoredAccount { _ in
@@ -77,7 +77,7 @@ struct LibrarySignInTests {
                 throw LibraryServiceError.loginFailed("wrong password")
             }
             #expect(announcements.count == 1)
-            #expect(Defaults[.libraryStoredPasswordRejected])
+            #expect(Defaults[.libraryStoredPasswordRefusals] == 1)
             #expect(!LibraryService.canSignInWithStoredCredentials)
             #expect(Self.watchEpoch == epoch + 1)
             #expect(LibraryService.storedPasswordIfAvailable() == nil)
@@ -87,14 +87,75 @@ struct LibrarySignInTests {
                 return Self.answer()
             }
             #expect(calls.count == 1)
+
+            let firstWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+            LibraryService.storedPasswordRefusals = (1, Date().addingTimeInterval(-firstWait))
+            let token = try? await LibraryService.ensureToken { _, _ in
+                calls.count += 1
+                return Self.answer()
+            }
+            #expect(token == "token")
+            #expect(calls.count == 2)
+            #expect(LibraryService.storedPasswordRefusals.count == 0)
+            #expect(LibraryService.canSignInWithStoredCredentials)
+            #expect(Self.watchEpoch == epoch + 2)
+            #expect(LibraryService.storedPasswordIfAvailable() == "password")
+        }
+    }
+
+    @Test func afterTheQuickRetriesARefusalWaitsSixHours() async throws {
+        let calls = Calls()
+        try await Self.withStoredAccount { _ in
+            let quickTries = SSOLoginService.storedPasswordQuickRetries.count
+            let lastQuickWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries)
+            LibraryService.storedPasswordRefusals = (quickTries, Date().addingTimeInterval(-lastQuickWait))
+            _ = try? await LibraryService.ensureToken { _, _ in
+                calls.count += 1
+                throw LibraryServiceError.loginFailed("wrong password")
+            }
+            let refused = try #require(LibraryService.storedPasswordRefusals.last)
+            #expect(LibraryService.storedPasswordRefusals.count == quickTries + 1)
+            #expect(!LibraryService.storedPasswordPostIsDue(now: refused.addingTimeInterval(6 * 60 * 60 - 1)))
+            #expect(LibraryService.storedPasswordPostIsDue(now: refused.addingTimeInterval(6 * 60 * 60)))
+
+            _ = try? await LibraryService.ensureToken { _, _ in
+                calls.count += 1
+                return Self.answer()
+            }
+            #expect(calls.count == 1)
+        }
+    }
+
+    @Test func aTypedSignInIsNotHeldBackAndEndsTheWait() async throws {
+        let calls = Calls()
+        try await Self.withStoredAccount { _ in
+            let username = try #require(LibraryService.storedUsername)
+            LibraryService.storedPasswordRefusals = (4, Date())
+            try await LibraryService.login(username: username, password: "typed", request: { _, _ in
+                calls.count += 1
+                return Self.answer()
+            })
+            #expect(calls.count == 1)
+            #expect(LibraryService.storedPasswordRefusals.count == 0)
+            #expect(LibraryService.storedPasswordPostIsDue(now: Date()))
+        }
+    }
+
+    @Test func aSignOutWhileARetryWaitsEndsTheWait() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryService.storedPasswordRefusals = (1, Date())
+            LibraryService.clearCredentials()
+            #expect(LibraryService.storedPasswordRefusals.count == 0)
+            #expect(LibraryService.storedPasswordRefusals.last == nil)
         }
     }
 
     @Test func savedCredentialsEndTheRefusal() async throws {
         try await Self.withStoredAccount { _ in
-            LibraryService.storedPasswordRejected = true
+            LibraryService.storedPasswordRefusals = (2, Date())
             LibraryService.saveCredentials(username: try #require(LibraryService.storedUsername), password: "new")
             #expect(LibraryService.canSignInWithStoredCredentials)
+            #expect(LibraryService.storedPasswordPostIsDue(now: Date()))
         }
     }
 
@@ -236,23 +297,21 @@ struct LibrarySignInTests {
         }
     }
 
-    @Test func aSchoolSignOutTakesTheLibraryAccountOfTheSameID() async throws {
-        try await Self.withStoredAccount { _ in
+    @Test func aSchoolSignOutKeepsTheLibraryAccount() async throws {
+        let announcements = Calls()
+        try await Self.withStoredAccount { keychain in
             let username = try #require(LibraryService.storedUsername)
-            #expect(!LibraryService.clearCredentials(ifSchoolAccount: "B19999999"))
+            try keychain.setObject(Data(username.utf8), forKey: AppConstants.KeychainKeys.studentId)
+            let observer = NotificationCenter.default.addObserver(
+                forName: LibraryService.accountDidChange, object: nil, queue: nil
+            ) { _ in MainActor.assumeIsolated { announcements.count += 1 } }
+            defer { NotificationCenter.default.removeObserver(observer) }
+
+            LibraryService.schoolAccountDidSignOut()
+
             #expect(LibraryService.storedUsername == username)
-
-            #expect(LibraryService.clearCredentials(ifSchoolAccount: username.lowercased()))
-            #expect(LibraryService.storedUsername == nil)
-        }
-    }
-
-    @Test func aUsernameWithSpacesIsTheSchoolAccountOfItsID() async throws {
-        try await Self.withStoredAccount(username: " B1LIBSPACE ") { _ in
-            #expect(!LibraryService.hasAccount(otherThan: "b1libspace"))
-            #expect(LibraryService.hasAccount(otherThan: "B19999999"))
-            #expect(LibraryService.clearCredentials(ifSchoolAccount: "b1libspace"))
-            #expect(LibraryService.storedUsername == nil)
+            #expect(LibraryService.canSignInWithStoredCredentials)
+            #expect(announcements.count == 0)
         }
     }
 
@@ -260,7 +319,7 @@ struct LibrarySignInTests {
         try await Self.withStoredAccount { _ in
             #expect(!LibraryService.isTokenValid)
             #expect(LibraryService.hasAccount)
-            LibraryService.storedPasswordRejected = true
+            LibraryService.storedPasswordRefusals = (1, Date())
             #expect(!LibraryService.hasAccount)
         }
         try await withExclusiveRealDefaults {
@@ -289,7 +348,7 @@ struct LibrarySignInTests {
             let model = LibraryViewModel()
             defer { model.stopTimers() }
             model.fetchCode = {
-                LibraryService.storedPasswordRejected = true
+                LibraryService.storedPasswordRefusals = (1, Date())
                 throw LibraryServiceError.loginFailed("wrong password")
             }
             model.load()
@@ -376,6 +435,54 @@ struct LibrarySignInTests {
             _ = try await LibraryService.ensureToken { _, _ in Self.answer() }
 
             #expect(model.isLoggedIn)
+        }
+    }
+
+    private static func refusedOnceAndDue() {
+        let firstWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+        LibraryService.storedPasswordRefusals = (1, Date().addingTimeInterval(-firstWait))
+    }
+
+    @Test func aRetryThatSignsInWhileThePageShowsTheFormShowsTheCode() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            Self.refusedOnceAndDue()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = { "code-1" }
+            model.load()
+            model.onAppear()
+            #expect(!model.isLoggedIn)
+
+            _ = try await LibraryService.ensureToken { _, _ in Self.answer() }
+
+            #expect(model.isLoggedIn)
+            try await waitUntil { model.qrPayload == "code-1" }
+        }
+    }
+
+    @Test func aRetryThatSignsInWhileThePageIsAwayFetchesOnceItShows() async throws {
+        let calls = Calls()
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            Self.refusedOnceAndDue()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = {
+                calls.count += 1
+                return "code-\(calls.count)"
+            }
+            model.load()
+            model.onAppear()
+            model.onDisappear()
+
+            _ = try await LibraryService.ensureToken { _, _ in Self.answer() }
+            try await Task.sleep(for: .milliseconds(100))
+
+            #expect(model.isLoggedIn)
+            #expect(calls.count == 0)
+            model.onAppear()
+            try await waitUntil { model.qrPayload == "code-1" }
         }
     }
 
