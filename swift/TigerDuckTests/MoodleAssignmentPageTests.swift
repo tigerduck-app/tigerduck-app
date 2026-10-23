@@ -268,6 +268,19 @@ struct MoodleAssignmentPageTests {
         #expect(store.assignments.submission(of: Self.record).value?.isSubmitted == true)
     }
 
+    @Test("each piece of HTML is converted once, however often the page draws it")
+    func htmlIsConvertedOnce() {
+        let html = "<p>\(UUID().uuidString)</p>"
+        var conversions = 0
+        let convert = { (_: String) -> String in
+            conversions += 1
+            return "Converted"
+        }
+        #expect(MoodleAssignmentView.markdown(ofHTML: html, convert: convert) == "Converted")
+        #expect(MoodleAssignmentView.markdown(ofHTML: html, convert: convert) == "Converted")
+        #expect(conversions == 1)
+    }
+
     @Test("an assignment opened while the course sheet covers Home closes the sheet, then shows over Home")
     func overCourseSheet() {
         let root = Self.folder()

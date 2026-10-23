@@ -25,7 +25,7 @@ struct MoodleAssignmentView: View {
         let feed = store.assignments.submission(of: record)
         let submission = feed.value
         let isSubmitted = Self.isSubmitted(record: record, listed: entry.listed, submission: submission)
-        let description = MoodleHTMLText.markdown(fromHTML: record.intro)
+        let description = Self.markdown(ofHTML: record.intro)
         ScrollView {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xl) {
                 header
@@ -72,6 +72,20 @@ struct MoodleAssignmentView: View {
             Task { await store.assignments.refreshSubmission(of: record) }
         }
         .moodleFilePresentation(files)
+    }
+
+    private static let markdownCache = NSCache<NSString, NSString>()
+
+    /// The page draws again at each download-progress tick, so each piece of HTML, up to 150
+    /// comments of it, is converted once and then read back by its text.
+    static func markdown(
+        ofHTML html: String,
+        convert: (String) -> String = { BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: $0)) }
+    ) -> String {
+        if let cached = markdownCache.object(forKey: html as NSString) { return cached as String }
+        let converted = convert(html)
+        markdownCache.setObject(converted as NSString, forKey: html as NSString)
+        return converted
     }
 
     static func submittedAt(of listed: SDAssignment?, submission: MoodleAssignmentSubmission?) -> Date? {
@@ -240,7 +254,7 @@ struct MoodleAssignmentView: View {
                 if !refs.isEmpty {
                     Divider().padding(.leading, MoodleFileRow.textInset)
                 }
-                markdown(MoodleHTMLText.markdown(fromHTML: text))
+                markdown(Self.markdown(ofHTML: text))
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.vertical, TigerDuckTheme.Spacing.md)
             }
@@ -254,7 +268,7 @@ struct MoodleAssignmentView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.textSecondary)
                 .accessibilityAddTraits(.isHeader)
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(comments.enumerated()), id: \.element.id) { index, comment in
                     if index > 0 {
                         Divider().padding(.leading, TigerDuckTheme.Spacing.lg)
@@ -266,7 +280,7 @@ struct MoodleAssignmentView: View {
                             .font(TigerDuckTheme.Typography.caption)
                             .monospacedDigit()
                             .foregroundStyle(Color.textSecondary)
-                        markdown(MoodleHTMLText.markdown(fromHTML: comment.content))
+                        markdown(Self.markdown(ofHTML: comment.content))
                     }
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.vertical, TigerDuckTheme.Spacing.md)
@@ -292,7 +306,7 @@ struct MoodleAssignmentView: View {
                         Text(String(localized: "assignment_detail_feedback"))
                             .font(.footnote)
                             .foregroundStyle(Color.textSecondary)
-                        markdown(MoodleHTMLText.markdown(fromHTML: feedback))
+                        markdown(Self.markdown(ofHTML: feedback))
                     }
                 }
             }
@@ -352,7 +366,7 @@ struct MoodleAssignmentView: View {
     }
 
     private func markdown(_ text: String) -> some View {
-        Markdown(BulletinBodyRenderer.normalize(text))
+        Markdown(text)
             .markdownTheme(.bulletin(accent: accent))
             .environment(\.openURL, OpenURLAction { url in
                 files.forgetPendingOpen()
