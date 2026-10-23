@@ -71,6 +71,7 @@ struct MainTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppFeature = .home
     @State private var showTimezoneAlert: Bool = false
+    @State private var hostWindow = HostWindow()
 
     private var visibleTabs: [AppFeature] { appState.configuredTabs }
 
@@ -139,6 +140,8 @@ struct MainTabView: View {
         .flipToLibraryAttached()
         .firstTriggerPromptHost()
         .updateNotifySheetHost()
+        .readsHostWindow(into: hostWindow)
+        .environment(\.hostWindow, hostWindow)
         #endif
     }
 
@@ -151,12 +154,12 @@ struct MainTabView: View {
     #if os(iOS)
     private func routeBulletinDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
         guard case .bulletin = link else { return }
-        open(.announcements)
+        hostWindow.closePresentations { _ in open(.announcements) }
     }
 
     private func routeSchoolMailDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
         guard case .schoolMail = link, SchoolMailAvailability.isEnabled else { return }
-        open(.schoolMail)
+        hostWindow.closePresentations { _ in open(.schoolMail) }
     }
 
     private func routeAssignmentDeepLinkIfNeeded(_ link: AppState.DeepLink?) {

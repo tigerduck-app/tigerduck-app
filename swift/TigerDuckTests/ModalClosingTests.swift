@@ -195,6 +195,38 @@ struct ModalClosingTests {
         #expect(root.presentedViewController == nil)
     }
 
+    @Test("a link closes the sheets of the window its page opens in, not those of the key window")
+    func ownWindowsSheetsClose() async throws {
+        let keySheets = Sheets()
+        let keyWindow = try Self.show(keySheets)
+        defer { keyWindow.isHidden = true }
+        let keyRoot = try #require(keyWindow.rootViewController)
+        let sheets = Sheets()
+        let host = HostWindow()
+        let window = UIWindow(windowScene: try #require(keyWindow.windowScene))
+        window.frame = keyWindow.frame
+        window.rootViewController = UIHostingController(rootView: Host(sheets: sheets).readsHostWindow(into: host))
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        keySheets.course = true
+        sheets.course = true
+        try await waitUntil { keyRoot.presentedViewController != nil && root.presentedViewController != nil }
+        try await waitUntil { host.window === window }
+
+        let told = Told()
+        host.closePresentations { told.closedAll = $0 }
+
+        try await waitUntil(timeout: .seconds(10)) { told.closedAll != nil }
+        #expect(told.closedAll == true)
+        #expect(root.presentedViewController == nil)
+        #expect(!sheets.course)
+        #expect(keyRoot.presentedViewController != nil)
+        #expect(keySheets.course)
+        keySheets.course = false
+        try await waitUntil { keyRoot.presentedViewController == nil }
+    }
+
     @MainActor
     private final class Told {
         var closedAll: Bool?
