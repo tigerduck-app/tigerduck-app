@@ -129,19 +129,9 @@ extension MacClassTableView {
 
     func deleteCourse(_ course: SDCourse) {
         guard shownPerson == nil else { return }
-        var deleted = Set(DataCache.shared.loadDeletedCourseNos())
-        deleted.insert(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo))
-        DataCache.shared.saveDeletedCourseNos(Array(deleted))
+        DataCache.shared.deleteCourse(course.courseNo, semester: selectedSemester)
         if ignoredAssignmentCourses.contains(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo)) {
             DataCache.shared.setAssignmentsIgnored(false, semester: selectedSemester, courseNo: course.courseNo)
-        }
-
-        let existing = DataCache.shared.loadUserAddedCourses()
-        let pruned = existing.filter { entry in
-            !(entry.courseNo == course.courseNo && (entry.semester == selectedSemester || entry.semester.isEmpty))
-        }
-        if pruned.count != existing.count {
-            DataCache.shared.saveUserAddedCourses(pruned)
         }
 
         cacheRevision &+= 1

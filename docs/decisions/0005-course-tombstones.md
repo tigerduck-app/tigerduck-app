@@ -20,8 +20,15 @@ with no rows for the term and a tombstone for every course it held.
   term's tombstones before anything reads the term's emptiness.
 - A reset tombstone does not bind the device that wrote it, by the backend's rule: that
   device's next upload releases the tombstones for the keys it names. The reconcile skips a
-  tombstone whose `deleted_by_reset` and `deleted_by_this_device` are both true; a
-  single-course delete binds its author like every other device.
+  tombstone whose `deleted_by_reset` and `deleted_by_this_device` are both true.
+- A single-course delete of a course the school lists for the term binds its author like every
+  other device: the author hides it locally, and its roster uploads leave it out.
+- A single-course delete of a hand-added course does not bind its author. From backend 3.3.6
+  the server records the tombstone as `user_added`, leaves it out of the author's `/sync/full`,
+  and releases it on the author's next upload without `force_keys` that lists the course.
+  The author removes the course without a local hide (`DataCache.deleteCourse`), so once
+  course selection lists it the class table shows it and the roster upload names it. Every
+  other device stays bound until then.
 - A term with no server rows (a first sync, or another device mid-reset) is uploaded from what
   the tombstones leave visible, instead of being read as deleted elsewhere.
 - The resetting device keeps the term in `resettingSemesters` across the DELETE and the local
@@ -36,6 +43,9 @@ with no rows for the term and a tombstone for every course it held.
 - Letting reset tombstones bind their author: a poll between the reset's DELETE and the next
   upload would hide every course, and the refetch, which filters by the tombstone store, would
   upload nothing and never release them.
+- Hiding a deleted hand-added course and lifting the hide once course selection lists it: the
+  same outcome with one more stored list, and a list lifted on the disk alone leaves the class
+  table's copy of the hides stale.
 
 ## Consequences
 
@@ -47,4 +57,7 @@ with no rows for the term and a tombstone for every course it held.
   drops its queued delete by that key (`CloudSyncCoordinator.discardCourseDeletes`).
 - A course deleted here is deleted on the server through the outbox, which retries until the
   delete lands. Until then the server still lists it, and the reconcile keeps it hidden here for
-  as long as its delete is queued (`CloudSyncCoordinator.pendingCourseDeleteKeys`).
+  as long as its delete is queued (`CloudSyncCoordinator.pendingCourseDeleteKeys`). A hand-added
+  course whose delete the outbox gives up on comes back, as nothing hides it.
+- A hand-added course deleted before this rule keeps its local hide, since nothing recorded
+  which hides came from one.
