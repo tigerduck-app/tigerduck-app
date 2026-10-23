@@ -61,6 +61,7 @@ extension MoodlePage {
     static func profile(userId: Int, courseId: Int) -> MoodlePage {
         MoodlePage(path: "/user/view.php?id=\(userId)&course=\(courseId)")
     }
+    static let profileEditor = MoodlePage(path: "/user/edit.php")
 }
 
 nonisolated struct MoodleMemberSection: Identifiable, Equatable {
@@ -295,7 +296,11 @@ private struct MoodleMemberSectionView: View {
                         Divider().padding(.leading, MoodleMemberRow.textInset)
                     }
                     Button { open(member) } label: {
-                        MoodleMemberRow(member: member, picture: member.pictureURL.flatMap { store.pictures[$0] })
+                        MoodleMemberRow(
+                            member: member,
+                            picture: member.pictureURL.flatMap { store.pictures[$0] },
+                            isMe: member.id == store.members.value?.ownId
+                        )
                     }
                     .buttonStyle(.plain)
                     .task(id: member.pictureURL) { await store.loadPicture(of: member) }
@@ -310,6 +315,7 @@ private struct MoodleMemberSectionView: View {
 struct MoodleMemberRow: View {
     let member: MoodleMember
     let picture: CGImage?
+    var isMe = false
 
     static let textInset: CGFloat = TigerDuckTheme.Spacing.lg + avatarSize + TigerDuckTheme.Spacing.md
     private static let avatarSize: CGFloat = 36
@@ -318,10 +324,13 @@ struct MoodleMemberRow: View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             MoodleAvatar(name: member.name, size: Self.avatarSize, picture: picture)
             VStack(alignment: .leading, spacing: 2) {
-                Text(member.name)
-                    .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
+                HStack(spacing: TigerDuckTheme.Spacing.xs) {
+                    Text(member.name)
+                        .font(TigerDuckTheme.Typography.body)
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
+                    if isMe { meTag }
+                }
                 if let studentId = member.studentId {
                     subline(studentId)
                 }
@@ -337,11 +346,22 @@ struct MoodleMemberRow: View {
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(member.name)
+        .accessibilityLabel(isMe ? "\(member.name), \(String(localized: "course_member_me"))" : member.name)
         .accessibilityValue([member.studentId, department].compactMap(\.self).joined(separator: ", "))
     }
 
     private var department: String? { member.department?.shortName }
+
+    private var meTag: some View {
+        Text(String(localized: "course_member_me"))
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.tint)
+            .padding(.horizontal, TigerDuckTheme.Spacing.xs)
+            .padding(.vertical, 1)
+            .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.xs))
+            .fixedSize()
+            .layoutPriority(1)
+    }
 
     private func subline(_ studentId: String) -> some View {
         HStack(spacing: 0) {

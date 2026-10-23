@@ -20,6 +20,9 @@ nonisolated struct MoodleCourseAPI: Sendable {
         MoodleMemberList(ownId: nil, members: [])
     }
     var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
+    var updatePicture: @Sendable (_ jpeg: Data, _ isCurrent: @escaping @MainActor @Sendable () -> Bool) async throws -> Void = { _, _ in
+        throw CancellationError()
+    }
     var gradeItems: @Sendable (_ courseId: Int) async throws -> [MoodleGradeItem] = { _ in [] }
     var summary: @Sendable (_ courseId: Int) async throws -> MoodleCourseSummary = { _ in .empty }
     var submission: @Sendable (_ assignId: Int) async throws -> MoodleAssignmentSubmission = { _ in
@@ -83,6 +86,9 @@ nonisolated struct MoodleCourseAPI: Sendable {
                 return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
             }
         },
+        updatePicture: { jpeg, isCurrent in
+            try await updatePicture(jpeg, isCurrent: isCurrent)
+        },
         gradeItems: { courseId in
             try await MoodleWebserviceClient.withToken { token in
                 let userId = try await MoodleSiteInfoService.shared.userId(token: token)
@@ -128,6 +134,20 @@ nonisolated struct MoodleCourseAPI: Sendable {
             guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
             try await MoodleForumService.markViewed(
                 discussionId: discussionId, token: token, session: session, siteURL: siteURL
+            )
+        }
+    }
+
+    static func updatePicture(
+        _ jpeg: Data,
+        isCurrent: @escaping @MainActor @Sendable () -> Bool,
+        tokens: MoodleWebserviceClient.TokenSource = .keychain,
+        session: URLSession = MoodleWebserviceClient.session,
+        siteURL: URL = AppConstants.moodleBaseURL
+    ) async throws {
+        try await MoodleWebserviceClient.withToken(tokens) { token in
+            try await MoodleProfilePictureService.update(
+                jpeg: jpeg, token: token, isCurrent: isCurrent, session: session, siteURL: siteURL
             )
         }
     }
@@ -200,6 +220,16 @@ final class MoodleFeed<Value: Codable & Sendable> {
         running = task
         await task.value
         if running == task { running = nil }
+    }
+
+    /// Waits out a running fetch before starting one, since that fetch may predate a change the
+    /// caller just made on the site.
+    func refetch(_ fetch: @escaping @Sendable () async throws -> Value) async {
+        if let earlier = running {
+            await earlier.value
+            if running == earlier { running = nil }
+        }
+        await refresh(fetch)
     }
 
     func update(_ change: (inout Value) -> Void) {
@@ -592,7 +622,11 @@ final class MoodleCourseStore {
     /// account, answers as if the course had no members, which hides their row for good rather
     /// than failing on every refresh.
     func refreshMembers() async {
-        await members.refresh { [api, courseId] in
+        await members.refresh(membersFetch)
+    }
+
+    private var membersFetch: @Sendable () async throws -> MoodleMemberList {
+        { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseMembersService.membersFunction) else {
                 return MoodleMemberList(ownId: nil, members: [])
             }
@@ -602,6 +636,17 @@ final class MoodleCourseStore {
                 return MoodleMemberList(ownId: nil, members: [])
             }
         }
+    }
+
+    func allowsPictureChange() async -> Bool {
+        (try? await api.functions())?.contains(MoodleProfilePictureService.updateFunction) == true
+    }
+
+    /// Sets the account's picture, then fetches the members again for its new address.
+    func updatePicture(_ jpeg: Data) async throws {
+        try await api.updatePicture(jpeg) { @MainActor [context] in context.isCurrent() }
+        guard context.isCurrent() else { return }
+        await members.refetch(membersFetch)
     }
 
     private(set) var pictures: [URL: CGImage] = [:]
