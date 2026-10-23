@@ -236,23 +236,21 @@ struct LibrarySignInTests {
         }
     }
 
-    @Test func aSchoolSignOutTakesTheLibraryAccountOfTheSameID() async throws {
-        try await Self.withStoredAccount { _ in
+    @Test func aSchoolSignOutKeepsTheLibraryAccount() async throws {
+        let announcements = Calls()
+        try await Self.withStoredAccount { keychain in
             let username = try #require(LibraryService.storedUsername)
-            #expect(!LibraryService.clearCredentials(ifSchoolAccount: "B19999999"))
+            try keychain.setObject(Data(username.utf8), forKey: AppConstants.KeychainKeys.studentId)
+            let observer = NotificationCenter.default.addObserver(
+                forName: LibraryService.accountDidChange, object: nil, queue: nil
+            ) { _ in MainActor.assumeIsolated { announcements.count += 1 } }
+            defer { NotificationCenter.default.removeObserver(observer) }
+
+            LibraryService.schoolAccountDidSignOut()
+
             #expect(LibraryService.storedUsername == username)
-
-            #expect(LibraryService.clearCredentials(ifSchoolAccount: username.lowercased()))
-            #expect(LibraryService.storedUsername == nil)
-        }
-    }
-
-    @Test func aUsernameWithSpacesIsTheSchoolAccountOfItsID() async throws {
-        try await Self.withStoredAccount(username: " B1LIBSPACE ") { _ in
-            #expect(!LibraryService.hasAccount(otherThan: "b1libspace"))
-            #expect(LibraryService.hasAccount(otherThan: "B19999999"))
-            #expect(LibraryService.clearCredentials(ifSchoolAccount: "b1libspace"))
-            #expect(LibraryService.storedUsername == nil)
+            #expect(LibraryService.canSignInWithStoredCredentials)
+            #expect(announcements.count == 0)
         }
     }
 

@@ -103,20 +103,11 @@ enum LibraryService {
         storedPasswordRejected ? nil : storedPassword
     }
 
+    /// The library account stays through a school sign-out. Only a sign-in form that offered the
+    /// departing school account's student ID, shown while no library account is stored, empties.
     @MainActor
-    static func clearCredentials(ifSchoolAccount studentId: String) -> Bool {
-        guard let username = storedUsername else {
-            if !hasAccount { NotificationCenter.default.post(name: accountDidChange, object: nil) }
-            return false
-        }
-        guard isSameStudent(username, studentId) else { return false }
-        clearCredentials()
-        return true
-    }
-
-    nonisolated static func isSameStudent(_ username: String, _ studentId: String) -> Bool {
-        func normalized(_ id: String) -> String { id.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
-        return normalized(username) == normalized(studentId)
+    static func schoolAccountDidSignOut() {
+        if storedUsername == nil, !hasAccount { NotificationCenter.default.post(name: accountDidChange, object: nil) }
     }
 
     static var storedToken: String? {
@@ -218,11 +209,6 @@ enum LibraryService {
 
     @MainActor static var hasAccount: Bool {
         isTokenValid || canSignInWithStoredCredentials
-    }
-
-    @MainActor static func hasAccount(otherThan studentId: String) -> Bool {
-        guard hasAccount, let username = storedUsername else { return false }
-        return !isSameStudent(username, studentId)
     }
 
     @MainActor @discardableResult

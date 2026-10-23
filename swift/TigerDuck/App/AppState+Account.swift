@@ -65,14 +65,8 @@ extension AppState {
         boundaryRefreshTask = nil
         #endif
 
-        let departingStudentId = authService.storedStudentId
         authService.logout()
-        if let departingStudentId, LibraryService.clearCredentials(ifSchoolAccount: departingStudentId) {
-            _libraryRevision += 1
-        }
-        #if os(iOS)
-        if let departingStudentId { MailAccountManager.shared.logout(ifSchoolAccount: departingStudentId) }
-        #endif
+        LibraryService.schoolAccountDidSignOut()
         let endingSession = Task { await authTokenManager.endSession() }
         ServerStatusTracker.shared.reset()
         Defaults[.schoolDataSyncedAt] = nil

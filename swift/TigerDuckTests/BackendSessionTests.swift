@@ -1078,12 +1078,7 @@ struct BackendSignInTests {
             moodleTokens: .standIn(harvests: harvests)
         )
         auth.authTokenManager = backend.manager
-        let keychain = MemoryKeychain.signedIn()
-        let expiry = Int64(Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000)
-        try keychain.setObject(Data("library-token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
-        try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
-
-        await SecureStore.$sharedForTesting.withValue(keychain) {
+        await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
             await auth.signInToServices(
                 studentId: "B11000000", password: "password", generation: auth.loginGeneration &- 1
             )
