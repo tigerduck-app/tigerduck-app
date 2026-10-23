@@ -138,20 +138,18 @@ nonisolated enum ClassroomUsageParser {
     /// wrong cells of a second page.
     private static func slotUse(_ cell: Element) -> RoomSlotUse {
         var parts = [""]
-        func read(_ node: Node) {
-            for child in node.getChildNodes() {
-                if let text = child as? TextNode {
-                    parts[parts.count - 1] += text.getWholeText()
-                } else if let element = child as? Element {
-                    switch element.tagName() {
-                    case "br": parts.append("")
-                    case "table": break
-                    default: read(element)
-                    }
+        var stack = Array(cell.getChildNodes().reversed())
+        while let node = stack.popLast() {
+            if let text = node as? TextNode {
+                parts[parts.count - 1] += text.getWholeText()
+            } else if let element = node as? Element {
+                switch element.tagName() {
+                case "br": parts.append("")
+                case "table": break
+                default: stack += element.getChildNodes().reversed()
                 }
             }
         }
-        read(cell)
         let lines = parts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
