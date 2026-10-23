@@ -45,12 +45,9 @@ final class HeldShareLink {
         link = Link(text: text, loginGeneration: loginGeneration)
     }
 
-    /// Whether a link's import may open: someone is signed in, onboarding is finished, and the
-    /// sign-in sheet has closed. A sign-in saves the account before its sheet closes, and the
-    /// import's sheet cannot show over it.
+    /// Whether a link's import may open: someone is signed in and onboarding is finished.
     static func mayOpen(in appState: AppState) -> Bool {
         appState.hasCompletedOnboarding && appState.authService.hasStoredCredentials
-            && !appState.isShowingNTUSTLoginSheet
     }
 
     func take(in appState: AppState) -> String? {

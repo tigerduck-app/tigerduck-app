@@ -50,21 +50,36 @@ private struct ClassTableImportHost: ViewModifier {
             .onChange(of: linkModel?.isFinished) { _, isFinished in
                 if isFinished == true { linkModel = nil }
             }
-            .onChange(of: HeldShareLink.shared.link?.id, initial: true) { openHeldLink() }
-            .onChange(of: HeldShareLink.mayOpen(in: appState)) { openHeldLink() }
+            .task(id: HeldShareLink.mayOpen(in: appState) ? HeldShareLink.shared.link?.id : nil) {
+                while !openHeldLink(), !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+            }
     }
 
-    private func openHeldLink() {
-        guard let text = HeldShareLink.shared.take(in: appState) else { return }
-        // A link replaces what an open scanner shows, so it opens there.
-        if let importModel, !importModel.isFinished {
-            importModel.linkOpened(text)
-            return
+    /// False while the link waits: the import's sheet would close a sheet or alert open in a tab,
+    /// and would race a What's New or update sheet about to show.
+    private func openHeldLink() -> Bool {
+        // A link replaces what an open scanner, or an earlier link's import, shows, inside it.
+        let inPlace: ClassTableImportModel? = if let importModel, !importModel.isFinished {
+            importModel
+        } else if let linkModel, !linkModel.isIdle, !linkModel.isFinished {
+            linkModel
+        } else {
+            nil
         }
-        linkModel?.cancel()
+        if let inPlace {
+            if let text = HeldShareLink.shared.take(in: appState) { inPlace.linkOpened(text) }
+            return true
+        }
+        let othersUp = UIApplication.shared.foregroundRoot?.presentedViewController != nil
+            || appState.updateNotifyCoordinator.activeNotifySheet != nil
+        if othersUp, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: appState) { return false }
+        guard let text = HeldShareLink.shared.take(in: appState) else { return true }
         let model = ClassTableImportModel.live(authService: appState.authService)
         linkModel = model
         model.linkOpened(text)
+        return true
     }
 }
 
