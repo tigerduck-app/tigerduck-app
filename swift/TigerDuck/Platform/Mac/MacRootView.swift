@@ -51,11 +51,9 @@ struct MacContentView: View {
         switch destination {
         case .classTable:
             ImportedClassTableStore.shared.show(nil)
-            if pinnedFeatures.contains(.classTable) {
-                selection = .feature(.classTable)
-            } else {
-                selection = .more
-            }
+            let route = AppFeature.tabRoute(to: .classTable, visibleTabs: pinnedFeatures)
+            selection = route.moreDeepLink == nil ? .feature(.classTable) : .more
+            appState.pendingMoreDeepLink = route.moreDeepLink
         case .library:
             selection = .more
         }
