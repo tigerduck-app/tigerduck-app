@@ -72,6 +72,9 @@ final class ClassTableImportModel: Identifiable {
 
     var isIdle: Bool { prompt == nil && pending == nil && !isLookingUp && !isReadingImage && !isFinished }
 
+    /// An update of a person imported already, whose lookup has no confirm screen to show on.
+    var isUpdating: Bool { isLookingUp && pending == nil }
+
     var canImport: Bool {
         !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLookingUp && !isFinished
     }

@@ -22,7 +22,7 @@ struct ClassTableImportScannerView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 cameraView
-                if model.isLookingUp && model.pending == nil {
+                if model.isUpdating {
                     ProgressView().controlSize(.large)
                 }
             }

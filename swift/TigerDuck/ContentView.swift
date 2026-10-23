@@ -32,6 +32,14 @@ private struct ClassTableImportHost: ViewModifier {
                 guard importModel == nil else { return }
                 importModel = .live(authService: appState.authService)
             }
+            .overlay {
+                if linkModel?.isUpdating == true {
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        ProgressView().controlSize(.large)
+                    }
+                }
+            }
             .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
             .classTableImportPrompts(linkModel, onConfirmScreen: false)
             .sheet(item: Binding(get: { linkModel?.pending }, set: { if $0 == nil { linkModel?.cancel() } })) { pending in

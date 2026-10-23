@@ -600,6 +600,39 @@ struct ClassTableImportModelTests {
         #expect(model.isFinished)
     }
 
+    @Test("an update, which has no confirm screen, is shown as updating until its lookup ends or fails")
+    func updateShowsProgress() async throws {
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
+        lookup.failing = ["1142"]
+        let model = makeModel()
+        model.linkOpened(try Self.code("B11300001", [Self.spring]))
+        guard case .replace(let job) = model.prompt else {
+            Issue.record("expected the replace prompt, got \(String(describing: model.prompt))")
+            return
+        }
+        #expect(!model.isUpdating)
+
+        model.lookUp(job)
+        #expect(model.isUpdating)
+        await model.lookupTask?.value
+        #expect(!model.isUpdating)
+        #expect(model.prompt == .lookupFailed(job))
+
+        lookup.failing = []
+        model.lookUp(job)
+        #expect(model.isUpdating)
+        await model.lookupTask?.value
+        #expect(!model.isUpdating)
+        #expect(model.isFinished)
+
+        let fresh = makeModel()
+        fresh.linkOpened(try Self.code("B11300002"))
+        fresh.importPending()
+        #expect(fresh.isLookingUp)
+        #expect(!fresh.isUpdating, "a new person's lookup shows on its confirm screen")
+        await fresh.lookupTask?.value
+    }
+
     @Test("a failed update saves nothing, and Cancel goes back to scanning")
     func failedUpdateKeepsThePerson() async throws {
         store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])

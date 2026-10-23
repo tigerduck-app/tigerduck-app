@@ -177,7 +177,7 @@ struct MacClassTableView: View {
                 }
             }
             ToolbarItem(placement: .automatic) {
-                if let importModel, importModel.isLookingUp, importModel.pending == nil {
+                if let importModel, importModel.isUpdating {
                     Button {
                         importModel.cancel()
                     } label: {
