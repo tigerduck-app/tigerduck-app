@@ -255,6 +255,10 @@ jobs:
 
       # Run from the .xctestrun the build wrote, so xcodebuild does not load the project and
       # resolve packages again. Newest first: the restored DerivedData can hold an older one.
+      # Not quiet, so the log shows each test start and end. A run hung with no output until the
+      # job's limit (#428), so one still going after 30 minutes, several times a normal run, is
+      # taken for hung: the step lists the tests that started and did not end, samples the test
+      # host, keeps both with the simulator's log in hang/ and fails.
       - name: Unit tests (${{ matrix.leg }})
         if: steps.changes.outputs.run == 'true'
         id: tests
@@ -267,13 +271,52 @@ jobs:
           echo "$xctestrun"
           skip=()
           for id in $ON_SCREEN_TESTS; do skip+=("-skip-testing:$id"); done
+          log="$RUNNER_TEMP/tests.log"
           xcodebuild test-without-building \
             -xctestrun "$xctestrun" \
             -destination "id=$UDID" \
             ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"} \
             "${skip[@]}" \
             -resultBundlePath Tests.xcresult \
-            -quiet
+            > "$log" 2>&1 &
+          tests=$!
+          tail -n +1 -f "$log" &
+          echo_log=$!
+          set +e
+          limit=$((SECONDS + 30 * 60))
+          while kill -0 "$tests" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do sleep 5; done
+          if ! kill -0 "$tests" 2>/dev/null; then
+            wait "$tests"
+            status=$?
+            sleep 2
+            kill "$echo_log"; wait "$echo_log" 2>/dev/null
+            exit "$status"
+          fi
+          sleep 2
+          kill "$echo_log"; wait "$echo_log" 2>/dev/null
+          echo "::error::The tests were still running after 30 minutes; the xcresults artifact keeps hang/"
+          mkdir -p hang
+          cp "$log" hang/
+          echo "-- started and not ended"
+          perl -ne '
+              if (/\xE2\x97\x87 Test (?!run |case )(.+) started\.$/) { $open{$1} = 1 }
+              elsif (/(?:\xE2\x9C\x94|\xE2\x9C\x98) Test (.+?)(?: with \d+ test cases?)? (?:passed|failed) after /) { delete $open{$1} }
+              elsif (/Test Case \x27(.+)\x27 started\./) { $open{$1} = 1 }
+              elsif (/Test Case \x27(.+)\x27 (?:passed|failed) \(/) { delete $open{$1} }
+              END { print "$_\n" for sort keys %open }' "$log" | tee hang/running.txt
+          for pid in $(pgrep -f "CoreSimulator/Devices/$UDID/data/Containers/Bundle/Application/"); do
+            sample "$pid" 10 -file "hang/sample-$pid.txt" > /dev/null 2>&1
+            echo "-- call graph of $(ps -o comm= -p "$pid")"
+            sed -n '/^Call graph:/,/^$/p' "hang/sample-$pid.txt" | head -n 80
+          done
+          xcrun simctl spawn "$UDID" log show --last 15m --style compact \
+            --predicate 'process BEGINSWITH "TigerDuck"' > hang/simulator.log 2>&1
+          find Tests.xcresult -name 'Session-*.log' -exec cp {} hang/ \; 2>/dev/null
+          # SIGINT first, so xcodebuild can close the result bundle.
+          kill -INT "$tests"
+          for _ in $(seq 18); do kill -0 "$tests" 2>/dev/null || break; sleep 5; done
+          kill -KILL "$tests" 2>/dev/null
+          exit 1
 
       # On a simulator that has just booted, a window becoming key, the keyboard coming up or WebKit
       # starting can hold the main thread for a minute, and every test waiting on the main actor
@@ -296,8 +339,8 @@ jobs:
             -parallel-testing-enabled NO \
             -resultBundlePath OnScreenTests.xcresult
 
-      # `-quiet` hides the test count and the failure messages, and a run that executed nothing
-      # exits 0, so this prints both. "Ran for" is a bundle's own run; its test step minus it is
+      # The run's log is long, and a run that executed nothing exits 0, so this prints the test
+      # count and the failure messages. "Ran for" is a bundle's own run; its test step minus it is
       # install, launch and teardown. Tests queue for the main actor, so per-test times mislead.
       - name: Test summary
         if: always() && steps.changes.outputs.run == 'true'
@@ -343,14 +386,16 @@ jobs:
       # The summary above is a best effort against a JSON shape Apple changes
       # between Xcode releases. Keep the bundles themselves so a failure can be
       # opened locally when it does not.
+      # Also on a cancel, as when the job reaches its time limit.
       - name: Keep the result bundles
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: xcresults-${{ matrix.leg }}
           path: |
             Tests.xcresult
             OnScreenTests.xcresult
+            hang
           retention-days: 7
 
   # A Mac-only compile error passes both legs above and `tools/check_macos_sources.py`, which
