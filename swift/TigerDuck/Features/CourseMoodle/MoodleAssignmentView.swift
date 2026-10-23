@@ -8,12 +8,13 @@ struct MoodleAssignmentView: View {
     let courseName: String
     let policy: VisualStylePolicy
     let accent: Color
+    var noteSleep: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
 
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
-    @State private var didOpen = false
+    @State private var openedId: Int?
     @State private var files = MoodleFileOpener()
     @ScaledMetric(relativeTo: .title) private var tileWidth: CGFloat = 56
     @ScaledMetric(relativeTo: .title) private var tileHeight: CGFloat = 60
@@ -25,11 +26,12 @@ struct MoodleAssignmentView: View {
         let feed = store.assignments.submission(of: record)
         let submission = feed.value
         let isSubmitted = Self.isSubmitted(record: record, listed: entry.listed, submission: submission)
-        let description = MoodleHTMLText.markdown(fromHTML: record.intro)
+        let due = Self.due(of: entry, submission: submission)
+        let description = Self.markdown(ofHTML: record.intro)
         ScrollView {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xl) {
                 header
-                summaryCard(isSubmitted: isSubmitted, group: submission?.groupName)
+                summaryCard(due: due, isSubmitted: isSubmitted, group: submission?.groupName)
                 if !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     section(String(localized: "assignment_detail_description")) { markdown(description) }
                 }
@@ -44,7 +46,7 @@ struct MoodleAssignmentView: View {
                     submissionSection(feed, badge: Self.badge(
                         isSubmitted: isSubmitted,
                         submittedAt: Self.submittedAt(of: entry.listed, submission: submission),
-                        due: record.dueDate
+                        due: due
                     ))
                 }
                 if let grade = submission?.grade {
@@ -61,10 +63,11 @@ struct MoodleAssignmentView: View {
         .safeAreaInset(edge: .bottom) {
             if !record.noSubmissions { submitButton }
         }
+        .moodleRefreshFailureNote(feed, hasContent: submission != nil, sleep: noteSleep)
         .moodleArticleChrome()
-        .task {
-            guard !didOpen else { return }
-            didOpen = true
+        .task(id: record.assignId) {
+            guard openedId != record.assignId else { return }
+            openedId = record.assignId
             await store.assignments.refreshSubmission(of: record)
         }
         .onChange(of: scenePhase) { _, phase in
@@ -72,6 +75,30 @@ struct MoodleAssignmentView: View {
             Task { await store.assignments.refreshSubmission(of: record) }
         }
         .moodleFilePresentation(files)
+    }
+
+    private static let markdownCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 300
+        return cache
+    }()
+
+    /// The page draws again at each download-progress tick, so each piece of HTML, up to 150
+    /// comments of it, is converted once and then read back by its text.
+    static func markdown(
+        ofHTML html: String,
+        convert: (String) -> String = { BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: $0)) }
+    ) -> String {
+        if let cached = markdownCache.object(forKey: html as NSString) { return cached as String }
+        let converted = convert(html)
+        markdownCache.setObject(converted as NSString, forKey: html as NSString)
+        return converted
+    }
+
+    /// The fetched submission says whether the student has an extension, else Home's row does.
+    static func due(of entry: MoodleCourseAssignments.Entry, submission: MoodleAssignmentSubmission?) -> Date? {
+        guard let submission else { return entry.dueDate }
+        return entry.record.dueDate(extendedTo: submission.extensionDueDate)
     }
 
     static func submittedAt(of listed: SDAssignment?, submission: MoodleAssignmentSubmission?) -> Date? {
@@ -93,16 +120,16 @@ struct MoodleAssignmentView: View {
     }
 
     @ViewBuilder
-    private func summaryCard(isSubmitted: Bool?, group: String?) -> some View {
-        if record.dueDate != nil || group != nil {
+    private func summaryCard(due: Date?, isSubmitted: Bool?, group: String?) -> some View {
+        if due != nil || group != nil {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-                if let due = record.dueDate {
+                if let due {
                     TimelineView(.everyMinute) { _ in
                         deadline(due, Self.deadline(due: due, isSubmitted: isSubmitted, now: AppClock.now()))
                     }
                 }
                 if let group {
-                    if record.dueDate != nil { Divider() }
+                    if due != nil { Divider() }
                     groupRow(group)
                 }
             }
@@ -240,7 +267,7 @@ struct MoodleAssignmentView: View {
                 if !refs.isEmpty {
                     Divider().padding(.leading, MoodleFileRow.textInset)
                 }
-                markdown(MoodleHTMLText.markdown(fromHTML: text))
+                markdown(Self.markdown(ofHTML: text))
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.vertical, TigerDuckTheme.Spacing.md)
             }
@@ -254,7 +281,7 @@ struct MoodleAssignmentView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.textSecondary)
                 .accessibilityAddTraits(.isHeader)
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(comments.enumerated()), id: \.element.id) { index, comment in
                     if index > 0 {
                         Divider().padding(.leading, TigerDuckTheme.Spacing.lg)
@@ -266,7 +293,7 @@ struct MoodleAssignmentView: View {
                             .font(TigerDuckTheme.Typography.caption)
                             .monospacedDigit()
                             .foregroundStyle(Color.textSecondary)
-                        markdown(MoodleHTMLText.markdown(fromHTML: comment.content))
+                        markdown(Self.markdown(ofHTML: comment.content))
                     }
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.vertical, TigerDuckTheme.Spacing.md)
@@ -292,7 +319,7 @@ struct MoodleAssignmentView: View {
                         Text(String(localized: "assignment_detail_feedback"))
                             .font(.footnote)
                             .foregroundStyle(Color.textSecondary)
-                        markdown(MoodleHTMLText.markdown(fromHTML: feedback))
+                        markdown(Self.markdown(ofHTML: feedback))
                     }
                 }
             }
@@ -352,7 +379,7 @@ struct MoodleAssignmentView: View {
     }
 
     private func markdown(_ text: String) -> some View {
-        Markdown(BulletinBodyRenderer.normalize(text))
+        Markdown(text)
             .markdownTheme(.bulletin(accent: accent))
             .environment(\.openURL, OpenURLAction { url in
                 files.forgetPendingOpen()

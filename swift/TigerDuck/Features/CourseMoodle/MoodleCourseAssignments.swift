@@ -9,6 +9,7 @@ final class MoodleCourseAssignments {
         let listed: SDAssignment?
 
         var id: Int { record.assignId }
+        var dueDate: Date? { record.dueDate(extendedTo: listed?.extensionDueDate) }
     }
 
     private(set) var list: [Entry] = []
@@ -81,7 +82,7 @@ final class MoodleCourseAssignments {
             }
             await fetched(MoodleSubmissionStatus(
                 assignId: record.assignId, submissionStatus: submission.status, gradingStatus: nil,
-                submittedAt: submission.modified
+                submittedAt: submission.modified, extensionDueDate: submission.extensionDueDate
             ), askedAt)
             return submission
         }

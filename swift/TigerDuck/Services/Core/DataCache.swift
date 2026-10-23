@@ -732,6 +732,8 @@ private struct CachedAssignment: Codable {
     let moodleUrl: String?
     let cutoffDate: Date?
     let submittedAt: Date?
+    let originalDueDate: Date?
+    let extensionDueDate: Date?
     let semester: String?
 
     init(from assignment: SDAssignment) {
@@ -744,6 +746,8 @@ private struct CachedAssignment: Codable {
         moodleUrl = assignment.moodleUrl
         cutoffDate = assignment.cutoffDate
         submittedAt = assignment.submittedAt
+        originalDueDate = assignment.originalDueDate
+        extensionDueDate = assignment.extensionDueDate
         semester = assignment.semester
     }
 
@@ -753,11 +757,12 @@ private struct CachedAssignment: Codable {
             courseNo: courseNo,
             courseName: courseName,
             title: title,
-            dueDate: dueDate,
+            dueDate: originalDueDate ?? dueDate,
             isCompleted: isCompleted,
             moodleUrl: moodleUrl,
             cutoffDate: cutoffDate,
             submittedAt: submittedAt,
+            extensionDueDate: extensionDueDate,
             semester: semester
         )
     }

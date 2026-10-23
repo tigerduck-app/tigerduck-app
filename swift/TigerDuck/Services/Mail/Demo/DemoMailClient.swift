@@ -317,8 +317,16 @@ actor DemoMailClient: MailClient {
 }
 
 nonisolated enum MailClientFactory {
+    #if DEBUG
+    /// Unit tests put a stand-in here that fails the test and connects to nothing; the app leaves it nil.
+    nonisolated(unsafe) static var testStandIn: (@Sendable () -> any MailClient)?
+    #endif
+
     static func make(demo: Bool) -> any MailClient {
         if demo, let client = DemoMailClient.shared { return client }
+        #if DEBUG
+        if let testStandIn { return testStandIn() }
+        #endif
         return LiveMailClient()
     }
 }

@@ -172,6 +172,10 @@ extension AppServiceBridge {
                 courseNoByMoodleId: courseNoByMoodleId,
                 statuses: statuses,
                 confirmed: confirmed,
+                extensions: Dictionary(
+                    cachedAssignments.compactMap { a in a.extensionDueDate.map { (a.assignmentId, $0) } },
+                    uniquingKeysWith: { first, _ in first }
+                ),
                 marks: DataCache.shared.assignmentMarks(semester: currentSemester)
             )
 
@@ -228,12 +232,16 @@ extension AppServiceBridge {
         cache.saveAssignments(assignments)
         cache.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
         cache.replaceClosedUnsubmittedAssignments(closed)
+        saveMoodleCalendarEvents(of: assignments, in: cache)
+        for (id, askedAt) in answered { statusAskedAt[String(id)] = askedAt }
+        return true
+    }
+
+    private static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: DataCache) {
         var calendarEvents = cache.loadCalendarEvents()
         calendarEvents.removeAll { $0.source == .moodle }
         calendarEvents.append(contentsOf: assignments.map(moodleCalendarEvent))
         cache.saveCalendarEvents(calendarEvents)
-        for (id, askedAt) in answered { statusAskedAt[String(id)] = askedAt }
-        return true
     }
 
     static func askStatuses(
@@ -270,12 +278,21 @@ extension AppServiceBridge {
         guard !Task.isCancelled, isCurrent(), statusAskedAt[id].map({ $0 < askedAt }) ?? true else { return false }
         statusAskedAt[id] = askedAt
         let assignments = cache.loadAssignments()
-        guard let assignment = assignments.first(where: { $0.assignmentId == id }),
-              assignment.isCompleted != status.isSubmitted || assignment.submittedAt != status.submittedAt
-        else { return false }
+        guard let assignment = assignments.first(where: { $0.assignmentId == id }) else { return false }
+        let dueBefore = assignment.dueDate
+        let extensionBefore = assignment.extensionDueDate
+        assignment.extend(to: status.extensionDueDate)
+        guard assignment.isCompleted != status.isSubmitted || assignment.submittedAt != status.submittedAt
+            || assignment.dueDate != dueBefore || assignment.extensionDueDate != extensionBefore else { return false }
         assignment.isCompleted = status.isSubmitted
         assignment.submittedAt = status.submittedAt
         cache.saveAssignments(assignments)
+        if assignment.dueDate != dueBefore { saveMoodleCalendarEvents(of: assignments, in: cache) }
+        // An extension ahead takes submissions past the cutoff, so rounds ask about it again.
+        if let extended = status.extensionDueDate, extended > Date() {
+            var closed = cache.loadClosedUnsubmittedAssignments()
+            if closed.removeValue(forKey: id) != nil { cache.replaceClosedUnsubmittedAssignments(closed) }
+        }
         uploadForReminders(assignments)
         center.post(name: AppConstants.dataDidUpdate, object: nil)
         return true
@@ -309,15 +326,17 @@ extension AppServiceBridge {
         courseNoByMoodleId: [Int: String],
         statuses: [Int: MoodleSubmissionStatus],
         confirmed: [String: Date],
+        extensions: [String: Date] = [:],
         marks: AssignmentMarks
     ) -> [SDAssignment] {
         records.compactMap { record in
+            let status = statuses[record.assignId]
+            let assignmentId = String(record.assignId)
+            let extensionDate = status == nil ? extensions[assignmentId] : status?.extensionDueDate
             guard let dueDate = record.dueDate else { return nil }
             guard !record.noSubmissions else { return nil }
 
             let moodleCourse = moodleCoursesById[record.courseId]
-            let status = statuses[record.assignId]
-            let assignmentId = String(record.assignId)
             let confirmedAt = confirmed[assignmentId]
             return marks.apply(to: SDAssignment(
                 assignmentId: assignmentId,
@@ -329,6 +348,7 @@ extension AppServiceBridge {
                 moodleUrl: "\(AppConstants.moodleBaseURL.absoluteString)/mod/assign/view.php?id=\(record.cmId)",
                 cutoffDate: record.cutoffDate,
                 submittedAt: status?.submittedAt ?? confirmedAt,
+                extensionDueDate: extensionDate,
                 semester: marks.semester
             ))
         }
@@ -358,7 +378,9 @@ extension AppServiceBridge {
         for record in records {
             let id = String(record.assignId)
             if let status = statuses[record.assignId] {
-                if !status.isSubmitted, isClosed(record, askedAt: askedAt) { closed[id] = askedAt }
+                // An extension takes this student's submission past the cutoff.
+                if !status.isSubmitted, isClosed(record, askedAt: askedAt),
+                   (status.extensionDueDate ?? .distantPast) < askedAt { closed[id] = askedAt }
             } else if let keptAt = kept[id], isClosed(record, askedAt: keptAt) {
                 closed[id] = keptAt
             }

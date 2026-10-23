@@ -27,11 +27,23 @@ struct MoodleGradeItemDisplayTests {
         #expect(Self.item(grade: "92.00", max: nil).maxText == nil)
     }
 
+    @Test("points show without the zeros ending them, as the assignment page shows a score; other grades stay whole")
+    func shownGrade() {
+        #expect(Self.item(grade: "85.00").shownGrade == "85")
+        #expect(Self.item(grade: "92.50").shownGrade == "92.5")
+        #expect(Self.item(grade: "7,25", max: 10).shownGrade == "7,25")
+        #expect(Self.item(grade: "100").shownGrade == "100")
+        #expect(Self.item(grade: "0.00").shownGrade == "0")
+        #expect(Self.item(grade: "A-").shownGrade == "A-")
+        #expect(Self.item(grade: "92.00 %").shownGrade == "92.00 %")
+        #expect(Self.item(grade: nil).shownGrade == nil)
+    }
+
     @Test("VoiceOver reads the grade with the most it could be")
     func spokenGrade() {
         let maximum = String(format: String(localized: "course_moodle_grade_out_of"), "100")
         #expect(maximum.contains("100"))
-        #expect(Self.item(grade: "92.00").spokenGrade == "92.00, \(maximum)")
+        #expect(Self.item(grade: "92.00").spokenGrade == "92, \(maximum)")
         #expect(Self.item(grade: "A-").spokenGrade == "A-")
         #expect(Self.item(grade: nil).spokenGrade.isEmpty)
     }
@@ -44,7 +56,7 @@ struct MoodleGradeItemDisplayTests {
             (true, String(localized: "course_moodle_grade_expanded")),
         ] {
             #expect(Self.item(grade: "92.00", feedback: "Well done").spokenGrade(isExpanded: expanded)
-                == "92.00, \(maximum), \(state)")
+                == "92, \(maximum), \(state)")
             #expect(Self.item(grade: "A-", feedback: "Well done").spokenGrade(isExpanded: expanded) == "A-, \(state)")
             #expect(Self.item(grade: "A-").spokenGrade(isExpanded: expanded) == "A-")
         }

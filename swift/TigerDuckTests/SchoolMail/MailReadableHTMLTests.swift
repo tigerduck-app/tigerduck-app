@@ -257,7 +257,7 @@ struct MailReadableHTMLTests {
 
     @Test(arguments: [
         "#333", "#333F", "#333333", "#333333ff", "rgb(51, 51, 51)", "rgba(51, 51, 51, 1)", "RGB(20% 20% 20%)",
-        "rgb(51 51 51 / 100%)", "rgba(51 51 51 / 1)",
+        "rgb(51 51 51 / 100%)", "rgba(51 51 51 / 1)", "rgb(5.1e1, +51, 51.0)", "rgba(51, 51, 51, .999e3)",
     ])
     func everyCSSFormOfAColourIsRead(value: String) {
         #expect(MailReadableHTML.parse(value[...], legacy: false) == RGBA(0x333333))
@@ -274,6 +274,7 @@ struct MailReadableHTMLTests {
     @Test(arguments: [
         "hsl(0, 0%, 20%)", "currentcolor", "inherit", "var(--ink)", "#33", "#33333", "#ggg", "rgb(51, 51)",
         "rgb(51 51 51 51)", "rgb(20%, 51, 51)", "rgb(nan, 0, 0)", "rgb(0x33, 0, 0)", "rgb (51, 51, 51)",
+        "rgb(51., 51, 51)", "rgb(51.e0, 51, 51)", "rgb(51e, 51, 51)", "rgb(., 51, 51)", "#３３３",
     ])
     func formsThisCannotReadAreNotGuessed(value: String) {
         #expect(MailReadableHTML.parse(value[...], legacy: false) == nil)

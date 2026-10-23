@@ -85,6 +85,20 @@ struct AssignmentStatusRequestTests {
         #expect(closed == ["1": askedAt])
     }
 
+    @Test("an extension past the answer keeps an assignment open after its cutoff")
+    func extensionKeepsItOpen() {
+        let askedAt = Self.askTime
+        var extended = Self.status(1, submitted: false)
+        extended.extensionDueDate = askedAt + 86_400
+        var lapsed = Self.status(2, submitted: false)
+        lapsed.extensionDueDate = askedAt - 30
+        let closed = AppServiceBridge.closedUnsubmitted(
+            records: [Self.record(1, cutoff: askedAt - 60), Self.record(2, cutoff: askedAt - 60)],
+            statuses: [1: extended, 2: lapsed], askedAt: askedAt, kept: [:]
+        )
+        #expect(closed == ["2": askedAt])
+    }
+
     @Test("an unanswered assignment stays closed while its cutoff does, and one no longer listed drops out")
     func unansweredAssignmentsKeepTheirTime() {
         let earlier = Self.askTime - 3600
