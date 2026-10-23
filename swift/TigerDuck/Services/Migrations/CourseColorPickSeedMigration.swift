@@ -17,6 +17,8 @@ enum CourseColorPickSeedMigration {
 
     /// A locked phone keeps the map unreadable, and unlocking resumes this process rather than
     /// launching again. Both notifications are watched, as a resumed process can miss the first.
+    /// Like the seed at launch it counts every colour in the map as picked, so one assigned
+    /// automatically before the unlock is counted too; a sign-out then only warns about it.
     private static func runAgainOnceReadable(cache: DataCache, center: NotificationCenter) {
         #if os(iOS)
         let retry = Retry()
