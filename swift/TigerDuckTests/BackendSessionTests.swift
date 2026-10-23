@@ -1504,11 +1504,12 @@ struct BackendFixture {
     let refreshTimeout: TimeInterval
 
     /// `accessTokenExpiry` is when A0 runs out; the default has it expired. A request the stub
-    /// holds outlasts the app's 20 seconds on a busy CI run, so the tests give it far longer.
+    /// holds waits for its gate however long a busy runner stalls the test, so no request here
+    /// times out unless a test sets `refreshTimeout` (https://github.com/tigerduck-app/tigerduck-app/issues/416).
     init(
         signedIn: Bool = true,
         accessTokenExpiry: Date = Date(timeIntervalSince1970: 0),
-        refreshTimeout: TimeInterval = 600
+        refreshTimeout: TimeInterval = .infinity
     ) {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         self.baseURL = baseURL
@@ -1565,6 +1566,7 @@ struct BackendFixture {
     ) -> AuthTokenManager {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
+        config.timeoutIntervalForRequest = .infinity
         return AuthTokenManager(
             baseURLProvider: { baseURL },
             deviceUUID: "test-device",
