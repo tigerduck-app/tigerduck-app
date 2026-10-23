@@ -83,8 +83,12 @@ enum WatchLibraryService {
 
     #if DEBUG
     /// Unit tests set this to refuse a request before it reaches the session: on watchOS a session
-    /// sends a request a `URLProtocol` stub answers anyway. The app leaves it nil.
-    nonisolated(unsafe) static var testGuard: (@Sendable (URLRequest) throws -> Void)?
+    /// sends a request a `URLProtocol` stub answers anyway. A unit test host refuses from launch,
+    /// before the test bundle loads, so the app's own start-up sends nothing; the app leaves it nil.
+    nonisolated(unsafe) static var testGuard: (@Sendable (URLRequest) throws -> Void)? = {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil else { return nil }
+        return { _ in throw URLError(.notConnectedToInternet) }
+    }()
     #endif
 
     static func sendOnPinnedSession(

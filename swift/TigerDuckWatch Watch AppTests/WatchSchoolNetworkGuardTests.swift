@@ -7,6 +7,11 @@ import Testing
 @Suite("Watch school network guard", .serialized)
 @MainActor
 struct WatchSchoolNetworkGuardTests {
+    @Test("the test host is one where the library seam refuses from launch")
+    func hostRefusesFromLaunch() {
+        #expect(ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil)
+    }
+
     @Test("the library sign-in stops before the session")
     func librarySignIn() async throws {
         try #require(SchoolNetworkGuard.isInstalled)
