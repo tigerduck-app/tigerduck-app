@@ -24,8 +24,8 @@ under test reads and writes directly, not through a seam:
   settings, which read the pending categories and the Assignments and Courses switches.
 - `SSOLoginService.storedPasswordRefusals`, which holds a school sign-in or a Moodle token harvest
   back from posting a refused password until its wait is over, and `ssoLoginTimestamp`.
-- `LibraryService.storedPasswordRejected`, the latch that stops the library sign-in with the
-  stored credentials once the library refused them.
+- `LibraryService.storedPasswordRefusals`, which holds an automatic library sign-in with the
+  stored credentials back after the library refused them, until its wait is over.
 - `ntustCredentialsPresent`, which `AuthService.login(studentId:password:)` and `logout()` write
   once they have changed the keychain.
 
@@ -61,6 +61,7 @@ them, observed as `rejectedBulletinPatchDoesNotPersist` failing
   `ReenableMarkTests`, `SyncedAccountSeedMigrationTests`, `SSOServiceLoginTests`,
   `LibrarySignInTests`, `SchoolSignInStepsTests`, `BackendSessionTests`,
   `SignOutNotificationTests`, `SharedAssignmentRoundTests`, `AfterFirstUnlockTests`,
-  `StoredPasswordRetryTests` and `StoredPasswordLatchRetryMigrationTests`.
+  `StoredPasswordRetryTests`, `StoredPasswordLatchRetryMigrationTests` and
+  `LibraryPasswordLatchRetryMigrationTests`.
 - A test's `AuthService` takes a `NotificationCenter` of its own: on the default one it hears the
   waits that refusals in these keys make `SSOLoginService` announce, and arms a real retry.
