@@ -245,6 +245,7 @@ enum LibraryService {
     }
 
     @MainActor private(set) static var storedPasswordRetry: Task<Void, Never>?
+    @MainActor private static var storedPasswordRetryMisses = 0
 
     /// Posts the stored password again once its wait ends, as `AuthService` does for the school,
     /// so a page left on the sign-in form signs in without a return to the app.
@@ -253,21 +254,39 @@ enum LibraryService {
         signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData,
         retrySleep: @escaping @Sendable (Duration) async -> Void
     ) {
-        cancelStoredPasswordRetry()
+        storedPasswordRetryMisses = 0
         let now = Date()
         let refusals = storedPasswordRefusals
         guard let retryAt = SSOLoginService.storedPasswordRetryAt(
             refusals: refusals.count, lastRefusal: refusals.last, now: now
-        ) else { return }
+        ) else { return cancelStoredPasswordRetry() }
+        startStoredPasswordRetry(after: max(0, retryAt.timeIntervalSince(now)), signIn: signIn, retrySleep: retrySleep)
+    }
+
+    @MainActor
+    private static func startStoredPasswordRetry(
+        after wait: TimeInterval,
+        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData,
+        retrySleep: @escaping @Sendable (Duration) async -> Void
+    ) {
+        cancelStoredPasswordRetry()
         let generation = loginGeneration
         storedPasswordRetry = Task {
-            await retrySleep(.seconds(max(0, retryAt.timeIntervalSince(now))))
+            await retrySleep(.seconds(wait))
             guard !Task.isCancelled, loginGeneration == generation else { return }
             storedPasswordRetry = nil
             guard storedPasswordPostIsDue(now: Date()) else {
                 return armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
             }
-            _ = try? await ensureToken(signIn: signIn, retrySleep: retrySleep)
+            let refusals = storedPasswordRefusals.count
+            guard (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) == nil,
+                  loginGeneration == generation, refusals > 0, storedPasswordRefusals.count == refusals,
+                  storedPasswordRetry == nil else { return }
+            storedPasswordRetryMisses += 1
+            startStoredPasswordRetry(
+                after: SSOLoginService.storedPasswordRetryDelay(afterRefusals: refusals + storedPasswordRetryMisses),
+                signIn: signIn, retrySleep: retrySleep
+            )
         }
     }
 

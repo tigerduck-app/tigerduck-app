@@ -545,6 +545,35 @@ struct LibrarySignInTests {
         }
     }
 
+    @Test func aTryThatCannotReachTheServerArmsALongerOne() async throws {
+        let calls = Calls()
+        let sleeper = ManualSleeper()
+        let signIn: @MainActor (String, String) async throws -> LibraryLoginData = { _, _ in
+            calls.count += 1
+            switch calls.count {
+            case 1: throw LibraryServiceError.loginFailed("wrong password")
+            case 2: throw URLError(.notConnectedToInternet)
+            default: return Self.answer()
+            }
+        }
+        try await Self.withStoredAccount { _ in
+            _ = try? await LibraryService.ensureToken(signIn: signIn, retrySleep: { await sleeper.sleep(for: $0) })
+            try await sleeper.waitUntilArmed()
+
+            Self.refusedOnceAndDue()
+            await sleeper.fire()
+            try await sleeper.waitUntilArmed(atLeast: 2)
+            #expect(calls.count == 2)
+            #expect(await sleeper.requestedDurations.last == .seconds(SSOLoginService.storedPasswordRetryDelay(afterRefusals: 2)))
+
+            let waiting = try #require(LibraryService.storedPasswordRetry)
+            await sleeper.fire()
+            await waiting.value
+            #expect(calls.count == 3)
+            #expect(LibraryService.isTokenValid)
+        }
+    }
+
     enum RetryEnd: String, CaseIterable, CustomTestStringConvertible {
         case savedCredentials
         case signOut
