@@ -23,7 +23,8 @@ struct ContentView: View {
 private struct ClassTableImportHost: ViewModifier {
     @Environment(AppState.self) private var appState
     @State private var importModel: ClassTableImportModel?
-    /// A link's import, shown over the class table with no camera under it, as on the Mac.
+    /// A link's import, apart from the scanner's, so opening a link never starts the camera or asks
+    /// for its permission.
     @State private var linkModel: ClassTableImportModel?
 
     func body(content: Content) -> some View {

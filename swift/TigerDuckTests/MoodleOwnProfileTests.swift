@@ -116,6 +116,25 @@ struct MoodleOwnProfileTests {
         #expect(store.member(Self.ownId)?.pictureURL == Site.newPicture)
     }
 
+    @Test("closing the profile editor fetches the members again while an older fetch runs")
+    func aProfileEditDuringAFetchFetchesAgain() async throws {
+        let root = Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let gate = ManualSleeper()
+        let site = Site(functions: [MoodleCourseMembersService.membersFunction], firstFetch: gate)
+        let store = Self.store(site, root: root)
+        let earlier = Task { await store.refreshMembers() }
+        try await gate.waitUntilArmed()
+
+        let edited = Task { await store.refetchMembers() }
+        for _ in 0..<10 { await Task.yield() }
+        await gate.fire()
+        await edited.value
+        await earlier.value
+
+        #expect(site.memberCalls == 2)
+    }
+
     #if os(iOS)
     @Test("the crop is the square under the circle, kept covered by the photo")
     func cropMath() {

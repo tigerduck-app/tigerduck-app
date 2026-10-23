@@ -645,6 +645,11 @@ final class MoodleCourseStore {
     /// Sets the account's picture, then fetches the members again for its new address.
     func updatePicture(_ jpeg: Data) async throws {
         try await api.updatePicture(jpeg) { @MainActor [context] in context.isCurrent() }
+        await refetchMembers()
+    }
+
+    /// Fetches the members after a change made on Moodle, which a fetch begun before it cannot answer.
+    func refetchMembers() async {
         guard context.isCurrent() else { return }
         await members.refetch(membersFetch)
     }
