@@ -203,7 +203,8 @@ final class PushCoordinator {
     nonisolated static let unchangedUploadInterval: TimeInterval = 6 * 3600
 
     private var uploads = UploadLedger()
-    private var lastUploads: [String: (task: Task<Void, Never>, fingerprint: Int)] = [:]
+    private var lastUploads: [String: Task<Void, Never>] = [:]
+    private var unfinishedUploads: [String: [Int]] = [:]
 
     nonisolated static func uploadIsDue(accepted: (fingerprint: Int, at: Date)?, fingerprint: Int, now: Date) -> Bool {
         guard let accepted, accepted.fingerprint == fingerprint else { return true }
@@ -248,7 +249,7 @@ final class PushCoordinator {
         isCurrent: @escaping @MainActor () -> Bool,
         send: @escaping @MainActor () async throws -> Void
     ) async throws -> Bool {
-        let previous = lastUploads[key]?.task
+        let previous = lastUploads[key]
         let upload = Task { @MainActor [weak self] () async throws -> Bool in
             await previous?.value
             guard let self, isCurrent() else { return false }
@@ -270,8 +271,14 @@ final class PushCoordinator {
             return true
         }
         let ended = Task<Void, Never> { _ = try? await upload.value }
-        lastUploads[key] = (ended, fingerprint)
-        defer { if lastUploads[key]?.task == ended { lastUploads[key] = nil } }
+        lastUploads[key] = ended
+        unfinishedUploads[key, default: []].append(fingerprint)
+        defer {
+            if lastUploads[key] == ended { lastUploads[key] = nil }
+            if let index = unfinishedUploads[key]?.firstIndex(of: fingerprint) {
+                unfinishedUploads[key]?.remove(at: index)
+            }
+        }
         return try await upload.value
     }
 
@@ -281,8 +288,8 @@ final class PushCoordinator {
 
     var holdsUnsentCourseUploads: Bool {
         let prefix = UploadLedger.courses("")
-        return uploads.holdsFailure(prefix: prefix) || lastUploads.contains {
-            $0.key.hasPrefix(prefix) && !uploads.accepts($0.key, fingerprint: $0.value.fingerprint)
+        return uploads.holdsFailure(prefix: prefix) || unfinishedUploads.contains { key, fingerprints in
+            key.hasPrefix(prefix) && fingerprints.contains { !uploads.accepts(key, fingerprint: $0) }
         }
     }
 
