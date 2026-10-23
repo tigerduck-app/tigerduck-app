@@ -16,6 +16,7 @@ final class InMemoryMailPreferences: MailPreferences, @unchecked Sendable {
     private var _cacheWipePending = false
     private var _diagnostics: [MailCheckRecord] = []
     private var _muteSettings = MailMuteSettings()
+    private var _inboxMutedUIDs: MailMutedUIDs?
     private var ownedByFolder: [String: OwnedDeleted] = [:]
 
     var studentID: String? {
@@ -62,6 +63,10 @@ final class InMemoryMailPreferences: MailPreferences, @unchecked Sendable {
         get { lock.withLock { _muteSettings } }
         set { lock.withLock { _muteSettings = newValue } }
     }
+    var inboxMutedUIDs: MailMutedUIDs? {
+        get { lock.withLock { _inboxMutedUIDs } }
+        set { lock.withLock { _inboxMutedUIDs = newValue } }
+    }
 
     func ownedDeleted(folder: String, uidValidity: UInt32) -> OwnedDeleted {
         lock.withLock {
@@ -94,6 +99,7 @@ final class InMemoryMailPreferences: MailPreferences, @unchecked Sendable {
             _lastCheckAt = nil
             _diagnostics = []
             _muteSettings = MailMuteSettings()
+            _inboxMutedUIDs = nil
             ownedByFolder = [:]
         }
     }

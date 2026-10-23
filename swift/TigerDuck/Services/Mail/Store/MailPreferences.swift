@@ -8,6 +8,12 @@ nonisolated struct MailCheckRecord: Codable, Equatable, Sendable {
     var result: String
 }
 
+/// Inbox UIDs a mute setting passed over, kept while the marker is below them.
+nonisolated struct MailMutedUIDs: Codable, Equatable, Sendable {
+    var uidValidity: UInt32
+    var uids: Set<UInt32>
+}
+
 nonisolated protocol MailPreferences: AnyObject, Sendable {
     var studentID: String? { get set }
     var displayName: String? { get set }
@@ -20,6 +26,7 @@ nonisolated protocol MailPreferences: AnyObject, Sendable {
     var diagnostics: [MailCheckRecord] { get set }
     var cacheWipePending: Bool { get set }
     var muteSettings: MailMuteSettings { get set }
+    var inboxMutedUIDs: MailMutedUIDs? { get set }
 
     func ownedDeleted(folder: String, uidValidity: UInt32) -> OwnedDeleted
     func setOwnedDeleted(_ owned: OwnedDeleted)
@@ -50,6 +57,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     private let diagnosticsKey: Defaults.Key<Data?>
     private let cacheWipePendingKey: Defaults.Key<Bool>
     private let muteSettingsKey: Defaults.Key<Data?>
+    private let inboxMutedUIDsKey: Defaults.Key<Data?>
 
     private static let lock = NSLock()
 
@@ -66,6 +74,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         diagnosticsKey = Defaults.Key<Data?>("school_mail_diagnostics", suite: defaults)
         cacheWipePendingKey = Defaults.Key<Bool>("school_mail_cache_wipe_pending", default: false, suite: defaults)
         muteSettingsKey = Defaults.Key<Data?>("school_mail_mute_settings", suite: defaults)
+        inboxMutedUIDsKey = Defaults.Key<Data?>("school_mail_inbox_muted_uids", suite: defaults)
     }
 
     var studentID: String? {
@@ -118,6 +127,10 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         }
         set { Defaults[muteSettingsKey] = try? JSONEncoder().encode(newValue) }
     }
+    var inboxMutedUIDs: MailMutedUIDs? {
+        get { Defaults[inboxMutedUIDsKey].flatMap { try? JSONDecoder().decode(MailMutedUIDs.self, from: $0) } }
+        set { Defaults[inboxMutedUIDsKey] = newValue.flatMap { try? JSONEncoder().encode($0) } }
+    }
 
     private var ownedDeletedRecords: [OwnedDeletedRecord] {
         get {
@@ -150,7 +163,8 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         Defaults.reset(
             studentIDKey, displayNameKey, notificationsEnabledKey,
             inboxUIDValidityKey, inboxNextUIDKey, authFailedKey,
-            demoActiveKey, lastCheckAtKey, ownedDeletedKey, diagnosticsKey, muteSettingsKey
+            demoActiveKey, lastCheckAtKey, ownedDeletedKey, diagnosticsKey, muteSettingsKey,
+            inboxMutedUIDsKey
         )
     }
 }

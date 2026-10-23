@@ -183,6 +183,29 @@ struct MailMuteRulesTests {
         #expect(h.center.requests.map(\.identifier) == ["school-mail-1-5"])
     }
 
+    @Test func aMutedMailStaysPassedOverWhenAnEarlierFailureRetriesAfterTheRuleIsLifted() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 3
+        prefs.muteSettings.presets = [.bulletin]
+        let fake = FakeMailClient(folders: ["INBOX": [
+            Self.message(uid: 3, arrivedAt: Self.at(day: 23, 12)),
+            Self.message(uid: 4, from: "bulletin@mail.ntust.edu.tw", arrivedAt: Self.at(day: 23, 12)),
+        ]])
+        let center = RejectingNotificationCenter(rejecting: ["school-mail-1-3"])
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: {})
+        #expect(await checker.check(trigger: .backgroundTask) == .newMail(1))
+        #expect(prefs.inboxNextUID == 3)
+
+        prefs.muteSettings.presets = []
+        center.stopRejecting()
+        #expect(await checker.check(trigger: .backgroundTask) == .newMail(1))
+        #expect(center.accepted == ["school-mail-1-3"])
+        #expect(prefs.inboxNextUID == 5)
+    }
+
     @MainActor @Test func signingOutForgetsTheRules() async {
         let h = MailAccountManagerTests.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
@@ -201,8 +224,11 @@ struct MailMuteRulesTests {
         #expect(prefs.muteSettings == MailMuteSettings())
         prefs.muteSettings.rules = [Self.rule(.subject, .contains, "ad")]
         #expect(DefaultsMailPreferences(defaults: suite).muteSettings.rules.map(\.value) == ["ad"])
+        prefs.inboxMutedUIDs = MailMutedUIDs(uidValidity: 7, uids: [4, 9])
+        #expect(DefaultsMailPreferences(defaults: suite).inboxMutedUIDs == MailMutedUIDs(uidValidity: 7, uids: [4, 9]))
         prefs.reset()
         #expect(prefs.muteSettings == MailMuteSettings())
+        #expect(prefs.inboxMutedUIDs == nil)
     }
 }
 #endif
