@@ -77,8 +77,7 @@ nonisolated final class SchoolNetworkGuard: URLProtocol {
     /// The seam a request to a school host comes from, told by its host and path; nil for any
     /// other host.
     static func seam(of request: URLRequest) -> String? {
-        guard let url = request.url, let host = url.host?.lowercased(),
-              TLSPinningDelegate.pinPolicy(forHost: host) != .notPinned else { return nil }
+        guard let url = request.url, let host = schoolHost(url.host) else { return nil }
         let path = url.path
         switch host {
         case "moodle2.ntust.edu.tw":
@@ -92,6 +91,14 @@ nonisolated final class SchoolNetworkGuard: URLProtocol {
         default:
             return "NTUST server \(host)"
         }
+    }
+
+    /// `host` lower-cased and without a trailing dot when it is `ntust.edu.tw` or under it, as the
+    /// library's and the mail server's are, whatever its TLS pins; nil for any other host.
+    static func schoolHost(_ host: String?) -> String? {
+        guard var host = host?.lowercased() else { return nil }
+        if host.hasSuffix(".") { host.removeLast() }
+        return host == "ntust.edu.tw" || host.hasSuffix(".ntust.edu.tw") ? host : nil
     }
 
     static func target(of request: URLRequest) -> String {

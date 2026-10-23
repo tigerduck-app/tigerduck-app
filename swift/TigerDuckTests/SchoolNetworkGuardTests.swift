@@ -21,7 +21,20 @@ struct SchoolNetworkGuardTests {
         for configuration in configurations {
             #expect(configuration.protocolClasses?.first == SchoolNetworkGuard.self)
         }
-        #expect(SchoolNetworkGuard.seam(of: URLRequest(url: URL(string: "https://settings-stub.invalid/v3")!)) == nil)
+    }
+
+    @Test("the guard takes every NTUST host by name, whatever its TLS pins, and no other host")
+    func schoolHostsByName() {
+        func seam(_ host: String) -> String? {
+            SchoolNetworkGuard.seam(of: URLRequest(url: URL(string: "https://\(host)/")!))
+        }
+
+        for host in ["www.ntust.edu.tw", "NTUST.EDU.TW.", "api.lib.ntust.edu.tw", "mail.ntust.edu.tw"] {
+            #expect(seam(host) != nil, "\(host)")
+        }
+        for host in ["settings-stub.invalid", "ntust.edu.tw.example.com", "notntust.edu.tw"] {
+            #expect(seam(host) == nil, "\(host)")
+        }
     }
 
     @Test("the Moodle token harvest stops at the guard")
