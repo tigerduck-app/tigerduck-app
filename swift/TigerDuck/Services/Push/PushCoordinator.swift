@@ -255,7 +255,12 @@ final class PushCoordinator {
             let now = Date()
             guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else { return false }
             let started = self.uploads.generation(of: key)
-            try await send()
+            do {
+                try await send()
+            } catch {
+                self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: started)
+                throw error
+            }
             self.uploads.record(key, fingerprint: fingerprint, at: now, startedIn: started)
             return true
         }
@@ -267,6 +272,11 @@ final class PushCoordinator {
 
     func forgetUploads(semester: String? = nil) {
         uploads.forget(semester.map(UploadLedger.courses))
+    }
+
+    var holdsUnsentCourseUploads: Bool {
+        let prefix = UploadLedger.courses("")
+        return lastUploads.keys.contains { $0.hasPrefix(prefix) } || uploads.holdsFailure(prefix: prefix)
     }
 
     static func fingerprint(of request: PushAPI.CourseUploadRequest) -> Int {
@@ -414,6 +424,7 @@ nonisolated struct UploadLedger {
     static func courses(_ semester: String) -> String { "courses:\(semester)" }
 
     private var accepted: [String: (fingerprint: Int, at: Date)] = [:]
+    private var failed: [String: Int] = [:]
     private var forgetsOfKey: [String: Int] = [:]
     private var forgetsOfAll = 0
 
@@ -428,15 +439,28 @@ nonisolated struct UploadLedger {
     mutating func record(_ key: String, fingerprint: Int, at date: Date, startedIn started: (all: Int, key: Int)) {
         guard started == generation(of: key) else { return }
         accepted[key] = (fingerprint, date)
+        failed[key] = nil
+    }
+
+    mutating func recordFailure(_ key: String, fingerprint: Int, startedIn started: (all: Int, key: Int)) {
+        guard started == generation(of: key) else { return }
+        failed[key] = fingerprint
+    }
+
+    /// A failed list the server took earlier, as an unchanged resend that failed, is not unsent.
+    func holdsFailure(prefix: String) -> Bool {
+        failed.contains { $0.key.hasPrefix(prefix) && accepted[$0.key]?.fingerprint != $0.value }
     }
 
     mutating func forget(_ key: String?) {
         if let key {
             forgetsOfKey[key, default: 0] &+= 1
             accepted[key] = nil
+            failed[key] = nil
         } else {
             forgetsOfAll &+= 1
             accepted = [:]
+            failed = [:]
         }
     }
 }

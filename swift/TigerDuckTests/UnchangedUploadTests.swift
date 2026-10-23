@@ -95,6 +95,58 @@ struct UnchangedUploadTests {
         #expect(backend.uploads == 2)
     }
 
+    @Test("A course list the server refused counts as unsent until a list of that term goes up or a sign-out forgets it")
+    func refusedListIsUnsent() async throws {
+        let backend = Backend()
+        backend.answer(status: 503)
+        backend.answer()
+        backend.answer(status: 503)
+        let coordinator = backend.makeCoordinator()
+        let list = Self.courses(Self.entry("CS1"))
+        #expect(!coordinator.holdsUnsentCourseUploads)
+
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
+        }
+        #expect(coordinator.holdsUnsentCourseUploads)
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(!coordinator.holdsUnsentCourseUploads)
+
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", isCurrent: { true })
+        }
+        coordinator.forgetUploads()
+        #expect(!coordinator.holdsUnsentCourseUploads)
+    }
+
+    @Test("A course list counts as unsent while it is out, and an assignment list does not")
+    func courseListInFlightIsUnsent() async throws {
+        let coordinator = Backend().makeCoordinator()
+        let sends = Sends()
+        sends.holds = true
+        let assignments = Task {
+            try await coordinator.uploadIfChanged(UploadLedger.assignments, fingerprint: 1, always: false, isCurrent: { true }) {
+                await sends.send(1)
+            }
+        }
+        try await waitUntil { sends.isParked }
+        #expect(!coordinator.holdsUnsentCourseUploads)
+        sends.release()
+        _ = try await assignments.value
+
+        sends.holds = true
+        let courses = Task {
+            try await coordinator.uploadIfChanged(UploadLedger.courses("1151"), fingerprint: 2, always: false, isCurrent: { true }) {
+                await sends.send(2)
+            }
+        }
+        try await waitUntil { sends.isParked }
+        #expect(coordinator.holdsUnsentCourseUploads)
+        sends.release()
+        _ = try await courses.value
+        #expect(!coordinator.holdsUnsentCourseUploads)
+    }
+
     @Test("An upload in flight across a reset records nothing, so the reset's refetch still goes")
     func uploadAcrossAForgetRecordsNothing() {
         var ledger = UploadLedger()

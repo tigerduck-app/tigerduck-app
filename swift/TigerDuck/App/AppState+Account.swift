@@ -129,7 +129,8 @@ extension AppState {
             ignoredCourses: !cache.loadIgnoredAssignmentCourses().isEmpty,
             holidays: !calendar.optedInHolidayIDs.isEmpty
         )
-        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || !pendingOverrides.isEmpty
+        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || pushCoordinator.holdsUnsentCourseUploads
+            || !pendingOverrides.isEmpty
             || !calendar.unacknowledgedHolidayIDs.isEmpty
         return Self.signOutDeletesUnsyncedData(
             held,
