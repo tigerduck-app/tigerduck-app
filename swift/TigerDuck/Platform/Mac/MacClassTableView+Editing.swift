@@ -72,7 +72,7 @@ extension MacClassTableView {
         DataCache.shared.saveUserAddedCourses(updated)
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        appState.uploadCourses(courses.filter { $0.courseNo != courseNo }, semester: selectedSemester)
+        appState.deleteBackendCourse(courseNo: courseNo, semester: selectedSemester)
     }
 
     func startRename(_ course: SDCourse) {
