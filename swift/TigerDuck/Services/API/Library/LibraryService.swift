@@ -274,14 +274,16 @@ enum LibraryService {
         storedPasswordRetry = Task {
             await retrySleep(.seconds(wait))
             guard !Task.isCancelled, loginGeneration == generation else { return }
-            storedPasswordRetry = nil
             guard storedPasswordPostIsDue(now: Date()) else {
+                storedPasswordRetry = nil
                 return armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
             }
             let refusals = storedPasswordRefusals.count
-            guard (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) == nil,
-                  loginGeneration == generation, refusals > 0, storedPasswordRefusals.count == refusals,
-                  storedPasswordRetry == nil else { return }
+            let signedIn = (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
+            guard !Task.isCancelled else { return }
+            storedPasswordRetry = nil
+            guard !signedIn, loginGeneration == generation, refusals > 0,
+                  storedPasswordRefusals.count == refusals else { return }
             storedPasswordRetryMisses += 1
             startStoredPasswordRetry(
                 after: SSOLoginService.storedPasswordRetryDelay(afterRefusals: refusals + storedPasswordRetryMisses),

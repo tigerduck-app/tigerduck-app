@@ -574,6 +574,36 @@ struct LibrarySignInTests {
         }
     }
 
+    @Test func aTypedSignInDuringATryKeepsItFromArmingAnother() async throws {
+        let calls = Calls()
+        let sleeper = ManualSleeper()
+        let held = AsyncStream<Void>.makeStream()
+        let signIn: @MainActor (String, String) async throws -> LibraryLoginData = { _, _ in
+            calls.count += 1
+            if calls.count == 1 { throw LibraryServiceError.loginFailed("wrong password") }
+            for await _ in held.stream { break }
+            throw URLError(.notConnectedToInternet)
+        }
+        try await Self.withStoredAccount { _ in
+            let username = try #require(LibraryService.storedUsername)
+            _ = try? await LibraryService.ensureToken(signIn: signIn, retrySleep: { await sleeper.sleep(for: $0) })
+            let waiting = try #require(LibraryService.storedPasswordRetry)
+            try await sleeper.waitUntilArmed()
+
+            Self.refusedOnceAndDue()
+            await sleeper.fire()
+            try await waitUntil { calls.count == 2 }
+            _ = try? await LibraryService.login(username: username, password: "typed", request: { _, _ in
+                throw LibraryServiceError.loginFailed("wrong password")
+            })
+            held.continuation.yield()
+            await waiting.value
+
+            #expect(LibraryService.storedPasswordRetry == nil)
+            #expect(await sleeper.armedCount == 1)
+        }
+    }
+
     enum RetryEnd: String, CaseIterable, CustomTestStringConvertible {
         case savedCredentials
         case signOut
