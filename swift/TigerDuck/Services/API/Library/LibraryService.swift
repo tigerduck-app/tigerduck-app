@@ -68,6 +68,7 @@ enum LibraryService {
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
         storedPasswordRefusals = (0, nil)
+        cancelStoredPasswordRetry()
         if accountChanged {
             LibraryQRCache.shared.clear()
             #if os(iOS)
@@ -86,6 +87,7 @@ enum LibraryService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
         storedPasswordRefusals = (0, nil)
+        cancelStoredPasswordRetry()
         clearToken()
         LibraryQRCache.shared.clear()
         #if os(iOS)
@@ -142,6 +144,8 @@ enum LibraryService {
         stillCurrent: @MainActor () -> Bool = { true },
         request: @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:)
     ) async throws -> String {
+        cancelStoredPasswordRetry()
+        typedSignIns &+= 1
         let generation = loginGeneration
         let answer = try await request(username, password)
         guard loginGeneration == generation, stillCurrent() else { throw LibraryServiceError.credentialsNotFound }
@@ -228,18 +232,78 @@ enum LibraryService {
 
     @MainActor @discardableResult
     static func signInIfCredentialed(
-        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:)
+        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:),
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) async -> Bool {
-        guard !isTokenValid, storedUsername != nil, storedPassword != nil,
-              storedPasswordPostIsDue(now: Date()),
-              signInIsDue(lastFailure: storedSignInFailedAt, now: Date()),
+        guard !isTokenValid, storedUsername != nil, storedPassword != nil else { return false }
+        guard storedPasswordPostIsDue(now: Date()) else {
+            armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
+            return false
+        }
+        guard signInIsDue(lastFailure: storedSignInFailedAt, now: Date()),
               await NetworkMonitor.shared.isReachable() else { return false }
-        return (try? await ensureToken(signIn: signIn)) != nil
+        return (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
+    }
+
+    @MainActor private(set) static var storedPasswordRetry: Task<Void, Never>?
+    @MainActor private static var storedPasswordRetryMisses = 0
+    @MainActor private static var typedSignIns = 0
+
+    /// Posts the stored password again once its wait ends, as `AuthService` does for the school,
+    /// so a page left on the sign-in form signs in without a return to the app.
+    @MainActor
+    private static func armStoredPasswordRetry(
+        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData,
+        retrySleep: @escaping @Sendable (Duration) async -> Void
+    ) {
+        storedPasswordRetryMisses = 0
+        let now = Date()
+        let refusals = storedPasswordRefusals
+        guard let retryAt = SSOLoginService.storedPasswordRetryAt(
+            refusals: refusals.count, lastRefusal: refusals.last, now: now
+        ) else { return cancelStoredPasswordRetry() }
+        startStoredPasswordRetry(after: max(0, retryAt.timeIntervalSince(now)), signIn: signIn, retrySleep: retrySleep)
+    }
+
+    @MainActor
+    private static func startStoredPasswordRetry(
+        after wait: TimeInterval,
+        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData,
+        retrySleep: @escaping @Sendable (Duration) async -> Void
+    ) {
+        cancelStoredPasswordRetry()
+        let generation = loginGeneration
+        storedPasswordRetry = Task {
+            await retrySleep(.seconds(wait))
+            guard !Task.isCancelled, loginGeneration == generation else { return }
+            guard storedPasswordPostIsDue(now: Date()) else {
+                storedPasswordRetry = nil
+                return armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
+            }
+            let refusals = storedPasswordRefusals.count
+            let signedIn = (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
+            guard !Task.isCancelled else { return }
+            storedPasswordRetry = nil
+            guard !signedIn, loginGeneration == generation, refusals > 0,
+                  storedPasswordRefusals.count == refusals else { return }
+            storedPasswordRetryMisses += 1
+            startStoredPasswordRetry(
+                after: SSOLoginService.storedPasswordRetryDelay(afterRefusals: refusals + storedPasswordRetryMisses),
+                signIn: signIn, retrySleep: retrySleep
+            )
+        }
+    }
+
+    @MainActor
+    static func cancelStoredPasswordRetry() {
+        storedPasswordRetry?.cancel()
+        storedPasswordRetry = nil
     }
 
     @MainActor
     static func ensureToken(
-        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:)
+        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:),
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) async throws -> String {
         if let token = storedToken, isTokenValid {
             return token
@@ -257,6 +321,7 @@ enum LibraryService {
         }
 
         let generation = loginGeneration
+        let typedSignInsBefore = typedSignIns
         let attempt = Task {
             let answer: LibraryLoginData
             do {
@@ -265,6 +330,9 @@ enum LibraryService {
                 if loginGeneration == generation, storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
                         storedPasswordRefusals = (storedPasswordRefusals.count + 1, Date())
+                        if typedSignIns == typedSignInsBefore {
+                            armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
+                        }
                         #if os(iOS)
                         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
                         #endif
