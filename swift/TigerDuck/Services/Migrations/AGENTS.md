@@ -8,7 +8,9 @@ Compatibility code for breaking changes goes in this folder and nowhere else.
 2. Each migration owns its done flag, its static `runIfNeeded()` entry point and its failure
    handling. The flag is a private `<Name>.v1.done` UserDefaults key declared in the same file,
    so deleting the file removes it.
-3. `AppState.runPendingMigrations()` runs them, once per launch, from `AppState.init()`.
+3. `AppState.runPendingMigrations()` runs them, once per launch, from `AppState.init()`. A
+   migration that finds protected data unreadable, as on a locked phone, may run itself again
+   when it becomes readable, since unlocking resumes the process instead of launching again.
 4. Feature services (`AuthService`, `MoodleAssignmentService`, `MoodleTokenService`, ...) must
    not reference types declared here.
 5. Name files `<Subject><Action>Migration.swift`, for example `PendingReminderPurgeMigration` or
