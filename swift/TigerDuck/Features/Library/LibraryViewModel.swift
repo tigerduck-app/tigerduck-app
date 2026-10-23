@@ -15,6 +15,9 @@ final class LibraryViewModel {
 
     var onLibraryStateChanged: (() -> Void)?
 
+    /// The wait after a failed code request, which the page lets the user cut short.
+    var isWaitingToRetry: Bool { isLoggedIn && errorMessage != nil }
+
     @ObservationIgnored var fetchCode: @MainActor () async throws -> String = { try await LibraryService.generateQRCode() }
 
     var libUsername = ""
@@ -91,6 +94,12 @@ final class LibraryViewModel {
         libPassword = ""
     }
 
+    func retryNow() {
+        guard isWaitingToRetry else { return }
+        errorMessage = nil
+        startQRRefreshCycle()
+    }
+
     func loginAndStart() {
         let trimmedUsername = libUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedUsername.isEmpty, !libPassword.isEmpty, !isLoggingIn else { return }
@@ -144,6 +153,9 @@ final class LibraryViewModel {
                 } else {
                     consecutiveErrors += 1
                     rescheduleAfterError()
+                    // The shown code's clock runs through the wait, which a page shown again had stopped.
+                    let age = codeFetchedAt.map { Int(Date().timeIntervalSince($0)) } ?? LibraryQRCache.lifetime
+                    restartCountdown(from: max(0, LibraryQRCache.lifetime - age))
                 }
             }
         }
@@ -229,6 +241,12 @@ final class LibraryViewModel {
             Task { @MainActor in
                 if self.countdown > 0 {
                     self.countdown -= 1
+                }
+                // A code past its time no longer scans, and during the wait no new one replaces it.
+                if self.countdown == 0, self.isWaitingToRetry {
+                    self.qrCodeImage = nil
+                    self.qrPayload = nil
+                    self.countdownTimer?.invalidate()
                 }
             }
         }

@@ -215,18 +215,8 @@ struct LibraryView: View {
     @ViewBuilder
     private var errorBanner: some View {
         if let error = viewModel.errorMessage {
-            HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
-                Text(error)
-                    .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(2)
-            }
-            .cardPadding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassCard()
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            let retry: (() -> Void)? = viewModel.isWaitingToRetry ? { viewModel.retryNow() } : nil
+            LibraryErrorBanner(message: error, retry: retry)
         }
     }
 
@@ -235,7 +225,8 @@ struct LibraryView: View {
             qrImage: viewModel.qrCodeImage,
             countdown: viewModel.countdown,
             isLoading: viewModel.isLoadingQR,
-            username: viewModel.signedInUsername
+            username: viewModel.signedInUsername,
+            showsCountdown: !viewModel.isWaitingToRetry
         )
     }
 
@@ -324,6 +315,33 @@ struct LibraryView: View {
                 : String(localized: "library_sign_in_action"))
                 .font(TigerDuckTheme.Typography.headline)
         }
+    }
+}
+
+struct LibraryErrorBanner: View {
+    let message: String
+    var retry: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            Text(message)
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textPrimary)
+                .lineLimit(2)
+            if let retry {
+                Spacer(minLength: TigerDuckTheme.Spacing.sm)
+                Button(String(localized: "action_retry"), action: retry)
+                    .font(.subheadline.weight(.semibold))
+                    .modifier(GlassTextButtonModifier())
+                    .fixedSize()
+            }
+        }
+        .cardPadding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 }
 

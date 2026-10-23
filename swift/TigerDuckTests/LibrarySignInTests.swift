@@ -441,6 +441,104 @@ struct LibrarySignInTests {
         }
     }
 
+    @Test func aRetryDuringTheWaitAsksAtOnce() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let calls = Calls()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.backoffSchedule = [300]
+            model.fetchCode = {
+                calls.count += 1
+                if calls.count == 1 { throw URLError(.timedOut) }
+                return "code-\(calls.count)"
+            }
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.isWaitingToRetry }
+
+            model.retryNow()
+
+            try await waitUntil { model.qrPayload == "code-2" }
+            #expect(!model.isWaitingToRetry)
+            #expect(model.errorMessage == nil)
+        }
+    }
+
+    @Test func aRetryThatFailsStartsTheWaitAgain() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let calls = Calls()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.backoffSchedule = [300]
+            model.fetchCode = {
+                calls.count += 1
+                throw URLError(.timedOut)
+            }
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.isWaitingToRetry }
+            #expect(calls.count == 1)
+
+            model.retryNow()
+
+            try await waitUntil { calls.count == 2 && model.isWaitingToRetry }
+        }
+    }
+
+    /// During the wait an expired code is taken off the page, so neither the page nor a retry's
+    /// loading state offers it to a scanner. A request a timer starts runs outside the test's
+    /// keychain, so the failure here follows the page being shown again, which stops the clock.
+    @Test func aCodeThatExpiresDuringTheWaitLeavesThePage() async throws {
+        try await Self.withStoredAccount { keychain in
+            let expiry = Int64((Date().timeIntervalSince1970 + 3_600) * 1_000)
+            try keychain.setObject(Data("token".utf8), forKey: AppConstants.KeychainKeys.libraryToken)
+            try keychain.setObject(Data(String(expiry).utf8), forKey: AppConstants.KeychainKeys.libraryTokenExpiry)
+            LibraryQRCache.shared.clear()
+            let calls = Calls()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.backoffSchedule = [300]
+            model.fetchCode = {
+                calls.count += 1
+                if calls.count == 1 { return "code-1" }
+                throw URLError(.timedOut)
+            }
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.qrCodeImage != nil }
+            LibraryQRCache.shared.clear()
+            model.onDisappear()
+            model.onAppear()
+            try await waitUntil { model.isWaitingToRetry }
+            #expect(model.qrCodeImage != nil)
+
+            model.countdown = 1
+
+            try await waitUntil { model.qrCodeImage == nil }
+            #expect(model.qrPayload == nil)
+            #expect(model.isWaitingToRetry)
+        }
+    }
+
+    @Test func aCodeAtTheEndOfItsTimeStaysForItsRefresh() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = { "code-1" }
+            model.load()
+            model.onAppear()
+            try await waitUntil { model.qrCodeImage != nil }
+
+            model.countdown = 0
+            try await Task.sleep(for: .milliseconds(1_200))
+
+            #expect(model.qrCodeImage != nil)
+        }
+    }
+
     private static func refusedOnceAndDue() {
         let firstWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
         LibraryService.storedPasswordRefusals = (1, Date().addingTimeInterval(-firstWait))

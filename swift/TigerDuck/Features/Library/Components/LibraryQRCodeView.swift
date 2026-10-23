@@ -5,6 +5,7 @@ struct LibraryQRCodeView: View {
     let countdown: Int
     let isLoading: Bool
     let username: String?
+    var showsCountdown = true
 
     @State private var ringFraction: CGFloat = 0
 
@@ -35,40 +36,44 @@ struct LibraryQRCodeView: View {
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
 
-            HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                ZStack {
-                    Circle()
-                        .stroke(
-                            Color.textSecondary.opacity(0.3),
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
-                        )
-                    Circle()
-                        .trim(from: 0, to: ringFraction)
-                        .stroke(
-                            .tint,
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                }
-                .frame(width: 18, height: 18)
-                .onAppear { ringFraction = CGFloat(countdown) / 30.0 }
-                .onChange(of: countdown) { oldValue, newValue in
-                    let target = CGFloat(newValue) / 30.0
-                    if newValue < oldValue {
-                        withAnimation(.linear(duration: 1)) { ringFraction = target }
-                    } else {
-                        ringFraction = target
-                    }
-                }
-
-                Text(String(format: String(localized: "library_qr_refresh_in_seconds"), countdown))
-                    .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.textSecondary)
-            }
-            .padding(.bottom, TigerDuckTheme.Spacing.md)
+            if showsCountdown { countdownRow }
         }
         .glassCard(cornerRadius: TigerDuckTheme.CornerRadius.xl)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    private var countdownRow: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            ZStack {
+                Circle()
+                    .stroke(
+                        Color.textSecondary.opacity(0.3),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    )
+                Circle()
+                    .trim(from: 0, to: ringFraction)
+                    .stroke(
+                        .tint,
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 18, height: 18)
+            .onAppear { ringFraction = CGFloat(countdown) / 30.0 }
+            .onChange(of: countdown) { oldValue, newValue in
+                let target = CGFloat(newValue) / 30.0
+                if newValue < oldValue {
+                    withAnimation(.linear(duration: 1)) { ringFraction = target }
+                } else {
+                    ringFraction = target
+                }
+            }
+
+            Text(String(format: String(localized: "library_qr_refresh_in_seconds"), countdown))
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textSecondary)
+        }
+        .padding(.bottom, TigerDuckTheme.Spacing.md)
     }
 
     @ViewBuilder
