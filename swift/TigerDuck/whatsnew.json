@@ -506,5 +506,57 @@
         }
       ]
     }
+  },
+  "2.6.6": {
+    "zh-TW": {
+      "title": "2.6.6 更新內容",
+      "items": [
+        {
+          "symbol": "qrcode.viewfinder",
+          "title": "分享課表",
+          "body": "用相機掃描或點開分享連結，就能直接在 App 裡匯入課表。"
+        },
+        {
+          "symbol": "bell.slash",
+          "title": "信箱勿擾",
+          "body": "可設定勿擾時段，及設定臺科公告欄、Moodle 繳交通知等郵件靜音。"
+        },
+        {
+          "symbol": "person.crop.circle",
+          "title": "課程成員",
+          "body": "成員列表會標出自己，並可在 App 內更換大頭貼。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "圖書館 QR Code 取得失敗時可立即重試，並修正從通知開啟公告與信件的問題。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.6.6",
+      "items": [
+        {
+          "symbol": "qrcode.viewfinder",
+          "title": "Sharing class tables",
+          "body": "Scan a shared code with the Camera or open its link to import the class table in the app."
+        },
+        {
+          "symbol": "bell.slash",
+          "title": "Mail quiet hours",
+          "body": "Set quiet hours and mute mail such as NTUST Bulletin Board and Moodle submission receipts."
+        },
+        {
+          "symbol": "person.crop.circle",
+          "title": "Course members",
+          "body": "The member list marks you, and you can change your profile picture in the app."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Retry a library QR code right away after a failed request, with fixes for opening bulletins and mail from notifications."
+        }
+      ]
+    }
   }
 }
