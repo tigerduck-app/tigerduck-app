@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -24,8 +25,8 @@ struct MoodleProfilePictureServiceTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"success":true,"profileimageurl":"x","warnings":[]}"#.utf8)),
                                 for: Self.update(site: site, token: token))
 
-        try await MoodleProfilePictureService.update(jpeg: jpeg, token: token, session: Self.session(), siteURL: site,
-                                                    boundary: "BOUNDARY")
+        try await MoodleProfilePictureService.update(jpeg: jpeg, token: token, isCurrent: { true }, session: Self.session(),
+                                                    siteURL: site, boundary: "BOUNDARY")
 
         let sent = try #require(SettingsAPIStub.requests(for: upload).first)
         #expect(sent.httpMethod == "POST")
@@ -56,7 +57,8 @@ struct MoodleProfilePictureServiceTests {
                                 for: upload)
 
         await #expect(throws: MoodleWebserviceError.invalidToken) {
-            try await MoodleProfilePictureService.update(jpeg: Data([1]), token: token, session: Self.session(), siteURL: site)
+            try await MoodleProfilePictureService.update(jpeg: Data([1]), token: token, isCurrent: { true },
+                                                        session: Self.session(), siteURL: site)
         }
         #expect(SettingsAPIStub.requests(for: Self.update(site: site, token: token)).isEmpty)
     }
@@ -71,7 +73,71 @@ struct MoodleProfilePictureServiceTests {
                                 for: Self.update(site: site, token: token))
 
         await #expect(throws: MoodleWebserviceError.self) {
-            try await MoodleProfilePictureService.update(jpeg: Data([1]), token: token, session: Self.session(), siteURL: site)
+            try await MoodleProfilePictureService.update(jpeg: Data([1]), token: token, isCurrent: { true },
+                                                        session: Self.session(), siteURL: site)
         }
+    }
+
+    enum TokenWait: CaseIterable {
+        case stored, renewed
+    }
+
+    @Test("a new picture waits for a token under its original account", arguments: TokenWait.allCases)
+    func invalidatedPictureToken(wait: TokenWait) async throws {
+        let site = URL(string: "https://moodle-\(UUID().uuidString.lowercased()).invalid")!
+        let upload = site.appendingPathComponent("webservice/upload.php")
+        let old = UUID().uuidString
+        let replacement = UUID().uuidString
+        let current = OSAllocatedUnfairLock(initialState: true)
+        let gate = ManualSleeper()
+        if wait == .renewed {
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"error":"Expired","errorcode":"invalidtoken"}"#.utf8)),
+                                    for: upload)
+        }
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"[{"itemid":5}]"#.utf8)), for: upload)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"success":true,"warnings":[]}"#.utf8)),
+                                for: Self.update(site: site, token: replacement))
+        let tokens = MoodleWebserviceClient.TokenSource(
+            stored: {
+                if wait == .stored { await gate.sleep(for: .seconds(1)) }
+                return wait == .stored ? replacement : old
+            },
+            renew: { _ in
+                await gate.sleep(for: .seconds(1))
+                return replacement
+            }
+        )
+        let change = Task {
+            try await MoodleCourseAPI.updatePicture(
+                Data([1]), isCurrent: { current.withLock { $0 } }, tokens: tokens, session: Self.session(), siteURL: site
+            )
+        }
+        try await gate.waitUntilArmed()
+        current.withLock { $0 = false }
+        await gate.fire()
+
+        await #expect(throws: CancellationError.self) { try await change.value }
+        #expect(SettingsAPIStub.requests(for: upload).count == (wait == .stored ? 0 : 1))
+        #expect(SettingsAPIStub.requests(for: Self.update(site: site, token: replacement)).isEmpty)
+    }
+
+    @Test("the account is checked again between the upload and making it the picture")
+    func signedOutAfterTheUpload() async throws {
+        let site = URL(string: "https://moodle-\(UUID().uuidString.lowercased()).invalid")!
+        let upload = site.appendingPathComponent("webservice/upload.php")
+        let token = UUID().uuidString
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"[{"itemid":5}]"#.utf8)), for: upload)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"success":true,"warnings":[]}"#.utf8)),
+                                for: Self.update(site: site, token: token))
+        let tokens = MoodleWebserviceClient.TokenSource(stored: { token }, renew: { _ in token })
+
+        await #expect(throws: CancellationError.self) {
+            try await MoodleCourseAPI.updatePicture(
+                Data([1]), isCurrent: { SettingsAPIStub.requests(for: upload).isEmpty },
+                tokens: tokens, session: Self.session(), siteURL: site
+            )
+        }
+        #expect(SettingsAPIStub.requests(for: upload).count == 1)
+        #expect(SettingsAPIStub.requests(for: Self.update(site: site, token: token)).isEmpty)
     }
 }

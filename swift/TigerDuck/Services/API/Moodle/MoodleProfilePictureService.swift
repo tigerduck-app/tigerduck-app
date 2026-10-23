@@ -9,11 +9,14 @@ nonisolated enum MoodleProfilePictureService {
     static func update(
         jpeg: Data,
         token: String,
+        isCurrent: @MainActor @Sendable () -> Bool,
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL,
         boundary: String = UUID().uuidString
     ) async throws {
+        guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
         let draft = try await upload(jpeg: jpeg, token: token, session: session, siteURL: siteURL, boundary: boundary)
+        guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
         let answer = try await MoodleWebserviceClient.call(
             updateFunction,
             params: [("draftitemid", String(draft)), ("delete", "0")],

@@ -12,19 +12,26 @@ import Testing
 struct MoodleOwnProfileTests {
     private nonisolated static let ownId = 42
 
-    private nonisolated static func member(_ id: Int, _ fullName: String) -> MoodleMember {
+    private nonisolated static func member(_ id: Int, _ fullName: String, picture: URL? = nil) -> MoodleMember {
         MoodleMember(id: id, fullName: fullName, idNumber: nil, email: nil, groups: [],
-                     roles: [MoodleMember.Role(shortName: "student", name: "", sortOrder: 0)], pictureURL: nil,
+                     roles: [MoodleMember.Role(shortName: "student", name: "", sortOrder: 0)], pictureURL: picture,
                      description: "", interests: [], fields: [])
     }
 
     private final class Site: @unchecked Sendable {
+        static let newPicture = URL(string: "https://moodle-stub.invalid/pluginfile.php/5/user/icon/f1?rev=2")!
+
         private let lock = NSLock()
         private var _functions: Set<String>
         private var _uploads: [Data] = []
         private var _memberCalls = 0
+        private let firstFetch: ManualSleeper?
 
-        init(functions: Set<String>) { _functions = functions }
+        /// `firstFetch` holds the first members fetch after it has read the picture address.
+        init(functions: Set<String>, firstFetch: ManualSleeper? = nil) {
+            _functions = functions
+            self.firstFetch = firstFetch
+        }
 
         var uploads: [Data] { lock.withLock { _uploads } }
         var memberCalls: Int { lock.withLock { _memberCalls } }
@@ -36,12 +43,17 @@ struct MoodleOwnProfileTests {
                 discussions: { _, _ in [] },
                 markViewed: { _, _ in },
                 members: { _ in
-                    self.lock.withLock { self._memberCalls += 1 }
+                    let (call, picture) = self.lock.withLock {
+                        self._memberCalls += 1
+                        return (self._memberCalls, self._uploads.isEmpty ? nil : Site.newPicture)
+                    }
+                    if call == 1 { await self.firstFetch?.sleep(for: .seconds(1)) }
                     return MoodleMemberList(ownId: MoodleOwnProfileTests.ownId,
-                                            members: [MoodleOwnProfileTests.member(MoodleOwnProfileTests.ownId, "Tiger Duck")])
+                                            members: [MoodleOwnProfileTests.member(MoodleOwnProfileTests.ownId, "Tiger Duck",
+                                                                                   picture: picture)])
                 }
             )
-            api.updatePicture = { jpeg in self.lock.withLock { self._uploads.append(jpeg) } }
+            api.updatePicture = { jpeg, _ in self.lock.withLock { self._uploads.append(jpeg) } }
             return api
         }
     }
@@ -80,6 +92,28 @@ struct MoodleOwnProfileTests {
         #expect(site.uploads == [Data([1, 2, 3])])
         #expect(site.memberCalls == 1)
         #expect(store.members.value?.ownId == Self.ownId)
+    }
+
+    @Test("a members fetch that began before the upload does not stand in for one after it")
+    func anUploadDuringAFetchFetchesAgain() async throws {
+        let root = Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let gate = ManualSleeper()
+        let site = Site(functions: [MoodleProfilePictureService.updateFunction, MoodleCourseMembersService.membersFunction],
+                        firstFetch: gate)
+        let store = Self.store(site, root: root)
+        let earlier = Task { await store.refreshMembers() }
+        try await gate.waitUntilArmed()
+
+        let upload = Task { try await store.updatePicture(Data([1])) }
+        try await waitUntil { site.uploads.count == 1 }
+        for _ in 0..<10 { await Task.yield() }
+        await gate.fire()
+        try await upload.value
+        await earlier.value
+
+        #expect(site.memberCalls == 2)
+        #expect(store.member(Self.ownId)?.pictureURL == Site.newPicture)
     }
 
     #if os(iOS)
