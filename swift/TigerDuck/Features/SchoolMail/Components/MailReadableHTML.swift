@@ -395,12 +395,13 @@ nonisolated struct MailReadableHTML {
         return RGBA(red: rgb[0], green: rgb[1], blue: rgb[2], alpha: opacity)
     }
 
-    /// A number out of `scale` or a percentage, clamped to 0...1 as CSS does. Only digits, signs,
-    /// points and exponents: `Double(_:)` alone also takes `nan`, `inf` and hex floats.
+    /// A number out of `scale` or a percentage, clamped to 0...1 as CSS does. Only CSS's number
+    /// syntax: `Double(_:)` alone also takes `nan`, `inf`, hex floats and `0.`, which a browser drops.
     private static func number(_ text: Substring, scale: Double) -> Double? {
         let isPercentage = text.hasSuffix("%")
         let digits = isPercentage ? text.dropLast() : text
-        guard !digits.isEmpty, digits.allSatisfy({ "0123456789.+-e".contains($0) }), let number = Double(digits) else { return nil }
+        guard digits.wholeMatch(of: /[+-]?([0-9]+(\.[0-9]+)?|\.[0-9]+)(e[+-]?[0-9]+)?/) != nil,
+              let number = Double(digits) else { return nil }
         return min(max(number / (isPercentage ? 100 : scale), 0), 1)
     }
 
