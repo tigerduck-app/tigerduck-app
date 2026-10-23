@@ -129,6 +129,37 @@ struct MoodleHTMLTextTests {
         }
     }
 
+    @Test("quotes nest five deep, and a quote deeper than that is written as what it holds")
+    func quotesPastTheirCap() {
+        let html = (1...6).map { "<blockquote>\($0)" }.joined() + String(repeating: "</blockquote>", count: 6)
+        let markdown = MoodleHTMLText.markdown(fromHTML: html)
+        #expect(markdown.contains("\n> > > > > 6"))
+        #expect(!markdown.contains("> > > > > >"))
+    }
+
+    @Test("lists and quotes count against one cap")
+    func listsAndQuotesPastTheirCap() {
+        let html = String(repeating: "<blockquote><ul><li>x", count: 3) + String(repeating: "</li></ul></blockquote>", count: 3)
+        #expect(MoodleHTMLText.markdown(fromHTML: html) == """
+        > - x
+        >   > - x
+        >   >   > x
+        """)
+    }
+
+    @Test("lists nest five deep, and a list deeper than that is written as its items")
+    func listsPastTheirCap() {
+        let html = (1...6).map { "<ul><li>\($0)" }.joined() + String(repeating: "</li></ul>", count: 6)
+        #expect(MoodleHTMLText.markdown(fromHTML: html) == """
+        - 1
+          - 2
+            - 3
+              - 4
+                - 5
+                  6
+        """)
+    }
+
     @Test("files are resolved in HTML nested far deeper than the cap, cut to the cap")
     func pluginFilesInDeepNesting() {
         let image = "<img src=\"@@PLUGINFILE@@/a.png\">"

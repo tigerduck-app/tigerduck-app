@@ -85,6 +85,11 @@ nonisolated enum MoodleHTMLText {
 
 private nonisolated struct MarkdownWriter {
     let baseURL: URL
+    /// The lists and quotes around what is written. MarkdownUI sizes a list item's content several
+    /// times, so layout time multiplies with each level, past three seconds at eight lists in the
+    /// simulator. A list or quote deeper than `maximumNesting` is written as the blocks it holds.
+    var nesting = 0
+    static let maximumNesting = 5
 
     private static let blockTags: Set<String> = [
         "p", "div", "section", "article", "main", "aside", "header", "footer", "nav", "center", "address",
@@ -115,13 +120,21 @@ private nonisolated struct MarkdownWriter {
             } else if let level = Self.headingLevel(tag) {
                 endParagraph()
                 if let heading = Self.heading(level, inline(of: child, depth: depth + 1)) { result.append(heading) }
+            } else if tag == "blockquote", nesting >= Self.maximumNesting {
+                endParagraph()
+                result += blocks(in: child, depth: depth + 1)
+            } else if tag == "ul" || tag == "ol", nesting >= Self.maximumNesting {
+                endParagraph()
+                for item in child.children().array() where item.tagName().lowercased() == "li" {
+                    result += blocks(in: item, depth: depth + 2)
+                }
             } else if tag == "ul" || tag == "ol" {
                 endParagraph()
-                let list = self.list(child, ordered: tag == "ol", depth: depth + 1)
+                let list = nested.list(child, ordered: tag == "ol", depth: depth + 1)
                 if !list.isEmpty { result.append(list) }
             } else if tag == "blockquote" {
                 endParagraph()
-                if let quote = Self.quote(blocks(in: child, depth: depth + 1)) { result.append(quote) }
+                if let quote = Self.quote(nested.blocks(in: child, depth: depth + 1)) { result.append(quote) }
             } else if tag == "pre" {
                 endParagraph()
                 if let code = Self.codeBlock(child) { result.append(code) }
@@ -136,6 +149,10 @@ private nonisolated struct MarkdownWriter {
         }
         endParagraph()
         return result
+    }
+
+    private var nested: MarkdownWriter {
+        MarkdownWriter(baseURL: baseURL, nesting: nesting + 1)
     }
 
     private static func heading(_ level: Int, _ inline: String) -> String? {
