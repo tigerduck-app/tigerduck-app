@@ -216,6 +216,23 @@ struct MailReadableHTMLTests {
         #expect(page.html(on: .app) == ##"<div style="color: #959595">Hi <span style="background-color: #ffff00; color: #000000">there</span></div>"##)
     }
 
+    @Test(arguments: ["inherit", "currentColor", "unset"])
+    func aColourThatInheritsIsTheParentsAndFixingGoesOnBelowIt(keyword: String) {
+        let page = Self.readable(
+            #"<div style="color: #333333"><p style="color: \#(keyword)"><span style="background-color: #ffff00">a</span></p>"#
+                + #"<span style="color: \#(keyword); background-color: #ffff00">b</span></div>"#
+        )
+        #expect(page.html(on: .app)
+            == #"<div style="color: #959595"><p style="color: \#(keyword)"><span style="background-color: #ffff00; color: #333333">a</span></p>"#
+                + #"<span style="color: #333333; background-color: #ffff00">b</span></div>"#)
+    }
+
+    @Test(arguments: ["initial", "unset"])
+    func aBackgroundColourSetBackToItsInitialValueIsNone(keyword: String) {
+        let page = Self.readable(#"<p style="background-color: \#(keyword); color: #ffffff">x</p>"#)
+        #expect(page.html(on: .light) == #"<p style="background-color: \#(keyword); color: #595959">x</p>"#)
+    }
+
     @Test func aLinkOnTheSendersBackgroundIsFixed() {
         let page = Self.readable(
             ##"<table bgcolor="#000000"><tr><td>Text <a href="https://a.example">link</a></td></tr></table><p><a href="https://b.example">page link</a></p>"##
