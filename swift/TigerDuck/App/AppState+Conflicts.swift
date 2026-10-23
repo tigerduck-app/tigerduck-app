@@ -196,21 +196,9 @@ extension AppState {
                     }
 
                     if pending.contains("course_names") {
-                        let localNames = DataCache.shared.loadCourseCustomNames()
-                        var nameMismatches: [String] = []
-                        var serverNosWithNames = Set<String>()
-                        for o in overrides {
-                            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                                  let courseNo = moodleIdToNo[mId],
-                                  let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty else { continue }
-                            serverNosWithNames.insert(courseNo)
-                            if (localNames[courseNo] ?? [:]) != serverNames {
-                                nameMismatches.append("\(courseNo): local=\(localNames[courseNo] ?? [:]) server=\(serverNames)")
-                            }
-                        }
-                        for (courseNo, locales) in localNames where !locales.isEmpty && !serverNosWithNames.contains(courseNo) {
-                            nameMismatches.append("\(courseNo): local=\(locales) server=default")
-                        }
+                        let nameMismatches = Self.courseNameMismatches(
+                            overrides, courseNos: moodleIdToNo, local: DataCache.shared.loadCourseCustomNames()
+                        )
                         AppLogger.sync.info("[reenable] names: \(nameMismatches.isEmpty ? "MATCH" : "DIFFER (\(nameMismatches.count))", privacy: .public)")
                         if !nameMismatches.isEmpty {
                             for m in nameMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .private)") }
@@ -306,6 +294,28 @@ extension AppState {
                 }
             }
         }
+    }
+
+    /// A server name of `""` is a cleared one, as `courseNamesAfterPull` reads it.
+    nonisolated static func courseNameMismatches(
+        _ overrides: [[String: Any]], courseNos: [String: String], local: [String: [String: String]]
+    ) -> [String] {
+        var mismatches: [String] = []
+        var serverNosWithNames = Set<String>()
+        for o in overrides {
+            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
+                  let courseNo = courseNos[mId],
+                  let serverNames = (o["custom_names"] as? [String: String])?.filter({ !$0.value.isEmpty }),
+                  !serverNames.isEmpty else { continue }
+            serverNosWithNames.insert(courseNo)
+            if (local[courseNo] ?? [:]) != serverNames {
+                mismatches.append("\(courseNo): local=\(local[courseNo] ?? [:]) server=\(serverNames)")
+            }
+        }
+        for (courseNo, locales) in local where !locales.isEmpty && !serverNosWithNames.contains(courseNo) {
+            mismatches.append("\(courseNo): local=\(locales) server=default")
+        }
+        return mismatches
     }
 
     nonisolated static func coursesOnOneSide(

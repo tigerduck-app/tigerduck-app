@@ -109,16 +109,22 @@ extension AppState {
     func signOutDeletesUnsyncedData() async -> Bool {
         let cache = DataCache.shared
         let calendar = AcademicCalendarStore.shared
+        let names = cache.loadCourseCustomNames()
+        let userAdded = cache.loadUserAddedCourses()
         let held = SignOutData(
-            courses: !cache.loadUserAddedCourses().isEmpty || !cache.loadDeletedCourseNos().isEmpty,
-            courseNames: cache.loadCourseCustomNames().values.contains { !$0.isEmpty },
+            courses: !userAdded.isEmpty || !cache.loadDeletedCourseNos().isEmpty,
+            courseNames: names.values.contains { !$0.isEmpty },
+            localOnlyCourseNames: Self.holdsLocalOnlyCourseNames(
+                names, courses: userAdded + SemesterCatalog.availableSemesters().flatMap { cache.loadCourses(semester: $0) }
+            ),
             courseColors: !cache.loadPickedCourseColors().isEmpty,
             assignmentMarks: !cache.loadArchivedAssignmentIds().isEmpty
                 || !cache.loadLocallyCompletedAssignmentIds().isEmpty,
             ignoredCourses: !cache.loadIgnoredAssignmentCourses().isEmpty,
             holidays: !calendar.optedInHolidayIDs.isEmpty
         )
-        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || !pendingOverrides.isEmpty
+        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || pushCoordinator.holdsUnsentCourseUploads
+            || !pendingOverrides.isEmpty
             || !calendar.unacknowledgedHolidayIDs.isEmpty
         return Self.signOutDeletesUnsyncedData(
             held,
@@ -130,9 +136,18 @@ extension AppState {
         )
     }
 
+    /// A course name syncs under its course's Moodle ID, so a name on a course without one,
+    /// a hand-added course among them, stays on this device.
+    static func holdsLocalOnlyCourseNames(_ names: [String: [String: String]], courses: [SDCourse]) -> Bool {
+        let withMoodleId = Set(courses.filter { $0.moodleIdNumber != nil }.map(\.courseNo))
+        let held = Set(courses.map(\.courseNo))
+        return names.contains { !$0.value.isEmpty && held.contains($0.key) && !withMoodleId.contains($0.key) }
+    }
+
     nonisolated struct SignOutData {
         var courses = false
         var courseNames = false
+        var localOnlyCourseNames = false
         var courseColors = false
         var assignmentMarks = false
         var ignoredCourses = false
@@ -155,7 +170,7 @@ extension AppState {
             (data.assignmentMarks, ["assignments"]),
             (data.ignoredCourses, ["assignments", "courses"]),
         ]
-        return unsent || (data.holidays && !cloudSyncEnabled)
+        return unsent || data.localOnlyCourseNames || (data.holidays && !cloudSyncEnabled)
             || needs.contains { $0.held && !$0.categories.isSubset(of: kept) }
     }
 

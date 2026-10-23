@@ -69,6 +69,13 @@ struct StoredAccountSignInTests {
         #expect(stored.1 == "password")
     }
 
+    @Test("the sign-in sheets ask first for the sign-ins that sign the stored account out, and only those")
+    func sheetsAskBeforeTheSignOutsOfLogin() {
+        #expect(AuthService.replacesStoredAccount(stored: "B11000000", signingInAs: "B11099999"))
+        #expect(!AuthService.replacesStoredAccount(stored: "B11000000", signingInAs: " b11000000 "))
+        #expect(!AuthService.replacesStoredAccount(stored: nil, signingInAs: "B11099999"))
+    }
+
     @Test("a sign-in right after a sign-out waits for the calls the sign-out still has out")
     func signInWaitsForTheSignOutsCalls() async throws {
         let calls = Calls()

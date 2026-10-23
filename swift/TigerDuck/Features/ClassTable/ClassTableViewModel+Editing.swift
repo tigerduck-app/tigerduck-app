@@ -84,8 +84,8 @@ extension ClassTableViewModel {
         guard shownPerson == nil else { return }
         let courseNo = course.courseNo
         courses.removeAll { $0.courseNo == courseNo }
-        deletedCourseNos.insert(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
-        DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+        DataCache.shared.deleteCourse(courseNo, semester: currentSemester)
+        deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         if ignoresAssignments(of: courseNo) {
             DataCache.shared.setAssignmentsIgnored(false, semester: currentSemester, courseNo: courseNo)
             ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
