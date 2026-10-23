@@ -79,17 +79,27 @@ enum WatchLibraryService {
         return try await login(username: creds.username, password: creds.password)
     }
 
+    typealias Send = (URLRequest, (any URLSessionTaskDelegate)?) async throws -> (Data, URLResponse)
+
+    static func sendOnPinnedSession(
+        _ request: URLRequest, _ delegate: (any URLSessionTaskDelegate)?
+    ) async throws -> (Data, URLResponse) {
+        try await session.data(for: request, delegate: delegate)
+    }
+
     @MainActor
     static func generateQRCode() async throws -> String {
-        let token = try await ensureToken()
+        try await requestQRCode(token: try await ensureToken())
+    }
 
+    static func requestQRCode(token: String, send: Send = sendOnPinnedSession) async throws -> String {
         let url = URL(string: "\(baseURL)/virtual-code/generate")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(LibraryQRRequest(token: token))
 
-        let (data, urlResponse) = try await session.data(for: request)
+        let (data, urlResponse) = try await send(request, CredentialPostDelegate())
         try validateHTTP(urlResponse)
         let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
 
@@ -106,6 +116,17 @@ enum WatchLibraryService {
     @discardableResult
     @MainActor
     private static func login(username: String, password: String) async throws -> String {
+        let loginData = try await requestToken(username: username, password: password)
+        WatchLibraryCredentialsStore.shared.storeToken(
+            loginData.token,
+            expiryMs: loginData.expirationTimeStamp
+        )
+        return loginData.token
+    }
+
+    static func requestToken(
+        username: String, password: String, send: Send = sendOnPinnedSession
+    ) async throws -> LibraryLoginData {
         let url = URL(string: "\(baseURL)/passport/login")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -114,7 +135,7 @@ enum WatchLibraryService {
             LibraryLoginRequest(username: username, password: password)
         )
 
-        let (data, urlResponse) = try await session.data(for: request)
+        let (data, urlResponse) = try await send(request, CredentialPostDelegate())
         try validateHTTP(urlResponse)
         let response = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
 
@@ -125,11 +146,6 @@ enum WatchLibraryService {
         guard let loginData = response.data else {
             throw WatchLibraryServiceError.loginFailed("missing data")
         }
-
-        WatchLibraryCredentialsStore.shared.storeToken(
-            loginData.token,
-            expiryMs: loginData.expirationTimeStamp
-        )
-        return loginData.token
+        return loginData
     }
 }

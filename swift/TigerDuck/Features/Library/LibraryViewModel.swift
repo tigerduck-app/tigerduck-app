@@ -23,6 +23,7 @@ final class LibraryViewModel {
     private var refreshTimer: Timer?
     private var countdownTimer: Timer?
     private var hasLoaded = false
+    private var isShowing = false
 
     private var consecutiveErrors = 0
     @ObservationIgnored var backoffSchedule: [TimeInterval] = [60, 120, 300]
@@ -43,7 +44,7 @@ final class LibraryViewModel {
         signInObserver = NotificationCenter.default.addObserver(
             forName: LibraryService.signInDidChange, object: nil, queue: nil
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.signOutIfRefusedElsewhere() }
+            MainActor.assumeIsolated { self?.followSignInElsewhere() }
         }
     }
 
@@ -57,6 +58,7 @@ final class LibraryViewModel {
     }
 
     func onAppear() {
+        isShowing = true
         if !isLoggedIn && LibraryService.hasAccount {
             isLoggedIn = true
             startQRRefreshCycle()
@@ -84,6 +86,7 @@ final class LibraryViewModel {
     }
 
     func onDisappear() {
+        isShowing = false
         stopTimers()
         libPassword = ""
     }
@@ -156,10 +159,18 @@ final class LibraryViewModel {
         onLibraryStateChanged?()
     }
 
-    private func signOutIfRefusedElsewhere() {
-        guard isLoggedIn, !LibraryService.hasAccount else { return }
-        errorMessage = nil
-        showSignInForm()
+    private func followSignInElsewhere() {
+        if isLoggedIn, !LibraryService.hasAccount {
+            errorMessage = nil
+            showSignInForm()
+        } else if hasLoaded, !isLoggedIn, !isLoggingIn, LibraryService.hasAccount {
+            isLoggedIn = true
+            signedInUsername = LibraryService.storedUsername
+            errorMessage = nil
+            libPassword = ""
+            onLibraryStateChanged?()
+            if isShowing { startQRRefreshCycle() }
+        }
     }
 
     private func rescheduleAfterError() {
