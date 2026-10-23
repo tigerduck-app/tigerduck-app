@@ -145,6 +145,7 @@ enum LibraryService {
         request: @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:)
     ) async throws -> String {
         cancelStoredPasswordRetry()
+        typedSignIns &+= 1
         let generation = loginGeneration
         let answer = try await request(username, password)
         guard loginGeneration == generation, stillCurrent() else { throw LibraryServiceError.credentialsNotFound }
@@ -246,6 +247,7 @@ enum LibraryService {
 
     @MainActor private(set) static var storedPasswordRetry: Task<Void, Never>?
     @MainActor private static var storedPasswordRetryMisses = 0
+    @MainActor private static var typedSignIns = 0
 
     /// Posts the stored password again once its wait ends, as `AuthService` does for the school,
     /// so a page left on the sign-in form signs in without a return to the app.
@@ -319,6 +321,7 @@ enum LibraryService {
         }
 
         let generation = loginGeneration
+        let typedSignInsBefore = typedSignIns
         let attempt = Task {
             let answer: LibraryLoginData
             do {
@@ -327,7 +330,9 @@ enum LibraryService {
                 if loginGeneration == generation, storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
                         storedPasswordRefusals = (storedPasswordRefusals.count + 1, Date())
-                        armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
+                        if typedSignIns == typedSignInsBefore {
+                            armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
+                        }
                         #if os(iOS)
                         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
                         #endif

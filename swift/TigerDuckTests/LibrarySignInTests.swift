@@ -574,7 +574,15 @@ struct LibrarySignInTests {
         }
     }
 
-    @Test func aTypedSignInDuringATryKeepsItFromArmingAnother() async throws {
+    enum HeldTryEnd: String, CaseIterable, CustomTestStringConvertible {
+        case unreachable
+        case refused
+
+        var testDescription: String { rawValue }
+    }
+
+    @Test(arguments: HeldTryEnd.allCases)
+    func aTypedSignInDuringATryKeepsItFromArmingAnother(end: HeldTryEnd) async throws {
         let calls = Calls()
         let sleeper = ManualSleeper()
         let held = AsyncStream<Void>.makeStream()
@@ -582,7 +590,10 @@ struct LibrarySignInTests {
             calls.count += 1
             if calls.count == 1 { throw LibraryServiceError.loginFailed("wrong password") }
             for await _ in held.stream { break }
-            throw URLError(.notConnectedToInternet)
+            switch end {
+            case .unreachable: throw URLError(.notConnectedToInternet)
+            case .refused: throw LibraryServiceError.loginFailed("wrong password")
+            }
         }
         try await Self.withStoredAccount { _ in
             let username = try #require(LibraryService.storedUsername)
@@ -601,6 +612,7 @@ struct LibrarySignInTests {
 
             #expect(LibraryService.storedPasswordRetry == nil)
             #expect(await sleeper.armedCount == 1)
+            #expect(LibraryService.storedPasswordRefusals.count == (end == .refused ? 2 : 1))
         }
     }
 
