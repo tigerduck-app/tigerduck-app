@@ -175,6 +175,14 @@
 			);
 			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
 		};
+		B21DC7442FB8901100AE2430 /* Exceptions for "TigerDuckTests" folder in "TigerDuckWatch Watch AppTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				SchoolNetworkGuard.swift,
+				TestBundleSetup.swift,
+			);
+			target = B21DC69D2FB887DA00AE2430 /* TigerDuckWatch Watch AppTests */;
+		};
 		B244D7602FB87B590040D6FA /* Exceptions for "TigerDuckWidgets" folder in "TigerDuckWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -268,6 +276,9 @@
 		};
 		424C46682F6E763E009D1DDA /* TigerDuckTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B21DC7442FB8901100AE2430 /* Exceptions for "TigerDuckTests" folder in "TigerDuckWatch Watch AppTests" target */,
+			);
 			path = TigerDuckTests;
 			sourceTree = "<group>";
 		};
@@ -1744,6 +1755,7 @@
 					TimeSliderViewModelTests.swift,
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = TigerDuckTestsSetup;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
@@ -1776,6 +1788,7 @@
 					TimeSliderViewModelTests.swift,
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = TigerDuckTestsSetup;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
@@ -2004,6 +2017,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 118;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = TigerDuckTestsSetup;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.ntust.app.TigerDuckWatch-Watch-AppTests";
@@ -2029,6 +2043,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 118;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = TigerDuckTestsSetup;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.ntust.app.TigerDuckWatch-Watch-AppTests";

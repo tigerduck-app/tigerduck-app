@@ -81,10 +81,19 @@ enum WatchLibraryService {
 
     typealias Send = (URLRequest, (any URLSessionTaskDelegate)?) async throws -> (Data, URLResponse)
 
+    #if DEBUG
+    /// Unit tests set this to refuse a request before it reaches the session: on watchOS a session
+    /// sends a request a `URLProtocol` stub answers anyway. The app leaves it nil.
+    nonisolated(unsafe) static var testGuard: (@Sendable (URLRequest) throws -> Void)?
+    #endif
+
     static func sendOnPinnedSession(
         _ request: URLRequest, _ delegate: (any URLSessionTaskDelegate)?
     ) async throws -> (Data, URLResponse) {
-        try await session.data(for: request, delegate: delegate)
+        #if DEBUG
+        try testGuard?(request)
+        #endif
+        return try await session.data(for: request, delegate: delegate)
     }
 
     @MainActor
