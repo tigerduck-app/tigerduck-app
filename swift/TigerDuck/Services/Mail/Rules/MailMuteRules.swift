@@ -9,7 +9,7 @@ nonisolated struct MailMuteSettings: Codable, Equatable, Sendable {
     var presets: Set<MailMutePreset> = []
     var rules: [MailMuteRule] = []
 
-    func mutes(_ mail: MailSummary, arrivedAt: Date, calendar: Calendar = .current) -> Bool {
+    func mutes(_ mail: MailSummary, arrivedAt: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Bool {
         quietHours.contains(arrivedAt, calendar: calendar)
             || presets.contains { $0.matches(mail) }
             || rules.contains { $0.matches(mail) }
@@ -18,7 +18,7 @@ nonisolated struct MailMuteSettings: Codable, Equatable, Sendable {
 
 nonisolated struct MailQuietHours: Codable, Equatable, Sendable {
     var isEnabled = false
-    /// Minutes after midnight.
+    /// Minutes after midnight, Taipei time like the rest of the app's day math.
     var start = 23 * 60
     var end = 7 * 60
     /// `Calendar` weekday numbers, 1 being Sunday.
@@ -26,7 +26,7 @@ nonisolated struct MailQuietHours: Codable, Equatable, Sendable {
 
     /// A window that ends on the next day belongs to the day it starts on. Equal start and end
     /// make an empty window.
-    func contains(_ date: Date, calendar: Calendar) -> Bool {
+    func contains(_ date: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Bool {
         guard isEnabled, start != end else { return false }
         let parts = calendar.dateComponents([.weekday, .hour, .minute], from: date)
         guard let weekday = parts.weekday, let hour = parts.hour, let minute = parts.minute else { return false }

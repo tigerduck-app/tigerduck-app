@@ -42,12 +42,12 @@ struct MailNotificationSettingsView: View {
     }
 
     /// The pickers edit a time of day; a fixed January day keeps a daylight saving change out of it.
-    static func pickerDate(minutes: Int, calendar: Calendar = .current) -> Date {
+    static func pickerDate(minutes: Int, calendar: Calendar = AppConstants.taipeiCalendar) -> Date {
         let day = calendar.startOfDay(for: Date(timeIntervalSinceReferenceDate: 0))
         return calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: day) ?? day
     }
 
-    static func minutes(of date: Date, calendar: Calendar = .current) -> Int {
+    static func minutes(of date: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Int {
         let parts = calendar.dateComponents([.hour, .minute], from: date)
         return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
     }
@@ -145,8 +145,10 @@ struct MailNotificationSettingsView: View {
             if quietHours.wrappedValue.isEnabled {
                 DatePicker(String(localized: "school_mail_quiet_hours_start"),
                            selection: Self.timeBinding(quietHours.start), displayedComponents: .hourAndMinute)
+                    .environment(\.timeZone, AppConstants.taipeiTimeZone)
                 DatePicker(String(localized: "school_mail_quiet_hours_end"),
                            selection: Self.timeBinding(quietHours.end), displayedComponents: .hourAndMinute)
+                    .environment(\.timeZone, AppConstants.taipeiTimeZone)
                 NavigationLink {
                     MailQuietDaysView(weekdays: quietHours.weekdays)
                 } label: {

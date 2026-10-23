@@ -15,9 +15,9 @@ struct MailMuteRulesTests {
                     isExternal: false)
     }
 
-    /// A time in the device's time zone, which is the one quiet hours use. 2026-10-23 is a Friday.
+    /// A Taipei time, the zone quiet hours use. 2026-10-23 is a Friday.
     private static func at(day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
-        Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+        AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
     }
 
     private static func rule(_ field: MailMuteRule.Field, _ op: MailMuteRule.Operator, _ value: String) -> MailMuteRule {
@@ -116,37 +116,37 @@ struct MailMuteRulesTests {
 
     @Test func aWindowInsideOneDay() {
         let quiet = MailQuietHours(isEnabled: true, start: 13 * 60, end: 14 * 60)
-        #expect(!quiet.contains(Self.at(day: 23, 12, 59), calendar: .current))
-        #expect(quiet.contains(Self.at(day: 23, 13), calendar: .current))
-        #expect(quiet.contains(Self.at(day: 23, 13, 59), calendar: .current))
-        #expect(!quiet.contains(Self.at(day: 23, 14), calendar: .current))
+        #expect(!quiet.contains(Self.at(day: 23, 12, 59)))
+        #expect(quiet.contains(Self.at(day: 23, 13)))
+        #expect(quiet.contains(Self.at(day: 23, 13, 59)))
+        #expect(!quiet.contains(Self.at(day: 23, 14)))
     }
 
     @Test func aWindowAcrossMidnight() {
         let quiet = MailQuietHours(isEnabled: true)
-        #expect(quiet.contains(Self.at(day: 23, 23, 30), calendar: .current))
-        #expect(quiet.contains(Self.at(day: 24, 6, 59), calendar: .current))
-        #expect(!quiet.contains(Self.at(day: 24, 7), calendar: .current))
-        #expect(!quiet.contains(Self.at(day: 23, 22, 59), calendar: .current))
+        #expect(quiet.contains(Self.at(day: 23, 23, 30)))
+        #expect(quiet.contains(Self.at(day: 24, 6, 59)))
+        #expect(!quiet.contains(Self.at(day: 24, 7)))
+        #expect(!quiet.contains(Self.at(day: 23, 22, 59)))
     }
 
     @Test func aWindowBelongsToTheDayItStartsOn() {
         // Friday only: Friday night into Saturday morning is quiet, Saturday night is not.
         let quiet = MailQuietHours(isEnabled: true, weekdays: [6])
-        #expect(quiet.contains(Self.at(day: 23, 23), calendar: .current))
-        #expect(quiet.contains(Self.at(day: 24, 3), calendar: .current))
-        #expect(!quiet.contains(Self.at(day: 24, 23), calendar: .current))
-        #expect(!quiet.contains(Self.at(day: 23, 3), calendar: .current))
+        #expect(quiet.contains(Self.at(day: 23, 23)))
+        #expect(quiet.contains(Self.at(day: 24, 3)))
+        #expect(!quiet.contains(Self.at(day: 24, 23)))
+        #expect(!quiet.contains(Self.at(day: 23, 3)))
         // Sunday only: the Saturday-to-Sunday wrap of the weekday numbers.
         let sunday = MailQuietHours(isEnabled: true, weekdays: [1])
-        #expect(sunday.contains(Self.at(day: 26, 2), calendar: .current))
-        #expect(!sunday.contains(Self.at(day: 25, 2), calendar: .current))
+        #expect(sunday.contains(Self.at(day: 26, 2)))
+        #expect(!sunday.contains(Self.at(day: 25, 2)))
     }
 
     @Test func offOrEmptyWindowsQuietNothing() {
-        #expect(!MailQuietHours().contains(Self.at(day: 23, 23, 30), calendar: .current))
-        #expect(!MailQuietHours(isEnabled: true, start: 60, end: 60).contains(Self.at(day: 23, 1), calendar: .current))
-        #expect(!MailQuietHours(isEnabled: true, weekdays: []).contains(Self.at(day: 23, 23, 30), calendar: .current))
+        #expect(!MailQuietHours().contains(Self.at(day: 23, 23, 30)))
+        #expect(!MailQuietHours(isEnabled: true, start: 60, end: 60).contains(Self.at(day: 23, 1)))
+        #expect(!MailQuietHours(isEnabled: true, weekdays: []).contains(Self.at(day: 23, 23, 30)))
     }
 
     // MARK: Checks
@@ -230,6 +230,15 @@ struct MailMuteRulesTests {
         _ = await checker.check(trigger: .backgroundTask)
         #expect(center.accepted == ["school-mail-1-3"])
         #expect(prefs.inboxNextUID == 5)
+    }
+
+    @Test func quietHoursKeepTaipeiTimeOnADeviceInAnotherZone() throws {
+        let settings = MailMuteSettings(quietHours: MailQuietHours(isEnabled: true, weekdays: [6]))
+        var newYork = Calendar(identifier: .gregorian)
+        newYork.timeZone = try #require(TimeZone(identifier: "America/New_York"))
+        let fridayNightInNewYork = try #require(newYork.date(from: DateComponents(year: 2026, month: 10, day: 23, hour: 23, minute: 30)))
+        #expect(settings.mutes(Self.mail(), arrivedAt: Self.at(day: 23, 23, 30)))
+        #expect(!settings.mutes(Self.mail(), arrivedAt: fridayNightInNewYork))
     }
 
     @MainActor @Test func signingOutForgetsTheRules() async {

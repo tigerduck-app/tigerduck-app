@@ -6,13 +6,14 @@ import UIKit
 
 @MainActor
 struct MailMuteSettingsScreenTests {
-    private func show(_ account: MailAccountManager) throws -> UIWindow {
+    /// `timeZone` stands in for the device's zone, which SwiftUI hands the pickers by default.
+    private func show(_ account: MailAccountManager, timeZone: TimeZone = .current) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 1600)
         window.rootViewController = UIHostingController(rootView: NavigationStack {
             MailNotificationSettingsView(account: account)
-        })
+        }.environment(\.timeZone, timeZone))
         window.isHidden = false
         return window
     }
@@ -66,6 +67,28 @@ struct MailMuteSettingsScreenTests {
             let rule = [String(localized: "school_mail_filter_field_from"), String(localized: "school_mail_filter_op_contains"),
                         "newsletter"]
             #expect(texts.contains { text in rule.allSatisfy(text.contains) }, "\(texts)")
+        }
+    }
+
+    @Test("on a device in another time zone the pickers show the Taipei times quiet hours use")
+    func thePickersShowTaipeiTimes() async throws {
+        try await withAccessibilityAutomation {
+            let h = MailAccountManagerTests.harness()
+            await h.manager.login(studentID: "B10000000", password: "pw")
+            h.manager.muteSettings.quietHours.isEnabled = true
+            let window = try show(h.manager, timeZone: try #require(TimeZone(identifier: "America/New_York")))
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController?.view)
+            let bulletin = String(localized: "school_mail_filter_preset_bulletin")
+            try await waitUntil { accessibilityElement(labeled: bulletin, in: root) != nil }
+
+            let formatter = DateFormatter()
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+            formatter.timeZone = AppConstants.taipeiTimeZone
+            let eleven = try #require(AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 23)))
+            let texts = exposedAccessibilityTexts(in: root)
+            #expect(texts.contains { $0.contains(formatter.string(from: eleven)) }, "\(texts)")
         }
     }
 
