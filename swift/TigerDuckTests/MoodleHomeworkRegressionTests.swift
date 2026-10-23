@@ -267,6 +267,25 @@ struct MoodleHomeworkRegressionTests {
         #expect(rows[2].moodleStatus(now: due + 86_400) == .overdueAcceptable)
     }
 
+    @Test func assignmentStatus_anExtensionMovesTheDueDateAndTheCutoff() {
+        let day: TimeInterval = 86_400
+        let due = Date(timeIntervalSince1970: 1_790_000_000)
+        let pastTheCutoff = SDAssignment(
+            assignmentId: "x1", courseNo: "C", courseName: "C", title: "T", dueDate: due,
+            cutoffDate: due + day, extensionDueDate: due + 3 * day
+        )
+        #expect(pastTheCutoff.status(now: due + 2 * day) == .pending)
+        #expect(pastTheCutoff.status(now: due + 4 * day) == .overdueRejected)
+
+        let beforeTheCutoff = SDAssignment(
+            assignmentId: "x2", courseNo: "C", courseName: "C", title: "T", dueDate: due,
+            cutoffDate: due + 3 * day, extensionDueDate: due + day
+        )
+        #expect(beforeTheCutoff.status(now: due + day / 2) == .pending)
+        #expect(beforeTheCutoff.status(now: due + 2 * day) == .overdueAcceptable)
+        #expect(beforeTheCutoff.status(now: due + 4 * day) == .overdueRejected)
+    }
+
     @Test func moodleEnrolledCourse_leadingThreeCourseNoIsNotTruncated() {
         let nightSchool = MoodleEnrolledCourse(
             id: 4,
