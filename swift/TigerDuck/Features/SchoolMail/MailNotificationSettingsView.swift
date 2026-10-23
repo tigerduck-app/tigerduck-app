@@ -8,6 +8,7 @@ struct MailNotificationSettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var notificationsDenied = false
     @State private var records: [MailCheckRecord] = []
+    @State private var editingRule: MailMuteRule?
     private let account: MailAccountManager
 
     /// Injectable purely so tests can drive a throwaway account instead of the app's real
@@ -40,7 +41,41 @@ struct MailNotificationSettingsView: View {
         return $account.notificationsEnabled
     }
 
+    /// The pickers edit a time of day; a fixed January day keeps a daylight saving change out of it.
+    static func pickerDate(minutes: Int, calendar: Calendar = AppConstants.taipeiCalendar) -> Date {
+        let day = calendar.startOfDay(for: Date(timeIntervalSinceReferenceDate: 0))
+        return calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: day) ?? day
+    }
+
+    static func minutes(of date: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Int {
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+    }
+
+    private static func timeBinding(_ minutes: Binding<Int>) -> Binding<Date> {
+        Binding(get: { pickerDate(minutes: minutes.wrappedValue) }, set: { minutes.wrappedValue = Self.minutes(of: $0) })
+    }
+
+    private static func presetBinding(_ preset: MailMutePreset, in presets: Binding<Set<MailMutePreset>>) -> Binding<Bool> {
+        Binding(
+            get: { presets.wrappedValue.contains(preset) },
+            set: { isOn in
+                if isOn { presets.wrappedValue.insert(preset) } else { presets.wrappedValue.remove(preset) }
+            }
+        )
+    }
+
+    @MainActor
+    static func save(_ rule: MailMuteRule, in account: MailAccountManager) {
+        if let index = account.muteSettings.rules.firstIndex(where: { $0.id == rule.id }) {
+            account.muteSettings.rules[index] = rule
+        } else {
+            account.muteSettings.rules.append(rule)
+        }
+    }
+
     var body: some View {
+        @Bindable var account = self.account
         List {
             Section {
                 Toggle(
@@ -63,6 +98,17 @@ struct MailNotificationSettingsView: View {
                 }
             }
 
+            Group {
+                quietHoursSection(quietHours: $account.muteSettings.quietHours)
+                Section(String(localized: "school_mail_filters")) {
+                    ForEach(MailMutePreset.allCases, id: \.self) { preset in
+                        Toggle(preset.title, isOn: Self.presetBinding(preset, in: $account.muteSettings.presets))
+                    }
+                }
+                customRulesSection
+            }
+            .disabled(!account.notificationsEnabled)
+
             Section(String(localized: "school_mail_settings_diagnostics")) {
                 if records.isEmpty {
                     Text(String(localized: "school_mail_settings_no_checks"))
@@ -79,12 +125,49 @@ struct MailNotificationSettingsView: View {
                 }
             }
         }
+        .sheet(item: $editingRule) { rule in
+            MailMuteRuleSheet(rule: rule, isNew: !account.muteSettings.rules.contains { $0.id == rule.id }) {
+                Self.save($0, in: account)
+            }
+        }
         .navigationTitle(String(localized: "school_mail_notification_settings_title"))
         .onAppear { records = account.prefs.diagnostics }
         .task { notificationsDenied = await MailNotificationPermission.isDenied() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { notificationsDenied = await MailNotificationPermission.isDenied() }
+        }
+    }
+
+    private func quietHoursSection(quietHours: Binding<MailQuietHours>) -> some View {
+        Section(String(localized: "school_mail_quiet_hours")) {
+            Toggle(String(localized: "school_mail_quiet_hours"), isOn: quietHours.isEnabled)
+            if quietHours.wrappedValue.isEnabled {
+                DatePicker(String(localized: "school_mail_quiet_hours_start"),
+                           selection: Self.timeBinding(quietHours.start), displayedComponents: .hourAndMinute)
+                    .environment(\.timeZone, AppConstants.taipeiTimeZone)
+                DatePicker(String(localized: "school_mail_quiet_hours_end"),
+                           selection: Self.timeBinding(quietHours.end), displayedComponents: .hourAndMinute)
+                    .environment(\.timeZone, AppConstants.taipeiTimeZone)
+                NavigationLink {
+                    MailQuietDaysView(weekdays: quietHours.weekdays)
+                } label: {
+                    LabeledContent(String(localized: "school_mail_quiet_hours_days"),
+                                   value: MailQuietDaysView.summary(quietHours.wrappedValue.weekdays))
+                }
+            }
+        }
+    }
+
+    private var customRulesSection: some View {
+        Section(String(localized: "school_mail_filter_custom")) {
+            ForEach(account.muteSettings.rules) { rule in
+                Button { editingRule = rule } label: { MailMuteRuleRow(rule: rule) }
+            }
+            .onDelete { account.muteSettings.rules.remove(atOffsets: $0) }
+            Button(String(localized: "school_mail_filter_add")) {
+                editingRule = MailMuteRule(field: .from, op: .contains, value: "")
+            }
         }
     }
 }

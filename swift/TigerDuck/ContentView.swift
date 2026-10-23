@@ -23,6 +23,9 @@ struct ContentView: View {
 private struct ClassTableImportHost: ViewModifier {
     @Environment(AppState.self) private var appState
     @State private var importModel: ClassTableImportModel?
+    /// A link's import, apart from the scanner's, so opening a link never starts the camera or asks
+    /// for its permission.
+    @State private var linkModel: ClassTableImportModel?
 
     func body(content: Content) -> some View {
         content
@@ -30,7 +33,54 @@ private struct ClassTableImportHost: ViewModifier {
                 guard importModel == nil else { return }
                 importModel = .live(authService: appState.authService)
             }
+            .overlay {
+                if linkModel?.isUpdating == true {
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        ProgressView().controlSize(.large)
+                    }
+                }
+            }
             .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
+            .classTableImportPrompts(linkModel, onConfirmScreen: false)
+            .sheet(item: Binding(get: { linkModel?.pending }, set: { if $0 == nil { linkModel?.cancel() } })) { pending in
+                if let linkModel {
+                    ClassTableImportConfirmView(model: linkModel, code: pending.code)
+                }
+            }
+            .onChange(of: linkModel?.isFinished) { _, isFinished in
+                if isFinished == true { linkModel = nil }
+            }
+            .task(id: HeldShareLink.mayOpen(in: appState) ? HeldShareLink.shared.link?.id : nil) {
+                while !openHeldLink(), !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+            }
+    }
+
+    /// False while the link waits: the import's sheet would close a sheet or alert open in a tab,
+    /// and would race a What's New or update sheet about to show.
+    private func openHeldLink() -> Bool {
+        // A link replaces what an open scanner, or an earlier link's import, shows, inside it.
+        let inPlace: ClassTableImportModel? = if let importModel, !importModel.isFinished {
+            importModel
+        } else if let linkModel, !linkModel.isIdle, !linkModel.isFinished {
+            linkModel
+        } else {
+            nil
+        }
+        if let inPlace {
+            if let text = HeldShareLink.shared.take(in: appState) { inPlace.linkOpened(text) }
+            return true
+        }
+        let othersUp = UIApplication.shared.foregroundRoot?.presentedViewController != nil
+            || appState.updateNotifyCoordinator.activeNotifySheet != nil
+        if othersUp, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: appState) { return false }
+        guard let text = HeldShareLink.shared.take(in: appState) else { return true }
+        let model = ClassTableImportModel.live(authService: appState.authService)
+        linkModel = model
+        model.linkOpened(text)
+        return true
     }
 }
 
@@ -71,6 +121,7 @@ struct MainTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppFeature = .home
     @State private var showTimezoneAlert: Bool = false
+    @State private var hostWindow = HostWindow()
 
     private var visibleTabs: [AppFeature] { appState.configuredTabs }
 
@@ -120,9 +171,7 @@ struct MainTabView: View {
         }
         #if os(iOS)
         .onChange(of: appState.pendingDeepLink, initial: true) { _, new in
-            routeBulletinDeepLinkIfNeeded(new)
-            routeSchoolMailDeepLinkIfNeeded(new)
-            routeAssignmentDeepLinkIfNeeded(new)
+            Self.route(new, in: hostWindow, open: open)
         }
         #endif
         .onChange(of: scenePhase) { _, newPhase in
@@ -139,6 +188,8 @@ struct MainTabView: View {
         .flipToLibraryAttached()
         .firstTriggerPromptHost()
         .updateNotifySheetHost()
+        .readsHostWindow(into: hostWindow)
+        .environment(\.hostWindow, hostWindow)
         #endif
     }
 
@@ -149,19 +200,14 @@ struct MainTabView: View {
     }
 
     #if os(iOS)
-    private func routeBulletinDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
-        guard case .bulletin = link else { return }
-        open(.announcements)
-    }
-
-    private func routeSchoolMailDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
-        guard case .schoolMail = link, SchoolMailAvailability.isEnabled else { return }
-        open(.schoolMail)
-    }
-
-    private func routeAssignmentDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
-        guard case .assignment = link else { return }
-        open(.home)
+    /// An assignment link opens Home at once, as the page it pushes closes the sheets itself.
+    static func route(_ link: AppState.DeepLink?, in host: HostWindow, open: @escaping (AppFeature) -> Void) {
+        switch link {
+        case .bulletin: host.closePresentations { _ in open(.announcements) }
+        case .schoolMail where SchoolMailAvailability.isEnabled: host.closePresentations { _ in open(.schoolMail) }
+        case .assignment: open(.home)
+        case .schoolMail, nil: break
+        }
     }
     #endif
 

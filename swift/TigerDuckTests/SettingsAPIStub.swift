@@ -17,10 +17,12 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         }
     }
 
+    /// A gate a failed test never opens gives its thread back after the longest request timeout a
+    /// stub session sets, with no reply, as the request has ended by then.
     nonisolated final class ReplyGate: Sendable {
         private let opened = DispatchSemaphore(value: 0)
         func open() { opened.signal() }
-        fileprivate func wait() { opened.wait() }
+        fileprivate func wait() -> Bool { opened.wait(timeout: .now() + .seconds(600)) == .success }
     }
 
     private static let lock = NSLock()
@@ -112,7 +114,7 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         // held reply goes back to that thread's run loop.
         let held = HeldReply(stub: self, runLoop: CFRunLoopGetCurrent())
         DispatchQueue.global().async {
-            gate.wait()
+            guard gate.wait() else { return }
             CFRunLoopPerformBlock(held.runLoop, CFRunLoopMode.defaultMode.rawValue) {
                 held.stub.reply(next, for: url)
             }

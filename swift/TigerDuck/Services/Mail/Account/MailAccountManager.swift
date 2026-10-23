@@ -58,6 +58,10 @@ final class MailAccountManager {
         }
     }
 
+    var muteSettings: MailMuteSettings {
+        didSet { prefs.muteSettings = muteSettings }
+    }
+
     var isLoggedIn: Bool { studentID != nil }
     var address: String? { studentID.map(MailConstants.address(forStudentID:)) }
     var isDemo: Bool { prefs.demoActive }
@@ -98,6 +102,7 @@ final class MailAccountManager {
         authFailed = prefs.authFailed
         displayName = prefs.displayName
         notificationsEnabled = prefs.notificationsEnabled
+        muteSettings = prefs.muteSettings
     }
 
     func login(studentID rawID: String, password: String) async {
@@ -199,6 +204,7 @@ final class MailAccountManager {
         authFailed = false
         displayName = nil
         notificationsEnabled = prefs.notificationsEnabled
+        muteSettings = prefs.muteSettings
         signOutEvents.post(name: Self.didSignOut, object: nil)
         onSignedOut?()
     }

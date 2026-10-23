@@ -177,7 +177,7 @@ struct MacClassTableView: View {
                 }
             }
             ToolbarItem(placement: .automatic) {
-                if let importModel, importModel.isLookingUp, importModel.pending == nil {
+                if let importModel, importModel.isUpdating {
                     Button {
                         importModel.cancel()
                     } label: {
@@ -224,6 +224,8 @@ struct MacClassTableView: View {
         .onChange(of: importModel?.isFinished) { _, isFinished in
             if isFinished == true { importModel = nil }
         }
+        .onChange(of: HeldShareLink.shared.link?.id, initial: true) { openHeldLink() }
+        .onChange(of: HeldShareLink.mayOpen(in: appState)) { openHeldLink() }
         .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
@@ -496,6 +498,19 @@ struct MacClassTableView: View {
     private func requestImport() {
         guard importModel?.isLookingUp != true, importModel?.isReadingImage != true else { return }
         showImportPicker = true
+    }
+
+    /// In the shown import's model, which closes an alert it shows before the link's own: a new
+    /// model's alert would replace it in one update, and the old job's buttons would stay.
+    private func openHeldLink() {
+        guard let text = HeldShareLink.shared.take(in: appState) else { return }
+        if let importModel, !importModel.isFinished {
+            importModel.linkOpened(text)
+            return
+        }
+        let model = ClassTableImportModel.live(authService: appState.authService)
+        importModel = model
+        model.linkOpened(text)
     }
 
     private func perform(_ action: ClassTableOtherPersonAction) {

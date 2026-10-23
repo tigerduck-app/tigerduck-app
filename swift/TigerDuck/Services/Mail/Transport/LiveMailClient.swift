@@ -638,7 +638,8 @@ actor LiveMailClient: MailClient {
             isDeleted: info.flags.contains(.deleted),
             size: info.size,
             hasAttachments: info.parts.contains(where: isAttachment),
-            isExternal: fromAddress.map { !MailWarnings.isSchoolDomain(MailWarnings.domain(ofAddress: $0)) } ?? false
+            isExternal: fromAddress.map { !MailWarnings.isSchoolDomain(MailWarnings.domain(ofAddress: $0)) } ?? false,
+            arrivedAt: info.internalDate
         )
     }
 
