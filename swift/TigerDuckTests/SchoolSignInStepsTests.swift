@@ -72,6 +72,29 @@ struct SchoolSignInStepsTests {
         #expect(calls.harvests == 1)
     }
 
+    #if os(iOS)
+    /// The sign-out's service steps alone: the call that took the mail with it was in
+    /// `AppState.logoutNTUST`, which tests cannot build.
+    @Test func aSchoolSignOutLeavesSchoolMailSignedIn() async throws {
+        let calls = Calls()
+        let mail = MailAccountManagerTests.harness()
+        await mail.manager.login(studentID: Self.student, password: "mail")
+        try #require(mail.manager.isLoggedIn)
+        try await Self.withKeychain(libraryAccount: nil) { _ in
+            let auth = Self.auth(recording: calls)
+            #expect(await auth.login(studentId: Self.student, password: "school"))
+
+            auth.logout()
+            LibraryService.schoolAccountDidSignOut()
+
+            #expect(mail.manager.isLoggedIn)
+            #expect(mail.manager.studentID == Self.student)
+            #expect(mail.hooks.signedOut == 0)
+            #expect(mail.secrets.load(forKey: MailCredentialStore.passwordKey) == "mail")
+        }
+    }
+    #endif
+
     @Test func aSignOutAsTheSchoolStepEndsKeepsNothing() async throws {
         let calls = Calls()
         try await Self.withKeychain(libraryAccount: nil) { keychain in
