@@ -225,7 +225,7 @@ actor MailChecker {
         if prefs.inboxUIDValidity == status.uidValidity {
             let next = max(advanced, prefs.inboxNextUID ?? 0)
             prefs.inboxNextUID = next
-            let held = muted.filter { $0 >= next }
+            let held = passedOver.union(muted).filter { $0 >= next }
             prefs.inboxMutedUIDs = held.isEmpty ? nil : MailMutedUIDs(uidValidity: status.uidValidity, uids: held)
         }
         return InboxCheck(

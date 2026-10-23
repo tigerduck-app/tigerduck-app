@@ -206,6 +206,32 @@ struct MailMuteRulesTests {
         #expect(prefs.inboxNextUID == 5)
     }
 
+    @Test func aMutedMailReadAndMarkedUnreadWhileTheMarkerWaitsStaysPassedOver() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 3
+        prefs.muteSettings.presets = [.bulletin]
+        let fake = FakeMailClient(folders: ["INBOX": [
+            Self.message(uid: 3, arrivedAt: Self.at(day: 23, 12)),
+            Self.message(uid: 4, from: "bulletin@mail.ntust.edu.tw", arrivedAt: Self.at(day: 23, 12)),
+        ]])
+        let center = RejectingNotificationCenter(rejecting: ["school-mail-1-3"])
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: {})
+        _ = await checker.check(trigger: .backgroundTask)
+        await fake.update { $0.folders["INBOX"]?[1].summary.isSeen = true }
+        _ = await checker.check(trigger: .backgroundTask)
+        #expect(prefs.inboxNextUID == 3)
+
+        await fake.update { $0.folders["INBOX"]?[1].summary.isSeen = false }
+        prefs.muteSettings.presets = []
+        center.stopRejecting()
+        _ = await checker.check(trigger: .backgroundTask)
+        #expect(center.accepted == ["school-mail-1-3"])
+        #expect(prefs.inboxNextUID == 5)
+    }
+
     @MainActor @Test func signingOutForgetsTheRules() async {
         let h = MailAccountManagerTests.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
