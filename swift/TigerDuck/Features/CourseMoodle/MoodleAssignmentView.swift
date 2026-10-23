@@ -13,7 +13,7 @@ struct MoodleAssignmentView: View {
     @Environment(\.openMoodleLink) private var openMoodleLink
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
-    @State private var didOpen = false
+    @State private var openedId: Int?
     @State private var files = MoodleFileOpener()
     @ScaledMetric(relativeTo: .title) private var tileWidth: CGFloat = 56
     @ScaledMetric(relativeTo: .title) private var tileHeight: CGFloat = 60
@@ -62,9 +62,9 @@ struct MoodleAssignmentView: View {
             if !record.noSubmissions { submitButton }
         }
         .moodleArticleChrome()
-        .task {
-            guard !didOpen else { return }
-            didOpen = true
+        .task(id: record.assignId) {
+            guard openedId != record.assignId else { return }
+            openedId = record.assignId
             await store.assignments.refreshSubmission(of: record)
         }
         .onChange(of: scenePhase) { _, phase in

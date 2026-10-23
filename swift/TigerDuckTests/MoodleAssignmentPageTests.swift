@@ -40,7 +40,8 @@ struct MoodleAssignmentPageTests {
     static func store(
         in root: URL,
         answer: MoodleAssignmentSubmission = submission("submitted"),
-        fetches: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: 0)
+        fetches: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: 0),
+        asked: OSAllocatedUnfairLock<[Int]> = OSAllocatedUnfairLock(initialState: [])
     ) -> MoodleCourseStore {
         MoodleCourseStore(
             courseId: 20119,
@@ -58,8 +59,9 @@ struct MoodleAssignmentPageTests {
                 forums: { _ in [] },
                 discussions: { _, _ in [] },
                 markViewed: { _, _ in },
-                submission: { _ in
+                submission: { id in
                     fetches.withLock { $0 += 1 }
+                    asked.withLock { $0.append(id) }
                     return answer
                 }
             )
@@ -266,6 +268,51 @@ struct MoodleAssignmentPageTests {
         phase.value = .active
         try await waitUntil { fetches.withLock { $0 } == 2 }
         #expect(store.assignments.submission(of: Self.record).value?.isSubmitted == true)
+    }
+
+    @Observable
+    final class Shown {
+        var entry: MoodleCourseAssignments.Entry
+
+        init(_ record: MoodleAssignmentRecord) {
+            entry = MoodleCourseAssignments.Entry(record: record, listed: nil)
+        }
+    }
+
+    private struct SwitchingHost: View {
+        let shown: Shown
+        let store: MoodleCourseStore
+
+        var body: some View {
+            NavigationStack {
+                MoodleAssignmentView(
+                    store: store, entry: shown.entry, courseName: "Data Structures",
+                    policy: VisualStylePolicy(preset: .default), accent: .blue
+                )
+            }
+        }
+    }
+
+    @Test("a page that another assignment takes over in place fetches that assignment")
+    func switchedPageFetches() async throws {
+        let root = Self.folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let asked = OSAllocatedUnfairLock<[Int]>(initialState: [])
+        let store = Self.store(in: root, asked: asked)
+        let shown = Shown(Self.record)
+        let scene = try #require(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 800)
+        window.rootViewController = UIHostingController(rootView: SwitchingHost(shown: shown, store: store))
+        window.isHidden = false
+        defer { window.isHidden = true }
+
+        try await waitUntil { asked.withLock { $0 } == [701] }
+        shown.entry = MoodleCourseAssignments.Entry(record: MoodleAssignmentRecord(
+            assignId: 702, cmId: 9702, courseId: 20119, name: "HW 3", dueDate: Self.due, cutoffDate: nil,
+            allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
+        ), listed: nil)
+        try await waitUntil(timeout: .seconds(10)) { asked.withLock { $0 } == [701, 702] }
     }
 
     @Test("each piece of HTML is converted once, however often the page draws it")
