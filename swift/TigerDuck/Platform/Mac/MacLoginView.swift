@@ -12,6 +12,8 @@ struct MacLoginView: View {
     @State private var studentId = ""
     @State private var password = ""
     @State private var isPasswordVisible = false
+    @State private var confirmsSwitch = false
+    @State private var switchLines: [String] = []
     @FocusState private var focused: Field?
 
     private enum Field { case studentId, password }
@@ -137,6 +139,12 @@ struct MacLoginView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .alert(String(localized: "action_sign_out"), isPresented: $confirmsSwitch) {
+            Button(String(localized: "action_sign_out"), role: .destructive) { Task { await logIn() } }
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        } message: {
+            Text(switchLines.joined(separator: "\n"))
+        }
         .onAppear {
             if studentId.isEmpty, let stored = appState.authService.storedStudentId { studentId = stored }
             focused = studentId.isEmpty ? .studentId : .password
@@ -152,6 +160,18 @@ struct MacLoginView: View {
 
     private func attemptLogin() async {
         guard canSubmit else { return }
+        guard AuthService.replacesStoredAccount(
+            stored: appState.authService.storedStudentId, signingInAs: studentId
+        ) else { return await logIn() }
+        let unsynced = await appState.signOutDeletesUnsyncedData()
+        ImportedClassTableStore.shared.requestSignOut(
+            unsyncedData: unsynced,
+            confirm: { switchLines = $0; confirmsSwitch = true },
+            signOut: { Task { await logIn() } }
+        )
+    }
+
+    private func logIn() async {
         let ok = await appState.authService.login(
             studentId: studentId,
             password: password

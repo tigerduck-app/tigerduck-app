@@ -256,16 +256,25 @@ final class AuthService {
         )
     }
 
+    nonisolated static func normalizedStudentId(_ studentId: String) -> String {
+        studentId.trimmingCharacters(in: .whitespaces).uppercased()
+    }
+
+    /// Signing in as another student signs the stored account out first, which deletes its data.
+    nonisolated static func replacesStoredAccount(stored: String?, signingInAs studentId: String) -> Bool {
+        stored.map { $0 != normalizedStudentId(studentId) } ?? false
+    }
+
     func login(studentId: String, password: String) async -> Bool {
         isLoggingIn = true
         loginError = nil
         var schoolStepGeneration: Int?
 
         do {
-            let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
+            let normalizedId = Self.normalizedStudentId(studentId)
             await signOutCalls?.value
             try Task.checkCancellation()
-            if let stored = storedStudentId, stored != normalizedId {
+            if Self.replacesStoredAccount(stored: storedStudentId, signingInAs: normalizedId) {
                 await signOutStoredAccount?()
                 try Task.checkCancellation()
             }
