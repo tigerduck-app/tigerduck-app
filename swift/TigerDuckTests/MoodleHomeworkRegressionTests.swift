@@ -202,6 +202,37 @@ struct MoodleHomeworkRegressionTests {
         #expect(acronyms.courseNos == ["EE5428701"])
     }
 
+    @Test func moodleEnrolledCourse_coListedCourseOfAnotherSchoolIsAnAlias() {
+        let course = MoodleEnrolledCourse(
+            id: 5,
+            fullname: "115.1【資工系】CS5140701 機器學習 / 【臺大】3N1010003 機器學習",
+            shortname: "",
+            idnumber: "1151CS5140701",
+            startDate: nil,
+            endDate: nil
+        )
+
+        #expect(course.courseNos == ["CS5140701", "3N1010003"])
+    }
+
+    @Test func assignmentCourseName_dropsACourseNumberOfAnotherSchool() {
+        let record = MoodleAssignmentRecord(
+            assignId: 1, cmId: 1, courseId: 10, name: "HW1", dueDate: Date(timeIntervalSince1970: 1_790_000_000),
+            cutoffDate: nil, allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
+        )
+        let rows = AppServiceBridge.assignments(
+            from: [record],
+            moodleCoursesById: [10: MoodleEnrolledCourse(id: 10, fullname: "3N1010003 機器學習", shortname: "",
+                                                         idnumber: "11513N1010003", startDate: nil, endDate: nil)],
+            courseNoByMoodleId: [10: "3N1010003"],
+            statuses: [:],
+            confirmed: [:],
+            marks: AssignmentMarks(archivedIds: [], locallyCompletedIds: [], ignoredCourses: [], semester: "1151")
+        )
+
+        #expect(rows.map(\.courseName) == ["機器學習"])
+    }
+
     @Test func moodleEnrolledCourse_leadingThreeCourseNoIsNotTruncated() {
         let nightSchool = MoodleEnrolledCourse(
             id: 4,

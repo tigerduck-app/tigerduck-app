@@ -20,7 +20,6 @@ enum CourseServiceError: LocalizedError {
 enum CourseSelectionService {
     private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
     private static let courseListURL = URL.knownGood("https://courseselection.ntust.edu.tw/ChooseList/D01/D01")
-    private static let courseNoRegex = /<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*<\/td>/
 
     static func fetchEnrolledCourseNos(
         session: URLSession,
@@ -77,18 +76,29 @@ enum CourseSelectionService {
             if retryHost != courseListURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw CourseServiceError.redirectedToSSO
             }
-            let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }
+            let retryCourseNos = courseNos(inListPage: retryHTML)
             if persistGuard?() ?? true {
                 saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
             }
             return retryCourseNos
         }
 
-        let courseNos = html.matches(of: courseNoRegex).map { String($0.1) }
+        let courseNos = courseNos(inListPage: html)
         if persistGuard?() ?? true {
             saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
         }
         return courseNos
+    }
+
+    /// NTUST's course-number shape: a head, then six or seven letters or digits. The head is `3` and
+    /// two letters, two letters, or `3` and one letter, as for a course taken at NTU or NTNU
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/766).
+    nonisolated static func isCourseNo(_ text: Substring) -> Bool {
+        text.wholeMatch(of: /(?:3[A-Z]{2}|[A-Z]{2}|3[A-Z])[A-Z0-9]{6,7}/) != nil
+    }
+
+    nonisolated static func courseNos(inListPage html: String) -> [String] {
+        html.matches(of: /<tr>\s*<td>\s*([A-Z0-9]+)\s*<\/td>/).map { String($0.1) }.filter { isCourseNo($0[...]) }
     }
 
     nonisolated static func needsSchoolSession(studentId: String, semester: String) -> Bool {
