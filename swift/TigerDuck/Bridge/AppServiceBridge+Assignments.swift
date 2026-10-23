@@ -280,9 +280,10 @@ extension AppServiceBridge {
         let assignments = cache.loadAssignments()
         guard let assignment = assignments.first(where: { $0.assignmentId == id }) else { return false }
         let dueBefore = assignment.dueDate
+        let extensionBefore = assignment.extensionDueDate
         assignment.extend(to: status.extensionDueDate)
         guard assignment.isCompleted != status.isSubmitted || assignment.submittedAt != status.submittedAt
-            || assignment.dueDate != dueBefore else { return false }
+            || assignment.dueDate != dueBefore || assignment.extensionDueDate != extensionBefore else { return false }
         assignment.isCompleted = status.isSubmitted
         assignment.submittedAt = status.submittedAt
         cache.saveAssignments(assignments)

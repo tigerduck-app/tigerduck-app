@@ -227,7 +227,7 @@ struct SharedAssignmentRoundTests {
         #expect(heard.withLock { $0 } == 1)
     }
 
-    @Test("an extension the page fetched sets the cached due date, longer, shorter or taken back, and one before it writes nothing")
+    @Test("an extension the page fetched sets the cached due date, longer, shorter or taken back, and one before it is kept without moving it")
     func pageExtensionIsWritten() async {
         AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
@@ -237,7 +237,10 @@ struct SharedAssignmentRoundTests {
         var status = MoodleSubmissionStatus(
             assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil, extensionDueDate: Self.due - 60
         )
-        #expect(await !AppServiceBridge.takeSubmissionStatus(status, askedAt: now, cache: folder.cache, isCurrent: { true }))
+        #expect(await AppServiceBridge.takeSubmissionStatus(status, askedAt: now, cache: folder.cache, isCurrent: { true }))
+        let early = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
+        #expect(early?.dueDate == Self.due)
+        #expect(early?.extensionDueDate == Self.due - 60)
 
         for (step, extensionDate) in [Self.due + 2 * 86_400, Self.due + 86_400, nil].enumerated() {
             status.extensionDueDate = extensionDate
