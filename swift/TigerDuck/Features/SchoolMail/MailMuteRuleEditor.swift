@@ -126,6 +126,12 @@ struct MailQuietDaysView: View {
         ]
     }
 
+    /// The last selected day stays on: quiet hours on no day would quiet nothing.
+    static func toggling(_ weekday: Int, in weekdays: Set<Int>) -> Set<Int> {
+        guard weekdays.contains(weekday) else { return weekdays.union([weekday]) }
+        return weekdays.count > 1 ? weekdays.subtracting([weekday]) : weekdays
+    }
+
     static func summary(_ weekdays: Set<Int>) -> String {
         if weekdays.count == 7 { return String(localized: "school_mail_quiet_hours_every_day") }
         return days.filter { weekdays.contains($0.weekday) }.map(\.title).joined(separator: " ")
@@ -135,7 +141,7 @@ struct MailQuietDaysView: View {
         List {
             ForEach(Self.days, id: \.weekday) { day in
                 Button {
-                    if weekdays.contains(day.weekday) { weekdays.remove(day.weekday) } else { weekdays.insert(day.weekday) }
+                    weekdays = Self.toggling(day.weekday, in: weekdays)
                 } label: {
                     HStack {
                         Text(day.title).foregroundStyle(Color.primary)

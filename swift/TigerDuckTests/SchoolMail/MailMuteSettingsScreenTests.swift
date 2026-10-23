@@ -24,6 +24,12 @@ struct MailMuteSettingsScreenTests {
         #expect(MailQuietDaysView.summary([6, 2, 4]) == some)
     }
 
+    @Test func theLastDayCannotBeTurnedOff() {
+        #expect(MailQuietDaysView.toggling(3, in: [3]) == [3])
+        #expect(MailQuietDaysView.toggling(3, in: [2, 3]) == [2])
+        #expect(MailQuietDaysView.toggling(4, in: [3]) == [3, 4])
+    }
+
     @Test func thePickersKeepTheTimeOfDay() {
         for minutes in [0, 7 * 60, 23 * 60 + 59] {
             #expect(MailNotificationSettingsView.minutes(of: MailNotificationSettingsView.pickerDate(minutes: minutes)) == minutes)
