@@ -81,8 +81,12 @@ nonisolated struct MailReadableHTML {
                 var fix: RGBA?
                 switch node.kind {
                 case .own(let sent):
-                    now = Shown(intended: sent.color, displayed: sent.color)
-                    if let text = sent.color, text.alpha > 0, let behind { fix = fixes.readable(text.over(behind), on: behind) }
+                    if sent.inherits {
+                        fix = Self.fix(inherited, on: behind, &fixes)
+                    } else {
+                        now = Shown(intended: sent.color, displayed: sent.color)
+                        if let text = sent.color, text.alpha > 0, let behind { fix = fixes.readable(text.over(behind), on: behind) }
+                    }
                     try Self.set(sent.attribute, of: node.element,
                                  to: fix.map { sent.value.replacingCharacters(in: sent.range, with: $0.css) } ?? sent.value)
                 case .link:
@@ -90,10 +94,7 @@ nonisolated struct MailReadableHTML {
                     if node.backdrop.alpha > 0, let behind { fix = fixes.readable(linkText, on: behind) }
                     try node.give(fix)
                 case .background:
-                    if let behind, let displayed = inherited.displayed, displayed.alpha > 0,
-                       !Self.reads(displayed.over(behind), on: behind), let intended = inherited.intended, intended.alpha > 0 {
-                        fix = fixes.readable(intended.over(behind), on: behind) ?? intended.over(behind)
-                    }
+                    fix = Self.fix(inherited, on: behind, &fixes)
                     try node.give(fix)
                 }
                 if let fix {
@@ -109,6 +110,14 @@ nonisolated struct MailReadableHTML {
             Self.logger.error("Mail colour rewrite failed, colours left as sent: \(String(describing: type(of: error)), privacy: .public)")
             return html
         }
+    }
+
+    /// What text in an inherited colour needs on `behind`: nothing while the colour shown reads
+    /// there, else the colour the sender meant, made readable.
+    private static func fix(_ inherited: Shown, on behind: RGBA?, _ fixes: inout Fixes) -> RGBA? {
+        guard let behind, let displayed = inherited.displayed, displayed.alpha > 0, !reads(displayed.over(behind), on: behind),
+              let intended = inherited.intended, intended.alpha > 0 else { return nil }
+        return fixes.readable(intended.over(behind), on: behind) ?? intended.over(behind)
     }
 
     private nonisolated struct Visit {
@@ -139,6 +148,7 @@ nonisolated struct MailReadableHTML {
 
     private nonisolated struct Sent {
         let color: RGBA?
+        var inherits = false
         let attribute: String
         let value: String
         let range: Range<String.Index>
@@ -267,6 +277,7 @@ nonisolated struct MailReadableHTML {
         if style.declares(["border-image", "border-image-source"]) { return .unknown }
         if element.tagName() == "table", try paintsColumns(element) { return .unknown }
         if let declaration = style.effective("background-color") {
+            if ["initial", "unset"].contains(declaration.value.lowercased()) { return .none }
             return parse(declaration.value, legacy: false).map(Layer.color) ?? .unknown
         }
         guard let value = try legacyValue("bgcolor", of: element) else { return .none }
@@ -301,8 +312,9 @@ nonisolated struct MailReadableHTML {
 
     private static func sentColor(of element: Element, style: Style) throws -> Sent? {
         if let declaration = style.effective("color") {
-            return Sent(color: parse(declaration.value, legacy: false), attribute: "style", value: style.text,
-                        range: declaration.value.startIndex..<declaration.value.endIndex)
+            return Sent(color: parse(declaration.value, legacy: false),
+                        inherits: ["inherit", "currentcolor", "unset"].contains(declaration.value.lowercased()),
+                        attribute: "style", value: style.text, range: declaration.value.startIndex..<declaration.value.endIndex)
         }
         guard element.tagName() == "font", let value = try legacyValue("color", of: element) else { return nil }
         return Sent(color: parse(value, legacy: true), attribute: "color", value: String(value.base),

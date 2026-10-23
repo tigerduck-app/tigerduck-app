@@ -9,7 +9,7 @@ from api.ntust.sso import DEFAULT_DB_PATH, NtustSsoBridge
 
 COURSE_SELECTION_ROOT_URL = "https://courseselection.ntust.edu.tw/"
 COURSE_LIST_URL = "https://courseselection.ntust.edu.tw/ChooseList/D01/D01"
-COURSE_NO_PATTERN = re.compile(r"<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*</td>")
+COURSE_NO_PATTERN = re.compile(r"<tr>\s*<td>\s*((?:3[A-Z]{2}|[A-Z]{2}|3[A-Z])[A-Z0-9]{6,7})\s*</td>")
 
 
 class NtustCourseSelectionClient:

@@ -154,6 +154,16 @@ struct ClassroomUsageParserTests {
         #expect(!String(describing: grid).contains("林小美"))
     }
 
+    @Test("a cell nested far deeper than any page nests is still read")
+    func deepCell() throws {
+        let deep = String(repeating: "<span>", count: 10_000) + Pages.course("微積分", "王大明") + String(repeating: "</span>", count: 10_000)
+        let row = "<tr nowrap=\"nowrap\"><td nowrap=\"nowrap\">TR-214   </td>"
+            + Pages.cell(deep) + String(repeating: Pages.cell(Pages.free), count: 13) + "</tr>"
+        let grid = try #require(ClassroomUsageParser.page(Pages.page(rows: [row])).grid)
+
+        #expect(grid.rooms.first?.slots.first == .course(name: "微積分", teacher: "王大明"))
+    }
+
     @Test("a grid whose rows changed shape is unreadable, not a day without rooms")
     func changedRows() throws {
         let wider = "<tr nowrap=\"nowrap\"><td nowrap=\"nowrap\">TR-214   </td><td>60</td>"

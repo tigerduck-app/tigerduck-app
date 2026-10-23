@@ -54,6 +54,21 @@ struct ClassTableShareCodeTests {
         ])
     }
 
+    @Test("courses taken at NTU or NTNU are shared and read back, in either code")
+    func coursesOfOtherSchools() throws {
+        let code = try #require(ClassTableShareCode.encode(
+            studentId: "B11300001", sharedAt: Self.october,
+            terms: [Term(semester: "1151", courseNos: ["CS1010001", "3T1010004", "3N1010003"])]
+        ))
+
+        #expect(try ClassTableShareCode.decode(code).terms == [
+            Term(semester: "1151", courseNos: ["3N1010003", "3T1010004", "CS1010001"]),
+        ])
+        #expect(try ClassTableShareCode.decode("HTTPS://NTUST-TAT.WEB.APP/S/TAT11151B113000013N1010003-CS1010001").terms == [
+            Term(semester: "1151", courseNos: ["3N1010003", "CS1010001"]),
+        ])
+    }
+
     @Test("nothing to share writes no code")
     func nothingToShare() {
         #expect(ClassTableShareCode.encode(studentId: "B11300001", sharedAt: Self.october, terms: []) == nil)

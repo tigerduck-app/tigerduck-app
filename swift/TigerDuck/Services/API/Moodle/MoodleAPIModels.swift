@@ -140,7 +140,7 @@ struct MoodleEnrolledCourse: Sendable {
 }
 
 extension MoodleEnrolledCourse {
-    private static let courseNoToken = /3?[A-Z]{2,3}[0-9][A-Z0-9]{5,6}/
+    private static let courseNoToken = /(?:3?[A-Z]{2,3}|3[A-Z])[0-9][A-Z0-9]{5,6}/
 
     var courseNos: [String] {
         guard !courseNo.isEmpty else { return [] }

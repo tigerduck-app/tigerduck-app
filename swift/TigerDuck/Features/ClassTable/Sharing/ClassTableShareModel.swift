@@ -176,7 +176,7 @@ extension ClassTableShareModel {
     }
 
     private static func carriesCode(_ course: SDCourse) -> Bool {
-        ClassTableShareCode.isCourseNo(course.courseNo.uppercased()[...])
+        CourseSelectionService.isCourseNo(course.courseNo.uppercased()[...])
     }
 }
 
