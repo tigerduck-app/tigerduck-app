@@ -187,12 +187,16 @@ one asks for the update before calling another code in it damaged.
 - `tigerduck://share/<rest>`, which the share page's button opens, stands for
   `https://share.tigerduck.app/<rest>`. The scheme and host are matched as written, as the widgets'
   links are.
+- A link's query and fragment, which chat apps add (`?fbclid=...`), are dropped before decoding, as
+  the share page reads only the path.
 - Any web page or app can open a link, so a link goes through the import's usual confirmation,
   with the nickname and the replace prompt, and never imports by itself. A link on the share host
   the decoder does not take says the code is damaged, as no camera is there to try another.
 - A link opens over the class table, with no camera, which would ask for permission first. One that
   arrives while an import is open replaces what the import shows, and its earlier lookup saves
   nothing.
+- While another sheet or alert is open, a link waits for it to close: SwiftUI would close a sheet
+  open in a tab to show the import's, and with it anything typed there.
 - A link that arrives with no one signed in, or before onboarding finishes, is held in memory only
   (`HeldShareLink`), never on disk, and opens once both are done. A newer link replaces it, and a
   sign-out drops it.
