@@ -8,6 +8,7 @@ struct MoodleAssignmentView: View {
     let courseName: String
     let policy: VisualStylePolicy
     let accent: Color
+    var noteSleep: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
 
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
@@ -62,7 +63,7 @@ struct MoodleAssignmentView: View {
         .safeAreaInset(edge: .bottom) {
             if !record.noSubmissions { submitButton }
         }
-        .moodleRefreshFailureNote(feed, hasContent: submission != nil)
+        .moodleRefreshFailureNote(feed, hasContent: submission != nil, sleep: noteSleep)
         .moodleArticleChrome()
         .task(id: record.assignId) {
             guard openedId != record.assignId else { return }

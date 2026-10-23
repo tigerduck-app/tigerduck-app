@@ -189,9 +189,11 @@ struct MoodleAssignmentPageStateTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let record = Self.record(due: AppClock.now() + 86_400)
         let store = MoodleAssignmentPageTests.store(in: root, answering: 1)
+        let sleeper = ManualSleeper()
         let page = MoodleAssignmentView(
             store: store, entry: MoodleCourseAssignments.Entry(record: record, listed: nil),
-            courseName: "Data Structures", policy: VisualStylePolicy(preset: .default), accent: .blue
+            courseName: "Data Structures", policy: VisualStylePolicy(preset: .default), accent: .blue,
+            noteSleep: { await sleeper.sleep(for: $0) }
         )
         try await withAccessibilityAutomation {
             let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -207,7 +209,9 @@ struct MoodleAssignmentPageStateTests {
 
             await store.assignments.refreshSubmission(of: record)
 
-            try await waitUntil(timeout: .seconds(10)) { accessibilityElement(labeled: note, in: host.view) != nil }
+            try await waitUntil { accessibilityElement(labeled: note, in: host.view) != nil }
+            try await sleeper.waitUntilArmed()
+            await sleeper.fire()
         }
     }
 
