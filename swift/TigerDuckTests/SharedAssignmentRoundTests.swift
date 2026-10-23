@@ -253,6 +253,32 @@ struct SharedAssignmentRoundTests {
         }
     }
 
+    @Test("an extension the page fetched past a closed assignment's cutoff has rounds ask about it again")
+    func pageExtensionReopensAClosedAssignment() async {
+        AppServiceBridge.cancelAssignmentRound()
+        let folder = Folder()
+        let id = Self.newId()
+        let now = ContinuousClock.now
+        let due = Date() - 2 * 86_400
+        let closedAt = due + 86_400
+        AppServiceBridge.persistRound(
+            [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
+                          dueDate: due, cutoffDate: due + 3600)],
+            records: [], closed: [String(id): closedAt, "1": closedAt], answered: [id: now - .seconds(60)],
+            account: "B11399001", fetchedAt: closedAt, cache: folder.cache, isCurrent: { true }
+        )
+
+        #expect(await AppServiceBridge.takeSubmissionStatus(
+            MoodleSubmissionStatus(
+                assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil,
+                extensionDueDate: Date() + 86_400
+            ),
+            askedAt: now, cache: folder.cache, isCurrent: { true }
+        ))
+
+        #expect(folder.cache.loadClosedUnsubmittedAssignments() == ["1": closedAt])
+    }
+
     @Test("a round running when the page's status comes is waited out, and its older answer does not replace it")
     func pageStatusWaitsOutARound() async throws {
         AppServiceBridge.cancelAssignmentRound()

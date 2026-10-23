@@ -287,6 +287,11 @@ extension AppServiceBridge {
         assignment.submittedAt = status.submittedAt
         cache.saveAssignments(assignments)
         if assignment.dueDate != dueBefore { saveMoodleCalendarEvents(of: assignments, in: cache) }
+        // An extension ahead takes submissions past the cutoff, so rounds ask about it again.
+        if let extended = status.extensionDueDate, extended > Date() {
+            var closed = cache.loadClosedUnsubmittedAssignments()
+            if closed.removeValue(forKey: id) != nil { cache.replaceClosedUnsubmittedAssignments(closed) }
+        }
         uploadForReminders(assignments)
         center.post(name: AppConstants.dataDidUpdate, object: nil)
         return true
