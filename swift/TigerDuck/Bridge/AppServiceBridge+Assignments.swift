@@ -232,12 +232,16 @@ extension AppServiceBridge {
         cache.saveAssignments(assignments)
         cache.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
         cache.replaceClosedUnsubmittedAssignments(closed)
+        saveMoodleCalendarEvents(of: assignments, in: cache)
+        for (id, askedAt) in answered { statusAskedAt[String(id)] = askedAt }
+        return true
+    }
+
+    private static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: DataCache) {
         var calendarEvents = cache.loadCalendarEvents()
         calendarEvents.removeAll { $0.source == .moodle }
         calendarEvents.append(contentsOf: assignments.map(moodleCalendarEvent))
         cache.saveCalendarEvents(calendarEvents)
-        for (id, askedAt) in answered { statusAskedAt[String(id)] = askedAt }
-        return true
     }
 
     static func askStatuses(
@@ -282,6 +286,7 @@ extension AppServiceBridge {
         assignment.isCompleted = status.isSubmitted
         assignment.submittedAt = status.submittedAt
         cache.saveAssignments(assignments)
+        if assignment.dueDate != dueBefore { saveMoodleCalendarEvents(of: assignments, in: cache) }
         uploadForReminders(assignments)
         center.post(name: AppConstants.dataDidUpdate, object: nil)
         return true

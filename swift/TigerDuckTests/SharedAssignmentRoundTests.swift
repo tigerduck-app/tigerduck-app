@@ -248,6 +248,8 @@ struct SharedAssignmentRoundTests {
             #expect(cached?.dueDate == extensionDate ?? Self.due)
             #expect(cached?.originalDueDate == Self.due)
             #expect(cached?.extensionDueDate == extensionDate)
+            let event = folder.cache.loadCalendarEvents().first { $0.eventId == "moodle-\(id)" }
+            #expect(event?.date == extensionDate ?? Self.due)
         }
     }
 
