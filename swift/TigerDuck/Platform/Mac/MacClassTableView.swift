@@ -224,6 +224,8 @@ struct MacClassTableView: View {
         .onChange(of: importModel?.isFinished) { _, isFinished in
             if isFinished == true { importModel = nil }
         }
+        .onChange(of: HeldShareLink.shared.link?.id, initial: true) { openHeldLink() }
+        .onChange(of: HeldShareLink.mayOpen(in: appState)) { openHeldLink() }
         .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
@@ -496,6 +498,15 @@ struct MacClassTableView: View {
     private func requestImport() {
         guard importModel?.isLookingUp != true, importModel?.isReadingImage != true else { return }
         showImportPicker = true
+    }
+
+    /// A link replaces any import this class table shows.
+    private func openHeldLink() {
+        guard let text = HeldShareLink.shared.take(in: appState) else { return }
+        importModel?.cancel()
+        let model = ClassTableImportModel.live(authService: appState.authService)
+        importModel = model
+        model.linkOpened(text)
     }
 
     private func perform(_ action: ClassTableOtherPersonAction) {

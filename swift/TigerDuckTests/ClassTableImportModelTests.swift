@@ -141,6 +141,51 @@ struct ClassTableImportModelTests {
         #expect(model.isIdle)
     }
 
+    @Test("a link opens the confirm step a scanned code does; one the decoder does not take is called damaged")
+    func linkOpened() throws {
+        let opened = makeModel()
+        opened.linkOpened(try Self.code("B11300001").lowercased())
+        #expect(opened.pending?.code.studentId == "B11300001")
+        #expect(opened.prompt == nil)
+
+        for text in [Self.damaged, "https://share.tigerduck.app", "https://share.tigerduck.app:443/CLASSTABLE/1ABC"] {
+            let model = makeModel()
+            model.linkOpened(text)
+            #expect(model.prompt == .invalid, "\(text)")
+            #expect(model.pending == nil, "\(text)")
+        }
+        let newer = makeModel()
+        newer.linkOpened(Self.newer)
+        #expect(newer.prompt == .needsUpdate)
+        #expect(store.people.isEmpty)
+        #expect(lookup.calls.isEmpty)
+    }
+
+    @Test("a second link replaces the code, lookup or prompt an import shows, and nothing of the first is saved")
+    func secondLinkReplacesFirst() async throws {
+        let gate = Gate()
+        let model = gatedModel(gate)
+        model.linkOpened(try Self.code("B11300001"))
+        model.importPending()
+        try await Self.waitUntil { gate.isWaiting }
+        let firstLookup = model.lookupTask
+
+        model.linkOpened(try Self.code("B11300002"))
+        gate.open()
+        await firstLookup?.value
+
+        #expect(model.pending?.code.studentId == "B11300002")
+        #expect(!model.isLookingUp)
+        #expect(store.people.isEmpty)
+
+        model.linkOpened(Self.damaged)
+        #expect(model.prompt == .invalid)
+        #expect(model.pending == nil)
+        model.linkOpened(try Self.code("B11300003"))
+        #expect(model.prompt == nil)
+        #expect(model.pending?.code.studentId == "B11300003")
+    }
+
     @Test("the user's own code is refused, compared with the signed-in student ID in any case")
     func ownCodeIsRefused() throws {
         for signedIn in ["B11300000", "b11300000"] {

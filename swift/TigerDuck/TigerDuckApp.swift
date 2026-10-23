@@ -110,6 +110,11 @@ struct TigerDuckApp: App {
                     UNUserNotificationCenter.current().setBadgeCount(0)
                 }
                 .onOpenURL { url in
+                    if let text = ClassTableShareLink.codeText(url) {
+                        HeldShareLink.shared.arrived(text, loginGeneration: appState.authService.loginGeneration)
+                        appState.openFromWidget(.classTable)
+                        return
+                    }
                     if let id = WidgetURLRouter.assignmentId(from: url) {
                         appState.pendingDeepLink = .assignment(id)
                         return
@@ -245,6 +250,11 @@ struct TigerDuckApp: App {
                     }
 }
                 .onOpenURL { url in
+                    if let text = ClassTableShareLink.codeText(url) {
+                        HeldShareLink.shared.arrived(text, loginGeneration: appState.authService.loginGeneration)
+                        appState.openFromWidget(.classTable)
+                        return
+                    }
                     guard let destination = WidgetURLRouter.route(url) else { return }
                     appState.openFromWidget(destination)
                 }

@@ -23,6 +23,8 @@ struct ContentView: View {
 private struct ClassTableImportHost: ViewModifier {
     @Environment(AppState.self) private var appState
     @State private var importModel: ClassTableImportModel?
+    /// A link's import, shown over the class table with no camera under it, as on the Mac.
+    @State private var linkModel: ClassTableImportModel?
 
     func body(content: Content) -> some View {
         content
@@ -31,6 +33,30 @@ private struct ClassTableImportHost: ViewModifier {
                 importModel = .live(authService: appState.authService)
             }
             .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
+            .classTableImportPrompts(linkModel, onConfirmScreen: false)
+            .sheet(item: Binding(get: { linkModel?.pending }, set: { if $0 == nil { linkModel?.cancel() } })) { pending in
+                if let linkModel {
+                    ClassTableImportConfirmView(model: linkModel, code: pending.code)
+                }
+            }
+            .onChange(of: linkModel?.isFinished) { _, isFinished in
+                if isFinished == true { linkModel = nil }
+            }
+            .onChange(of: HeldShareLink.shared.link?.id, initial: true) { openHeldLink() }
+            .onChange(of: HeldShareLink.mayOpen(in: appState)) { openHeldLink() }
+    }
+
+    private func openHeldLink() {
+        guard let text = HeldShareLink.shared.take(in: appState) else { return }
+        // A link replaces what an open scanner shows, so it opens there.
+        if let importModel, !importModel.isFinished {
+            importModel.linkOpened(text)
+            return
+        }
+        linkModel?.cancel()
+        let model = ClassTableImportModel.live(authService: appState.authService)
+        linkModel = model
+        model.linkOpened(text)
     }
 }
 

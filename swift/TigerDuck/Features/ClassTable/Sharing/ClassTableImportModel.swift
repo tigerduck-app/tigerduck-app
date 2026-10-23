@@ -88,6 +88,15 @@ final class ClassTableImportModel: Identifiable {
         return true
     }
 
+    /// The code a link opened, in place of anything this import shows, so a newer link replaces
+    /// an older one. A link the decoder does not take says the code is damaged: no camera is
+    /// there to try another code with.
+    func linkOpened(_ text: String) {
+        guard !isFinished else { return }
+        cancel()
+        if !scanned(text) { prompt = .invalid }
+    }
+
     func imageRead(_ payloads: [String]) {
         guard isIdle else { return }
         let readings = payloads.map { Self.reading($0) }

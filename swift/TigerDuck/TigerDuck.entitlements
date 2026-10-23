@@ -13,6 +13,10 @@
 	     https://developer.apple.com/contact/request/pass-presentation-suppression/
 	<key>com.apple.developer.passkit.pass-presentation-suppression</key>
 	<true/> -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:share.tigerduck.app</string>
+	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.org.ntust.app.TigerDuck</string>
