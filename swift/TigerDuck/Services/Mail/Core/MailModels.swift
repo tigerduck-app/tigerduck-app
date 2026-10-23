@@ -123,6 +123,8 @@ nonisolated struct MailSummary: Codable, Hashable, Sendable {
     var size: Int?
     var hasAttachments: Bool
     var isExternal: Bool
+    /// IMAP INTERNALDATE, when the server took the mail. `date` is the sender's `Date` header.
+    var arrivedAt: Date? = nil
 }
 
 nonisolated struct MailFlags: Equatable, Sendable {

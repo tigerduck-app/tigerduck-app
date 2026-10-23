@@ -314,6 +314,7 @@ MailGuideView.swift
 MailListViewModel.swift
 MailMessageView.swift
 MailMessageViewModel.swift
+MailMuteRuleEditor.swift
 MailNotificationSettingsView.swift
 MailPageSession.swift
 MailSettingsView.swift
@@ -365,6 +366,7 @@ MailCSSFilter.swift
 MailCharset.swift
 MailFolderMap.swift
 MailHTMLSanitizer.swift
+MailMuteRules.swift
 MailRawHeaders.swift
 MailTextCleaner.swift
 MailTextLinkifier.swift

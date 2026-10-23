@@ -48,6 +48,7 @@ jobs:
             # carries its argument labels.
             on_screen_tests: >-
               TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
+              TigerDuckTests/MailMuteSettingsScreenTests
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()

@@ -206,7 +206,16 @@ actor MailChecker {
         // `marker:*` always includes the last message, even when its UID is below marker.
         let fetched = try await client.summaries(folder: MailConstants.inbox, fromUID: marker)
             .filter { $0.uid >= marker }
-        let fresh = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
+        let mute = prefs.muteSettings
+        let checkedAt = now()
+        // A muted mail is passed over like a notified one, also when a failure below it holds the
+        // marker and the settings change before the retry.
+        let passedOver = prefs.inboxMutedUIDs.flatMap { $0.uidValidity == status.uidValidity ? $0.uids : nil } ?? []
+        let unread = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
+        let muted = Set(unread.filter {
+            passedOver.contains($0.uid) || mute.mutes($0, arrivedAt: $0.arrivedAt ?? checkedAt)
+        }.map(\.uid))
+        let fresh = unread.filter { !muted.contains($0.uid) }
         guard stillSignedIn(as: account) else { return nil }
         let unnotified = await notifier.notify(fresh, uidValidity: status.uidValidity)
         if !stillSignedIn(as: account) { await notifier.removeAll() }
@@ -214,7 +223,10 @@ actor MailChecker {
         guard stillSignedIn(as: account) else { return nil }
         let advanced = unnotified.min().map { min($0, ceiling) } ?? ceiling
         if prefs.inboxUIDValidity == status.uidValidity {
-            prefs.inboxNextUID = max(advanced, prefs.inboxNextUID ?? 0)
+            let next = max(advanced, prefs.inboxNextUID ?? 0)
+            prefs.inboxNextUID = next
+            let held = passedOver.union(muted).filter { $0 >= next }
+            prefs.inboxMutedUIDs = held.isEmpty ? nil : MailMutedUIDs(uidValidity: status.uidValidity, uids: held)
         }
         return InboxCheck(
             outcome: fresh.isEmpty ? .noNewMail : .newMail(fresh.count),
