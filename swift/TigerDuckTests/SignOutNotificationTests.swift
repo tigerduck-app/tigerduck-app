@@ -30,7 +30,7 @@ struct SignOutNotificationTests {
         cache.storeCachedResponse(CachedURLResponse(response: response, data: Data("<p>B11399001</p>".utf8)), for: request)
         try #require(cache.cachedResponse(for: request) != nil)
 
-        await AuthService.forgetSchoolPages(cache: cache)
+        await AuthService.forgetSchoolPages(cache: cache, clearBrowser: {})
 
         #expect(cache.cachedResponse(for: request) == nil)
     }

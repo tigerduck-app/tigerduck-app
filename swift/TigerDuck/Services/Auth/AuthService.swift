@@ -158,7 +158,7 @@ final class AuthService {
     @ObservationIgnored var beginSignOutBackgroundTask: @Sendable () async -> @Sendable () async -> Void = {
         await AuthTokenManager.beginBackgroundTask(named: "Sign-out")
     }
-    @ObservationIgnored var forgetPages: @MainActor () async -> Void = { await AuthService.forgetSchoolPages() }
+    @ObservationIgnored var forgetPages: @MainActor () async -> Void = {}
 
     func startSignOutCalls(_ calls: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let previous = signOutCalls
@@ -566,11 +566,37 @@ final class AuthService {
     /// Drops the school pages the shared URL cache kept and what the in-app browser kept from
     /// Moodle and NTUST, so the next account never sees them. Library and School Mail requests
     /// keep nothing in either; the browser's store goes whole, as a webmail page opened there does.
-    static func forgetSchoolPages(cache: URLCache = .shared) async {
+    static func forgetSchoolPages(
+        cache: URLCache = .shared,
+        clearBrowser: @MainActor () async -> Void = { await AuthService.clearInAppBrowser() }
+    ) async {
         cache.removeAllCachedResponses()
+        await clearBrowser()
+    }
+
+    /// The browser's store answers through a system service, and one that never answers, as in
+    /// the unit tests' host, must not hold up the next sign-in, which waits for the sign-out calls.
+    static func clearInAppBrowser() async {
         #if os(iOS)
-        await SFSafariViewController.DataStore.default.clearWebsiteData()
+        let once = ResumeOnce()
+        await withCheckedContinuation { continuation in
+            once.continuation = continuation
+            SFSafariViewController.DataStore.default.clearWebsiteData { Task { @MainActor in once.resume() } }
+            Task {
+                try? await Task.sleep(for: .seconds(5))
+                once.resume()
+            }
+        }
         #endif
+    }
+
+    private final class ResumeOnce {
+        var continuation: CheckedContinuation<Void, Never>?
+
+        func resume() {
+            continuation?.resume()
+            continuation = nil
+        }
     }
 
     func clearReauthError() {
