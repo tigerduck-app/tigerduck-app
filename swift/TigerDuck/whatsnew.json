@@ -464,5 +464,47 @@
         }
       ]
     }
+  },
+  "2.6.5": {
+    "zh-TW": {
+      "title": "2.6.5 更新內容",
+      "items": [
+        {
+          "symbol": "calendar.badge.clock",
+          "title": "作業延長",
+          "body": "老師給的延長會算進截止時間，首頁、行事曆與提醒都以延長後的時間為準。"
+        },
+        {
+          "symbol": "lock",
+          "title": "登出",
+          "body": "登出學校帳號時，會一併清除 App 內瀏覽器的資料。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "修正作業頁切換作業、留言顯示與成績多餘小數點的問題。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.6.5",
+      "items": [
+        {
+          "symbol": "calendar.badge.clock",
+          "title": "Extensions",
+          "body": "An extension from your teacher now sets the due date on Home, the calendar and reminders."
+        },
+        {
+          "symbol": "lock",
+          "title": "Signing out",
+          "body": "Signing out of your school account also clears the in-app browser's data."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Fixes for switching assignments, comments on the assignment page and extra decimals in grades."
+        }
+      ]
+    }
   }
 }
