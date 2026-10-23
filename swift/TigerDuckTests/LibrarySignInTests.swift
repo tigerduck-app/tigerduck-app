@@ -438,6 +438,54 @@ struct LibrarySignInTests {
         }
     }
 
+    private static func refusedOnceAndDue() {
+        let firstWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+        LibraryService.storedPasswordRefusals = (1, Date().addingTimeInterval(-firstWait))
+    }
+
+    @Test func aRetryThatSignsInWhileThePageShowsTheFormShowsTheCode() async throws {
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            Self.refusedOnceAndDue()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = { "code-1" }
+            model.load()
+            model.onAppear()
+            #expect(!model.isLoggedIn)
+
+            _ = try await LibraryService.ensureToken { _, _ in Self.answer() }
+
+            #expect(model.isLoggedIn)
+            try await waitUntil { model.qrPayload == "code-1" }
+        }
+    }
+
+    @Test func aRetryThatSignsInWhileThePageIsAwayFetchesOnceItShows() async throws {
+        let calls = Calls()
+        try await Self.withStoredAccount { _ in
+            LibraryQRCache.shared.clear()
+            Self.refusedOnceAndDue()
+            let model = LibraryViewModel()
+            defer { model.stopTimers() }
+            model.fetchCode = {
+                calls.count += 1
+                return "code-\(calls.count)"
+            }
+            model.load()
+            model.onAppear()
+            model.onDisappear()
+
+            _ = try await LibraryService.ensureToken { _, _ in Self.answer() }
+            try await Task.sleep(for: .milliseconds(100))
+
+            #expect(model.isLoggedIn)
+            #expect(calls.count == 0)
+            model.onAppear()
+            try await waitUntil { model.qrPayload == "code-1" }
+        }
+    }
+
     @Test func thePauseRunsFromTheFailure() {
         let failure = Date(timeIntervalSince1970: 1_000_000)
         #expect(LibraryService.signInIsDue(lastFailure: nil, now: failure))
