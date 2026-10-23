@@ -23,16 +23,11 @@ extension MoodleAssignmentView {
             switch self {
             case .notSubmitted: Color.textSecondary
             case .submitted, .early: .green
-            case .late: Color.badgeRedText
+            case .late: AssignmentStatus.submittedLate.tint
             }
         }
 
-        var fill: Color {
-            switch self {
-            case .late: Color.badgeRed.opacity(0.16)
-            case .notSubmitted, .submitted, .early: tint.opacity(0.16)
-            }
-        }
+        var fill: Color { tint.opacity(0.16) }
 
         var symbol: String { self == .notSubmitted ? "circle" : "checkmark" }
     }

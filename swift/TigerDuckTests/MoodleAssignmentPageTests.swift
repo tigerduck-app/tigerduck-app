@@ -146,13 +146,13 @@ struct MoodleAssignmentPageTests {
             == String(format: String(localized: "assignment_detail_overdue_by"), MoodleAssignmentView.durationText(60)))
     }
 
-    @Test("each badge and deadline line has its colour, and only the urgent and the overdue lines are bold")
+    @Test("each badge and deadline line has its colour, late in Home's, and only the urgent and the overdue lines are bold")
     func colours() {
         let badges: [(MoodleAssignmentView.Badge, text: Color, fill: Color)] = [
             (.notSubmitted, Color.textSecondary, Color.textSecondary.opacity(0.16)),
             (.submitted, .green, Color.green.opacity(0.16)),
             (.early(60), .green, Color.green.opacity(0.16)),
-            (.late(60), Color.badgeRedText, Color.badgeRed.opacity(0.16)),
+            (.late(60), AssignmentStatus.submittedLate.tint, AssignmentStatus.submittedLate.tint.opacity(0.16)),
         ]
         for (badge, text, fill) in badges {
             #expect(badge.tint == text, "\(badge)")
