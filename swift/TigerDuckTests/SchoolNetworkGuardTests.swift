@@ -4,6 +4,8 @@ import Testing
 
 /// Each school seam left at its default stops at `SchoolNetworkGuard`, which names it and sends
 /// nothing. Serialized: `capturing` takes what the guard stops from every test running meanwhile.
+/// The Moodle and SSO tests hold the real-defaults gate, as the tests that sign the shared token
+/// service out or queue on the stored-password posts do.
 @Suite("School network guard", .serialized)
 @MainActor
 struct SchoolNetworkGuardTests {
@@ -39,21 +41,24 @@ struct SchoolNetworkGuardTests {
 
     @Test("the Moodle token harvest stops at the guard")
     func moodleTokenHarvest() async {
-        let blocked = await SchoolNetworkGuard.capturing {
-            await #expect(throws: (any Error).self) {
-                try await MoodleTokenService.shared.obtainToken(studentId: "B11000000", password: "password")
+        await withExclusiveRealDefaults { () async -> Void in
+            let blocked = await SchoolNetworkGuard.capturing {
+                _ = await #expect(throws: (any Error).self) {
+                    try await MoodleTokenService.shared.obtainToken(studentId: "B11000000", password: "password")
+                }
             }
-        }
 
-        #expect(blocked.map(\.seam) == ["Moodle token harvest"])
+            #expect(blocked.map(\.seam) == ["Moodle token harvest"])
+        }
     }
 
     @Test("a Moodle token renewal with the stored password stops at the guard")
     func moodleTokenRefresh() async {
-        await withExclusiveRealDefaults {
+        let keychain = MemoryKeychain.signedIn(withMoodleToken: false)
+        await withExclusiveRealDefaults { () async -> Void in
             let blocked = await SchoolNetworkGuard.capturing {
-                await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn(withMoodleToken: false)) {
-                    await #expect(throws: (any Error).self) {
+                await SecureStore.$sharedForTesting.withValue(keychain) { () async -> Void in
+                    _ = await #expect(throws: (any Error).self) {
                         try await MoodleTokenService.shared.refreshTokenIfNeeded()
                     }
                 }
@@ -66,7 +71,7 @@ struct SchoolNetworkGuardTests {
     @Test("the library sign-in stops at the guard")
     func librarySignIn() async {
         let blocked = await SchoolNetworkGuard.capturing {
-            await #expect(throws: (any Error).self) {
+            _ = await #expect(throws: (any Error).self) {
                 try await LibraryService.login(username: "B11000000", password: "password")
             }
         }
@@ -79,16 +84,19 @@ struct SchoolNetworkGuardTests {
     func ssoProbeAndAutomaticSignIn() async throws {
         try #require(NTUSTSessionManager.shared.session.configuration.protocolClasses?.first == SchoolNetworkGuard.self)
         let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
-        var signedIn = true
+        let keychain = MemoryKeychain.signedIn()
 
-        let blocked = await SchoolNetworkGuard.capturing {
-            signedIn = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
-                await auth.ensureAuthenticated()
+        await withExclusiveRealDefaults { () async -> Void in
+            var signedIn = true
+            let blocked = await SchoolNetworkGuard.capturing {
+                signedIn = await SecureStore.$sharedForTesting.withValue(keychain) { () async -> Bool in
+                    await auth.ensureAuthenticated()
+                }
             }
-        }
 
-        #expect(!signedIn)
-        #expect(blocked.map(\.seam) == ["SSO probe", "SSO sign-in"])
+            #expect(!signedIn)
+            #expect(blocked.map(\.seam) == ["SSO probe", "SSO sign-in"])
+        }
     }
 
     #if os(iOS)

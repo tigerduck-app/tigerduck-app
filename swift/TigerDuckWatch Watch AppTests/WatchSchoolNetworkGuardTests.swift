@@ -16,7 +16,7 @@ struct WatchSchoolNetworkGuardTests {
     func librarySignIn() async throws {
         try #require(SchoolNetworkGuard.isInstalled)
         let blocked = await SchoolNetworkGuard.capturing {
-            await #expect(throws: (any Error).self) {
+            _ = await #expect(throws: (any Error).self) {
                 try await WatchLibraryService.requestToken(username: "B11000000", password: "password")
             }
         }
@@ -29,7 +29,7 @@ struct WatchSchoolNetworkGuardTests {
     func libraryCodeRequest() async throws {
         try #require(SchoolNetworkGuard.isInstalled)
         let blocked = await SchoolNetworkGuard.capturing {
-            await #expect(throws: (any Error).self) {
+            _ = await #expect(throws: (any Error).self) {
                 try await WatchLibraryService.requestQRCode(token: "library-token")
             }
         }
