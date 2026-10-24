@@ -1,12 +1,18 @@
 import SwiftUI
 
+/// Home is one `List`, so each assignment is a row that takes the system's `.swipeActions`.
+/// A `List` nested in Home's `ScrollView` needed a `.frame(height:)` from per-row measurements,
+/// which raced its `.animation` on a tab switch and hung the UI, and its swipe actions flashed a
+/// black slab above the first row. A custom drag row in its place fights the page's scrolling.
+/// In edit mode Home is a stack instead (HomeView says why), and so are these rows.
 struct UpcomingAssignmentsView: View {
-    private static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
+    static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
     let assignments: [SDAssignment]
     var courses: [SDCourse] = []
     var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
+    var asListRows = false
     var onArchive: ((SDAssignment) -> Void)? = nil
     var onMarkComplete: ((SDAssignment) -> Void)? = nil
     var onUnarchive: ((SDAssignment) -> Void)? = nil
@@ -14,23 +20,22 @@ struct UpcomingAssignmentsView: View {
     var onOpen: (SDAssignment) -> Void = { _ in }
 
     @Environment(AppState.self) private var appState
+    @State private var ticker = MinuteTicker(interval: 60)
 
     private var courseByNo: [String: SDCourse] {
         Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { _ in
-            assignmentList(for: AppClock.now())
-        }
-    }
-
-    private func assignmentList(for now: Date) -> some View {
+        let _ = ticker.tick
+        let now = AppClock.now()
         let policy = appState.visualStylePolicy
         let rows = filter == .all
             ? assignments.partitionedByDueDate(now: now)
             : assignments
-        return Group {
+        if asListRows {
+            listRows(rows, policy: policy, now: now)
+        } else {
             switch policy.assignmentRowStyle {
             case .card:
                 cardLayout(rows: rows, policy: policy, now: now)
@@ -40,34 +45,91 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    /// A `LazyVStack`, not a `List`. A non-scrolling `List` needs a `.frame(height:)`
-    /// from per-row `PreferenceKey` measurements fed into `@State`, which on a tab
-    /// switch race the list's `.animation` and hang the UI. Its `.swipeActions`
-    /// inside the parent `ScrollView` also flash a black slab above the first row
-    /// mid-swipe, which no inset or background tweak silences. `LazyVStack` sizes
-    /// itself to its children, and `SwipeableRow` below replaces `.swipeActions`.
-    private func cardLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
-        LazyVStack(spacing: TigerDuckTheme.Spacing.sm) {
-            ForEach(rows, id: \.assignmentId) { assignment in
-                swipeableRow(assignment: assignment, now: now) {
+    private func listRows(_ rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
+        ForEach(Array(rows.enumerated()), id: \.element.assignmentId) { index, assignment in
+            let isFirst = index == 0
+            let isLast = index == rows.count - 1
+            let actions = rowSwipeActions(for: assignment, now: now)
+            let isCard = policy.assignmentRowStyle == .card
+            let gap = isCard ? TigerDuckTheme.Spacing.sm / 2 : 0
+            Button { onOpen(assignment) } label: {
+                if isCard {
                     assignmentRow(assignment: assignment, now: now, policy: policy)
                         .cardPadding()
                         .glassCard()
+                } else {
+                    groupedRow(assignment: assignment, now: now, policy: policy, isFirst: isFirst, isLast: isLast)
                 }
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            }
+            .buttonStyle(.plain)
+            .homeListRow(
+                top: isFirst ? TigerDuckTheme.Spacing.sm : gap,
+                bottom: isLast ? 0 : gap,
+                horizontal: TigerDuckTheme.Spacing.lg
+            )
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                if let leading = actions.leading { swipeButton(leading) }
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                if let trailing = actions.trailing { swipeButton(trailing) }
             }
         }
-        .animation(Self.listChangeAnimation, value: rows.map(\.assignmentId))
+    }
+
+    /// One row of the grouped style's rounded container. The container shape runs past the row's
+    /// top and bottom edges where a neighbour continues it, and the row clips it there.
+    private func groupedRow(
+        assignment: SDAssignment,
+        now: Date,
+        policy: VisualStylePolicy,
+        isFirst: Bool,
+        isLast: Bool
+    ) -> some View {
+        let overhang = TigerDuckTheme.CornerRadius.lg
+        return assignmentRow(assignment: assignment, now: now, policy: policy)
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            .padding(.vertical, TigerDuckTheme.Spacing.md)
+            .background(
+                Color.clear
+                    .presetGroupedListContainer(policy: policy)
+                    .padding(.top, isFirst ? 0 : -overhang)
+                    .padding(.bottom, isLast ? 0 : -overhang)
+                    .clipped()
+            )
+            .overlay(alignment: .bottom) {
+                if !isLast {
+                    Divider()
+                        .padding(.leading, TigerDuckTheme.Spacing.lg)
+                }
+            }
+    }
+
+    /// Not `.labelStyle(.iconOnly)`: that leaves the system action untitled, and VoiceOver, Voice
+    /// Control and Switch Control name a swipe action by its title.
+    private func swipeButton(_ action: SwipeActionDescriptor) -> some View {
+        Button(action: action.action) {
+            Label(action.label, systemImage: action.systemImage)
+        }
+        .tint(action.tint)
+    }
+
+    private func cardLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
+        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+            ForEach(rows, id: \.assignmentId) { assignment in
+                assignmentRow(assignment: assignment, now: now, policy: policy)
+                    .cardPadding()
+                    .glassCard()
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            }
+        }
     }
 
     private func groupedListLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
-        LazyVStack(spacing: 0) {
+        VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.assignmentId) { index, assignment in
-                swipeableRow(assignment: assignment, now: now) {
-                    assignmentRow(assignment: assignment, now: now, policy: policy)
-                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                        .padding(.vertical, TigerDuckTheme.Spacing.md)
-                }
+                assignmentRow(assignment: assignment, now: now, policy: policy)
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                    .padding(.vertical, TigerDuckTheme.Spacing.md)
 
                 if index < rows.count - 1 {
                     Divider()
@@ -77,21 +139,6 @@ struct UpcomingAssignmentsView: View {
         }
         .presetGroupedListContainer(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .animation(Self.listChangeAnimation, value: rows.map(\.assignmentId))
-    }
-
-    private func swipeableRow<Content: View>(
-        assignment: SDAssignment,
-        now: Date,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        let actions = rowSwipeActions(for: assignment, now: now)
-        return SwipeableRow(
-            leadingAction: actions.leading,
-            trailingAction: actions.trailing,
-            onTap: { onOpen(assignment) },
-            content: content
-        )
     }
 
     func rowSwipeActions(
@@ -247,133 +294,4 @@ struct SwipeActionDescriptor {
     let systemImage: String
     let tint: Color
     let action: () -> Void
-}
-
-/// Custom horizontal-drag swipe row, standing in for `List.swipeActions` so the
-/// assignment list can live in the home `ScrollView` without a `List`: its
-/// `.swipeActions` flash a black slab above the first row, and its row diff on
-/// a tab switch races `PreferenceKey` height measurement until the UI hangs.
-///
-/// Drag past `triggerThreshold` either way to run that side's action; release
-/// short of it to snap back. The action fires before the spring-back animation
-/// so the owning view can remove the row on the frame the spring starts.
-private struct SwipeableRow<Content: View>: View {
-    let leadingAction: SwipeActionDescriptor?
-    let trailingAction: SwipeActionDescriptor?
-    let onTap: () -> Void
-    let content: Content
-
-    @State private var offset: CGFloat = 0
-    @State private var didSwipe = false
-
-    private let triggerThreshold: CGFloat = 96
-    private let snapAnimation = Animation.spring(response: 0.32, dampingFraction: 0.78)
-
-    init(
-        leadingAction: SwipeActionDescriptor?,
-        trailingAction: SwipeActionDescriptor?,
-        onTap: @escaping () -> Void,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.leadingAction = leadingAction
-        self.trailingAction = trailingAction
-        self.onTap = onTap
-        self.content = content()
-    }
-
-    var body: some View {
-        ZStack {
-            actionBackdrop
-            tappableContent
-        }
-    }
-
-    @ViewBuilder
-    private var tappableContent: some View {
-        Button {
-            guard !didSwipe else { return }
-            onTap()
-        } label: {
-            content
-        }
-        .buttonStyle(SwipeableButtonStyle(didSwipe: $didSwipe))
-        .contentShape(Rectangle())
-        .offset(x: offset)
-        .simultaneousGesture(dragGesture)
-        // The swipes are custom drags, which VoiceOver, Voice Control, Switch Control and a
-        // keyboard cannot perform; the same actions are offered as accessibility actions.
-        .accessibilityActions {
-            if let leadingAction {
-                Button(leadingAction.label, action: leadingAction.action)
-            }
-            if let trailingAction {
-                Button(trailingAction.label, action: trailingAction.action)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var actionBackdrop: some View {
-        HStack(spacing: 0) {
-            if let leadingAction, offset > 0 {
-                actionSlab(leadingAction)
-                    .frame(width: max(0, offset))
-            }
-            Spacer(minLength: 0)
-            if let trailingAction, offset < 0 {
-                actionSlab(trailingAction)
-                    .frame(width: max(0, -offset))
-            }
-        }
-    }
-
-    private func actionSlab(_ action: SwipeActionDescriptor) -> some View {
-        let progress = min(1, max(0, abs(offset) / triggerThreshold))
-        return ZStack {
-            action.tint
-            Image(systemName: action.systemImage)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
-                .opacity(progress)
-                .scaleEffect(0.6 + 0.4 * progress)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
-    }
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 16)
-            .onChanged { value in
-                didSwipe = true
-                let dx = value.translation.width
-                let dy = value.translation.height
-                guard abs(dx) > abs(dy) * 1.3 else { return }
-                if dx > 0 && leadingAction == nil { return }
-                if dx < 0 && trailingAction == nil { return }
-                offset = dx
-            }
-            .onEnded { _ in
-                let triggered = abs(offset) > triggerThreshold
-                if triggered, let action = (offset > 0 ? leadingAction : trailingAction) {
-                    action.action()
-                }
-                snapBack()
-            }
-    }
-
-    private func snapBack() {
-        withAnimation(snapAnimation) {
-            offset = 0
-        }
-    }
-}
-
-private struct SwipeableButtonStyle: ButtonStyle {
-    @Binding var didSwipe: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .onChange(of: configuration.isPressed) { _, isPressed in
-                if isPressed { didSwipe = false }
-            }
-    }
 }
