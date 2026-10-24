@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Observation
 
@@ -14,9 +15,17 @@ final class TLSPinMismatchQueue {
     /// What the prompt presents; nil while nothing is due or the app is in the background.
     private(set) var prompt: TLSPinMismatch?
 
-    /// Set from the scene phase; a held mismatch shows once this turns true.
+    /// Set from the scene phase; a held mismatch shows once this turns true. A prompt still open
+    /// as the app leaves goes back to held, so a document fetched meanwhile can still drop it.
     var isForeground = false {
-        didSet { surface() }
+        didSet {
+            if !isForeground, let prompt {
+                askedThisLaunch.remove(prompt.setID)
+                held = prompt
+                self.prompt = nil
+            }
+            surface()
+        }
     }
 
     @ObservationIgnored private var held: TLSPinMismatch?
@@ -85,9 +94,13 @@ final class TLSPinMismatchQueue {
 
 extension TLSPinEngine {
     /// The app's document fetch and prompt queue. The Watch and the unit tests run without them.
+    /// The document is on the TigerDuck backend, which nothing reaches before onboarding.
     static func installAppHooks() {
         shared.install(
-            refresh: { await TLSPinDocumentFetcher.shared.refetch() },
+            refresh: {
+                guard Defaults[.hasCompletedOnboarding] else { return }
+                await TLSPinDocumentFetcher.shared.refetch()
+            },
             report: { mismatch in
                 Task { @MainActor in TLSPinMismatchQueue.shared.report(mismatch) }
             }

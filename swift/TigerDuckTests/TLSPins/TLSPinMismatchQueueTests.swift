@@ -92,6 +92,25 @@ struct TLSPinMismatchQueueTests {
         #expect(queue.prompt?.setID == "library")
     }
 
+    @Test("A prompt open as the app leaves is asked again on return, unless the pins now allow it")
+    func leavingTheForegroundHoldsThePrompt() {
+        let engine = F.engine()
+        engine.acceptDocument(F.envelope(F.payload(serial: 100, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.unknownSPKI])])))
+        var mismatch = Self.mismatch()
+        mismatch.chainSPKIs = [F.ntustLeafSPKI, F.secureSSLCASPKI, F.globalRootSPKI]
+        let queue = queue(engine: engine)
+        queue.report(mismatch)
+        queue.isForeground = false
+        #expect(queue.prompt == nil)
+        queue.isForeground = true
+        #expect(queue.prompt == mismatch)
+
+        queue.isForeground = false
+        engine.acceptDocument(F.envelope(F.payload(serial: 101)))
+        queue.isForeground = true
+        #expect(queue.prompt == nil)
+    }
+
     @Test("Continue stores the leaf and intermediates and refreshes")
     func continueStoresTheAcceptance() throws {
         let engine = F.engine()

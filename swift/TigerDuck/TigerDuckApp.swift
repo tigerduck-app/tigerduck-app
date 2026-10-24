@@ -136,7 +136,7 @@ struct TigerDuckApp: App {
                     sceneDidBecomeActive()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
-                    TLSPinMismatchQueue.shared.isForeground = newPhase == .active
+                    TLSPinMismatchQueue.shared.isForeground = newPhase != .background
                     if newPhase == .active {
                         sceneDidBecomeActive()
                     } else if newPhase == .background {
@@ -284,7 +284,7 @@ struct TigerDuckApp: App {
                     sceneDidBecomeActive()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
-                    TLSPinMismatchQueue.shared.isForeground = newPhase == .active
+                    TLSPinMismatchQueue.shared.isForeground = newPhase != .background
                     if newPhase == .active {
                         sceneDidBecomeActive()
                     } else if newPhase == .background {
