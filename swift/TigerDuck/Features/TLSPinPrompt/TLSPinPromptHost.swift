@@ -45,7 +45,7 @@ private struct TLSPinPromptHost: ViewModifier {
     private struct Turn: Equatable {
         let prompt: String?
         let holder: UUID?
-        let isActive: Bool
+        let phase: ScenePhase
     }
 
     /// SwiftUI does not present over another presentation, and may or may not try again later.
@@ -66,7 +66,7 @@ private struct TLSPinPromptHost: ViewModifier {
                 .onAppear { presentation.isOnScreen = true }
                 .onDisappear { presentation.isOnScreen = false }
             }
-            .task(id: Turn(prompt: queue.prompt?.id, holder: owner.holder, isActive: scenePhase == .active)) {
+            .task(id: Turn(prompt: queue.prompt?.id, holder: owner.holder, phase: scenePhase)) {
                 await takeTurn()
             }
             .onAppear { presentation.isGone = false }
