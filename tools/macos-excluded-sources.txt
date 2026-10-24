@@ -189,6 +189,7 @@ WatchLibraryCredentialBroadcaster.swift
 WatchPayloadEncoder.swift
 WatchSyncBridge.swift
 WatchSyncCoordinator.swift
+TLSPinWatchBroadcaster.swift
 
 # Shared — iOS-only shared UI and helpers
 FirstTriggerPrompt.swift
@@ -219,6 +220,7 @@ WatchCourse.swift
 WatchLibraryPayload.swift
 WatchPayloadCodec.swift
 WatchSnapshot.swift
+WatchTLSPinPayload.swift
 WatchWireFormat.swift
 
 # Shared/Sensors — CoreMotion face-down detection, iOS hardware only

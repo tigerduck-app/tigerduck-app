@@ -7,11 +7,14 @@ enum WatchLibraryServiceError: LocalizedError {
     case qrGenerationFailed(String)
     case networkError(Error)
     case offline
+    case pinMismatch
 
     var errorDescription: String? {
         switch self {
         case .offline:
             return String(localized: "error_network_unavailable")
+        case .pinMismatch:
+            return String(localized: "watch_open_phone_to_sync")
         case .credentialsNotFound:
             return String(localized: "library_sign_in_qr_prompt")
         case .loginFailed(let m):
@@ -97,7 +100,18 @@ enum WatchLibraryService {
         #if DEBUG
         try testGuard?(request)
         #endif
-        return try await session.data(for: request, delegate: delegate)
+        do {
+            return try await session.data(for: request, delegate: delegate)
+        } catch {
+            throw pinMismatchOr(error, host: request.url?.host)
+        }
+    }
+
+    /// The Watch shows no prompt; a refused chain asks the user to open the phone, which can
+    /// accept it or fetch new pins and send them over.
+    static func pinMismatchOr(_ error: Error, host: String?, engine: TLSPinEngine = .shared) -> Error {
+        guard let host, engine.isRefusing(host: host) else { return error }
+        return WatchLibraryServiceError.pinMismatch
     }
 
     @MainActor

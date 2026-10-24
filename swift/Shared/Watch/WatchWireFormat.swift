@@ -32,6 +32,7 @@ nonisolated public enum WatchWireFormat {
 
     public enum UserInfoKind {
         public static let libraryCredential = "libraryCredential"
+        public static let tlsPins = "tlsPins"
     }
 
     public enum LibraryCredentialKey {
