@@ -199,6 +199,26 @@ struct TLSPinPromptTests {
         #expect(prompting.isQuiet)
     }
 
+    @Test("a prompt the queue takes back, as the app leaves, closes the sheet with no Cancel")
+    func takenBackIsNoCancel() async throws {
+        let prompting = Prompting()
+        let window = try Self.window(prompting)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        prompting.queue.report(Self.mismatch)
+        try await waitUntil { root.presentedViewController != nil }
+
+        prompting.queue.isForeground = false
+        try await waitUntil { root.presentedViewController == nil }
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(!prompting.isQuiet)
+        #expect(prompting.engine.acceptances.isEmpty)
+
+        prompting.queue.isForeground = true
+        try await waitUntil { root.presentedViewController != nil }
+        #expect(prompting.queue.prompt == Self.mismatch)
+    }
+
     @Test("with two windows open, one shows the prompt")
     func oneWindowShowsIt() async throws {
         let prompting = Prompting()
