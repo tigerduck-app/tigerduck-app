@@ -19,7 +19,7 @@ struct ScoreCourseRow: View {
                         if course.distanceLearning {
                             Image(systemName: "dot.radiowaves.left.and.right")
                                 .font(.caption2)
-                                .foregroundStyle(ScoreColor.skyBlue)
+                                .foregroundStyle(TigerDuckTheme.Tint.skyBlue)
                         }
                     }
 
@@ -85,18 +85,18 @@ private struct GradeChip: View {
     private func resolveDescriptor() -> (label: String, color: Color, icon: String?) {
         switch course.status {
         case .pending:
-            return (String(localized: "score_grade_pending"), ScoreColor.grey, "hourglass")
+            return (String(localized: "score_grade_pending"), TigerDuckTheme.Tint.grey, "hourglass")
         case .withdrew:
-            return (String(localized: "score_grade_withdrew"), ScoreColor.grey, "xmark.circle")
+            return (String(localized: "score_grade_withdrew"), TigerDuckTheme.Tint.grey, "xmark.circle")
         case .exempted:
-            return (String(localized: "score_grade_exempted"), ScoreColor.skyBlue, "checkmark.seal")
+            return (String(localized: "score_grade_exempted"), TigerDuckTheme.Tint.skyBlue, "checkmark.seal")
         case .passed:
             let passed = course.isPassStatusPassed
             return (
                 passed
                     ? String(localized: "score_grade_passed")
                     : String(localized: "score_grade_failed"),
-                passed ? ScoreColor.teal : ScoreColor.red,
+                passed ? TigerDuckTheme.Tint.teal : TigerDuckTheme.Tint.red,
                 passed ? "checkmark" : "xmark"
             )
         case .graded:

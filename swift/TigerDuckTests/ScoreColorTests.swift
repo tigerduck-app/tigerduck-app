@@ -5,8 +5,8 @@ import Testing
 @MainActor
 struct ScoreColorTests {
     private static let colours = [
-        ScoreColor.green, ScoreColor.blue, ScoreColor.yellow, ScoreColor.coral, ScoreColor.red, ScoreColor.grey,
-        ScoreColor.skyBlue, ScoreColor.teal, ScoreColor.cyan, ScoreColor.orange, ScoreColor.purple,
+        TigerDuckTheme.Tint.green, TigerDuckTheme.Tint.blue, TigerDuckTheme.Tint.yellow, TigerDuckTheme.Tint.coral, TigerDuckTheme.Tint.red, TigerDuckTheme.Tint.grey,
+        TigerDuckTheme.Tint.skyBlue, TigerDuckTheme.Tint.teal, TigerDuckTheme.Tint.cyan, TigerDuckTheme.Tint.orange, TigerDuckTheme.Tint.purple,
     ]
 
     // Badges draw the colour on an 18% fill of itself. The dark page keeps its shades, which pass
@@ -27,7 +27,7 @@ struct ScoreColorTests {
         #expect((max(a, b) + 0.05) / (min(a, b) + 0.05) >= appearance.minimum)
     }
 
-    @Test("Letter grades take their band's colour", arguments: [("A+", ScoreColor.green), ("b-", ScoreColor.blue), ("C", ScoreColor.yellow), ("E", ScoreColor.coral), ("X", Color.textPrimary)])
+    @Test("Letter grades take their band's colour", arguments: [("A+", TigerDuckTheme.Tint.green), ("b-", TigerDuckTheme.Tint.blue), ("C", TigerDuckTheme.Tint.yellow), ("E", TigerDuckTheme.Tint.coral), ("X", Color.textPrimary)])
     func gradeBand(grade: String, colour: Color) {
         #expect(ScoreColor.grade(grade) == colour)
     }

@@ -176,9 +176,9 @@ struct ScoreCourseDetailSheet: View {
         case .pending, .withdrew, .unknown:
             return Color.textSecondary
         case .exempted:
-            return ScoreColor.skyBlue
+            return TigerDuckTheme.Tint.skyBlue
         case .passed:
-            return course.isPassStatusPassed ? ScoreColor.teal : ScoreColor.red
+            return course.isPassStatusPassed ? TigerDuckTheme.Tint.teal : TigerDuckTheme.Tint.red
         case .graded:
             return ScoreColor.grade(course.grade)
         }
