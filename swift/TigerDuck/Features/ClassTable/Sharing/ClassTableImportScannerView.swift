@@ -21,8 +21,6 @@ struct ClassTableImportScannerView: View {
     @State private var enteredLink = ""
     @State private var ownTerms: [ClassTableShareModel.Term] = []
     @State private var torch = ScannerTorch()
-    /// One frame for every symbol, so narrow and wide ones get the same circle.
-    @ScaledMetric(relativeTo: .title3) private var iconSide: CGFloat = 28
 
     private enum Camera {
         case checking, dataScanner, captureSession, denied, missing
@@ -45,6 +43,8 @@ struct ClassTableImportScannerView: View {
                 .labelStyle(.iconOnly)
                 .controlSize(.large)
                 .modifier(GlassIconButtonModifier())
+                // Past this size three circles outgrow a 375pt-wide phone.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
             }
             .environment(\.colorScheme, .dark)
@@ -145,8 +145,8 @@ struct ClassTableImportScannerView: View {
     private var torchToggle: some View {
         if let control = torch.control {
             Toggle(isOn: Binding(get: { control.isOn }, set: { torch.turn($0) })) {
-                iconLabel(
-                    String(localized: "class_table_import_flashlight"),
+                IconLabel(
+                    title: String(localized: "class_table_import_flashlight"),
                     systemImage: control.isOn ? "flashlight.on.fill" : "flashlight.off.fill"
                 )
             }
@@ -158,21 +158,13 @@ struct ClassTableImportScannerView: View {
     @ViewBuilder
     private var otherSources: some View {
         PhotosPicker(selection: $photo, matching: .images) {
-            iconLabel(String(localized: "class_table_import_choose_photo"), systemImage: "photo.on.rectangle")
+            IconLabel(title: String(localized: "class_table_import_choose_photo"), systemImage: "photo.on.rectangle")
         }
         Button {
             enteredLink = ""
             isEnteringLink = true
         } label: {
-            iconLabel(String(localized: "class_table_import_enter_link"), systemImage: "keyboard")
-        }
-    }
-
-    private func iconLabel(_ title: String, systemImage: String) -> some View {
-        Label {
-            Text(title)
-        } icon: {
-            Image(systemName: systemImage).font(.title3).frame(width: iconSide, height: iconSide)
+            IconLabel(title: String(localized: "class_table_import_enter_link"), systemImage: "keyboard")
         }
     }
 
@@ -429,6 +421,22 @@ final class ScannerTorch {
     private func refresh() {
         control = device.flatMap {
             Control(hasTorch: $0.hasTorch, isAvailable: $0.isTorchAvailable, isActive: $0.isTorchActive)
+        }
+    }
+}
+
+private struct IconLabel: View {
+    let title: String
+    let systemImage: String
+    /// One frame for every symbol, so narrow and wide ones get the same circle. It lives here to
+    /// scale with the row's capped text size.
+    @ScaledMetric(relativeTo: .title3) private var side: CGFloat = 28
+
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: systemImage).font(.title3).frame(width: side, height: side)
         }
     }
 }
