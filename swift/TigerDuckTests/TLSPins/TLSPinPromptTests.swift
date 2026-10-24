@@ -51,17 +51,33 @@ struct TLSPinPromptTests {
         }
     }
 
+    /// One window's own scene phase, which the app-wide one does not follow.
+    @MainActor
+    @Observable
+    final class Phase {
+        var value: ScenePhase = .active
+    }
+
+    private struct Root: View {
+        let prompting: Prompting
+        let phase: Phase
+
+        var body: some View {
+            Page(prompting: prompting)
+                .tlsPinPrompt(queue: prompting.queue, owner: prompting.owner)
+                .environment(\.scenePhase, phase.value)
+        }
+    }
+
     static func window(
         _ prompting: Prompting, style: UIUserInterfaceStyle = .light, height: CGFloat = 874,
-        textSize: UIContentSizeCategory? = nil
+        textSize: UIContentSizeCategory? = nil, phase: Phase? = nil
     ) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 402, height: height)
         window.overrideUserInterfaceStyle = style
-        window.rootViewController = UIHostingController(rootView: Page(prompting: prompting)
-            .tlsPinPrompt(queue: prompting.queue, owner: prompting.owner)
-            .environment(\.scenePhase, .active))
+        window.rootViewController = UIHostingController(rootView: Root(prompting: prompting, phase: phase ?? Phase()))
         // Set the way the system setting reaches the app, through the window's traits.
         if let textSize { window.traitOverrides.preferredContentSizeCategory = textSize }
         window.makeKeyAndVisible()
@@ -304,6 +320,24 @@ struct TLSPinPromptTests {
             #expect(prompting.queue.prompt == Self.mismatch)
             #expect(!prompting.isQuiet)
         }
+    }
+
+    @Test("a window whose scene goes to the background hands the prompt to an active one, with no Cancel")
+    func aBackgroundedWindowHandsItOver() async throws {
+        let prompting = Prompting()
+        let phases = [Phase(), Phase()]
+        let windows = try phases.map { try Self.window(prompting, phase: $0) }
+        defer { windows.forEach { $0.isHidden = true } }
+        prompting.queue.report(Self.mismatch)
+        func showing() -> [Int] { windows.indices.filter { windows[$0].rootViewController?.presentedViewController != nil } }
+        try await waitUntil { showing().count == 1 }
+        let hidden = try #require(showing().first)
+
+        phases[hidden].value = .background
+        try await waitUntil { showing() == [1 - hidden] }
+        #expect(prompting.queue.prompt == Self.mismatch)
+        #expect(!prompting.isQuiet)
+        #expect(prompting.engine.acceptances.isEmpty)
     }
 
     @Test("with two windows open, one shows the prompt")
