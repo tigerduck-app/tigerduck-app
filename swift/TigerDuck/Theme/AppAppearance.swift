@@ -1,7 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// Settings' colour theme: the system's appearance, or light or dark whatever the system uses.
 nonisolated enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
     case system
     case light

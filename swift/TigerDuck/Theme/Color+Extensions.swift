@@ -29,7 +29,6 @@ extension Color {
         )
     }
 
-    /// A colour that follows the light or dark appearance it is drawn in.
     nonisolated static func adaptive(light: Color, dark: Color) -> Color {
         #if os(iOS)
         let (light, dark) = (UIColor(light), UIColor(dark))
