@@ -149,7 +149,7 @@ struct MoodleMemberView: View {
         // A later pick cancels this one, which a slow photo could otherwise replace.
         guard !Task.isCancelled else { return }
         guard let picked else {
-            pictureFailure = String(localized: "empty_classroom_load_failed")
+            pictureFailure = String(localized: "course_member_picture_unreadable")
             return
         }
         cropping = PhotoToCrop(image: UIImage(cgImage: picked))
