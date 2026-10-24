@@ -558,5 +558,57 @@
         }
       ]
     }
+  },
+  "2.7.0": {
+    "zh-TW": {
+      "title": "2.7.0 更新內容",
+      "items": [
+        {
+          "symbol": "circle.lefthalf.filled",
+          "title": "亮色模式",
+          "body": "「顏色主題」可選亮色或暗色模式，預設跟隨系統。"
+        },
+        {
+          "symbol": "paintpalette",
+          "title": "自訂主題色",
+          "body": "主題色除了預設顏色，也能挑選任何顏色。"
+        },
+        {
+          "symbol": "hand.draw",
+          "title": "首頁",
+          "body": "改進作業捲動的效果，並修正左右滑動的標記問題。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "掃描匯入課表時可開手電筒或輸入連結，分享課表可複製連結，課表上的課名也更清楚。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.7.0",
+      "items": [
+        {
+          "symbol": "circle.lefthalf.filled",
+          "title": "Light mode",
+          "body": "The app comes in light and dark, and follows the system by default."
+        },
+        {
+          "symbol": "paintpalette",
+          "title": "Custom accent",
+          "body": "Besides the presets, the accent can be any colour you pick."
+        },
+        {
+          "symbol": "hand.draw",
+          "title": "Home",
+          "body": "Assignments scroll more smoothly, with fixes to the swipe actions."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "The import scanner gains a flashlight and link entry, the share sheet copies its link, and course names on the class table read more clearly."
+        }
+      ]
+    }
   }
 }
