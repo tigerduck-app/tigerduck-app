@@ -50,6 +50,44 @@ struct TLSPinDocumentFetcherTests {
         #expect(server.requests.first?.timeoutInterval == 10)
     }
 
+    actor Gate {
+        private var isOpen = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        func wait() async {
+            if isOpen { return }
+            await withCheckedContinuation { waiters.append($0) }
+        }
+
+        func open() {
+            isOpen = true
+            waiters.forEach { $0.resume() }
+            waiters = []
+        }
+    }
+
+    @Test("A foreground fetch during another one waits for it instead of sending again")
+    func overlappingForegroundFetchesShareOneRequest() async throws {
+        let server = Server()
+        let gate = Gate()
+        let fetcher = TLSPinDocumentFetcher(
+            engine: F.engine(),
+            send: { request in
+                let answer = try server.answer(request)
+                await gate.wait()
+                return answer
+            },
+            clock: { server.now }
+        )
+        async let first: Void = fetcher.fetchIfDue()
+        while server.requests.isEmpty { await Task.yield() }
+        async let second: Void = fetcher.fetchIfDue()
+        try await Task.sleep(for: .milliseconds(50))
+        await gate.open()
+        _ = await (first, second)
+        #expect(server.requests.count == 1)
+    }
+
     @Test("A failed foreground fetch does not hold back the next one")
     func aFailureDoesNotThrottle() async {
         let server = Server()

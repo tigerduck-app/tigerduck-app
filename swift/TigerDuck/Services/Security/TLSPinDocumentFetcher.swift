@@ -31,6 +31,7 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Security.TLSPin")
     private let lock = NSLock()
     private var lastFetch: Date?
+    private var inFlight: Task<Void, Never>?
 
     init(
         engine: TLSPinEngine = .shared,
@@ -45,13 +46,19 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
     }
 
     /// At the first foreground of a launch, then at most every six hours after a fetch that got an
-    /// answer; after a failure the next foreground tries again.
+    /// answer; after a failure the next foreground tries again. A call during a fetch waits for it.
     func fetchIfDue() async {
-        let due = lock.withLock {
-            guard let lastFetch else { return true }
-            return clock().timeIntervalSince(lastFetch) >= Self.interval
+        let task: Task<Void, Never>? = lock.withLock {
+            if let inFlight { return inFlight }
+            if let lastFetch, clock().timeIntervalSince(lastFetch) < Self.interval { return nil }
+            let task = Task {
+                await self.fetch(bypassingCache: false)
+                self.lock.withLock { self.inFlight = nil }
+            }
+            inFlight = task
+            return task
         }
-        if due { await fetch(bypassingCache: false) }
+        await task?.value
     }
 
     /// After a pin mismatch, past every HTTP cache.
