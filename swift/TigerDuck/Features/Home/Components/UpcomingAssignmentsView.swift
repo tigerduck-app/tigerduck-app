@@ -104,10 +104,11 @@ struct UpcomingAssignmentsView: View {
             }
     }
 
+    /// Not `.labelStyle(.iconOnly)`: that leaves the system action untitled, and VoiceOver, Voice
+    /// Control and Switch Control name a swipe action by its title.
     private func swipeButton(_ action: SwipeActionDescriptor) -> some View {
         Button(action: action.action) {
             Label(action.label, systemImage: action.systemImage)
-                .labelStyle(.iconOnly)
         }
         .tint(action.tint)
     }
