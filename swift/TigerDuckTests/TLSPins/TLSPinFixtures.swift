@@ -122,6 +122,9 @@ nonisolated final class TLSPinReports: @unchecked Sendable {
     var all: [TLSPinMismatch] { lock.withLock { stored } }
 
     func install(on engine: TLSPinEngine, refresh: (@Sendable () async -> Void)? = nil) {
-        engine.install(refresh: refresh, report: { mismatch in self.lock.withLock { self.stored.append(mismatch) } })
+        engine.install(
+            refresh: refresh.map { refresh in { await refresh(); return true } },
+            report: { mismatch in self.lock.withLock { self.stored.append(mismatch) } }
+        )
     }
 }

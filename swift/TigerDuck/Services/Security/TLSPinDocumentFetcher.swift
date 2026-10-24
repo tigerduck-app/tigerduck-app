@@ -61,12 +61,14 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
         await task?.value
     }
 
-    /// After a pin mismatch, past every HTTP cache.
-    func refetch() async {
+    /// After a pin mismatch, past every HTTP cache. Returns whether the server answered.
+    @discardableResult
+    func refetch() async -> Bool {
         await fetch(bypassingCache: true)
     }
 
-    private func fetch(bypassingCache: Bool) async {
+    @discardableResult
+    private func fetch(bypassingCache: Bool) async -> Bool {
         var request = URLRequest(
             url: Self.url,
             cachePolicy: bypassingCache ? .reloadIgnoringLocalCacheData : .useProtocolCachePolicy,
@@ -79,12 +81,14 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
             let (data, response) = try await send(request)
             guard let status = (response as? HTTPURLResponse)?.statusCode, status == 200 else {
                 logger.error("TLS pin document fetch answered \((response as? HTTPURLResponse)?.statusCode ?? 0, privacy: .public)")
-                return
+                return false
             }
             lock.withLock { lastFetch = clock() }
             if engine.acceptDocument(data) == .applied { onApplied() }
+            return true
         } catch {
             logger.error("TLS pin document fetch failed: \(error.localizedDescription, privacy: .private)")
+            return false
         }
     }
 }

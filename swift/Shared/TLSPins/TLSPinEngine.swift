@@ -60,7 +60,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         var document: TLSPinDocument?
         var acceptances: [TLSPinAcceptance] = []
         var refusedSets: Set<String> = []
-        var refreshes: [String: Task<Void, Never>] = [:]
+        var refreshes: [String: Task<Bool, Never>] = [:]
     }
 
     private let builtIn: [TLSPinSet]
@@ -72,7 +72,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Security.TLSPin")
     private let lock = NSLock()
     private var loaded: State?
-    private var refresh: (@Sendable () async -> Void)?
+    private var refresh: (@Sendable () async -> Bool)?
     private var report: (@Sendable (TLSPinMismatch) -> Void)?
 
     init(
@@ -91,10 +91,11 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         self.clock = clock
     }
 
-    /// `refresh` fetches the document again after a mismatch; `report` takes each refused chain the
-    /// user may continue past. Both stay nil where there is no fetch or prompt, as on the Watch.
+    /// `refresh` fetches the document again after a mismatch and returns whether the server
+    /// answered; `report` takes each refused chain the user may continue past. Both stay nil where
+    /// there is no fetch or prompt, as on the Watch.
     func install(
-        refresh: (@Sendable () async -> Void)?,
+        refresh: (@Sendable () async -> Bool)?,
         report: (@Sendable (TLSPinMismatch) -> Void)?
     ) {
         lock.withLock {
@@ -253,15 +254,20 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         }
     }
 
+    /// A refetch the server answered counts for the launch; one that failed, as in a network blip,
+    /// leaves the next refusal free to try again.
     private func refreshOnce(setID: String) async {
-        let task: Task<Void, Never>? = withState { state in
+        let task: Task<Bool, Never>? = withState { state in
             if let running = state.refreshes[setID] { return running }
             guard let refresh else { return nil }
             let task = Task { await refresh() }
             state.refreshes[setID] = task
             return task
         }
-        await task?.value
+        guard let task, !(await task.value) else { return }
+        withState { state in
+            if state.refreshes[setID] == task { state.refreshes[setID] = nil }
+        }
     }
 
     /// The sets the document replaces, when it is newer than the built-in table; a set it does not

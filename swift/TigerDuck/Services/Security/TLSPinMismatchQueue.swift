@@ -98,8 +98,8 @@ extension TLSPinEngine {
     static func installAppHooks() {
         shared.install(
             refresh: {
-                guard Defaults[.hasCompletedOnboarding] else { return }
-                await TLSPinDocumentFetcher.shared.refetch()
+                guard Defaults[.hasCompletedOnboarding] else { return false }
+                return await TLSPinDocumentFetcher.shared.refetch()
             },
             report: { mismatch in
                 Task { @MainActor in TLSPinMismatchQueue.shared.report(mismatch) }
