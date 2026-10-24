@@ -120,7 +120,7 @@ struct HomeView: View {
     /// One List, not a ScrollView: UpcomingAssignmentsView says why.
     private var sectionList: some View {
         let move: ((IndexSet, Int) -> Void)? = viewModel.isEditingHome
-            ? { source, destination in moveSections(from: source, to: destination) }
+            ? { source, destination in viewModel.moveSections(shown: visibleSections, from: source, to: destination) }
             : nil
         return List {
             titleBar
@@ -248,10 +248,6 @@ struct HomeView: View {
             let web = assignment.moodleWebURL
             Task { await openURL(url, fallback: web) }
         }
-    }
-
-    private func moveSections(from source: IndexSet, to destination: Int) {
-        viewModel.moveSections(shown: visibleSections, from: source, to: destination)
     }
 }
 
