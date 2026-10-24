@@ -73,6 +73,13 @@ struct UpcomingAssignmentsView: View {
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 if let trailing = actions.trailing { swipeButton(trailing) }
             }
+            // Icon-only swipe buttons leave the system's swipe actions unnamed, so the row names
+            // them for VoiceOver, Voice Control and Switch Control.
+            .accessibilityActions {
+                ForEach([actions.leading, actions.trailing].compactMap { $0 }, id: \.label) { action in
+                    Button(action.label, action: action.action)
+                }
+            }
         }
     }
 
@@ -104,11 +111,10 @@ struct UpcomingAssignmentsView: View {
             }
     }
 
-    /// Not `.labelStyle(.iconOnly)`: that leaves the system action untitled, and VoiceOver, Voice
-    /// Control and Switch Control name a swipe action by its title.
     private func swipeButton(_ action: SwipeActionDescriptor) -> some View {
         Button(action: action.action) {
             Label(action.label, systemImage: action.systemImage)
+                .labelStyle(.iconOnly)
         }
         .tint(action.tint)
     }
