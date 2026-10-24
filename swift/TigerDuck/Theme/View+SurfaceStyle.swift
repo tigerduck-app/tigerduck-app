@@ -27,14 +27,16 @@ extension View {
 private struct PresetCardModifier: ViewModifier {
     let policy: VisualStylePolicy
     let cornerRadius: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         switch policy.cardSurface {
         case .glass:
             content
                 .background(
+                    // The material over the flat light page reads as grey, so light cards are white.
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(.ultraThinMaterial)
+                        .fill(colorScheme == .light ? AnyShapeStyle(Color.white) : AnyShapeStyle(.ultraThinMaterial))
                         .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                 )
         case .grouped:

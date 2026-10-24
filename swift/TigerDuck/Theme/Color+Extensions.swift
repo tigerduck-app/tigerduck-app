@@ -44,6 +44,7 @@ extension Color {
     static let backgroundPrimary = adaptive(light: Color(hex: 0xF2F2F7), dark: .black)
     static let cardSurface = adaptive(light: Color(hex: 0xFFFFFF, alpha: 0.8), dark: Color(hex: 0x1E1E1E, alpha: 0.8))
     static let textPrimary = adaptive(light: .black, dark: .white)
+    static let emptyCellFill = adaptive(light: Color.black.opacity(0.05), dark: Color.white.opacity(0.1))
     static let textSecondary = adaptive(light: Color(hex: 0x000000, alpha: 0.6), dark: Color(hex: 0xFFFFFF, alpha: 0.6))
     static let onboardingAccent = Color(hex: 0x007AFF)
     static let badgeRed = Color(hex: 0xFF3B30)

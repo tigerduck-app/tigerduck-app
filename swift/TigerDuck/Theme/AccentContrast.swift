@@ -9,7 +9,7 @@ nonisolated enum AccentContrast {
     static let minimum = 3.0
 
     /// The pick moved toward white until it reads on the dark cards, or toward black until it
-    /// reads on the light ones, which are darker than the white marks drawn on it.
+    /// reads on the light ones. Those are nearly white, so white marks on the accent read too.
     static func readable(_ hex: Int) -> Int {
         let picked = hex & 0xFFFFFF
         if !readsOnCards(picked) { return firstMix(of: picked, toward: 0xFFFFFF, where: readsOnCards) }
