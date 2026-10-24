@@ -52,16 +52,8 @@ struct ClassTableImportScannerView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        model.cancel()
-                        dismiss()
-                    } label: {
-                        Label(String(localized: "action_close"), systemImage: "xmark")
-                    }
-                }
                 if let studentId = appState.authService.storedStudentId, !ownTerms.isEmpty {
-                    ToolbarItem(placement: .primaryAction) {
+                    ToolbarItem(placement: .topBarLeading) {
                         Button {
                             model.cancel()
                             onShare(ClassTableShareModel(
@@ -72,6 +64,15 @@ struct ClassTableImportScannerView: View {
                             Label(String(localized: "class_table_share"), systemImage: "qrcode")
                         }
                     }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        model.cancel()
+                        dismiss()
+                    } label: {
+                        Label(String(localized: "action_close"), systemImage: "xmark")
+                    }
+                    .keyboardShortcut(.cancelAction)
                 }
             }
             .alert(String(localized: "class_table_import_enter_link"), isPresented: $isEnteringLink) {
