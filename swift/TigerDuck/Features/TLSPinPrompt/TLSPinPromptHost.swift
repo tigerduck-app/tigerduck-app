@@ -112,6 +112,11 @@ private struct TLSPinPromptHost: ViewModifier {
             } else if owner.holder != id {
                 presentation.prompt = nil
                 return
+            } else if scenePhase == .background {
+                // Another iPad window can still be active, and the queue keeps the prompt for it.
+                presentation.prompt = nil
+                owner.holder = nil
+                return
             } else if presentation.prompt == nil, isShowingOtherPresentation {
                 owner.holder = nil
             } else {
