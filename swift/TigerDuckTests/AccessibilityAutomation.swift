@@ -40,6 +40,11 @@ func exposedAccessibilityTexts(in node: NSObject) -> [String] {
 }
 
 @MainActor
+func exposedAccessibilityElements(in node: NSObject) -> [NSObject] {
+    (node.isAccessibilityElement ? [node] : []) + accessibilityChildren(of: node).flatMap { exposedAccessibilityElements(in: $0) }
+}
+
+@MainActor
 private func accessibilityChildren(of node: NSObject) -> [NSObject] {
     var children = node.accessibilityElements ?? []
     let count = node.accessibilityElementCount()
