@@ -1,9 +1,6 @@
 import SwiftUI
 
 /// Home is one `List`, so each assignment is a row that takes the system's `.swipeActions`.
-/// A `List` nested in Home's `ScrollView` needed a `.frame(height:)` from per-row measurements,
-/// which raced its `.animation` on a tab switch and hung the UI, and its swipe actions flashed a
-/// black slab above the first row. A custom drag row in its place fights the page's scrolling.
 /// In edit mode Home is a stack instead (HomeView says why), and so are these rows.
 struct UpcomingAssignmentsView: View {
     static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
