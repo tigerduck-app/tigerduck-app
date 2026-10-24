@@ -314,6 +314,9 @@ final class AppState {
         }
     }
 
+    /// A custom accent while it is being picked: drawn at once, saved once picking pauses.
+    var accentPreviewHex: Int?
+
     static let themeColors: [(nameKey: String, hex: Int)] = [
         ("color_name_blue", 0x007AFF),
         ("color_name_purple", 0xAF52DE),
@@ -322,7 +325,6 @@ final class AppState {
         ("color_name_orange", 0xFF9500),
         ("color_name_green", 0x34C759),
         ("color_name_cyan", 0x5AC8FA),
-        ("color_name_indigo", 0x5856D6),
     ]
 
     var cloudSyncEnabled: Bool {
