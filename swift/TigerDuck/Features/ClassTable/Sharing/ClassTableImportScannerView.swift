@@ -1,5 +1,7 @@
 #if os(iOS)
 import AVFoundation
+import Combine
+import Defaults
 import PhotosUI
 import SwiftUI
 import Vision
@@ -7,11 +9,18 @@ import VisionKit
 
 struct ClassTableImportScannerView: View {
     @Bindable var model: ClassTableImportModel
+    /// Takes the user's share sheet, for the presenter to show once this screen has closed.
+    let onShare: (ClassTableShareModel) -> Void
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @State private var camera: Camera = .checking
     @State private var photo: PhotosPickerItem?
+    @State private var isEnteringLink = false
+    @State private var enteredLink = ""
+    @State private var ownTerms: [ClassTableShareModel.Term] = []
+    @State private var torch = ScannerTorch()
 
     private enum Camera {
         case checking, dataScanner, captureSession, denied, missing
@@ -27,12 +36,15 @@ struct ClassTableImportScannerView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                PhotosPicker(selection: $photo, matching: .images) {
-                    Label(String(localized: "class_table_import_choose_photo"), systemImage: "photo.on.rectangle")
+                HStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    torchToggle
+                    otherSources.disabled(!model.isIdle)
                 }
+                .labelStyle(.iconOnly)
                 .controlSize(.large)
-                .modifier(GlassTextButtonModifier())
-                .disabled(!model.isIdle)
+                .modifier(GlassIconButtonModifier())
+                // Past this size three circles outgrow a 375pt-wide phone.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
             }
             .environment(\.colorScheme, .dark)
@@ -43,14 +55,37 @@ struct ClassTableImportScannerView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                if let studentId = appState.authService.storedStudentId, !ownTerms.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            model.cancel()
+                            onShare(ClassTableShareModel(
+                                studentId: studentId, terms: ownTerms, semesterLabel: ClassTableImportModel.semesterLabel
+                            ))
+                            dismiss()
+                        } label: {
+                            Label(String(localized: "class_table_share"), systemImage: "qrcode")
+                        }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         model.cancel()
                         dismiss()
                     } label: {
                         Label(String(localized: "action_close"), systemImage: "xmark")
                     }
+                    .keyboardShortcut(.cancelAction)
                 }
+            }
+            .alert(String(localized: "class_table_import_enter_link"), isPresented: $isEnteringLink) {
+                TextField(String(localized: "class_table_import_link_placeholder"), text: $enteredLink)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(String(localized: "action_cancel"), role: .cancel) {}
+                Button(String(localized: "action_import")) { model.linkOpened(enteredLink) }
+                    .disabled(enteredLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .classTableImportPrompts(model, onConfirmScreen: false)
             .sheet(item: Binding(get: { model.pending }, set: { if $0 == nil { model.cancel() } })) { pending in
@@ -58,6 +93,7 @@ struct ClassTableImportScannerView: View {
             }
         }
         .task { camera = await Self.cameraState() }
+        .onAppear { ownTerms = Self.ownTerms(studentId: appState.authService.storedStudentId) }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, camera == .denied else { return }
             Task { camera = await Self.cameraState() }
@@ -70,6 +106,16 @@ struct ClassTableImportScannerView: View {
         .onChange(of: model.isFinished) { _, isFinished in
             if isFinished { dismiss() }
         }
+        .onReceive(Self.sessionNotes(AVCaptureSession.didStartRunningNotification)) {
+            torch.sessionStarted($0.object as? AVCaptureSession)
+        }
+        .onReceive(Self.sessionNotes(AVCaptureSession.didStopRunningNotification)) { _ in torch.sessionStopped() }
+        .onDisappear { torch.sessionStopped() }
+    }
+
+    /// A session can post these off the main thread.
+    private static func sessionNotes(_ name: Notification.Name) -> some Publisher<Notification, Never> {
+        NotificationCenter.default.publisher(for: name).receive(on: DispatchQueue.main)
     }
 
     @ViewBuilder
@@ -78,9 +124,9 @@ struct ClassTableImportScannerView: View {
         case .checking, .missing:
             EmptyView()
         case .dataScanner:
-            QRDataScanner(onCode: { model.scanned($0) }).ignoresSafeArea()
+            QRDataScanner(onCode: scanned).ignoresSafeArea()
         case .captureSession:
-            QRCaptureScanner(onCode: { model.scanned($0) }).ignoresSafeArea()
+            QRCaptureScanner(onCode: scanned).ignoresSafeArea()
         case .denied:
             VStack(spacing: TigerDuckTheme.Spacing.md) {
                 Text(String(localized: "class_table_import_camera_denied"))
@@ -93,6 +139,46 @@ struct ClassTableImportScannerView: View {
             }
             .padding(TigerDuckTheme.Spacing.xl)
         }
+    }
+
+    @ViewBuilder
+    private var torchToggle: some View {
+        if let control = torch.control {
+            Toggle(isOn: Binding(get: { control.isOn }, set: { torch.turn($0) })) {
+                IconLabel(
+                    title: String(localized: "class_table_import_flashlight"),
+                    systemImage: control.isOn ? "flashlight.on.fill" : "flashlight.off.fill"
+                )
+            }
+            .toggleStyle(.button)
+            .disabled(!control.isEnabled)
+        }
+    }
+
+    @ViewBuilder
+    private var otherSources: some View {
+        PhotosPicker(selection: $photo, matching: .images) {
+            IconLabel(title: String(localized: "class_table_import_choose_photo"), systemImage: "photo.on.rectangle")
+        }
+        Button {
+            enteredLink = ""
+            isEnteringLink = true
+        } label: {
+            IconLabel(title: String(localized: "class_table_import_enter_link"), systemImage: "keyboard")
+        }
+    }
+
+    /// A code the camera finds while a link is typed would open its screen under the alert.
+    private func scanned(_ text: String) -> Bool {
+        !isEnteringLink && model.scanned(text)
+    }
+
+    /// The terms the class table's share sheet offers, from the cache; none when the user has
+    /// nothing to share or a student ID no code can hold.
+    private static func ownTerms(studentId: String?) -> [ClassTableShareModel.Term] {
+        guard let studentId, ClassTableShareCode.isUpperAlphanumerics(studentId.uppercased()[...]) else { return [] }
+        let semester = SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
+        return ClassTableShareModel.terms(in: ClassTableViewModel.semesterOptions(including: semester))
     }
 
     private static func cameraState() async -> Camera {
@@ -273,6 +359,94 @@ private struct QRCaptureScanner: UIViewRepresentable {
             for payload in payloads where filter.isNew(payload, at: now) {
                 if onCode(payload) { return }
             }
+        }
+    }
+}
+
+/// The torch of the camera a running scanner session uses. VisionKit keeps its session private,
+/// so this takes the camera from the session's start notification: locking any other camera for
+/// the torch freezes VisionKit's preview.
+@Observable
+final class ScannerTorch {
+    struct Control: Equatable {
+        let isOn: Bool
+        let isEnabled: Bool
+
+        /// Nil for a camera without a torch; one too hot to light keeps its toggle, disabled.
+        init?(hasTorch: Bool, isAvailable: Bool, isActive: Bool) {
+            guard hasTorch else { return nil }
+            isOn = isActive
+            isEnabled = isAvailable
+        }
+    }
+
+    /// Nil hides the toggle.
+    private(set) var control: Control?
+    @ObservationIgnored private var device: AVCaptureDevice?
+    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+
+    func sessionStarted(_ session: AVCaptureSession?) {
+        device = session?.inputs.lazy
+            .compactMap { ($0 as? AVCaptureDeviceInput)?.device }
+            .first { $0.hasMediaType(.video) }
+        // The system can switch the torch off itself, as when the phone overheats.
+        observations = [\AVCaptureDevice.isTorchActive, \AVCaptureDevice.isTorchAvailable].compactMap {
+            device?.observe($0) { @Sendable [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.refresh() }
+            }
+        }
+        refresh()
+    }
+
+    func sessionStopped() {
+        observations = []
+        if device?.torchMode != .off { turn(false) }
+        device = nil
+        refresh()
+    }
+
+    func turn(_ isOn: Bool) {
+        let mode: AVCaptureDevice.TorchMode = isOn ? .on : .off
+        guard let device, device.isTorchModeSupported(mode) else { return }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = mode
+            device.unlockForConfiguration()
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "classTableImport.torch"])
+        }
+        refresh()
+    }
+
+    private func refresh() {
+        control = device.flatMap {
+            Control(hasTorch: $0.hasTorch, isAvailable: $0.isTorchAvailable, isActive: $0.isTorchActive)
+        }
+    }
+}
+
+private struct IconLabel: View {
+    let title: String
+    let systemImage: String
+    /// One frame for every symbol, so narrow and wide ones get the same circle. It lives here to
+    /// scale with the row's capped text size.
+    @ScaledMetric(relativeTo: .title3) private var side: CGFloat = 28
+
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: systemImage).font(.title3).frame(width: side, height: side)
+        }
+    }
+}
+
+private struct GlassIconButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glass).buttonBorderShape(.circle)
+        } else {
+            content.buttonStyle(.bordered).buttonBorderShape(.circle)
         }
     }
 }

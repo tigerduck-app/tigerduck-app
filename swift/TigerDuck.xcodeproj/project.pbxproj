@@ -1164,7 +1164,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuck/TigerDuck_Mac.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -1224,6 +1224,7 @@
 					SemesterAttributionCacheMigration.swift,
 					SyncedAccountSeedMigration.swift,
 					CourseColorPickSeedMigration.swift,
+					CustomAccentContrastMigration.swift,
 					StoredPasswordLatchRetryMigration.swift,
 					LibraryPasswordLatchRetryMigration.swift,
 					PushServerConfig.swift,
@@ -1305,7 +1306,9 @@
 					CredentialPost.swift,
 					SSOLoginService.swift,
 					"Animation+Spring.swift",
+					AppAppearance.swift,
 					"Color+Extensions.swift",
+					AccentContrast.swift,
 					TigerDuckTheme.swift,
 					"View+CardStyle.swift",
 					"View+GlassEffect.swift",
@@ -1359,6 +1362,7 @@
 					MacSettingsScene.swift,
 					MacGeneralSettingsView.swift,
 					MacAppearanceSettingsView.swift,
+					CustomAccentPicker.swift,
 					MacSidebarSettingsView.swift,
 					MacAccountSettingsView.swift,
 					MacTigerSyncSettingsView.swift,
@@ -1432,7 +1436,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1461,7 +1465,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuck/TigerDuck_Mac.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -1521,6 +1525,7 @@
 					SemesterAttributionCacheMigration.swift,
 					SyncedAccountSeedMigration.swift,
 					CourseColorPickSeedMigration.swift,
+					CustomAccentContrastMigration.swift,
 					StoredPasswordLatchRetryMigration.swift,
 					LibraryPasswordLatchRetryMigration.swift,
 					PushServerConfig.swift,
@@ -1602,7 +1607,9 @@
 					CredentialPost.swift,
 					SSOLoginService.swift,
 					"Animation+Spring.swift",
+					AppAppearance.swift,
 					"Color+Extensions.swift",
+					AccentContrast.swift,
 					TigerDuckTheme.swift,
 					"View+CardStyle.swift",
 					"View+GlassEffect.swift",
@@ -1656,6 +1663,7 @@
 					MacSettingsScene.swift,
 					MacGeneralSettingsView.swift,
 					MacAppearanceSettingsView.swift,
+					CustomAccentPicker.swift,
 					MacSidebarSettingsView.swift,
 					MacAccountSettingsView.swift,
 					MacTigerSyncSettingsView.swift,
@@ -1729,7 +1737,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1753,7 +1761,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				DEAD_CODE_STRIPPING = YES;
 				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
 					WatchSyncCoordinatorTests.swift,
@@ -1786,7 +1794,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				DEAD_CODE_STRIPPING = YES;
 				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
 					WatchSyncCoordinatorTests.swift,
@@ -1818,7 +1826,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -1844,7 +1852,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -1873,7 +1881,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TigerDuckLiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TigerDuckLiveActivity/Info.plist;
@@ -1885,7 +1893,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1910,7 +1918,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TigerDuckLiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TigerDuckLiveActivity/Info.plist;
@@ -1922,7 +1930,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1948,7 +1956,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "TigerDuckWatch Watch App/TigerDuckWatch Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = TigerDuck;
@@ -1960,7 +1968,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1985,7 +1993,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "TigerDuckWatch Watch App/TigerDuckWatch Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = TigerDuck;
@@ -1997,7 +2005,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -2021,7 +2029,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSPrincipalClass = TigerDuckTestsSetup;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -2047,7 +2055,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSPrincipalClass = TigerDuckTestsSetup;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -2073,7 +2081,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
@@ -2097,7 +2105,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
@@ -2126,7 +2134,7 @@
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuckWidgets/TigerDuckWidgets_Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -2146,7 +2154,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -2172,7 +2180,7 @@
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuckWidgets/TigerDuckWidgets_Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -2192,7 +2200,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -2215,7 +2223,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWatchWidget/TigerDuckWatchWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TigerDuckWatchWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TigerDuckWatchWidget;
@@ -2225,7 +2233,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -2247,7 +2255,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWatchWidget/TigerDuckWatchWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 120;
+				CURRENT_PROJECT_VERSION = 121;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TigerDuckWatchWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TigerDuckWatchWidget;
@@ -2257,7 +2265,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.6.6;
+				MARKETING_VERSION = 2.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;

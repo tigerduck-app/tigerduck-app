@@ -135,7 +135,7 @@ struct CourseColorPickerSheet: View {
                 // This also sees the no-op tick SwiftUI emits when the picker first shows
                 // the current course color; the debouncer applies nothing for it, so just
                 // opening the sheet issues no setColor call and broadcast.
-                customPicks.pick(hexFrom(color: newValue))
+                customPicks.pick(newValue.rgbHex)
             }
         }
     }
@@ -162,30 +162,6 @@ struct CourseColorPickerSheet: View {
         }
         .frame(height: 50)
         .contentShape(Circle())
-    }
-
-    /// Extract a 24-bit RGB hex from a SwiftUI `Color`. The picker's `Color`
-    /// resolves through the active environment.
-    ///
-    /// On macOS, `NSColor(color)` may land in a color space with no direct
-    /// `cgColor`: the API is declared non-optional but documented to return
-    /// nil then, and the picker's catalog colors trip this. Converting through
-    /// `.sRGB` first reads RGBA from a well-defined space, and an unresolved
-    /// CGColor becomes black (0) instead of a crash.
-    private func hexFrom(color: Color) -> UInt32 {
-        #if canImport(UIKit)
-        let resolved: CGColor? = UIColor(color).cgColor
-        #elseif canImport(AppKit)
-        let resolved: CGColor? = NSColor(color).usingColorSpace(.sRGB)?.cgColor
-        #else
-        let resolved: CGColor? = nil
-        #endif
-        guard let cg = resolved else { return 0 }
-        let components = cg.components ?? [0, 0, 0, 1]
-        let r = UInt32(max(0, min(1, components[0])) * 255)
-        let g = UInt32(max(0, min(1, components.count > 1 ? components[1] : components[0])) * 255)
-        let b = UInt32(max(0, min(1, components.count > 2 ? components[2] : components[0])) * 255)
-        return (r << 16) | (g << 8) | b
     }
 }
 

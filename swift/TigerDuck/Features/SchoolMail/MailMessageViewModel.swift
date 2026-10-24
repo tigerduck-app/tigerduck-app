@@ -91,6 +91,8 @@ final class MailMessageViewModel {
     private(set) var folderRoles: [MailFolderRole: String]
     var mode: ViewMode = .formatted
     var viewsInLightMode = false
+    /// The light appearance draws every mail on the light page, so it offers no other.
+    var appearsLight = false
     @ObservationIgnored private var hasPickedPage = false
 
     @ObservationIgnored var onSeenChanged: ((String, UInt32, Bool) -> Void)?
@@ -135,11 +137,13 @@ final class MailMessageViewModel {
         return linkedDocument == nil ? [.plain, .source] : ViewMode.allCases
     }
 
-    var offersLightMode: Bool { mode == .formatted && linkedDocument != nil }
+    var offersLightMode: Bool { !appearsLight && mode == .formatted && linkedDocument != nil }
 
-    var htmlTheme: MailHTMLTheme { viewsInLightMode ? .light : .app }
+    var htmlTheme: MailHTMLTheme { showsLightPage ? .light : .app }
 
-    var formattedHTML: String? { viewsInLightMode ? pages?.light : pages?.app }
+    var formattedHTML: String? { showsLightPage ? pages?.light : pages?.app }
+
+    private var showsLightPage: Bool { appearsLight || viewsInLightMode }
 
     var deleteIsPermanent: Bool {
         guard let trash = folderRoles[.trash] else { return true }

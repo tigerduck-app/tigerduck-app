@@ -4,11 +4,12 @@ import SwiftUI
 struct MailGuideView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @Environment(\.colorScheme) private var colorScheme
     @State private var failed = false
     @State private var attempt = UUID()
     @State private var inAppURL: MailFileItem?
 
-    private let theme = MailHTMLTheme.app
+    private var theme: MailHTMLTheme { colorScheme == .light ? .light : .app }
 
     var body: some View {
         Group {

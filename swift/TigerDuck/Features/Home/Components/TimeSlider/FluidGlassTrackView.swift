@@ -58,7 +58,7 @@ struct FluidGlassTrackView: View {
                 }
 
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(.white.opacity(0.7))
+                    .fill(Color.textPrimary.opacity(0.7))
                     .frame(width: TimeSliderMetrics.selectionThumbWidth, height: TimeSliderMetrics.selectionThumbHeight)
                     .position(x: centerX, y: trackHeight / 2)
 
@@ -116,7 +116,7 @@ struct FluidGlassTrackView: View {
                             width: 1,
                             height: TimeSliderMetrics.majorMarkerHeight
                         )
-                        context.fill(Path(rect), with: .color(.white.opacity(0.15)))
+                        context.fill(Path(rect), with: .color(Color.textPrimary.opacity(0.15)))
                     } else {
                         let dotSize = TimeSliderMetrics.markerDotSize
                         let rect = CGRect(
@@ -125,7 +125,7 @@ struct FluidGlassTrackView: View {
                             width: dotSize,
                             height: dotSize
                         )
-                        context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.1)))
+                        context.fill(Path(ellipseIn: rect), with: .color(Color.textPrimary.opacity(0.1)))
                     }
                 }
 
@@ -137,11 +137,11 @@ struct FluidGlassTrackView: View {
 
     private var thumbGlowColor: Color {
         guard policy.timeSliderUsesCourseColoredThumb else {
-            return .white
+            return Color.textPrimary
         }
         if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first {
             return slot.course.color
         }
-        return .white
+        return Color.textPrimary
     }
 }

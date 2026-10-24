@@ -11,12 +11,12 @@ struct CreditSummaryBento: View {
                 tile(
                     label: String(localized: "score_credit_earned"),
                     breakdown: summary.earned,
-                    accent: Color(hex: 0x2ECC71)
+                    accent: TigerDuckTheme.Tint.green
                 )
                 tile(
                     label: String(localized: "score_credit_enrolled"),
                     breakdown: summary.enrolled,
-                    accent: Color(hex: 0x45B7D1)
+                    accent: TigerDuckTheme.Tint.cyan
                 )
             }
         }

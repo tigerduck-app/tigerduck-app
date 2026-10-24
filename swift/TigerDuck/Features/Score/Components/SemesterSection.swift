@@ -15,12 +15,12 @@ struct SemesterSection: View {
             header
             if !isCollapsed {
                 Divider()
-                    .background(Color.white.opacity(0.08))
+                    .background(Color.textPrimary.opacity(0.08))
                 VStack(spacing: 0) {
                     ForEach(Array(courses.enumerated()), id: \.element.id) { offset, course in
                         if offset > 0 {
                             Divider()
-                                .background(Color.white.opacity(0.05))
+                                .background(Color.textPrimary.opacity(0.05))
                                 .padding(.leading, TigerDuckTheme.Spacing.md)
                         }
                         ScoreCourseRow(course: course) { onCourseTap(course) }

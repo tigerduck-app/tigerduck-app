@@ -13,7 +13,7 @@ nonisolated enum ClassTableShareLink {
     /// Everything on the share host counts, as the app claims all of it: a newer app's type
     /// reaches the decoder, which asks for an update, and a URL with no share code gets a message.
     static func codeText(_ url: URL) -> String? {
-        if url.scheme?.lowercased() == "https", url.host()?.uppercased() == shareHostName {
+        if url.scheme?.lowercased() == "https", url.host()?.uppercased() == ClassTableShareCode.shareHostName {
             // Chat apps add a query such as `fbclid`, which no code holds; the share page reads only the path too.
             return String(url.absoluteString.prefix { $0 != "?" && $0 != "#" })
         }
@@ -22,8 +22,6 @@ nonisolated enum ClassTableShareLink {
         let path = url.path(percentEncoded: true)
         return ClassTableShareCode.shareHost + "/" + (path.hasPrefix("/") ? path.dropFirst() : path[...])
     }
-
-    private static let shareHostName = String(ClassTableShareCode.shareHost.dropFirst("HTTPS://".count))
 }
 
 /// A share link that came before its import could open, with no one signed in or onboarding not

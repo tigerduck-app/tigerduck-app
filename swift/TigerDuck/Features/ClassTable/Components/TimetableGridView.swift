@@ -195,7 +195,7 @@ struct TimetableGridView: View {
         switch role {
         case .empty:
             RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                .fill(drawsPeriodTiles ? Color.clear : Color.cardSurface.opacity(0.15))
+                .fill(drawsPeriodTiles ? Color.clear : Color.emptyCellFill)
                 .transition(.identity)
 
         case .solo(let course, let spanCount):
@@ -341,7 +341,7 @@ struct TimetableGridView: View {
             }
             .overlay {
                 Text(course.displayName)
-                    .font(.system(size: courseNameSize, weight: .medium))
+                    .font(.system(size: courseNameSize, weight: policy.classTableCourseNameWeight))
                     .foregroundStyle(policy.classTableCourseTextColor)
                     .lineLimit(lineLimit)
                     .minimumScaleFactor(0.7)
@@ -561,7 +561,7 @@ private struct ConflictClusterView: View {
                 }
                 .overlay(alignment: .topLeading) {
                     Text(course.displayName)
-                        .font(.system(size: courseNameSize, weight: .medium))
+                        .font(.system(size: courseNameSize, weight: policy.classTableCourseNameWeight))
                         .foregroundStyle(policy.classTableCourseTextColor)
                         .lineLimit(label.height > cellHeight ? 3 : 2)
                         .minimumScaleFactor(0.7)
@@ -677,7 +677,7 @@ private struct ConflictClusterView: View {
             ZStack(alignment: labelAlignment) {
                 policy.classTableCourseFill(course.color)
                 Text(course.displayName)
-                    .font(.system(size: courseNameSize, weight: .medium))
+                    .font(.system(size: courseNameSize, weight: policy.classTableCourseNameWeight))
                     .foregroundStyle(policy.classTableCourseTextColor)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)

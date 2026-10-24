@@ -1,4 +1,5 @@
 #if os(iOS)
+import AVFoundation
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -32,6 +33,49 @@ struct RepeatedCodeFilterTests {
 
         #expect(firsts == [true, true])
         #expect(repeats == [false, false])
+    }
+}
+
+/// The flashlight toggle shows only for a running camera with a torch, and reads what the torch
+/// does rather than what was tapped.
+@MainActor
+struct ScannerTorchTests {
+    @Test("a camera without a torch shows no toggle")
+    func noTorchNoToggle() {
+        #expect(ScannerTorch.Control(hasTorch: false, isAvailable: true, isActive: false) == nil)
+    }
+
+    @Test("the toggle reads on only while the torch is lit")
+    func toggleFollowsTheTorch() throws {
+        let lit = try #require(ScannerTorch.Control(hasTorch: true, isAvailable: true, isActive: true))
+        let dark = try #require(ScannerTorch.Control(hasTorch: true, isAvailable: true, isActive: false))
+
+        #expect(lit.isOn && lit.isEnabled)
+        #expect(!dark.isOn && dark.isEnabled)
+    }
+
+    @Test("a torch too hot to light keeps its toggle, off and disabled")
+    func hotTorchIsDisabled() throws {
+        let hot = try #require(ScannerTorch.Control(hasTorch: true, isAvailable: false, isActive: false))
+
+        #expect(!hot.isOn)
+        #expect(!hot.isEnabled)
+    }
+
+    @Test("no toggle before a session runs, for a session without a camera, or after it stops")
+    func noRunningCameraNoToggle() {
+        let torch = ScannerTorch()
+        let before = torch.control
+
+        torch.sessionStarted(AVCaptureSession())
+        torch.turn(true)
+        let cameraless = torch.control
+        torch.sessionStarted(nil)
+        torch.sessionStopped()
+
+        #expect(before == nil)
+        #expect(cameraless == nil)
+        #expect(torch.control == nil)
     }
 }
 #endif

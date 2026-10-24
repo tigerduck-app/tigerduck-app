@@ -1,17 +1,29 @@
 #if os(macOS)
+import Defaults
 import SwiftUI
 
 struct MacAppearanceSettingsView: View {
     @Environment(AppState.self) private var appState
+    @Default(.appAppearance) private var appearance
     @State private var isConfirmingReassign = false
 
     var body: some View {
         Form {
+            Section {
+                Picker(String(localized: "settings_color_theme"), selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Text(appearance.title).tag(appearance)
+                    }
+                }
+            }
+
             Section(String(localized: "settings_accent_color")) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
                     ForEach(AppState.themeColors, id: \.hex) { entry in
                         accentSwatch(hex: entry.hex, nameKey: entry.nameKey)
                     }
+                    CustomAccentPicker(appState: appState, size: 32)
+                        .padding(4)
                 }
                 .padding(.vertical, 4)
             }
@@ -40,8 +52,9 @@ struct MacAppearanceSettingsView: View {
 
     private func accentSwatch(hex: Int, nameKey: String) -> some View {
         let color = Color(hex: UInt(bitPattern: Int(hex)))
-        let isSelected = appState.accentColorHex == hex
+        let isSelected = AccentPreview.shared.shownHex(saved: appState.accentColorHex) == hex
         return Button {
+            AccentPreview.shared.clear()
             appState.accentColorHex = hex
         } label: {
             ZStack {

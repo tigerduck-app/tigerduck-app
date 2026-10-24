@@ -16,6 +16,7 @@ struct SettingsView: View {
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @Default(.pinTodayCoursesOnClassTable) private var pinTodayCoursesOnClassTable
+    @Default(.appAppearance) private var appearance
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -73,6 +74,7 @@ struct SettingsView: View {
                         ForEach(AppState.themeColors, id: \.hex) { theme in
                             Button {
                                 withAnimation(reduceMotion ? nil : .smoothSpring) {
+                                    AccentPreview.shared.clear()
                                     appState.accentColorHex = theme.hex
                                 }
                             } label: {
@@ -80,7 +82,7 @@ struct SettingsView: View {
                                     .fill(Color(hex: UInt(theme.hex)))
                                     .frame(width: 28, height: 28)
                                     .overlay {
-                                        if appState.accentColorHex == theme.hex {
+                                        if AccentPreview.shared.shownHex(saved: appState.accentColorHex) == theme.hex {
                                             Image(systemName: "checkmark")
                                                 .font(.caption.bold())
                                                 .foregroundStyle(.white)
@@ -89,8 +91,9 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(Text(String(localized: String.LocalizationValue(theme.nameKey))))
-                            .accessibilityAddTraits(appState.accentColorHex == theme.hex ? .isSelected : [])
+                            .accessibilityAddTraits(AccentPreview.shared.shownHex(saved: appState.accentColorHex) == theme.hex ? .isSelected : [])
                         }
+                        CustomAccentPicker(appState: appState, size: 28)
                     }
                 }
             }
@@ -99,6 +102,11 @@ struct SettingsView: View {
                 Picker(String(localized: "settings_visual_preset_label"), selection: $appState.visualPreset) {
                     ForEach(VisualPreset.allCases) { preset in
                         Text(preset.displayName).tag(preset)
+                    }
+                }
+                Picker(String(localized: "settings_color_theme"), selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Text(appearance.title).tag(appearance)
                     }
                 }
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $appState.showAbsoluteAssignmentTime)

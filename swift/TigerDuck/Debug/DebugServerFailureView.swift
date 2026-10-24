@@ -6,7 +6,7 @@ struct DebugServerFailureView: View {
 
     var body: some View {
         Form {
-            ForEach(ServerKind.allCases) { server in
+            ForEach(SimulatedServer.allCases) { server in
                 Section(server.label) {
                     Picker("Behaviour", selection: Binding(
                         get: { simulator.failure(for: server) },
@@ -18,12 +18,14 @@ struct DebugServerFailureView: View {
                     }
                     .pickerStyle(.menu)
 
-                    HStack {
-                        Image(systemName: server.icon)
-                            .foregroundStyle(statusColor(for: server))
-                        Text("Last status: \(statusText(for: server))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    if let tracked = server.tracked {
+                        HStack {
+                            Image(systemName: tracked.icon)
+                                .foregroundStyle(statusColor(for: tracked))
+                            Text("Last status: \(statusText(for: tracked))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }

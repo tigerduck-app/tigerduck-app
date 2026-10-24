@@ -295,7 +295,7 @@ final class ClassTableImportModel: Identifiable {
         return rows
     }
 
-    private static func semesterLabel(_ semester: String) -> String {
+    nonisolated static func semesterLabel(_ semester: String) -> String {
         String(semester.dropLast()) + "-" + String(semester.suffix(1))
     }
 
