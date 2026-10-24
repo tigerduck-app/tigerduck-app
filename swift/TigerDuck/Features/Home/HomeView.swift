@@ -52,21 +52,10 @@ struct HomeView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if viewModel.isEditingHome {
-                    if #available(iOS 26, *) {
-                        Button { showAddSection = true } label: {
-                            Image(systemName: "plus")
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(.primary)
-                                .frame(width: 28, height: 28)
-                                .glassEffect(.regular.interactive(), in: .circle)
-                        }
-                        .accessibilityLabel(Text("home_add_section_title"))
-                    } else {
-                        Button { showAddSection = true } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel(Text("home_add_section_title"))
+                    Button { showAddSection = true } label: {
+                        Image(systemName: "plus")
                     }
+                    .accessibilityLabel(Text("home_add_section_title"))
                     Button(String(localized: "action_done")) {
                         withAnimation(reduceMotion ? nil : .smoothSpring) {
                             finishSectionDrag()
