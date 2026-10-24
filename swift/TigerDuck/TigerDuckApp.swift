@@ -82,7 +82,7 @@ struct TigerDuckApp: App {
             ContentView()
                 .id(rootLanguageId)
                 .updateRequiredAlert()
-                .tint(appState.accentColor)
+                .tint(AccentPreview.shared.tint(saved: appState.accentColor))
                 .appAppearance()
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .environment(appState)
@@ -313,7 +313,7 @@ struct TigerDuckApp: App {
                 // Environments do not cross scene boundaries, so this window gets neither
                 // MacSettingsScene's tint nor the main window's; without this its links
                 // would use the system accent instead of the chosen one.
-                .tint(appState.accentColor)
+                .tint(AccentPreview.shared.tint(saved: appState.accentColor))
                 .appAppearance()
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)

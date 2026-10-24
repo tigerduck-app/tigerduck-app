@@ -74,14 +74,15 @@ struct SettingsView: View {
                         ForEach(AppState.themeColors, id: \.hex) { theme in
                             Button {
                                 withAnimation(reduceMotion ? nil : .smoothSpring) {
-                                    appState.chooseAccent(theme.hex)
+                                    AccentPreview.shared.clear()
+                                    appState.accentColorHex = theme.hex
                                 }
                             } label: {
                                 Circle()
                                     .fill(Color(hex: UInt(theme.hex)))
                                     .frame(width: 28, height: 28)
                                     .overlay {
-                                        if appState.shownAccentHex == theme.hex {
+                                        if AccentPreview.shared.shownHex(saved: appState.accentColorHex) == theme.hex {
                                             Image(systemName: "checkmark")
                                                 .font(.caption.bold())
                                                 .foregroundStyle(.white)
@@ -90,7 +91,7 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(Text(String(localized: String.LocalizationValue(theme.nameKey))))
-                            .accessibilityAddTraits(appState.shownAccentHex == theme.hex ? .isSelected : [])
+                            .accessibilityAddTraits(AccentPreview.shared.shownHex(saved: appState.accentColorHex) == theme.hex ? .isSelected : [])
                         }
                         CustomAccentPicker(appState: appState, size: 28)
                     }
