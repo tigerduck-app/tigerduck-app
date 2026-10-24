@@ -2,14 +2,13 @@ import SwiftUI
 
 struct WidgetGridView: View {
     @Binding var widgets: [WidgetItem]
-    @Binding var isEditing: Bool
+    let isEditing: Bool
     let dragContainerID: String
     var onRemove: ((WidgetItem) -> Void)? = nil
     var onTap: ((AppFeature) -> Void)? = nil
     var onAdd: (() -> Void)? = nil
     var onReorder: (() -> Void)? = nil
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeWidgetDrag: ReorderDragPayload?
     @State private var didReorder = false
 
@@ -72,12 +71,10 @@ struct WidgetGridView: View {
                     )
                 )
         } else {
-            // `scrollSafeTapAction` uses a real `Button`, which wins the first press on
-            // iOS 18 against the enclosing ScrollView; the edit long-press rides along as
-            // a `.simultaneousGesture` and never blocks it. See View+ScrollSafeGesture.
+            // A real `Button` wins the first press against the enclosing scroll view on
+            // iOS 18. See View+ScrollSafeGesture.
             card
                 .scrollSafeTapAction { onTap?(widget.feature) }
-                .longPressToEdit(reduceMotion: reduceMotion) { isEditing = true }
         }
     }
 

@@ -39,15 +39,8 @@ struct HomeView: View {
         let _ = AppClockState.shared.version
         return ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                HStack {
-                    Text(AppClock.now().greetingText())
-                        .font(TigerDuckTheme.Typography.title)
-                        .foregroundStyle(Color.textPrimary)
-                    Spacer()
-                    SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
-                }
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                .padding(.top, TigerDuckTheme.Spacing.md)
+                titleBar
+                    .padding(.top, TigerDuckTheme.Spacing.md)
 
                 if let reauthError = appState.ntustReauthErrorMessage {
                     NTUSTReauthErrorBanner(
@@ -76,12 +69,6 @@ struct HomeView: View {
                 )
             )
             .contentShape(Rectangle())
-            // A long-press anywhere in the scroll content enters edit mode. As a
-            // `.simultaneousGesture` it does not swallow the first tap on widgets and
-            // course cards on iOS 18. See View+ScrollSafeGesture.
-            .longPressToEdit(reduceMotion: reduceMotion) {
-                if !viewModel.isEditingHome { viewModel.isEditingHome = true }
-            }
         }
         .refreshable {
             // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
@@ -173,6 +160,27 @@ struct HomeView: View {
         .onDisappear {
             finishSectionDrag()
         }
+    }
+
+    private var titleBar: some View {
+        HStack {
+            Text(AppClock.now().greetingText())
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            HStack(spacing: TigerDuckTheme.Spacing.lg) {
+                SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
+                HeaderMenuButton(accessibilityLabel: String(localized: "class_table_more_actions")) {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) { viewModel.isEditingHome = true }
+                    } label: {
+                        Label(String(localized: "home_edit"), systemImage: "pencil")
+                    }
+                }
+                .disabled(viewModel.isEditingHome)
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
     @ViewBuilder
@@ -435,10 +443,7 @@ private struct HomeSectionView: View {
                             }
                         }
                     ),
-                    isEditing: Binding(
-                        get: { viewModel.isEditingHome },
-                        set: { viewModel.isEditingHome = $0 }
-                    ),
+                    isEditing: viewModel.isEditingHome,
                     dragContainerID: section.id,
                     onRemove: { widget in
                         withAnimation(reduceMotion ? nil : .smoothSpring) {
