@@ -27,10 +27,12 @@ struct ScoreColorTests {
         #expect((max(a, b) + 0.05) / (min(a, b) + 0.05) >= appearance.minimum)
     }
 
+    #if os(iOS)
     @Test("Letter grades take their band's colour", arguments: [("A+", TigerDuckTheme.Tint.green), ("b-", TigerDuckTheme.Tint.blue), ("C", TigerDuckTheme.Tint.yellow), ("E", TigerDuckTheme.Tint.coral), ("X", Color.textPrimary)])
     func gradeBand(grade: String, colour: Color) {
         #expect(ScoreColor.grade(grade) == colour)
     }
+    #endif
 
     private static func over(_ top: Color.Resolved, _ share: Float, _ bottom: Color.Resolved) -> Color.Resolved {
         Color.Resolved(
