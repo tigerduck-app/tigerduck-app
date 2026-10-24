@@ -1,4 +1,5 @@
 #if os(iOS)
+import Defaults
 import Foundation
 import Security
 import Testing
@@ -84,6 +85,54 @@ struct TLSPinEnforcementTests {
         reports.install(on: engine)
         #expect(await engine.resolveRefusal(host: Self.host, chain: try chain()) == false)
         #expect(reports.all.isEmpty)
+    }
+
+    @Test("A chain whose leaf and intermediates have no key the app reads gets no prompt")
+    func noReadableKeyNoPrompt() async throws {
+        let leaf = try #require(SecCertificateCreateWithData(nil, F.p521DER as CFData))
+        let rootSPKI = try #require(TLSSPKI.sha256Base64(of: F.testRoot))
+        let engine = engine(document: Self.movedPins(promptRoots: [rootSPKI]))
+        let reports = TLSPinReports()
+        reports.install(on: engine)
+        #expect(await engine.resolveRefusal(host: Self.host, chain: [leaf, F.testRoot]) == false)
+        #expect(reports.all.isEmpty)
+    }
+
+    @Test("A refetch that failed, as in a network blip, leaves the next refusal free to try again")
+    func aFailedRefreshIsTriedAgain() async throws {
+        let engine = engine(document: Self.movedPins(promptRoots: []))
+        let attempts = Counter()
+        engine.install(refresh: { await attempts.increment(); return false }, report: nil)
+        let chain = try chain()
+        _ = await engine.resolveRefusal(host: Self.host, chain: chain)
+        _ = await engine.resolveRefusal(host: Self.host, chain: chain)
+        #expect(await attempts.value == 2)
+    }
+
+    @Test("Before onboarding a refusal still fetches the document, and its pins let the sign-in through")
+    @MainActor
+    func aRefusalBeforeOnboardingFetches() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.hasCompletedOnboarding]
+            defer { Defaults[.hasCompletedOnboarding] = saved }
+            Defaults[.hasCompletedOnboarding] = false
+            let stale = TLSPinSet(
+                id: "ntust", domains: [.init(name: "ntust.edu.tw", includeSubdomains: true)],
+                pins: [F.unknownSPKI], expiresAt: .distantFuture
+            )
+            let engine = F.engine(builtIn: [stale], now: Self.date)
+            let server = TLSPinDocumentFetcherTests.Server()
+            server.body = F.envelope(F.payload(
+                serial: 101, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.secureSSLCASPKI])]
+            ))
+            engine.installAppHooks(fetcher: TLSPinDocumentFetcher(
+                engine: engine, send: { try server.answer($0) }, clock: { Self.date }
+            ))
+            let chain = try chain()
+
+            #expect(await engine.resolveRefusal(host: Self.host, chain: chain))
+            #expect(server.requests.count == 1)
+        }
     }
 
     @Test("A refusal fetches the document once per set per launch")
