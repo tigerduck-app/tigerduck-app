@@ -31,12 +31,7 @@ private struct PresetCardModifier: ViewModifier {
     func body(content: Content) -> some View {
         switch policy.cardSurface {
         case .glass:
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                )
+            content.glassCard(cornerRadius: cornerRadius)
         case .grouped:
             content
                 .background(
@@ -45,7 +40,7 @@ private struct PresetCardModifier: ViewModifier {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                        .strokeBorder(Color.textPrimary.opacity(0.08), lineWidth: 0.5)
                 )
         }
     }
@@ -76,7 +71,7 @@ private struct PresetChipModifier: ViewModifier {
                     if isSelected {
                         Capsule().fill(.tint)
                     } else {
-                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule().fill(Color.textPrimary.opacity(0.08))
                     }
                 }
         }
@@ -98,7 +93,7 @@ private struct PresetGroupedListContainerModifier: ViewModifier {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                        .strokeBorder(Color.textPrimary.opacity(0.08), lineWidth: 0.5)
                 )
         }
     }

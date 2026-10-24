@@ -83,7 +83,7 @@ struct TigerDuckApp: App {
                 .id(rootLanguageId)
                 .updateRequiredAlert()
                 .tint(AccentPreview.shared.tint(saved: appState.accentColor))
-                .preferredColorScheme(.dark)
+                .appAppearance()
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .environment(appState)
                 .onAppear {
@@ -239,6 +239,7 @@ struct TigerDuckApp: App {
                 .updateRequiredAlert()
                 .macUpdatePrompt()
                 .environment(appState)
+                .appAppearance()
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
@@ -299,6 +300,7 @@ struct TigerDuckApp: App {
         Settings {
             MacSettingsScene()
                 .environment(appState)
+                .appAppearance()
         }
 
         Window(String(localized: "settings_open_source_licenses"), id: MacLicensesView.windowID) {
@@ -312,6 +314,7 @@ struct TigerDuckApp: App {
                 // MacSettingsScene's tint nor the main window's; without this its links
                 // would use the system accent instead of the chosen one.
                 .tint(AccentPreview.shared.tint(saved: appState.accentColor))
+                .appAppearance()
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
                 ) { _ in

@@ -95,7 +95,7 @@ struct TimeSliderSection: View {
         HStack {
             Text(timeLabelString)
                 .font(.caption.bold())
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(Color.textPrimary.opacity(0.9))
                 .contentTransition(.numericText())
             Spacer()
         }
@@ -114,10 +114,10 @@ struct TimeSliderSection: View {
         VStack(spacing: 8) {
             Image(systemName: "checkmark.circle")
                 .font(.title)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(Color.textPrimary.opacity(0.4))
             Text(String(localized: "home_time_slider_no_courses"))
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Color.textPrimary.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)

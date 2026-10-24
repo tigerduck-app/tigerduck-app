@@ -117,7 +117,7 @@ struct WhatsNewClassTableSwitchDemo: View {
                 ForEach(0..<(Self.days * Self.periods), id: \.self) { slot in
                     if !covered.contains(slot) {
                         RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                            .fill(Color.cardSurface.opacity(0.15))
+                            .fill(Color.emptyCellFill)
                             .frame(width: width, height: height)
                             .offset(x: CGFloat(slot % Self.days) * (width + Self.gap),
                                     y: CGFloat(slot / Self.days) * (height + Self.gap))

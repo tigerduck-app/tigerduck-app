@@ -99,21 +99,21 @@ struct CourseTimeCard: View {
 
     private var timeRangeColor: Color {
         switch policy.courseColorUsage {
-        case .primarySurface: return .white.opacity(0.7)
+        case .primarySurface: return Color.textPrimary.opacity(0.7)
         case .smallAccent: return .secondary
         }
     }
 
     private var subtitleColor: Color {
         switch policy.courseColorUsage {
-        case .primarySurface: return .white.opacity(0.6)
+        case .primarySurface: return Color.textPrimary.opacity(0.6)
         case .smallAccent: return .secondary
         }
     }
 
     private func courseNameColor(for course: SDCourse) -> Color {
         switch policy.courseColorUsage {
-        case .primarySurface: return .white
+        case .primarySurface: return Color.textPrimary
         case .smallAccent: return .primary
         }
     }
@@ -191,7 +191,7 @@ private struct NeutralCardSurface<S: InsettableShape, InnerContent: View>: View 
         content()
             .background(Color(.secondarySystemGroupedBackground), in: shape)
             .overlay(
-                shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                shape.strokeBorder(Color.textPrimary.opacity(0.08), lineWidth: 0.5)
             )
     }
 }
