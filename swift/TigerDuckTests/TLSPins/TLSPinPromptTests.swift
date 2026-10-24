@@ -322,6 +322,26 @@ struct TLSPinPromptTests {
         }
     }
 
+    @Test("a window going inactive, then to the background, hands the prompt to an active one")
+    func anInactiveThenBackgroundedWindowHandsItOver() async throws {
+        let prompting = Prompting()
+        let phases = [Phase(), Phase()]
+        let windows = try phases.map { try Self.window(prompting, phase: $0) }
+        defer { windows.forEach { $0.isHidden = true } }
+        prompting.queue.report(Self.mismatch)
+        func showing() -> [Int] { windows.indices.filter { windows[$0].rootViewController?.presentedViewController != nil } }
+        try await waitUntil { showing().count == 1 }
+        let hidden = try #require(showing().first)
+
+        phases[hidden].value = .inactive
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(showing() == [hidden])
+        phases[hidden].value = .background
+        try await waitUntil { showing() == [1 - hidden] }
+        #expect(prompting.queue.prompt == Self.mismatch)
+        #expect(!prompting.isQuiet)
+    }
+
     @Test("a window whose scene goes to the background hands the prompt to an active one, with no Cancel")
     func aBackgroundedWindowHandsItOver() async throws {
         let prompting = Prompting()
