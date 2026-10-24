@@ -6,7 +6,6 @@ import Testing
 extension LibrarySignInTests {
     nonisolated static let failingModes: [SimulatedFailure] = [.timeout, .http500, .http401, .http403, .unreachable]
 
-    /// The wait each mode takes before it goes on, and the error it then throws.
     private static func expected(_ failure: SimulatedFailure) -> (waits: [Duration], error: URLError.Code?) {
         switch failure {
         case .none: ([], nil)
@@ -19,8 +18,6 @@ extension LibrarySignInTests {
         }
     }
 
-    /// Runs `body` with `failure` simulated for the library, ends the mode's wait, and returns
-    /// the waits it took and what it threw.
     private static func simulating(
         _ failure: SimulatedFailure, _ body: @escaping @MainActor @Sendable () async throws -> Void
     ) async throws -> (waits: [Duration], error: URLError.Code?) {
