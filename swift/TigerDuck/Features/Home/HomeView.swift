@@ -386,7 +386,6 @@ private struct HomeSectionView: View {
     let section: HomeSection
     let viewModel: HomeViewModel
     let appState: AppState
-    /// The Upcoming section outside edit mode: header, filter and each assignment as List rows.
     var asListRows = false
     var onFeatureTap: ((AppFeature) -> Void)? = nil
     var onOpenAssignment: (SDAssignment) -> Void = { _ in }
@@ -537,7 +536,6 @@ private struct HomeSectionView: View {
 }
 
 extension View {
-    /// A Home List row: no inset but the gap above it, no separator, and the page behind it.
     func homeListRow(top: CGFloat, bottom: CGFloat = 0, horizontal: CGFloat = 0) -> some View {
         listRowInsets(EdgeInsets(top: top, leading: horizontal, bottom: bottom, trailing: horizontal))
             .listRowBackground(Color.clear)
