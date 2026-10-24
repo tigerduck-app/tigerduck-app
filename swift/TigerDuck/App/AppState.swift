@@ -322,7 +322,6 @@ final class AppState {
         ("color_name_orange", 0xFF9500),
         ("color_name_green", 0x34C759),
         ("color_name_cyan", 0x5AC8FA),
-        ("color_name_indigo", 0x5856D6),
     ]
 
     var cloudSyncEnabled: Bool {

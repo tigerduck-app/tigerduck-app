@@ -225,6 +225,8 @@ final class TimeSliderViewModel {
     }
 
     private func interpolateX(for time: Date) -> CGFloat {
+        // Every tick calls this; one read keeps Observation's per-access cost out of the loop.
+        let anchors = anchors
         guard anchors.count >= 2 else { return 0 }
 
         if time <= anchors.first!.time {
@@ -276,6 +278,7 @@ final class TimeSliderViewModel {
     }
 
     private func interpolateTime(for x: CGFloat) -> Date {
+        let anchors = anchors
         guard anchors.count >= 2 else { return selectedTime }
 
         if x <= anchors.first!.x {

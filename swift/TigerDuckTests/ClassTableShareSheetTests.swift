@@ -108,6 +108,26 @@ struct ClassTableShareModelTests {
         #expect(model.code?.hasPrefix(ClassTableShareCode.prefix) == true)
     }
 
+    @Test("the copied link is the code shown, with the scheme and host in lower case and TAT's padding encoded")
+    func link() throws {
+        let model = Self.model()
+        let code = try #require(model.code)
+        #expect(model.link == "https://share.tigerduck.app/CLASSTABLE/" + code.dropFirst(ClassTableShareCode.prefix.count))
+
+        model.isTATCompatible = true
+        #expect(model.link == "https://ntust-tat.web.app/S/TAT21151B11300000CS1010001.134-EE1010002.256")
+
+        let short = ClassTableShareModel(
+            studentId: "b113",
+            terms: [Term(semester: "1151", courses: [SDCourse(courseNo: "CS1010001", courseName: "A", schedule: [1: ["3"]])])],
+            semesterLabel: Self.label
+        )
+        short.isTATCompatible = true
+        let link = try #require(short.link)
+        #expect(link == "https://ntust-tat.web.app/S/TAT21151B113%20%20%20%20%20CS1010001.13")
+        #expect(try ClassTableShareCode.decode(link) == ClassTableShareCode.decode(try #require(short.code)))
+    }
+
     @Test("the caption names the student ID and the term, or all semesters")
     func caption() {
         let model = Self.model()

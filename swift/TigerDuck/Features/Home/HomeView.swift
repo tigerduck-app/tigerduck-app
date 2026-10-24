@@ -37,52 +37,7 @@ struct HomeView: View {
 
     private var content: some View {
         let _ = AppClockState.shared.version
-        return ScrollView {
-            VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                HStack {
-                    Text(AppClock.now().greetingText())
-                        .font(TigerDuckTheme.Typography.title)
-                        .foregroundStyle(Color.textPrimary)
-                    Spacer()
-                    SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
-                }
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                .padding(.top, TigerDuckTheme.Spacing.md)
-
-                if let reauthError = appState.ntustReauthErrorMessage {
-                    NTUSTReauthErrorBanner(
-                        message: reauthError,
-                        onRetry: {
-                            appState.clearNTUSTReauthError()
-                            appState.presentNTUSTLogin()
-                        },
-                        onDismiss: { appState.clearNTUSTReauthError() }
-                    )
-                }
-
-                ForEach(visibleSections) { section in
-                    sectionCell(section)
-                }
-            }
-            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
-            .onDrop(
-                of: [.tigerDuckReorderPayload],
-                delegate: ReorderContainerDropDelegate(
-                    expectedKind: .homeSection,
-                    containerID: Self.sectionDragContainerID,
-                    activePayload: $activeSectionDrag,
-                    didReorder: $didReorderSection,
-                    onPersist: viewModel.saveSectionLayout
-                )
-            )
-            .contentShape(Rectangle())
-            // A long-press anywhere in the scroll content enters edit mode. As a
-            // `.simultaneousGesture` it does not swallow the first tap on widgets and
-            // course cards on iOS 18. See View+ScrollSafeGesture.
-            .longPressToEdit(reduceMotion: reduceMotion) {
-                if !viewModel.isEditingHome { viewModel.isEditingHome = true }
-            }
-        }
+        return page
         .refreshable {
             // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
             // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
@@ -97,21 +52,10 @@ struct HomeView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if viewModel.isEditingHome {
-                    if #available(iOS 26, *) {
-                        Button { showAddSection = true } label: {
-                            Image(systemName: "plus")
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(.primary)
-                                .frame(width: 28, height: 28)
-                                .glassEffect(.regular.interactive(), in: .circle)
-                        }
-                        .accessibilityLabel(Text("home_add_section_title"))
-                    } else {
-                        Button { showAddSection = true } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel(Text("home_add_section_title"))
+                    Button { showAddSection = true } label: {
+                        Image(systemName: "plus")
                     }
+                    .accessibilityLabel(Text("home_add_section_title"))
                     Button(String(localized: "action_done")) {
                         withAnimation(reduceMotion ? nil : .smoothSpring) {
                             finishSectionDrag()
@@ -175,6 +119,126 @@ struct HomeView: View {
         }
     }
 
+    /// Browsing is one List, so each assignment row takes the system's `.swipeActions`
+    /// (UpcomingAssignmentsView says why). Editing is a stack: in a List row SwiftUI hands every
+    /// `.draggable` to the List, which then drags the row's first widget wherever the press lands,
+    /// and `onMove` reorders only from the grip of the system edit mode.
+    @ViewBuilder
+    private var page: some View {
+        if viewModel.isEditingHome {
+            editingPage
+        } else {
+            sectionList
+        }
+    }
+
+    private var editingPage: some View {
+        ScrollView {
+            VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                titleBar
+                    .padding(.top, TigerDuckTheme.Spacing.md)
+
+                if let reauthError = appState.ntustReauthErrorMessage {
+                    reauthBanner(reauthError)
+                }
+
+                ForEach(visibleSections) { section in
+                    sectionCell(section)
+                }
+            }
+            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+            .onDrop(
+                of: [.tigerDuckReorderPayload],
+                delegate: ReorderContainerDropDelegate(
+                    expectedKind: .homeSection,
+                    containerID: Self.sectionDragContainerID,
+                    activePayload: $activeSectionDrag,
+                    didReorder: $didReorderSection,
+                    onPersist: viewModel.saveSectionLayout
+                )
+            )
+            .contentShape(Rectangle())
+        }
+    }
+
+    private var sectionList: some View {
+        List {
+            titleBar
+                .homeListRow(top: TigerDuckTheme.Spacing.md)
+
+            if let reauthError = appState.ntustReauthErrorMessage {
+                reauthBanner(reauthError)
+                    .homeListRow(top: TigerDuckTheme.Spacing.lg)
+            }
+
+            ForEach(visibleSections) { section in
+                if section.type == .upcomingAssignments {
+                    homeSection(section, asListRows: true)
+                } else {
+                    homeSection(section)
+                        .homeListRow(top: TigerDuckTheme.Spacing.lg)
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, 0)
+        .contentMargins(.bottom, TigerDuckTheme.Spacing.xxl, for: .scrollContent)
+        .animation(
+            UpcomingAssignmentsView.listChangeAnimation,
+            value: viewModel.upcomingAssignments.map(\.assignmentId)
+        )
+    }
+
+    private func reauthBanner(_ message: String) -> some View {
+        NTUSTReauthErrorBanner(
+            message: message,
+            onRetry: {
+                appState.clearNTUSTReauthError()
+                appState.presentNTUSTLogin()
+            },
+            onDismiss: { appState.clearNTUSTReauthError() }
+        )
+    }
+
+    private var titleBar: some View {
+        HStack {
+            Text(AppClock.now().greetingText())
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            HStack(spacing: TigerDuckTheme.Spacing.lg) {
+                SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
+                HeaderMenuButton(accessibilityLabel: String(localized: "home_more_actions")) {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) { viewModel.isEditingHome = true }
+                    } label: {
+                        Label(String(localized: "home_edit"), systemImage: "pencil")
+                    }
+                }
+                .disabled(viewModel.isEditingHome)
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    private func homeSection(_ section: HomeSection, asListRows: Bool = false) -> some View {
+        HomeSectionView(
+            section: section,
+            viewModel: viewModel,
+            appState: appState,
+            asListRows: asListRows,
+            onFeatureTap: { feature in
+                if feature.isImplemented {
+                    selectedFeature = feature
+                } else {
+                    showNotImplementedAlert = true
+                }
+            },
+            onOpenAssignment: { openAssignment($0) }
+        )
+    }
+
     @ViewBuilder
     private func sectionCell(_ section: HomeSection) -> some View {
         let content = sectionContent(section)
@@ -208,40 +272,28 @@ struct HomeView: View {
 
     @ViewBuilder
     private func sectionContent(_ section: HomeSection) -> some View {
-        HomeSectionView(
-            section: section,
-            viewModel: viewModel,
-            appState: appState,
-            onFeatureTap: { feature in
-                if feature.isImplemented {
-                    selectedFeature = feature
-                } else {
-                    showNotImplementedAlert = true
+        homeSection(section)
+            .overlay(alignment: .top) {
+                if viewModel.isEditingHome {
+                    SectionDragHandle()
                 }
-            },
-            onOpenAssignment: { openAssignment($0) }
-        )
-        .overlay(alignment: .top) {
-            if viewModel.isEditingHome {
-                SectionDragHandle()
             }
-        }
-        .overlay(alignment: .topTrailing) {
-            if viewModel.isEditingHome {
-                Button {
-                    withAnimation(reduceMotion ? nil : .smoothSpring) {
-                        viewModel.removeSection(section)
+            .overlay(alignment: .topTrailing) {
+                if viewModel.isEditingHome {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) {
+                            viewModel.removeSection(section)
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.white, .red)
+                            .font(.title3)
                     }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.white, .red)
-                        .font(.title3)
+                    .offset(x: 6, y: -6)
                 }
-                .offset(x: 6, y: -6)
             }
-        }
-        .wiggling(viewModel.isEditingHome)
-        .opacity(activeSectionDrag?.id == section.id ? 0.35 : 1)
+            .wiggling(viewModel.isEditingHome)
+            .opacity(activeSectionDrag?.id == section.id ? 0.35 : 1)
     }
 
     @ViewBuilder
@@ -334,64 +386,70 @@ private struct HomeSectionView: View {
     let section: HomeSection
     let viewModel: HomeViewModel
     let appState: AppState
+    var asListRows = false
     var onFeatureTap: ((AppFeature) -> Void)? = nil
     var onOpenAssignment: (SDAssignment) -> Void = { _ in }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @ViewBuilder
-    private var upcomingAssignmentsContent: some View {
-        VStack(spacing: TigerDuckTheme.Spacing.sm) {
-            Picker("", selection: Bindable(viewModel).assignmentFilter) {
-                ForEach(viewModel.availableAssignmentFilters, id: \.self) { filter in
-                    Text(filter.displayName).tag(filter)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .disabled(viewModel.isEditingHome)
-
-            switch appState.ntustProtectedAccessState(isEmpty: viewModel.upcomingAssignments.isEmpty) {
-            case .loginRequired:
-                LoginRequiredView(
-                    layout: .section,
-                    title: String(localized: "common_not_signed_in"),
-                    message: String(localized: "home_assignments_sign_in_required_message"),
-                    onPrimary: { appState.presentNTUSTLogin() }
-                )
-            case .empty:
-                EmptyStateView(
-                    icon: "checkmark.circle",
-                    title: String(localized: "home_assignments_all_good"),
-                    message: assignmentEmptyMessage
-                )
-            case .content:
-                UpcomingAssignmentsView(
-                    assignments: viewModel.upcomingAssignments,
-                    courses: viewModel.allCourses,
-                    filter: viewModel.assignmentFilter,
-                    showAbsoluteTime: appState.showAbsoluteAssignmentTime,
-                    onArchive: {
-                        viewModel.archiveAssignment($0)
-                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
-                    },
-                    onMarkComplete: {
-                        viewModel.markAssignmentAsLocallyCompleted($0)
-                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed")
-                    },
-                    onUnarchive: {
-                        viewModel.unarchiveAssignment($0)
-                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
-                    },
-                    onUndoComplete: {
-                        viewModel.undoLocallyCompleted($0)
-                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
-                    },
-                    onOpen: onOpenAssignment
-                )
-                .allowsHitTesting(!viewModel.isEditingHome)
+    private var filterPicker: some View {
+        Picker("", selection: Bindable(viewModel).assignmentFilter) {
+            ForEach(viewModel.availableAssignmentFilters, id: \.self) { filter in
+                Text(filter.displayName).tag(filter)
             }
         }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+        .disabled(viewModel.isEditingHome)
+    }
+
+    private var assignmentAccess: NTUSTProtectedAccessState {
+        appState.ntustProtectedAccessState(isEmpty: viewModel.upcomingAssignments.isEmpty)
+    }
+
+    @ViewBuilder
+    private var assignmentPlaceholder: some View {
+        if assignmentAccess == .loginRequired {
+            LoginRequiredView(
+                layout: .section,
+                title: String(localized: "common_not_signed_in"),
+                message: String(localized: "home_assignments_sign_in_required_message"),
+                onPrimary: { appState.presentNTUSTLogin() }
+            )
+        } else {
+            EmptyStateView(
+                icon: "checkmark.circle",
+                title: String(localized: "home_assignments_all_good"),
+                message: assignmentEmptyMessage
+            )
+        }
+    }
+
+    private var assignmentList: some View {
+        UpcomingAssignmentsView(
+            assignments: viewModel.upcomingAssignments,
+            courses: viewModel.allCourses,
+            filter: viewModel.assignmentFilter,
+            showAbsoluteTime: appState.showAbsoluteAssignmentTime,
+            asListRows: asListRows,
+            onArchive: {
+                viewModel.archiveAssignment($0)
+                appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
+            },
+            onMarkComplete: {
+                viewModel.markAssignmentAsLocallyCompleted($0)
+                appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed")
+            },
+            onUnarchive: {
+                viewModel.unarchiveAssignment($0)
+                appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+            },
+            onUndoComplete: {
+                viewModel.undoLocallyCompleted($0)
+                appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+            },
+            onOpen: onOpenAssignment
+        )
     }
 
     private var assignmentEmptyMessage: String {
@@ -406,6 +464,23 @@ private struct HomeSectionView: View {
     }
 
     var body: some View {
+        if asListRows {
+            SectionHeader(title: section.title)
+                .homeListRow(top: TigerDuckTheme.Spacing.lg)
+            filterPicker
+                .homeListRow(top: TigerDuckTheme.Spacing.sm)
+            if assignmentAccess == .content {
+                assignmentList
+            } else {
+                assignmentPlaceholder
+                    .homeListRow(top: TigerDuckTheme.Spacing.sm)
+            }
+        } else {
+            stackedBody
+        }
+    }
+
+    private var stackedBody: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             if section.type != .todayCourses {
                 SectionHeader(title: section.title)
@@ -422,7 +497,13 @@ private struct HomeSectionView: View {
                     }
                 )
             case .upcomingAssignments:
-                upcomingAssignmentsContent
+                filterPicker
+                if assignmentAccess == .content {
+                    assignmentList
+                        .allowsHitTesting(!viewModel.isEditingHome)
+                } else {
+                    assignmentPlaceholder
+                }
             case .quickWidgets, .custom:
                 WidgetGridView(
                     widgets: Binding(
@@ -435,10 +516,7 @@ private struct HomeSectionView: View {
                             }
                         }
                     ),
-                    isEditing: Binding(
-                        get: { viewModel.isEditingHome },
-                        set: { viewModel.isEditingHome = $0 }
-                    ),
+                    isEditing: viewModel.isEditingHome,
                     dragContainerID: section.id,
                     onRemove: { widget in
                         withAnimation(reduceMotion ? nil : .smoothSpring) {
@@ -454,5 +532,13 @@ private struct HomeSectionView: View {
                 )
             }
         }
+    }
+}
+
+extension View {
+    func homeListRow(top: CGFloat, bottom: CGFloat = 0, horizontal: CGFloat = 0) -> some View {
+        listRowInsets(EdgeInsets(top: top, leading: horizontal, bottom: bottom, trailing: horizontal))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 }

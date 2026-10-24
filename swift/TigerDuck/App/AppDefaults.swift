@@ -4,6 +4,7 @@ import Foundation
 extension BrowserPreference: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension MoodleOpenTarget: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
+extension AppAppearance: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 
 nonisolated extension Defaults.Keys {
     static let hasCompletedOnboarding = Key<Bool>(
@@ -70,6 +71,7 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.visualPreset,
         default: .default
     )
+    static let appAppearance = Key<AppAppearance>("appAppearance", default: .system)
     static let assignmentReminderOffsetsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.assignmentReminderOffsets
     )

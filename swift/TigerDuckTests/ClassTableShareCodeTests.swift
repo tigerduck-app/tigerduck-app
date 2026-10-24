@@ -221,16 +221,94 @@ struct ClassTableShareCodeTests {
         }
     }
 
-    @Test("other QR codes, look-alike hosts and the old tigerduck.app/T/ prefix are not share codes", arguments: [
+    private static let packed = "1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78"
+    private static let tatBody = "TAT21151B11300001CS1010001.267-EE1010002.13.5N-MA1010003"
+
+    @Test("our link and TAT's read in any case, with http, https or no scheme, a query, fragment or trailing slash, on any host, or as the code alone")
+    func lenientForms() throws {
+        let ours = try ClassTableShareCode.decode(ClassTableShareCode.prefix + Self.packed)
+        let lower = Self.packed.lowercased()
+        for text in [
+            "http://share.tigerduck.app/classtable/" + lower,
+            "share.tigerduck.app/CLASSTABLE/" + Self.packed,
+            "HTTPS://SHARE.TIGERDUCK.APP/CLASSTABLE/" + Self.packed + "/",
+            "https://share.tigerduck.app/classtable/" + lower + "?fbclid=IwAR0abc",
+            "https://share.tigerduck.app/CLASSTABLE/" + Self.packed + "/?from=mail#top",
+            "https://share.tigerduck.app/CLASSTABLE/" + Self.packed + "#",
+            "https://whatever.example.tld/" + Self.packed,
+            "https://whatever.example.tld/CLASSTABLE/" + lower + "/",
+            "whatever.example.tld/classtable/" + Self.packed + "?x=1",
+            "HTTPS://TIGERDUCK.APP/CLASSTABLE/" + Self.packed,
+            "HTTPS://SHARE.TIGERDUCK.APP.EXAMPLE.COM/CLASSTABLE/" + Self.packed,
+            "HTTPS://SHARE.TIGERDUCK.APP@EXAMPLE.COM/CLASSTABLE/" + Self.packed,
+            "HTTPS://SHARE.TIGERDUCK.APP:443/CLASSTABLE/" + Self.packed,
+            Self.packed,
+            " \n" + lower + "\t",
+        ] {
+            #expect(try ClassTableShareCode.decode(text) == ours, "\(text)")
+        }
+
+        let tat = try ClassTableShareCode.decode(ClassTableShareCode.tatPrefix + Self.tatBody)
+        for text in [
+            "https://ntust-tat.web.app/s/" + Self.tatBody.lowercased(),
+            "http://ntust-tat.web.app/s/" + Self.tatBody,
+            "ntust-tat.web.app/S/" + Self.tatBody + "/",
+            "https://ntust-tat.web.app/s/" + Self.tatBody + "?openExternalBrowser=1",
+            "https://whatever.example.tld/S/" + Self.tatBody,
+            "https://whatever.example.tld/" + Self.tatBody.lowercased(),
+            Self.tatBody,
+            " " + Self.tatBody.lowercased() + "\n",
+        ] {
+            #expect(try ClassTableShareCode.decode(text) == tat, "\(text)")
+        }
+
+        let padded = try ClassTableShareCode.decode("HTTPS://NTUST-TAT.WEB.APP/S/TAT2114HB113     GE1010001.6AB")
+        for text in [
+            "https://ntust-tat.web.app/s/TAT2114HB113%20%20%20%20%20GE1010001.6AB",
+            "https://whatever.example.tld/s/tat2114hb113%20%20%20%20%20ge1010001.6ab",
+            "TAT2114HB113%20%20%20%20%20GE1010001.6AB",
+        ] {
+            #expect(try ClassTableShareCode.decode(text) == padded, "\(text)")
+        }
+    }
+
+    @Test("our host and TAT's keep their errors in every form they read in")
+    func lenientFormsKeepErrors() {
+        let cases: [(String, ClassTableShareCodeError)] = [
+            ("share.tigerduck.app/friend/1abc", .unknownType),
+            ("http://share.tigerduck.app/friend/", .unknownType),
+            ("http://share.tigerduck.app/classtable/9", .unknownVersion),
+            ("share.tigerduck.app/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZA78", .checksumMismatch),
+            ("https://share.tigerduck.app/classtable/hello?x=1", .malformed),
+            ("http://share.tigerduck.app", .malformed),
+            ("http://ntust-tat.web.app/s/TAT2115", .malformed),
+            ("ntust-tat.web.app/s/tat31151b11300001cs1010001", .unknownVersion),
+        ]
+        for (text, error) in cases {
+            #expect(throws: error, "\(text)") { try ClassTableShareCode.decode(text) }
+        }
+    }
+
+    @Test("other QR codes, broken codes off our host and TAT's, and the old tigerduck.app/T/ prefix are not share codes", arguments: [
         "https://example.com/T/1.B11300001",
         "WIFI:S:home;T:WPA;P:secret;;",
         "",
         "HTTPS://TIGERDUCK.APP/T/1.B11300001.202610131405.1151.OMHDMNBQGQYDAMGUOGDLFDDULROWCYV6RYYFMACMBQAA.E2YUDIQ",
-        "HTTPS://TIGERDUCK.APP/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78",
-        "HTTPS://SHARE.TIGERDUCK.APP.EXAMPLE.COM/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78",
-        "HTTPS://SHARE.TIGERDUCK.APP@EXAMPLE.COM/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78",
-        "HTTPS://SHARE.TIGERDUCK.APP:443/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78",
-        "HTTP://SHARE.TIGERDUCK.APP/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78",
+        "https://example.com/",
+        "https://example.com/menu",
+        "hello world",
+        "100% sure",
+        "12345",
+        "1ABC",
+        "https://example.com/1ABC",
+        "https://example.com/CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZA78",
+        "https://example.com/S/TAT2115",
+        "TAT2115",
+        "TATTOO",
+        "TAT31151B11300001CS1010001",
+        "SHARE.TIGERDUCK.APP.EXAMPLE.COM/FRIEND/1ABC",
+        "ftp://share.tigerduck.app/friend/1abc",
+        "https://ntust-tat.web.app/",
     ])
     func notShareCodes(text: String) {
         #expect(throws: ClassTableShareCodeError.unknownPrefix) { try ClassTableShareCode.decode(text) }

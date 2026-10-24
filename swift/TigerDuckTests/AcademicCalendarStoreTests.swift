@@ -47,6 +47,28 @@ struct AcademicCalendarStoreTests {
         #expect(Defaults[.academicCalendarCache].isEmpty)
     }
 
+    @Test("the cached calendar follows each newly stored calendar")
+    func cachedFollowsStoredData() throws {
+        let savedCache = Defaults[.academicCalendarCache]
+        defer { Defaults[.academicCalendarCache] = savedCache }
+
+        let first = AcademicCalendar(revision: 1, terms: [], holidays: [])
+        let second = AcademicCalendar(
+            revision: 2,
+            terms: [SemesterTerm(code: "1151", start: Self.day("2026-09-07"), end: Self.day("2027-01-17"))],
+            holidays: []
+        )
+        Defaults[.academicCalendarCache] = try JSONEncoder().encode(first)
+        #expect(AcademicCalendar.cached == first)
+        #expect(AcademicCalendar.cached == first)
+
+        Defaults[.academicCalendarCache] = try JSONEncoder().encode(second)
+        #expect(AcademicCalendar.cached == second)
+
+        Defaults[.academicCalendarCache] = Data()
+        #expect(AcademicCalendar.cached == .empty)
+    }
+
     private static func withCleanHolidayDefaults(_ body: () -> Void) {
         let savedOverrides = Defaults[.holidayNotifyOverrides]
         let savedAwaiting = Defaults[.holidayOverridesAwaitingUpload]

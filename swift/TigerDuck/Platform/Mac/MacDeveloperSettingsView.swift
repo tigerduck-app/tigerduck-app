@@ -51,7 +51,8 @@ struct MacDeveloperSettingsView: View {
             }
 
             Section("Server failure simulation") {
-                ForEach(ServerKind.allCases) { server in
+                // The Mac app has no library page.
+                ForEach(SimulatedServer.allCases.filter { $0 != .library }) { server in
                     Picker(server.label, selection: Binding(
                         get: { ServerFailureSimulator.shared.failure(for: server) },
                         set: { ServerFailureSimulator.shared.failures[server] = $0 }

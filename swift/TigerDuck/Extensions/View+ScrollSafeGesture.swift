@@ -17,18 +17,6 @@ extension View {
         .buttonStyle(ScrollSafeButtonStyle(onPressChanged: onPressChanged))
     }
 
-    func longPressToEdit(
-        reduceMotion: Bool,
-        perform action: @escaping () -> Void
-    ) -> some View {
-        simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    withAnimation(reduceMotion ? nil : .smoothSpring) { action() }
-                }
-        )
-    }
-
     func simultaneousTapGesture(_ action: @escaping () -> Void) -> some View {
         simultaneousGesture(TapGesture().onEnded(action))
     }

@@ -159,11 +159,18 @@ table has exactly one code.
 
 ### Reading a share code
 
-A decoder trims surrounding whitespace, upper-cases the text, and reports the first of these that
-applies:
+A code is scanned, typed, pasted or opened as a link, so a decoder reads it leniently. It decodes
+percent-encoded characters (a pasted TAT link carries the spaces that pad a short student ID as
+`%20`), trims surrounding whitespace, upper-cases the text and drops a query or fragment from the
+first `?` or `#`, which no code holds. It takes `HTTPS://`, `HTTP://` or no scheme, and a `/`
+after the code. It then reports the first of these that applies:
 
-1. Neither the share host nor TAT's prefix below: not a share code, such as another app's QR
-   code. A scanner skips it without a message.
+1. Neither the share host nor TAT's prefix below: the last `/`-separated segment is read as our
+   packed content, what follows `CLASSTABLE/`, or, when it starts with `TAT`, as TAT's code after
+   its prefix. This takes the code alone or at the end of another host's link
+   (`https://example.com/CLASSTABLE/1...`, `https://example.com/S/TAT2...`). Short of a whole code
+   the text is not a share code, such as another app's QR code, and a scanner skips it without a
+   message: only the share host and TAT's name an error.
 2. On the share host, another type: a newer app's code.
 3. On the share host but no `CLASSTABLE/` type: malformed.
 4. A version from `2` to `9`: a newer version. Any other but `1`: malformed.

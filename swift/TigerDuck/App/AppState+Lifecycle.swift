@@ -9,6 +9,9 @@ extension AppState {
         CourseColorPickSeedMigration.runIfNeeded()
         StoredPasswordLatchRetryMigration.runIfNeeded()
         LibraryPasswordLatchRetryMigration.runIfNeeded()
+        if CustomAccentContrastMigration.runIfNeeded() {
+            accentColorHex = Defaults[.accentColorHex]
+        }
         #if os(iOS)
         BulletinPushOptOutMigration.runIfNeeded()
         if DefaultTabsPinMigration.runIfNeeded() {
