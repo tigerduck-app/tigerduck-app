@@ -13,16 +13,16 @@ struct LibrarySignInTests {
         var callerIsCurrent = true
     }
 
-    private static var watchEpoch: Int {
+    static var watchEpoch: Int {
         UserDefaults(suiteName: "group.org.ntust.app.TigerDuck")?.integer(forKey: "watchLibraryCredEpoch") ?? 0
     }
 
-    private static func answer() -> LibraryLoginData {
+    static func answer() -> LibraryLoginData {
         let expiry = Date().addingTimeInterval(86_400).timeIntervalSince1970 * 1000
         return LibraryLoginData(username: "", token: "token", expirationTimeStamp: Int64(expiry))
     }
 
-    private static func withStoredAccount(
+    static func withStoredAccount(
         username: String = "B1LIB" + UUID().uuidString.prefix(8),
         _ body: (MemoryKeychain) async throws -> Void
     ) async throws {
