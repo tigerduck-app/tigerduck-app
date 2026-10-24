@@ -18,7 +18,7 @@ ignore cancellation.
 
 - `LiveMailClient` (`swift/TigerDuck/Services/Mail/Transport/LiveMailClient.swift`) holds one IMAP
   connection for its lifetime; SMTP connects per send, and both verify TLS through
-  `MailTLSVerifier` (docs/decisions/0001-tls-pinning.md). Host, port and transport come from
+  `MailTLSVerifier` (docs/decisions/0025-remote-tls-pins.md). Host, port and transport come from
   `MailServerConfig` once, at `init`, so no configuration change moves a live connection; the
   DEBUG server override takes effect through a sign-out and a new client
   (docs/decisions/0007-dev-mail-server-override.md).
