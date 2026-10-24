@@ -83,6 +83,7 @@ struct TigerDuckApp: App {
             ContentView()
                 .id(rootLanguageId)
                 .updateRequiredAlert()
+                .tlsPinPrompt()
                 .tint(AccentPreview.shared.tint(saved: appState.accentColor))
                 .appAppearance()
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
