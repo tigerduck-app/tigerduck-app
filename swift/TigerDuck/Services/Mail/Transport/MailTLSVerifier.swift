@@ -3,27 +3,23 @@ import Foundation
 import Security
 import os
 
-/// Certificate check for the School Mail IMAP and SMTP connections. Same rules as
-/// `TLSPinningDelegate`: the system chain and hostname must pass, then some certificate's SPKI
-/// must be in the host's pin set; after the pin set expires, system trust alone decides
-/// (fail-soft, issue #92). A failure cannot be bypassed. The `SecTrust` evaluation below is the
-/// connection's only validation: a custom NIOSSL callback replaces all of BoringSSL's checks,
-/// hostname included, and on Darwin also the Security.framework callback NIOSSL installs;
-/// `.fullVerification` in `MailTransportSecurity` only keeps it from being skipped. Without the
-/// evaluation, any chain passes for any name. See docs/decisions/0001-tls-pinning.md.
+/// Certificate check for the School Mail IMAP and SMTP connections, by `TLSPinningDelegate`'s
+/// rules. A refused chain fails this connection at once; the next connect uses the pins the
+/// refresh it starts brings. The `SecTrust` evaluation is the connection's only validation: a
+/// custom NIOSSL callback replaces all of BoringSSL's checks, hostname included, and on Darwin
+/// also NIOSSL's Security.framework callback; `.fullVerification` in `MailTransportSecurity` only
+/// keeps it from being skipped. See docs/decisions/0025-remote-tls-pins.md.
 nonisolated enum MailTLSVerifier {
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.TLS")
 
-    /// - Parameter pinPolicy: test seam; `nil` reads `TLSPinningDelegate`'s table. Never pass
-    ///   `.notPinned` from production code — it exists only so tests can force the unpinned path.
-    /// - Note: Runs `SecTrustEvaluateWithError`, which can block; SwiftMail's custom
-    ///   verification callback (the only production caller, via `swiftMailVerifier`) already
-    ///   invokes this off the main thread, on the IMAP/SMTP connection's own NIO event loop.
+    /// `now` is the trust evaluation's date; the pins' expiry follows the engine's clock. Runs
+    /// `SecTrustEvaluateWithError`, which can block; SwiftMail's custom verification callback,
+    /// the only production caller, invokes this on the connection's own NIO event loop.
     static func verify(
         derChain: [[UInt8]],
         host: String,
         now: Date = Date(),
-        pinPolicy: TLSPinningDelegate.PinPolicy? = nil
+        engine: TLSPinEngine = .shared
     ) -> Bool {
         // NIOSSL hands the peer chain leaf-first (TLS wire order), and the order matters:
         // `SecTrustCreateWithCertificates` takes the first certificate as the leaf, so anything
@@ -52,22 +48,11 @@ nonisolated enum MailTLSVerifier {
             return false
         }
 
-        switch pinPolicy ?? TLSPinningDelegate.pinPolicy(forHost: host, now: now) {
-        case .notPinned:
-            return true
-        case .expired:
-            logger.fault("Mail TLS pins expired for \(host, privacy: .public); falling back to system trust")
-            return true
-        case .pinned(let pins):
-            let evaluated = (SecTrustCopyCertificateChain(trust) as? [SecCertificate]) ?? []
-            let matched = evaluated.contains { certificate in
-                TLSPinningDelegate.sha256SPKIBase64(of: certificate).map(pins.contains) ?? false
-            }
-            if !matched {
-                logger.error("Mail TLS pin mismatch for \(host, privacy: .public)")
-            }
-            return matched
-        }
+        let evaluated = (SecTrustCopyCertificateChain(trust) as? [SecCertificate]) ?? []
+        guard case .refused = engine.evaluate(host: host, chain: evaluated) else { return true }
+        logger.error("Mail TLS pin mismatch for \(host, privacy: .public)")
+        Task { _ = await engine.resolveRefusal(host: host, chain: evaluated) }
+        return false
     }
 }
 #endif

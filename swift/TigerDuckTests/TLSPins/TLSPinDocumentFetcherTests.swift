@@ -1,0 +1,87 @@
+import Foundation
+import Testing
+@testable import TigerDuck
+
+struct TLSPinDocumentFetcherTests {
+    typealias F = TLSPinFixtures
+
+    final class Server: @unchecked Sendable {
+        private let lock = NSLock()
+        private var log: [URLRequest] = []
+        var body = F.envelope(F.payload(serial: 100))
+        var status = 200
+        var failure: URLError?
+        var now = F.now
+        var applied = 0
+
+        var requests: [URLRequest] { lock.withLock { log } }
+
+        func answer(_ request: URLRequest) throws -> (Data, URLResponse) {
+            try lock.withLock {
+                log.append(request)
+                if let failure { throw failure }
+                let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+                return (body, response)
+            }
+        }
+    }
+
+    private func fetcher(_ server: Server, engine: TLSPinEngine = F.engine()) -> TLSPinDocumentFetcher {
+        TLSPinDocumentFetcher(
+            engine: engine,
+            send: { try server.answer($0) },
+            clock: { server.now },
+            onApplied: { server.applied += 1 }
+        )
+    }
+
+    @Test("The foreground fetch runs once, then again only after six hours")
+    func theForegroundFetchIsThrottled() async {
+        let server = Server()
+        let fetcher = fetcher(server)
+        await fetcher.fetchIfDue()
+        server.now = F.now.addingTimeInterval(6 * 60 * 60 - 1)
+        await fetcher.fetchIfDue()
+        #expect(server.requests.count == 1)
+        server.now = F.now.addingTimeInterval(6 * 60 * 60)
+        await fetcher.fetchIfDue()
+        #expect(server.requests.count == 2)
+        #expect(server.requests.first?.url == TLSPinDocumentFetcher.url)
+        #expect(server.requests.first?.timeoutInterval == 10)
+    }
+
+    @Test("A mismatch refresh skips every HTTP cache")
+    func theMismatchRefreshBypassesCaches() async throws {
+        let server = Server()
+        await fetcher(server).refetch()
+        let request = try #require(server.requests.first)
+        #expect(request.cachePolicy == .reloadIgnoringLocalCacheData)
+        #expect(request.value(forHTTPHeaderField: "Cache-Control") == "no-cache")
+    }
+
+    @Test("A new document is applied and forwarded; the same one again is not")
+    func onlyANewDocumentIsForwarded() async {
+        let server = Server()
+        let engine = F.engine()
+        let fetcher = fetcher(server, engine: engine)
+        await fetcher.refetch()
+        await fetcher.refetch()
+        #expect(server.applied == 1)
+        #expect(engine.storedEnvelope == server.body)
+    }
+
+    @Test("A failed fetch is silent and keeps the held document")
+    func failuresKeepWhatTheEngineHas() async {
+        let server = Server()
+        let engine = F.engine()
+        let held = F.envelope(F.payload(serial: 50))
+        engine.acceptDocument(held)
+        server.status = 503
+        await fetcher(server, engine: engine).refetch()
+        server.status = 200
+        server.failure = URLError(.timedOut)
+        await fetcher(server, engine: engine).refetch()
+        #expect(engine.storedEnvelope == held)
+        #expect(server.applied == 0)
+    }
+}
