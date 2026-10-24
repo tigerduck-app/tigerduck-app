@@ -16,7 +16,7 @@ struct TLSPinPromptTests {
         acceptedSPKIs: [F.unknownSPKI]
     )
 
-    static let styles: [UIUserInterfaceStyle] = [.light, .dark]
+    nonisolated static let styles: [UIUserInterfaceStyle] = [.light, .dark]
 
     @MainActor
     @Observable
