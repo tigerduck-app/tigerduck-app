@@ -160,6 +160,9 @@ enum LibraryService {
 
     static func requestToken(username: String, password: String, session: URLSession) async throws -> LibraryLoginData {
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.library)
+            #endif
             let url = URL(string: "\(baseURL)/passport/login")!
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -370,6 +373,9 @@ enum LibraryService {
     }
 
     static func requestQRCode(token: String, session: URLSession) async throws -> String {
+        #if DEBUG
+        try await ServerFailureSimulator.shared.check(.library)
+        #endif
         let url = URL(string: "\(baseURL)/virtual-code/generate")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

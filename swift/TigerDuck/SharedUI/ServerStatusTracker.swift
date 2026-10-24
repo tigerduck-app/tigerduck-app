@@ -72,7 +72,21 @@ final class ServerStatusTracker {
 }
 
 #if DEBUG
-enum SimulatedFailure: String, CaseIterable, Identifiable {
+/// The library stays out of `ServerKind`, whose cases each get a row in the status popover.
+enum SimulatedServer: String, CaseIterable, Identifiable {
+    case moodle
+    case courseSelection
+    case backend
+    case library
+
+    var id: String { rawValue }
+
+    var tracked: ServerKind? { ServerKind(rawValue: rawValue) }
+
+    var label: String { tracked?.label ?? "Library" }
+}
+
+nonisolated enum SimulatedFailure: String, CaseIterable, Identifiable {
     case none
     case timeout
     case http500
@@ -98,22 +112,25 @@ enum SimulatedFailure: String, CaseIterable, Identifiable {
 
 @Observable
 final class ServerFailureSimulator {
-    static let shared = ServerFailureSimulator()
+    static var shared: ServerFailureSimulator { sharedForTesting ?? live }
+    private static let live = ServerFailureSimulator()
+    @TaskLocal static var sharedForTesting: ServerFailureSimulator?
 
-    var failures: [ServerKind: SimulatedFailure] = [:]
+    var failures: [SimulatedServer: SimulatedFailure] = [:]
+    @ObservationIgnored var sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
 
-    func failure(for server: ServerKind) -> SimulatedFailure {
+    func failure(for server: SimulatedServer) -> SimulatedFailure {
         failures[server] ?? .none
     }
 
-    func check(_ server: ServerKind) async throws {
+    func check(_ server: SimulatedServer) async throws {
         let f = await MainActor.run { failure(for: server) }
         guard f != .none else { return }
         switch f {
         case .none:
             break
         case .timeout:
-            try await Task.sleep(for: .seconds(30))
+            try await sleep(.seconds(30))
             throw URLError(.timedOut)
         case .http500:
             throw URLError(.badServerResponse)
@@ -122,7 +139,7 @@ final class ServerFailureSimulator {
         case .http403:
             throw URLError(.noPermissionsToReadFile)
         case .slow:
-            try await Task.sleep(for: .seconds(10))
+            try await sleep(.seconds(10))
         case .unreachable:
             throw URLError(.cannotConnectToHost)
         }
