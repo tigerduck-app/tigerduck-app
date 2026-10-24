@@ -13,7 +13,6 @@ nonisolated enum PushServerConfig {
         return resolveServerURL(candidates: [DebugEndpointStore.currentOverride()] + debugEndpoints)
     }
 
-    /// The first candidate the override gate allows, normalized; production when none does.
     static func resolveServerURL(candidates: [String?]) -> URL {
         for case let raw? in candidates {
             if let url = URL(string: raw), isOverrideAllowed(url) {
