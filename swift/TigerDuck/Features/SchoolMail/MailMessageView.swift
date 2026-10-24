@@ -11,6 +11,7 @@ struct MailMessageView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var webHeight: CGFloat = 1
     @State private var pendingLinkTarget: MailLinkTarget?
     @State private var inAppURL: MailFileItem?
@@ -52,6 +53,7 @@ struct MailMessageView: View {
     var body: some View {
         page
         .background(Color.backgroundPrimary)
+        .onChange(of: colorScheme, initial: true) { _, scheme in viewModel.appearsLight = scheme == .light }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
         .environment(\.openURL, OpenURLAction { url in
