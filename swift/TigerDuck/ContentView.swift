@@ -30,6 +30,8 @@ private struct ClassTableImportHost: ViewModifier {
     /// The share sheet the scanner hands over, shown only once the scanner is gone, as the root
     /// presents both.
     @State private var shareAfterScanner: ClassTableShareModel?
+    /// The sheets shown here sit outside MainTabView's window reader.
+    @State private var hostWindow = HostWindow()
 
     func body(content: Content) -> some View {
         content
@@ -65,6 +67,8 @@ private struct ClassTableImportHost: ViewModifier {
                 guard importModel == nil else { return }
                 importModel = .live(authService: appState.authService)
             }
+            .readsHostWindow(into: hostWindow)
+            .environment(\.hostWindow, hostWindow)
     }
 
     /// False while the link waits: the import's sheet would close a sheet or alert open in a tab,

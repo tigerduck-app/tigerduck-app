@@ -112,7 +112,6 @@ struct ClassTableShareSheet: View {
     }
 }
 
-/// Shows a checkmark for a moment once the link is copied, in place of a message.
 private struct CopyLinkButton: View {
     let link: String?
     @State private var isCopied = false
