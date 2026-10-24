@@ -71,7 +71,11 @@ private struct TLSPinPromptHost: ViewModifier {
 }
 
 extension View {
-    func tlsPinPrompt(queue: TLSPinMismatchQueue = .shared, owner: TLSPinPromptOwner = .shared) -> some View {
+    func tlsPinPrompt() -> some View {
+        tlsPinPrompt(queue: .shared, owner: .shared)
+    }
+
+    func tlsPinPrompt(queue: TLSPinMismatchQueue, owner: TLSPinPromptOwner) -> some View {
         modifier(TLSPinPromptHost(queue: queue, owner: owner))
     }
 }
