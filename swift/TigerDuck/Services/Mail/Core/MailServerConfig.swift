@@ -60,7 +60,7 @@ nonisolated struct MailServerConfig: Equatable, Sendable {
     }
 
     static func isPinnedHost(_ host: String) -> Bool {
-        TLSPinningDelegate.pinPolicy(forHost: host) != .notPinned
+        TLSPinEngine.shared.policy(forHost: host) != .notPinned
     }
 }
 #endif

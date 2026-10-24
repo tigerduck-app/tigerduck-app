@@ -57,8 +57,10 @@ final class WatchSyncCoordinator: NSObject {
     ) {
         self.session = session
         self.sleep = sleep
-        self.republishCredentials = republishCredentials
-            ?? { WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed() }
+        self.republishCredentials = republishCredentials ?? {
+            WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed()
+            TLSPinWatchBroadcaster.shared.broadcast()
+        }
         self.isProtectedDataAvailable = isProtectedDataAvailable
             ?? { UIApplication.shared.isProtectedDataAvailable }
         self.notificationCenter = notificationCenter

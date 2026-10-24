@@ -1,6 +1,6 @@
 # 0001. Pin TLS public keys in code, failing soft after expiry
 
-Status: accepted
+Status: superseded by [0025](0025-remote-tls-pins.md)
 
 ## Context
 

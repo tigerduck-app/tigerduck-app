@@ -31,6 +31,7 @@ nonisolated enum AppConstants {
     static let holidayNotifyDidChange = Notification.Name("TigerDuck.holidayNotifyDidChange")
     static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
     static let accentColorDidChange = Notification.Name("TigerDuck.accentColorDidChange")
+    static let tlsPinAcceptanceDidChange = Notification.Name("TigerDuck.tlsPinAcceptanceDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
     /// Wraps a site-relative Moodle path in the envelope the Moodle Mobile app

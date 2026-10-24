@@ -125,24 +125,39 @@ extension ScheduleStore: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession,
                              didReceiveUserInfo userInfo: [String: Any]) {
-        Self.routeCredentialDict(userInfo, source: "userInfo")
+        Self.route(userInfo, source: "userInfo")
     }
 
     /// broadcaster prefers `sendMessage` when reachable because
     /// `transferUserInfo` is unreliable on paired simulators.
     nonisolated func session(_ session: WCSession,
                              didReceiveMessage message: [String: Any]) {
-        Self.routeCredentialDict(message, source: "message")
+        Self.route(message, source: "message")
     }
 
-    nonisolated private static func routeCredentialDict(_ dict: [String: Any], source: String) {
-        guard let kind = dict[WatchWireFormat.LibraryCredentialKey.kind] as? String,
-              kind == WatchWireFormat.UserInfoKind.libraryCredential,
-              let json = dict[WatchWireFormat.LibraryCredentialKey.payload] as? String
-        else {
-            WatchAppLogger.wc.notice("ignoring \(source, privacy: .public) with unknown kind")
+    nonisolated static func route(
+        _ dict: [String: Any],
+        source: String,
+        pinEngine: TLSPinEngine = .shared,
+        pinDefaults: UserDefaults = .standard
+    ) {
+        let kind = dict[WatchWireFormat.LibraryCredentialKey.kind] as? String
+        guard let json = dict[WatchWireFormat.LibraryCredentialKey.payload] as? String else {
+            WatchAppLogger.wc.notice("ignoring \(source, privacy: .public) with no payload")
             return
         }
+        switch kind {
+        case WatchWireFormat.UserInfoKind.libraryCredential:
+            routeCredential(json, source: source)
+        case WatchWireFormat.UserInfoKind.tlsPins:
+            let applied = WatchTLSPinPayload.apply(json: json, to: pinEngine, defaults: pinDefaults)
+            WatchAppLogger.wc.notice("TLS pin payload from=\(source, privacy: .public) applied=\(applied, privacy: .public)")
+        default:
+            WatchAppLogger.wc.notice("ignoring \(source, privacy: .public) with unknown kind")
+        }
+    }
+
+    nonisolated private static func routeCredential(_ json: String, source: String) {
         Task { @MainActor in
             do {
                 let payload = try WatchLibraryCredentialPayload.decode(json: json)
