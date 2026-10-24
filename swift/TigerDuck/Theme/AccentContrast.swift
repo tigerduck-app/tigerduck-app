@@ -3,16 +3,17 @@ import Foundation
 /// Keeps a custom accent readable: on the cards it is drawn on, and under the white marks drawn
 /// on it, such as checkmarks and prominent buttons. The presets keep their own tones.
 nonisolated enum AccentContrast {
-    /// `Color.cardSurface` over the black page; a test keeps the two in step.
+    /// `Color.cardSurface` over the dark and the light page; a test keeps them in step.
     static let cardHex = 0x181818
+    static let lightCardHex = 0xFCFCFD
     static let minimum = 3.0
 
-    /// The pick moved toward white until it reads on the cards, or toward black until white
-    /// marks on it read.
+    /// The pick moved toward white until it reads on the dark cards, or toward black until it
+    /// reads on the light ones, which are darker than the white marks drawn on it.
     static func readable(_ hex: Int) -> Int {
         let picked = hex & 0xFFFFFF
         if !readsOnCards(picked) { return firstMix(of: picked, toward: 0xFFFFFF, where: readsOnCards) }
-        if !whiteReads(on: picked) { return firstMix(of: picked, toward: 0x000000, where: whiteReads(on:)) }
+        if !readsOnLightCards(picked) { return firstMix(of: picked, toward: 0x000000, where: readsOnLightCards) }
         return picked
     }
 
@@ -30,6 +31,10 @@ nonisolated enum AccentContrast {
 
     private static func readsOnCards(_ hex: Int) -> Bool {
         contrast(hex, cardHex) >= minimum
+    }
+
+    private static func readsOnLightCards(_ hex: Int) -> Bool {
+        contrast(hex, lightCardHex) >= minimum
     }
 
     private static func contrast(_ first: Int, _ second: Int) -> Double {
