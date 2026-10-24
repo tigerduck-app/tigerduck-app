@@ -5,22 +5,21 @@ import Foundation
 nonisolated enum PushServerConfig {
 
     static func resolveServerURL() -> URL {
-        if let raw = DebugEndpointStore.currentOverride(),
-           let url = URL(string: raw),
-           isOverrideAllowed(url) {
-            return normalize(url)
-        }
         #if DEBUG
-        if let override = Defaults[.pushServerURLOverride],
-           !override.isEmpty,
-           let url = URL(string: override),
-           isOverrideAllowed(url) {
-            return normalize(url)
-        }
-        if let url = readDebugServerURL() {
-            return normalize(url)
-        }
+        let debugEndpoints = [Defaults[.pushServerURLOverride], secretsPlistDict()?["DebugServerURL"] as? String]
+        #else
+        let debugEndpoints: [String?] = []
         #endif
+        return resolveServerURL(candidates: [DebugEndpointStore.currentOverride()] + debugEndpoints)
+    }
+
+    /// The first candidate the override gate allows, normalized; production when none does.
+    static func resolveServerURL(candidates: [String?]) -> URL {
+        for case let raw? in candidates {
+            if let url = URL(string: raw), isOverrideAllowed(url) {
+                return normalize(url)
+            }
+        }
         return AppConstants.productionPushServerURL
     }
 
@@ -135,18 +134,6 @@ nonisolated enum PushServerConfig {
         guard host.withCString({ inet_pton(AF_INET6, $0, &address) }) == 1 else { return nil }
         return withUnsafeBytes(of: &address) { Array($0) }
     }
-
-    #if DEBUG
-    private static func readDebugServerURL() -> URL? {
-        guard let dict = secretsPlistDict(),
-              let raw = dict["DebugServerURL"] as? String,
-              !raw.isEmpty,
-              let url = URL(string: raw),
-              isOverrideAllowed(url)
-        else { return nil }
-        return url
-    }
-    #endif
 
     static func secretsPlistDict() -> NSDictionary? {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist") else {
