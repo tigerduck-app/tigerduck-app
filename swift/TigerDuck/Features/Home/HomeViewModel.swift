@@ -266,6 +266,17 @@ final class HomeViewModel {
         saveSectionLayout()
     }
 
+    /// Applies a List move made among the `shown` sections. A section the page hides, such as
+    /// Today's courses outside the term, keeps its place.
+    func moveSections(shown: [HomeSection], from source: IndexSet, to destination: Int) {
+        var reordered = shown
+        reordered.move(fromOffsets: source, toOffset: destination)
+        let shownIDs = Set(shown.map(\.id))
+        var next = reordered.makeIterator()
+        sections = sections.map { shownIDs.contains($0.id) ? next.next() ?? $0 : $0 }
+        saveSectionLayout()
+    }
+
     func addSection(type: HomeSection.HomeSectionType, title: String) {
         let section = HomeSection(
             id: UUID().uuidString,
