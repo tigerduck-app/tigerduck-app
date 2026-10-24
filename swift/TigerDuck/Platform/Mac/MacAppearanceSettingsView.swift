@@ -1,12 +1,22 @@
 #if os(macOS)
+import Defaults
 import SwiftUI
 
 struct MacAppearanceSettingsView: View {
     @Environment(AppState.self) private var appState
+    @Default(.appAppearance) private var appearance
     @State private var isConfirmingReassign = false
 
     var body: some View {
         Form {
+            Section {
+                Picker(String(localized: "settings_color_theme"), selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Text(appearance.title).tag(appearance)
+                    }
+                }
+            }
+
             Section(String(localized: "settings_accent_color")) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
                     ForEach(AppState.themeColors, id: \.hex) { entry in
