@@ -96,11 +96,17 @@ struct CustomAccentPicker: View {
                     picks.cancel()
                 }
             }
-            // A preset chosen meanwhile is where the picker opens next, so opening it saves
-            // nothing and the last custom colour can be picked again.
-            .onChange(of: appState.accentColorHex) { _, saved in
-                if !preview.isCustom(saved: saved) { picked = Color(hex: UInt(saved & 0xFFFFFF)) }
-            }
+            // A preset chosen meanwhile, the saved one included, which clears the preview but
+            // saves nothing new, is where the picker opens next: opening it saves nothing, and
+            // the last custom colour can be picked again.
+            .onChange(of: appState.accentColorHex) { followPreset() }
+            .onChange(of: preview.hex) { followPreset() }
             .onDisappear { picks.flush() }
+    }
+
+    private func followPreset() {
+        let saved = appState.accentColorHex
+        guard preview.hex == nil, !preview.isCustom(saved: saved) else { return }
+        picked = Color(hex: UInt(saved & 0xFFFFFF))
     }
 }
