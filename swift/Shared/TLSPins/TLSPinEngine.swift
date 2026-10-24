@@ -190,7 +190,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
             return (promptEligible(setID: setID, host: host, chain: chain, anchor: anchor, in: state), self.report)
         }
         if let mismatch {
-            logger.error("TLS pin mismatch for \(host, privacy: .public) (set \(setID, privacy: .public)); queued a prompt")
+            logger.error("TLS pin mismatch for \(host, privacy: .public) (set \(setID, privacy: .public)); eligible for a prompt")
             report?(mismatch)
         } else {
             logger.error("TLS pin mismatch for \(host, privacy: .public) (set \(setID, privacy: .public)); refused with no prompt")
