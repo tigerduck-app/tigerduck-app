@@ -50,6 +50,29 @@ struct TLSPinDocumentFetcherTests {
         #expect(server.requests.first?.timeoutInterval == 10)
     }
 
+    @Test("A failed foreground fetch does not hold back the next one")
+    func aFailureDoesNotThrottle() async {
+        let server = Server()
+        server.failure = URLError(.notConnectedToInternet)
+        let fetcher = fetcher(server)
+        await fetcher.fetchIfDue()
+        server.failure = nil
+        server.status = 503
+        await fetcher.fetchIfDue()
+        server.status = 200
+        await fetcher.fetchIfDue()
+        await fetcher.fetchIfDue()
+        #expect(server.requests.count == 3)
+        #expect(server.applied == 1)
+    }
+
+    @Test("The fetch session gives up on a trickling server")
+    func theSessionBoundsTheWholeFetch() {
+        let config = TLSPinDocumentFetcher.session.configuration
+        #expect(config.timeoutIntervalForRequest == 10)
+        #expect(config.timeoutIntervalForResource == 15)
+    }
+
     @Test("A mismatch refresh skips every HTTP cache")
     func theMismatchRefreshBypassesCaches() async throws {
         let server = Server()

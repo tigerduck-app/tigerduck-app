@@ -16,9 +16,11 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
         #endif
     })
 
-    private static let session: URLSession = {
+    /// A pinned handshake waits on the refetch, so a server that trickles bytes must not hold it.
+    static let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 15
         return URLSession(configuration: config)
     }()
 
@@ -42,20 +44,18 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
         self.onApplied = onApplied
     }
 
-    /// At the first foreground of a launch, then at most every six hours.
+    /// At the first foreground of a launch, then at most every six hours after a fetch that got an
+    /// answer; after a failure the next foreground tries again.
     func fetchIfDue() async {
         let due = lock.withLock {
-            let now = clock()
-            if let lastFetch, now.timeIntervalSince(lastFetch) < Self.interval { return false }
-            lastFetch = now
-            return true
+            guard let lastFetch else { return true }
+            return clock().timeIntervalSince(lastFetch) >= Self.interval
         }
         if due { await fetch(bypassingCache: false) }
     }
 
     /// After a pin mismatch, past every HTTP cache.
     func refetch() async {
-        lock.withLock { lastFetch = clock() }
         await fetch(bypassingCache: true)
     }
 
@@ -74,6 +74,7 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
                 logger.error("TLS pin document fetch answered \((response as? HTTPURLResponse)?.statusCode ?? 0, privacy: .public)")
                 return
             }
+            lock.withLock { lastFetch = clock() }
             if engine.acceptDocument(data) == .applied { onApplied() }
         } catch {
             logger.error("TLS pin document fetch failed: \(error.localizedDescription, privacy: .private)")
