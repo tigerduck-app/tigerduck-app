@@ -139,6 +139,7 @@ struct TLSPinPromptSheet: View {
         .buttonBorderShape(.capsule)
         .padding(.horizontal, TigerDuckTheme.Spacing.xl)
         .padding(.vertical, TigerDuckTheme.Spacing.md)
+        .background(.bar)
     }
 
     private var cancelButton: some View {
