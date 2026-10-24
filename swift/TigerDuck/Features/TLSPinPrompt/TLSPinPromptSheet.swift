@@ -10,6 +10,7 @@ struct TLSPinPromptSheet: View {
     @State private var showsDetails = false
     @State private var showsCertificates = false
     @ScaledMetric(relativeTo: .title) private var badgeSize: CGFloat = 60
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
     @State private var detent: PresentationDetent = .medium
     #endif
@@ -27,16 +28,18 @@ struct TLSPinPromptSheet: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
             }
             .scrollBounceBehavior(.basedOnSize)
-            .safeAreaInset(edge: .bottom) { buttons }
             .navigationDestination(isPresented: $showsCertificates) {
-                TLSCertificateList(prompt: prompt)
+                TLSCertificateList(prompt: prompt) { showsCertificates = false }
             }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
+        // On the stack, so the certificate list keeps both answers too.
+        .safeAreaInset(edge: .bottom) { buttons }
         #if os(iOS)
         .presentationDetents([.medium, .large], selection: $detent)
+        .onAppear { if dynamicTypeSize.isAccessibilitySize { detent = .large } }
         .onChange(of: showsDetails || showsCertificates) { _, opened in
             if opened { detent = .large }
         }
@@ -119,17 +122,34 @@ struct TLSPinPromptSheet: View {
     }
 
     private var buttons: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            Button(action: onCancel) { buttonLabel(String(localized: "action_cancel")) }
-                .promptButtonStyle(prominent: false)
-                .keyboardShortcut(.cancelAction)
-            Button(action: onContinue) { buttonLabel(String(localized: "action_continue")) }
-                .promptButtonStyle(prominent: true)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    continueButton
+                    cancelButton
+                }
+            } else {
+                HStack(spacing: TigerDuckTheme.Spacing.md) {
+                    cancelButton
+                    continueButton
+                }
+            }
         }
         .controlSize(.large)
         .buttonBorderShape(.capsule)
         .padding(.horizontal, TigerDuckTheme.Spacing.xl)
         .padding(.vertical, TigerDuckTheme.Spacing.md)
+    }
+
+    private var cancelButton: some View {
+        Button(action: onCancel) { buttonLabel(String(localized: "action_cancel")) }
+            .promptButtonStyle(prominent: false)
+            .keyboardShortcut(.cancelAction)
+    }
+
+    private var continueButton: some View {
+        Button(action: onContinue) { buttonLabel(String(localized: "action_continue")) }
+            .promptButtonStyle(prominent: true)
     }
 
     private func buttonLabel(_ title: String) -> some View {
@@ -142,6 +162,7 @@ struct TLSPinPromptSheet: View {
 /// One section per served certificate, leaf first: its name, issuer, validity and fingerprint.
 private struct TLSCertificateList: View {
     let prompt: TLSPinMismatch
+    let onBack: () -> Void
 
     var body: some View {
         Form {
@@ -165,11 +186,18 @@ private struct TLSCertificateList: View {
         }
         .formStyle(.grouped)
         #if os(macOS)
-        // A Mac sheet has no title bar to show the navigation title in.
+        // A Mac sheet has no title bar for the navigation title or a back button.
         .safeAreaInset(edge: .top) {
             Text(String(localized: "tls_certificate_list_title"))
                 .font(.headline)
-                .padding(.top, TigerDuckTheme.Spacing.lg)
+                .frame(maxWidth: .infinity)
+                .overlay(alignment: .leading) {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.backward")
+                    }
+                    .accessibilityLabel(String(localized: "action_back"))
+                }
+                .padding([.top, .horizontal], TigerDuckTheme.Spacing.lg)
         }
         #endif
         .navigationTitle(String(localized: "tls_certificate_list_title"))
