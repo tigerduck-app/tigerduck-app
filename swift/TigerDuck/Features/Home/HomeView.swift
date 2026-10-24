@@ -220,7 +220,7 @@ struct HomeView: View {
             Spacer()
             HStack(spacing: TigerDuckTheme.Spacing.lg) {
                 SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
-                HeaderMenuButton(accessibilityLabel: String(localized: "class_table_more_actions")) {
+                HeaderMenuButton(accessibilityLabel: String(localized: "home_more_actions")) {
                     Button {
                         withAnimation(reduceMotion ? nil : .smoothSpring) { viewModel.isEditingHome = true }
                     } label: {
