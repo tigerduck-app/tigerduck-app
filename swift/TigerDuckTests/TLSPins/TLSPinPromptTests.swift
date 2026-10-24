@@ -1,0 +1,237 @@
+#if os(iOS)
+import SwiftUI
+import Testing
+import UIKit
+@testable import TigerDuck
+
+@MainActor
+@Suite(.serialized)
+struct TLSPinPromptTests {
+    typealias F = TLSPinFixtures
+
+    static let mismatch = TLSPinMismatch(
+        setID: "library", host: "api.lib.ntust.edu.tw", domains: ["api.lib.ntust.edu.tw"],
+        issuerOrganization: "Sectigo Limited",
+        certificates: TLSPinningDelegateTests.libraryChain.map { TLSCertificateSummary(der: Data($0)) },
+        acceptedSPKIs: [F.unknownSPKI]
+    )
+
+    static let styles: [UIUserInterfaceStyle] = [.light, .dark]
+
+    @MainActor
+    @Observable
+    final class Prompting {
+        @ObservationIgnored let engine = F.engine()
+        @ObservationIgnored let defaults = F.defaults()
+        @ObservationIgnored let owner = TLSPinPromptOwner()
+        @ObservationIgnored var continued = 0
+        @ObservationIgnored private(set) var queue: TLSPinMismatchQueue!
+        var showsOtherSheet = false
+
+        init() {
+            queue = TLSPinMismatchQueue(
+                engine: engine, defaults: defaults, clock: { F.now }, afterContinue: { [unowned self] in continued += 1 }
+            )
+            queue.isForeground = true
+        }
+
+        var isQuiet: Bool { defaults.dictionary(forKey: "tlsPinPromptQuietUntil")?["library"] != nil }
+    }
+
+    /// A page under the prompt, with a sheet of its own as a tab has.
+    private struct Page: View {
+        @Bindable var prompting: Prompting
+
+        var body: some View {
+            Color.clear.sheet(isPresented: $prompting.showsOtherSheet) { Text(verbatim: "Other") }
+        }
+    }
+
+    static func window(
+        _ prompting: Prompting, style: UIUserInterfaceStyle = .light, height: CGFloat = 874
+    ) throws -> UIWindow {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: height)
+        window.overrideUserInterfaceStyle = style
+        window.rootViewController = UIHostingController(rootView: Page(prompting: prompting)
+            .tlsPinPrompt(queue: prompting.queue, owner: prompting.owner)
+            .environment(\.scenePhase, .active))
+        window.makeKeyAndVisible()
+        return window
+    }
+
+    /// The window's presented sheet once it shows the prompt's title.
+    static func shownSheet(in window: UIWindow) async throws -> UIView {
+        let root = try #require(window.rootViewController)
+        let title = String(localized: "tls_pin_mismatch_title")
+        try await waitUntil {
+            root.presentedViewController.map { accessibilityElement(labeled: title, in: $0.view) != nil } == true
+        }
+        return try #require(root.presentedViewController?.view)
+    }
+
+    static func activate(_ label: String, in view: UIView) async throws {
+        try await waitUntil { accessibilityElement(labeled: label, in: view) != nil }
+        #expect(try #require(accessibilityElement(labeled: label, in: view)).accessibilityActivate())
+    }
+
+    static var details: String {
+        String(format: String(localized: "tls_pin_mismatch_details"), mismatch.host, mismatch.host)
+    }
+
+    @Test("the collapsed sheet has one heading, the host and its issuer, and hides the details", arguments: styles)
+    func collapsed(style: UIUserInterfaceStyle) async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            let window = try Self.window(prompting, style: style)
+            defer { window.isHidden = true }
+            prompting.queue.report(Self.mismatch)
+            let sheet = try await Self.shownSheet(in: window)
+
+            let labels = exposedAccessibilityLabels(in: sheet)
+            #expect(labels.contains(String(localized: "tls_pin_mismatch_message")))
+            #expect(labels.contains("api.lib.ntust.edu.tw"))
+            #expect(labels.contains(String(format: String(localized: "tls_pin_mismatch_issuer"), "Sectigo Limited")))
+            #expect(labels.contains(String(localized: "tls_pin_mismatch_show_details")))
+            #expect(!labels.contains(Self.details))
+            let headings = exposedAccessibilityElements(in: sheet).filter { $0.accessibilityTraits.contains(.header) }
+            #expect(Set(headings.compactMap(\.accessibilityLabel)) == [String(localized: "tls_pin_mismatch_title")])
+            for button in [String(localized: "action_cancel"), String(localized: "action_continue")] {
+                let element = try #require(accessibilityElement(labeled: button, in: sheet))
+                #expect(element.accessibilityTraits.contains(.button))
+            }
+        }
+    }
+
+    @Test("Details expands in place to the explanation and View certificate", arguments: styles)
+    func expanded(style: UIUserInterfaceStyle) async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            let window = try Self.window(prompting, style: style)
+            defer { window.isHidden = true }
+            prompting.queue.report(Self.mismatch)
+            let sheet = try await Self.shownSheet(in: window)
+
+            try await Self.activate(String(localized: "tls_pin_mismatch_show_details"), in: sheet)
+            try await waitUntil { accessibilityElement(labeled: Self.details, in: sheet) != nil }
+            #expect(accessibilityElement(labeled: String(localized: "tls_pin_mismatch_view_certificate"), in: sheet) != nil)
+            #expect(window.rootViewController?.presentedViewController?.view === sheet)
+        }
+    }
+
+    @Test("View certificate lists each served certificate with its fingerprint as text", arguments: styles)
+    func certificateList(style: UIUserInterfaceStyle) async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            // Tall enough that the list builds every section's rows.
+            let window = try Self.window(prompting, style: style, height: 1600)
+            defer { window.isHidden = true }
+            prompting.queue.report(Self.mismatch)
+            let sheet = try await Self.shownSheet(in: window)
+
+            try await Self.activate(String(localized: "tls_pin_mismatch_show_details"), in: sheet)
+            try await Self.activate(String(localized: "tls_pin_mismatch_view_certificate"), in: sheet)
+            let root = String(localized: "tls_certificate_root")
+            try await waitUntil { accessibilityElement(labeled: root, in: sheet) != nil }
+
+            let texts = exposedAccessibilityTexts(in: sheet)
+            #expect(texts.contains("api.lib.ntust.edu.tw"))
+            #expect(texts.contains(String(localized: "tls_certificate_intermediate")))
+            for certificate in Self.mismatch.certificates {
+                #expect(texts.contains { $0.contains(certificate.name) })
+                #expect(texts.contains { $0.contains(certificate.sha256Fingerprint) })
+                let notBefore = try #require(certificate.notBefore), notAfter = try #require(certificate.notAfter)
+                #expect(texts.contains { $0.contains("\(notBefore.fullDateString) – \(notAfter.fullDateString)") })
+            }
+        }
+    }
+
+    @Test("Continue accepts the chain, refreshes and closes the sheet")
+    func continueAccepts() async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            let window = try Self.window(prompting)
+            defer { window.isHidden = true }
+            prompting.queue.report(Self.mismatch)
+            let sheet = try await Self.shownSheet(in: window)
+
+            try await Self.activate(String(localized: "action_continue"), in: sheet)
+            try await waitUntil { window.rootViewController?.presentedViewController == nil }
+            #expect(prompting.queue.prompt == nil)
+            #expect(prompting.engine.acceptances.map(\.setID) == ["library"])
+            #expect(prompting.continued == 1)
+            #expect(!prompting.isQuiet)
+        }
+    }
+
+    @Test("Cancel stores nothing, starts the quiet hour and closes the sheet")
+    func cancelDeclines() async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            let window = try Self.window(prompting)
+            defer { window.isHidden = true }
+            prompting.queue.report(Self.mismatch)
+            let sheet = try await Self.shownSheet(in: window)
+
+            try await Self.activate(String(localized: "action_cancel"), in: sheet)
+            try await waitUntil { window.rootViewController?.presentedViewController == nil }
+            #expect(prompting.queue.prompt == nil)
+            #expect(prompting.engine.acceptances.isEmpty)
+            #expect(prompting.continued == 0)
+            #expect(prompting.isQuiet)
+        }
+    }
+
+    @Test("closing the sheet outside its buttons, as a swipe down does, is a Cancel")
+    func swipeDismissCancels() async throws {
+        let prompting = Prompting()
+        let window = try Self.window(prompting)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        prompting.queue.report(Self.mismatch)
+        try await waitUntil { root.presentedViewController != nil }
+
+        root.dismiss(animated: true)
+        try await waitUntil { prompting.queue.prompt == nil }
+        #expect(prompting.engine.acceptances.isEmpty)
+        #expect(prompting.continued == 0)
+        #expect(prompting.isQuiet)
+    }
+
+    @Test("with two windows open, one shows the prompt")
+    func oneWindowShowsIt() async throws {
+        let prompting = Prompting()
+        let windows = try [Self.window(prompting), Self.window(prompting)]
+        defer { windows.forEach { $0.isHidden = true } }
+        prompting.queue.report(Self.mismatch)
+
+        func showing() -> Int { windows.filter { $0.rootViewController?.presentedViewController != nil }.count }
+        try await waitUntil { showing() > 0 }
+        try await Task.sleep(for: .seconds(1))
+        #expect(showing() == 1)
+    }
+
+    @Test("the prompt waits for a sheet already up in the window, which it would close")
+    func waitsForAnOpenSheet() async throws {
+        let prompting = Prompting()
+        let window = try Self.window(prompting)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        prompting.showsOtherSheet = true
+        try await waitUntil { root.presentedViewController != nil }
+        let other = root.presentedViewController
+
+        prompting.queue.report(Self.mismatch)
+        try await Task.sleep(for: .seconds(1))
+        #expect(root.presentedViewController === other)
+        #expect(prompting.showsOtherSheet)
+        #expect(prompting.owner.holder == nil)
+
+        prompting.showsOtherSheet = false
+        try await waitUntil { root.presentedViewController.map { $0 !== other } == true }
+        #expect(prompting.owner.holder != nil)
+        #expect(prompting.queue.prompt == Self.mismatch)
+    }
+}
+#endif
