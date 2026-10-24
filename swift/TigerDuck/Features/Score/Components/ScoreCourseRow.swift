@@ -44,7 +44,7 @@ struct ScoreCourseRow: View {
                                 .font(.caption2.weight(.semibold))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.white.opacity(0.08), in: Capsule())
+                                .background(Color.textPrimary.opacity(0.08), in: Capsule())
                                 .foregroundStyle(Color.textSecondary)
                         }
                     }

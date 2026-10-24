@@ -45,7 +45,7 @@ private struct PresetCardModifier: ViewModifier {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                        .strokeBorder(Color.textPrimary.opacity(0.08), lineWidth: 0.5)
                 )
         }
     }
@@ -76,7 +76,7 @@ private struct PresetChipModifier: ViewModifier {
                     if isSelected {
                         Capsule().fill(.tint)
                     } else {
-                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule().fill(Color.textPrimary.opacity(0.08))
                     }
                 }
         }
@@ -98,7 +98,7 @@ private struct PresetGroupedListContainerModifier: ViewModifier {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                        .strokeBorder(Color.textPrimary.opacity(0.08), lineWidth: 0.5)
                 )
         }
     }
