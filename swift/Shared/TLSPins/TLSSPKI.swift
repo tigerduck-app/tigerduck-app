@@ -24,8 +24,9 @@ nonisolated enum TLSSPKI {
     /// SPKI wrapper, so prepend the ASN.1 algorithm-identifier header for
     /// the key type.
     ///
-    /// RSA 2048 and 4096 and EC P-256 and P-384 cover the TWCA and Sectigo chains. Any other key
-    /// returns nil, so only that cert misses in the chain walk.
+    /// RSA 2048, 3072 and 4096 and EC P-256 and P-384 cover the TWCA and Sectigo chains, Sectigo's
+    /// R36 intermediates being RSA 3072. Any other key returns nil, so only that cert misses in the
+    /// chain walk.
     private static func spkiData(from key: SecKey) -> Data? {
         guard let attrs = SecKeyCopyAttributes(key) as? [String: Any],
               let keyType = attrs[kSecAttrKeyType as String] as? String,
@@ -42,6 +43,12 @@ nonisolated enum TLSSPKI {
                 0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86,
                 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, 0x03,
                 0x82, 0x01, 0x0f, 0x00,
+            ]
+        case (rsa, 3072):
+            header = [
+                0x30, 0x82, 0x01, 0xa2, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86,
+                0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, 0x03,
+                0x82, 0x01, 0x8f, 0x00,
             ]
         case (rsa, 4096):
             header = [

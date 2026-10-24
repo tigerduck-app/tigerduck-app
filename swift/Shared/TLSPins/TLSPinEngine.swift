@@ -307,10 +307,13 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
     /// Only a chain whose anchor is in the valid document's `prompt_roots` may be continued past,
     /// so a root installed on the device, as an MDM profile or a proxy does, never is. A chain of
     /// one certificate is its own anchor, so it never is either: an acceptance holds no anchor.
+    /// Nor is one whose leaf and intermediates have no key `TLSSPKI` reads, as Continue would
+    /// store nothing.
     private func promptEligible(
         setID: String, host: String, chain: [SecCertificate], anchor: String?, in state: State
     ) -> TLSPinMismatch? {
-        guard chain.count > 1, let document = state.document, clock() < document.expiresAt,
+        let accepted = Set(chain.dropLast().compactMap(TLSSPKI.sha256Base64(of:)))
+        guard chain.count > 1, !accepted.isEmpty, let document = state.document, clock() < document.expiresAt,
               let anchor, document.promptRoots.contains(anchor) else { return nil }
         let set = effectiveSets(in: state, at: clock()).first { $0.id == setID }
         let summaries = chain.map { TLSCertificateSummary(der: SecCertificateCopyData($0) as Data) }
@@ -320,7 +323,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
             domains: set?.domains.map(\.name) ?? [],
             issuerOrganization: summaries.first?.issuerOrganization,
             certificates: summaries,
-            acceptedSPKIs: Set(chain.dropLast().compactMap(TLSSPKI.sha256Base64(of:))),
+            acceptedSPKIs: accepted,
             chainSPKIs: Set(chain.compactMap(TLSSPKI.sha256Base64(of:)))
         )
     }
