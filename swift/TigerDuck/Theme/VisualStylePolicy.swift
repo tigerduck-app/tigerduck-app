@@ -104,7 +104,7 @@ struct VisualStylePolicy: Sendable {
 
     func classTableCourseFill(_ courseColor: Color) -> Color {
         switch preset {
-        case .default, .iosInspired: return courseColor.opacity(0.4)
+        case .default, .iosInspired: return courseColor.opacity(0.3)
         case .tat: return courseColor.pastel
         }
     }
@@ -120,6 +120,14 @@ struct VisualStylePolicy: Sendable {
         switch preset {
         case .default, .iosInspired: return Color.textPrimary
         case .tat: return Color.textOnPastel
+        }
+    }
+
+    /// White names at the class table's small sizes look grey in thinner weights.
+    var classTableCourseNameWeight: Font.Weight {
+        switch preset {
+        case .default, .iosInspired: return .semibold
+        case .tat: return .medium
         }
     }
 

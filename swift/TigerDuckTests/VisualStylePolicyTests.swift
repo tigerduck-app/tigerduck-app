@@ -25,12 +25,30 @@ struct VisualStylePolicyTests {
         for preset in [VisualPreset.default, .iosInspired] {
             let policy = VisualStylePolicy(preset: preset)
             #expect(policy.classTableGridStyle == .blocks)
-            #expect(policy.classTableCourseFill(.orange) == Color.orange.opacity(0.4))
+            #expect(policy.classTableCourseFill(.orange) == Color.orange.opacity(0.3))
             #expect(policy.classTableCourseOutline(.orange) == Color.orange)
             #expect(policy.classTableCourseTextColor == Color.textPrimary)
+            #expect(policy.classTableCourseNameWeight == .semibold)
             #expect(policy.classTableCourseSecondaryTextColor == Color.textSecondary)
         }
         #expect(Self.tat.classTableGridStyle == .periodTiles)
+        #expect(Self.tat.classTableCourseNameWeight == .medium)
+    }
+
+    @Test(
+        "A white course name reads at 10:1 on its translucent block over the black page",
+        arguments: TigerDuckTheme.coursePaletteHexes
+    )
+    func whiteNameOnBlock(hex: UInt32) {
+        let fill = Self.tigerDuck.classTableCourseFill(Color(hex: UInt(hex))).resolve(in: EnvironmentValues())
+        let page = Color.backgroundPrimary.resolve(in: EnvironmentValues())
+        let block = Color.Resolved(
+            red: fill.red * fill.opacity + page.red * (1 - fill.opacity),
+            green: fill.green * fill.opacity + page.green * (1 - fill.opacity),
+            blue: fill.blue * fill.opacity + page.blue * (1 - fill.opacity)
+        )
+
+        #expect(Self.contrast(Self.tigerDuck.classTableCourseTextColor, on: block) >= 10)
     }
 
     @Test(

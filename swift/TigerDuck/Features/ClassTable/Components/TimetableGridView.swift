@@ -341,7 +341,7 @@ struct TimetableGridView: View {
             }
             .overlay {
                 Text(course.displayName)
-                    .font(.system(size: courseNameSize, weight: .medium))
+                    .font(.system(size: courseNameSize, weight: policy.classTableCourseNameWeight))
                     .foregroundStyle(policy.classTableCourseTextColor)
                     .lineLimit(lineLimit)
                     .minimumScaleFactor(0.7)
@@ -561,7 +561,7 @@ private struct ConflictClusterView: View {
                 }
                 .overlay(alignment: .topLeading) {
                     Text(course.displayName)
-                        .font(.system(size: courseNameSize, weight: .medium))
+                        .font(.system(size: courseNameSize, weight: policy.classTableCourseNameWeight))
                         .foregroundStyle(policy.classTableCourseTextColor)
                         .lineLimit(label.height > cellHeight ? 3 : 2)
                         .minimumScaleFactor(0.7)
@@ -677,7 +677,7 @@ private struct ConflictClusterView: View {
             ZStack(alignment: labelAlignment) {
                 policy.classTableCourseFill(course.color)
                 Text(course.displayName)
-                    .font(.system(size: courseNameSize, weight: .medium))
+                    .font(.system(size: courseNameSize, weight: policy.classTableCourseNameWeight))
                     .foregroundStyle(policy.classTableCourseTextColor)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
