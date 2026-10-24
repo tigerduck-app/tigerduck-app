@@ -64,8 +64,6 @@ nonisolated enum AppConstants {
 
     static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v3")
 
-    static let fallbackDebugPushServerURL = URL.knownGood("http://localhost:40000/v3")
-
     static let cachedSemesterRelabelDepth = 4
 
     /// How deep the app follows HTML nesting: far deeper than mail or Moodle nests, and short of

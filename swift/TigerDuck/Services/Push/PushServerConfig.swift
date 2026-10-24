@@ -20,10 +20,8 @@ nonisolated enum PushServerConfig {
         if let url = readDebugServerURL() {
             return normalize(url)
         }
-        return AppConstants.fallbackDebugPushServerURL
-        #else
-        return AppConstants.productionPushServerURL
         #endif
+        return AppConstants.productionPushServerURL
     }
 
     static func isOverrideAllowed(_ url: URL) -> Bool {
