@@ -19,13 +19,13 @@ struct CreditTypeBadge: View {
         case .normal, .unknown:
             return nil
         case .educationProgram:
-            return (String(localized: "score_credit_type_education_program_short"), Color(hex: 0x9B59B6))
+            return (String(localized: "score_credit_type_education_program_short"), ScoreColor.purple)
         case .notCounted:
-            return (String(localized: "score_credit_type_not_counted_short"), Color(hex: 0x95A5A6))
+            return (String(localized: "score_credit_type_not_counted_short"), ScoreColor.grey)
         case .notRequired:
-            return (String(localized: "score_credit_type_not_required_short"), Color(hex: 0xE67E22))
+            return (String(localized: "score_credit_type_not_required_short"), ScoreColor.orange)
         case .notEarned:
-            return (String(localized: "score_credit_type_not_earned_short"), Color(hex: 0xE74C3C))
+            return (String(localized: "score_credit_type_not_earned_short"), ScoreColor.red)
         }
     }
 }

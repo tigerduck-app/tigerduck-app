@@ -19,7 +19,7 @@ struct ScoreCourseRow: View {
                         if course.distanceLearning {
                             Image(systemName: "dot.radiowaves.left.and.right")
                                 .font(.caption2)
-                                .foregroundStyle(Color(hex: 0x85C1E9))
+                                .foregroundStyle(ScoreColor.skyBlue)
                         }
                     }
 
@@ -85,35 +85,24 @@ private struct GradeChip: View {
     private func resolveDescriptor() -> (label: String, color: Color, icon: String?) {
         switch course.status {
         case .pending:
-            return (String(localized: "score_grade_pending"), Color(hex: 0x95A5A6), "hourglass")
+            return (String(localized: "score_grade_pending"), ScoreColor.grey, "hourglass")
         case .withdrew:
-            return (String(localized: "score_grade_withdrew"), Color(hex: 0x95A5A6), "xmark.circle")
+            return (String(localized: "score_grade_withdrew"), ScoreColor.grey, "xmark.circle")
         case .exempted:
-            return (String(localized: "score_grade_exempted"), Color(hex: 0x85C1E9), "checkmark.seal")
+            return (String(localized: "score_grade_exempted"), ScoreColor.skyBlue, "checkmark.seal")
         case .passed:
             let passed = course.isPassStatusPassed
             return (
                 passed
                     ? String(localized: "score_grade_passed")
                     : String(localized: "score_grade_failed"),
-                passed ? Color(hex: 0x4ECDC4) : Color(hex: 0xE74C3C),
+                passed ? ScoreColor.teal : ScoreColor.red,
                 passed ? "checkmark" : "xmark"
             )
         case .graded:
-            return (course.grade, gradeColor(course.grade), nil)
+            return (course.grade, ScoreColor.grade(course.grade), nil)
         case .unknown:
             return (course.grade.isEmpty ? "—" : course.grade, Color.textSecondary, nil)
         }
-    }
-
-    private func gradeColor(_ grade: String) -> Color {
-        let upper = grade.uppercased()
-        if upper.hasPrefix("A") { return Color(hex: 0x2ECC71) }
-        if upper.hasPrefix("B") { return Color(hex: 0x3498DB) }
-        if upper.hasPrefix("C") { return Color(hex: 0xF7DC6F) }
-        if upper.hasPrefix("D") || upper.hasPrefix("E") || upper.hasPrefix("F") {
-            return Color(hex: 0xFF6B6B)
-        }
-        return Color.textPrimary
     }
 }

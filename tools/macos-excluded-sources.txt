@@ -132,6 +132,7 @@ OnboardingView.swift
 CreditSummaryBento.swift
 CreditTypeBadge.swift
 RankingsTrendCard.swift
+ScoreColor.swift
 ScoreCourseDetailSheet.swift
 ScoreCourseRow.swift
 SemesterSection.swift

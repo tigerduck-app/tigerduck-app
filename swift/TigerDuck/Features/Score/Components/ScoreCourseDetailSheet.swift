@@ -176,18 +176,11 @@ struct ScoreCourseDetailSheet: View {
         case .pending, .withdrew, .unknown:
             return Color.textSecondary
         case .exempted:
-            return Color(hex: 0x85C1E9)
+            return ScoreColor.skyBlue
         case .passed:
-            return course.isPassStatusPassed ? Color(hex: 0x4ECDC4) : Color(hex: 0xE74C3C)
+            return course.isPassStatusPassed ? ScoreColor.teal : ScoreColor.red
         case .graded:
-            let upper = course.grade.uppercased()
-            if upper.hasPrefix("A") { return Color(hex: 0x2ECC71) }
-            if upper.hasPrefix("B") { return Color(hex: 0x3498DB) }
-            if upper.hasPrefix("C") { return Color(hex: 0xF7DC6F) }
-            if upper.hasPrefix("D") || upper.hasPrefix("E") || upper.hasPrefix("F") {
-                return Color(hex: 0xFF6B6B)
-            }
-            return Color.textPrimary
+            return ScoreColor.grade(course.grade)
         }
     }
 }
