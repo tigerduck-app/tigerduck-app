@@ -35,7 +35,11 @@ struct TLSPinPromptTests {
             queue.isForeground = true
         }
 
-        var isQuiet: Bool { defaults.dictionary(forKey: "tlsPinPromptQuietUntil")?["library"] != nil }
+        var isQuiet: Bool { isQuiet("library") }
+
+        func isQuiet(_ setID: String) -> Bool {
+            defaults.dictionary(forKey: "tlsPinPromptQuietUntil")?[setID] != nil
+        }
     }
 
     /// A page under the prompt, with a sheet of its own as a tab has.
@@ -48,7 +52,8 @@ struct TLSPinPromptTests {
     }
 
     static func window(
-        _ prompting: Prompting, style: UIUserInterfaceStyle = .light, height: CGFloat = 874
+        _ prompting: Prompting, style: UIUserInterfaceStyle = .light, height: CGFloat = 874,
+        textSize: UIContentSizeCategory? = nil
     ) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -57,6 +62,8 @@ struct TLSPinPromptTests {
         window.rootViewController = UIHostingController(rootView: Page(prompting: prompting)
             .tlsPinPrompt(queue: prompting.queue, owner: prompting.owner)
             .environment(\.scenePhase, .active))
+        // Set the way the system setting reaches the app, through the window's traits.
+        if let textSize { window.traitOverrides.preferredContentSizeCategory = textSize }
         window.makeKeyAndVisible()
         return window
     }
@@ -138,6 +145,9 @@ struct TLSPinPromptTests {
             let texts = exposedAccessibilityTexts(in: sheet)
             #expect(texts.contains("api.lib.ntust.edu.tw"))
             #expect(texts.contains(String(localized: "tls_certificate_intermediate")))
+            for button in [String(localized: "action_cancel"), String(localized: "action_continue")] {
+                #expect(accessibilityElement(labeled: button, in: sheet) != nil, "\(button) is gone from the list")
+            }
             for certificate in Self.mismatch.certificates {
                 #expect(texts.contains { $0.contains(certificate.name) })
                 #expect(texts.contains { $0.contains(certificate.sha256Fingerprint) })
@@ -217,6 +227,83 @@ struct TLSPinPromptTests {
         prompting.queue.isForeground = true
         try await waitUntil { root.presentedViewController != nil }
         #expect(prompting.queue.prompt == Self.mismatch)
+    }
+
+    @Test("at accessibility sizes Continue sits above Cancel, each the sheet's width")
+    func stackedAtAccessibilitySizes() async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            let window = try Self.window(prompting, textSize: .accessibilityExtraLarge)
+            defer { window.isHidden = true }
+            prompting.queue.report(Self.mismatch)
+            let sheet = try await Self.shownSheet(in: window)
+            try await Task.sleep(for: .milliseconds(600))
+
+            let cancel = try #require(accessibilityElement(labeled: String(localized: "action_cancel"), in: sheet))
+            let proceed = try #require(accessibilityElement(labeled: String(localized: "action_continue"), in: sheet))
+            #expect(proceed.accessibilityFrame.maxY <= cancel.accessibilityFrame.minY)
+            #expect(abs(proceed.accessibilityFrame.width - cancel.accessibilityFrame.width) < 1)
+        }
+    }
+
+    static let ntustMismatch = TLSPinMismatch(
+        setID: "ntust", host: "moodle2.ntust.edu.tw", domains: ["ntust.edu.tw"], issuerOrganization: "TAIWAN-CA",
+        certificates: [], acceptedSPKIs: [F.unknownSPKI]
+    )
+
+    @Test("an answer for a prompt the queue has since replaced leaves the newer one alone")
+    func aLateAnswerLeavesANewerPrompt() {
+        let prompting = Prompting()
+        let queue: TLSPinMismatchQueue = prompting.queue
+        queue.report(Self.mismatch)
+        queue.answer(Self.mismatch, continues: true)
+        queue.report(Self.ntustMismatch)
+        #expect(queue.prompt == Self.ntustMismatch)
+
+        queue.answer(Self.mismatch, continues: true)
+        queue.answer(Self.mismatch, continues: false)
+        #expect(queue.prompt == Self.ntustMismatch)
+        #expect(prompting.engine.acceptances.map(\.setID) == ["library"])
+        #expect(!prompting.isQuiet("ntust"))
+    }
+
+    @Test("a window that closes with the prompt up hands it to another window, with no Cancel")
+    func aClosingWindowIsNoCancel() async throws {
+        let prompting = Prompting()
+        let windows = try [Self.window(prompting), Self.window(prompting)]
+        defer { windows.forEach { $0.isHidden = true } }
+        prompting.queue.report(Self.mismatch)
+        func showing() -> [UIWindow] { windows.filter { $0.rootViewController?.presentedViewController != nil } }
+        try await waitUntil { !showing().isEmpty }
+        let closing = try #require(showing().first)
+        let other = try #require(windows.first { $0 !== closing })
+
+        closing.isHidden = true
+        closing.rootViewController = nil
+        try await waitUntil { other.rootViewController?.presentedViewController != nil }
+        #expect(prompting.queue.prompt == Self.mismatch)
+        #expect(!prompting.isQuiet)
+        #expect(prompting.engine.acceptances.isEmpty)
+    }
+
+    @Test("a sheet that opens with the prompt gets the window, and the prompt shows once it closes")
+    func aSheetOpeningWithThePrompt() async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            let window = try Self.window(prompting)
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController)
+            try await waitUntil { root.view.window != nil }
+            prompting.showsOtherSheet = true
+            prompting.queue.report(Self.mismatch)
+            try await waitUntil { root.presentedViewController != nil }
+            try await Task.sleep(for: .seconds(4))
+
+            prompting.showsOtherSheet = false
+            _ = try await Self.shownSheet(in: window)
+            #expect(prompting.queue.prompt == Self.mismatch)
+            #expect(!prompting.isQuiet)
+        }
     }
 
     @Test("with two windows open, one shows the prompt")
