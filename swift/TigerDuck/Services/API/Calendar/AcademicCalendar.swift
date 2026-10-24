@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 
 nonisolated struct SemesterTerm: Codable, Equatable, Sendable {
     let code: String
@@ -38,11 +39,19 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
 
     static let empty = AcademicCalendar(revision: 0, terms: [], holidays: [])
 
+    /// The class table reads this for every cell, so it decodes only when the stored data changes.
     static var cached: AcademicCalendar {
         let data = Defaults[.academicCalendarCache]
         guard !data.isEmpty else { return .empty }
-        return (try? JSONDecoder().decode(AcademicCalendar.self, from: data)) ?? .empty
+        return lastDecoded.withLock { last in
+            if let last, last.data == data { return last.calendar }
+            let calendar = (try? JSONDecoder().decode(AcademicCalendar.self, from: data)) ?? .empty
+            last = (data, calendar)
+            return calendar
+        }
     }
+
+    private static let lastDecoded = OSAllocatedUnfairLock<(data: Data, calendar: AcademicCalendar)?>(initialState: nil)
 
     static let calendar: Calendar = {
         var c = Calendar(identifier: .gregorian)
