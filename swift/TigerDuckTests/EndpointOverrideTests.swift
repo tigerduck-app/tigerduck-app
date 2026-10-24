@@ -33,6 +33,19 @@ struct EndpointOverrideTests {
         #expect(!PushServerConfig.isOverrideAllowed(URL(string: "file:///etc/hosts")!))
     }
 
+    @Test("No usable endpoint falls back to production")
+    func fallsBackToProduction() {
+        #expect(PushServerConfig.resolveServerURL(candidates: []) == AppConstants.productionPushServerURL)
+        let unusable = [nil, "", "not a url", "http://example.com/v3", "ftp://192.168.1.5/v3"]
+        #expect(PushServerConfig.resolveServerURL(candidates: unusable) == AppConstants.productionPushServerURL)
+    }
+
+    @Test("The first usable endpoint wins, normalized")
+    func firstUsableEndpointWins() {
+        let candidates = [nil, "http://example.com/v3", "https://192.168.1.5:40000/v3", "https://self.example/v3"]
+        #expect(PushServerConfig.resolveServerURL(candidates: candidates).absoluteString == "http://192.168.1.5:40000/v3")
+    }
+
     @Test("https to a private host is rewritten to http")
     func normalizeRewritesPrivate() {
         let rewritten = PushServerConfig.normalize(URL(string: "https://192.168.1.5:40000/v3")!)

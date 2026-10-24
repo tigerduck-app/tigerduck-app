@@ -2,12 +2,7 @@ import SwiftUI
 
 extension View {
     func glassCard(cornerRadius: CGFloat = TigerDuckTheme.CornerRadius.lg) -> some View {
-        self
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(.ultraThinMaterial)
-                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-            )
+        modifier(GlassCardModifier(cornerRadius: cornerRadius))
     }
 
     func glassChip(isSelected: Bool = false) -> some View {
@@ -21,5 +16,19 @@ extension View {
                     Capsule().fill(.ultraThinMaterial)
                 }
             }
+    }
+}
+
+private struct GlassCardModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.background(
+            // The material over the flat light page reads as grey, so light cards are white.
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(colorScheme == .light ? AnyShapeStyle(Color.white) : AnyShapeStyle(.ultraThinMaterial))
+                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        )
     }
 }

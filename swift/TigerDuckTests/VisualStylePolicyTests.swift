@@ -35,20 +35,34 @@ struct VisualStylePolicyTests {
         #expect(Self.tat.classTableCourseNameWeight == .medium)
     }
 
+    @Test("The page and its text follow the appearance")
+    func tokensFollowTheAppearance() {
+        let (light, dark) = (Self.environment(.light), Self.environment(.dark))
+
+        let hex = { (colour: Color, environment: EnvironmentValues) in Color(colour.resolve(in: environment)).rgbHex }
+
+        #expect(hex(.backgroundPrimary, dark) == 0x000000)
+        #expect(hex(.textPrimary, dark) == 0xFFFFFF)
+        #expect(hex(.backgroundPrimary, light) == 0xF2F2F7)
+        #expect(hex(.textPrimary, light) == 0x000000)
+    }
+
     @Test(
-        "A white course name reads at 10:1 on its translucent block over the black page",
-        arguments: TigerDuckTheme.coursePaletteHexes
+        "A course name reads at 10:1 on its translucent block over the dark and the light page",
+        arguments: [ColorScheme.dark, .light], TigerDuckTheme.coursePaletteHexes
     )
-    func whiteNameOnBlock(hex: UInt32) {
-        let fill = Self.tigerDuck.classTableCourseFill(Color(hex: UInt(hex))).resolve(in: EnvironmentValues())
-        let page = Color.backgroundPrimary.resolve(in: EnvironmentValues())
+    func nameOnBlock(scheme: ColorScheme, hex: UInt32) {
+        let environment = Self.environment(scheme)
+        let fill = Self.tigerDuck.classTableCourseFill(Color(hex: UInt(hex))).resolve(in: environment)
+        let page = Color.backgroundPrimary.resolve(in: environment)
         let block = Color.Resolved(
             red: fill.red * fill.opacity + page.red * (1 - fill.opacity),
             green: fill.green * fill.opacity + page.green * (1 - fill.opacity),
             blue: fill.blue * fill.opacity + page.blue * (1 - fill.opacity)
         )
 
-        #expect(Self.contrast(Self.tigerDuck.classTableCourseTextColor, on: block) >= 10)
+        #expect(Self.contrast(Self.tigerDuck.classTableCourseTextColor, on: block, in: environment) >= 10)
+        #expect(Self.contrast(Self.tigerDuck.classTableCourseSecondaryTextColor, on: block, in: environment) >= 4.5)
     }
 
     @Test(
@@ -103,8 +117,16 @@ struct VisualStylePolicyTests {
         return sector < 0 ? sector / 6 + 1 : sector / 6
     }
 
-    private static func contrast(_ text: Color, on background: Color.Resolved) -> Double {
-        let ink = text.resolve(in: EnvironmentValues())
+    private static func environment(_ scheme: ColorScheme) -> EnvironmentValues {
+        var environment = EnvironmentValues()
+        environment.colorScheme = scheme
+        return environment
+    }
+
+    private static func contrast(
+        _ text: Color, on background: Color.Resolved, in environment: EnvironmentValues = EnvironmentValues()
+    ) -> Double {
+        let ink = text.resolve(in: environment)
         let blended = Color.Resolved(
             red: ink.red * ink.opacity + background.red * (1 - ink.opacity),
             green: ink.green * ink.opacity + background.green * (1 - ink.opacity),

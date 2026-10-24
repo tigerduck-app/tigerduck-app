@@ -195,7 +195,7 @@ struct TimetableGridView: View {
         switch role {
         case .empty:
             RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                .fill(drawsPeriodTiles ? Color.clear : Color.cardSurface.opacity(0.15))
+                .fill(drawsPeriodTiles ? Color.clear : Color.emptyCellFill)
                 .transition(.identity)
 
         case .solo(let course, let spanCount):

@@ -146,6 +146,18 @@ struct MailMessageViewModelTests {
         #expect(h.model.htmlTheme == .app)
     }
 
+    @Test func theLightAppearanceDrawsEveryMailOnTheLightPage() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
+        await h.model.load()
+        h.model.appearsLight = true
+        #expect(h.model.htmlTheme == .light)
+        #expect(h.model.formattedHTML == "<p>hi</p>")
+        #expect(!h.model.offersLightMode)
+        h.model.appearsLight = false
+        #expect(h.model.htmlTheme == .app)
+        #expect(h.model.offersLightMode)
+    }
+
     @Test func lightModeBelongsToOneScreen() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, html: "<p>a</p>"),
                              extra: [FakeMailClient.message(uid: 6, html: "<p>b</p>")])

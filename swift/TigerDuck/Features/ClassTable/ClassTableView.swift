@@ -20,6 +20,7 @@ struct ClassTableView: View {
     @Default(.pinTodayCoursesOnClassTable) private var pinsTodayCourses
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.legibilityWeight) private var legibilityWeight
@@ -435,6 +436,7 @@ struct ClassTableView: View {
             let url = await ClassTableExporter.render(
                 viewModel: viewModel,
                 appState: appState,
+                colorScheme: colorScheme,
                 dynamicTypeSize: dynamicTypeSize,
                 layoutDirection: layoutDirection,
                 legibilityWeight: legibilityWeight,

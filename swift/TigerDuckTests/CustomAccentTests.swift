@@ -4,27 +4,33 @@ import Testing
 
 @MainActor
 struct CustomAccentTests {
-    @Test("The cards a custom accent is checked on are the card surface over the black page")
-    func cardMatchesTheTheme() {
-        let surface = Color.cardSurface.resolve(in: EnvironmentValues())
-        let page = Color.backgroundPrimary.resolve(in: EnvironmentValues())
+    @Test(
+        "The cards a custom accent is checked on are the card surface over the page",
+        arguments: [(ColorScheme.dark, AccentContrast.cardHex), (.light, AccentContrast.lightCardHex)]
+    )
+    func cardMatchesTheTheme(scheme: ColorScheme, hex: Int) {
+        var environment = EnvironmentValues()
+        environment.colorScheme = scheme
+        let surface = Color.cardSurface.resolve(in: environment)
+        let page = Color.backgroundPrimary.resolve(in: environment)
         let card = Color(Color.Resolved(
             red: surface.red * surface.opacity + page.red * (1 - surface.opacity),
             green: surface.green * surface.opacity + page.green * (1 - surface.opacity),
             blue: surface.blue * surface.opacity + page.blue * (1 - surface.opacity)
         ))
 
-        #expect(card.rgbHex == UInt32(AccentContrast.cardHex))
+        #expect(card.rgbHex == UInt32(hex))
     }
 
     @Test(
-        "A custom accent reads on the cards and under white marks",
-        arguments: [0x000000, 0x202020, 0x000080, 0xFFFFFF, 0xFFFF00, 0x00FF00, 0x5AC8FA, 0xFF9500]
+        "A custom accent reads on the dark and the light cards and under white marks",
+        arguments: [0x000000, 0x202020, 0x000080, 0xFFFFFF, 0xFFFF00, 0x00FF00, 0x5AC8FA, 0xFF9500, 0x939393]
     )
     func readable(hex: Int) {
         let accent = AccentContrast.readable(hex)
 
         #expect(Self.contrast(accent, AccentContrast.cardHex) >= 3)
+        #expect(Self.contrast(accent, AccentContrast.lightCardHex) >= 3)
         #expect(Self.contrast(0xFFFFFF, accent) >= 3)
     }
 

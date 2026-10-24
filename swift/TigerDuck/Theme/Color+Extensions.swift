@@ -29,13 +29,25 @@ extension Color {
         )
     }
 
-    static let backgroundPrimary = Color.black
-    static let cardSurface = Color(hex: 0x1E1E1E, alpha: 0.8)
-    static let textPrimary = Color.white
-    static let textSecondary = Color(hex: 0xFFFFFF, alpha: 0.6)
+    nonisolated static func adaptive(light: Color, dark: Color) -> Color {
+        #if os(iOS)
+        let (light, dark) = (UIColor(light), UIColor(dark))
+        return Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
+        #else
+        let (light, dark) = (NSColor(light), NSColor(dark))
+        return Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light })
+        #endif
+    }
+
+    /// The light page is the system's grouped background, so grouped rows and cards stand out on it.
+    static let backgroundPrimary = adaptive(light: Color(hex: 0xF2F2F7), dark: .black)
+    static let cardSurface = adaptive(light: Color(hex: 0xFFFFFF, alpha: 0.8), dark: Color(hex: 0x1E1E1E, alpha: 0.8))
+    static let textPrimary = adaptive(light: .black, dark: .white)
+    static let emptyCellFill = adaptive(light: Color.black.opacity(0.05), dark: Color.white.opacity(0.1))
+    static let textSecondary = adaptive(light: Color(hex: 0x000000, alpha: 0.6), dark: Color(hex: 0xFFFFFF, alpha: 0.6))
     static let onboardingAccent = Color(hex: 0x007AFF)
     static let badgeRed = Color(hex: 0xFF3B30)
-    static let badgeRedText = Color(hex: 0xFF7A72)
+    static let badgeRedText = adaptive(light: Color(hex: 0xD70015), dark: Color(hex: 0xFF7A72))
     static let textOnPastel = Color(hex: 0x1A1A1A)
     static let textOnPastelSecondary = Color(hex: 0x1A1A1A, alpha: 0.8)
     static let rowBand = Color.primary.opacity(0.08)

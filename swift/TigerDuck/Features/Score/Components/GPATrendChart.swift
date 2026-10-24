@@ -92,7 +92,7 @@ struct GPATrendChart: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
 
                 PointMark(x: xValue(selected.term), y: yValue(value))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(primaryText)
                     .symbolSize(60)
                     .zIndex(10)
             }
