@@ -55,7 +55,7 @@ final class ClassTableViewModel {
 
     /// Keeps the persisted selection selectable even after it ages out of the
     /// catalogue window — a `Picker` whose tag matches no option renders blank.
-    private static func semesterOptions(including selected: String) -> [String] {
+    static func semesterOptions(including selected: String) -> [String] {
         let options = SemesterCatalog.availableSemesters()
         return options.contains(selected) ? options : options + [selected]
     }

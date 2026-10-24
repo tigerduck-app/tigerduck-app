@@ -24,25 +24,50 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
     /// Every share link is `<TYPE>/<content>` on this host, in the upper case that keeps a QR
     /// code in alphanumeric mode, so a later version can share more than class tables.
     static let shareHost = "HTTPS://SHARE.TIGERDUCK.APP"
-    static let prefix = shareHost + "/CLASSTABLE/"
+    static let shareHostName = String(shareHost.dropFirst("HTTPS://".count))
+    private static let classTableType = "/CLASSTABLE/"
+    static let prefix = shareHost + classTableType
+    private static let tatAddress = tatPrefix.dropFirst("HTTPS://".count)
 
+    /// Reads a code as scanned, typed or pasted; the forms it takes are in
+    /// docs/decisions/0023-class-table-share-code.md.
     static func decode(_ text: String) throws -> ClassTableShareCode {
-        let code = text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if code.hasPrefix(prefix) { return try decodePacked(code) }
-        if let path = shareHostPath(code) {
+        // A pasted TAT link carries the spaces that pad a short student ID as `%20`.
+        let code = (text.removingPercentEncoding ?? text).trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        // No code holds `?` or `#`, so what follows is a query or fragment someone added.
+        let link = code.prefix { $0 != "?" && $0 != "#" }
+        let scheme = ["HTTPS://", "HTTP://"].first { link.hasPrefix($0) }
+        let address = link.dropFirst(scheme?.count ?? 0)
+        if let path = shareHostPath(address) {
+            if path.hasPrefix(classTableType) {
+                return try decodePacked(prefix + withoutTrailingSlash(path.dropFirst(classTableType.count)))
+            }
             throw namesType(path) ? ClassTableShareCodeError.unknownType : .malformed
         }
-        if code.hasPrefix(tatPrefix) { return try decodeTAT(code) }
-        throw ClassTableShareCodeError.unknownPrefix
+        if address.hasPrefix(tatAddress) {
+            return try decodeTAT(tatPrefix + withoutTrailingSlash(address.dropFirst(tatAddress.count)))
+        }
+        // Off both hosts the code is the last segment, and anything short of a whole code is
+        // not one, so a stray QR code or word never shows an error.
+        let last = address.split(separator: "/").last ?? ""
+        do {
+            return try last.hasPrefix("TAT") ? decodeTAT(tatPrefix + last) : decodePacked(prefix + last)
+        } catch {
+            throw ClassTableShareCodeError.unknownPrefix
+        }
     }
 
-    /// What follows the share host when the host ends there, as in a URL's path, query or
-    /// fragment; nil for another host, including one that only starts the same.
-    private static func shareHostPath(_ code: String) -> Substring? {
-        guard code.hasPrefix(shareHost) else { return nil }
-        let rest = code.dropFirst(shareHost.count)
+    private static func withoutTrailingSlash(_ text: Substring) -> Substring {
+        text.last == "/" ? text.dropLast() : text
+    }
+
+    /// What follows the share host when the host ends there; nil for another host, including one
+    /// that only starts the same.
+    private static func shareHostPath(_ address: Substring) -> Substring? {
+        guard address.hasPrefix(shareHostName) else { return nil }
+        let rest = address.dropFirst(shareHostName.count)
         guard let next = rest.first else { return rest }
-        return "/?#".contains(next) ? rest : nil
+        return next == "/" ? rest : nil
     }
 
     /// Whether `path` starts with a type a newer version writes: letters or digits, then `/`.
