@@ -1,7 +1,16 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 struct ClassTableShareSheet: View {
     @Environment(\.dismiss) private var dismiss
+    #if os(iOS)
+    @Environment(\.requestClassTableImport) private var requestImport
+    @Environment(\.hostWindow) private var hostWindow
+    #endif
     @Bindable var model: ClassTableShareModel
 
     private static let codeSide: CGFloat = 260
@@ -22,6 +31,7 @@ struct ClassTableShareSheet: View {
             Divider()
             HStack {
                 Spacer()
+                CopyLinkButton(link: model.link)
                 Button(String(localized: "action_done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
                 // A sheet takes Escape only through a cancel button, and Done keeps Return.
@@ -42,6 +52,17 @@ struct ClassTableShareSheet: View {
                 .navigationTitle(String(localized: "class_table_share"))
                 .inlineNavigationTitle()
                 .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button {
+                            // The root presents the scanner, and only once this sheet is gone.
+                            hostWindow.closePresentations { if $0 { requestImport() } }
+                        } label: {
+                            Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        CopyLinkButton(link: model.link)
+                    }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(String(localized: "action_done")) { dismiss() }
                     }
@@ -90,6 +111,48 @@ struct ClassTableShareSheet: View {
         .formStyle(.grouped)
     }
 }
+
+/// Shows a checkmark for a moment once the link is copied, in place of a message.
+private struct CopyLinkButton: View {
+    let link: String?
+    @State private var isCopied = false
+    @State private var copies = 0
+
+    var body: some View {
+        Button {
+            guard let link else { return }
+            #if canImport(UIKit)
+            UIPasteboard.general.string = link
+            #elseif canImport(AppKit)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(link, forType: .string)
+            #endif
+            AccessibilityNotification.Announcement(String(localized: "class_table_share_link_copied")).post()
+            isCopied = true
+            copies += 1
+        } label: {
+            Label(String(localized: "class_table_share_copy_link"), systemImage: isCopied ? "checkmark" : "link")
+        }
+        .labelStyle(.iconOnly)
+        .help(String(localized: "class_table_share_copy_link"))
+        .disabled(link == nil)
+        .task(id: copies) {
+            try? await Task.sleep(for: .seconds(1.5))
+            if !Task.isCancelled { isCopied = false }
+        }
+    }
+}
+
+#if os(iOS)
+/// The user's share sheet, asked for from the import scanner. The class table opens it, as only
+/// it knows the terms on screen, once the scanner has closed.
+@Observable
+final class ClassTableShareRequest {
+    static let shared = ClassTableShareRequest()
+
+    var isPending = false
+}
+#endif
 
 extension View {
     func classTableShareSheet(model: Binding<ClassTableShareModel?>, loginGeneration: Int) -> some View {

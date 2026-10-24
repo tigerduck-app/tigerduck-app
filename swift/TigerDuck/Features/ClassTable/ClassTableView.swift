@@ -282,6 +282,7 @@ struct ClassTableView: View {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
             .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
+            .task(id: ClassTableShareRequest.shared.isPending) { await openRequestedShareSheet() }
     }
 
     private var pageAccessState: NTUSTProtectedAccessState {
@@ -461,6 +462,23 @@ struct ClassTableView: View {
             terms: terms,
             semesterLabel: viewModel.displayLabel(for:)
         )
+    }
+
+    /// Waits for the scanner that asked to close, as a sheet asked for over it would not show.
+    private func openRequestedShareSheet() async {
+        let request = ClassTableShareRequest.shared
+        while request.isPending, UIApplication.shared.foregroundRoot?.presentedViewController != nil {
+            try? await Task.sleep(for: .milliseconds(100))
+            if Task.isCancelled { return }
+        }
+        guard request.isPending else { return }
+        request.isPending = false
+        // The sheet shares the terms on screen, which must be the user's own.
+        if viewModel.shownPerson != nil {
+            viewModel.importedTables.show(nil)
+            viewModel.showShownTable()
+        }
+        openShareSheet()
     }
 
     private var authenticatedContent: some View {

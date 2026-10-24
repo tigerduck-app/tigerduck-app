@@ -71,6 +71,16 @@ final class ClassTableShareModel: Identifiable {
         "\(studentId) · \(label(for: selection))"
     }
 
+    /// `code` to paste as a link. The upper case that keeps the QR code small reads oddly in a
+    /// scheme and host, and a pasted link would end at the spaces TAT pads a student ID with.
+    var link: String? {
+        guard let code else { return nil }
+        let address = code.dropFirst("HTTPS://".count)
+        let host = address.prefix { $0 != "/" }
+        let path = address.dropFirst(host.count)
+        return "https://" + host.lowercased() + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String(path))
+    }
+
     private func rebuild() {
         let tat = tatCode()
         offersTAT = tat != nil
