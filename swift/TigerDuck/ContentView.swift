@@ -26,13 +26,13 @@ private struct ClassTableImportHost: ViewModifier {
     /// A link's import, apart from the scanner's, so opening a link never starts the camera or asks
     /// for its permission.
     @State private var linkModel: ClassTableImportModel?
+    @State private var shareModel: ClassTableShareModel?
+    /// The share sheet the scanner hands over, shown only once the scanner is gone, as the root
+    /// presents both.
+    @State private var shareAfterScanner: ClassTableShareModel?
 
     func body(content: Content) -> some View {
         content
-            .environment(\.requestClassTableImport) {
-                guard importModel == nil else { return }
-                importModel = .live(authService: appState.authService)
-            }
             .overlay {
                 if linkModel?.isUpdating == true {
                     ZStack {
@@ -41,7 +41,11 @@ private struct ClassTableImportHost: ViewModifier {
                     }
                 }
             }
-            .fullScreenCover(item: $importModel) { ClassTableImportScannerView(model: $0) }
+            .fullScreenCover(item: $importModel, onDismiss: {
+                shareModel = shareAfterScanner
+                shareAfterScanner = nil
+            }) { ClassTableImportScannerView(model: $0, onShare: { shareAfterScanner = $0 }) }
+            .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
             .classTableImportPrompts(linkModel, onConfirmScreen: false)
             .sheet(item: Binding(get: { linkModel?.pending }, set: { if $0 == nil { linkModel?.cancel() } })) { pending in
                 if let linkModel {
@@ -55,6 +59,11 @@ private struct ClassTableImportHost: ViewModifier {
                 while !openHeldLink(), !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(500))
                 }
+            }
+            // Last, so the share sheet shown here can open the scanner too.
+            .environment(\.requestClassTableImport) {
+                guard importModel == nil else { return }
+                importModel = .live(authService: appState.authService)
             }
     }
 

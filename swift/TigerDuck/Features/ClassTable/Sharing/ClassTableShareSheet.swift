@@ -136,23 +136,13 @@ private struct CopyLinkButton: View {
         .labelStyle(.iconOnly)
         .help(String(localized: "class_table_share_copy_link"))
         .disabled(link == nil)
+        .onChange(of: link) { isCopied = false }
         .task(id: copies) {
             try? await Task.sleep(for: .seconds(1.5))
             if !Task.isCancelled { isCopied = false }
         }
     }
 }
-
-#if os(iOS)
-/// The user's share sheet, asked for from the import scanner. The class table opens it, as only
-/// it knows the terms on screen, once the scanner has closed.
-@Observable
-final class ClassTableShareRequest {
-    static let shared = ClassTableShareRequest()
-
-    var isPending = false
-}
-#endif
 
 extension View {
     func classTableShareSheet(model: Binding<ClassTableShareModel?>, loginGeneration: Int) -> some View {

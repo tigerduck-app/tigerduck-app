@@ -1,5 +1,6 @@
 #if os(iOS)
 import AVFoundation
+import Defaults
 import PhotosUI
 import SwiftUI
 import Vision
@@ -7,6 +8,8 @@ import VisionKit
 
 struct ClassTableImportScannerView: View {
     @Bindable var model: ClassTableImportModel
+    /// Takes the user's share sheet, for the presenter to show once this screen has closed.
+    let onShare: (ClassTableShareModel) -> Void
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -15,6 +18,7 @@ struct ClassTableImportScannerView: View {
     @State private var photo: PhotosPickerItem?
     @State private var isEnteringLink = false
     @State private var enteredLink = ""
+    @State private var ownTerms: [ClassTableShareModel.Term] = []
 
     private enum Camera {
         case checking, dataScanner, captureSession, denied, missing
@@ -56,14 +60,17 @@ struct ClassTableImportScannerView: View {
                         Label(String(localized: "action_close"), systemImage: "xmark")
                     }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        model.cancel()
-                        ClassTableShareRequest.shared.isPending = true
-                        appState.openFromWidget(.classTable)
-                        dismiss()
-                    } label: {
-                        Label(String(localized: "class_table_share"), systemImage: "qrcode")
+                if let studentId = appState.authService.storedStudentId, !ownTerms.isEmpty {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            model.cancel()
+                            onShare(ClassTableShareModel(
+                                studentId: studentId, terms: ownTerms, semesterLabel: ClassTableImportModel.semesterLabel
+                            ))
+                            dismiss()
+                        } label: {
+                            Label(String(localized: "class_table_share"), systemImage: "qrcode")
+                        }
                     }
                 }
             }
@@ -74,6 +81,7 @@ struct ClassTableImportScannerView: View {
                     .autocorrectionDisabled()
                 Button(String(localized: "action_cancel"), role: .cancel) {}
                 Button(String(localized: "action_import")) { model.linkOpened(enteredLink) }
+                    .disabled(enteredLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .classTableImportPrompts(model, onConfirmScreen: false)
             .sheet(item: Binding(get: { model.pending }, set: { if $0 == nil { model.cancel() } })) { pending in
@@ -81,6 +89,7 @@ struct ClassTableImportScannerView: View {
             }
         }
         .task { camera = await Self.cameraState() }
+        .onAppear { ownTerms = Self.ownTerms(studentId: appState.authService.storedStudentId) }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, camera == .denied else { return }
             Task { camera = await Self.cameraState() }
@@ -134,6 +143,14 @@ struct ClassTableImportScannerView: View {
     /// A code the camera finds while a link is typed would open its screen under the alert.
     private func scanned(_ text: String) -> Bool {
         !isEnteringLink && model.scanned(text)
+    }
+
+    /// The terms the class table's share sheet offers, from the cache; none when the user has
+    /// nothing to share or a student ID no code can hold.
+    private static func ownTerms(studentId: String?) -> [ClassTableShareModel.Term] {
+        guard let studentId, ClassTableShareCode.isUpperAlphanumerics(studentId.uppercased()[...]) else { return [] }
+        let semester = SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
+        return ClassTableShareModel.terms(in: ClassTableViewModel.semesterOptions(including: semester))
     }
 
     private static func cameraState() async -> Camera {
