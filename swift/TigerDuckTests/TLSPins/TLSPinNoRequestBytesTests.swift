@@ -11,7 +11,7 @@ import Testing
 struct TLSPinNoRequestBytesTests {
     typealias F = TLSPinFixtures
 
-    private func fetch(pinning pin: String) async throws -> (succeeded: Bool, received: Data) {
+    private func fetch(pinning pin: String) async throws -> (error: URLError?, received: Data) {
         let server = try LocalTLSServer()
         let port = try await server.start()
         defer { server.stop() }
@@ -25,22 +25,28 @@ struct TLSPinNoRequestBytesTests {
         let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         let url = try #require(URL(string: "https://localhost:\(port)/"))
-        let succeeded = (try? await session.data(from: url)) != nil
+        var failure: URLError?
+        do {
+            _ = try await session.data(from: url)
+        } catch {
+            failure = try #require(error as? URLError)
+        }
         await server.waitForConnectionsToEnd()
-        return (succeeded, server.received)
+        return (failure, server.received)
     }
 
     @Test("A refused chain sends no request bytes")
     func aRefusedChainSendsNothing() async throws {
         let result = try await fetch(pinning: F.unknownSPKI)
-        #expect(!result.succeeded)
+        // The Watch tells a pin refusal from other failures by this code.
+        #expect(result.error?.code == .cancelled)
         #expect(result.received.isEmpty)
     }
 
     @Test("A pinned chain sends the request, so the server would have seen one")
     func aPinnedChainSendsTheRequest() async throws {
         let result = try await fetch(pinning: try #require(TLSSPKI.sha256Base64(of: F.testRoot)))
-        #expect(result.succeeded)
+        #expect(result.error == nil)
         #expect(String(decoding: result.received, as: UTF8.self).hasPrefix("GET / HTTP/1.1"))
     }
 }

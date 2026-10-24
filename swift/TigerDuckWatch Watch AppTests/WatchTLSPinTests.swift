@@ -83,7 +83,7 @@ struct WatchTLSPinTests {
         #expect(engine.storedEnvelope == nil)
     }
 
-    @Test("A refused library chain asks the user to open the phone")
+    @Test("A refused library chain asks the user to open the phone; other failures keep their error")
     func aMismatchShowsTheOpenPhoneHint() async throws {
         let engine = Self.engine()
         let certificate = try #require(SecCertificateCreateWithData(nil, Self.handMadeRoot as CFData))
@@ -91,6 +91,8 @@ struct WatchTLSPinTests {
         #expect((WatchLibraryService.pinMismatchOr(other, host: "api.lib.ntust.edu.tw", engine: engine) as? URLError) == other)
 
         #expect(await engine.resolveRefusal(host: "api.lib.ntust.edu.tw", chain: [certificate]) == false)
+        let offline = URLError(.notConnectedToInternet)
+        #expect((WatchLibraryService.pinMismatchOr(offline, host: "api.lib.ntust.edu.tw", engine: engine) as? URLError) == offline)
         let error = WatchLibraryService.pinMismatchOr(other, host: "api.lib.ntust.edu.tw", engine: engine)
         #expect(error.localizedDescription == String(localized: "watch_open_phone_to_sync"))
         guard case WatchLibraryServiceError.pinMismatch = error else {

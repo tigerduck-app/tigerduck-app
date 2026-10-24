@@ -25,7 +25,7 @@ struct TLSPinWatchSyncTests {
     func theWatchAppliesAVerifiedEnvelope() throws {
         let envelope = F.envelope(F.payload(serial: 120))
         let watch = F.engine(buildNumber: "100")
-        #expect(WatchTLSPinPayload.apply(json: try phonePayload(envelope: envelope), to: watch, defaults: F.defaults()))
+        #expect(WatchTLSPinPayload.apply(json: try phonePayload(envelope: envelope), to: watch, defaults: F.defaults(), now: F.now))
         #expect(watch.storedEnvelope == envelope)
         #expect(watch.acceptances.map(\.spkis) == [Self.acceptance.acceptedSPKIs])
     }
@@ -33,28 +33,40 @@ struct TLSPinWatchSyncTests {
     @Test("The watch drops acceptances from another build")
     func anotherBuildsAcceptancesAreDropped() throws {
         let watch = F.engine(buildNumber: "99")
-        WatchTLSPinPayload.apply(json: try phonePayload(envelope: F.envelope(F.payload())), to: watch, defaults: F.defaults())
+        WatchTLSPinPayload.apply(json: try phonePayload(envelope: F.envelope(F.payload())), to: watch, defaults: F.defaults(), now: F.now)
         #expect(watch.acceptances.isEmpty)
     }
 
     @Test("The watch refuses an envelope its keys do not verify")
     func anUnverifiedEnvelopeIsRefused() throws {
         let watch = TLSPinEngine(keys: [:], defaults: F.defaults(), buildNumber: "100", clock: { F.now })
-        WatchTLSPinPayload.apply(json: try phonePayload(envelope: F.envelope(F.payload())), to: watch, defaults: F.defaults())
+        WatchTLSPinPayload.apply(json: try phonePayload(envelope: F.envelope(F.payload())), to: watch, defaults: F.defaults(), now: F.now)
         #expect(watch.storedEnvelope == nil)
     }
 
-    @Test("A payload no newer than the last one applied is dropped")
+    @Test("Acceptances no newer than the last ones applied are dropped; envelopes go by serial")
     func olderPayloadsAreDropped() throws {
         let defaults = F.defaults()
         let watch = F.engine()
-        let applied = F.envelope(F.payload(serial: 130))
-        let newer = try phonePayload(envelope: applied, sentAt: F.now.addingTimeInterval(60))
-        let older = try phonePayload(envelope: F.envelope(F.payload(serial: 140)), sentAt: F.now)
-        #expect(WatchTLSPinPayload.apply(json: newer, to: watch, defaults: defaults))
-        #expect(!WatchTLSPinPayload.apply(json: newer, to: watch, defaults: defaults))
-        #expect(!WatchTLSPinPayload.apply(json: older, to: watch, defaults: defaults))
-        #expect(watch.storedEnvelope == applied)
+        let higherSerial = F.envelope(F.payload(serial: 140))
+        let newer = try phonePayload(envelope: F.envelope(F.payload(serial: 130)), sentAt: F.now.addingTimeInterval(60))
+        let older = try phonePayload(envelope: higherSerial, sentAt: F.now)
+        #expect(WatchTLSPinPayload.apply(json: newer, to: watch, defaults: defaults, now: F.now))
+        #expect(!WatchTLSPinPayload.apply(json: newer, to: watch, defaults: defaults, now: F.now))
+        #expect(!WatchTLSPinPayload.apply(json: older, to: watch, defaults: defaults, now: F.now))
+        #expect(watch.storedEnvelope == higherSerial)
+    }
+
+    @Test("A phone clock far ahead does not hold back later payloads")
+    func aFarAheadPhoneClockIsIgnored() throws {
+        let defaults = F.defaults()
+        let watch = F.engine()
+        let ahead = try phonePayload(envelope: F.envelope(F.payload(serial: 150)), sentAt: F.now.addingTimeInterval(2 * F.day))
+        #expect(!WatchTLSPinPayload.apply(json: ahead, to: watch, defaults: defaults, now: F.now))
+        #expect(watch.acceptances.isEmpty)
+        let corrected = try phonePayload(envelope: F.envelope(F.payload(serial: 150)), sentAt: F.now)
+        #expect(WatchTLSPinPayload.apply(json: corrected, to: watch, defaults: defaults, now: F.now))
+        #expect(watch.acceptances.count == 1)
     }
 }
 #endif

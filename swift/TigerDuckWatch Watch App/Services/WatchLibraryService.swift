@@ -108,9 +108,10 @@ enum WatchLibraryService {
     }
 
     /// The Watch shows no prompt; a refused chain asks the user to open the phone, which can
-    /// accept it or fetch new pins and send them over.
+    /// accept it or fetch new pins and send them over. A refused challenge ends the request as
+    /// cancelled, so an offline or timed-out request keeps its own error.
     static func pinMismatchOr(_ error: Error, host: String?, engine: TLSPinEngine = .shared) -> Error {
-        guard let host, engine.isRefusing(host: host) else { return error }
+        guard let host, (error as? URLError)?.code == .cancelled, engine.isRefusing(host: host) else { return error }
         return WatchLibraryServiceError.pinMismatch
     }
 
