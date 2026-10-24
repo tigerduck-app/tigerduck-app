@@ -306,38 +306,13 @@ struct ClassTableView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    /// Below iOS 26 this matches the Calendar "Today" button (40.33pt, a padded
-    /// `.bordered` from `GlassTextButtonModifier`), so both pages' header controls
-    /// are one size. On 26 it does not match Today's 28.33pt `.buttonStyle(.glass)`:
-    /// glass that short behind an icon reads as a sliver, not a button. 36pt, about
-    /// 1.3x, reads as a control and stays close to the pre-26 40pt.
-    ///
-    /// `HeaderControlMetricsTests` measures both against the live Today button,
-    /// so it catches Apple changing those metrics.
-    private static var headerActionHeight: CGFloat {
-        if #available(iOS 26, *) { 36 } else { 40 }
-    }
-
-    ///
-    @ViewBuilder
     private var headerActions: some View {
-        let menu = Menu {
+        HeaderMenuButton(accessibilityLabel: String(localized: "class_table_more_actions")) {
             if viewModel.shownPerson != nil {
                 otherPersonActions
             } else {
                 ownActions
             }
-        } label: {
-            headerIcon("ellipsis")
-        }
-        .accessibilityLabel(Text("class_table_more_actions"))
-        if #available(iOS 26, *) {
-            menu.glassEffect(.regular.interactive(), in: .circle)
-        } else {
-            // Below 26 no glass supplies a backing, and a bare glyph reads as
-            // unfinished beside Today's filled pill. `.secondarySystemFill` is what
-            // `.bordered`, Today's pre-26 style, fills with.
-            menu.background(Circle().fill(Color(uiColor: .secondarySystemFill)))
         }
     }
 
@@ -412,21 +387,6 @@ struct ClassTableView: View {
             Label(String(localized: "class_table_export_screenshot"), systemImage: "square.and.arrow.up")
         }
         .disabled(pageAccessState != .content || isExporting)
-    }
-
-    /// `contentShape` is explicit because the glyph is smaller than its cell:
-    /// without it only the symbol's bounds are tappable, not the padding that
-    /// makes the circle look right.
-    /// `.subheadline`, not `.body`: Today's caption label is 14.33pt tall in its
-    /// 28.33pt pill, while a `.body` symbol is 17pt and looks heavier even at the
-    /// same outer height. `.subheadline` gives 15.33pt, the same optical weight,
-    /// and as a semantic font it scales with Dynamic Type like Today's label.
-    private func headerIcon(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.primary)
-            .frame(width: Self.headerActionHeight, height: Self.headerActionHeight)
-            .contentShape(.rect)
     }
 
     private func exportScreenshot() {

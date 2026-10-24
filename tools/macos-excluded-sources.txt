@@ -198,6 +198,7 @@ PasswordField.swift
 # SharedUI — iOS-only shared components
 EmptyStateView.swift
 GlassTextButtonModifier.swift
+HeaderMenuButton.swift
 HostScreenReader.swift
 InAppBrowserView.swift
 JustifiedText.swift

@@ -5,7 +5,7 @@ import UIKit
 
 @testable import TigerDuck
 
-/// The class table's header ⋯ button is sized against the Calendar "Today"
+/// The header ⋯ menu on Home and Class table is sized against the Calendar "Today"
 /// button: equal below iOS 26, about 1.3x on 26, where `.buttonStyle(.glass)`
 /// is much tighter than a glass backing behind an icon wants to be. Today's
 /// height is Apple's and differs per OS version, so only this test keeps the
@@ -49,21 +49,7 @@ struct HeaderControlMetricsTests {
     }
 
     private var headerCapsule: some View {
-        let cellHeight: CGFloat = if #available(iOS 26, *) { 36 } else { 40 }
-        let menu = Menu {
-            Button("") {}
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.subheadline.weight(.medium))
-                .frame(width: cellHeight, height: cellHeight)
-        }
-        return Group {
-            if #available(iOS 26, *) {
-                menu.glassEffect(.regular.interactive(), in: .circle)
-            } else {
-                menu.background(Circle().fill(Color(uiColor: .secondarySystemFill)))
-            }
-        }
+        HeaderMenuButton(accessibilityLabel: "") { Button("") {} }
     }
 
     @Test("the header button keeps its intended relationship to Today")
