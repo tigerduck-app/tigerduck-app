@@ -9,6 +9,7 @@ extension UTType {
 
 struct ReorderDragPayload: Codable, Hashable, Identifiable, Sendable, Transferable {
     enum Kind: String, Codable, Hashable, Sendable {
+        case homeSection
         case widget
     }
 

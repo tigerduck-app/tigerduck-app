@@ -90,8 +90,6 @@ struct WidgetGridView: View {
                         .foregroundStyle(.white, .red)
                         .font(.title3)
                 }
-                // In a List row a default-style button takes taps on the whole row.
-                .buttonStyle(.borderless)
                 .offset(x: -6, y: -6)
             }
         }
