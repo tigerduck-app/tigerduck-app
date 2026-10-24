@@ -26,7 +26,7 @@ struct MacSettingsScene: View {
                 .tabItem { Label(String(localized: "settings_section_about"), systemImage: "info.circle") }
         }
         .frame(width: 580, height: 480)
-        .tint(appState.accentColor)
+        .tint(AccentPreview.shared.tint(saved: appState.accentColor))
     }
 }
 #endif

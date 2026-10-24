@@ -42,9 +42,10 @@ struct MacAppearanceSettingsView: View {
 
     private func accentSwatch(hex: Int, nameKey: String) -> some View {
         let color = Color(hex: UInt(bitPattern: Int(hex)))
-        let isSelected = appState.shownAccentHex == hex
+        let isSelected = AccentPreview.shared.shownHex(saved: appState.accentColorHex) == hex
         return Button {
-            appState.chooseAccent(hex)
+            AccentPreview.shared.clear()
+            appState.accentColorHex = hex
         } label: {
             ZStack {
                 Circle()
