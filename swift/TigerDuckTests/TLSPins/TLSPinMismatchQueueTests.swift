@@ -6,7 +6,7 @@ import Testing
 struct TLSPinMismatchQueueTests {
     typealias F = TLSPinFixtures
 
-    static func mismatch(_ setID: String = "ntust") -> TLSPinMismatch {
+    nonisolated static func mismatch(_ setID: String = "ntust") -> TLSPinMismatch {
         TLSPinMismatch(
             setID: setID, host: "moodle2.ntust.edu.tw", domains: ["ntust.edu.tw"], issuerOrganization: "TAIWAN-CA",
             certificates: [], acceptedSPKIs: [F.ntustLeafSPKI, F.secureSSLCASPKI]
@@ -74,6 +74,22 @@ struct TLSPinMismatchQueueTests {
         #expect(queue.prompt == nil)
         queue.isForeground = true
         #expect(queue.prompt == Self.mismatch())
+    }
+
+    @Test("A held mismatch the pins now let through is dropped")
+    func aStalePromptIsDropped() {
+        let engine = F.engine()
+        engine.acceptDocument(F.envelope(F.payload(serial: 100, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.unknownSPKI])])))
+        var mismatch = Self.mismatch()
+        mismatch.chainSPKIs = [F.ntustLeafSPKI, F.secureSSLCASPKI, F.globalRootSPKI]
+        let queue = queue(engine: engine)
+        queue.isForeground = false
+        queue.report(mismatch)
+        engine.acceptDocument(F.envelope(F.payload(serial: 101)))
+        queue.isForeground = true
+        #expect(queue.prompt == nil)
+        queue.report(Self.mismatch("library"))
+        #expect(queue.prompt?.setID == "library")
     }
 
     @Test("Continue stores the leaf and intermediates and refreshes")

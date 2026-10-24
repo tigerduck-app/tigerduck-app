@@ -60,7 +60,9 @@ struct TLSPinEnforcementTests {
         #expect(leaf.sha256Fingerprint.hasPrefix("F8 E5 97 C6 AA 14"))
         #expect(mismatch.certificates.last?.name == "TWCA Global Root CA")
         #expect(mismatch.acceptedSPKIs == [F.ntustLeafSPKI, F.secureSSLCASPKI])
+        #expect(mismatch.chainSPKIs == [F.ntustLeafSPKI, F.secureSSLCASPKI, F.globalRootSPKI])
         #expect(engine.isRefusing(host: Self.host))
+        #expect(!engine.allows(mismatch))
     }
 
     @Test("A mismatch whose anchor is not a listed root fails with no prompt")
@@ -95,6 +97,27 @@ struct TLSPinEnforcementTests {
         #expect(await refreshes.value == 1)
     }
 
+    @Test("Refusals at the same time wait for one refresh and all pass once it fixes the pins")
+    func concurrentRefusalsShareOneRefresh() async throws {
+        let engine = engine(document: Self.movedPins(promptRoots: [F.globalRootSPKI]))
+        let fixed = F.envelope(F.payload(serial: 101))
+        let refreshes = Counter()
+        let reports = TLSPinReports()
+        reports.install(on: engine, refresh: {
+            await refreshes.increment()
+            try? await Task.sleep(for: .milliseconds(200))
+            _ = engine.acceptDocument(fixed)
+        })
+        let chain = try chain()
+        async let first = engine.resolveRefusal(host: Self.host, chain: chain)
+        async let second = engine.resolveRefusal(host: "moodle2.ntust.edu.tw", chain: chain)
+        async let third = engine.resolveRefusal(host: "i.ntust.edu.tw", chain: chain)
+        let results = await [first, second, third]
+        #expect(results == [true, true, true])
+        #expect(await refreshes.value == 1)
+        #expect(reports.all.isEmpty)
+    }
+
     @Test("A refresh that brings matching pins lets the chain through with no prompt")
     func aRefreshFixesTheChainSilently() async throws {
         let engine = engine(document: Self.movedPins(promptRoots: [F.globalRootSPKI]))
@@ -126,6 +149,28 @@ struct TLSPinEnforcementTests {
         #expect(self.engine(defaults: defaults).evaluate(host: Self.host, chain: chain) == .allowed)
     }
 
+    @Test("Accepting the same chain twice stores its SPKIs once")
+    func acceptancesAreDeduplicated() {
+        let engine = F.engine()
+        let mismatch = TLSPinMismatchQueueTests.mismatch()
+        engine.accept(mismatch)
+        engine.accept(mismatch)
+        #expect(engine.acceptances.count == 1)
+        #expect(engine.acceptances.first?.spkis == mismatch.acceptedSPKIs)
+    }
+
+    /// Sign-out clears the account's files and settings; acceptances are kept apart from both.
+    @Test("Signing out keeps acceptances")
+    func signOutKeepsAcceptances() throws {
+        let defaults = F.defaults()
+        F.engine(defaults: defaults).accept(TLSPinMismatchQueueTests.mismatch())
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        DataCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
+            .clearUserScopedData()
+        #expect(F.engine(defaults: defaults).acceptances.count == 1)
+    }
+
     @Test("An acceptance made under another build is dropped")
     func aBuildChangeDropsAcceptances() async throws {
         let defaults = F.defaults()
@@ -155,6 +200,20 @@ struct TLSPinEnforcementTests {
         _ = await engine.resolveRefusal(host: "localhost", chain: [F.testLeaf, F.testRoot])
         let leafSPKI = try #require(TLSSPKI.sha256Base64(of: F.testLeaf))
         #expect(reports.all.first?.acceptedSPKIs == [leafSPKI])
+    }
+
+    @Test("A chain of one certificate is never offered for a prompt")
+    func aSingleCertificateChainIsNotEligible() async throws {
+        let engine = F.engine(builtIn: [
+            TLSPinSet(id: "test", domains: [.init(name: "localhost", includeSubdomains: false)],
+                      pins: [F.unknownSPKI], expiresAt: .distantFuture),
+        ])
+        let rootSPKI = try #require(TLSSPKI.sha256Base64(of: F.testRoot))
+        engine.acceptDocument(F.envelope(F.payload(promptRoots: [rootSPKI])))
+        let reports = TLSPinReports()
+        reports.install(on: engine)
+        #expect(await engine.resolveRefusal(host: "localhost", chain: [F.testRoot]) == false)
+        #expect(reports.all.isEmpty)
     }
 
     @Test("Past its expiry a set stops enforcing")
@@ -230,6 +289,31 @@ struct TLSPinningDelegateChallengeTests {
         reports.install(on: engine, refresh: { _ = engine.acceptDocument(fixed) })
         #expect(try await disposition(engine) == .useCredential)
         #expect(reports.all.isEmpty)
+    }
+
+    @Test("A refresh that fails or times out still completes the challenge, refused, once", arguments: [
+        URLError(.timedOut), URLError(.notConnectedToInternet),
+    ])
+    func aFailedRefreshRefusesOnce(_ failure: URLError) async throws {
+        let engine = engine(document: E.movedPins(promptRoots: []))
+        let fetcher = TLSPinDocumentFetcher(engine: engine, send: { _ in throw failure }, clock: { E.date })
+        engine.install(refresh: { await fetcher.refetch() }, report: nil)
+        let trust = try #require(F.trust(E.wwwChain, host: E.host, at: E.date))
+        let challenge = URLAuthenticationChallenge(
+            protectionSpace: ServerTrustSpace(host: E.host, trust: trust), proposedCredential: nil,
+            previousFailureCount: 0, failureResponse: nil, error: nil, sender: NoChallengeSender()
+        )
+        let (calls, record) = AsyncStream<URLSession.AuthChallengeDisposition>.makeStream()
+        TLSPinningDelegate(engine: engine).urlSession(URLSession.shared, didReceive: challenge) { disposition, _ in
+            record.yield(disposition)
+        }
+        var dispositions = calls.makeAsyncIterator()
+        let first = await dispositions.next()
+        try await Task.sleep(for: .milliseconds(200))
+        record.finish()
+        let second = await dispositions.next()
+        #expect(first == .cancelAuthenticationChallenge)
+        #expect(second == nil)
     }
 
     @Test("CredentialPostDelegate forwards server trust to the shared pinning delegate")

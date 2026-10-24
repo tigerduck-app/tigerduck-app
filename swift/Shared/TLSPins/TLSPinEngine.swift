@@ -22,6 +22,8 @@ nonisolated struct TLSPinMismatch: Equatable, Sendable, Identifiable {
     let certificates: [TLSCertificateSummary]
     /// The leaf and intermediates, never the root.
     let acceptedSPKIs: Set<String>
+    /// Every certificate's, the anchor's too, to tell whether new pins let the chain through.
+    var chainSPKIs: Set<String> = []
 }
 
 nonisolated enum TLSPinPolicy: Equatable, Sendable {
@@ -136,10 +138,13 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
 
     func accept(_ mismatch: TLSPinMismatch) {
         withState { state in
-            state.acceptances.append(TLSPinAcceptance(
-                setID: mismatch.setID, spkis: mismatch.acceptedSPKIs, buildNumber: buildNumber, acceptedAt: clock()
-            ))
             state.refusedSets.remove(mismatch.setID)
+            let held = state.acceptances.filter { $0.setID == mismatch.setID }.flatMap(\.spkis)
+            let new = mismatch.acceptedSPKIs.subtracting(held)
+            guard !new.isEmpty else { return }
+            state.acceptances.append(TLSPinAcceptance(
+                setID: mismatch.setID, spkis: new, buildNumber: buildNumber, acceptedAt: clock()
+            ))
             persist(state.acceptances)
         }
     }
@@ -196,6 +201,14 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
             logger.error("TLS pin mismatch for \(host, privacy: .public) (set \(setID, privacy: .public)); refused with no prompt")
         }
         return false
+    }
+
+    /// Whether the current pins let a reported chain through, as after a newer document.
+    func allows(_ mismatch: TLSPinMismatch) -> Bool {
+        withState { state in
+            guard case .pinned(let set) = policy(forHost: mismatch.host, in: state, at: clock()) else { return true }
+            return !set.pins.isDisjoint(with: mismatch.chainSPKIs)
+        }
     }
 
     /// Whether the last check of the host's set refused its chain and nothing has changed since.
@@ -286,22 +299,23 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
     }
 
     /// Only a chain whose anchor is in the valid document's `prompt_roots` may be continued past,
-    /// so a root installed on the device, as an MDM profile or a proxy does, never is.
+    /// so a root installed on the device, as an MDM profile or a proxy does, never is. A chain of
+    /// one certificate is its own anchor, so it never is either: an acceptance holds no anchor.
     private func promptEligible(
         setID: String, host: String, chain: [SecCertificate], anchor: String?, in state: State
     ) -> TLSPinMismatch? {
-        guard let document = state.document, clock() < document.expiresAt,
+        guard chain.count > 1, let document = state.document, clock() < document.expiresAt,
               let anchor, document.promptRoots.contains(anchor) else { return nil }
         let set = effectiveSets(in: state, at: clock()).first { $0.id == setID }
         let summaries = chain.map { TLSCertificateSummary(der: SecCertificateCopyData($0) as Data) }
-        let kept = chain.count > 1 ? Array(chain.dropLast()) : chain
         return TLSPinMismatch(
             setID: setID,
             host: host,
             domains: set?.domains.map(\.name) ?? [],
             issuerOrganization: summaries.first?.issuerOrganization,
             certificates: summaries,
-            acceptedSPKIs: Set(kept.compactMap(TLSSPKI.sha256Base64(of:)))
+            acceptedSPKIs: Set(chain.dropLast().compactMap(TLSSPKI.sha256Base64(of:))),
+            chainSPKIs: Set(chain.compactMap(TLSSPKI.sha256Base64(of:)))
         )
     }
 }

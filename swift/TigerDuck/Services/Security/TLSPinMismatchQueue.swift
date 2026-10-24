@@ -73,10 +73,12 @@ final class TLSPinMismatchQueue {
         return Date(timeIntervalSince1970: quiet?[setID] ?? 0)
     }
 
+    /// A held mismatch the pins now let through, after a newer document, is dropped unasked.
     private func surface() {
         guard isForeground, prompt == nil, let held else { return }
-        askedThisLaunch.insert(held.setID)
         self.held = nil
+        guard !engine.allows(held) else { return }
+        askedThisLaunch.insert(held.setID)
         prompt = held
     }
 }
