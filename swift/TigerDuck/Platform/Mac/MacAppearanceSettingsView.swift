@@ -12,6 +12,8 @@ struct MacAppearanceSettingsView: View {
                     ForEach(AppState.themeColors, id: \.hex) { entry in
                         accentSwatch(hex: entry.hex, nameKey: entry.nameKey)
                     }
+                    CustomAccentPicker(appState: appState, size: 32)
+                        .padding(4)
                 }
                 .padding(.vertical, 4)
             }
@@ -40,8 +42,9 @@ struct MacAppearanceSettingsView: View {
 
     private func accentSwatch(hex: Int, nameKey: String) -> some View {
         let color = Color(hex: UInt(bitPattern: Int(hex)))
-        let isSelected = appState.accentColorHex == hex
+        let isSelected = AccentPreview.shared.shownHex(saved: appState.accentColorHex) == hex
         return Button {
+            AccentPreview.shared.clear()
             appState.accentColorHex = hex
         } label: {
             ZStack {

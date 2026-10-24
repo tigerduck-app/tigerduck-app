@@ -57,4 +57,27 @@ extension Color {
     static let moodleBlue = Color(hex: 0x007AFF)
     static let schoolOrange = Color(hex: 0xFF9500)
     static let examRed = Color(hex: 0xFF3B30)
+
+    /// The 24-bit sRGB value of a colour, such as a `ColorPicker`'s pick.
+    ///
+    /// On macOS, `NSColor(color)` may land in a color space with no direct
+    /// `cgColor`: the API is declared non-optional but documented to return
+    /// nil then, and the picker's catalog colors trip this. Converting through
+    /// `.sRGB` first reads RGBA from a well-defined space, and an unresolved
+    /// CGColor becomes black (0) instead of a crash.
+    var rgbHex: UInt32 {
+        #if canImport(UIKit)
+        let resolved: CGColor? = UIColor(self).cgColor
+        #elseif canImport(AppKit)
+        let resolved: CGColor? = NSColor(self).usingColorSpace(.sRGB)?.cgColor
+        #else
+        let resolved: CGColor? = nil
+        #endif
+        guard let cg = resolved else { return 0 }
+        let components = cg.components ?? [0, 0, 0, 1]
+        let byte = { (index: Int) in
+            UInt32((max(0, min(1, components[min(index, components.count - 1)])) * 255).rounded())
+        }
+        return (byte(0) << 16) | (byte(1) << 8) | byte(2)
+    }
 }
