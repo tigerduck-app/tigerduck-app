@@ -50,6 +50,7 @@ enum ClassTableExporter {
     static func render(
         viewModel: ClassTableViewModel,
         appState: AppState,
+        colorScheme: ColorScheme,
         dynamicTypeSize: DynamicTypeSize,
         layoutDirection: LayoutDirection,
         legibilityWeight: LegibilityWeight?,
@@ -62,7 +63,7 @@ enum ClassTableExporter {
             differentiateWithoutColor: differentiateWithoutColor
         )
             .environment(appState)
-            .environment(\.colorScheme, .dark)
+            .environment(\.colorScheme, colorScheme)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
             // A right-to-left language mirrors the page's grid; the empty
             // environment would draw it left-to-right.

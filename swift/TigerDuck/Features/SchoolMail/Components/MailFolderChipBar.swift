@@ -65,7 +65,7 @@ struct MailFolderChipBar: View {
     private func chip(_ title: String, isSelected: Bool) -> some View {
         Text(title)
             .font(.subheadline.weight(isSelected ? .semibold : .regular))
-            .foregroundStyle(isSelected ? Color.textPrimary : Color.textSecondary)
+            .foregroundStyle(isSelected ? Color.white : Color.textSecondary)
             .padding(.horizontal, TigerDuckTheme.Spacing.md)
             .padding(.vertical, TigerDuckTheme.Spacing.xs)
             .glassChip(isSelected: isSelected)
