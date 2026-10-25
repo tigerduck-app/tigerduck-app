@@ -26,6 +26,10 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         self.wipeCount = wipeCount
     }
 
+    deinit {
+        sqlite3_close_v2(db)
+    }
+
     /// What a search of a mail reads: its sender, subject and body text, with runs of white space
     /// as one space, so a phrase broken across lines still matches.
     static func text(of summary: MailSummary, body: String?) -> String {

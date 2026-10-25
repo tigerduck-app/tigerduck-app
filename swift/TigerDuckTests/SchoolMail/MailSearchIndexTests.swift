@@ -218,6 +218,27 @@ struct MailSearchIndexTests {
         #expect(second.searchIndex.search(folder: "INBOX", query: "選課")?.uids == [2])
     }
 
+    @Test func anIndexLetGoClosesItsFile() throws {
+        var cache = Optional(Self.cache())
+        let directory = try #require(cache.map(Self.directory(of:)))
+        Self.fill(try #require(cache), [1: Self.text(subject: "成績單", body: nil)])
+        #expect(Self.openFiles(in: directory) > 0)
+
+        cache = nil
+
+        #expect(Self.openFiles(in: directory) == 0)
+    }
+
+    /// This process's descriptors open on a file under `directory`.
+    static func openFiles(in directory: URL) -> Int {
+        (0..<getdtablesize()).filter { descriptor in
+            var path = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+            guard fcntl(descriptor, F_GETPATH, &path) != -1 else { return false }
+            let bytes = path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+            return String(decoding: bytes, as: UTF8.self).contains(directory.lastPathComponent)
+        }.count
+    }
+
     @Test func theTextOfAMailIsCappedInLength() {
         let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchIndex.maxTextLength * 2))
         #expect(text.count == MailSearchIndex.maxTextLength)
