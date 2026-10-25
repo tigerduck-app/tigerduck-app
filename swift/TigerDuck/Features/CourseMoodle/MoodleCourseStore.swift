@@ -656,6 +656,7 @@ final class MoodleCourseStore {
 
     private(set) var pictures: [URL: CGImage] = [:]
     @ObservationIgnored private var askedPictures: Set<URL> = []
+    @ObservationIgnored private var picturesInFlight: Set<URL> = []
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
     @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
     @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
@@ -665,7 +666,10 @@ final class MoodleCourseStore {
     /// when it differs. A picture is kept by the member's student ID, so the address of a new upload
     /// still finds the old picture to show until the new one lands.
     func loadPicture(of member: MoodleMember) async {
-        guard let url = member.pictureURL, !askedPictures.contains(url) else { return }
+        guard let url = member.pictureURL else { return }
+        // A request still out may yet be cancelled with its row, which leaves this caller to ask.
+        if picturesInFlight.contains(url) { _ = await lastPictureDownload?.value }
+        guard !askedPictures.contains(url) else { return }
         let file = pictureFile(of: member, url: url)
         if pictures[url] == nil, let kept = await readInTurn(file) {
             guard context.isCurrent() else { return }
@@ -754,6 +758,8 @@ final class MoodleCourseStore {
             _ = await previous?.value
             guard !Task.isCancelled, !self.askedPictures.contains(url) else { return nil }
             self.askedPictures.insert(url)
+            self.picturesInFlight.insert(url)
+            defer { self.picturesInFlight.remove(url) }
             do {
                 return try await api.picture(url)
             } catch {

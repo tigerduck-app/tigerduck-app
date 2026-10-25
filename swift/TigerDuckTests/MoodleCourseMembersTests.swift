@@ -442,6 +442,32 @@ struct MoodleCourseMembersTests {
         #expect(store.pictures[url] != nil)
     }
 
+    @Test("a row or profile that asks while a cancelled request for its picture is still out asks again")
+    func pictureAskedAgainAfterACancelledRequestEnds() async throws {
+        let folder = Folder()
+        let site = Site()
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: site) {
+            await answer.sleep(for: .zero)
+            try Task.checkCancellation()
+        }
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let url = try #require(member.pictureURL)
+
+        let gone = Task { await store.loadPicture(of: member) }
+        try await answer.waitUntilArmed()
+        let back = Task { await store.loadPicture(of: member) }
+        for _ in 0..<5 { await Task.yield() }
+        gone.cancel()
+        await gone.value
+        try await answer.waitUntilArmed(atLeast: 2)
+        await answer.fire()
+        await back.value
+
+        #expect(site.pictureCalls == [url, url])
+        #expect(store.pictures[url] != nil)
+    }
+
     @Test("after a new upload the preview opens that upload's 512 px size, even where no row loaded it")
     func previewFollowsANewUpload() async throws {
         let folder = Folder()
