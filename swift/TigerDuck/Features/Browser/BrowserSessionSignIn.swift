@@ -25,10 +25,10 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
             await cookies.setCookie(cookie)
         }
         guard await runSignInPage() else { return false }
-        let signedIn = await cookies.allCookies().filter(BrowserRouting.isSharedCookie)
+        let signedIn = await cookies.allCookies()
         // A sign-out since the start purged the jar, which must not get the departing account's cookies back.
         guard Self.accountGeneration() == generation else { return false }
-        signedIn.forEach(HTTPCookieStorage.shared.setCookie)
+        signedIn.filter(BrowserRouting.isSharedCookie).forEach(HTTPCookieStorage.shared.setCookie)
         return BrowserRouting.hasMoodleSession(signedIn)
     }
 
