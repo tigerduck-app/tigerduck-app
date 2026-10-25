@@ -2,8 +2,6 @@ import Defaults
 import SwiftUI
 
 struct HomeView: View {
-    private static let sectionDragContainerID = "home-sections"
-
     var embedded = false
 
     @Environment(AppState.self) private var appState
@@ -14,8 +12,9 @@ struct HomeView: View {
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
     @State private var selectedFeature: AppFeature?
-    @State private var activeSectionDrag: ReorderDragPayload?
-    @State private var didReorderSection = false
+    @State private var scrollAnchor = HomeScrollAnchor()
+    /// The section the page being opened scrolls to.
+    @State private var scrollTarget: String?
 
     @State private var termTicker = MinuteTicker(interval: 60)
 
@@ -38,15 +37,6 @@ struct HomeView: View {
     private var content: some View {
         let _ = AppClockState.shared.version
         return page
-        .refreshable {
-            // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
-            // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
-            // the top-right SyncStatusDot shows its status.
-            viewModel.triggerRefresh(authService: appState.authService)
-            if Defaults[.cloudSyncEnabled] {
-                Task { await appState.syncOverridesFromBackend() }
-            }
-        }
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbar {
@@ -56,12 +46,7 @@ struct HomeView: View {
                         Image(systemName: "plus")
                     }
                     .accessibilityLabel(Text("home_add_section_title"))
-                    Button(String(localized: "action_done")) {
-                        withAnimation(reduceMotion ? nil : .smoothSpring) {
-                            finishSectionDrag()
-                            viewModel.isEditingHome = false
-                        }
-                    }
+                    Button(String(localized: "action_done")) { setEditing(false) }
                 }
             }
         }
@@ -109,55 +94,28 @@ struct HomeView: View {
             )
             .onDisappear { viewModel.selectedCourseSlot = nil }
         }
-        .onChange(of: viewModel.isEditingHome) { _, isEditing in
-            if !isEditing {
-                finishSectionDrag()
-            }
-        }
-        .onDisappear {
-            finishSectionDrag()
-        }
     }
 
     /// Browsing is one List, so each assignment row takes the system's `.swipeActions`
-    /// (UpcomingAssignmentsView says why). Editing is a stack: in a List row SwiftUI hands every
-    /// `.draggable` to the List, which then drags the row's first widget wherever the press lands,
-    /// and `onMove` reorders only from the grip of the system edit mode.
-    @ViewBuilder
+    /// (UpcomingAssignmentsView says why); editing is `HomeEditPage`. The page that opens scrolls
+    /// to the section the other one showed.
     private var page: some View {
-        if viewModel.isEditingHome {
-            editingPage
-        } else {
-            sectionList
+        ScrollViewReader { proxy in
+            if viewModel.isEditingHome {
+                editingPage
+                    .onAppear { restoreScroll(proxy) }
+            } else {
+                sectionList
+                    .onAppear { restoreScroll(proxy) }
+            }
         }
     }
 
     private var editingPage: some View {
-        ScrollView {
-            VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                titleBar
-                    .padding(.top, TigerDuckTheme.Spacing.md)
-
-                if let reauthError = appState.ntustReauthErrorMessage {
-                    reauthBanner(reauthError)
-                }
-
-                ForEach(visibleSections) { section in
-                    sectionCell(section)
-                }
-            }
-            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
-            .onDrop(
-                of: [.tigerDuckReorderPayload],
-                delegate: ReorderContainerDropDelegate(
-                    expectedKind: .homeSection,
-                    containerID: Self.sectionDragContainerID,
-                    activePayload: $activeSectionDrag,
-                    didReorder: $didReorderSection,
-                    onPersist: viewModel.saveSectionLayout
-                )
-            )
-            .contentShape(Rectangle())
+        HomeEditPage(viewModel: viewModel, sections: visibleSections, scrollAnchor: scrollAnchor) {
+            titleBar
+                .padding(.top, TigerDuckTheme.Spacing.md)
+                .disabled(true)
         }
     }
 
@@ -177,6 +135,7 @@ struct HomeView: View {
                 } else {
                     homeSection(section)
                         .homeListRow(top: TigerDuckTheme.Spacing.lg)
+                        .homeScrollAnchor(section.id, in: scrollAnchor)
                 }
             }
         }
@@ -184,10 +143,34 @@ struct HomeView: View {
         .scrollContentBackground(.hidden)
         .environment(\.defaultMinListRowHeight, 0)
         .contentMargins(.bottom, TigerDuckTheme.Spacing.xxl, for: .scrollContent)
+        .homeScrollTop(in: scrollAnchor)
         .animation(
             UpcomingAssignmentsView.listChangeAnimation,
             value: viewModel.upcomingAssignments.map(\.assignmentId)
         )
+        .refreshable {
+            // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
+            // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
+            // the top-right SyncStatusDot shows its status.
+            viewModel.triggerRefresh(authService: appState.authService)
+            if Defaults[.cloudSyncEnabled] {
+                Task { await appState.syncOverridesFromBackend() }
+            }
+        }
+    }
+
+    private func setEditing(_ isEditing: Bool) {
+        guard viewModel.isEditingHome != isEditing else { return }
+        scrollTarget = scrollAnchor.section(in: visibleSections.map(\.id))
+        scrollAnchor.reset()
+        withAnimation(reduceMotion ? nil : .smoothSpring) { viewModel.isEditingHome = isEditing }
+    }
+
+    private func restoreScroll(_ proxy: ScrollViewProxy) {
+        guard let target = scrollTarget else { return }
+        scrollTarget = nil
+        // The page's rows are laid out once the update that made it appear has finished.
+        DispatchQueue.main.async { proxy.scrollTo(target, anchor: .top) }
     }
 
     private func reauthBanner(_ message: String) -> some View {
@@ -210,13 +193,10 @@ struct HomeView: View {
             HStack(spacing: TigerDuckTheme.Spacing.lg) {
                 SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
                 HeaderMenuButton(accessibilityLabel: String(localized: "home_more_actions")) {
-                    Button {
-                        withAnimation(reduceMotion ? nil : .smoothSpring) { viewModel.isEditingHome = true }
-                    } label: {
+                    Button { setEditing(true) } label: {
                         Label(String(localized: "home_edit"), systemImage: "pencil")
                     }
                 }
-                .disabled(viewModel.isEditingHome)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -228,6 +208,7 @@ struct HomeView: View {
             viewModel: viewModel,
             appState: appState,
             asListRows: asListRows,
+            scrollAnchor: scrollAnchor,
             onFeatureTap: { feature in
                 if feature.isImplemented {
                     selectedFeature = feature
@@ -237,62 +218,6 @@ struct HomeView: View {
             },
             onOpenAssignment: { openAssignment($0) }
         )
-    }
-
-    @ViewBuilder
-    private func sectionCell(_ section: HomeSection) -> some View {
-        let content = sectionContent(section)
-
-        if viewModel.isEditingHome {
-            let payload = sectionDragPayload(for: section)
-            content
-                .draggable(payload) {
-                    SectionDragPreview(section: section)
-                        .onAppear { activeSectionDrag = payload }
-                }
-                .onDrop(
-                    of: [.tigerDuckReorderPayload],
-                    delegate: ReorderDropDelegate(
-                        targetID: section.id,
-                        expectedKind: .homeSection,
-                        containerID: Self.sectionDragContainerID,
-                        activePayload: $activeSectionDrag,
-                        didReorder: $didReorderSection,
-                        currentIDs: { viewModel.sections.map(\.id) },
-                        moveAction: { fromOffsets, destination in
-                            viewModel.sections.move(fromOffsets: fromOffsets, toOffset: destination)
-                        },
-                        onPersist: viewModel.saveSectionLayout
-                    )
-                )
-        } else {
-            content
-        }
-    }
-
-    @ViewBuilder
-    private func sectionContent(_ section: HomeSection) -> some View {
-        homeSection(section)
-            .overlay(alignment: .top) {
-                if viewModel.isEditingHome {
-                    SectionDragHandle()
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                if viewModel.isEditingHome {
-                    Button {
-                        withAnimation(reduceMotion ? nil : .smoothSpring) {
-                            viewModel.removeSection(section)
-                        }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.white, .red)
-                            .font(.title3)
-                    }
-                    .offset(x: 6, y: -6)
-                }
-            }
-            .opacity(activeSectionDrag?.id == section.id ? 0.35 : 1)
     }
 
     @ViewBuilder
@@ -321,64 +246,6 @@ struct HomeView: View {
             Task { await openURL(url, fallback: web) }
         }
     }
-
-    private func sectionDragPayload(for section: HomeSection) -> ReorderDragPayload {
-        ReorderDragPayload(
-            id: section.id,
-            kind: .homeSection,
-            containerID: Self.sectionDragContainerID
-        )
-    }
-
-    private func finishSectionDrag() {
-        ReorderDropSupport.finalizeDrop(
-            activePayload: $activeSectionDrag,
-            didReorder: $didReorderSection,
-            onPersist: viewModel.saveSectionLayout
-        )
-    }
-}
-
-private struct SectionDragHandle: View {
-    var body: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.xs) {
-            Image(systemName: "line.3.horizontal")
-                .font(.caption.weight(.bold))
-            Text(String(localized: "home_section_drag_hint"))
-                .font(TigerDuckTheme.Typography.caption2)
-        }
-        .foregroundStyle(Color.textSecondary)
-        .padding(.horizontal, TigerDuckTheme.Spacing.md)
-        .padding(.vertical, TigerDuckTheme.Spacing.xs)
-        .background(
-            Capsule().fill(Color(.systemGray5))
-        )
-        .padding(.top, TigerDuckTheme.Spacing.xs)
-    }
-}
-
-private struct SectionDragPreview: View {
-    let section: HomeSection
-
-    var body: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.sm) {
-            Image(systemName: section.type.iconName)
-                .font(.title3)
-                .foregroundStyle(.tint)
-            Text(section.title)
-                .font(TigerDuckTheme.Typography.headline)
-                .foregroundStyle(Color.textPrimary)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .padding(TigerDuckTheme.Spacing.lg)
-        .frame(width: 280, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
-                .fill(Color(.secondarySystemGroupedBackground))
-                .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
-        )
-    }
 }
 
 private struct HomeSectionView: View {
@@ -386,10 +253,9 @@ private struct HomeSectionView: View {
     let viewModel: HomeViewModel
     let appState: AppState
     var asListRows = false
+    let scrollAnchor: HomeScrollAnchor
     var onFeatureTap: ((AppFeature) -> Void)? = nil
     var onOpenAssignment: (SDAssignment) -> Void = { _ in }
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var filterPicker: some View {
         Picker("", selection: Bindable(viewModel).assignmentFilter) {
@@ -399,7 +265,6 @@ private struct HomeSectionView: View {
         }
         .pickerStyle(.segmented)
         .padding(.horizontal)
-        .disabled(viewModel.isEditingHome)
     }
 
     private var assignmentAccess: NTUSTProtectedAccessState {
@@ -466,6 +331,7 @@ private struct HomeSectionView: View {
         if asListRows {
             SectionHeader(title: section.title)
                 .homeListRow(top: TigerDuckTheme.Spacing.lg)
+                .homeScrollAnchor(section.id, in: scrollAnchor)
             filterPicker
                 .homeListRow(top: TigerDuckTheme.Spacing.sm)
             if assignmentAccess == .content {
@@ -490,7 +356,6 @@ private struct HomeSectionView: View {
                 TimeSliderSection(
                     courses: viewModel.allCourses,
                     onSelectCourse: { slot in
-                        guard !viewModel.isEditingHome else { return }
                         viewModel.selectedCourseSlot = slot
                         viewModel.selectedCourse = slot.course
                     }
@@ -499,7 +364,6 @@ private struct HomeSectionView: View {
                 filterPicker
                 if assignmentAccess == .content {
                     assignmentList
-                        .allowsHitTesting(!viewModel.isEditingHome)
                 } else {
                     assignmentPlaceholder
                 }
@@ -515,18 +379,10 @@ private struct HomeSectionView: View {
                             }
                         }
                     ),
-                    isEditing: viewModel.isEditingHome,
+                    isEditing: false,
                     dragContainerID: section.id,
-                    onRemove: { widget in
-                        withAnimation(reduceMotion ? nil : .smoothSpring) {
-                            viewModel.removeWidget(from: section.id, widget: widget)
-                        }
-                    },
                     onTap: { feature in
                         onFeatureTap?(feature)
-                    },
-                    onReorder: {
-                        viewModel.saveSectionLayout()
                     }
                 )
             }
