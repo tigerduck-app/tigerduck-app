@@ -50,6 +50,7 @@ extension AppState {
         Defaults[.hasCompletedOnboarding] = true
         pushCoordinator.enable()
         backgroundSync()
+        Task { await TLSPinDocumentFetcher.shared.fetchIfDue() }
     }
 
 }

@@ -60,7 +60,8 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         var document: TLSPinDocument?
         var acceptances: [TLSPinAcceptance] = []
         var refusedSets: Set<String> = []
-        var refreshes: [String: Task<Void, Never>] = [:]
+        var refreshes: [String: Task<Bool, Never>] = [:]
+        var failedRefreshAt: [String: Date] = [:]
     }
 
     private let builtIn: [TLSPinSet]
@@ -72,7 +73,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Security.TLSPin")
     private let lock = NSLock()
     private var loaded: State?
-    private var refresh: (@Sendable () async -> Void)?
+    private var refresh: (@Sendable () async -> Bool)?
     private var report: (@Sendable (TLSPinMismatch) -> Void)?
 
     init(
@@ -91,10 +92,11 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         self.clock = clock
     }
 
-    /// `refresh` fetches the document again after a mismatch; `report` takes each refused chain the
-    /// user may continue past. Both stay nil where there is no fetch or prompt, as on the Watch.
+    /// `refresh` fetches the document again after a mismatch and returns whether the server
+    /// answered; `report` takes each refused chain the user may continue past. Both stay nil where
+    /// there is no fetch or prompt, as on the Watch.
     func install(
-        refresh: (@Sendable () async -> Void)?,
+        refresh: (@Sendable () async -> Bool)?,
         report: (@Sendable (TLSPinMismatch) -> Void)?
     ) {
         lock.withLock {
@@ -253,16 +255,28 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         }
     }
 
+    /// A refetch the server answered counts for the launch. After one that failed, as in a network
+    /// blip, the next may start 30 seconds later: with the backend out of reach while NTUST answers,
+    /// as behind a captive portal, each refused request would otherwise wait out its own refetch.
     private func refreshOnce(setID: String) async {
-        let task: Task<Void, Never>? = withState { state in
+        let task: Task<Bool, Never>? = withState { state in
             if let running = state.refreshes[setID] { return running }
+            if let failed = state.failedRefreshAt[setID],
+               clock().timeIntervalSince(failed) < Self.refreshRetryDelay { return nil }
             guard let refresh else { return nil }
             let task = Task { await refresh() }
             state.refreshes[setID] = task
             return task
         }
-        await task?.value
+        guard let task, !(await task.value) else { return }
+        withState { state in
+            guard state.refreshes[setID] == task else { return }
+            state.refreshes[setID] = nil
+            state.failedRefreshAt[setID] = clock()
+        }
     }
+
+    static let refreshRetryDelay: TimeInterval = 30
 
     /// The sets the document replaces, when it is newer than the built-in table; a set it does not
     /// list keeps the built-in pins, and an expiry it moves earlier is ignored.
@@ -301,10 +315,13 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
     /// Only a chain whose anchor is in the valid document's `prompt_roots` may be continued past,
     /// so a root installed on the device, as an MDM profile or a proxy does, never is. A chain of
     /// one certificate is its own anchor, so it never is either: an acceptance holds no anchor.
+    /// Nor is one whose leaf and intermediates have no key `TLSSPKI` reads, as Continue would
+    /// store nothing.
     private func promptEligible(
         setID: String, host: String, chain: [SecCertificate], anchor: String?, in state: State
     ) -> TLSPinMismatch? {
-        guard chain.count > 1, let document = state.document, clock() < document.expiresAt,
+        let accepted = Set(chain.dropLast().compactMap(TLSSPKI.sha256Base64(of:)))
+        guard chain.count > 1, !accepted.isEmpty, let document = state.document, clock() < document.expiresAt,
               let anchor, document.promptRoots.contains(anchor) else { return nil }
         let set = effectiveSets(in: state, at: clock()).first { $0.id == setID }
         let summaries = chain.map { TLSCertificateSummary(der: SecCertificateCopyData($0) as Data) }
@@ -314,7 +331,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
             domains: set?.domains.map(\.name) ?? [],
             issuerOrganization: summaries.first?.issuerOrganization,
             certificates: summaries,
-            acceptedSPKIs: Set(chain.dropLast().compactMap(TLSSPKI.sha256Base64(of:))),
+            acceptedSPKIs: accepted,
             chainSPKIs: Set(chain.compactMap(TLSSPKI.sha256Base64(of:)))
         )
     }

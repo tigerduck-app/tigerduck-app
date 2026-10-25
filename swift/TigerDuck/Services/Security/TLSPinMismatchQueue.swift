@@ -1,4 +1,3 @@
-import Defaults
 import Foundation
 import Observation
 
@@ -94,13 +93,16 @@ final class TLSPinMismatchQueue {
 
 extension TLSPinEngine {
     /// The app's document fetch and prompt queue. The Watch and the unit tests run without them.
-    /// The document is on the TigerDuck backend, which nothing reaches before onboarding.
     static func installAppHooks() {
-        shared.install(
-            refresh: {
-                guard Defaults[.hasCompletedOnboarding] else { return }
-                await TLSPinDocumentFetcher.shared.refetch()
-            },
+        shared.installAppHooks(fetcher: .shared)
+    }
+
+    /// The refetch runs before onboarding too: a request the user started, such as onboarding's
+    /// sign-in, triggers it, not launch code, and a fresh install whose built-in pins went stale
+    /// has no other way to get the pins it needs to finish onboarding.
+    func installAppHooks(fetcher: TLSPinDocumentFetcher) {
+        install(
+            refresh: { await fetcher.refetch() },
             report: { mismatch in
                 Task { @MainActor in TLSPinMismatchQueue.shared.report(mismatch) }
             }
