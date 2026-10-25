@@ -202,6 +202,34 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
+    @Test("Use Server waits out a colour edit the outbox is already sending, so the pull after it reads that edit")
+    func useServerWaitsForTheEditInFlight() async throws {
+        let backend = Backend()
+        let gate = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(Self.colourReply.utf8), gate: gate),
+            for: backend.url("sync/courses/1151CS1/override")
+        )
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { !backend.requests("sync/courses/1151CS1/override").isEmpty }
+
+        let answered = OSAllocatedUnfairLock(initialState: false)
+        let useServer = Task {
+            await coordinator.discardEdits(of: ["course_colors"], courseIgnores: false)
+            answered.withLock { $0 = true }
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(!answered.withLock { $0 })
+
+        gate.open()
+        await useServer.value
+        await drain.value
+        #expect(answered.withLock { $0 })
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
     @Test("A colour or name edit counts as pending from the edit until its request is sent")
     func colourAndNameEditsArePendingUntilSent() async {
         let backend = Backend()

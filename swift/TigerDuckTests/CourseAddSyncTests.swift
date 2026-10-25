@@ -221,6 +221,20 @@ struct CourseAddSyncTests {
         await add.value
     }
 
+    @Test("Use Server for courses refuses an add still on its way into the outbox")
+    func useServerRefusesAnAddOnItsWayIn() async {
+        let backend = Backend()
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
+
+        let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
+        await coordinator.discardEdits(of: ["courses"], courseIgnores: false)
+        await add.value
+
+        #expect(backend.uploads.isEmpty)
+        #expect(!(await coordinator.holdsUnsentEdits()))
+        #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
+    }
+
     @Test("An add the server keeps refusing is parked, so a full sync still keeps its course and tries it again")
     func refusedAddIsParked() async {
         let outbox = SyncOutbox(directory: Self.freshDirectory())

@@ -90,6 +90,14 @@ nonisolated enum SyncOp: Codable, Sendable {
             return "ca|\(semester)|\(courseNo)"
         }
     }
+
+    var stamp: Date {
+        switch self {
+        case .courseOverride(_, _, _, _, _, let stamp), .assignmentOverride(_, _, _, let stamp),
+             .courseIgnore(_, _, _, _, _, let stamp), .courseDelete(_, _, let stamp), .courseAdd(_, _, let stamp):
+            return stamp
+        }
+    }
 }
 
 nonisolated enum ResolvedSyncOp: Sendable {
@@ -119,6 +127,7 @@ actor SyncOutbox {
     /// on it, nothing is written over the files, and what was queued meanwhile joins what they hold.
     private var isLoaded: Bool
     private var unreadableLoads = 0
+    private var refusals: [@Sendable (SyncOp) -> Bool] = []
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
     init(
@@ -142,6 +151,7 @@ actor SyncOutbox {
 
     func enqueue(_ op: SyncOp) {
         loadIfNeeded()
+        guard !refusals.contains(where: { $0(op) }) else { return }
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
@@ -194,11 +204,23 @@ actor SyncOutbox {
         persist()
     }
 
-    func discard(where isDropped: @Sendable (SyncOp) -> Bool) {
+    @discardableResult
+    func discard(where isDropped: @Sendable (SyncOp) -> Bool) -> [SyncOp] {
         loadIfNeeded()
+        let dropped = (entries + parked).map(\.op).filter(isDropped)
         entries.removeAll { isDropped($0.op) }
         parked.removeAll { isDropped($0.op) }
         persist()
+        return dropped
+    }
+
+    /// Discards the picked ops made before `cutoff`, and refuses such an op still on its way in,
+    /// as one whose enqueue task had not reached the outbox yet.
+    @discardableResult
+    func discard(madeBefore cutoff: Date, where isDropped: @escaping @Sendable (SyncOp) -> Bool) -> [SyncOp] {
+        let picked: @Sendable (SyncOp) -> Bool = { $0.stamp < cutoff && isDropped($0) }
+        refusals.append(picked)
+        return discard(where: picked)
     }
 
     func requeueParked() {

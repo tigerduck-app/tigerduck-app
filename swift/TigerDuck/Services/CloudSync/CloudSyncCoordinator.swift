@@ -50,6 +50,7 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private var lastNameEdit: [String: Int] = [:]
     @ObservationIgnored private var courseAddsEnqueuing: [UUID: String] = [:]
     @ObservationIgnored private var courseAddTimes: [String: Date] = [:]
+    @ObservationIgnored private var sending: Task<Void, Error>?
 
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
@@ -307,8 +308,10 @@ final class CloudSyncCoordinator {
         return (pending.colors.union(edited.colors), pending.names.union(edited.names))
     }
 
+    /// Use Server for `categories`: drops this device's edits of them made so far, then waits out
+    /// a request the outbox has in flight, so the server's values read next include it.
     func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
-        await outbox.discard { op in
+        let isDropped: @Sendable (SyncOp) -> Bool = { op in
             switch op {
             case .assignmentOverride:
                 return categories.contains("assignments")
@@ -323,6 +326,10 @@ final class CloudSyncCoordinator {
                 return false
             }
         }
+        courseOverridesEnqueuing = courseOverridesEnqueuing.filter { !isDropped($0.value) }
+        if categories.contains("courses") { courseAddsEnqueuing = [:] }
+        await outbox.discard(madeBefore: Date(), where: isDropped)
+        _ = await sending?.result
     }
 
     func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
@@ -417,6 +424,13 @@ final class CloudSyncCoordinator {
     }
 
     private func execute(_ op: ResolvedSyncOp) async throws {
+        let request = Task { try await self.send(op) }
+        sending = request
+        defer { sending = nil }
+        try await request.value
+    }
+
+    private func send(_ op: ResolvedSyncOp) async throws {
         do {
             switch op {
             case .courseOverride(let courseId, let colorHex, let customName, let locale):
