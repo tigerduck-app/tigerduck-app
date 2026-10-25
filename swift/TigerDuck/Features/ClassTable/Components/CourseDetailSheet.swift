@@ -312,9 +312,10 @@ struct CourseDetailSheet: View {
                             .foregroundStyle(Color.textSecondary)
                             .font(.caption)
                     }
+                    .cardPadding()
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .cardPadding()
                 .glassCard()
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
