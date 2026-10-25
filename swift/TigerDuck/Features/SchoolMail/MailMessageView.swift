@@ -252,7 +252,7 @@ struct MailMessageView: View {
                         onLinkTap: { index in
                             if let target = viewModel.linkTarget(forIndex: index) { pendingLinkTarget = target }
                         },
-                        onLoaded: { webLoaded = true }
+                        onLoadedChange: { webLoaded = $0 }
                     )
                     .frame(height: webHeight)
                     .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))

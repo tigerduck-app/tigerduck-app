@@ -10,7 +10,8 @@ struct MailHTMLView: UIViewRepresentable {
     var theme: MailHTMLTheme = .app
     @Binding var contentHeight: CGFloat
     let onLinkTap: (Int) -> Void
-    var onLoaded: () -> Void = {}
+    /// False when a load starts, true once it finishes or fails.
+    var onLoadedChange: (Bool) -> Void = { _ in }
 
     nonisolated static let maximumContentHeight: CGFloat = 50_000
 
@@ -80,6 +81,8 @@ struct MailHTMLView: UIViewRepresentable {
             let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)|\(images)"
             guard key != loadedKey else { return }
             loadedKey = key
+            // Outside the view update this runs in.
+            Task { @MainActor [weak self] in self?.parent.onLoadedChange(false) }
             let theme = parent.theme
             let document = MailWebViewFactory.document(for: parent.html, allowRemoteImages: parent.allowRemoteImages,
                                                        theme: theme)
@@ -104,11 +107,19 @@ struct MailHTMLView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            parent.onLoaded()
+            parent.onLoadedChange(true)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            parent.onLoaded()
+            parent.onLoadedChange(true)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            parent.onLoadedChange(true)
+        }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            parent.onLoadedChange(true)
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
