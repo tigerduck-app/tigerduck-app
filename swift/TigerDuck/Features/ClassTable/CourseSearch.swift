@@ -44,7 +44,6 @@ struct CourseSearchFilters: Hashable {
 
 enum CourseSearch {
     static let languages = ["zh", "en"]
-    /// Monday to Saturday, the days the periods grid offers.
     static let gridDays = Array(1...6)
 
     private static let courseNoPattern = #"^[A-Za-z0-9]+$"#
@@ -150,7 +149,6 @@ enum CourseSearch {
         return filters.hideConflicts && !names.isEmpty ? nil : names
     }
 
-    /// Every grid period the timetable leaves free.
     static func freeSlots(busy: Set<CourseSlot>) -> Set<CourseSlot> {
         Set(gridDays.flatMap { day in
             AppConstants.Periods.chronologicalOrder.map { CourseSlot(day: day, period: $0) }
