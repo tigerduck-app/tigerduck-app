@@ -39,16 +39,42 @@ enum BrowserPageScripts {
 
     private static var compiledRules: WKContentRuleList?
 
+    static let rulesDeadline: Duration = .seconds(2)
+
+    /// The page loads without the rule list when WebKit's store does not answer in time; the
+    /// navigation delegate still refuses the logout, and a later browser gets the list.
     static func install(in controller: WKUserContentController) async {
         controller.addUserScript(WKUserScript(source: hideLogout, injectionTime: .atDocumentStart, forMainFrameOnly: false))
-        if compiledRules == nil {
-            do {
-                compiledRules = try await WKContentRuleListStore.default()
-                    .compileContentRuleList(forIdentifier: "TigerDuckBrowserLogout", encodedContentRuleList: logoutRules)
-            } catch {
-                AppLogger.captureError(error, context: ["flow": "browserLogoutRules"])
-            }
+        guard let rules = await answer(within: rulesDeadline, compileLogoutRules) else {
+            return AppLogger.breadcrumb("browser opened without its logout rule list", category: "browser")
         }
-        if let compiledRules { controller.add(compiledRules) }
+        controller.add(rules)
+    }
+
+    private static func compileLogoutRules() async -> WKContentRuleList? {
+        if let compiledRules { return compiledRules }
+        do {
+            compiledRules = try await WKContentRuleListStore.default()
+                .compileContentRuleList(forIdentifier: "TigerDuckBrowserLogout", encodedContentRuleList: logoutRules)
+        } catch {
+            AppLogger.captureError(error, context: ["flow": "browserLogoutRules"])
+        }
+        return compiledRules
+    }
+
+    /// What `work` gives within `deadline`, or nil; `work` runs on to its end in a task of its own.
+    static func answer<T>(within deadline: Duration, _ work: @escaping () async -> T?) async -> T? {
+        let (answers, continuation) = AsyncStream<T?>.makeStream()
+        Task { continuation.yield(await work()) }
+        let timer = Task {
+            do { try await Task.sleep(for: deadline) } catch { return }
+            continuation.yield(nil)
+        }
+        defer {
+            timer.cancel()
+            continuation.finish()
+        }
+        for await answer in answers { return answer }
+        return nil
     }
 }

@@ -142,6 +142,16 @@ struct BrowserRoutingTests {
         #expect(BrowserNavigator.pageToRestore(url: keyLink, address: page) == page)
     }
 
+    @Test @MainActor func aSlowAnswerGivesWayToTheDeadline() async {
+        let fast = await BrowserPageScripts.answer(within: .seconds(5)) { 1 }
+        #expect(fast == 1)
+        let slow = await BrowserPageScripts.answer(within: .milliseconds(50)) { () async -> Int? in
+            try? await Task.sleep(for: .seconds(5))
+            return 2
+        }
+        #expect(slow == nil)
+    }
+
     @Test func theLogoutHidingScriptRunsOnMoodleOnlyAndHidesLinksAndForms() {
         let script = BrowserPageScripts.hideLogout
         #expect(script.contains("location.hostname !== 'moodle2.ntust.edu.tw'"))
