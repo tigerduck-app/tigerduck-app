@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -24,7 +25,7 @@ struct CourseDeleteSyncTests {
     }
 
     private static func makeCoordinator(
-        _ backend: Backend, syncsCourseIgnores: @escaping @Sendable () -> Bool = { true }
+        _ backend: Backend, isEnabled: Bool = true, syncsCourseIgnores: @escaping @Sendable () -> Bool = { true }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -35,7 +36,7 @@ struct CourseDeleteSyncTests {
         )
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         return CloudSyncCoordinator(
-            pushCoordinator: push, outbox: SyncOutbox(directory: Self.freshDirectory()), isEnabled: true,
+            pushCoordinator: push, outbox: SyncOutbox(directory: Self.freshDirectory()), isEnabled: isEnabled,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true }
         )
     }
@@ -167,6 +168,23 @@ struct CourseDeleteSyncTests {
         await coordinator.discardCourseDeletes()
         #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1142:GE3"])
+    }
+
+    @Test("A course hidden while TigerSync is on but before the coordinator has left disabled is queued for its delete")
+    func hideDuringTheEnableWindowIsQueued() async {
+        await withExclusiveRealDefaults {
+            let saved = Defaults[.cloudSyncEnabled]
+            defer { Defaults[.cloudSyncEnabled] = saved }
+            let coordinator = Self.makeCoordinator(Backend(), isEnabled: false)
+
+            Defaults[.cloudSyncEnabled] = false
+            await coordinator.deleteCourse(semester: "1151", courseNo: "EE2005301")
+            #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
+
+            Defaults[.cloudSyncEnabled] = true
+            await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+            #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:CS1001301"])
+        }
     }
 
     @Test("A full sync shows a hidden course the server lists again only once no delete of it from here may be on its way")
