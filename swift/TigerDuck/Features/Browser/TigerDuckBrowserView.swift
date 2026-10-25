@@ -31,6 +31,15 @@ struct TigerDuckBrowserView: View {
                     if addressBar == .top { toolbar } else { bottomBar }
                 }
             }
+            .overlay {
+                if addressBar == .bottom, collapsed {
+                    // A frame that reaches the safe area's edge, so it can extend past it.
+                    collapsedCapsule(showsLock: false)
+                        .padding(.bottom, Self.homeIndicatorClearance)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .ignoresSafeArea(.container, edges: .bottom)
+                }
+            }
             .animation(.spring(response: 0.25, dampingFraction: 0.9), value: collapsed)
             .animation(.default, value: page.signIn.phase)
             .sheet(item: $sheet) { sheet in
@@ -55,6 +64,8 @@ struct TigerDuckBrowserView: View {
 
     private static let barHeight: CGFloat = 44
     private static let toolbarHeight: CGFloat = 56
+    /// From the screen's bottom edge: the home indicator takes about 13 points, and a small gap.
+    private static let homeIndicatorClearance: CGFloat = 20
 
     private var contentInsets: UIEdgeInsets {
         let gap = TigerDuckTheme.Spacing.lg
@@ -122,33 +133,27 @@ struct TigerDuckBrowserView: View {
     // MARK: - Bottom layout
 
     private var bottomBar: some View {
-        ZStack(alignment: .bottom) {
-            HStack(spacing: TigerDuckTheme.Spacing.md) {
-                closeButton
-                addressPill {
-                    HStack(spacing: 0) {
-                        // Find in page takes this side.
-                        Color.clear.frame(width: 40, height: Self.barHeight)
-                        Text(page.host).font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity)
-                        reloadButton(size: 16).frame(width: 40, height: Self.barHeight)
-                    }
-                }
-                circle {
-                    Button { sheet = .more } label: {
-                        Image(systemName: "ellipsis").font(.system(size: 19, weight: .bold))
-                            .foregroundStyle(.tint)
-                            .frame(width: Self.barHeight, height: Self.barHeight)
-                    }
-                    .accessibilityLabel(String(localized: "browser_more"))
+        HStack(spacing: TigerDuckTheme.Spacing.md) {
+            closeButton
+            addressPill {
+                HStack(spacing: 0) {
+                    // Find in page takes this side.
+                    Color.clear.frame(width: 40, height: Self.barHeight)
+                    Text(page.host).font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity)
+                    reloadButton(size: 16).frame(width: 40, height: Self.barHeight)
                 }
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            .hiddenWhenCollapsed(collapsed, edge: .bottom)
-
-            if collapsed {
-                collapsedCapsule(showsLock: false)
+            circle {
+                Button { sheet = .more } label: {
+                    Image(systemName: "ellipsis").font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(.tint)
+                        .frame(width: Self.barHeight, height: Self.barHeight)
+                }
+                .accessibilityLabel(String(localized: "browser_more"))
             }
         }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .hiddenWhenCollapsed(collapsed, edge: .bottom)
     }
 
     // MARK: - Shared pieces
