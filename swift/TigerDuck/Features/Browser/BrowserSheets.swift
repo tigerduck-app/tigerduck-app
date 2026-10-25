@@ -48,6 +48,7 @@ struct BrowserSheetView: View {
         .opacity(peeking ? Self.peekOpacity : 1)
         .presentationDetents(showsCertificate ? [.large] : [.height(height)])
         .presentationDragIndicator(.visible)
+        .centeredPlacement()
         .presentationBackground(Color(uiColor: .systemGroupedBackground).opacity(peeking ? Self.peekOpacity : 1))
         // Undimmed while peeking, so the page shows as it is.
         .presentationBackgroundInteraction(peeking ? .enabled : .automatic)
@@ -61,6 +62,16 @@ private extension View {
     func fittedHeight(_ height: Binding<CGFloat>) -> some View {
         fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height.wrappedValue = $0 }
+    }
+
+    /// The iOS 27 SDK's automatic placement moves a small sheet toward the button that opened it.
+    @ViewBuilder
+    func centeredPlacement() -> some View {
+        #if compiler(>=6.4)
+        if #available(iOS 27, *) { presentationPlacement(.center) } else { self }
+        #else
+        self
+        #endif
     }
 }
 
