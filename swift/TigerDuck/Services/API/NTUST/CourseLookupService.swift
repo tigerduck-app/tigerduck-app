@@ -35,7 +35,7 @@ enum CourseLookupService {
     ) async throws -> [CourseSearchResult] {
         let key = LookupKey(semester: semester, courseNo: courseNo, language: language)
         return try await kept(key, now: Date(), fresh: fresh) {
-            try await searchAPI(body: .forCourseNo(courseNo, semester: semester, language: language))
+            try await search(.forCourseNo(courseNo, semester: semester, language: language))
         }
     }
 
@@ -54,14 +54,14 @@ enum CourseLookupService {
     }
 
     static func searchCourses(semester: String, courseName: String, language: String = "zh") async throws -> [CourseSearchResult] {
-        try await searchAPI(body: .forCourseName(courseName, semester: semester, language: language))
+        try await search(.forCourseName(courseName, semester: semester, language: language))
     }
 
     static func searchByTeacher(semester: String, teacher: String, language: String = "zh") async throws -> [CourseSearchResult] {
-        try await searchAPI(body: .forCourseTeacher(teacher, semester: semester, language: language))
+        try await search(.forCourseTeacher(teacher, semester: semester, language: language))
     }
 
-    private static func searchAPI(body: CourseSearchRequest) async throws -> [CourseSearchResult] {
+    static func search(_ body: CourseSearchRequest) async throws -> [CourseSearchResult] {
         var request = URLRequest(url: courseSearchAPI)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

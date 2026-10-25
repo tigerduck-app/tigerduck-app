@@ -1,0 +1,391 @@
+import Foundation
+import Testing
+@testable import TigerDuck
+
+@MainActor
+struct CourseSearchTests {
+    private static func result(_ courseNo: String, _ name: String = "課程", node: String? = "M3") -> CourseSearchResult {
+        CourseSearchResult(
+            Semester: "1151", CourseNo: courseNo, CourseName: name, CourseTeacher: "王大明", Dimension: "",
+            CreditPoint: "3", RequireOption: "R", AllYear: "H", ChooseStudent: 50, Restrict1: "0",
+            Restrict2: "60", CourseTimes: "3", PracticalTimes: "0", ClassRoomNo: "TR-313", Node: node,
+            Contents: ""
+        )
+    }
+
+    /// Number, name, teacher and language, the fields that tell the rounds apart.
+    private static func summary(_ request: CourseSearchRequest) -> String {
+        "\(request.CourseNo)|\(request.CourseName)|\(request.CourseTeacher)|\(request.Language)"
+    }
+
+    private static func cache() -> DataCache {
+        let root = FileManager.default.temporaryDirectory.appending(path: "CourseSearchTests-\(UUID().uuidString)")
+        return DataCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
+    }
+
+    private static let noOptions: CourseSearchModel.FetchOptions = { @MainActor in CourseSearchOptions() }
+
+    // MARK: Query planning
+
+    @Test("letters and digits ask for a course-number prefix first, then name and teacher")
+    func prefixThenNameAndTeacher() {
+        let rounds = CourseSearch.rounds(for: "cs", semester: "1151", filters: .init())
+        #expect(rounds.map { $0.map(Self.summary) } == [
+            ["CS|||zh", "CS|||en"],
+            ["|cs||zh", "||cs|zh", "|cs||en", "||cs|en"],
+        ])
+        #expect(rounds.joined().allSatisfy { $0.Semester == "1151" })
+    }
+
+    @Test("other text asks for name and teacher only, in traditional characters for zh")
+    func textSkipsThePrefixRound() {
+        let rounds = CourseSearch.rounds(for: "微积分", semester: "1151", filters: .init())
+        #expect(rounds.map { $0.map(Self.summary) } == [
+            ["|微積分||zh", "||微積分|zh", "|微积分||en", "||微积分|en"],
+        ])
+        #expect(CourseSearch.rounds(for: "EC 10", semester: "1151", filters: .init()).count == 1)
+    }
+
+    @Test("a department narrows the prefix, or replaces a round no course number can match")
+    func departmentPrefix() {
+        #expect(CourseSearch.courseNoPrefix("CS10", department: "cs") == "CS10")
+        #expect(CourseSearch.courseNoPrefix("C", department: "CS") == "CS")
+        #expect(CourseSearch.courseNoPrefix("EE", department: "CS") == nil)
+        #expect(CourseSearch.courseNoPrefix("EE", department: nil) == "EE")
+
+        var filters = CourseSearchFilters()
+        filters.department = "CS"
+        let rounds = CourseSearch.rounds(for: "EE", semester: "1151", filters: filters)
+        #expect(rounds.map { $0.map(Self.summary) } == [
+            ["CS|EE||zh", "CS||EE|zh", "CS|EE||en", "CS||EE|en"],
+        ])
+    }
+
+    @Test("no request leaves every search field empty")
+    func neverTheEmptyFilter() {
+        for query in ["a", "1", "CS1001301", "王", "data structures"] {
+            for request in CourseSearch.rounds(for: query, semester: "1151", filters: .init()).joined() {
+                #expect(!(request.CourseNo + request.CourseName + request.CourseTeacher).isEmpty)
+            }
+        }
+    }
+
+    // MARK: Filters
+
+    @Test("each server filter maps to its request field")
+    func filterMapping() throws {
+        func request(_ change: (inout CourseSearchFilters) -> Void) throws -> CourseSearchRequest {
+            var filters = CourseSearchFilters()
+            change(&filters)
+            return try #require(CourseSearch.rounds(for: "CS", semester: "1151", filters: filters).first?.first)
+        }
+        let plain = try request { _ in }
+        #expect(plain == .forCourseNo("CS", semester: "1151", language: "zh"))
+
+        #expect(try request { $0.dimension = "A" }.Dimension == "A")
+        #expect(try request { $0.generalOnly = true }.OnlyGeneral == 1)
+        #expect(try request { $0.englishTaught = true }.CourseNotes == "eng")
+        #expect(try request { $0.englishTaught = true }.ForeignLanguage == 0)
+        #expect(try request { $0.intensiveOnly = true }.OnlyIntensive == 1)
+        #expect(try request { $0.excludeAlliance = true }.OnleyNTUST == 1)
+        let graduate = try request { $0.level = .graduate }
+        #expect(graduate.OnlyMaster == 1 && graduate.OnlyUnderGraduate == 0)
+        let undergraduate = try request { $0.level = .undergraduate }
+        #expect(undergraduate.OnlyMaster == 0 && undergraduate.OnlyUnderGraduate == 1)
+        #expect(try request { $0.department = "CS" }.CourseNo == "CS")
+    }
+
+    @Test("hide conflicts and periods stay on the device, and reset means every default")
+    func deviceFilters() {
+        var filters = CourseSearchFilters()
+        #expect(filters.isDefault)
+        filters.hideConflicts = false
+        filters.periods = [CourseSlot(day: 1, period: "3")]
+        #expect(!filters.isDefault)
+        #expect(filters.requested == CourseSearchFilters())
+        filters.generalOnly = true
+        #expect(filters.requested != CourseSearchFilters())
+    }
+
+    @Test("a picked period range keeps only courses that meet inside it")
+    func periodsFilter() {
+        var filters = CourseSearchFilters()
+        filters.hideConflicts = false
+        filters.periods = [CourseSlot(day: 1, period: "3"), CourseSlot(day: 1, period: "4")]
+        func shown(_ schedule: [Int: [String]]) -> Bool {
+            CourseSearch.visibleConflicts(courseNo: "X", schedule: schedule, table: [], filters: filters) != nil
+        }
+        #expect(shown([1: ["3", "4"]]))
+        #expect(shown([1: ["4"]]))
+        #expect(!shown([1: ["4", "5"]]))
+        #expect(!shown([:]))
+
+        filters.periods = []
+        #expect(shown([:]))
+        #expect(shown([5: ["A"]]))
+    }
+
+    @Test("select free periods picks every grid period the timetable leaves free")
+    func freePeriods() {
+        let busy: Set = [CourseSlot(day: 2, period: "3"), CourseSlot(day: 7, period: "1")]
+        let free = CourseSearch.freeSlots(busy: busy)
+        #expect(free.count == 6 * AppConstants.Periods.chronologicalOrder.count - 1)
+        #expect(!free.contains(CourseSlot(day: 2, period: "3")))
+        #expect(free.contains(CourseSlot(day: 6, period: "D")))
+    }
+
+    // MARK: Conflicts
+
+    @Test("a clash is hidden by default and named when hide conflicts is off")
+    func conflicts() {
+        let table = [
+            CourseSearchTableCourse(courseNo: "CS2001301", name: "資料結構", slots: [CourseSlot(day: 2, period: "3")]),
+            CourseSearchTableCourse(courseNo: "CS2002301", name: "計算機組織", slots: [CourseSlot(day: 2, period: "4")]),
+        ]
+        var filters = CourseSearchFilters()
+        let clash = [2: ["3", "4"]]
+        #expect(CourseSearch.visibleConflicts(courseNo: "MA1001301", schedule: clash, table: table, filters: filters) == nil)
+        #expect(CourseSearch.visibleConflicts(courseNo: "MA1001301", schedule: [2: ["5"]], table: table, filters: filters) == [])
+
+        filters.hideConflicts = false
+        #expect(CourseSearch.visibleConflicts(courseNo: "MA1001301", schedule: clash, table: table, filters: filters)
+            == ["資料結構", "計算機組織"])
+    }
+
+    @Test("a course already in the timetable is no conflict and stays listed")
+    func addedCourseIsNoConflict() {
+        let table = [
+            CourseSearchTableCourse(courseNo: "CS2001301", name: "資料結構", slots: [CourseSlot(day: 2, period: "3")]),
+            CourseSearchTableCourse(courseNo: "CS2002301", name: "計算機組織", slots: [CourseSlot(day: 2, period: "3")]),
+        ]
+        let filters = CourseSearchFilters()
+        #expect(CourseSearch.visibleConflicts(courseNo: "CS2001301", schedule: [2: ["3"]], table: table, filters: filters) == [])
+    }
+
+    // MARK: Drag selection
+
+    @Test("a drag that starts on an empty cell selects every cell it crosses")
+    func dragSelects() {
+        let a = CourseSlot(day: 1, period: "1"), b = CourseSlot(day: 1, period: "2"), c = CourseSlot(day: 1, period: "3")
+        var picked: Set = [b]
+        var drag = PeriodDrag()
+        for slot in [a, b, c, b] {
+            drag.touch(slot, in: &picked)
+        }
+        #expect(picked == [a, b, c])
+    }
+
+    @Test("a drag that starts on a selected cell clears every cell it crosses")
+    func dragClears() {
+        let a = CourseSlot(day: 1, period: "1"), b = CourseSlot(day: 1, period: "2"), c = CourseSlot(day: 2, period: "2")
+        var picked: Set = [a, c]
+        var drag = PeriodDrag()
+        for slot in [a, b, c] {
+            drag.touch(slot, in: &picked)
+        }
+        #expect(picked.isEmpty)
+
+        var tap = PeriodDrag()
+        tap.touch(b, in: &picked)
+        #expect(picked == [b])
+    }
+
+    // MARK: Results
+
+    @Test("the primary language's rows come first, with the other language's names beside them")
+    func languagesMerge() {
+        let results = [
+            "zh": [Self.result("CS1001301", "計算機概論")],
+            "en": [Self.result("CS1001301", "Introduction to Computers"), Self.result("CS1002301", "Data Structures")],
+        ]
+        let shown = CourseSearch.shown(results, primary: "zh")
+        #expect(shown.rows.map(\.CourseNo) == ["CS1001301", "CS1002301"])
+        #expect(shown.rows.map(\.CourseName) == ["計算機概論", "Data Structures"])
+        #expect(shown.otherNames["CS1001301"] == "Introduction to Computers")
+    }
+
+    @Test("rows repeat only for another time slot of the same course")
+    func mergeKeepsSlots() {
+        let merged = CourseSearch.merge(
+            [Self.result("CS1001301", node: "M3")],
+            [Self.result("CS1001301", node: "M3"), Self.result("CS1001301", node: "W4")]
+        )
+        #expect(merged.map(\.Node) == ["M3", "W4"])
+    }
+
+    @Test("department search ignores case and matches codes and either name")
+    func departmentSearch() {
+        let colleges = [
+            CourseSearchOptions.College(name: "電資學院", englishName: "EECS", departments: [
+                .init(code: "CS", name: "資訊工程系", englishName: "Computer Science"),
+                .init(code: "EE", name: "電機工程系", englishName: "Electrical Engineering"),
+            ]),
+            CourseSearchOptions.College(name: "管理學院", englishName: "Management", departments: [
+                .init(code: "IM", name: "資訊管理系", englishName: "Information Management"),
+            ]),
+        ]
+        #expect(CourseSearch.colleges(colleges, matching: "cs").flatMap(\.departments).map(\.code) == ["CS"])
+        #expect(CourseSearch.colleges(colleges, matching: "資訊").flatMap(\.departments).map(\.code) == ["CS", "IM"])
+        #expect(CourseSearch.colleges(colleges, matching: "ELECTRICAL").map(\.name) == ["電資學院"])
+        #expect(CourseSearch.colleges(colleges, matching: " ") == colleges)
+    }
+
+    // MARK: Model
+
+    @Test("an empty prefix round falls back to name and teacher once")
+    func fallback() async {
+        let sent = Box<[String]>([])
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
+            sent.value.append(Self.summary(request))
+            return request.CourseName.isEmpty ? [] : [Self.result("GE1001301")]
+        }, fetchOptions: Self.noOptions)
+
+        await model.search("calc", semester: "1151")
+
+        #expect(Set(sent.value.prefix(2)) == ["CALC|||zh", "CALC|||en"])
+        #expect(Set(sent.value.dropFirst(2)) == ["|calc||zh", "||calc|zh", "|calc||en", "||calc|en"])
+        #expect(sent.value.count == 6)
+        #expect(model.results["zh"]?.map(\.CourseNo) == ["GE1001301"])
+        #expect(!model.isSearching)
+        #expect(model.failure == nil)
+    }
+
+    @Test("a prefix that finds courses sends nothing more")
+    func prefixHit() async {
+        let sent = Box(0)
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
+            sent.value += 1
+            return [Self.result("CS1001301")]
+        }, fetchOptions: Self.noOptions)
+
+        await model.search("CS", semester: "1151")
+        #expect(sent.value == 2)
+        #expect(model.results.keys.sorted() == ["en", "zh"])
+    }
+
+    @Test("a round that fails everywhere shows the error and stops; one answer is enough")
+    func failures() async {
+        let sent = Box(0)
+        let failing = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
+            sent.value += 1
+            throw URLError(.timedOut)
+        }, fetchOptions: Self.noOptions)
+        await failing.search("CS", semester: "1151")
+        #expect(sent.value == 2)
+        #expect((failing.failure as? URLError)?.code == .timedOut)
+
+        let halfFailing = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
+            if request.Language == "zh" { throw URLError(.timedOut) }
+            return [Self.result("CS1001301")]
+        }, fetchOptions: Self.noOptions)
+        await halfFailing.search("CS", semester: "1151")
+        #expect(halfFailing.failure == nil)
+        #expect(halfFailing.results["en"]?.count == 1)
+    }
+
+    @Test("each request's courses show while another request is still out")
+    func showsEachAnswer() async {
+        let gate = Gate()
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
+            if request.Language == "zh" { await gate.wait() }
+            return [Self.result("CS1001301")]
+        }, fetchOptions: Self.noOptions)
+
+        let search = Task { await model.search("CS1001301", semester: "1151") }
+        for _ in 0..<10_000 where model.results["en"] == nil {
+            await Task.yield()
+        }
+        #expect(model.results["en"]?.count == 1)
+        #expect(model.results["zh"] == nil)
+        #expect(model.isSearching)
+
+        gate.open()
+        await search.value
+        #expect(model.results["zh"]?.count == 1)
+        #expect(!model.isSearching)
+    }
+
+    // MARK: Option lists
+
+    private static let stored = CourseSearchOptions(
+        colleges: [.init(name: "電資學院", englishName: "EECS", departments: [
+            .init(code: "CS", name: "資訊工程系", englishName: "Computer Science"),
+        ])],
+        dimensions: [.init(code: "A", name: "人文素養(A)", englishName: "Humanities and Thinking(A)")]
+    )
+
+    private static let fresh = CourseSearchOptions(
+        colleges: [.init(name: "電資學院", englishName: "EECS", departments: [
+            .init(code: "CS", name: "資訊工程系", englishName: "Computer Science"),
+            .init(code: "EE", name: "電機工程系", englishName: "Electrical Engineering"),
+        ])],
+        dimensions: [.init(code: "B", name: "當代文明(B)", englishName: "Contemporary Civilization(B)")]
+    )
+
+    @Test("the stored lists show before the refresh, which then replaces and stores them once")
+    func optionsRefresh() async {
+        let cache = Self.cache()
+        cache.saveCourseSearchOptions(Self.stored)
+        let seenWhileFetching = Box<CourseSearchOptions?>(nil)
+        let fetches = Box(0)
+        let model = Box<CourseSearchModel?>(nil)
+        model.value = CourseSearchModel(cache: cache, search: { _ in [] }, fetchOptions: { @MainActor in
+            fetches.value += 1
+            seenWhileFetching.value = model.value?.options
+            return Self.fresh
+        })
+
+        await model.value?.refreshOptions()
+        #expect(seenWhileFetching.value == Self.stored)
+        #expect(model.value?.options == Self.fresh)
+        #expect(cache.loadCourseSearchOptions() == Self.fresh)
+
+        await model.value?.refreshOptions()
+        #expect(fetches.value == 1)
+    }
+
+    @Test("a failed or empty refresh keeps the stored lists and tries again next time")
+    func optionsRefreshFails() async {
+        let cache = Self.cache()
+        cache.saveCourseSearchOptions(Self.stored)
+        let answers = Box<[CourseSearchOptions?]>([nil, CourseSearchOptions(), Self.fresh])
+        let model = CourseSearchModel(cache: cache, search: { _ in [] }, fetchOptions: { @MainActor in
+            guard let answer = answers.value.removeFirst() else { throw URLError(.notConnectedToInternet) }
+            return answer
+        })
+
+        await model.refreshOptions()
+        #expect(model.options == Self.stored)
+        await model.refreshOptions()
+        #expect(model.options == Self.stored)
+        #expect(cache.loadCourseSearchOptions() == Self.stored)
+        await model.refreshOptions()
+        #expect(model.options == Self.fresh)
+    }
+}
+
+@MainActor
+private final class Box<Value> {
+    var value: Value
+
+    init(_ value: Value) {
+        self.value = value
+    }
+}
+
+@MainActor
+private final class Gate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var isOpen = false
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func open() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
+    }
+}

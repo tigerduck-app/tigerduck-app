@@ -19,7 +19,7 @@ struct CourseSearchResult: Codable {
     let Contents: String?
 }
 
-struct CourseSearchRequest: Codable {
+struct CourseSearchRequest: Codable, Equatable {
     let Semester: String
     let CourseNo: String
     let CourseName: String
@@ -33,6 +33,7 @@ struct CourseSearchRequest: Codable {
     let OnlyMaster: Int
     let OnlyUnderGraduate: Int
     let OnlyNode: Int
+    let OnlyIntensive: Int
     let Language: String
 
     static func forCourseNo(_ courseNo: String, semester: String, language: String = "zh") -> CourseSearchRequest {
@@ -50,6 +51,7 @@ struct CourseSearchRequest: Codable {
             OnlyMaster: 0,
             OnlyUnderGraduate: 0,
             OnlyNode: 0,
+            OnlyIntensive: 0,
             Language: language
         )
     }
@@ -69,6 +71,7 @@ struct CourseSearchRequest: Codable {
             OnlyMaster: 0,
             OnlyUnderGraduate: 0,
             OnlyNode: 0,
+            OnlyIntensive: 0,
             Language: language
         )
     }
@@ -88,6 +91,7 @@ struct CourseSearchRequest: Codable {
             OnlyMaster: 0,
             OnlyUnderGraduate: 0,
             OnlyNode: 0,
+            OnlyIntensive: 0,
             Language: language
         )
     }
