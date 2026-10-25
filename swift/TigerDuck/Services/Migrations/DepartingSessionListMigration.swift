@@ -5,8 +5,8 @@ import UIKit
 import AppKit
 #endif
 
-/// The departing-session key held one session as a JSON object; it holds a list now, one per
-/// backend, and an object an earlier version kept becomes the list's only entry.
+/// Wraps a single saved departing session in a one-entry list, so its pending unregister survives
+/// the per-backend format and is still retried.
 enum DepartingSessionListMigration {
     private static let doneKey = "DepartingSessionListMigration.v1.done"
     private static var waitingForReadableData: (center: NotificationCenter, observer: any NSObjectProtocol, run: () -> Void)?
