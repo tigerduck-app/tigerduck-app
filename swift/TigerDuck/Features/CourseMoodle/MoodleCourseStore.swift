@@ -681,19 +681,24 @@ final class MoodleCourseStore {
         guard let data = await downloadInTurn(url) else { return }
         let read = readPictureFile
         let decode = decodePicture
-        let changed = await Task.detached(priority: .userInitiated) { () -> (CGImage, URL)? in
-            guard read(file) != data, let image = decode(data),
-                  let staged = Self.stage(data, for: file, revision: revision) else { return nil }
-            return (image, staged)
+        // Another course's store may have kept these bytes since this one read the file.
+        let isShown = pictures[url] != nil
+        let changed = await Task.detached(priority: .userInitiated) { () -> (CGImage, URL?)? in
+            let isNew = read(file) != data
+            guard isNew || !isShown, let image = decode(data) else { return nil }
+            guard isNew else { return (image, nil) }
+            return Self.stage(data, for: file, revision: revision).map { (image, $0) }
         }.value
         guard case let (image, staged)? = changed else { return }
         // An older revision's disk work can end after a newer one's, which it must not replace.
-        guard context.isCurrent(), revision >= Self.placedRevisions[file, default: 0] else {
-            try? FileManager.default.removeItem(at: staged)
+        guard context.isCurrent(), staged == nil || revision >= Self.placedRevisions[file, default: 0] else {
+            if let staged { try? FileManager.default.removeItem(at: staged) }
             return
         }
-        Self.placedRevisions[file] = revision
-        Self.place(staged, at: file)
+        if let staged {
+            Self.placedRevisions[file] = revision
+            Self.place(staged, at: file)
+        }
         pictures[url] = image
     }
 

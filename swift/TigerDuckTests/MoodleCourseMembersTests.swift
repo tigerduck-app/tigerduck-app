@@ -377,6 +377,26 @@ struct MoodleCourseMembersTests {
         #expect(FileManager.default.fileExists(atPath: preview.path))
     }
 
+    @Test("a course whose download lands after another course kept the same picture still shows it")
+    func pictureKeptByAnotherCourseMeanwhileShows() async throws {
+        let folder = Folder()
+        let site = Site()
+        let answer = ManualSleeper()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let url = try #require(member.pictureURL)
+        let slow = Self.store(folder, site: site) { await answer.sleep(for: .zero) }
+
+        let load = Task { await slow.loadPicture(of: member) }
+        try await answer.waitUntilArmed()
+        await Self.store(folder, site: site).loadPicture(of: member)
+        await answer.fire()
+        await load.value
+
+        #expect(slow.pictures[url] != nil)
+        #expect(site.pictureCalls == [url, url])
+        #expect(pictures(folder) == ["B11399002"])
+    }
+
     @Test("rows that show one picture ask Moodle for it once a visit, even while the first ask is out")
     func onePictureAskAVisit() async throws {
         let folder = Folder()
