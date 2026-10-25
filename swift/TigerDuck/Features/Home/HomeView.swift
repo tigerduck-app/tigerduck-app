@@ -117,15 +117,14 @@ struct HomeView: View {
 
     private var editingPage: some View {
         HomeEditPage(viewModel: viewModel, sections: visibleSections, scrollAnchor: scrollAnchor) {
-            titleBar
+            titleBar(showsControls: false)
                 .padding(.top, TigerDuckTheme.Spacing.md)
-                .disabled(true)
         }
     }
 
     private var sectionList: some View {
         List {
-            titleBar
+            titleBar()
                 .homeListRow(top: TigerDuckTheme.Spacing.md)
 
             if let reauthError = appState.ntustReauthErrorMessage {
@@ -190,13 +189,16 @@ struct HomeView: View {
         )
     }
 
-    private var titleBar: some View {
+    /// The edit page keeps the controls' space but hides them. The menu reads as an edit control,
+    /// and the edit page's bar sits a navigation bar lower, below Done, so with a dot on both
+    /// pages the cross-fade between them would show two.
+    private func titleBar(showsControls: Bool = true) -> some View {
         HStack {
             Text(AppClock.now().greetingText())
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            HStack(spacing: TigerDuckTheme.Spacing.lg) {
+            let controls = HStack(spacing: TigerDuckTheme.Spacing.lg) {
                 SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
                 HeaderMenuButton(accessibilityLabel: String(localized: "home_more_actions")) {
                     Button { setEditing(true) } label: {
@@ -204,6 +206,7 @@ struct HomeView: View {
                     }
                 }
             }
+            if showsControls { controls } else { controls.hidden() }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
