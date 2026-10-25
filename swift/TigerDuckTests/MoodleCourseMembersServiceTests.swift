@@ -51,7 +51,7 @@ struct MoodleCourseMembersServiceTests {
 
         let request = try #require(SettingsAPIStub.requests(for: Self.endpoint(token: token)).first)
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
-        #expect(body == "courseid=20119&options%5B0%5D%5Bname%5D=userfields&options%5B0%5D%5Bvalue%5D="
+        #expect(body == "wstoken=\(token)&courseid=20119&options%5B0%5D%5Bname%5D=userfields&options%5B0%5D%5Bvalue%5D="
             + "id%2Cfullname%2Cidnumber%2Cemail%2Cgroups%2Croles%2Cprofileimageurl%2Cdescription"
             + "%2Cinterests%2Ccustomfields")
     }

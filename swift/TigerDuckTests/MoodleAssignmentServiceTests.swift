@@ -307,7 +307,7 @@ struct MoodleAssignmentServiceTests {
         )
 
         #expect(try Self.body(of: MoodleAssignmentService.commentsFunction, token: token)
-            == "contextlevel=module&instanceid=9101&component=assignsubmission_comments&itemid=5501&area=submission_comments&page=0")
+            == "wstoken=\(token)&contextlevel=module&instanceid=9101&component=assignsubmission_comments&itemid=5501&area=submission_comments&page=0")
         #expect(comments == [
             MoodleSubmissionComment(
                 id: 901, authorName: "T00001 @ Duck Teacher", created: Date(timeIntervalSince1970: 1_790_505_000),
@@ -438,7 +438,7 @@ struct MoodleAssignmentServiceTests {
             courseId: 20119, userId: 42, token: token, session: Self.session(), siteURL: Self.site
         )
 
-        #expect(try Self.body(of: MoodleAssignmentService.groupsFunction, token: token) == "courseid=20119&userid=42")
+        #expect(try Self.body(of: MoodleAssignmentService.groupsFunction, token: token) == "wstoken=\(token)&courseid=20119&userid=42")
         #expect(groups == [31: "Group 3 & friends", 32: "Lab B"])
     }
 }

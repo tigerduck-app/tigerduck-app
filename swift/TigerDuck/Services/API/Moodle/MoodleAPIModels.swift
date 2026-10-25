@@ -72,7 +72,6 @@ nonisolated enum MoodleWebserviceClient {
         components.queryItems = [
             URLQueryItem(name: "moodlewsrestformat", value: "json"),
             URLQueryItem(name: "wsfunction", value: function),
-            URLQueryItem(name: "wstoken", value: token),
         ]
         guard let url = components.url else {
             throw MoodleWebserviceError.malformedResponse(detail: "invalid webservice URL for \(function)")
@@ -80,7 +79,9 @@ nonisolated enum MoodleWebserviceClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Data(formBody(params).utf8)
+        // The token goes in the form, which Moodle reads as it reads the query, so it stays out of
+        // the URLs that server and proxy access logs keep.
+        request.httpBody = Data(formBody([("wstoken", token)] + params).utf8)
 
         let data: Data
         let response: URLResponse

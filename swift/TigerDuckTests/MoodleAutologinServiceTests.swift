@@ -306,7 +306,7 @@ struct MoodleAutologinServiceTests {
         #expect(request.httpMethod == "POST")
         #expect(request.url?.query?.contains("privatetoken") == false)
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
-        #expect(body == "privatetoken=pr1vate")
+        #expect(body == "wstoken=\(token)&privatetoken=pr1vate")
     }
 
     @Test("a renewed token sends the private token stored with it")
@@ -334,7 +334,7 @@ struct MoodleAutologinServiceTests {
         #expect(key?.value == "k3y")
         let request = try #require(SettingsAPIStub.requests(for: Self.endpoint(token: new)).first)
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
-        #expect(body == "privatetoken=r3newed")
+        #expect(body == "wstoken=\(new)&privatetoken=r3newed")
     }
 
     @Test("without a private token nothing is sent and no token is renewed")

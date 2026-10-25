@@ -296,7 +296,7 @@ extension SSOServiceLoginTests {
         struct Answer: Decodable, Sendable {}
         let site = try #require(URL(string: "https://moodle.stub.invalid"))
         let endpoint = try #require(URL(string: "https://moodle.stub.invalid/webservice/rest/server.php"
-            + "?moodlewsrestformat=json&wsfunction=tool_mobile_get_autologin_key&wstoken=stub-token"))
+            + "?moodlewsrestformat=json&wsfunction=tool_mobile_get_autologin_key"))
         let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/webservice/rest/server.php"))
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: endpoint)
