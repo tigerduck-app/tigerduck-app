@@ -373,7 +373,7 @@ struct MoodleCourseMembersTests {
         await Self.store(folder, site: site).loadPicture(of: member)
 
         #expect(site.pictureCalls.count == 3)
-        #expect(pictures(folder) == ["B11399002", "B11399002-f3", "B11399002-preview"])
+        #expect(pictures(folder) == ["B11399002", "B11399002-5-f3", "B11399002-preview"])
         #expect(FileManager.default.fileExists(atPath: preview.path))
     }
 
@@ -398,6 +398,63 @@ struct MoodleCourseMembersTests {
         await store.loadPicture(of: member)
 
         #expect(site.pictureCalls == [member.pictureURL])
+    }
+
+    @Test("a picture Moodle fails to send is asked for once a visit, and again on the next")
+    func failedPictureAskedOnceAVisit() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let offline: @Sendable () async throws -> Void = { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+        let store = Self.store(folder, site: site, before: offline)
+
+        await store.loadPicture(of: member)
+        await store.loadPicture(of: member)
+        #expect(site.pictureCalls == [member.pictureURL])
+
+        await Self.store(folder, site: site, before: offline).loadPicture(of: member)
+        #expect(site.pictureCalls.count == 2)
+    }
+
+    @Test("a picture whose row went away during its request is asked for again when the row comes back")
+    func cancelledPictureAskedAgain() async throws {
+        let folder = Folder()
+        let site = Site()
+        let answer = ManualSleeper()
+        let store = Self.store(folder, site: site) {
+            await answer.sleep(for: .zero)
+            try Task.checkCancellation()
+        }
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let url = try #require(member.pictureURL)
+
+        let gone = Task { await store.loadPicture(of: member) }
+        try await answer.waitUntilArmed()
+        gone.cancel()
+        await gone.value
+        #expect(store.pictures[url] == nil)
+
+        let back = Task { await store.loadPicture(of: member) }
+        try await answer.waitUntilArmed(atLeast: 2)
+        await answer.fire()
+        await back.value
+        #expect(site.pictureCalls == [url, url])
+        #expect(store.pictures[url] != nil)
+    }
+
+    @Test("after a new upload the preview opens that upload's 512 px size, even where no row loaded it")
+    func previewFollowsANewUpload() async throws {
+        let folder = Folder()
+        let site = Site()
+        let store = Self.store(folder, site: site)
+        await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 5))
+        _ = try #require(await store.picturePreview(of: Self.withPicture(Self.classmate, rev: 5)))
+        site.setLargePicture(Self.png)
+
+        let preview = try #require(await Self.store(folder, site: site).picturePreview(of: Self.withPicture(Self.classmate, rev: 6)))
+
+        #expect(try Data(contentsOf: preview) == Self.png)
+        #expect(site.pictureCalls.last == URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/1043/user/icon/moove/f3?rev=6"))
     }
 
     @Test("a member without a student ID keeps their picture under their Moodle id and its revision")
@@ -595,8 +652,8 @@ struct MoodleCourseMembersTests {
 
         site.set(picture: Self.largePNG)
         await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
-        #expect(pictures(folder) == ["B11399002"])
-        #expect(!FileManager.default.fileExists(atPath: preview.path))
+        #expect(pictures(folder) == ["B11399002", "B11399002-preview"])
+        #expect(FileManager.default.fileExists(atPath: preview.path))
     }
 
     @Test("a member's picture opens at Moodle's 512 px size, downloaded on the first open and kept")
