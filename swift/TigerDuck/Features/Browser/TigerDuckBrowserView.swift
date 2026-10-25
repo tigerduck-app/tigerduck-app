@@ -8,6 +8,7 @@ struct TigerDuckBrowserView: View {
     let url: URL
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Default(.browserAddressBar) private var addressBar
     @State private var page = BrowserPage()
     @State private var sheet: BrowserSheet?
@@ -31,16 +32,7 @@ struct TigerDuckBrowserView: View {
                     if addressBar == .top { toolbar } else { bottomBar }
                 }
             }
-            .overlay {
-                if addressBar == .bottom, collapsed {
-                    // A frame that reaches the safe area's edge, so it can extend past it.
-                    collapsedCapsule(showsLock: false)
-                        .padding(.bottom, Self.homeIndicatorClearance)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        .ignoresSafeArea(.container, edges: .bottom)
-                }
-            }
-            .animation(.spring(response: 0.25, dampingFraction: 0.9), value: collapsed)
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.35), value: collapsed)
             .animation(.default, value: page.signIn.phase)
             .sheet(item: $sheet) { sheet in
                 BrowserSheetView(page: page, sheet: sheet)
@@ -63,6 +55,7 @@ struct TigerDuckBrowserView: View {
     }
 
     private static let barHeight: CGFloat = 44
+    private static let capsuleHeight: CGFloat = 30
     private static let toolbarHeight: CGFloat = 56
     /// From the screen's bottom edge: the home indicator takes about 13 points, and a small gap.
     private static let homeIndicatorClearance: CGFloat = 20
@@ -77,35 +70,29 @@ struct TigerDuckBrowserView: View {
     // MARK: - Top layout
 
     private var topBar: some View {
-        ZStack(alignment: .top) {
-            HStack(spacing: TigerDuckTheme.Spacing.md) {
-                closeButton
-                addressPill {
-                    VStack(spacing: 0) {
-                        HStack(spacing: 5) {
-                            lock(size: 12)
-                            Text(page.host).font(.system(size: 15, weight: .semibold))
-                        }
-                        if !page.title.isEmpty {
-                            Text(page.title).font(.caption2).foregroundStyle(.secondary)
-                        }
+        HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
+            closeButton.hiddenWhenCollapsed(collapsed, edge: .top, moving: !reduceMotion)
+            address {
+                VStack(spacing: 0) {
+                    HStack(spacing: collapsed ? 4 : 5) {
+                        lock(size: collapsed ? 10 : 12)
+                        Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
+                    }
+                    if !collapsed, !page.title.isEmpty {
+                        Text(page.title).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
-                circle {
-                    ShareLink(item: page.address ?? url) {
-                        Image(systemName: "square.and.arrow.up").font(.system(size: 17, weight: .semibold))
-                            .frame(width: Self.barHeight, height: Self.barHeight)
-                    }
-                    .accessibilityLabel(String(localized: "browser_share"))
+            }
+            circle {
+                ShareLink(item: page.address ?? url) {
+                    Image(systemName: "square.and.arrow.up").font(.system(size: 17, weight: .semibold))
+                        .frame(width: Self.barHeight, height: Self.barHeight)
                 }
+                .accessibilityLabel(String(localized: "browser_share"))
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            .hiddenWhenCollapsed(collapsed, edge: .top)
-
-            if collapsed {
-                collapsedCapsule(showsLock: true)
-            }
+            .hiddenWhenCollapsed(collapsed, edge: .top, moving: !reduceMotion)
         }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
     private var toolbar: some View {
@@ -117,7 +104,7 @@ struct TigerDuckBrowserView: View {
         .frame(height: Self.toolbarHeight)
         .browserGlass(in: Capsule())
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .hiddenWhenCollapsed(collapsed, edge: .bottom)
+        .hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
     }
 
     private func toolbarButton(_ symbol: String, _ label: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -133,14 +120,15 @@ struct TigerDuckBrowserView: View {
     // MARK: - Bottom layout
 
     private var bottomBar: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            closeButton
-            addressPill {
+        HStack(alignment: .bottom, spacing: TigerDuckTheme.Spacing.md) {
+            closeButton.hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
+            address {
                 HStack(spacing: 0) {
                     // Find in page takes this side.
-                    Color.clear.frame(width: 40, height: Self.barHeight)
-                    Text(page.host).font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity)
-                    reloadButton(size: 16).frame(width: 40, height: Self.barHeight)
+                    if !collapsed { Color.clear.frame(width: 40, height: Self.barHeight) }
+                    Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
+                        .frame(maxWidth: collapsed ? nil : .infinity)
+                    if !collapsed { reloadButton(size: 16).frame(width: 40, height: Self.barHeight) }
                 }
             }
             circle {
@@ -151,9 +139,14 @@ struct TigerDuckBrowserView: View {
                 }
                 .accessibilityLabel(String(localized: "browser_more"))
             }
+            .hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .hiddenWhenCollapsed(collapsed, edge: .bottom)
+        // Collapsed, the row leaves the safe area for a spot just above the home indicator; the
+        // full-height frame reaches the safe area's edge, so it can extend past it.
+        .padding(.bottom, collapsed ? Self.homeIndicatorClearance : 0)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .ignoresSafeArea(.container, edges: collapsed ? .bottom : [])
     }
 
     // MARK: - Shared pieces
@@ -174,18 +167,27 @@ struct TigerDuckBrowserView: View {
             .browserGlass(in: Circle())
     }
 
-    private func addressPill(@ViewBuilder _ label: () -> some View) -> some View {
-        Button { sheet = .address } label: {
+    /// The address pill, which shrinks into the host capsule while the chrome is collapsed. One
+    /// element, so the change morphs; with Reduce Motion a new identity cross-fades the two states.
+    private func address(@ViewBuilder _ label: () -> some View) -> some View {
+        Button {
+            if collapsed { page.expandChrome() } else { sheet = .address }
+        } label: {
             label()
                 .lineLimit(1)
                 .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, minHeight: Self.barHeight)
+                .contentTransition(.interpolate)
+                .padding(.horizontal, collapsed ? 14 : 0)
+                .frame(maxWidth: collapsed ? nil : .infinity, minHeight: collapsed ? Self.capsuleHeight : Self.barHeight)
                 .contentShape(.capsule)
         }
         .buttonStyle(.plain)
         .browserGlass(in: Capsule())
         .contextMenu { addressMenu }
         .accessibilityLabel(addressLabel)
+        .id(reduceMotion && collapsed)
+        .transition(.opacity)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -204,24 +206,6 @@ struct TigerDuckBrowserView: View {
 
     private var addressLabel: String {
         String(format: String(localized: "browser_address"), page.host)
-    }
-
-    private func collapsedCapsule(showsLock: Bool) -> some View {
-        Button { page.expandChrome() } label: {
-            HStack(spacing: 4) {
-                if showsLock { lock(size: 10) }
-                Text(page.host).font(.system(size: 13, weight: .semibold))
-            }
-            .lineLimit(1)
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 14)
-            .frame(height: 30)
-            .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .browserGlass(in: Capsule())
-        .accessibilityLabel(addressLabel)
-        .transition(.opacity)
     }
 
     private func lock(size: CGFloat) -> some View {
@@ -314,8 +298,8 @@ struct TigerDuckBrowserView: View {
 }
 
 private extension View {
-    func hiddenWhenCollapsed(_ collapsed: Bool, edge: VerticalEdge) -> some View {
-        offset(y: collapsed ? (edge == .top ? -24 : 120) : 0)
+    func hiddenWhenCollapsed(_ collapsed: Bool, edge: VerticalEdge, moving: Bool) -> some View {
+        offset(y: collapsed && moving ? (edge == .top ? -24 : 120) : 0)
             .opacity(collapsed ? 0 : 1)
             .allowsHitTesting(!collapsed)
             .accessibilityHidden(collapsed)
