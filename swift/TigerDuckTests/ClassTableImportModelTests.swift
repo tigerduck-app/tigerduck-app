@@ -746,6 +746,43 @@ struct ClassTableImportModelTests {
         #expect(model.isFinished)
     }
 
+    @Test("an update leaves a newer import of the same person in place, and keeps a rename made meanwhile")
+    func updateYieldsToChangesMadeMeanwhile() async throws {
+        let first = try ClassTableShareCode.decode(try Self.code("B11300001"))
+        _ = try #require(store.add(first, nickname: "小明", courses: [:]))
+        let gate = Gate()
+        let model = gatedModel(gate)
+        model.scanned(try Self.code("B11300001", [Self.spring]))
+        guard case .replace(let job) = model.prompt else {
+            Issue.record("expected the replace prompt, got \(String(describing: model.prompt))")
+            return
+        }
+        model.lookUp(job)
+        try await Self.waitUntil { gate.isWaiting }
+
+        let person = try #require(store.person(withStudentId: "B11300001"))
+        store.rename(person.id, to: "阿明")
+        gate.open()
+        await model.lookupTask?.value
+        #expect(store.person(withStudentId: "B11300001")?.nickname == "阿明")
+        #expect(store.person(withStudentId: "B11300001")?.terms.map(\.semester) == ["1142"])
+
+        let again = gatedModel(gate)
+        again.scanned(try Self.code("B11300001"))
+        guard case .replace(let older) = again.prompt else {
+            Issue.record("expected the replace prompt, got \(String(describing: again.prompt))")
+            return
+        }
+        again.lookUp(older)
+        try await Self.waitUntil { gate.isWaiting }
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001", [Self.spring])), nickname: "阿明", courses: [:])
+        gate.open()
+        await again.lookupTask?.value
+
+        #expect(store.person(withStudentId: "B11300001")?.terms.map(\.semester) == ["1142"])
+        #expect(again.isFinished)
+    }
+
     private func gatedModel(_ gate: Gate) -> ClassTableImportModel {
         ClassTableImportModel(
             store: store,
