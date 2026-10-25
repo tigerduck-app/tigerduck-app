@@ -102,7 +102,8 @@ final class BrowserFind {
     }
 
     /// The body `run` calls with `action` and its arguments: texts gives the text of every node
-    /// it searches, mark wraps the ranges found in them and gives how many it marked.
+    /// it searches, mark wraps the ranges found in them and gives how many it marked. Editable
+    /// text, such as a rich-text answer, and SVG are left as they are.
     nonisolated static let script = """
     var marker = 'data-tigerduck-find';
     var marks = function() { return document.querySelectorAll('mark[' + marker + ']'); };
@@ -122,7 +123,8 @@ final class BrowserFind {
       var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
         acceptNode: function(node) {
           var parent = node.parentElement;
-          if (!parent || parent.closest('script, style, noscript, textarea, select, template')) return NodeFilter.FILTER_REJECT;
+          if (!parent || parent.isContentEditable) return NodeFilter.FILTER_REJECT;
+          if (parent.closest('script, style, noscript, textarea, select, template, svg')) return NodeFilter.FILTER_REJECT;
           if (!node.nodeValue.trim() || parent.getClientRects().length === 0) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;
         }

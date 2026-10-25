@@ -7,7 +7,7 @@ import WebKit
 @MainActor
 struct BrowserFindPageTests {
     private static let body = """
-    <p>作業 one</p>\
+    <p>作業 one</p><div contenteditable="true">作業 answer</div><svg><text>作業</text></svg>\
     <p style="display:none">作業 hidden</p><p>two 作業 and 作業</p><p>\(String(repeating: "a", count: 40))!</p>
     """
 
@@ -31,13 +31,15 @@ struct BrowserFindPageTests {
         try? await webView.callAsyncJavaScript(script, contentWorld: .page)
     }
 
-    @Test func marksShownTextAndClearingRestoresThePage() async {
+    @Test func marksShownTextAndLeavesEditableTextAndSVGAlone() async {
         let (webView, find) = await page()
         let before = await evaluate(webView, "return document.body.innerHTML") as? String
         find.query = "作業"
         await find.search()
 
         #expect(find.count == 3)
+        #expect(await evaluate(webView, "return document.querySelector('[contenteditable]').innerHTML") as? String == "作業 answer")
+        #expect(await evaluate(webView, "return document.querySelector('svg mark') === null") as? Bool == true)
 
         find.query = ""
         await find.search()
