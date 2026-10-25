@@ -16,37 +16,37 @@ struct NowNextView: View {
                             courses: snapshot.courses, now: AppClock.now(), quietDays: snapshot.quietDays
                         )
                         if let current = result.current {
-                            ClassCard(title: String(localized: "watch_now"), course: current, policy: policy)
+                            ClassCard(title: store.language.string("watch_now"), course: current, policy: policy)
                         }
                         if let next = result.next {
-                            ClassCard(title: result.nextDay.headline, course: next, policy: policy)
+                            ClassCard(title: result.nextDay.headline(in: store.language), course: next, policy: policy)
                         }
                         if result.current == nil && result.next == nil {
                             ContentUnavailableView(
-                                String(localized: "watch_no_upcoming_classes"),
+                                store.language.string("watch_no_upcoming_classes"),
                                 systemImage: "calendar"
                             )
                         }
                     } else if store.snapshot == nil {
                         ContentUnavailableView(
-                            String(localized: "watch_open_phone_to_sync"),
+                            store.language.string("watch_open_phone_to_sync"),
                             systemImage: "iphone.gen3"
                         )
                     } else if store.snapshot?.loggedIn == false {
                         ContentUnavailableView(
-                            String(localized: "watch_empty_not_signed_in"),
+                            store.language.string("watch_empty_not_signed_in"),
                             systemImage: "person.crop.circle.badge.exclamationmark"
                         )
                     } else {
                         ContentUnavailableView(
-                            String(localized: "watch_no_upcoming_classes"),
+                            store.language.string("watch_no_upcoming_classes"),
                             systemImage: "calendar"
                         )
                     }
                 }
                 .padding(.horizontal, 8)
             }
-            .navigationTitle(String(localized: "watch_now_next_title"))
+            .navigationTitle(store.language.string("watch_now_next_title"))
         }
     }
 }

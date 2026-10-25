@@ -225,6 +225,7 @@
 				Theme/VisualPreset.swift,
 				Watch/NextClassResolver.swift,
 				Watch/WatchCourse.swift,
+				Watch/WatchLanguage.swift,
 				Watch/WatchSnapshot.swift,
 				Watch/WatchWireFormat.swift,
 			);

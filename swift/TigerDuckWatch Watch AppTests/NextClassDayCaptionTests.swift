@@ -10,10 +10,10 @@ struct NextClassDayCaptionTests {
         weekday: 2, startHHmm: "08:10", endHHmm: "09:00", periodLabel: "1"
     )
 
-    private func entry(next: WatchCourse?, day: NextClassResolver.Day) -> NextClassEntry {
+    private func entry(next: WatchCourse?, day: NextClassResolver.Day, languageTag: String? = nil) -> NextClassEntry {
         NextClassEntry(
             date: Date(), current: nil, next: next, nextDay: day,
-            accentHex: "#FF8800", languageTag: nil, relevance: nil
+            accentHex: "#FF8800", languageTag: languageTag, relevance: nil
         )
     }
 
@@ -23,10 +23,12 @@ struct NextClassDayCaptionTests {
 
     private var tue: String { String(localized: "weekday_tue_caption") }
 
+    private let system = WatchLanguage(tag: nil)
+
     @Test func headline_namesTheDayTheClassMeets() {
-        #expect(NextClassResolver.Day.today.headline == String(localized: "watch_next"))
-        #expect(NextClassResolver.Day.tomorrow.headline == String(localized: "widget_tomorrow"))
-        #expect(NextClassResolver.Day.later(weekday: 2).headline == tue)
+        #expect(NextClassResolver.Day.today.headline(in: system) == String(localized: "watch_next"))
+        #expect(NextClassResolver.Day.tomorrow.headline(in: system) == String(localized: "widget_tomorrow"))
+        #expect(NextClassResolver.Day.later(weekday: 2).headline(in: system) == tue)
     }
 
     @Test(arguments: zip(1...7, [
@@ -35,13 +37,13 @@ struct NextClassDayCaptionTests {
     ]))
     func aLaterDay_isNamedByItsWeekday(weekday: Int, key: String) {
         let name = String(localized: String.LocalizationValue(key))
-        #expect(NextClassResolver.Day.later(weekday: weekday).headline == name)
-        #expect(NextClassResolver.Day.later(weekday: weekday).inlineCaption("08:10") == "\(name) 08:10")
+        #expect(NextClassResolver.Day.later(weekday: weekday).headline(in: system) == name)
+        #expect(NextClassResolver.Day.later(weekday: weekday).inlineCaption("08:10", in: system) == "\(name) 08:10")
     }
 
     @Test func inlineCaption_putsTheDayBeforeTheTime() {
-        #expect(NextClassResolver.Day.today.inlineCaption("08:10") == "08:10")
-        #expect(NextClassResolver.Day.tomorrow.inlineCaption("08:10") == tomorrow("08:10"))
+        #expect(NextClassResolver.Day.today.inlineCaption("08:10", in: system) == "08:10")
+        #expect(NextClassResolver.Day.tomorrow.inlineCaption("08:10", in: system) == tomorrow("08:10"))
     }
 
     @Test func rectangular_captionsTheTimeRange() {
@@ -60,6 +62,30 @@ struct NextClassDayCaptionTests {
         #expect(CornerView(entry: entry(next: tuesday, day: .tomorrow)).timeText == tomorrow("08:10"))
         #expect(CornerView(entry: entry(next: tuesday, day: .later(weekday: 2))).timeText == "\(tue) 08:10")
         #expect(CornerView(entry: entry(next: tuesday, day: .today)).timeText == "08:10")
+    }
+
+    @Test func theCaptionsFollowTheLanguageChosenOnThePhone() throws {
+        let zh = WatchLanguage(tag: "zh-Hant")
+        let tue = try localizedValue("weekday_tue_caption", in: "zh-Hant")
+        let tomorrow = String(format: try localizedValue("widget_tomorrow_time", in: "zh-Hant"), "08:10")
+        #expect(try localizedValue("widget_tomorrow", in: "zh-Hant") != localizedValue("widget_tomorrow", in: "en"))
+
+        #expect(NextClassResolver.Day.today.headline(in: zh) == (try localizedValue("watch_next", in: "zh-Hant")))
+        #expect(NextClassResolver.Day.tomorrow.headline(in: zh) == (try localizedValue("widget_tomorrow", in: "zh-Hant")))
+        #expect(NextClassResolver.Day.later(weekday: 2).headline(in: zh) == tue)
+        #expect(NextClassResolver.Day.tomorrow.inlineCaption("08:10", in: zh) == tomorrow)
+        #expect(NextClassResolver.Day.later(weekday: 2).inlineCaption("08:10", in: zh) == "\(tue) 08:10")
+    }
+
+    @Test func theComplicationFollowsTheSnapshotsLanguage() throws {
+        let tue = try localizedValue("weekday_tue_caption", in: "zh-Hant")
+        let tomorrow = String(format: try localizedValue("widget_tomorrow_time", in: "zh-Hant"), "08:10")
+        let later = entry(next: tuesday, day: .later(weekday: 2), languageTag: "zh-Hant")
+        #expect(RectangularView(entry: later).subhead == "\(tue) 08:10–09:00")
+        #expect(InlineView(entry: later).text == "B · \(tue) 08:10")
+        #expect(CornerView(entry: entry(next: tuesday, day: .tomorrow, languageTag: "zh-Hant")).timeText == tomorrow)
+        let none = entry(next: nil, day: .today, languageTag: "zh-Hant")
+        #expect(InlineView(entry: none).text == (try localizedValue("watch_no_upcoming_classes", in: "zh-Hant")))
     }
 
     @Test func captionKeysResolveInTheWatchAppAndTheComplication() throws {

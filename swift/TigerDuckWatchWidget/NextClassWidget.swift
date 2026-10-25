@@ -5,25 +5,24 @@ struct NextClassWidget: Widget {
     let kind: String = "NextClassWidget"
 
     var body: some WidgetConfiguration {
-        let metaLocale = Self.snapshotLocale()
+        let language = Self.snapshotLanguage()
         return StaticConfiguration(kind: kind, provider: NextClassProvider()) { entry in
             NextClassWidgetEntryView(entry: entry)
-                .environment(\.locale, entry.locale)
+                .environment(\.locale, entry.language.locale)
                 .modifier(WatchTheme(snapshot: nil))
         }
-        .configurationDisplayName(String(localized: "watch_widget_next_class", locale: metaLocale))
-        .description(String(localized: "watch_widget_next_class_description", locale: metaLocale))
+        .configurationDisplayName(language.string("watch_widget_next_class"))
+        .description(language.string("watch_widget_next_class_description"))
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
     }
 
-    private static func snapshotLocale() -> Locale {
+    private static func snapshotLanguage() -> WatchLanguage {
         let url = SharedAppGroup.snapshotFileURL
         guard FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url),
-              let snap = try? JSONDecoder().decode(WatchSnapshot.self, from: data),
-              let tag = snap.languageTag
-        else { return .current }
-        return Locale(identifier: tag)
+              let snap = try? JSONDecoder().decode(WatchSnapshot.self, from: data)
+        else { return WatchLanguage(tag: nil) }
+        return WatchLanguage(tag: snap.languageTag)
     }
 }
 

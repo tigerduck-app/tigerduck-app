@@ -9,6 +9,8 @@ final class ScheduleStore: NSObject, ObservableObject {
 
     @Published private(set) var snapshot: WatchSnapshot?
 
+    var language: WatchLanguage { WatchLanguage(tag: snapshot?.languageTag) }
+
     private let snapshotFileURL: URL
     private let defaults: UserDefaults
     private let widgetReloader: () -> Void
