@@ -10,6 +10,8 @@ struct MailHTMLView: UIViewRepresentable {
     var theme: MailHTMLTheme = .app
     @Binding var contentHeight: CGFloat
     let onLinkTap: (Int) -> Void
+    /// False when a load starts, true once it finishes or fails.
+    var onLoadedChange: (Bool) -> Void = { _ in }
 
     nonisolated static let maximumContentHeight: CGFloat = 50_000
 
@@ -50,6 +52,8 @@ struct MailHTMLView: UIViewRepresentable {
         let cidHandler: MailCIDSchemeHandler
         private(set) var loadedKey: String?
         private var loadGeneration = 0
+        /// The navigation the progress waits for; a replaced one may still report its cancellation.
+        private var currentNavigation: WKNavigation?
         private(set) var loadTask: Task<Void, Never>?
         private(set) var installedRulesAllowRemoteImages: Bool?
         private var heightObservation: NSKeyValueObservation?
@@ -79,17 +83,20 @@ struct MailHTMLView: UIViewRepresentable {
             let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)|\(images)"
             guard key != loadedKey else { return }
             loadedKey = key
+            // Outside the view update this runs in.
+            Task { @MainActor [weak self] in self?.parent.onLoadedChange(false) }
             let theme = parent.theme
             let document = MailWebViewFactory.document(for: parent.html, allowRemoteImages: parent.allowRemoteImages,
                                                        theme: theme)
             let allowImages = parent.allowRemoteImages
             loadTask?.cancel()
+            currentNavigation = nil
             loadGeneration += 1
             let generation = loadGeneration
             if installedRulesAllowRemoteImages == allowImages {
                 loadTask = nil
                 MailHTMLView.paint(webView, with: theme)
-                webView.loadHTMLString(document, baseURL: nil)
+                currentNavigation = webView.loadHTMLString(document, baseURL: nil)
                 return
             }
             loadTask = Task { @MainActor [weak self] in
@@ -98,8 +105,31 @@ struct MailHTMLView: UIViewRepresentable {
                 MailWebViewFactory.installRules(rules, on: webView)
                 self.installedRulesAllowRemoteImages = rules == nil ? nil : allowImages
                 MailHTMLView.paint(webView, with: theme)
-                webView.loadHTMLString(document, baseURL: nil)
+                self.currentNavigation = webView.loadHTMLString(document, baseURL: nil)
             }
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            finish(navigation)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            finish(navigation)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            finish(navigation)
+        }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            currentNavigation = nil
+            parent.onLoadedChange(true)
+        }
+
+        private func finish(_ navigation: WKNavigation?) {
+            guard let navigation, navigation === currentNavigation else { return }
+            currentNavigation = nil
+            parent.onLoadedChange(true)
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
