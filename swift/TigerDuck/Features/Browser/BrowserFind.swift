@@ -1,8 +1,9 @@
 import Foundation
 import WebKit
 
-/// Find in page. `WKWebView.find` has no regular expressions, so both modes run a script that
-/// marks the matching text, in a script world of the app's own that the page cannot reach.
+/// Find in page. The page script collects the text and marks the matches, in a script world of
+/// the app's own that the page cannot reach. Matching runs here off the main actor, where a slow
+/// regular expression can be stopped; run in the page, it would hold the page's thread until done.
 @MainActor
 @Observable
 final class BrowserFind {
@@ -38,11 +39,21 @@ final class BrowserFind {
     func search() async {
         searches += 1
         let search = searches
-        let found = query.isEmpty
-            ? await run(["action": "clear"])
-            : await run(["action": "find", "query": query, "regex": mode == .regex])
+        var marked = 0
+        if !query.isEmpty {
+            let texts = await run(["action": "texts"]) as? [String] ?? []
+            guard search == searches else { return }
+            let query = query, regex = mode == .regex
+            let found = await Task.detached(priority: .userInitiated) {
+                Self.ranges(of: query, regex: regex, in: texts)
+            }.value
+            guard search == searches else { return }
+            if !found.isEmpty { marked = await run(["action": "mark", "ranges": found]) as? Int ?? 0 }
+        } else {
+            _ = await run(["action": "clear"])
+        }
         guard search == searches else { return }
-        count = max((found as? Int) ?? 0, 0)
+        count = marked
         index = 0
         if count > 0 { _ = await run(["action": "select", "index": 0]) }
     }
@@ -57,35 +68,46 @@ final class BrowserFind {
         _ = await run(["action": "select", "index": index])
     }
 
-    /// The ranges of `query` in `text` as `[start, end]` pairs in UTF-16 offsets, null for a
-    /// regular expression that does not compile. Plain text runs as an escaped expression, so both
-    /// modes ignore case the same way.
-    nonisolated static let matcher = """
-    function tigerduckFindRanges(text, query, regex) {
-      if (!query) return [];
-      var source = regex ? query : query.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
-      var expression;
-      try { expression = new RegExp(source, 'gi'); } catch (error) { return null; }
-      var found = [];
-      var match;
-      while ((match = expression.exec(text)) !== null) {
-        if (match[0].length === 0) { expression.lastIndex += 1; continue; }
-        found.push([match.index, match.index + match[0].length]);
-      }
-      return found;
-    }
-    """
-
     /// Safari stops at a thousand matches too; more would only slow the page.
     nonisolated static let limit = 1000
 
-    /// The body `run` calls with `action` and its arguments: find gives the count, -1 for an
-    /// expression that does not compile. A match across two elements is not found.
-    nonisolated static let script = matcher + """
+    /// Each match of `query` in `texts` as `[text, start, end]`, in the UTF-16 offsets the DOM
+    /// counts, ignoring case. None for an expression that does not compile, and none once the
+    /// search has run past `budget`, as a pattern such as `(a+)+$` backtracks exponentially.
+    nonisolated static func ranges(
+        of query: String, regex: Bool, in texts: [String], budget: Duration = .milliseconds(500)
+    ) -> [[Int]] {
+        let options: NSRegularExpression.Options = regex ? .caseInsensitive : [.caseInsensitive, .ignoreMetacharacters]
+        guard let expression = try? NSRegularExpression(pattern: query, options: options) else { return [] }
+        let deadline = ContinuousClock.now + budget
+        var found: [[Int]] = []
+        for (text, string) in texts.enumerated() where found.count < limit {
+            var expired = ContinuousClock.now > deadline
+            if !expired {
+                // Progress reports come during a long match too, so a slow one stops here.
+                expression.enumerateMatches(in: string, options: .reportProgress,
+                                            range: NSRange(location: 0, length: string.utf16.count)) { match, _, stop in
+                    if ContinuousClock.now > deadline {
+                        expired = true
+                        stop.pointee = true
+                    } else if let range = match?.range, range.length > 0 {
+                        found.append([text, range.location, NSMaxRange(range)])
+                        if found.count == limit { stop.pointee = true }
+                    }
+                }
+            }
+            if expired { return [] }
+        }
+        return found
+    }
 
+    /// The body `run` calls with `action` and its arguments: texts gives the text of every node
+    /// it searches, mark wraps the ranges found in them and gives how many it marked.
+    nonisolated static let script = """
     var marker = 'data-tigerduck-find';
     var marks = function() { return document.querySelectorAll('mark[' + marker + ']'); };
     function clear() {
+      window.tigerduckFindNodes = [];
       marks().forEach(function(mark) {
         var parent = mark.parentNode;
         while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
@@ -94,7 +116,9 @@ final class BrowserFind {
       });
       return 0;
     }
-    function textNodes() {
+    function texts() {
+      clear();
+      if (!document.body) return [];
       var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
         acceptNode: function(node) {
           var parent = node.parentElement;
@@ -105,27 +129,24 @@ final class BrowserFind {
       });
       var nodes = [];
       while (walker.nextNode()) nodes.push(walker.currentNode);
-      return nodes;
+      window.tigerduckFindNodes = nodes;
+      return nodes.map(function(node) { return node.nodeValue; });
     }
-    function find() {
-      clear();
-      if (!document.body) return 0;
+    function mark() {
+      var nodes = window.tigerduckFindNodes || [];
       var count = 0;
-      var nodes = textNodes();
-      for (var n = 0; n < nodes.length && count < \(limit); n++) {
-        var found = tigerduckFindRanges(nodes[n].nodeValue, query, regex);
-        if (found === null) return -1;
-        found = found.slice(0, \(limit) - count);
-        for (var i = found.length - 1; i >= 0; i--) {
-          var range = document.createRange();
-          range.setStart(nodes[n], found[i][0]);
-          range.setEnd(nodes[n], found[i][1]);
-          var mark = document.createElement('mark');
-          mark.setAttribute(marker, '');
-          mark.style.cssText = 'color: #000; background: #FFE8A3; border-radius: 3px; padding: 0; box-shadow: none';
-          range.surroundContents(mark);
-        }
-        count += found.length;
+      // From the last range back, so wrapping one leaves the offsets before it in place.
+      for (var i = ranges.length - 1; i >= 0; i--) {
+        var node = nodes[ranges[i][0]];
+        if (!node || !node.isConnected || ranges[i][2] > node.nodeValue.length) continue;
+        var range = document.createRange();
+        range.setStart(node, ranges[i][1]);
+        range.setEnd(node, ranges[i][2]);
+        var mark = document.createElement('mark');
+        mark.setAttribute(marker, '');
+        mark.style.cssText = 'color: #000; background: #FFE8A3; border-radius: 3px; padding: 0; box-shadow: none';
+        range.surroundContents(mark);
+        count++;
       }
       return count;
     }
@@ -135,7 +156,8 @@ final class BrowserFind {
       if (all[index]) all[index].scrollIntoView({ block: 'center', inline: 'nearest' });
       return all.length;
     }
-    if (action === 'find') return find();
+    if (action === 'texts') return texts();
+    if (action === 'mark') return mark();
     if (action === 'select') return select();
     return clear();
     """
@@ -144,7 +166,7 @@ final class BrowserFind {
 extension WKWebView {
     /// One call of ``BrowserFind/script``, with every argument the script reads present.
     func runFind(_ arguments: [String: Any]) async -> Any? {
-        let all: [String: Any] = ["action": "clear", "query": "", "regex": false, "index": 0]
+        let all: [String: Any] = ["action": "clear", "ranges": [[Int]](), "index": 0]
             .merging(arguments) { $1 }
         return try? await callAsyncJavaScript(BrowserFind.script, arguments: all, in: nil, contentWorld: .defaultClient)
     }

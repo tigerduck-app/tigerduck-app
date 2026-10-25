@@ -1,47 +1,61 @@
 #if os(iOS)
 import Foundation
-import JavaScriptCore
 import Testing
 @testable import TigerDuck
 
 struct BrowserFindMatcherTests {
-    /// `nil` when the matcher answers null, for an expression that does not compile.
-    private func ranges(_ text: String, _ query: String, regex: Bool = false) -> [[Int]]? {
-        let context = JSContext()!
-        context.evaluateScript(BrowserFind.matcher)
-        let answer = context.objectForKeyedSubscript("tigerduckFindRanges").call(withArguments: [text, query, regex])!
-        if answer.isNull { return nil }
-        return (answer.toArray() as? [[NSNumber]])?.map { $0.map(\.intValue) }
+    private func ranges(_ text: String, _ query: String, regex: Bool = false) -> [[Int]] {
+        BrowserFind.ranges(of: query, regex: regex, in: [text])
     }
 
+    /// Fast to the first text, exponential in the second: done, the search would find the x.
+    static let slowTexts = ["x", String(repeating: "a", count: 40) + "!"]
+    static let slowPattern = "x|(a+)+$"
+
     @Test func plainTextIgnoresCase() {
-        #expect(ranges("Moodle and moodle", "MOODLE") == [[0, 6], [11, 17]])
+        #expect(ranges("Moodle and moodle", "MOODLE") == [[0, 0, 6], [0, 11, 17]])
     }
 
     @Test func plainTextMatchesExpressionCharactersAsThemselves() {
-        #expect(ranges("a.b axb", "a.b") == [[0, 3]])
-        #expect(ranges("(1+1) [x] \\d", "(1+1)") == [[0, 5]])
-        #expect(ranges("cost $5 ^", "$5 ^") == [[5, 9]])
-        #expect(ranges("a\\b", "\\") == [[1, 2]])
+        #expect(ranges("a.b axb", "a.b") == [[0, 0, 3]])
+        #expect(ranges("(1+1) [x] \\d", "(1+1)") == [[0, 0, 5]])
+        #expect(ranges("cost $5 ^", "$5 ^") == [[0, 5, 9]])
+        #expect(ranges("a\\b", "\\") == [[0, 1, 2]])
     }
 
     @Test func aRegularExpressionMatchesItsPattern() {
-        #expect(ranges("第一週：介紹，第三週：提案", "第[一二三四]週", regex: true) == [[0, 3], [7, 10]])
-        #expect(ranges("HW1 hw22", "hw\\d+", regex: true) == [[0, 3], [4, 8]])
+        #expect(ranges("第一週：介紹，第三週：提案", "第[一二三四]週", regex: true) == [[0, 0, 3], [0, 7, 10]])
+        #expect(ranges("HW1 hw22", "hw\\d+", regex: true) == [[0, 0, 3], [0, 4, 8]])
     }
 
-    @Test func anExpressionThatDoesNotCompileIsNull() {
-        #expect(ranges("text", "(", regex: true) == nil)
-        #expect(ranges("text", "(", regex: false) == [])
+    @Test func anExpressionThatDoesNotCompileFindsNothing() {
+        #expect(ranges("text (", "(", regex: true).isEmpty)
+        #expect(ranges("text (", "(", regex: false) == [[0, 5, 6]])
     }
 
-    @Test func emptyMatchesAreSkippedRatherThanLoopingForever() {
-        #expect(ranges("baaa", "a*", regex: true) == [[1, 4]])
-        #expect(ranges("abc", "", regex: true) == [])
+    @Test func emptyMatchesAreSkipped() {
+        #expect(ranges("baaa", "a*", regex: true) == [[0, 1, 4]])
     }
 
     @Test func offsetsCountUTF16UnitsAsTheDOMDoes() {
-        #expect(ranges("😀作業😀作業", "作業") == [[2, 4], [6, 8]])
+        #expect(ranges("😀作業😀作業", "作業") == [[0, 2, 4], [0, 6, 8]])
+    }
+
+    @Test func eachRangeNamesItsText() {
+        #expect(BrowserFind.ranges(of: "a", regex: false, in: ["no", "a A"]) == [[1, 0, 1], [1, 2, 3]])
+    }
+
+    @Test func matchesStopAtTheLimit() {
+        let texts = Array(repeating: "a a", count: BrowserFind.limit)
+        #expect(BrowserFind.ranges(of: "a", regex: false, in: texts).count == BrowserFind.limit)
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func aSlowExpressionGivesUpWithinItsBudget() {
+        let started = ContinuousClock.now
+        let found = BrowserFind.ranges(of: Self.slowPattern, regex: true, in: Self.slowTexts, budget: .milliseconds(200))
+        #expect(found.isEmpty)
+        #expect(ContinuousClock.now - started < .seconds(1))
     }
 }
 
@@ -49,37 +63,41 @@ struct BrowserFindMatcherTests {
 struct BrowserFindTests {
     private final class Page {
         var calls: [[String: Any]] = []
-        var found: Any? = 3
+        var texts = ["作業一", "作業二", "作業三"]
+        var actions: [String?] { calls.map { $0["action"] as? String } }
     }
 
     private func find(_ page: Page) -> BrowserFind {
         let find = BrowserFind()
         find.run = { arguments in
             page.calls.append(arguments)
-            return arguments["action"] as? String == "find" ? page.found : 0
+            switch arguments["action"] as? String {
+            case "texts": return page.texts
+            case "mark": return (arguments["ranges"] as? [[Int]])?.count ?? 0
+            default: return 0
+            }
         }
         return find
     }
 
-    @Test func aSearchCountsTheMatchesAndShowsTheFirst() async {
+    @Test func aSearchMarksTheMatchesAndShowsTheFirst() async {
         let page = Page()
         let find = find(page)
-        find.query = "作業"
+        find.query = "作業."
         find.mode = .regex
         await find.search()
 
         #expect(find.count == 3 && find.index == 0)
         #expect(find.position == "1/3")
-        #expect(page.calls.first?["query"] as? String == "作業")
-        #expect(page.calls.first?["regex"] as? Bool == true)
-        #expect(page.calls.last?["action"] as? String == "select")
-        #expect(page.calls.last?["index"] as? Int == 0)
+        #expect(page.actions == ["texts", "mark", "select"])
+        #expect(page.calls[1]["ranges"] as? [[Int]] == [[0, 0, 3], [1, 0, 3], [2, 0, 3]])
+        #expect(page.calls[2]["index"] as? Int == 0)
     }
 
     @Test func nextAndPreviousWrapAround() async {
         let page = Page()
         let find = find(page)
-        find.query = "a"
+        find.query = "作業"
         await find.search()
 
         await find.previous()
@@ -94,13 +112,28 @@ struct BrowserFindTests {
         let page = Page()
         let find = find(page)
         find.query = "("
-        page.found = -1
+        find.mode = .regex
         await find.search()
 
         #expect(find.count == 0)
         #expect(find.position == String(localized: "browser_find_none"))
+        #expect(page.actions == ["texts"])
         await find.next()
         #expect(page.calls.count == 1)
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func aSlowExpressionSaysNoMatches() async {
+        let page = Page()
+        page.texts = BrowserFindMatcherTests.slowTexts
+        let find = find(page)
+        find.query = BrowserFindMatcherTests.slowPattern
+        find.mode = .regex
+        await find.search()
+
+        #expect(find.count == 0)
+        #expect(find.position == String(localized: "browser_find_none"))
+        #expect(page.actions == ["texts"])
     }
 
     @Test func anEmptyQueryClearsTheMarksAndShowsNothing() async {
@@ -108,7 +141,7 @@ struct BrowserFindTests {
         let find = find(page)
         await find.search()
 
-        #expect(page.calls.map { $0["action"] as? String } == ["clear"])
+        #expect(page.actions == ["clear"])
         #expect(find.position.isEmpty)
     }
 
@@ -116,7 +149,7 @@ struct BrowserFindTests {
         let page = Page()
         let find = find(page)
         find.start()
-        find.query = "a"
+        find.query = "作業"
         await find.search()
 
         find.end()

@@ -7,6 +7,7 @@ struct BrowserFindBar: View {
     @FocusState private var focused: Bool
 
     private static let height: CGFloat = 48
+    private static let pause: Duration = .milliseconds(250)
 
     var body: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -48,8 +49,11 @@ struct BrowserFindBar: View {
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .onAppear { focused = true }
-        .onChange(of: find.query) { Task { await find.search() } }
-        .onChange(of: find.mode) { Task { await find.search() } }
+        // Searches once typing pauses rather than on every keystroke.
+        .task(id: [find.query, find.mode.rawValue]) {
+            do { try await Task.sleep(for: Self.pause) } catch { return }
+            await find.search()
+        }
     }
 
     private var modeMenu: some View {
