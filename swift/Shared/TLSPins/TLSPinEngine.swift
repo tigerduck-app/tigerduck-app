@@ -140,20 +140,26 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
 
     var acceptances: [TLSPinAcceptance] { withState { $0.acceptances } }
 
-    /// Stores nothing and returns false once `isPromptable` no longer holds, checked under the same
-    /// lock as the write so a document applied meanwhile cannot slip between the two.
+    /// Returns whether the set lets the chain through afterwards. A chain still refused is stored
+    /// only while `isPromptable` holds, checked under the same lock as the write so a document
+    /// applied meanwhile cannot slip between the two.
     @discardableResult
     func accept(_ mismatch: TLSPinMismatch) -> Bool {
         withState { state in
-            guard isPromptable(mismatch, in: state) else { return false }
+            guard case .pinned(let set) = policy(forHost: mismatch.host, in: state, at: clock()) else { return true }
+            guard set.id == mismatch.setID else { return false }
+            if set.pins.isDisjoint(with: mismatch.chainSPKIs) {
+                guard isPromptable(mismatch, in: state) else { return false }
+                let held = state.acceptances.filter { $0.setID == mismatch.setID }.flatMap(\.spkis)
+                let new = mismatch.acceptedSPKIs.subtracting(held)
+                if !new.isEmpty {
+                    state.acceptances.append(TLSPinAcceptance(
+                        setID: mismatch.setID, spkis: new, buildNumber: buildNumber, acceptedAt: clock()
+                    ))
+                    persist(state.acceptances)
+                }
+            }
             state.refusedSets.remove(mismatch.setID)
-            let held = state.acceptances.filter { $0.setID == mismatch.setID }.flatMap(\.spkis)
-            let new = mismatch.acceptedSPKIs.subtracting(held)
-            guard !new.isEmpty else { return true }
-            state.acceptances.append(TLSPinAcceptance(
-                setID: mismatch.setID, spkis: new, buildNumber: buildNumber, acceptedAt: clock()
-            ))
-            persist(state.acceptances)
             return true
         }
     }

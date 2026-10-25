@@ -167,6 +167,22 @@ struct TLSPinMismatchQueueTests {
         #expect(refreshed == 0)
     }
 
+    @Test("Continue on a chain another path already let through still refreshes")
+    func continueAfterAnotherAcceptanceRefreshes() {
+        let engine = F.engine(document: F.promptRootsDocument)
+        var refreshed = 0
+        let queue = queue(engine: engine, afterContinue: { refreshed += 1 })
+        var mismatch = Self.mismatch()
+        mismatch.chainSPKIs = [F.ntustLeafSPKI]
+        queue.report(mismatch)
+        #expect(queue.prompt == mismatch)
+        #expect(engine.accept(mismatch))
+        queue.continue()
+        #expect(queue.prompt == nil)
+        #expect(engine.acceptances.count == 1)
+        #expect(refreshed == 1)
+    }
+
     @Test("Cancel stores nothing")
     func cancelStoresNothing() {
         let engine = F.engine(document: F.promptRootsDocument)
