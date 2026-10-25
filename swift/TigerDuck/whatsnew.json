@@ -642,5 +642,37 @@
         }
       ]
     }
+  },
+  "2.7.2": {
+    "zh-TW": {
+      "title": "2.7.2 更新內容",
+      "items": [
+        {
+          "symbol": "calendar",
+          "title": "行事曆",
+          "body": "修正行事曆節假日的顯示問題。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "修正未完成作業的點擊問題。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.7.2",
+      "items": [
+        {
+          "symbol": "calendar",
+          "title": "Calendar",
+          "body": "Fixes how holidays show in the calendar."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Fixes tapping incomplete assignments."
+        }
+      ]
+    }
   }
 }
