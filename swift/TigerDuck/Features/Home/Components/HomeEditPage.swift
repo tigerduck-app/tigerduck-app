@@ -51,42 +51,43 @@ struct HomeEditPage<Header: View>: View {
 
     private func sectionCell(_ section: HomeSection) -> some View {
         let payload = ReorderDragPayload(id: section.id, kind: .homeSection, containerID: sectionDragContainerID)
-        return sectionOutline(section)
-            .overlay(alignment: .top) {
-                SectionDragHandle()
-            }
-            .overlay(alignment: .topTrailing) {
-                Button {
-                    withAnimation(reduceMotion ? nil : .smoothSpring) {
-                        viewModel.removeSection(section)
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.white, .red)
-                        .font(.title3)
+        // The handle sits above the outline, which is mostly its header, instead of covering it.
+        return VStack(spacing: 0) {
+            SectionDragHandle()
+            sectionOutline(section)
+        }
+        .overlay(alignment: .topTrailing) {
+            Button {
+                withAnimation(reduceMotion ? nil : .smoothSpring) {
+                    viewModel.removeSection(section)
                 }
-                .offset(x: 6, y: -6)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.white, .red)
+                    .font(.title3)
             }
-            .opacity(activeSectionDrag?.id == section.id ? 0.35 : 1)
-            .draggable(payload) {
-                SectionDragPreview(section: section)
-                    .onAppear { activeSectionDrag = payload }
-            }
-            .onDrop(
-                of: [.tigerDuckReorderPayload],
-                delegate: ReorderDropDelegate(
-                    targetID: section.id,
-                    expectedKind: .homeSection,
-                    containerID: sectionDragContainerID,
-                    activePayload: $activeSectionDrag,
-                    didReorder: $didReorderSection,
-                    currentIDs: { viewModel.sections.map(\.id) },
-                    moveAction: { fromOffsets, destination in
-                        viewModel.sections.move(fromOffsets: fromOffsets, toOffset: destination)
-                    },
-                    onPersist: viewModel.saveSectionLayout
-                )
+            .padding(.trailing, TigerDuckTheme.Spacing.lg)
+        }
+        .opacity(activeSectionDrag?.id == section.id ? 0.35 : 1)
+        .draggable(payload) {
+            SectionDragPreview(section: section)
+                .onAppear { activeSectionDrag = payload }
+        }
+        .onDrop(
+            of: [.tigerDuckReorderPayload],
+            delegate: ReorderDropDelegate(
+                targetID: section.id,
+                expectedKind: .homeSection,
+                containerID: sectionDragContainerID,
+                activePayload: $activeSectionDrag,
+                didReorder: $didReorderSection,
+                currentIDs: { viewModel.sections.map(\.id) },
+                moveAction: { fromOffsets, destination in
+                    viewModel.sections.move(fromOffsets: fromOffsets, toOffset: destination)
+                },
+                onPersist: viewModel.saveSectionLayout
             )
+        )
     }
 
     @ViewBuilder
