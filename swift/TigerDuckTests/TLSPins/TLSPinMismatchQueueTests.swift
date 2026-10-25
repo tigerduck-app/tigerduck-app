@@ -7,18 +7,21 @@ struct TLSPinMismatchQueueTests {
     typealias F = TLSPinFixtures
 
     nonisolated static func mismatch(_ setID: String = "ntust") -> TLSPinMismatch {
-        TLSPinMismatch(
-            setID: setID, host: "moodle2.ntust.edu.tw", domains: ["ntust.edu.tw"], issuerOrganization: "TAIWAN-CA",
-            certificates: [], acceptedSPKIs: [F.ntustLeafSPKI, F.secureSSLCASPKI]
+        let library = setID == "library"
+        return TLSPinMismatch(
+            setID: setID, host: library ? "api.lib.ntust.edu.tw" : "moodle2.ntust.edu.tw",
+            domains: [library ? "api.lib.ntust.edu.tw" : "ntust.edu.tw"], issuerOrganization: "TAIWAN-CA",
+            certificates: [], acceptedSPKIs: [F.ntustLeafSPKI, F.secureSSLCASPKI], anchorSPKI: F.globalRootSPKI
         )
     }
 
-    final class Clock {
+    /// Read on the main actor only, by the queue and by the engines these tests build.
+    final class Clock: @unchecked Sendable {
         var now = F.now
     }
 
     private func queue(
-        engine: TLSPinEngine = F.engine(), defaults: UserDefaults = F.defaults(), clock: Clock = Clock(),
+        engine: TLSPinEngine = F.engine(document: F.promptRootsDocument), defaults: UserDefaults = F.defaults(), clock: Clock = Clock(),
         afterContinue: @escaping @MainActor () -> Void = {}
     ) -> TLSPinMismatchQueue {
         let queue = TLSPinMismatchQueue(engine: engine, defaults: defaults, clock: { clock.now }, afterContinue: afterContinue)
@@ -79,13 +82,15 @@ struct TLSPinMismatchQueueTests {
     @Test("A held mismatch the pins now let through is dropped")
     func aStalePromptIsDropped() {
         let engine = F.engine()
-        engine.acceptDocument(F.envelope(F.payload(serial: 100, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.unknownSPKI])])))
+        engine.acceptDocument(F.envelope(F.payload(
+            serial: 100, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.unknownSPKI])], promptRoots: [F.globalRootSPKI]
+        )))
         var mismatch = Self.mismatch()
         mismatch.chainSPKIs = [F.ntustLeafSPKI, F.secureSSLCASPKI, F.globalRootSPKI]
         let queue = queue(engine: engine)
         queue.isForeground = false
         queue.report(mismatch)
-        engine.acceptDocument(F.envelope(F.payload(serial: 101)))
+        engine.acceptDocument(F.envelope(F.payload(serial: 101, promptRoots: [F.globalRootSPKI])))
         queue.isForeground = true
         #expect(queue.prompt == nil)
         queue.report(Self.mismatch("library"))
@@ -95,7 +100,9 @@ struct TLSPinMismatchQueueTests {
     @Test("A prompt open as the app leaves is asked again on return, unless the pins now allow it")
     func leavingTheForegroundHoldsThePrompt() {
         let engine = F.engine()
-        engine.acceptDocument(F.envelope(F.payload(serial: 100, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.unknownSPKI])])))
+        engine.acceptDocument(F.envelope(F.payload(
+            serial: 100, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.unknownSPKI])], promptRoots: [F.globalRootSPKI]
+        )))
         var mismatch = Self.mismatch()
         mismatch.chainSPKIs = [F.ntustLeafSPKI, F.secureSSLCASPKI, F.globalRootSPKI]
         let queue = queue(engine: engine)
@@ -106,14 +113,14 @@ struct TLSPinMismatchQueueTests {
         #expect(queue.prompt == mismatch)
 
         queue.isForeground = false
-        engine.acceptDocument(F.envelope(F.payload(serial: 101)))
+        engine.acceptDocument(F.envelope(F.payload(serial: 101, promptRoots: [F.globalRootSPKI])))
         queue.isForeground = true
         #expect(queue.prompt == nil)
     }
 
     @Test("Continue stores the leaf and intermediates and refreshes")
     func continueStoresTheAcceptance() throws {
-        let engine = F.engine()
+        let engine = F.engine(document: F.promptRootsDocument)
         var refreshed = 0
         let queue = queue(engine: engine, afterContinue: { refreshed += 1 })
         queue.report(Self.mismatch())
@@ -130,9 +137,39 @@ struct TLSPinMismatchQueueTests {
         #expect(set.pins.isSuperset(of: stored.spkis))
     }
 
+    @Test("A held mismatch is dropped once the document listing its root expires")
+    func anExpiredDocumentDropsAHeldMismatch() {
+        let clock = Clock()
+        let engine = TLSPinEngine(
+            builtIn: TLSPinTable.builtIn, baselineSerial: 0, keys: F.keys,
+            defaults: F.defaults(), buildNumber: "100", clock: { clock.now }
+        )
+        engine.acceptDocument(F.promptRootsDocument)
+        let queue = queue(engine: engine, clock: clock)
+        queue.isForeground = false
+        queue.report(Self.mismatch())
+        clock.now = F.now.addingTimeInterval(31 * F.day)
+        queue.isForeground = true
+        #expect(queue.prompt == nil)
+    }
+
+    @Test("Continue stores nothing once a newer document drops the shown chain's root")
+    func continueAfterTheRootIsDroppedStoresNothing() {
+        let engine = F.engine(document: F.promptRootsDocument)
+        var refreshed = 0
+        let queue = queue(engine: engine, afterContinue: { refreshed += 1 })
+        queue.report(Self.mismatch())
+        #expect(queue.prompt == Self.mismatch())
+        engine.acceptDocument(F.envelope(F.payload(serial: 2)))
+        queue.continue()
+        #expect(queue.prompt == nil)
+        #expect(engine.acceptances.isEmpty)
+        #expect(refreshed == 0)
+    }
+
     @Test("Cancel stores nothing")
     func cancelStoresNothing() {
-        let engine = F.engine()
+        let engine = F.engine(document: F.promptRootsDocument)
         var refreshed = 0
         let queue = queue(engine: engine, afterContinue: { refreshed += 1 })
         queue.report(Self.mismatch())

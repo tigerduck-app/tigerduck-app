@@ -13,7 +13,7 @@ struct TLSPinPromptTests {
         setID: "library", host: "api.lib.ntust.edu.tw", domains: ["api.lib.ntust.edu.tw"],
         issuerOrganization: "Sectigo Limited",
         certificates: TLSPinningDelegateTests.libraryChain.map { TLSCertificateSummary(der: Data($0)) },
-        acceptedSPKIs: [F.unknownSPKI]
+        acceptedSPKIs: [F.unknownSPKI], anchorSPKI: F.globalRootSPKI
     )
 
     nonisolated static let styles: [UIUserInterfaceStyle] = [.light, .dark]
@@ -21,7 +21,7 @@ struct TLSPinPromptTests {
     @MainActor
     @Observable
     final class Prompting {
-        @ObservationIgnored let engine = F.engine()
+        @ObservationIgnored let engine = F.engine(document: F.promptRootsDocument)
         @ObservationIgnored let defaults = F.defaults()
         @ObservationIgnored let owner = TLSPinPromptOwner()
         @ObservationIgnored var continued = 0
@@ -264,7 +264,7 @@ struct TLSPinPromptTests {
 
     static let ntustMismatch = TLSPinMismatch(
         setID: "ntust", host: "moodle2.ntust.edu.tw", domains: ["ntust.edu.tw"], issuerOrganization: "TAIWAN-CA",
-        certificates: [], acceptedSPKIs: [F.unknownSPKI]
+        certificates: [], acceptedSPKIs: [F.unknownSPKI], anchorSPKI: F.globalRootSPKI
     )
 
     @Test("an answer for a prompt the queue has since replaced leaves the newer one alone")

@@ -37,11 +37,12 @@ no build pinned failed every NTUST request until the user updated.
   through. `MailTLSVerifier` runs synchronously on a NIO event loop, so it fails that connection,
   and its next connect uses the new pins.
 - A chain still refused may be continued past only when its anchor's SPKI is in the valid
-  document's `prompt_roots`, the TLS roots of Mozilla's store. Continue trusts the leaf's and the
-  intermediates' SPKIs, never the root's, for that set until the build number changes. The
-  acceptance lives in `UserDefaults`, not the Keychain, which outlives an uninstall. One prompt
-  shows at a time, in the foreground only, each set at most once per launch and not within an hour
-  of a Cancel; a background refusal waits for the next foreground.
+  document's `prompt_roots`, the TLS roots of Mozilla's store. That is checked again when the
+  prompt shows and when Continue stores, since the document can expire or be replaced meanwhile.
+  Continue trusts the leaf's and the intermediates' SPKIs, never the root's, for that set until the
+  build number changes. The acceptance lives in `UserDefaults`, not the Keychain, which outlives an
+  uninstall. One prompt shows at a time, in the foreground only, each set at most once per launch
+  and not within an hour of a Cancel; a background refusal waits for the next foreground.
 - `api.tigerduck.app` is not pinned. Cloudflare rotates its edge certificates across several CAs,
   so a pin would break the app at an unannounced rotation; Certificate Transparency monitoring of
   the zone stands in for it.

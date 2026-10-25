@@ -10,9 +10,9 @@ struct TLSPinWatchSyncTests {
     static let acceptance = TLSPinMismatchQueueTests.mismatch()
 
     private func phonePayload(envelope: Data, sentAt: Date = F.now) throws -> String {
-        let phone = F.engine()
-        phone.acceptDocument(envelope)
+        let phone = F.engine(document: F.promptRootsDocument)
         phone.accept(Self.acceptance)
+        phone.acceptDocument(envelope)
         let broadcaster = TLSPinWatchBroadcaster(
             session: WatchSyncCoordinatorTests.StubSession(), engine: phone, clock: { sentAt }
         )

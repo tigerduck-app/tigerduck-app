@@ -60,11 +60,12 @@ final class TLSPinMismatchQueue {
     }
 
     /// Trusts the shown chain's leaf and intermediates for its set until the build changes, then
-    /// refreshes the way a return to the foreground does.
+    /// refreshes the way a return to the foreground does. A prompt the engine no longer allows,
+    /// after a newer document or its expiry, closes with nothing stored.
     func `continue`() {
         guard let prompt else { return }
-        engine.accept(prompt)
         self.prompt = nil
+        guard engine.accept(prompt) else { return }
         afterContinue()
     }
 
@@ -81,11 +82,12 @@ final class TLSPinMismatchQueue {
         return Date(timeIntervalSince1970: quiet?[setID] ?? 0)
     }
 
-    /// A held mismatch the pins now let through, after a newer document, is dropped unasked.
+    /// A held mismatch the engine no longer allows a prompt for, after a newer document or its
+    /// expiry, is dropped unasked.
     private func surface() {
         guard isForeground, prompt == nil, let held else { return }
         self.held = nil
-        guard !engine.allows(held) else { return }
+        guard engine.isPromptable(held) else { return }
         askedThisLaunch.insert(held.setID)
         prompt = held
     }
