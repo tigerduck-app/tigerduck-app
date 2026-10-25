@@ -313,8 +313,13 @@ struct MoodleCourseMembersTests {
         return ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
     }
 
-    @Test("a member's own picture downloads once, then shows from the device in the account's Moodle files")
-    func pictureDownloadsOnce() async throws {
+    private func picture(_ folder: Folder, _ name: String, account: String = "B11399001") throws -> Data {
+        try Data(contentsOf: folder.cache.moodleFilesDir.appendingPathComponent(account)
+            .appendingPathComponent("pictures").appendingPathComponent(name))
+    }
+
+    @Test("a member's own picture downloads once a visit and is kept by student ID in the account's Moodle files")
+    func pictureDownloadsOnceAVisit() async throws {
         let folder = Folder()
         let site = Site()
         let member = Self.withPicture(Self.classmate, rev: 5)
@@ -325,12 +330,100 @@ struct MoodleCourseMembersTests {
 
         #expect(store.pictures[try #require(member.pictureURL)] != nil)
         #expect(site.pictureCalls == [member.pictureURL])
-        #expect(pictures(folder) == ["43-5"])
+        #expect(pictures(folder) == ["B11399002"])
 
         let reopened = Self.store(folder, site: site)
         await reopened.loadPicture(of: member)
+        await reopened.loadPicture(of: member)
         #expect(reopened.pictures[try #require(member.pictureURL)] != nil)
-        #expect(site.pictureCalls.count == 1)
+        #expect(site.pictureCalls.count == 2)
+    }
+
+    @Test("a kept picture shows while Moodle's is asked for, and Moodle's replaces it when it differs")
+    func keptPictureShowsFirst() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let url = try #require(member.pictureURL)
+        await Self.store(folder, site: site).loadPicture(of: member)
+        site.set(picture: Self.largePNG)
+        let answer = ManualSleeper()
+        let reopened = Self.store(folder, site: site) { await answer.sleep(for: .zero) }
+
+        let load = Task { await reopened.loadPicture(of: member) }
+        try await answer.waitUntilArmed()
+        #expect(reopened.pictures[url]?.colorSpace?.model == .monochrome)
+        await answer.fire()
+        await load.value
+
+        #expect(reopened.pictures[url]?.colorSpace?.model == .rgb)
+        #expect(site.pictureCalls == [url, url])
+        #expect(try picture(folder, "B11399002") == Self.largePNG)
+    }
+
+    @Test("an answer the same as the kept picture leaves it, its 512 px size and its preview as they are")
+    func unchangedPictureStays() async throws {
+        let folder = Folder()
+        let site = Site()
+        let member = Self.withPicture(Self.classmate, rev: 5)
+        let store = Self.store(folder, site: site)
+        await store.loadPicture(of: member)
+        let preview = try #require(await store.picturePreview(of: member))
+
+        await Self.store(folder, site: site).loadPicture(of: member)
+
+        #expect(site.pictureCalls.count == 3)
+        #expect(pictures(folder) == ["B11399002", "B11399002-f3", "B11399002-preview"])
+        #expect(FileManager.default.fileExists(atPath: preview.path))
+    }
+
+    @Test("rows that show one picture ask Moodle for it once a visit, even while the first ask is out")
+    func onePictureAskAVisit() async throws {
+        let folder = Folder()
+        let site = Site()
+        let answer = ManualSleeper()
+        let asks = OSAllocatedUnfairLock(initialState: 0)
+        let store = Self.store(folder, site: site) {
+            if asks.withLock({ $0 += 1; return $0 }) == 1 { await answer.sleep(for: .zero) }
+        }
+        let member = Self.withPicture(Self.classmate, rev: 5)
+
+        let first = Task { await store.loadPicture(of: member) }
+        try await answer.waitUntilArmed()
+        let second = Task { await store.loadPicture(of: member) }
+        for _ in 0..<5 { await Task.yield() }
+        await answer.fire()
+        await first.value
+        await second.value
+        await store.loadPicture(of: member)
+
+        #expect(site.pictureCalls == [member.pictureURL])
+    }
+
+    @Test("a member without a student ID keeps their picture under their Moodle id and its revision")
+    func pictureWithoutStudentId() async {
+        let folder = Folder()
+        let store = Self.store(folder, site: Site())
+
+        await store.loadPicture(of: Self.withPicture(Self.member(45, "Tiger Teacher", roles: ["editingteacher"]), rev: 5))
+
+        #expect(pictures(folder) == ["45-5"])
+    }
+
+    @Test("fetching the members asks for no picture; a row asks for its own")
+    func membersAskForNoPicture() async {
+        let folder = Folder()
+        let site = Site()
+        let members = [Self.withPicture(Self.me, rev: 1), Self.withPicture(Self.classmate, rev: 1)]
+        site.set(members: members)
+        let store = Self.store(folder, site: site)
+
+        await store.refreshMembers()
+        #expect(store.members.value?.members == members)
+        #expect(site.pictureCalls.isEmpty)
+
+        await store.loadPicture(of: members[1])
+        #expect(site.pictureCalls == [members[1].pictureURL])
     }
 
     @Test("a picture kept on the device is read off the main actor")
@@ -348,9 +441,9 @@ struct MoodleCourseMembersTests {
 
         await reopened.loadPicture(of: member)
 
-        #expect(reads.withLock { $0 } == [false])
+        #expect(reads.withLock { $0 } == [false, false])
         #expect(reopened.pictures[try #require(member.pictureURL)] != nil)
-        #expect(site.pictureCalls.count == 1)
+        #expect(site.pictureCalls.count == 2)
     }
 
     /// The decode draws the whole picture (`kCGImageSourceShouldCacheImmediately`).
@@ -393,7 +486,7 @@ struct MoodleCourseMembersTests {
     }
 
     @Test("Moodle's default picture is never downloaded, and a new upload replaces the old file")
-    func pictureVersions() async {
+    func pictureVersions() async throws {
         let folder = Folder()
         let site = Site()
         let store = Self.store(folder, site: site)
@@ -403,8 +496,10 @@ struct MoodleCourseMembersTests {
         #expect(store.pictures.isEmpty)
 
         await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 5))
+        site.set(picture: Self.largePNG)
         await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
-        #expect(pictures(folder) == ["43-6"])
+        #expect(pictures(folder) == ["B11399002"])
+        #expect(try picture(folder, "B11399002") == Self.largePNG)
     }
 
     @Test("a picture that is not an image, fails, or lands after a sign-out is neither shown nor kept")
@@ -498,8 +593,9 @@ struct MoodleCourseMembersTests {
         #expect(await store.picturePreview(of: member) == nil)
         signedIn.withLock { $0 = true }
 
+        site.set(picture: Self.largePNG)
         await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
-        #expect(pictures(folder) == ["43-6"])
+        #expect(pictures(folder) == ["B11399002"])
         #expect(!FileManager.default.fileExists(atPath: preview.path))
     }
 
@@ -553,7 +649,7 @@ struct MoodleCourseMembersTests {
         await answer.fire()
 
         #expect(await open.value == nil)
-        #expect(pictures(folder) == ["43-5"])
+        #expect(pictures(folder) == ["B11399002"])
     }
 
     @Test("with nothing fetched the list shows the first fetch's spinner, then its error, then the spinner on a retry")

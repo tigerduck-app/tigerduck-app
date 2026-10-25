@@ -655,19 +655,24 @@ final class MoodleCourseStore {
     }
 
     private(set) var pictures: [URL: CGImage] = [:]
+    @ObservationIgnored private var refreshedPictures: Set<URL> = []
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
     @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
     @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
     @ObservationIgnored var decodePicture: @Sendable (Data) -> CGImage? = { MoodleCourseStore.image(from: $0) }
 
+    /// The picture kept on the device shows first; Moodle's, asked for once a visit, replaces it
+    /// when it differs. A picture is kept by the member's student ID, so the address of a new upload
+    /// still finds the old picture to show until the new one lands.
     func loadPicture(of member: MoodleMember) async {
-        guard let url = member.pictureURL, pictures[url] == nil else { return }
-        let file = pictureFile(of: member.id, url: url)
-        if let image = await readInTurn(file) {
-            if context.isCurrent() { pictures[url] = image }
-            return
+        guard let url = member.pictureURL, !refreshedPictures.contains(url) else { return }
+        let file = pictureFile(of: member, url: url)
+        if pictures[url] == nil, let kept = await readInTurn(file) {
+            guard context.isCurrent() else { return }
+            pictures[url] = kept
         }
-        guard let data = await downloadInTurn(url), let image = await decodeOffMain(data), context.isCurrent() else { return }
+        guard let data = await downloadInTurn(url), await isNew(data, at: file),
+              let image = await decodeOffMain(data), context.isCurrent() else { return }
         savePicture(data, to: file)
         pictures[url] = image
     }
@@ -679,7 +684,7 @@ final class MoodleCourseStore {
     /// and a sign-out delete it too.
     func picturePreview(of member: MoodleMember) async -> URL? {
         guard let url = member.pictureURL, context.isCurrent() else { return nil }
-        let kept = pictureFile(of: member.id, url: url)
+        let kept = pictureFile(of: member, url: url)
         let large = kept.deletingLastPathComponent().appendingPathComponent(kept.lastPathComponent + "-f3")
         guard let data = await largePicture(of: url, keptAt: large) ?? (try? Data(contentsOf: kept)),
               context.isCurrent(), let fileExtension = Self.fileExtension(of: data) else { return nil }
@@ -734,13 +739,21 @@ final class MoodleCourseStore {
         return await Task.detached(priority: .userInitiated) { decode(data) }.value
     }
 
+    private func isNew(_ data: Data, at file: URL) async -> Bool {
+        let read = readPictureFile
+        return await Task.detached(priority: .userInitiated) { read(file) != data }.value
+    }
+
+    /// A turn whose picture another row's turn already brought this visit asks for nothing.
     private func downloadInTurn(_ url: URL) async -> Data? {
         let previous = lastPictureDownload
         let turn = Task { [api] () -> Data? in
             _ = await previous?.value
-            guard !Task.isCancelled else { return nil }
+            guard !Task.isCancelled, !self.refreshedPictures.contains(url) else { return nil }
             do {
-                return try await api.picture(url)
+                let data = try await api.picture(url)
+                self.refreshedPictures.insert(url)
+                return data
             } catch {
                 if !Task.isCancelled {
                     AppLogger.breadcrumb("moodle member picture not downloaded: \(error)", category: "moodle")
@@ -752,17 +765,22 @@ final class MoodleCourseStore {
         return await withTaskCancellationHandler { await turn.value } onCancel: { turn.cancel() }
     }
 
-    private func pictureFile(of memberId: Int, url: URL) -> URL {
+    /// Named for the member's student ID, or for a member without one, their Moodle user id and the
+    /// picture's revision. Either way the files that go with it are the name and a dash before more.
+    private func pictureFile(of member: MoodleMember, url: URL) -> URL {
         func folderName(_ text: String) -> String {
             String(text.unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
         }
         let account = folderName(context.account)
-        let revision = folderName(URLComponents(url: url, resolvingAgainstBaseURL: false)?
-            .queryItems?.first { $0.name == "rev" }?.value ?? "")
+        let studentId = folderName(member.studentId ?? "")
+        let name = studentId.isEmpty
+            ? "\(member.id)-" + folderName(URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "rev" }?.value ?? "")
+            : studentId
         return context.cache.moodleFilesDir
             .appendingPathComponent(account.isEmpty ? "_" : account, isDirectory: true)
             .appendingPathComponent("pictures", isDirectory: true)
-            .appendingPathComponent("\(memberId)-\(revision)")
+            .appendingPathComponent(name)
     }
 
     private func savePicture(_ data: Data, to file: URL) {
