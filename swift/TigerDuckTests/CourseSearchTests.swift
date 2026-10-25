@@ -398,6 +398,60 @@ struct CourseSearchTests {
         #expect(answers.value.isEmpty)
     }
 
+    private static func lookupModel(gate: Gate) -> CourseSearchModel {
+        CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
+            await gate.wait()
+            return [Self.result("MA1001301", "微積分")]
+        }, fetchOptions: Self.noOptions)
+    }
+
+    @Test("an add waits for its lookup, and a second tap meanwhile does nothing")
+    func addWaitsForLookup() async throws {
+        let gate = Gate()
+        let model = Self.lookupModel(gate: gate)
+        let added = Box<[String?]>([])
+        let task = try #require(model.add("MA1001301", language: "zh", semester: "1151", isCurrent: { true }) {
+            added.value.append($0?.CourseName)
+        })
+        #expect(model.add("MA1001301", language: "zh", semester: "1151", isCurrent: { true }) { _ in } == nil)
+
+        gate.open()
+        await task.value
+        #expect(added.value == ["微積分"])
+    }
+
+    @Test("an add whose lookup outlives the sign-in writes nothing")
+    func addAfterSignOut() async throws {
+        let gate = Gate()
+        let model = Self.lookupModel(gate: gate)
+        let generation = Box(1)
+        let started = generation.value
+        let added = Box(0)
+        let task = try #require(model.add(
+            "MA1001301", language: "zh", semester: "1151", isCurrent: { generation.value == started }
+        ) { _ in added.value += 1 })
+
+        generation.value += 1
+        gate.open()
+        await task.value
+        #expect(added.value == 0)
+    }
+
+    @Test("closing the sheet drops an add still waiting for its lookup")
+    func addAfterSheetCloses() async throws {
+        let gate = Gate()
+        let model = Self.lookupModel(gate: gate)
+        let added = Box(0)
+        let task = try #require(model.add("MA1001301", language: "zh", semester: "1151", isCurrent: { true }) { _ in
+            added.value += 1
+        })
+
+        model.cancelPendingAdds()
+        gate.open()
+        await task.value
+        #expect(added.value == 0)
+    }
+
     // MARK: Option lists
 
     private static let stored = CourseSearchOptions(

@@ -3,6 +3,7 @@ import Defaults
 
 struct AddCourseSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     let semester: String
     let tableCourses: [SDCourse]
@@ -16,7 +17,6 @@ struct AddCourseSheet: View {
     @State private var attempt = 0
     @State private var showFilters = false
     @State private var sessionAddedCourseNos: Set<String> = []
-    @State private var addingCourseNos: Set<String> = []
     @FocusState private var searchFocused: Bool
 
     private struct SearchKey: Equatable {
@@ -29,12 +29,14 @@ struct AddCourseSheet: View {
         #if os(macOS)
         macBody
             .onAppear { searchFocused = true }
+            .onDisappear { model.cancelPendingAdds() }
             .task(id: searchKey) {
                 await model.search(searchText, semester: semester, after: Self.liveSearchDebounce)
             }
         #else
         iosBody
             .onAppear { searchFocused = true }
+            .onDisappear { model.cancelPendingAdds() }
             .task(id: searchKey) {
                 await model.search(searchText, semester: semester, after: Self.liveSearchDebounce)
             }
@@ -482,11 +484,14 @@ struct AddCourseSheet: View {
     }
 
     private func addCourse(from group: GroupedCourse) {
-        // A second tap while the lookup is out would send another lookup and add again.
-        guard addingCourseNos.insert(group.courseNo).inserted else { return }
-        Task {
-            defer { addingCourseNos.remove(group.courseNo) }
-            let row = await model.appLanguageRow(of: group.courseNo, language: language, semester: semester)
+        let authService = appState.authService
+        let generation = authService.loginGeneration
+        model.add(
+            group.courseNo,
+            language: language,
+            semester: semester,
+            isCurrent: { authService.loginGeneration == generation }
+        ) { row in
             add(group, name: row?.CourseName ?? group.primaryName, instructor: row?.CourseTeacher ?? group.instructor)
         }
     }

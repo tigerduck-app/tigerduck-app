@@ -20,6 +20,7 @@ final class CourseSearchModel {
     @ObservationIgnored private let cache: DataCache
     @ObservationIgnored private var hasStoredOptions = false
     @ObservationIgnored private var hasFreshOptions = false
+    @ObservationIgnored private var pendingAdds: [String: Task<Void, Never>] = [:]
 
     init(
         cache: DataCache = .shared,
@@ -100,9 +101,41 @@ final class CourseSearchModel {
             return try await search(.forCourseNo(courseNo, semester: semester, language: language))
                 .first { $0.CourseNo == courseNo }
         } catch {
-            AppLogger.captureError(error, context: ["feature": "addCourseSheet.appLanguageRow"])
+            if !Task.isCancelled {
+                AppLogger.captureError(error, context: ["feature": "addCourseSheet.appLanguageRow"])
+            }
             return nil
         }
+    }
+
+    /// Hands a course's app-language row, or nil, to `add` once the lookup answers. A second tap
+    /// while it is out does nothing. Nothing is added after `cancelPendingAdds` or once
+    /// `isCurrent` turns false: a sign-out has purged that account's courses, and a late add
+    /// would write one back.
+    @discardableResult
+    func add(
+        _ courseNo: String,
+        language: String,
+        semester: String,
+        isCurrent: @escaping () -> Bool,
+        add: @escaping (CourseSearchResult?) -> Void
+    ) -> Task<Void, Never>? {
+        guard pendingAdds[courseNo] == nil else { return nil }
+        let task = Task { [weak self] in
+            let row = await self?.appLanguageRow(of: courseNo, language: language, semester: semester)
+            guard let self, !Task.isCancelled else { return }
+            pendingAdds[courseNo] = nil
+            guard isCurrent() else { return }
+            add(row)
+        }
+        pendingAdds[courseNo] = task
+        return task
+    }
+
+    /// Drops every add still waiting for its lookup, for a sheet that went away.
+    func cancelPendingAdds() {
+        pendingAdds.values.forEach { $0.cancel() }
+        pendingAdds = [:]
     }
 
     /// Shows the stored lists at once, then fetches the school's once per sheet. A failed or empty
