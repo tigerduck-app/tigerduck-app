@@ -66,10 +66,10 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await MoodleWebserviceClient.withToken { token in
                 let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
                 guard let source = URL(string: file.url),
-                      let url = MoodleFileTransfer.downloadURL(for: source, accessKey: key, token: token) else {
+                      let request = MoodleFileTransfer.downloadRequest(for: source, accessKey: key, token: token) else {
                     throw MoodleWebserviceError.malformedResponse(detail: "file URL")
                 }
-                return try await MoodleFileTransfer.fetch(url, mimeType: file.mimeType, expectedSize: file.size, progress: progress)
+                return try await MoodleFileTransfer.fetch(request, mimeType: file.mimeType, expectedSize: file.size, progress: progress)
             }
         },
         members: { courseId in

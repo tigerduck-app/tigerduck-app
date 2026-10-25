@@ -136,7 +136,9 @@ struct MoodleCourseMembersServiceTests {
     func pictureAnswer() async throws {
         let picture = try #require(URL(string: "https://moodle-stub.invalid/pluginfile.php/88/user/icon/moove/f1?rev=5"))
         let key = UUID().uuidString
-        let download = try #require(MoodleFileTransfer.downloadURL(for: picture, accessKey: key, token: "t0k", siteURL: Self.site))
+        let download = try #require(
+            MoodleFileTransfer.downloadRequest(for: picture, accessKey: key, token: "t0k", siteURL: Self.site)?.url
+        )
         #expect(download.path.hasPrefix("/tokenpluginfile.php/\(key)/"))
         let png = Data([0x89, 0x50, 0x4E, 0x47])
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: png, headerFields: ["Content-Type": "image/png"]), for: download)
@@ -149,6 +151,24 @@ struct MoodleCourseMembersServiceTests {
         await #expect(throws: MoodleWebserviceError.self) {
             try await MoodleCourseMembersService.picture(picture, accessKey: key, token: "t0k", session: Self.session(), siteURL: Self.site)
         }
+    }
+
+    @Test("without the access key a picture is a POST with the token in the form, never in the URL")
+    func pictureWithoutKey() async throws {
+        let context = UUID().uuidString
+        let picture = try #require(URL(string: "https://moodle-stub.invalid/pluginfile.php/\(context)/user/icon/moove/f1?rev=5"))
+        let download = try #require(URL(string: "https://moodle-stub.invalid/webservice/pluginfile.php/\(context)/user/icon/moove/f1?rev=5"))
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: png, headerFields: ["Content-Type": "image/png"]), for: download)
+
+        let data = try await MoodleCourseMembersService.picture(
+            picture, accessKey: nil, token: "t0k", session: Self.session(), siteURL: Self.site
+        )
+
+        #expect(data == png)
+        let request = try #require(SettingsAPIStub.requests(for: download).first)
+        #expect(request.httpMethod == "POST")
+        #expect(SettingsAPIStub.bodyData(from: request) == Data("token=t0k".utf8))
     }
 
     @Test("site info keeps the private access key that file URLs take, none when Moodle sends none")

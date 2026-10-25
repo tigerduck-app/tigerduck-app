@@ -79,13 +79,13 @@ nonisolated enum MoodleCourseMembersService {
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> Data {
         guard isOwnPicture(url, siteURL: siteURL),
-              let download = MoodleFileTransfer.downloadURL(for: url, accessKey: accessKey, token: token, siteURL: siteURL) else {
+              let download = MoodleFileTransfer.downloadRequest(for: url, accessKey: accessKey, token: token, siteURL: siteURL) else {
             throw MoodleWebserviceError.malformedResponse(detail: "not a member's picture")
         }
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(from: download)
+            (data, response) = try await session.data(for: download, delegate: MoodleFileTransfer.redirectGuard(for: download))
         } catch let urlError as URLError {
             throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
         }
