@@ -174,7 +174,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
         switch BrowserRouting.decision(for: url, byLinkTap: action.navigationType == .linkActivated) {
         case .load:
-            // A link to a new window opens here instead.
+            // No target frame means a new window, and the browser has only this one.
             guard action.targetFrame != nil else {
                 decisionHandler(.cancel)
                 webView.load(action.request)
