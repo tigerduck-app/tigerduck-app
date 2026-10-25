@@ -33,7 +33,8 @@ struct BrowserRoutingTests {
 
     @Test func mailLinksGoToTheMailAppAndOtherSchemesNowhere() {
         let mail = Self.url("mailto:someone@mail.ntust.edu.tw")
-        #expect(BrowserRouting.decision(for: mail) == .handOff(mail))
+        #expect(BrowserRouting.decision(for: mail, byLinkTap: true) == .handOff(mail))
+        #expect(BrowserRouting.decision(for: mail) == .refuse)
         #expect(BrowserRouting.decision(for: Self.url("about:blank")) == .load)
         for address in ["javascript:alert(1)", "file:///etc/hosts", "about:srcdoc", "data:text/html,hi", "moodlemobile://token=x"] {
             #expect(BrowserRouting.decision(for: Self.url(address)) == .refuse)
@@ -131,6 +132,14 @@ struct BrowserRoutingTests {
         #expect(!blocked("https://moodle2.ntust.edu.tw/login/index.php"))
         #expect(!blocked("https://moodle2.ntust.edu.tw/my/?next=/login/logout.php"))
         #expect(!blocked("https://moodle2xntust.edu.tw/login/logout.php"))
+    }
+
+    @Test func aPageWhoseProcessEndedReloadsOrLoadsItsAddress() {
+        let page = Self.url("https://moodle2.ntust.edu.tw/user/edit.php")
+        let keyLink = Self.url("https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php?key=k")
+        #expect(BrowserNavigator.pageToRestore(url: page, address: page) == nil)
+        #expect(BrowserNavigator.pageToRestore(url: nil, address: page) == page)
+        #expect(BrowserNavigator.pageToRestore(url: keyLink, address: page) == page)
     }
 
     @Test func theLogoutHidingScriptRunsOnMoodleOnlyAndHidesLinksAndForms() {

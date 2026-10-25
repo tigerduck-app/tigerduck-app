@@ -27,7 +27,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
         guard await runSignInPage() else { return false }
         let signedIn = await cookies.allCookies()
         // A sign-out since the start purged the jar, which must not get the departing account's cookies back.
-        guard Self.accountGeneration() == generation else { return false }
+        guard !Task.isCancelled, Self.accountGeneration() == generation else { return false }
         signedIn.filter(BrowserRouting.isSharedCookie).forEach(HTTPCookieStorage.shared.setCookie)
         return BrowserRouting.hasMoodleSession(signedIn)
     }
@@ -52,12 +52,16 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
             finish?(false)
         }
         defer { deadline.cancel() }
-        return await withCheckedContinuation { continuation in
-            finish = { [weak self] signedIn in
-                self?.finish = nil
-                continuation.resume(returning: signedIn)
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                finish = { [weak self] signedIn in
+                    self?.finish = nil
+                    continuation.resume(returning: signedIn)
+                }
+                page.load(URLRequest(url: BrowserRouting.webSignInURL))
             }
-            page.load(URLRequest(url: BrowserRouting.webSignInURL))
+        } onCancel: {
+            Task { @MainActor in self.finish?(false) }
         }
     }
 

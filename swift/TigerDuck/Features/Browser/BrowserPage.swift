@@ -152,7 +152,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
             page.signIn.reachedSignInPage(returningTo: lastRequested ?? current ?? AppConstants.moodleBaseURL)
             return
         }
-        switch BrowserRouting.decision(for: url) {
+        switch BrowserRouting.decision(for: url, byLinkTap: action.navigationType == .linkActivated) {
         case .load:
             // A link to a new window opens here instead.
             guard action.targetFrame != nil else {
@@ -221,7 +221,18 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        webView.reload()
+        if let address = Self.pageToRestore(url: webView.url, address: page.address) {
+            webView.load(URLRequest(url: address))
+        } else {
+            webView.reload()
+        }
+    }
+
+    /// What a page whose web content process ended loads, or nil to reload it: a reload does
+    /// nothing without a URL, and a one-time sign-in link must not be loaded again.
+    nonisolated static func pageToRestore(url: URL?, address: URL?) -> URL? {
+        guard let url, !BrowserRouting.isMoodleSignInLink(url) else { return address }
+        return nil
     }
 
     func webView(

@@ -161,6 +161,27 @@ struct BrowserSignInTests {
         #expect(steps.loaded == [Self.page, Self.other])
     }
 
+    @Test func closingTheBrowserCancelsTheSessionSignInUnderWay() async {
+        let steps = Steps()
+        let signIn = Self.signIn(steps)
+        let started = AsyncStream<Void>.makeStream()
+        signIn.signInWithSession = {
+            started.continuation.yield()
+            while !Task.isCancelled { await Task.yield() }
+            steps.taken.append("cancelled")
+            return true
+        }
+        await signIn.open(Self.page)
+        for await _ in started.stream { break }
+
+        signIn.cancel()
+        await signIn.settle()
+        while !steps.taken.contains("cancelled") { await Task.yield() }
+
+        #expect(steps.loaded.isEmpty)
+        #expect(signIn.phase == .idle)
+    }
+
     @Test func aSignInPageReachedWhileASignInRunsChangesNothing() async {
         let steps = Steps()
         steps.sessions = [true]
