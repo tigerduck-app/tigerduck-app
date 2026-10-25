@@ -179,6 +179,8 @@ struct TigerDuckBrowserView: View {
                 .contentTransition(.interpolate)
                 .padding(.horizontal, collapsed ? 14 : 0)
                 .frame(maxWidth: collapsed ? nil : .infinity, minHeight: collapsed ? Self.capsuleHeight : Self.barHeight)
+                // What fades in or out mid-morph stays inside the capsule as it grows or shrinks.
+                .clipShape(.capsule)
                 .contentShape(.capsule)
         }
         .buttonStyle(.plain)
