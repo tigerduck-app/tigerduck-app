@@ -285,6 +285,20 @@ struct MailStoreTests {
         #expect(!FileManager.default.fileExists(atPath: temp.path))
     }
 
+    @Test("an attachment that finishes after a wipe writes no file")
+    func anAttachmentAfterAWipeWritesNothing() throws {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        defer { cache.clearAll() }
+        let before = cache.wipeCount
+        cache.clearAll()
+
+        #expect(try cache.saveAttachment(Data("x".utf8), filename: "old.pdf", wipeCount: before) == nil)
+        #expect(cache.totalBytes() == 0)
+
+        let saved = try #require(try cache.saveAttachment(Data("x".utf8), filename: "new.pdf", wipeCount: cache.wipeCount))
+        #expect(FileManager.default.fileExists(atPath: saved.path))
+    }
+
     @Test func openingAnAttachmentDeletesTheOnesOpenedOverADayAgo() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }

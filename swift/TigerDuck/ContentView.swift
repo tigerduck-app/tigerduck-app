@@ -35,14 +35,6 @@ private struct ClassTableImportHost: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay {
-                if linkModel?.isUpdating == true {
-                    ZStack {
-                        Color.black.opacity(0.4).ignoresSafeArea()
-                        ProgressView().controlSize(.large)
-                    }
-                }
-            }
             .fullScreenCover(item: $importModel, onDismiss: {
                 shareModel = shareAfterScanner
                 shareAfterScanner = nil
@@ -67,6 +59,7 @@ private struct ClassTableImportHost: ViewModifier {
                 guard importModel == nil else { return }
                 importModel = .live(authService: appState.authService)
             }
+            .environment(\.isUpdatingImportedClassTable, linkModel?.isUpdating == true)
             .readsHostWindow(into: hostWindow)
             .environment(\.hostWindow, hostWindow)
     }

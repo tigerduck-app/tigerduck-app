@@ -865,13 +865,19 @@ struct BackendTokenRefreshTests {
 
 @Suite("The session a sign-out keeps for its unregister")
 struct DepartingSessionTests {
+    private static func keptSessions(_ backend: BackendFixture) throws -> [(token: String, uses: Int, baseURL: String?)] {
+        guard let json = backend.recorder.stored(AuthTokenManager.departingSessionKey) else { return [] }
+        let sessions = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
+        return try sessions.map { session in
+            (
+                try #require(session["refreshToken"] as? String), try #require(session["uses"] as? Int),
+                session["baseURL"] as? String
+            )
+        }
+    }
+
     private static func kept(_ backend: BackendFixture) throws -> (token: String, uses: Int, baseURL: String?)? {
-        guard let json = backend.recorder.stored(AuthTokenManager.departingSessionKey) else { return nil }
-        let session = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        return (
-            try #require(session["refreshToken"] as? String), try #require(session["uses"] as? Int),
-            session["baseURL"] as? String
-        )
+        try keptSessions(backend).first
     }
 
     private static func signedOut() async -> BackendFixture {
@@ -973,6 +979,116 @@ struct DepartingSessionTests {
         #expect(!backend.relaunched().hasDepartingSession)
     }
 
+    @Test("a kept session is kept through a status that spends no token", arguments: [400, 403, 404, 408, 422])
+    func aStatusThatSpendsNothingKeepsTheSession(status: Int) async throws {
+        let backend = await Self.signedOut()
+        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data()), for: backend.refreshURL)
+
+        #expect(await backend.relaunched().departingAccessToken() == nil)
+
+        #expect(try Self.kept(backend)?.token == "R0")
+        #expect(try Self.kept(backend)?.uses == 0)
+    }
+
+    @Test("a sign-in on another backend keeps the session kept on the old one, and the retry sends it there")
+    func aSignInElsewhereKeepsTheSessionForItsBackend() async throws {
+        let backend = await Self.signedOut()
+        let current = SettingsAPIStub.uniqueBaseURL()
+        let relaunched = backend.relaunched(at: current)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: current.appendingPathComponent("auth/login"))
+        _ = try await relaunched.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
+        #expect(relaunched.departingSessionBackends == [backend.baseURL])
+
+        let registration = RegistrationFixture(manager: relaunched, baseURL: current)
+        let unregisterURL = backend.baseURL.appendingPathComponent("devices/test-device")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: unregisterURL)
+        await relaunched.retryDepartingUnregister { await registration.service.unregisterDevice(at: $0) }
+
+        let unregister = try #require(SettingsAPIStub.requests(for: unregisterURL).first)
+        #expect(unregister.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
+        #expect(try Self.kept(backend) == nil)
+        #expect(await relaunched.validAccessToken() == "B1")
+    }
+
+    @Test("a sign-out during a launch retry on another backend keeps its own session through the retry's writes")
+    func aSignOutDuringARetryElsewhereKeepsItsSession() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = await Self.signedOut()
+        let current = SettingsAPIStub.uniqueBaseURL()
+        let relaunched = backend.relaunched(at: current)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: current.appendingPathComponent("auth/login"))
+        _ = try await relaunched.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        let registration = RegistrationFixture(manager: relaunched, baseURL: current)
+        let unregisterURL = backend.baseURL.appendingPathComponent("devices/test-device")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: unregisterURL)
+        let retry = Task { await relaunched.retryDepartingUnregister { await registration.service.unregisterDevice(at: $0) } }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        #expect(await relaunched.endSession() == "B1")
+        gate.open()
+        await retry.value
+
+        #expect(SettingsAPIStub.requests(for: unregisterURL).count == 1)
+        #expect(try Self.keptSessions(backend).map(\.token) == ["BR1"])
+        #expect(try Self.keptSessions(backend).map(\.baseURL) == [current.absoluteString])
+    }
+
+    @Test("a late 401 of a retry that a sign-in and a sign-out overtook leaves the newer sign-out's session")
+    func aLateTurnDownLeavesANewerSession() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = await Self.signedOut()
+        let manager = backend.relaunched()
+        SettingsAPIStub.enqueue(.init(statusCode: 401, body: Data(), gate: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        let retry = Task { await manager.departingAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        #expect(await manager.endSession() == "B1")
+        gate.open()
+
+        #expect(await retry.value == nil)
+        #expect(try Self.keptSessions(backend).map(\.token) == ["BR1"])
+    }
+
+    @Test("sign-outs on two backends keep a session for each, and a later launch unregisters from both")
+    func twoBackendsKeepASessionEach() async throws {
+        let backend = await Self.signedOut()
+        let other = SettingsAPIStub.uniqueBaseURL()
+        let onOther = backend.relaunched(at: other)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: other.appendingPathComponent("auth/login"))
+        _ = try await onOther.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        #expect(await onOther.endSession() == "B1")
+        #expect(try Self.keptSessions(backend).map(\.token) == ["R0", "BR1"])
+
+        let relaunched = backend.relaunched(at: other)
+        let registration = RegistrationFixture(manager: relaunched, baseURL: other)
+        let firstUnregister = backend.baseURL.appendingPathComponent("devices/test-device")
+        let otherUnregister = other.appendingPathComponent("devices/test-device")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "B2", refresh: "BR2"), for: other.appendingPathComponent("auth/refresh"))
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: firstUnregister)
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: otherUnregister)
+        await relaunched.retryDepartingUnregister { await registration.service.unregisterDevice(at: $0) }
+
+        #expect(SettingsAPIStub.requests(for: firstUnregister).first?.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
+        #expect(SettingsAPIStub.requests(for: otherUnregister).first?.value(forHTTPHeaderField: "Authorization") == "Bearer B2")
+        #expect(try Self.keptSessions(backend).isEmpty)
+    }
+
     @Test("a kept session sent twice with no reply goes out no more, and is forgotten")
     func aKeptSessionGoesOutNoThirdTime() async throws {
         let backend = await Self.signedOut()
@@ -1013,6 +1129,19 @@ struct DepartingSessionTests {
 
         await manager.unregisterDeparting(accessToken: token) { await manager.validAccessToken() == "A0" }
         #expect(try Self.kept(backend) == nil)
+    }
+
+    @Test("the unregister of a sign-out that kept nothing leaves the session an earlier sign-out kept")
+    func aSignOutThatKeptNothingForgetsNoEarlierSession() async throws {
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+        let manager = backend.manager
+        let token = await manager.endSession()
+        await manager.unregisterDeparting(accessToken: token) { false }
+
+        #expect(await manager.endSession() == nil)
+        await manager.unregisterDeparting(accessToken: nil) { true }
+
+        #expect(try Self.kept(backend)?.token == "R0")
     }
 
     @Test("a sign-in forgets the kept session: the backend has the device for that account now")
@@ -1086,6 +1215,47 @@ struct BackendSignInTests {
 
         #expect(harvests.value == 0)
         #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+    }
+
+    @Test("a sign-out during the Moodle step keeps the backend sign-in from going out")
+    func aSignOutDuringTheMoodleStepStopsTheBackendSignIn() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = (Defaults[.ntustCredentialsPresent], SSOLoginService.storedPasswordRefusals)
+            defer {
+                Defaults[.ntustCredentialsPresent] = saved.0
+                SSOLoginService.storedPasswordRefusals = saved.1
+            }
+            let backend = BackendFixture(signedIn: false)
+            let signingIn = SheetSignIn()
+            let harvests = CallCount()
+            let auth = AuthService(
+                keychainHasCredentials: { false },
+                notificationCenter: NotificationCenter(),
+                moodleTokens: MoodleTokenService(
+                    storedCredentials: { nil },
+                    // A token that outlives the sign-out, so only the generation stops the backend step.
+                    tokens: .init(load: { "moodle-token" }, save: { _ in }, drop: {}),
+                    harvest: { _, _ in
+                        harvests.increment()
+                        await MainActor.run { signingIn.signOut?() }
+                        return .init(signature: "", wstoken: "harvested", privatetoken: nil)
+                    }
+                ),
+                endSchoolSession: { _ in }
+            )
+            #if os(iOS)
+            auth.accountNotifications = DeliveredNotificationsStub()
+            #endif
+            signingIn.signOut = { auth.logout() }
+            auth.authTokenManager = backend.manager
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+                await auth.signInToServices(studentId: "B11000000", password: "password", generation: auth.loginGeneration)
+            }
+
+            #expect(harvests.value == 1)
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+        }
     }
 
     @Test("a sign-in cancelled after the school step still signs in to the backend")
@@ -1703,6 +1873,7 @@ nonisolated final class Recorder: @unchecked Sendable {
 @MainActor
 private final class SheetSignIn {
     var task: Task<Bool, Never>?
+    var signOut: (() -> Void)?
 }
 
 private nonisolated final class CallCount: @unchecked Sendable {
