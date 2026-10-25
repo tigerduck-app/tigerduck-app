@@ -324,6 +324,9 @@ final class AuthService {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
                 ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId)
+                #if os(iOS)
+                BrowserData.shared.reset()
+                #endif
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 

@@ -31,6 +31,14 @@ nonisolated final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unche
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
+        evaluate(challenge, completionHandler: completionHandler)
+    }
+
+    /// The same check for a challenge that comes from no URLSession, such as a web view's.
+    func evaluate(
+        _ challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
