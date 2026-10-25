@@ -53,14 +53,6 @@ enum CourseLookupService {
         return results
     }
 
-    static func searchCourses(semester: String, courseName: String, language: String = "zh") async throws -> [CourseSearchResult] {
-        try await search(.forCourseName(courseName, semester: semester, language: language))
-    }
-
-    static func searchByTeacher(semester: String, teacher: String, language: String = "zh") async throws -> [CourseSearchResult] {
-        try await search(.forCourseTeacher(teacher, semester: semester, language: language))
-    }
-
     static func search(_ body: CourseSearchRequest) async throws -> [CourseSearchResult] {
         var request = URLRequest(url: courseSearchAPI)
         request.httpMethod = "POST"

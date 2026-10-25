@@ -55,46 +55,6 @@ struct CourseSearchRequest: Codable, Equatable {
             Language: language
         )
     }
-
-    static func forCourseName(_ name: String, semester: String, language: String = "zh") -> CourseSearchRequest {
-        CourseSearchRequest(
-            Semester: semester,
-            CourseNo: "",
-            CourseName: name,
-            CourseTeacher: "",
-            Dimension: "",
-            CourseNotes: "",
-            CampusNotes: "",
-            ForeignLanguage: 0,
-            OnlyGeneral: 0,
-            OnleyNTUST: 0,
-            OnlyMaster: 0,
-            OnlyUnderGraduate: 0,
-            OnlyNode: 0,
-            OnlyIntensive: 0,
-            Language: language
-        )
-    }
-
-    static func forCourseTeacher(_ teacher: String, semester: String, language: String = "zh") -> CourseSearchRequest {
-        CourseSearchRequest(
-            Semester: semester,
-            CourseNo: "",
-            CourseName: "",
-            CourseTeacher: teacher,
-            Dimension: "",
-            CourseNotes: "",
-            CampusNotes: "",
-            ForeignLanguage: 0,
-            OnlyGeneral: 0,
-            OnleyNTUST: 0,
-            OnlyMaster: 0,
-            OnlyUnderGraduate: 0,
-            OnlyNode: 0,
-            OnlyIntensive: 0,
-            Language: language
-        )
-    }
 }
 
 /// The department and GE type lists of the course query's filters, as the device stores them.

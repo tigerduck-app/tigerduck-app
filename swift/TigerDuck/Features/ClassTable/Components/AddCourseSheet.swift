@@ -5,56 +5,65 @@ struct AddCourseSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let semester: String
-    let existingCourseNos: Set<String>
+    let tableCourses: [SDCourse]
     let onAdd: (SDCourse) -> Bool
     var onRemove: ((String) -> Void)? = nil
 
-    /// Course codes are ASCII alphanumeric and always contain at least one digit
-    /// (e.g., "EC1013701", "GE1002101"). Anything else is treated as a name or
-    /// teacher query.
-    private static let courseCodePattern = #"^[A-Za-z0-9]+$"#
-
     private static let liveSearchDebounce: Duration = .milliseconds(350)
 
+    @State private var model = CourseSearchModel()
     @State private var searchText = ""
-    @State private var submitTrigger: Int = 0
-    @State private var primaryResults: [CourseSearchResult] = []
-    @State private var secondaryNamesByNo: [String: String] = [:]
-    @State private var isSearching = false
-    @State private var errorMessage: String?
+    @State private var attempt = 0
+    @State private var showFilters = false
     @State private var sessionAddedCourseNos: Set<String> = []
     @FocusState private var searchFocused: Bool
+
+    private struct SearchKey: Equatable {
+        let text: String
+        let filters: CourseSearchFilters
+        let attempt: Int
+    }
 
     var body: some View {
         #if os(macOS)
         macBody
             .onAppear { searchFocused = true }
-            .task(id: searchText) { await debouncedSearch() }
-            .task(id: submitTrigger) { await submitSearch() }
+            .task(id: searchKey) { await debouncedSearch() }
         #else
         iosBody
             .onAppear { searchFocused = true }
-            .task(id: searchText) { await debouncedSearch() }
-            .task(id: submitTrigger) { await submitSearch() }
+            .task(id: searchKey) { await debouncedSearch() }
         #endif
     }
 
+    private var searchKey: SearchKey {
+        SearchKey(text: trimmedQuery, filters: model.filters.requested, attempt: attempt)
+    }
+
+    private var trimmedQuery: String {
+        searchText.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var language: String {
+        LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
+    }
+
+    private var table: [CourseSearchTableCourse] {
+        tableCourses.map {
+            CourseSearchTableCourse(courseNo: $0.courseNo, name: $0.displayName, slots: CourseSearch.slots($0.schedule))
+        }
+    }
+
+    private var filterSymbol: String {
+        model.filters.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill"
+    }
+
+    #if !os(macOS)
     private var iosBody: some View {
         NavigationStack {
+            let shown = shownCourses
             Form {
-                Section {
-                    TextField(String(localized: "add_course_placeholder"), text: $searchText)
-                        .autocorrectionDisabled()
-                        .textFieldNeverCapitalized()
-                        .focused($searchFocused)
-                        .submitLabel(.search)
-                        .onSubmit { submitTrigger &+= 1 }
-                } footer: {
-                    Label(String(localized: "add_course_example"), systemImage: "info.circle")
-                        .font(.caption)
-                }
-
-                if isSearching {
+                if model.isSearching {
                     Section {
                         HStack(spacing: 8) {
                             Spacer()
@@ -66,35 +75,62 @@ struct AddCourseSheet: View {
                     }
                 }
 
-                if let errorMessage {
+                if let failureText {
                     Section {
-                        Label(errorMessage, systemImage: "xmark.circle")
+                        Label(failureText, systemImage: "xmark.circle")
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
                 }
 
-                if !primaryResults.isEmpty {
+                if !shown.isEmpty {
                     Section {
-                        resultRows
+                        resultRows(shown)
                     }
                 }
             }
+            .overlay {
+                emptyState(shown)
+                    .allowsHitTesting(false)
+            }
             // Dismiss the keyboard from the background only: a `.simultaneousGesture` on
-            // the Form swallows row Buttons, so "+" stops firing. Taps in section gaps or
-            // the footer reach the background; `.scrollDismissesKeyboard` handles drags.
+            // the Form swallows row Buttons, so "+" stops firing. Taps in section gaps
+            // reach the background; `.scrollDismissesKeyboard` handles drags.
             .background(
                 Color.backgroundPrimary
                     .contentShape(Rectangle())
                     .onTapGesture { searchFocused = false }
             )
             .scrollDismissesKeyboard(.interactively)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: String(localized: "add_course_placeholder")
+            )
+            .searchFocused($searchFocused)
+            // The field is active from the start, and active search would otherwise hide the
+            // bar that holds Close and the filter button.
+            .searchPresentationToolbarBehavior(.avoidHidingContent)
+            .autocorrectionDisabled()
+            .textFieldNeverCapitalized()
+            .onSubmit(of: .search) { attempt &+= 1 }
             .navigationTitle(String(localized: "add_course_title"))
             .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "action_close")) { dismiss() }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showFilters = true
+                    } label: {
+                        Image(systemName: filterSymbol)
+                    }
+                    .accessibilityLabel(String(localized: "course_search_filters"))
+                }
+            }
+            .navigationDestination(isPresented: $showFilters) {
+                CourseSearchFilterView(model: model, busy: busySlots, language: language)
             }
         }
         // The Form's `.background` paints only the scrollable area, so at the .medium
@@ -102,9 +138,20 @@ struct AddCourseSheet: View {
         // shows through. `.presentationBackground` paints the whole sheet container.
         .presentationBackground(Color.backgroundPrimary)
     }
-    // No `Form`: on macOS it makes the search field tiny and anchors the footer label
-    // to the wrong side. The frame stays modest so the sheet does not dwarf the window.
 
+    @ViewBuilder
+    private func emptyState(_ shown: [ShownCourse]) -> some View {
+        if trimmedQuery.isEmpty {
+            ContentUnavailableView(String(localized: "add_course_placeholder"), systemImage: "magnifyingglass")
+        } else if model.hasSearched, !model.isSearching, model.failure == nil, shown.isEmpty {
+            ContentUnavailableView(String(localized: "add_course_not_found"), systemImage: "magnifyingglass")
+        }
+    }
+    #endif
+
+    #if os(macOS)
+    // No `Form`: on macOS it makes the search field tiny. The frame stays modest so the
+    // sheet does not dwarf the window.
     private var macBody: some View {
         VStack(spacing: 0) {
             macSearchBar
@@ -122,34 +169,45 @@ struct AddCourseSheet: View {
             Text(String(localized: "add_course_title"))
                 .font(.title3.weight(.semibold))
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(String(localized: "add_course_placeholder"), text: $searchText)
-                    .textFieldStyle(.plain)
-                    .autocorrectionDisabled()
-                    .focused($searchFocused)
-                    .submitLabel(.search)
-                    .onSubmit { submitTrigger &+= 1 }
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField(String(localized: "add_course_placeholder"), text: $searchText)
+                        .textFieldStyle(.plain)
+                        .autocorrectionDisabled()
+                        .focused($searchFocused)
+                        .submitLabel(.search)
+                        .onSubmit { attempt &+= 1 }
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .help(String(localized: "action_close"))
                     }
-                    .buttonStyle(.plain)
-                    .help(String(localized: "action_close"))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.secondary.opacity(0.10))
+                )
+                Button {
+                    showFilters = true
+                } label: {
+                    Image(systemName: filterSymbol)
+                        .font(.title3)
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "course_search_filters"))
+                .accessibilityLabel(String(localized: "course_search_filters"))
+                .popover(isPresented: $showFilters, arrowEdge: .bottom) {
+                    CourseSearchFilterView(model: model, busy: busySlots, language: language)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.secondary.opacity(0.10))
-            )
-            Label(String(localized: "add_course_example"), systemImage: "info.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
@@ -158,7 +216,8 @@ struct AddCourseSheet: View {
 
     @ViewBuilder
     private var macResultsArea: some View {
-        if isSearching && primaryResults.isEmpty {
+        let shown = shownCourses
+        if model.isSearching && shown.isEmpty {
             VStack(spacing: 8) {
                 ProgressView()
                 Text(String(localized: "add_course_searching"))
@@ -166,24 +225,24 @@ struct AddCourseSheet: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage {
+        } else if let failureText {
             VStack(spacing: 8) {
                 Image(systemName: "xmark.circle")
                     .font(.title2)
                     .foregroundStyle(.red)
-                Text(errorMessage)
+                Text(failureText)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if primaryResults.isEmpty {
+        } else if shown.isEmpty {
             VStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.title2)
                     .foregroundStyle(.secondary)
-                Text(searchText.trimmingCharacters(in: .whitespaces).isEmpty
+                Text(trimmedQuery.isEmpty
                      ? String(localized: "add_course_placeholder")
                      : String(localized: "add_course_not_found"))
                     .font(.callout)
@@ -194,7 +253,7 @@ struct AddCourseSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
-                resultRows
+                resultRows(shown)
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
@@ -208,7 +267,7 @@ struct AddCourseSheet: View {
     @ViewBuilder
     private var macBottomBar: some View {
         HStack {
-            if isSearching && !primaryResults.isEmpty {
+            if model.isSearching && !model.results.isEmpty {
                 ProgressView().controlSize(.small)
                 Text(String(localized: "add_course_searching"))
                     .font(.caption)
@@ -221,32 +280,47 @@ struct AddCourseSheet: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
+    #endif
+
+    private var failureText: String? {
+        model.failure.map { String(format: String(localized: "add_course_search_failed"), $0.localizedDescription) }
+    }
+
+    private var busySlots: Set<CourseSlot> {
+        Set(table.flatMap(\.slots))
+    }
 
     private func debouncedSearch() async {
-        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else {
-            primaryResults = []
-            secondaryNamesByNo = [:]
-            errorMessage = nil
-            isSearching = false
+        let query = trimmedQuery
+        guard !query.isEmpty else {
+            model.clear()
             return
         }
         try? await Task.sleep(for: Self.liveSearchDebounce)
-        if Task.isCancelled { return }
-        await runSearch(query: trimmed)
+        guard !Task.isCancelled else { return }
+        await model.search(query, semester: semester)
     }
 
-    private func submitSearch() async {
-        guard submitTrigger > 0 else { return }
-        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-        await runSearch(query: trimmed)
+    private struct ShownCourse {
+        let course: GroupedCourse
+        let conflicts: [String]
+    }
+
+    private var shownCourses: [ShownCourse] {
+        let table = table
+        let filters = model.filters
+        return groupedResults.compactMap { course in
+            CourseSearch.visibleConflicts(
+                courseNo: course.courseNo, schedule: course.schedule, table: table, filters: filters
+            ).map { ShownCourse(course: course, conflicts: $0) }
+        }
     }
 
     @ViewBuilder
-    private var resultRows: some View {
-        let grouped = groupedResults
-        ForEach(grouped, id: \.courseNo) { group in
+    private func resultRows(_ shown: [ShownCourse]) -> some View {
+        let existingCourseNos = Set(tableCourses.map(\.courseNo))
+        ForEach(shown, id: \.course.courseNo) { item in
+            let group = item.course
             let isPreExisting = existingCourseNos.contains(group.courseNo)
             let isSessionAdded = sessionAddedCourseNos.contains(group.courseNo)
             let isPresent = isPreExisting || isSessionAdded
@@ -276,6 +350,17 @@ struct AddCourseSheet: View {
                                 .font(TigerDuckTheme.Typography.caption)
                                 .foregroundStyle(Color.textSecondary)
                         }
+                        if !isPresent, !item.conflicts.isEmpty {
+                            Label(
+                                String(
+                                    format: String(localized: "course_search_conflicts_with"),
+                                    ListFormatter.localizedString(byJoining: item.conflicts)
+                                ),
+                                systemImage: "exclamationmark.triangle"
+                            )
+                            .font(TigerDuckTheme.Typography.caption)
+                            .foregroundStyle(TigerDuckTheme.Tint.orange)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     if isPresent {
@@ -290,167 +375,6 @@ struct AddCourseSheet: View {
             }
             .disabled(isPreExisting && !isSessionAdded)
         }
-    }
-
-    @MainActor
-    private func runSearch(query: String) async {
-        errorMessage = nil
-        isSearching = true
-        primaryResults = []
-        secondaryNamesByNo = [:]
-
-        let isCourseCode = Self.looksLikeCourseCode(query)
-        let primaryLanguage = LanguageManager.resolvedCourseApiLanguage(
-            appLanguage: Defaults[.appLanguage]
-        )
-        // Send the traditional form to the zh API so simplified-Chinese queries
-        // still match traditional course names.
-        let zhQuery = Self.toTraditional(query)
-        let enQuery = query
-
-        do {
-            async let zhTask = Self.fetchResults(
-                semester: semester, query: zhQuery, language: "zh", isCourseCode: isCourseCode
-            )
-            async let enTask = Self.fetchResults(
-                semester: semester, query: enQuery, language: "en", isCourseCode: isCourseCode
-            )
-            let zhResults = try await zhTask
-            try Task.checkCancellation()
-            let enResults = try await enTask
-            try Task.checkCancellation()
-
-            let primaryResultsRaw = primaryLanguage == "en" ? enResults : zhResults
-            let secondaryResultsRaw = primaryLanguage == "en" ? zhResults : enResults
-
-            if !primaryResultsRaw.isEmpty {
-                primaryResults = primaryResultsRaw
-                secondaryNamesByNo = Dictionary(
-                    secondaryResultsRaw.map { ($0.CourseNo, $0.CourseName) },
-                    uniquingKeysWith: { first, _ in first }
-                )
-                isSearching = false
-                return
-            }
-
-            let (zhFilled, enFilled) = await Self.fillCrossLanguage(
-                semester: semester, zhResults: zhResults, enResults: enResults
-            )
-            try Task.checkCancellation()
-
-            let primary = primaryLanguage == "en" ? enFilled : zhFilled
-            let secondary = primaryLanguage == "en" ? zhFilled : enFilled
-            let secondaryByNo = Dictionary(
-                secondary.map { ($0.CourseNo, $0.CourseName) },
-                uniquingKeysWith: { first, _ in first }
-            )
-
-            primaryResults = primary
-            secondaryNamesByNo = secondaryByNo
-            isSearching = false
-            if primary.isEmpty {
-                errorMessage = String(localized: "add_course_not_found")
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            AppLogger.captureError(error, context: [
-                "feature": "addCourseSheet.search",
-                "mode": isCourseCode ? "courseCode" : "nameOrTeacher",
-            ])
-            isSearching = false
-            errorMessage = String(format: String(localized: "add_course_search_failed"), error.localizedDescription)
-        }
-    }
-
-    private static func fetchResults(
-        semester: String, query: String, language: String, isCourseCode: Bool
-    ) async throws -> [CourseSearchResult] {
-        if isCourseCode {
-            return try await CourseLookupService.lookupCourse(
-                semester: semester, courseNo: query, language: language, fresh: true
-            )
-        }
-        async let byNameTask = CourseLookupService.searchCourses(
-            semester: semester, courseName: query, language: language
-        )
-        async let byTeacherTask = CourseLookupService.searchByTeacher(
-            semester: semester, teacher: query, language: language
-        )
-
-        // Tolerate one endpoint failing (the teacher one often throws for a query that
-        // is clearly not a teacher's name), but rethrow when both fail so the caller
-        // shows `add_course_search_failed` rather than a misleading `add_course_not_found`.
-        var nameResults: [CourseSearchResult] = []
-        var teacherResults: [CourseSearchResult] = []
-        var nameError: Error?
-        var teacherError: Error?
-        do { nameResults = try await byNameTask } catch { nameError = error }
-        do { teacherResults = try await byTeacherTask } catch { teacherError = error }
-
-        if let nameError, teacherError != nil {
-            throw nameError
-        }
-        return merge(nameResults, teacherResults)
-    }
-
-    private static func fillCrossLanguage(
-        semester: String,
-        zhResults: [CourseSearchResult],
-        enResults: [CourseSearchResult]
-    ) async -> ([CourseSearchResult], [CourseSearchResult]) {
-        let zhByNo = Set(zhResults.map(\.CourseNo))
-        let enByNo = Set(enResults.map(\.CourseNo))
-        let missingZh = enByNo.subtracting(zhByNo)
-        let missingEn = zhByNo.subtracting(enByNo)
-
-        async let zhExtras: [CourseSearchResult] = withTaskGroup(of: [CourseSearchResult].self) { group in
-            for no in missingZh {
-                group.addTask {
-                    (try? await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: no, language: "zh", fresh: true
-                    )) ?? []
-                }
-            }
-            return await group.reduce(into: []) { $0.append(contentsOf: $1) }
-        }
-        async let enExtras: [CourseSearchResult] = withTaskGroup(of: [CourseSearchResult].self) { group in
-            for no in missingEn {
-                group.addTask {
-                    (try? await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: no, language: "en", fresh: true
-                    )) ?? []
-                }
-            }
-            return await group.reduce(into: []) { $0.append(contentsOf: $1) }
-        }
-        return (zhResults + (await zhExtras), enResults + (await enExtras))
-    }
-
-    private static func merge(
-        _ primary: [CourseSearchResult],
-        _ secondary: [CourseSearchResult]
-    ) -> [CourseSearchResult] {
-        var seen = Set<String>()
-        var merged: [CourseSearchResult] = []
-        for result in primary + secondary {
-            let key = "\(result.CourseNo)#\(result.Node ?? "")"
-            guard !seen.contains(key) else { continue }
-            seen.insert(key)
-            merged.append(result)
-        }
-        return merged
-    }
-
-    private static func looksLikeCourseCode(_ text: String) -> Bool {
-        guard text.range(of: courseCodePattern, options: .regularExpression) != nil else { return false }
-        return text.contains(where: { $0.isNumber })
-    }
-
-    private static let hansHantTransform = StringTransform(rawValue: "Hans-Hant")
-
-    private static func toTraditional(_ text: String) -> String {
-        text.applyingTransform(hansHantTransform, reverse: false) ?? text
     }
 
     private struct GroupedCourse {
@@ -479,10 +403,11 @@ struct AddCourseSheet: View {
     }
 
     private var groupedResults: [GroupedCourse] {
+        let (rows, secondaryNamesByNo) = CourseSearch.shown(model.results, primary: language)
         var seen: [String: GroupedCourse] = [:]
         var order: [String] = []
 
-        for result in primaryResults {
+        for result in rows {
             let key = result.CourseNo
             let partial = CourseLookupService.parseNodeToSchedule(result.Node)
             var rowSeen = Set<String>()
