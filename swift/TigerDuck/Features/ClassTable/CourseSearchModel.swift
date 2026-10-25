@@ -83,6 +83,20 @@ final class CourseSearchModel {
         return true
     }
 
+    /// The row to add a course from, in the app's course language. A course only the other
+    /// language found is looked up once by its number; nil when that fails or finds nothing,
+    /// and the caller then keeps the row it was found with.
+    func appLanguageRow(of courseNo: String, language: String, semester: String) async -> CourseSearchResult? {
+        if let row = results[language]?.first(where: { $0.CourseNo == courseNo }) { return row }
+        do {
+            return try await search(.forCourseNo(courseNo, semester: semester, language: language))
+                .first { $0.CourseNo == courseNo }
+        } catch {
+            AppLogger.captureError(error, context: ["feature": "addCourseSheet.appLanguageRow"])
+            return nil
+        }
+    }
+
     /// Shows the stored lists at once, then fetches the school's once per sheet. A failed or empty
     /// fetch keeps the stored lists, and the next call tries again.
     func refreshOptions() async {

@@ -305,6 +305,38 @@ struct CourseSearchTests {
         #expect(!model.isSearching)
     }
 
+    @Test("a course only the other language found is added under its app-language row")
+    func otherLanguageCourseIsLookedUp() async {
+        let sent = Box<[String]>([])
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
+            sent.value.append(Self.summary(request))
+            if request.CourseNo == "MA1001301", request.Language == "zh" { return [Self.result("MA1001301", "微積分")] }
+            return request.Language == "en" && !request.CourseName.isEmpty ? [Self.result("MA1001301", "Calculus")] : []
+        }, fetchOptions: Self.noOptions)
+        await model.search("Calculus", semester: "1151")
+        sent.value = []
+
+        let row = await model.appLanguageRow(of: "MA1001301", language: "zh", semester: "1151")
+        #expect(row?.CourseName == "微積分")
+        #expect(sent.value == ["MA1001301|||zh"])
+
+        sent.value = []
+        #expect(await model.appLanguageRow(of: "MA1001301", language: "en", semester: "1151")?.CourseName == "Calculus")
+        #expect(sent.value.isEmpty)
+    }
+
+    @Test("a failed or empty lookup leaves the found row in place")
+    func otherLanguageLookupFails() async {
+        let answers = Box<[Result<[CourseSearchResult], URLError>]>([.failure(URLError(.timedOut)), .success([])])
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
+            try answers.value.removeFirst().get()
+        }, fetchOptions: Self.noOptions)
+
+        #expect(await model.appLanguageRow(of: "MA1001301", language: "zh", semester: "1151") == nil)
+        #expect(await model.appLanguageRow(of: "MA1001301", language: "zh", semester: "1151") == nil)
+        #expect(answers.value.isEmpty)
+    }
+
     // MARK: Option lists
 
     private static let stored = CourseSearchOptions(

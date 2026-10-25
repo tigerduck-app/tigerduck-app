@@ -16,6 +16,7 @@ struct AddCourseSheet: View {
     @State private var attempt = 0
     @State private var showFilters = false
     @State private var sessionAddedCourseNos: Set<String> = []
+    @State private var addingCourseNos: Set<String> = []
     @FocusState private var searchFocused: Bool
 
     private struct SearchKey: Equatable {
@@ -488,10 +489,20 @@ struct AddCourseSheet: View {
     }
 
     private func addCourse(from group: GroupedCourse) {
+        // A second tap while the lookup is out would send another lookup and add again.
+        guard addingCourseNos.insert(group.courseNo).inserted else { return }
+        Task {
+            defer { addingCourseNos.remove(group.courseNo) }
+            let row = await model.appLanguageRow(of: group.courseNo, language: language, semester: semester)
+            add(group, name: row?.CourseName ?? group.primaryName, instructor: row?.CourseTeacher ?? group.instructor)
+        }
+    }
+
+    private func add(_ group: GroupedCourse, name: String, instructor: String) {
         let course = SDCourse(
             courseNo: group.courseNo,
-            courseName: group.primaryName,
-            instructor: group.instructor,
+            courseName: name,
+            instructor: instructor,
             credits: group.credits,
             classroom: group.classroom,
             enrolledCount: group.enrolledCount,
