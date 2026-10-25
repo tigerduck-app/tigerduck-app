@@ -80,19 +80,106 @@ struct UnchangedUploadTests {
         #expect(backend.uploads == 5)
     }
 
-    @Test("A list the server refused goes again")
-    func refusedListGoesAgain() async throws {
+    @MainActor
+    private final class Clock {
+        var now = Date()
+    }
+
+    @Test("A list the server refused waits a minute from the answer, and another list does not")
+    func refusedListWaitsAMinute() async throws {
         let backend = Backend()
         backend.answer(status: 503)
         backend.answer()
+        backend.answer(status: 503)
+        backend.answer()
         let coordinator = backend.makeCoordinator()
+        let clock = Clock()
+        coordinator.clock = { clock.now }
         let list = Self.courses(Self.entry("CS1"))
 
         await #expect(throws: PushAPIError.self) {
             try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
         }
+        clock.now += 59
+        #expect(try await !coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(coordinator.holdsUnsentCourseUploads)
+        clock.now += 1
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", isCurrent: { true })
+        }
+        #expect(try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS3")), semester: "1151", isCurrent: { true }))
+        #expect(backend.uploads == 4)
+    }
+
+    @Test("A refused list held back after the accepted one was resent still counts as unsent")
+    func heldBackListStaysUnsent() async throws {
+        let backend = Backend()
+        backend.answer()
+        backend.answer(status: 422)
+        let coordinator = backend.makeCoordinator()
+        let clock = Clock()
+        coordinator.clock = { clock.now }
+        let accepted = Self.courses(Self.entry("CS1"))
+        let refused = Self.courses(Self.entry("CS2"))
+
+        #expect(try await coordinator.uploadCoursesIfChanged(accepted, semester: "1151", isCurrent: { true }))
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(refused, semester: "1151", isCurrent: { true })
+        }
+        #expect(try await !coordinator.uploadCoursesIfChanged(accepted, semester: "1151", isCurrent: { true }))
+        #expect(try await !coordinator.uploadCoursesIfChanged(refused, semester: "1151", isCurrent: { true }))
+
+        #expect(coordinator.holdsUnsentCourseUploads)
+        #expect(backend.uploads == 2)
+    }
+
+    @Test("A list answered 401 goes again at once, as the retry after signing in sends it")
+    func unauthorizedListIsNotHeldBack() async throws {
+        let backend = Backend()
+        backend.answer(status: 401)
+        backend.answer()
+        let coordinator = backend.makeCoordinator()
+        let clock = Clock()
+        coordinator.clock = { clock.now }
+        let list = Self.courses(Self.entry("CS1"))
+
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
+        }
+        clock.now += 1
         #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
         #expect(backend.uploads == 2)
+    }
+
+    @Test("A refused list still goes at once when resent, forced, after a reset, or when it never reached the server")
+    func refusalHoldsOnlyAnAnsweredList() async throws {
+        let backend = Backend()
+        backend.answer(status: 422)
+        backend.answer(status: 422)
+        backend.answer(times: 2)
+        let coordinator = backend.makeCoordinator()
+        coordinator.clock = { Date(timeIntervalSince1970: 1_800_000_000) }
+        let list = Self.courses(Self.entry("CS1"))
+
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
+        }
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true, isCurrent: { true })
+        }
+        #expect(try await coordinator.uploadCoursesIfChanged(
+            Self.courses(Self.entry("CS1"), forceKeys: ["client:1151:CS1"]), semester: "1151", isCurrent: { true }))
+        coordinator.forgetUploads(semester: "1151")
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(backend.uploads == 4)
+
+        let key = UploadLedger.courses("1142")
+        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+            throw URLError(.notConnectedToInternet)
+        }
+        #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {})
     }
 
     @Test("A course list the server refused counts as unsent until a list of that term goes up or a sign-out forgets it")
@@ -102,6 +189,8 @@ struct UnchangedUploadTests {
         backend.answer()
         backend.answer(status: 503)
         let coordinator = backend.makeCoordinator()
+        let clock = Clock()
+        coordinator.clock = { clock.now }
         let list = Self.courses(Self.entry("CS1"))
         #expect(!coordinator.holdsUnsentCourseUploads)
 
@@ -109,6 +198,7 @@ struct UnchangedUploadTests {
             try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
         }
         #expect(coordinator.holdsUnsentCourseUploads)
+        clock.now += UploadLedger.refusalPause
         #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
         #expect(!coordinator.holdsUnsentCourseUploads)
 

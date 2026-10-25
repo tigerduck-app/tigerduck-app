@@ -203,6 +203,7 @@ final class PushCoordinator {
     nonisolated static let unchangedUploadInterval: TimeInterval = 6 * 3600
 
     private var uploads = UploadLedger()
+    var clock: () -> Date = { Date() }
     private var lastUploads: [String: Task<Void, Never>] = [:]
     private var unfinishedUploads: [String: [Int]] = [:]
 
@@ -253,7 +254,12 @@ final class PushCoordinator {
         let upload = Task { @MainActor [weak self] () async throws -> Bool in
             await previous?.value
             guard let self, isCurrent() else { return false }
-            let now = Date()
+            let now = self.clock()
+            if !always, self.uploads.isHeldBack(key, fingerprint: fingerprint, now: now) {
+                // An unchanged resend in between cleared the failure, and this list is still unsent.
+                self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: self.uploads.generation(of: key))
+                return false
+            }
             guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else {
                 self.uploads.forgetFailure(key)
                 return false
@@ -264,6 +270,10 @@ final class PushCoordinator {
             } catch {
                 if !AppLogger.isCancellation(error), isCurrent() {
                     self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: started)
+                    // A 401 is retried at once after signing in again, so it holds nothing back.
+                    if case PushAPIError.httpStatus(let status, _) = error, status != 401 {
+                        self.uploads.recordRefusal(key, fingerprint: fingerprint, at: self.clock(), startedIn: started)
+                    }
                 }
                 throw error
             }
@@ -437,8 +447,13 @@ nonisolated struct UploadLedger {
     static let assignments = "assignments"
     static func courses(_ semester: String) -> String { "courses:\(semester)" }
 
+    /// Every fetch, sync and push would send a list the server answered with an error again at
+    /// once, each answered the same way, so the same list waits this long from the answer.
+    static let refusalPause: TimeInterval = 60
+
     private var accepted: [String: (fingerprint: Int, at: Date)] = [:]
     private var failed: [String: Int] = [:]
+    private var refused: [String: (fingerprint: Int, at: Date)] = [:]
     private var forgetsOfKey: [String: Int] = [:]
     private var forgetsOfAll = 0
 
@@ -450,10 +465,21 @@ nonisolated struct UploadLedger {
         PushCoordinator.uploadIsDue(accepted: accepted[key], fingerprint: fingerprint, now: now)
     }
 
+    func isHeldBack(_ key: String, fingerprint: Int, now: Date) -> Bool {
+        guard let refusal = refused[key], refusal.fingerprint == fingerprint else { return false }
+        return (0..<Self.refusalPause).contains(now.timeIntervalSince(refusal.at))
+    }
+
     mutating func record(_ key: String, fingerprint: Int, at date: Date, startedIn started: (all: Int, key: Int)) {
         guard started == generation(of: key) else { return }
         accepted[key] = (fingerprint, date)
         failed[key] = nil
+        refused[key] = nil
+    }
+
+    mutating func recordRefusal(_ key: String, fingerprint: Int, at date: Date, startedIn started: (all: Int, key: Int)) {
+        guard started == generation(of: key) else { return }
+        refused[key] = (fingerprint, date)
     }
 
     mutating func recordFailure(_ key: String, fingerprint: Int, startedIn started: (all: Int, key: Int)) {
@@ -479,10 +505,12 @@ nonisolated struct UploadLedger {
             forgetsOfKey[key, default: 0] &+= 1
             accepted[key] = nil
             failed[key] = nil
+            refused[key] = nil
         } else {
             forgetsOfAll &+= 1
             accepted = [:]
             failed = [:]
+            refused = [:]
         }
     }
 }
