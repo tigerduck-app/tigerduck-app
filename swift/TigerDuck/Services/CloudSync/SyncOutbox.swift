@@ -98,6 +98,23 @@ nonisolated enum SyncOp: Codable, Sendable {
             return stamp
         }
     }
+
+    /// What a discard by time can cut this op off under: its kind or category, a delete's term,
+    /// and an add's or a delete's course.
+    var scopes: [String] {
+        switch self {
+        case .courseOverride(_, _, let customName, let colorHex, _, _):
+            return (colorHex != nil ? ["course_colors"] : []) + (customName != nil ? ["course_names"] : [])
+        case .assignmentOverride:
+            return ["assignments"]
+        case .courseIgnore:
+            return ["course_ignores"]
+        case .courseDelete(let semester, let courseNo, _):
+            return ["cd", "cd|\(semester)", "cd|" + CourseTombstone.key(semester: semester, courseNo: courseNo)]
+        case .courseAdd(let semester, let courseNo, _):
+            return ["ca", "ca|" + CourseTombstone.key(semester: semester, courseNo: courseNo)]
+        }
+    }
 }
 
 nonisolated enum ResolvedSyncOp: Sendable {
@@ -127,7 +144,7 @@ actor SyncOutbox {
     /// on it, nothing is written over the files, and what was queued meanwhile joins what they hold.
     private var isLoaded: Bool
     private var unreadableLoads = 0
-    private var refusals: [@Sendable (SyncOp) -> Bool] = []
+    private var cutoffs: [String: Date] = [:]
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
     init(
@@ -151,7 +168,7 @@ actor SyncOutbox {
 
     func enqueue(_ op: SyncOp) {
         loadIfNeeded()
-        guard !refusals.contains(where: { $0(op) }) else { return }
+        guard !Self.isCutOff(op, by: cutoffs) else { return }
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
@@ -214,13 +231,18 @@ actor SyncOutbox {
         return dropped
     }
 
-    /// Discards the picked ops made before `cutoff`, and refuses such an op still on its way in,
-    /// as one whose enqueue task had not reached the outbox yet.
+    /// Discards the ops made before the cutoff of a scope they fall under, and refuses such an op
+    /// still on its way in, as one whose enqueue task had not reached the outbox yet. One cutoff
+    /// is kept per scope, and none later than now, so it never refuses an edit made after this.
     @discardableResult
-    func discard(madeBefore cutoff: Date, where isDropped: @escaping @Sendable (SyncOp) -> Bool) -> [SyncOp] {
-        let picked: @Sendable (SyncOp) -> Bool = { $0.stamp < cutoff && isDropped($0) }
-        refusals.append(picked)
-        return discard(where: picked)
+    func discard(madeBefore scopeCutoffs: [String: Date]) -> [SyncOp] {
+        let now = Date()
+        cutoffs.merge(scopeCutoffs.mapValues { min($0, now) }, uniquingKeysWith: max)
+        return discard { Self.isCutOff($0, by: scopeCutoffs) }
+    }
+
+    private nonisolated static func isCutOff(_ op: SyncOp, by cutoffs: [String: Date]) -> Bool {
+        op.scopes.contains { scope in cutoffs[scope].map { op.stamp < $0 } ?? false }
     }
 
     func requeueParked() {

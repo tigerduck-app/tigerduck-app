@@ -111,7 +111,7 @@ struct SyncOutboxTests {
         #expect(await Self.makeOutbox(directory: directory).parkedSnapshot().isEmpty)
     }
 
-    @Test("A discard by time drops the picked edits made before it, queued, parked or still on their way in, and no other")
+    @Test("A discard by time drops its scopes' edits made before it, queued, parked or on their way in, and a cutoff past now refuses no later edit")
     func discardByTimeRefusesTheOlderEditsStillToCome() async {
         let outbox = Self.makeOutbox()
         let cutoff = Date()
@@ -122,18 +122,16 @@ struct SyncOutboxTests {
         await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE3", stamp: cutoff.addingTimeInterval(60)))
         await outbox.enqueue(Self.mark)
 
-        let dropped = await outbox.discard(madeBefore: cutoff) { op in
-            if case .courseAdd = op { return true }
-            return false
-        }
+        let dropped = await outbox.discard(madeBefore: ["ca": cutoff, "cd|1151:PE7": Date().addingTimeInterval(3600)])
         await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE4", stamp: older))
         await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE5", stamp: Date()))
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "GE6", stamp: older))
+        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE7", stamp: Date()))
 
         #expect(Set(dropped.map(\.dedupKey)) == ["ca|1151|GE1", "ca|1151|GE2"])
         #expect(await outbox.parkedSnapshot().isEmpty)
         #expect(await outbox.snapshot().map(\.op.dedupKey)
-            == ["ca|1151|GE3", Self.mark.dedupKey, "ca|1151|GE5", "cd|1151|GE6"])
+            == ["ca|1151|GE3", Self.mark.dedupKey, "ca|1151|GE5", "cd|1151|GE6", "cd|1151|PE7"])
     }
 
     @Test("A held mark stays queued and untried while the edits behind it go")

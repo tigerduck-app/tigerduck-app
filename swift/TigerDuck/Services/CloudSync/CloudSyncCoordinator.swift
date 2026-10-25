@@ -311,24 +311,13 @@ final class CloudSyncCoordinator {
     /// Use Server for `categories`: drops this device's edits of them made so far, then waits out
     /// a request the outbox has in flight, so the server's values read next include it.
     func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
-        let isDropped: @Sendable (SyncOp) -> Bool = { op in
-            switch op {
-            case .assignmentOverride:
-                return categories.contains("assignments")
-            case .courseIgnore:
-                return courseIgnores && categories.contains("assignments")
-            case .courseOverride(_, _, let customName, let colorHex, _, _):
-                return (colorHex != nil && categories.contains("course_colors"))
-                    || (customName != nil && categories.contains("course_names"))
-            case .courseAdd:
-                return categories.contains("courses")
-            case .courseDelete:
-                return false
-            }
-        }
-        courseOverridesEnqueuing = courseOverridesEnqueuing.filter { !isDropped($0.value) }
-        if categories.contains("courses") { courseAddsEnqueuing = [:] }
-        await outbox.discard(madeBefore: Date(), where: isDropped)
+        var scopes = categories.intersection(["assignments", "course_colors", "course_names"])
+        if categories.contains("courses") { scopes.insert("ca") }
+        if courseIgnores && categories.contains("assignments") { scopes.insert("course_ignores") }
+        courseOverridesEnqueuing = courseOverridesEnqueuing.filter { scopes.isDisjoint(with: $0.value.scopes) }
+        if scopes.contains("ca") { courseAddsEnqueuing = [:] }
+        let now = Date()
+        await outbox.discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
         _ = await sending?.result
     }
 
@@ -415,12 +404,7 @@ final class CloudSyncCoordinator {
     /// returns the keys of the deletes.
     @discardableResult
     func dropCourseEdits(madeBefore cutoff: Date) async -> Set<String> {
-        let dropped = await outbox.discard(madeBefore: cutoff) { op in
-            switch op {
-            case .courseAdd, .courseDelete: return true
-            case .courseOverride, .assignmentOverride, .courseIgnore: return false
-            }
-        }
+        let dropped = await outbox.discard(madeBefore: ["ca": cutoff, "cd": cutoff])
         return Self.courseKeys(of: dropped.filter { op in
             if case .courseDelete = op { return true }
             return false
@@ -428,11 +412,17 @@ final class CloudSyncCoordinator {
     }
 
     func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil) async {
-        await outbox.discard(madeBefore: Date()) { op in
-            guard case .courseDelete(let opSemester, let courseNo, _) = op else { return false }
-            let key = CourseTombstone.serverKey(semester: opSemester, courseNo: courseNo)
-            return (semester == nil || semester == opSemester) && (courseKeys?.contains(key) ?? true)
-        }
+        let serverPrefix = CourseTombstone.serverKey(of: "")
+        let scopes = courseKeys.map { keys in
+            keys.compactMap { key -> String? in
+                let local = String(key.dropFirst(serverPrefix.count))
+                guard key.hasPrefix(serverPrefix),
+                      semester == nil || CourseTombstone.parts(of: local)?.semester == semester else { return nil }
+                return "cd|" + local
+            }
+        } ?? [semester.map { "cd|\($0)" } ?? "cd"]
+        let now = Date()
+        await outbox.discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
     }
 
     private nonisolated static func courseKeys(of ops: [SyncOp]) -> Set<String> {
