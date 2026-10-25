@@ -283,6 +283,42 @@ struct CourseSearchTests {
         #expect(halfFailing.results["en"]?.count == 1)
     }
 
+    @Test("a new query drops the old rows and shows as searching before its wait ends")
+    func newQueryClearsAtOnce() async {
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
+            [Self.result("CS1001301")]
+        }, fetchOptions: Self.noOptions)
+        await model.search("CS", semester: "1151")
+        #expect(!model.results.isEmpty)
+
+        let waiting = Task { await model.search("EE", semester: "1151", after: .seconds(60)) }
+        for _ in 0..<10_000 where !model.results.isEmpty {
+            await Task.yield()
+        }
+        #expect(model.results.isEmpty)
+        #expect(model.isSearching)
+        #expect(model.failure == nil)
+        waiting.cancel()
+        await waiting.value
+    }
+
+    @Test("a blank query sends nothing and clears the results")
+    func blankQuery() async {
+        let sent = Box(0)
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
+            sent.value += 1
+            return [Self.result("CS1001301")]
+        }, fetchOptions: Self.noOptions)
+        await model.search("CS", semester: "1151")
+        sent.value = 0
+
+        await model.search(" \t ", semester: "1151")
+        #expect(sent.value == 0)
+        #expect(model.results.isEmpty)
+        #expect(!model.isSearching)
+        #expect(!model.hasSearched)
+    }
+
     @Test("each request's courses show while another request is still out")
     func showsEachAnswer() async {
         let gate = Gate()

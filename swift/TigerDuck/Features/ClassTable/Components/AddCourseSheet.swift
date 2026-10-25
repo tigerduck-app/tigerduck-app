@@ -29,11 +29,15 @@ struct AddCourseSheet: View {
         #if os(macOS)
         macBody
             .onAppear { searchFocused = true }
-            .task(id: searchKey) { await debouncedSearch() }
+            .task(id: searchKey) {
+                await model.search(searchText, semester: semester, after: Self.liveSearchDebounce)
+            }
         #else
         iosBody
             .onAppear { searchFocused = true }
-            .task(id: searchKey) { await debouncedSearch() }
+            .task(id: searchKey) {
+                await model.search(searchText, semester: semester, after: Self.liveSearchDebounce)
+            }
         #endif
     }
 
@@ -289,17 +293,6 @@ struct AddCourseSheet: View {
 
     private var busySlots: Set<CourseSlot> {
         Set(table.flatMap(\.slots))
-    }
-
-    private func debouncedSearch() async {
-        let query = trimmedQuery
-        guard !query.isEmpty else {
-            model.clear()
-            return
-        }
-        try? await Task.sleep(for: Self.liveSearchDebounce)
-        guard !Task.isCancelled else { return }
-        await model.search(query, semester: semester)
     }
 
     private struct ShownCourse {

@@ -31,17 +31,20 @@ final class CourseSearchModel {
         self.fetchOptions = fetchOptions
     }
 
-    func clear() {
+    /// Waits `delay`, then searches. The previous query's rows go at once and the search shows as
+    /// running, so no old row can be tapped and no "not found" shows while the new query waits.
+    /// A blank query only clears, since a request with every search field empty never returns.
+    func search(_ query: String, semester: String, after delay: Duration = .zero) async {
+        let query = query.trimmingCharacters(in: .whitespaces)
         results = [:]
         failure = nil
-        isSearching = false
-        hasSearched = false
-    }
-
-    func search(_ query: String, semester: String) async {
-        clear()
-        hasSearched = true
-        isSearching = true
+        hasSearched = !query.isEmpty
+        isSearching = !query.isEmpty
+        guard !query.isEmpty else { return }
+        if delay > .zero {
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+        }
         for round in CourseSearch.rounds(for: query, semester: semester, filters: filters) {
             let allFailed = await run(round)
             guard !Task.isCancelled else { return }
