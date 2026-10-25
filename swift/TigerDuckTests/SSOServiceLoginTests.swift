@@ -385,19 +385,28 @@ struct SSOServiceLoginTests {
         #expect(jar.cookies?.count == 1)
     }
 
-    @Test("a retry still waits out a refusal's wait, and keeps the live session meanwhile")
-    func retryWaitsOutARefusalsWait() async throws {
+    @Test("a retry that another refusal overtook while it waited for the lock sends nothing and leaves the session",
+          .timeLimit(.minutes(1)))
+    func retryARefusalOvertookWaitsWithoutTouchingTheSession() async throws {
         let service = Self.serviceURL()
         let (session, jar) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service)
 
-        let outcome = await withRefusals(1, last: Self.now) { await Self.retry(service, on: session) }
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
+            let retrying = await SSOLoginService.postingStoredPassword {
+                let retrying = Task { await Self.retry(service, on: session) }
+                await Self.waitForAQueuedPost()
+                SSOLoginService.noteStoredPasswordRefused(at: Self.now)
+                return retrying
+            }
+            return await retrying.value
+        }
 
         guard case .failure(SSOLoginError.loginFailed) = outcome else {
             Issue.record("expected loginFailed, got \(outcome)")
             return
         }
-        #expect(posts.isEmpty)
+        #expect(SSOServerStub.requests.isEmpty)
         #expect(jar.cookies?.count == 1)
     }
 

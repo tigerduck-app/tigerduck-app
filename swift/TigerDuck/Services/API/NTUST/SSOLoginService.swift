@@ -180,10 +180,11 @@ enum SSOLoginService {
 
     /// ``ensureServiceLogin`` for the retry of a refused stored password. A live session lets an
     /// automatic sign-in through without a post, which says nothing about the password, so this
-    /// ends the session as a typed sign-in does and posts. A refusal is counted and its wait still
-    /// holds the post back, but a yes leaves the count to the caller, which forgets it once the
-    /// rest of its retry went through. Once it holds the SSO lock it posts only while a refusal is
-    /// still counted: a sign-in it waited behind may have settled it, and that session then stays.
+    /// ends the session as a typed sign-in does and posts. A refusal is counted, but a yes leaves
+    /// the count to the caller, which forgets it once the rest of its retry went through. Once it
+    /// holds the SSO locks it posts nothing while no refusal is counted, as a sign-in it waited
+    /// behind may have settled it, nor while a refusal's wait holds, as another automatic post may
+    /// have been refused meanwhile; the session then stays as it is.
     static func signInAgain(
         session: URLSession,
         serviceURL: URL,
@@ -196,6 +197,7 @@ enum SSOLoginService {
             try await oneAtATime {
                 try checkSignedIn(generation)
                 guard storedPasswordRefusals.count > 0 else { return true }
+                if storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
                 return try await performServiceLogin(
                     session: session, serviceURL: serviceURL, studentId: studentId, password: password,
                     generation: generation, interactive: false, retry: true, now: now,
