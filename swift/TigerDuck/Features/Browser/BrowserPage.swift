@@ -22,6 +22,7 @@ final class BrowserPage {
     fileprivate(set) var start: URL?
 
     let signIn: BrowserSignIn
+    let find = BrowserFind()
     let store: WKWebsiteDataStore
     let generation: Int
     @ObservationIgnored fileprivate weak var webView: WKWebView?
@@ -79,6 +80,13 @@ final class BrowserPage {
         }
     }
 
+    /// Find and print need a page on screen, not an error or a sign-in under way.
+    var canUsePage: Bool { Self.canUsePage(failure: failure, signIn: signIn.phase, url: url) }
+
+    static func canUsePage(failure: Failure?, signIn: BrowserSignIn.Phase, url: URL?) -> Bool {
+        failure == nil && signIn == .idle && url != nil
+    }
+
     func expandChrome() {
         collapse.expand()
         isCollapsed = false
@@ -126,6 +134,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         page.signIn.signInWithSession = { [weak container] in
             await BrowserSessionSignIn(store: store, host: container).signIn()
         }
+        page.find.run = { [weak webView] in await webView?.runFind($0) }
         Task {
             await BrowserData.shared.prepare()
             // A sign-in or sign-out has come since this browser opened, and it is closing.
@@ -198,6 +207,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         lastRequested = nil
         page.signIn.pageSettled()
         Task { await keepSession() }
+        if page.find.isActive { Task { await page.find.search() } }
     }
 
     private func keepSession() async {

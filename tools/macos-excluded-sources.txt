@@ -406,6 +406,8 @@ MailTLSVerifier.swift
 BrowserCertificate.swift
 BrowserChromeCollapse.swift
 BrowserData.swift
+BrowserFind.swift
+BrowserFindBar.swift
 BrowserPage.swift
 BrowserPageScripts.swift
 BrowserRouting.swift

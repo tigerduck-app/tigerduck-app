@@ -29,7 +29,13 @@ struct TigerDuckBrowserView: View {
             }
             .overlay(alignment: .bottom) {
                 Group {
-                    if addressBar == .top { toolbar } else { bottomBar }
+                    if page.find.isActive {
+                        BrowserFindBar(find: page.find)
+                    } else if addressBar == .top {
+                        toolbar
+                    } else {
+                        bottomBar
+                    }
                 }
             }
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.35), value: collapsed)
@@ -100,6 +106,7 @@ struct TigerDuckBrowserView: View {
             toolbarButton("chevron.backward", String(localized: "browser_back"), enabled: page.canGoBack, page.goBack)
             toolbarButton("chevron.forward", String(localized: "browser_forward"), enabled: page.canGoForward, page.goForward)
             reloadButton(size: 21).foregroundStyle(.tint).frame(maxWidth: .infinity)
+            toolbarButton("magnifyingglass", String(localized: "browser_find"), enabled: page.canUsePage, page.find.start)
         }
         .frame(height: Self.toolbarHeight)
         .browserGlass(in: Capsule())
@@ -124,8 +131,15 @@ struct TigerDuckBrowserView: View {
             closeButton.hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
             address {
                 HStack(spacing: 0) {
-                    // Find in page takes this side.
-                    if !collapsed { Color.clear.frame(width: 40, height: Self.barHeight) }
+                    if !collapsed {
+                        Button { page.find.start() } label: {
+                            Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold))
+                                .frame(width: 40, height: Self.barHeight)
+                                .contentShape(.rect)
+                        }
+                        .disabled(!page.canUsePage)
+                        .accessibilityLabel(String(localized: "browser_find"))
+                    }
                     Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
                         .frame(maxWidth: collapsed ? nil : .infinity)
                     if !collapsed { reloadButton(size: 16).frame(width: 40, height: Self.barHeight) }
