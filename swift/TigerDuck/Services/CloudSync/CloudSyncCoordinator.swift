@@ -402,7 +402,7 @@ final class CloudSyncCoordinator {
 
     /// How far this device's clock may be off the server's when an edit stamped here is compared
     /// with a server time. NTP keeps it within seconds; inside the margin the order cannot be told,
-    /// and the edit made here is kept, as it was before such checks.
+    /// and the edit made here is kept.
     nonisolated static let clockSkewMargin: TimeInterval = 2 * 60
 
     /// Drops the course adds and deletes made here before another device's course reset at
