@@ -1,0 +1,18 @@
+name: Privacy manifests
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          # No submodules: this reads project.pbxproj, the targets' Swift files and the
+          # vendored SwiftMail package. The default merge ref is what would ship.
+
+      - name: Check every app and extension declares the required-reason APIs it uses
+        run: python3 tools/check_privacy_manifests.py
