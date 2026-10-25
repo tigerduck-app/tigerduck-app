@@ -4,7 +4,7 @@ import Foundation
 /// Downloads every folder's mail into `MailSearchIndex` while the mail page is on screen, newest
 /// first and `MailConstants.indexBatchSize` mails per command. A pass that got through holds off
 /// the next for `MailConstants.indexResyncInterval`, unless mail arrived since; one that failed
-/// waits longer before each retry.
+/// waits longer before each retry, and Low Data Mode pauses it.
 /// See docs/decisions/0027-mail-local-search-index.md.
 @MainActor
 final class MailIndexer {
@@ -22,6 +22,7 @@ final class MailIndexer {
     private let cache: MailCache
     private let startDelay: @Sendable () async -> Void
     private let now: () -> Date
+    private let isConstrained: () -> Bool
     private var task: Task<Void, Never>?
     private var stopping: Task<Void, Never>?
     private var completed: (at: Date, wipeCount: Int)?
@@ -36,16 +37,18 @@ final class MailIndexer {
         session: MailPageSession,
         cache: MailCache,
         startDelay: @escaping @Sendable () async -> Void,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        isConstrained: (() -> Bool)? = nil
     ) {
         self.session = session
         self.cache = cache
         self.startDelay = startDelay
         self.now = now
+        self.isConstrained = isConstrained ?? { NetworkMonitor.shared.isConstrained }
     }
 
     func startIfDue(folders: [String]) {
-        guard task == nil, !isFresh, retryAt.map({ now() >= $0 }) ?? true else { return }
+        guard task == nil, !isFresh, retryAt.map({ now() >= $0 }) ?? true, !isConstrained() else { return }
         let arrivals = self.arrivals
         let wipeCount = cache.wipeCount
         let delay = startDelay
@@ -115,15 +118,16 @@ final class MailIndexer {
     private func pass(folders: [String], wipeCount: Int) async -> Outcome {
         var failed = false
         for folder in folders {
-            guard !Task.isCancelled else { return .paused }
+            guard !Task.isCancelled, !isConstrained() else { return .paused }
             do {
                 if !(try await update(folder: folder, wipeCount: wipeCount)) { failed = true }
             } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
-                return .failed
+                return isConstrained() ? .paused : .failed
             } catch {
                 failed = true
             }
         }
+        if isConstrained() { return .paused }
         return failed ? .failed : .complete
     }
 
@@ -142,7 +146,7 @@ final class MailIndexer {
         }
         var complete = true
         for batch in batches(of: missing.sorted(by: >), folder: folder, uidValidity: validity) {
-            guard !Task.isCancelled else { return false }
+            guard !Task.isCancelled, !isConstrained() else { return false }
             let texts: [UInt32: String]
             do {
                 texts = try await session.use { client in

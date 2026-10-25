@@ -9,6 +9,8 @@ final class NetworkMonitor {
     static let shared = NetworkMonitor()
 
     private(set) var isConnected = false
+    /// Low Data Mode, which background downloads such as School Mail's search index pause for.
+    private(set) var isConstrained = false
 
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "dev.tigerduck.NetworkMonitor")
@@ -43,6 +45,7 @@ final class NetworkMonitor {
     nonisolated private init() {
         monitor.pathUpdateHandler = { [weak self] path in
             let satisfied = path.status == .satisfied
+            let constrained = path.isConstrained
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.probeEpoch &+= 1
@@ -52,6 +55,9 @@ final class NetworkMonitor {
                 self.hasReceivedPathUpdate = true
                 if self.isConnected != satisfied {
                     self.isConnected = satisfied
+                }
+                if self.isConstrained != constrained {
+                    self.isConstrained = constrained
                 }
             }
         }

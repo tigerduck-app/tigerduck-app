@@ -417,7 +417,7 @@ final class MailListViewModel {
                 try? await Task.sleep(for: .seconds(MailConstants.pagePollInterval))
                 guard !Task.isCancelled, let self else { return }
                 await self.pollOnce()
-                // A pass waiting out a failure picks up here.
+                // A pass Low Data Mode paused, or one waiting out a failure, picks up here.
                 self.startIndexIfLoaded()
             }
         }

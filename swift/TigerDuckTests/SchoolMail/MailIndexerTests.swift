@@ -9,12 +9,17 @@ struct MailIndexerTests {
         var now = Date(timeIntervalSince1970: 1_790_000_000)
     }
 
+    final class Network {
+        var isConstrained = false
+    }
+
     @MainActor
     struct Harness {
         let indexer: MailIndexer
         let fake: FakeMailClient
         let cache: MailCache
         let clock: Clock
+        let network: Network
 
         func search(_ query: String, in folder: String = "INBOX") -> [UInt32]? {
             cache.searchIndex.search(folder: folder, query: query)?.uids
@@ -41,9 +46,11 @@ struct MailIndexerTests {
         let fake = FakeMailClient(folders: ["INBOX": inbox, "Sent": [FakeMailClient.message(uid: 1, subject: "寄件")]])
         let cache = SchoolMailTestDoubles.temporaryCache()
         let clock = Clock()
+        let network = Network()
         let session = MailPageSession(idleClose: .milliseconds(10), open: { fake }, signOutEvents: NotificationCenter())
-        let indexer = MailIndexer(session: session, cache: cache, startDelay: {}, now: { clock.now })
-        return Harness(indexer: indexer, fake: fake, cache: cache, clock: clock)
+        let indexer = MailIndexer(session: session, cache: cache, startDelay: {}, now: { clock.now },
+                                  isConstrained: { network.isConstrained })
+        return Harness(indexer: indexer, fake: fake, cache: cache, clock: clock, network: network)
     }
 
     @Test func downloadsAFolderNewestFirstInBatches() async throws {
@@ -245,6 +252,47 @@ struct MailIndexerTests {
             "searchTexts INBOX \(Array((UInt32(6)...25).reversed()))",
             "searchTexts INBOX \(Array((UInt32(1)...5).reversed()))",
         ])
+    }
+
+    @Test func lowDataModeKeepsAPassFromStarting() async {
+        let h = Self.harness(inboxCount: 3)
+        h.network.isConstrained = true
+        await h.runPass()
+        #expect(await h.passes() == 0)
+
+        h.network.isConstrained = false
+        await h.runPass()
+        #expect(h.search("公告") == [3, 2, 1])
+    }
+
+    @Test func lowDataModeStopsAPassAfterItsBatchAndOffItResumesAtOnce() async {
+        let h = Self.harness()
+        await h.fake.hold("searchTexts")
+        h.indexer.startIfDue(folders: ["INBOX"])
+        await h.fake.waitForArrival("searchTexts")
+        h.network.isConstrained = true
+        await h.fake.release("searchTexts")
+        await h.indexer.waitForPass()
+        #expect(await h.textBatches().count == 1)
+        #expect(h.search("公告 45") == [45])
+
+        h.network.isConstrained = false
+        await h.runPass()
+        #expect(await h.textBatches().count == 3)
+        #expect(h.search("公告 1") == [19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 1])
+    }
+
+    @Test func aCancelledDownloadKeepsTheBatchInFlightAndSendsNoOther() async throws {
+        let h = Self.harness()
+        await h.fake.hold("searchTexts")
+        let update = Task { try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount) }
+        await h.fake.waitForArrival("searchTexts")
+        update.cancel()
+        await h.fake.release("searchTexts")
+
+        #expect(try await update.value == false)
+        #expect(await h.textBatches().count == 1)
+        #expect(h.search("公告 45") == [45])
     }
 }
 #endif
