@@ -973,6 +973,41 @@ struct DepartingSessionTests {
         #expect(!backend.relaunched().hasDepartingSession)
     }
 
+    @Test("a kept session is kept through a status that spends no token", arguments: [400, 403, 404, 408, 422])
+    func aStatusThatSpendsNothingKeepsTheSession(status: Int) async throws {
+        let backend = await Self.signedOut()
+        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data()), for: backend.refreshURL)
+
+        #expect(await backend.relaunched().departingAccessToken() == nil)
+
+        #expect(try Self.kept(backend)?.token == "R0")
+        #expect(try Self.kept(backend)?.uses == 0)
+    }
+
+    @Test("a sign-in on another backend keeps the session kept on the old one, and the retry sends it there")
+    func aSignInElsewhereKeepsTheSessionForItsBackend() async throws {
+        let backend = await Self.signedOut()
+        let current = SettingsAPIStub.uniqueBaseURL()
+        let relaunched = backend.relaunched(at: current)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: current.appendingPathComponent("auth/login"))
+        _ = try await relaunched.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
+        #expect(relaunched.departingSessionBackend == backend.baseURL)
+
+        let registration = RegistrationFixture(manager: relaunched, baseURL: current)
+        let unregisterURL = backend.baseURL.appendingPathComponent("devices/test-device")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: unregisterURL)
+        await relaunched.retryDepartingUnregister { await registration.service.unregisterDevice(at: $0) }
+
+        let unregister = try #require(SettingsAPIStub.requests(for: unregisterURL).first)
+        #expect(unregister.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
+        #expect(try Self.kept(backend) == nil)
+        #expect(await relaunched.validAccessToken() == "B1")
+    }
+
     @Test("a kept session sent twice with no reply goes out no more, and is forgotten")
     func aKeptSessionGoesOutNoThirdTime() async throws {
         let backend = await Self.signedOut()

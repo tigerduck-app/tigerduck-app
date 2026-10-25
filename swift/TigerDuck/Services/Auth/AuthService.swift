@@ -177,6 +177,19 @@ final class AuthService {
         signOutCalls = task
         return task
     }
+    @ObservationIgnored private(set) var departingUnregisterRetry: Task<Void, Never>?
+
+    /// The launch's retry of a kept unregister is no sign-out: it clears nothing of an account,
+    /// and only a backend sign-in, whose device it could otherwise unregister, waits for it.
+    func startDepartingUnregisterRetry(_ retry: @escaping @MainActor () async -> Void) {
+        let beginBackgroundTask = beginSignOutBackgroundTask
+        departingUnregisterRetry = Task { @MainActor in
+            let endBackgroundTask = await beginBackgroundTask()
+            await retry()
+            await endBackgroundTask()
+        }
+    }
+
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
     /// When an automatic backend sign-in that had credentials to send last failed. The backend
     /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
@@ -329,6 +342,7 @@ final class AuthService {
     private func performV3Login(studentId: String, harvesting: Bool = false) async -> Bool {
         guard let authTokenManager else { return false }
         let generation = loginGeneration
+        await departingUnregisterRetry?.value
         let moodleToken = harvesting ? await moodleTokenForBackend() : await moodleTokens.currentToken()
         guard let moodleToken, !moodleToken.isEmpty, loginGeneration == generation else { return false }
         let moodlePrivateToken = KeychainManager.loadString(

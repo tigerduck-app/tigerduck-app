@@ -47,3 +47,5 @@ leaves on the device.
 - A new store of account data needs a row and a clearer reached from step 3, or a check of the
   account generation before it writes; the check catches the declarations it can read, and the
   table names the stores it cannot.
+- The launch's retry of a kept unregister is not a sign-out: it clears nothing of an account, and
+  only a backend sign-in waits for it.

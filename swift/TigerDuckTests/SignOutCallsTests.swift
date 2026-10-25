@@ -51,11 +51,45 @@ struct SignOutCallsTests {
         #expect(steps.taken == ["pages", "calls"])
     }
 
-    @Test("a launch sends the unregister a sign-out left unsent only past onboarding and signed out")
-    func theLaunchRetriesOnlyPastOnboardingAndSignedOut() {
-        #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, sessionKept: true))
-        #expect(!AppState.retriesDepartingUnregister(onboarded: false, signedIn: false, sessionKept: true))
-        #expect(!AppState.retriesDepartingUnregister(onboarded: true, signedIn: true, sessionKept: true))
-        #expect(!AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, sessionKept: false))
+    @Test("a launch sends the unregister a sign-out left unsent past onboarding, signed in only for another backend")
+    func theLaunchRetriesOnlyPastOnboardingAndForAnotherAccount() {
+        let here = URL(string: "https://api.example.test/v3")!
+        let there = URL(string: "https://old.example.test/v3")!
+        #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, keptOn: here, backend: here))
+        #expect(!AppState.retriesDepartingUnregister(onboarded: false, signedIn: false, keptOn: here, backend: here))
+        #expect(!AppState.retriesDepartingUnregister(onboarded: true, signedIn: true, keptOn: here, backend: here))
+        #expect(!AppState.retriesDepartingUnregister(
+            onboarded: true, signedIn: true, keptOn: URL(string: "https://api.example.test/v3/")!, backend: here
+        ))
+        #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: true, keptOn: there, backend: here))
+        #expect(!AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, keptOn: nil, backend: here))
+    }
+
+    @Test("the launch's retry of a kept unregister forgets no pages and leaves the delivered notifications")
+    func theLaunchRetryClearsNothingOfAnAccount() async {
+        let steps = Steps()
+        let auth = AuthService(
+            keychainHasCredentials: { false },
+            notificationCenter: NotificationCenter(),
+            schoolSignIn: { _, _ in false }
+        )
+        #if os(iOS)
+        let center = DeliveredNotificationsStub([("reminder-1", "assignments")])
+        auth.accountNotifications = center
+        #endif
+        auth.beginSignOutBackgroundTask = {
+            await MainActor.run { steps.taken.append("begin") }
+            return { await MainActor.run { steps.taken.append("end") } }
+        }
+        auth.forgetPages = { steps.taken.append("pages") }
+
+        auth.startDepartingUnregisterRetry { steps.taken.append("retry") }
+        await auth.departingUnregisterRetry?.value
+
+        #expect(steps.taken == ["begin", "retry", "end"])
+        #expect(auth.signOutCalls == nil)
+        #if os(iOS)
+        #expect(center.delivered.count == 1)
+        #endif
     }
 }

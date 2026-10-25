@@ -178,7 +178,8 @@ actor AuthTokenManager {
             )
         )
 
-        var request = URLRequest(url: baseURLProvider().appendingPathComponent("auth/login"))
+        let baseURL = baseURLProvider()
+        var request = URLRequest(url: baseURL.appendingPathComponent("auth/login"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
@@ -194,7 +195,8 @@ actor AuthTokenManager {
         let result = try JSONDecoder().decode(LoginResponse.self, from: data)
         guard signInGeneration == generation else { throw CancellationError() }
         store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
-        forgetDepartingSession()
+        // A session kept on another backend still has the device there; the launch retry sends it.
+        if let kept = storedDepartingSession(), Self.isSameBackend(kept.baseURL, baseURL) { forgetDepartingSession() }
         return LoginResult(
             accessToken: result.access_token,
             refreshToken: result.refresh_token,
@@ -247,6 +249,8 @@ actor AuthTokenManager {
 
     nonisolated var hasDepartingSession: Bool { storedDepartingSession() != nil }
 
+    nonisolated var departingSessionBackend: URL? { storedDepartingSession()?.baseURL }
+
     func departingAccessToken() async -> String? {
         guard let session = storedDepartingSession() else { return nil }
         guard session.uses < Self.refreshTokenUseLimit else {
@@ -255,7 +259,19 @@ actor AuthTokenManager {
         }
         guard keepDeparting(session.counted()) else { return nil }
         let token = await refreshDeparting(session)
-        return refreshToken == nil ? token : nil
+        return keepsAlongside(session) ? token : nil
+    }
+
+    /// While signed in, only a session kept on another backend is sent: one on this backend was
+    /// the device's, and the sign-in has given it to the new account.
+    private func keepsAlongside(_ session: DepartingSession) -> Bool {
+        refreshToken == nil || !Self.isSameBackend(session.baseURL, baseURLProvider())
+    }
+
+    /// One server's base URL can be spelled with or without a trailing slash.
+    nonisolated static func isSameBackend(_ one: URL, _ other: URL) -> Bool {
+        let spelling = { (url: URL) in String(url.standardized.absoluteString.reversed().drop { $0 == "/" }.reversed()) }
+        return spelling(one) == spelling(other)
     }
 
     func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {
@@ -282,7 +298,7 @@ actor AuthTokenManager {
 
     @discardableResult
     private func keepDeparting(_ session: DepartingSession) -> Bool {
-        guard refreshToken == nil, let data = try? JSONEncoder().encode(session) else { return false }
+        guard keepsAlongside(session), let data = try? JSONEncoder().encode(session) else { return false }
         return saveConfirmed(Self.departingSessionKey, String(decoding: data, as: UTF8.self))
     }
 
@@ -294,7 +310,8 @@ actor AuthTokenManager {
         let send = await postRefresh(session.refreshToken, on: session.baseURL)
         let status = send.reply?.1.statusCode
         if let status, status != 200 { await APIVersionGate.shared.note(statusCode: status) }
-        if let status, Self.turnsDown(status) {
+        // `/auth/refresh` answers a dead token with 401; a proxy's 403 or 408 spent nothing.
+        if status == 401 {
             forgetDepartingSession()
             return nil
         }
