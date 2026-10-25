@@ -50,15 +50,30 @@ actor AuthTokenManager {
         let accessToken: String?
     }
 
+    /// One per backend a sign-out could not unregister from yet. `id` names the sign-out that
+    /// kept it, through its rotations, so a retry that a newer sign-out overtook writes nothing;
+    /// a session an earlier version kept has none.
     private nonisolated struct DepartingSession: Codable {
         var refreshToken: String
         var uses: Int
         var baseURL: URL
+        var id: String?
 
         func counted() -> DepartingSession {
-            DepartingSession(refreshToken: refreshToken, uses: uses + 1, baseURL: baseURL)
+            DepartingSession(refreshToken: refreshToken, uses: uses + 1, baseURL: baseURL, id: id)
+        }
+
+        func rotated(to next: String) -> DepartingSession {
+            DepartingSession(refreshToken: next, uses: 0, baseURL: baseURL, id: id)
+        }
+
+        func isSame(as other: DepartingSession) -> Bool {
+            id == other.id && AuthTokenManager.isSameBackend(baseURL, other.baseURL)
         }
     }
+
+    /// The session the latest sign-out kept, which its unregister forgets once it lands.
+    private var signOutSession: DepartingSession?
 
     static let signOutCallsWindow: TimeInterval = 120
 
@@ -196,7 +211,9 @@ actor AuthTokenManager {
         guard signInGeneration == generation else { throw CancellationError() }
         store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
         // A session kept on another backend still has the device there; the launch retry sends it.
-        if let kept = storedDepartingSession(), Self.isSameBackend(kept.baseURL, baseURL) { forgetDepartingSession() }
+        let kept = storedDepartingSessions()
+        let elsewhere = kept.filter { !Self.isSameBackend($0.baseURL, baseURL) }
+        if elsewhere.count != kept.count { storeDepartingSessions(elsewhere) }
         return LoginResult(
             accessToken: result.access_token,
             refreshToken: result.refresh_token,
@@ -217,44 +234,48 @@ actor AuthTokenManager {
         logout()
         guard let refresh else { return nil }
         let departing = DepartingSession(
-            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURLProvider()
+            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURLProvider(),
+            id: UUID().uuidString
         )
-        keepDeparting(departing)
+        signOutSession = departing
+        storeDepartingSessions(storedDepartingSessions().filter { !Self.isSameBackend($0.baseURL, departing.baseURL) } + [departing])
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
         if let refreshOut {
             _ = await refreshOut.value
             let late = lateRefresh?.generation == generation ? lateRefresh : nil
             lateRefresh = nil
             if let late, let token = late.accessToken {
-                if let next = late.refreshToken {
-                    keepDeparting(DepartingSession(refreshToken: next, uses: 0, baseURL: departing.baseURL))
-                }
+                if let next = late.refreshToken { keepDeparting(departing.rotated(to: next)) }
                 return token
             }
             if let late, !late.mayResend {
-                forgetDepartingSession()
+                forgetDeparting(departing)
                 return nil
             }
         }
         guard uses < Self.refreshTokenUseLimit else {
-            forgetDepartingSession()
+            forgetDeparting(departing)
             return nil
         }
         if refreshToken == nil || !refreshTokenIsStored {
             guard saveConfirmed(Self.refreshTokenUsesKey, String(Self.refreshTokenUseLimit)) else { return nil }
         }
-        if !keepDeparting(departing.counted()) { forgetDepartingSession() }
+        if !keepDeparting(departing.counted()) { forgetDeparting(departing) }
         return await refreshDeparting(departing)
     }
 
-    nonisolated var hasDepartingSession: Bool { storedDepartingSession() != nil }
+    nonisolated var hasDepartingSession: Bool { !storedDepartingSessions().isEmpty }
 
-    nonisolated var departingSessionBackend: URL? { storedDepartingSession()?.baseURL }
+    nonisolated var departingSessionBackends: [URL] { storedDepartingSessions().map(\.baseURL) }
 
     func departingAccessToken() async -> String? {
-        guard let session = storedDepartingSession() else { return nil }
+        guard let session = storedDepartingSessions().first else { return nil }
+        return await departingAccessToken(for: session)
+    }
+
+    private func departingAccessToken(for session: DepartingSession) async -> String? {
         guard session.uses < Self.refreshTokenUseLimit else {
-            forgetDepartingSession()
+            forgetDeparting(session)
             return nil
         }
         guard keepDeparting(session.counted()) else { return nil }
@@ -275,31 +296,54 @@ actor AuthTokenManager {
     }
 
     func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {
-        guard let session = storedDepartingSession(), let token = await departingAccessToken() else { return }
-        let target = session.baseURL
-        await unregisterDeparting(accessToken: token) { await unregister(target) }
+        for session in storedDepartingSessions() where keepsAlongside(session) {
+            guard let token = await departingAccessToken(for: session) else { continue }
+            let target = session.baseURL
+            await unregisterDeparting(session, accessToken: token) { await unregister(target) }
+        }
     }
 
     func unregisterDeparting(accessToken: String?, _ unregister: @MainActor @Sendable () async -> Bool) async {
+        await unregisterDeparting(signOutSession, accessToken: accessToken, unregister)
+    }
+
+    private func unregisterDeparting(
+        _ session: DepartingSession?, accessToken: String?, _ unregister: @MainActor @Sendable () async -> Bool
+    ) async {
         let landed = await Self.$departing.withValue(DepartingAccount(accessToken: accessToken)) {
             await unregister()
         }
-        if landed { forgetDepartingSession() }
+        if landed, let session { forgetDeparting(session) }
     }
 
-    func forgetDepartingSession() {
-        tokens.delete(Self.departingSessionKey)
-    }
-
-    private nonisolated func storedDepartingSession() -> DepartingSession? {
+    private nonisolated func storedDepartingSessions() -> [DepartingSession] {
         tokens.load(Self.departingSessionKey)
-            .flatMap { try? JSONDecoder().decode(DepartingSession.self, from: Data($0.utf8)) }
+            .flatMap { try? JSONDecoder().decode([DepartingSession].self, from: Data($0.utf8)) } ?? []
     }
 
     @discardableResult
-    private func keepDeparting(_ session: DepartingSession) -> Bool {
-        guard keepsAlongside(session), let data = try? JSONEncoder().encode(session) else { return false }
+    private func storeDepartingSessions(_ sessions: [DepartingSession]) -> Bool {
+        guard !sessions.isEmpty else { return deleteConfirmed(Self.departingSessionKey) }
+        guard let data = try? JSONEncoder().encode(sessions) else { return false }
         return saveConfirmed(Self.departingSessionKey, String(decoding: data, as: UTF8.self))
+    }
+
+    /// Replaces the stored version of `session` only while it is still the one stored, so a retry
+    /// a newer sign-out overtook writes nothing.
+    @discardableResult
+    private func keepDeparting(_ session: DepartingSession) -> Bool {
+        var sessions = storedDepartingSessions()
+        guard keepsAlongside(session), let index = sessions.firstIndex(where: { $0.isSame(as: session) }) else {
+            return false
+        }
+        sessions[index] = session
+        return storeDepartingSessions(sessions)
+    }
+
+    private func forgetDeparting(_ session: DepartingSession) {
+        let sessions = storedDepartingSessions()
+        guard sessions.contains(where: { $0.isSame(as: session) }) else { return }
+        storeDepartingSessions(sessions.filter { !$0.isSame(as: session) })
     }
 
     private func refreshDeparting(_ session: DepartingSession) async -> String? {
@@ -312,13 +356,13 @@ actor AuthTokenManager {
         if let status, status != 200 { await APIVersionGate.shared.note(statusCode: status) }
         // `/auth/refresh` answers a dead token with 401; a proxy's 403 or 408 spent nothing.
         if status == 401 {
-            forgetDepartingSession()
+            forgetDeparting(session)
             return nil
         }
         if !send.mayHaveUsed { keepDeparting(session) }
         guard status == 200, let data = send.reply?.0,
               let reply = try? JSONDecoder().decode(RefreshResponse.self, from: data) else { return nil }
-        keepDeparting(DepartingSession(refreshToken: reply.refresh_token, uses: 0, baseURL: session.baseURL))
+        keepDeparting(session.rotated(to: reply.refresh_token))
         return reply.access_token
     }
 

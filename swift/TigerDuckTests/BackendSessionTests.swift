@@ -865,13 +865,19 @@ struct BackendTokenRefreshTests {
 
 @Suite("The session a sign-out keeps for its unregister")
 struct DepartingSessionTests {
+    private static func keptSessions(_ backend: BackendFixture) throws -> [(token: String, uses: Int, baseURL: String?)] {
+        guard let json = backend.recorder.stored(AuthTokenManager.departingSessionKey) else { return [] }
+        let sessions = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
+        return try sessions.map { session in
+            (
+                try #require(session["refreshToken"] as? String), try #require(session["uses"] as? Int),
+                session["baseURL"] as? String
+            )
+        }
+    }
+
     private static func kept(_ backend: BackendFixture) throws -> (token: String, uses: Int, baseURL: String?)? {
-        guard let json = backend.recorder.stored(AuthTokenManager.departingSessionKey) else { return nil }
-        let session = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        return (
-            try #require(session["refreshToken"] as? String), try #require(session["uses"] as? Int),
-            session["baseURL"] as? String
-        )
+        try keptSessions(backend).first
     }
 
     private static func signedOut() async -> BackendFixture {
@@ -994,7 +1000,7 @@ struct DepartingSessionTests {
             studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
         )
         #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
-        #expect(relaunched.departingSessionBackend == backend.baseURL)
+        #expect(relaunched.departingSessionBackends == [backend.baseURL])
 
         let registration = RegistrationFixture(manager: relaunched, baseURL: current)
         let unregisterURL = backend.baseURL.appendingPathComponent("devices/test-device")
@@ -1006,6 +1012,81 @@ struct DepartingSessionTests {
         #expect(unregister.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
         #expect(try Self.kept(backend) == nil)
         #expect(await relaunched.validAccessToken() == "B1")
+    }
+
+    @Test("a sign-out during a launch retry on another backend keeps its own session through the retry's writes")
+    func aSignOutDuringARetryElsewhereKeepsItsSession() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = await Self.signedOut()
+        let current = SettingsAPIStub.uniqueBaseURL()
+        let relaunched = backend.relaunched(at: current)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: current.appendingPathComponent("auth/login"))
+        _ = try await relaunched.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        let registration = RegistrationFixture(manager: relaunched, baseURL: current)
+        let unregisterURL = backend.baseURL.appendingPathComponent("devices/test-device")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: unregisterURL)
+        let retry = Task { await relaunched.retryDepartingUnregister { await registration.service.unregisterDevice(at: $0) } }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        #expect(await relaunched.endSession() == "B1")
+        gate.open()
+        await retry.value
+
+        #expect(SettingsAPIStub.requests(for: unregisterURL).count == 1)
+        #expect(try Self.keptSessions(backend).map(\.token) == ["BR1"])
+        #expect(try Self.keptSessions(backend).map(\.baseURL) == [current.absoluteString])
+    }
+
+    @Test("a late 401 of a retry that a sign-in and a sign-out overtook leaves the newer sign-out's session")
+    func aLateTurnDownLeavesANewerSession() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = await Self.signedOut()
+        let manager = backend.relaunched()
+        SettingsAPIStub.enqueue(.init(statusCode: 401, body: Data(), gate: gate), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        let retry = Task { await manager.departingAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        #expect(await manager.endSession() == "B1")
+        gate.open()
+
+        #expect(await retry.value == nil)
+        #expect(try Self.keptSessions(backend).map(\.token) == ["BR1"])
+    }
+
+    @Test("sign-outs on two backends keep a session for each, and a later launch unregisters from both")
+    func twoBackendsKeepASessionEach() async throws {
+        let backend = await Self.signedOut()
+        let other = SettingsAPIStub.uniqueBaseURL()
+        let onOther = backend.relaunched(at: other)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: other.appendingPathComponent("auth/login"))
+        _ = try await onOther.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        #expect(await onOther.endSession() == "B1")
+        #expect(try Self.keptSessions(backend).map(\.token) == ["R0", "BR1"])
+
+        let relaunched = backend.relaunched(at: other)
+        let registration = RegistrationFixture(manager: relaunched, baseURL: other)
+        let firstUnregister = backend.baseURL.appendingPathComponent("devices/test-device")
+        let otherUnregister = other.appendingPathComponent("devices/test-device")
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "B2", refresh: "BR2"), for: other.appendingPathComponent("auth/refresh"))
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: firstUnregister)
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: otherUnregister)
+        await relaunched.retryDepartingUnregister { await registration.service.unregisterDevice(at: $0) }
+
+        #expect(SettingsAPIStub.requests(for: firstUnregister).first?.value(forHTTPHeaderField: "Authorization") == "Bearer A1")
+        #expect(SettingsAPIStub.requests(for: otherUnregister).first?.value(forHTTPHeaderField: "Authorization") == "Bearer B2")
+        #expect(try Self.keptSessions(backend).isEmpty)
     }
 
     @Test("a kept session sent twice with no reply goes out no more, and is forgotten")

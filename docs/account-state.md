@@ -38,7 +38,7 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | Store | Name | Scope | Cleared in |
 |---|---|---|---|
 | keychain | `accessTokenKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `clearTokens` |
-| keychain | `departingSessionKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `forgetDepartingSession` |
+| keychain | `departingSessionKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `storeDepartingSessions` |
 | keychain | `expiresAtKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `clearTokens` |
 | keychain | `libraryPassword` | library | `swift/TigerDuck/Services/API/Library/LibraryService.swift` `clearCredentials` |
 | keychain | `libraryToken` | library | `swift/TigerDuck/Services/API/Library/LibraryService.swift` `clearToken` |

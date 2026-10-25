@@ -55,14 +55,14 @@ struct SignOutCallsTests {
     func theLaunchRetriesOnlyPastOnboardingAndForAnotherAccount() {
         let here = URL(string: "https://api.example.test/v3")!
         let there = URL(string: "https://old.example.test/v3")!
-        #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, keptOn: here, backend: here))
-        #expect(!AppState.retriesDepartingUnregister(onboarded: false, signedIn: false, keptOn: here, backend: here))
-        #expect(!AppState.retriesDepartingUnregister(onboarded: true, signedIn: true, keptOn: here, backend: here))
+        #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, keptOn: [here], backend: here))
+        #expect(!AppState.retriesDepartingUnregister(onboarded: false, signedIn: false, keptOn: [here], backend: here))
+        #expect(!AppState.retriesDepartingUnregister(onboarded: true, signedIn: true, keptOn: [here], backend: here))
         #expect(!AppState.retriesDepartingUnregister(
-            onboarded: true, signedIn: true, keptOn: URL(string: "https://api.example.test/v3/")!, backend: here
+            onboarded: true, signedIn: true, keptOn: [URL(string: "https://api.example.test/v3/")!], backend: here
         ))
-        #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: true, keptOn: there, backend: here))
-        #expect(!AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, keptOn: nil, backend: here))
+        #expect(AppState.retriesDepartingUnregister(onboarded: true, signedIn: true, keptOn: [here, there], backend: here))
+        #expect(!AppState.retriesDepartingUnregister(onboarded: true, signedIn: false, keptOn: [], backend: here))
     }
 
     @Test("the launch's retry of a kept unregister forgets no pages and leaves the delivered notifications")

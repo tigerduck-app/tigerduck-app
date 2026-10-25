@@ -164,7 +164,7 @@ final class AppState {
         }
         if Self.retriesDepartingUnregister(
             onboarded: hasCompletedOnboarding, signedIn: authService.hasStoredCredentials,
-            keptOn: atm.departingSessionBackend, backend: PushServerConfig.resolveServerURL()
+            keptOn: atm.departingSessionBackends, backend: PushServerConfig.resolveServerURL()
         ) {
             authService.startDepartingUnregisterRetry { [pushCoordinator] in
                 await atm.retryDepartingUnregister { await pushCoordinator.registration.unregisterDevice(at: $0) }

@@ -9,6 +9,7 @@ extension AppState {
         CourseColorPickSeedMigration.runIfNeeded()
         StoredPasswordLatchRetryMigration.runIfNeeded()
         LibraryPasswordLatchRetryMigration.runIfNeeded()
+        DepartingSessionListMigration.runIfNeeded()
         if CustomAccentContrastMigration.runIfNeeded() {
             accentColorHex = Defaults[.accentColorHex]
         }
