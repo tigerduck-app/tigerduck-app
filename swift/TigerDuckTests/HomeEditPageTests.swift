@@ -32,17 +32,20 @@ struct HomeEditPageTests {
 
             let title = HomeSection.HomeSectionType.todayCourses.defaultTitle
             try await waitUntil { accessibilityElement(labeled: title, in: host.view) != nil }
-            // The tree lists some elements twice, so they are told apart by where they are.
-            let buttonFrames = {
+            // The tree lists some elements twice, so a set tells them apart.
+            let buttons = {
                 Set(exposedAccessibilityElements(in: host.view)
                     .filter { $0.accessibilityTraits.contains(.button) }
-                    .map { NSCoder.string(for: $0.accessibilityFrame) })
+                    .map { "\($0.accessibilityLabel ?? ""): \($0.accessibilityValue ?? "")" })
             }
-            try await waitUntil(timeout: .seconds(10)) { buttonFrames().count >= 4 }
+            try await waitUntil(timeout: .seconds(10)) { buttons().count >= 4 }
             try await Task.sleep(for: .milliseconds(300))
             #expect(!exposedAccessibilityElements(in: host.view).contains { $0.accessibilityTraits.contains(.adjustable) })
-            // A remove button for each of the three sections and for the one widget.
-            #expect(buttonFrames().count == 4)
+            // Only the remove buttons of the three sections and the one widget, each naming what it removes.
+            let remove = String(localized: "action_remove")
+            #expect(buttons() == Set(
+                viewModel.sections.map(\.title).map { "\(remove): \($0)" } + ["\(remove): \(AppFeature.library.displayName)"]
+            ))
         }
     }
 }

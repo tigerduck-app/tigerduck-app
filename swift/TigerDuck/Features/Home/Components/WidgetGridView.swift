@@ -90,6 +90,8 @@ struct WidgetGridView: View {
                         .foregroundStyle(.white, .red)
                         .font(.title3)
                 }
+                .accessibilityLabel(String(localized: "action_remove"))
+                .accessibilityValue(widget.feature.displayName)
                 .offset(x: -6, y: -6)
             }
         }

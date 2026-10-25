@@ -66,6 +66,8 @@ struct HomeEditPage<Header: View>: View {
                     .foregroundStyle(.white, .red)
                     .font(.title3)
             }
+            .accessibilityLabel(String(localized: "action_remove"))
+            .accessibilityValue(section.displayTitle)
             .padding(.trailing, TigerDuckTheme.Spacing.lg)
         }
         .opacity(activeSectionDrag?.id == section.id ? 0.35 : 1)
@@ -121,6 +123,11 @@ struct HomeEditPage<Header: View>: View {
     }
 }
 
+private extension HomeSection {
+    /// The time machine's live header always reads the current language's title.
+    var displayTitle: String { type == .todayCourses ? type.defaultTitle : title }
+}
+
 /// The header of a section with live content and the shape of its rows.
 private struct SectionPlaceholder: View {
     let section: HomeSection
@@ -130,8 +137,7 @@ private struct SectionPlaceholder: View {
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
-            // The time machine's live header always reads the current language's title.
-            SectionHeader(title: section.type == .todayCourses ? section.type.defaultTitle : section.title)
+            SectionHeader(title: section.displayTitle)
 
             Group {
                 if section.type == .todayCourses {
@@ -194,7 +200,7 @@ private struct SectionDragPreview: View {
             Image(systemName: section.type.iconName)
                 .font(.title3)
                 .foregroundStyle(.tint)
-            Text(section.title)
+            Text(section.displayTitle)
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(1)
