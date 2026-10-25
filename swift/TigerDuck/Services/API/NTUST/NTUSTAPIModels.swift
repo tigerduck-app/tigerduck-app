@@ -92,3 +92,25 @@ struct CourseSearchRequest: Codable {
         )
     }
 }
+
+/// The department and GE type lists of the course query's filters, as the device stores them.
+struct CourseSearchOptions: Codable, Equatable {
+    struct Option: Codable, Hashable {
+        let code: String
+        let name: String
+        let englishName: String
+
+        func name(in language: String) -> String { language == "en" ? englishName : name }
+    }
+
+    struct College: Codable, Equatable {
+        let name: String
+        let englishName: String
+        let departments: [Option]
+
+        func name(in language: String) -> String { language == "en" ? englishName : name }
+    }
+
+    var colleges: [College] = []
+    var dimensions: [Option] = []
+}
