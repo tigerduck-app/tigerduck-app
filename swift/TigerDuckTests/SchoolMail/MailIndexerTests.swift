@@ -9,6 +9,7 @@ struct MailIndexerTests {
         var now = Date(timeIntervalSince1970: 1_790_000_000)
     }
 
+    @MainActor
     struct Harness {
         let indexer: MailIndexer
         let fake: FakeMailClient
@@ -21,6 +22,15 @@ struct MailIndexerTests {
 
         func textBatches(_ folder: String = "INBOX") async -> [String] {
             await fake.calls.filter { $0.hasPrefix("searchTexts \(folder) ") }
+        }
+
+        func passes() async -> Int {
+            await fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count
+        }
+
+        func runPass() async {
+            indexer.startIfDue(folders: ["INBOX"])
+            await indexer.waitForPass()
         }
     }
 
@@ -144,22 +154,97 @@ struct MailIndexerTests {
         #expect(!calls.contains("undeletedUIDs Sent"))
 
         await h.fake.update { $0.searchTextsError = nil }
+        h.clock.now += MailConstants.indexRetryDelay
         h.indexer.startIfDue(folders: ["INBOX", "Sent"])
         await h.indexer.waitForPass()
         #expect(h.search("公告") == [3, 2, 1])
     }
 
-    @Test func aCancelledDownloadKeepsTheBatchInFlightAndSendsNoOther() async throws {
+    @Test func aFailedPassWaitsLongerBeforeEachRetry() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.runPass()
+        await h.runPass()
+        #expect(await h.passes() == 1)
+
+        h.clock.now += MailConstants.indexRetryDelay
+        await h.runPass()
+        #expect(await h.passes() == 2)
+
+        h.clock.now += MailConstants.indexRetryDelay
+        await h.runPass()
+        #expect(await h.passes() == 2)
+        h.clock.now += MailConstants.indexRetryDelay
+        await h.runPass()
+        #expect(await h.passes() == 3)
+
+        await h.fake.update { $0.searchTextsError = nil }
+        h.clock.now += 4 * MailConstants.indexRetryDelay
+        await h.runPass()
+        #expect(h.search("公告") == [3, 2, 1])
+
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?.append(FakeMailClient.message(uid: 4, subject: "公告 4"))
+            fake.searchTextsError = .serverBusy
+        }
+        h.indexer.noteNewMail()
+        await h.runPass()
+        h.clock.now += MailConstants.indexRetryDelay
+        await h.runPass()
+        #expect(await h.passes() == 6)
+    }
+
+    @Test func aMailWhoseTextNeverArrivesIsSkippedAfterFailingAloneTwice() async throws {
         let h = Self.harness()
+        await h.fake.update { $0.searchTextsFailingUIDs = [30] }
+
+        #expect(try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount) == false)
+        #expect(h.search("公告 25") == [25])
+        #expect(h.search("公告 31") == [])
+        #expect(try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount) == false)
+        #expect(h.search("公告 31") == [31])
+        #expect(try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount) == false)
+        #expect(try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount) == true)
+
+        let tries = await h.textBatches().filter { $0.contains(" 30,") || $0.hasSuffix("[30]") }
+        #expect(tries == [
+            "searchTexts INBOX \(Array((UInt32(26)...45).reversed()))",
+            "searchTexts INBOX [30]",
+            "searchTexts INBOX [30]",
+        ])
+        #expect(h.search("公告 30") == [])
+    }
+
+    @Test func aBatchThatFailsAfterAStopCountsAgainstNoMail() async throws {
+        let h = Self.harness()
+        await h.fake.update { $0.searchTextsFailingUIDs = [30] }
         await h.fake.hold("searchTexts")
         let update = Task { try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount) }
         await h.fake.waitForArrival("searchTexts")
         update.cancel()
         await h.fake.release("searchTexts")
-
         #expect(try await update.value == false)
-        #expect(await h.textBatches().count == 1)
-        #expect(h.search("公告 45") == [45])
+
+        await h.fake.update { $0.searchTextsFailingUIDs = [] }
+        #expect(try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount))
+        #expect(await h.textBatches().count == 4)
+    }
+
+    @Test func aPassStartedRightAfterAStopWaitsForTheStoppedOne() async {
+        let h = Self.harness()
+        await h.fake.hold("searchTexts")
+        h.indexer.startIfDue(folders: ["INBOX"])
+        await h.fake.waitForArrival("searchTexts")
+        h.indexer.stop()
+        h.indexer.startIfDue(folders: ["INBOX"])
+        await h.fake.release("searchTexts")
+        await h.indexer.waitForPass()
+
+        #expect(await h.textBatches() == [
+            "searchTexts INBOX \(Array((UInt32(26)...45).reversed()))",
+            "searchTexts INBOX \(Array((UInt32(6)...25).reversed()))",
+            "searchTexts INBOX \(Array((UInt32(1)...5).reversed()))",
+        ])
     }
 }
 #endif

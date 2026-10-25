@@ -23,6 +23,8 @@ actor FakeMailClient: MailClient {
     private(set) var pageRequests: [String] = []
     var summariesError: MailClientError?
     var searchTextsError: MailClientError?
+    /// Mails whose text never arrives: a batch holding one fails as an unreadable answer would.
+    var searchTextsFailingUIDs: Set<UInt32> = []
     /// Simulates a server that refuses `SEARCH HEADER "Message-ID"` — nothing in Mail2000's
     /// CAPABILITY banner promises it is honoured, and a refusal is what makes the sent-copy
     /// dedupe probe unanswerable.
@@ -232,6 +234,7 @@ actor FakeMailClient: MailClient {
         calls.append("searchTexts \(folder) \(uids)")
         await gate("searchTexts")
         if let searchTextsError { throw searchTextsError }
+        if !searchTextsFailingUIDs.isDisjoint(with: uids) { throw MailClientError.protocolError("unreadable") }
         try assertUIDValidity(expectedUIDValidity, folder: folder)
         var texts: [UInt32: String] = [:]
         for message in folders[folder] ?? [] where uids.contains(message.summary.uid) && !message.summary.isDeleted {
