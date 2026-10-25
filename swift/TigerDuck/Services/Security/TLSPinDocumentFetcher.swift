@@ -28,7 +28,6 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
     private let send: Send
     private let clock: @Sendable () -> Date
     private let onApplied: @Sendable () -> Void
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Security.TLSPin")
     private let lock = NSLock()
     private var lastFetch: Date?
     private var inFlight: Task<Void, Never>?
@@ -82,14 +81,14 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
             let (data, response) = try await send(request)
             guard let status = (response as? HTTPURLResponse)?.statusCode else { return false }
             guard status == 200 else {
-                logger.error("TLS pin document fetch answered \(status, privacy: .public)")
+                AppLogger.tlsPins.error("TLS pin document fetch answered \(status, privacy: .public)")
                 return true
             }
             lock.withLock { lastFetch = clock() }
             if engine.acceptDocument(data) == .applied { onApplied() }
             return true
         } catch {
-            logger.error("TLS pin document fetch failed: \(error.localizedDescription, privacy: .private)")
+            AppLogger.tlsPins.error("TLS pin document fetch failed: \(error.localizedDescription, privacy: .private)")
             return false
         }
     }

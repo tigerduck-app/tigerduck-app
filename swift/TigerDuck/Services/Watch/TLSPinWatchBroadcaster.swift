@@ -13,7 +13,6 @@ final class TLSPinWatchBroadcaster {
     private let engine: TLSPinEngine
     private let defaults: UserDefaults
     private let clock: () -> Date
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "watch.tlsPins")
 
     init(
         session: WatchSessionPushing? = nil,
@@ -34,7 +33,7 @@ final class TLSPinWatchBroadcaster {
             acceptances: engine.acceptances
         )
         guard let json = try? payload.encodedJSON() else {
-            logger.error("TLS pin payload encode failed")
+            AppLogger.tlsPins.error("TLS pin payload encode failed")
             return nil
         }
         return [
@@ -49,9 +48,8 @@ final class TLSPinWatchBroadcaster {
               let userInfo = userInfo() else { return }
         _ = session.transferUserInfo(userInfo)
         if session.isReachable {
-            let logger = logger
             session.sendMessage(userInfo, replyHandler: nil) { @Sendable error in
-                logger.error("TLS pin sendMessage failed: \(error.localizedDescription, privacy: .private)")
+                AppLogger.tlsPins.error("TLS pin sendMessage failed: \(error.localizedDescription, privacy: .private)")
             }
         }
     }
