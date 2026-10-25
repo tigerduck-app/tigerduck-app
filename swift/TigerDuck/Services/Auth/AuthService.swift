@@ -555,6 +555,9 @@ final class AuthService {
         guard loginGeneration == generation else { return false }
         reauthErrorMessage = nil
         guard (try? await moodleTokens.refreshTokenIfNeeded()) != nil, loginGeneration == generation else { return false }
+        // Not at the school's yes: a refused Moodle token sign-in after it would count from one
+        // again, and the password would go out every ten seconds. The backend takes no password.
+        SSOLoginService.forgetStoredPasswordRefusals()
         await signInToBackendAgain()
         return true
     }

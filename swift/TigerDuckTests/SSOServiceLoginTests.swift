@@ -288,12 +288,14 @@ struct SSOServiceLoginTests {
         return (URLSession(configuration: config), jar)
     }
 
-    static func enqueueLiveSessionThenSignIn(for service: URL) {
+    static func enqueueLiveSessionThenSignIn(for service: URL, posts: Int = 1) {
         SSOServerStub.reset()
-        SSOServerStub.enqueue(.page(servicePage), for: service)
-        enqueueSignInForm(for: service)
-        SSOServerStub.enqueue(.page(servicePage), for: postURL)
-        SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: probeURL)
+        for _ in 0..<posts {
+            SSOServerStub.enqueue(.page(servicePage), for: service)
+            enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(servicePage), for: postURL)
+            SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: probeURL)
+        }
     }
 
     static func retry(_ service: URL, on session: URLSession) async -> Result<Bool, Error> {
@@ -305,7 +307,7 @@ struct SSOServiceLoginTests {
         }
     }
 
-    @Test("a retry of a refused stored password ends a live session and posts it, and the school's yes clears the refusals")
+    @Test("a retry of a refused stored password ends a live session and posts it, and the school's yes leaves the refusals")
     func retryPostsPastALiveSession() async throws {
         let service = Self.serviceURL()
         let (session, jar) = try Self.sessionSignedInToSSO()
@@ -322,7 +324,40 @@ struct SSOServiceLoginTests {
         #expect(posts.map(\.url) == [Self.postURL])
         #expect(posts.first?.body.contains("Password=unused") == true)
         #expect(jar.cookies?.isEmpty == true)
-        #expect(refusals == 0)
+        #expect(refusals == 1)
+    }
+
+    /// The school's yes alone settles nothing: a Moodle token sign-in refused after it would
+    /// otherwise count from one again, and the stored password would go out every ten seconds.
+    @Test("retries the school takes but whose Moodle token sign-in is refused wait longer each time")
+    func retriesWithARefusedHarvestBackOff() async throws {
+        let service = Self.serviceURL()
+        let (session, _) = try Self.sessionSignedInToSSO()
+        Self.enqueueLiveSessionThenSignIn(for: service, posts: 3)
+        let device = StoredPasswordRetryTests.Device(harvests: .init(refusing: 4)) { studentId, password, generation in
+            try await SSOLoginService.signInAgain(
+                session: session, serviceURL: service, studentId: studentId, password: password, generation: generation
+            )
+        }
+
+        try await StoredPasswordRetryTests.signedIn(refusals: 0, last: nil) { _ in
+            await device.auth.ensureBackendSignedIn()
+            for (step, wait) in [10, 60, 300].enumerated() {
+                device.handOnTheWait()
+                try await device.sleeper.waitUntilArmed(atLeast: step + 1)
+                let attempt = try #require(device.auth.storedPasswordRetry)
+                device.advance(by: TimeInterval(wait))
+                await device.sleeper.fire()
+                await attempt.value
+            }
+            device.handOnTheWait()
+            try await device.sleeper.waitUntilArmed(atLeast: 4)
+            #expect(SSOLoginService.storedPasswordRefusals.count == 4)
+        }
+
+        #expect(await device.sleeper.requestedDurations == [.seconds(10), .seconds(60), .seconds(300), .seconds(6 * 60 * 60)])
+        #expect(posts.count == 3)
+        #expect(device.harvests.count == 4)
     }
 
     @Test("a retry whose refusal was settled while it waited for the lock posts nothing and keeps the session",
