@@ -34,6 +34,19 @@ that value as the last it issued. Two edits on one device SHALL never get the sa
 - **WHEN** the user makes two edits before the device clock advances
 - **THEN** the second edit's value is the first edit's value plus one microsecond
 
+### Requirement: A device ahead of the backend caps its stamps
+A device SHALL take its current time as no later than its estimate of the backend's time plus
+five seconds, the estimate being the last `X-TigerSync-Clock` value it heard plus the device
+time elapsed since. A device that has not heard the backend SHALL stamp uncapped.
+
+#### Scenario: Device clock a minute ahead
+- **WHEN** the device clock reads 10:01:00 and it heard the backend's 10:00:00 at that moment
+- **THEN** the edit is stamped 10:00:05 plus one microsecond
+
+#### Scenario: Retry after a lost response
+- **WHEN** a device whose clock runs a minute ahead makes an edit, the write is stored but its response is lost, another device then changes the same field, and the first device sends the edit again
+- **THEN** the retry is refused and the other device's value stays
+
 ### Requirement: Only user edits are stamped
 A view appearing, a school or Moodle fetch, an automatically assigned course colour, a roster
 upload and a snapshot applied from the server SHALL NOT produce a clock value or change a

@@ -67,6 +67,13 @@ A value is `int64` microseconds since the Unix epoch; a device stamps an edit wi
 `max(device now, last server value seen, last value issued) + 1`, which is the owner's rule plus
 the last issued value so a device never repeats a value.
 
+A device clock more than five seconds ahead would have each send of the same edit clamped again,
+later each time (D5), so a retry after a lost response could beat an edit made meanwhile. The
+device therefore caps `device now` at its estimate of the backend's time plus five seconds: the
+last `X-TigerSync-Clock` it heard plus the device time elapsed since. A capped stamp is stored as
+issued, so a retry carries the stamp the backend first stored and changes nothing (D7). Until a
+device first hears the backend, its stamps are uncapped and the backend's clamp alone applies.
+
 Lost:
 - ISO-8601 strings, as the snapshot uses today: Apple's `ISO8601DateFormatter` keeps three
   fractional digits, so two edits within a millisecond would collide and a value Python returns
@@ -92,7 +99,8 @@ Lost:
 
 ### D3. Where each side keeps its clock
 
-iOS keeps the last issued and last seen values in two `Defaults` keys behind a small
+iOS keeps the last issued and last seen values, and the last `X-TigerSync-Clock` heard with the
+device time it arrived (for D1's cap), in `Defaults` keys behind a small
 `SyncClock` in `Services/CloudSync/`. Stamping happens on a user edit, so the phone is unlocked.
 `PushAPIClient.execute` raises the last seen value from `X-TigerSync-Clock` only while protected
 data is readable, as `syncOverridesFromBackend` already checks, so a background launch before
@@ -387,7 +395,8 @@ Rollout:
 
 Read-only survey for its maintainer; Android owns the implementation.
 
-- Clock: persist last issued and last seen (`data/preferences/AppPreferences`), read
+- Clock: persist last issued, last seen and the last header heard with its device time, for
+  D1's cap (`data/preferences/AppPreferences`), read
   `X-TigerSync-Clock` and send `X-TigerSync-Protocol: 2` in `push/PushApiClient.kt` and
   `push/SyncApiClient.kt`.
 - Writes carry the edit's stamp: `patchAssignmentOverride`, `patchCourseOverride`,

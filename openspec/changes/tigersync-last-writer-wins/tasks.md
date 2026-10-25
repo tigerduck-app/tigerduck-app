@@ -36,8 +36,8 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 
 ## 4. iOS PR: the clock and stamped edits
 
-- [ ] 4.1 Add `SyncClock` in `swift/TigerDuck/Services/CloudSync/` with the stamping rule and two `Defaults` keys, assigned to the macOS build as root AGENTS.md requires; verify Swift Testing cases for the rule, two edits in one microsecond, relaunch and a last seen value that never drops, and `python3 tools/check_macos_sources.py`
-- [ ] 4.2 Raise the last seen value from `X-TigerSync-Clock` in `PushAPIClient.execute` while protected data is readable; verify a test with a stub `URLProtocol` and one that ignores the header with protected data unavailable
+- [ ] 4.1 Add `SyncClock` in `swift/TigerDuck/Services/CloudSync/` with the stamping rule, its cap for a clock ahead of the backend (design.md D1) and its `Defaults` keys, assigned to the macOS build as root AGENTS.md requires; verify Swift Testing cases for the rule, two edits in one microsecond, a clock a minute ahead with and without a header heard, relaunch and a last seen value that never drops, and `python3 tools/check_macos_sources.py`
+- [ ] 4.2 Raise the last seen value from `X-TigerSync-Clock` in `PushAPIClient.execute`, and record the header with the device time it arrived, while protected data is readable; verify a test with a stub `URLProtocol` and one that ignores the header with protected data unavailable
 - [ ] 4.3 Stamp every outbox op through `SyncClock` and send its stamp as `hlc` on the override PATCHes and the course DELETE; keep the stored shape so queued entries send their queue time; verify tests on the request bodies and on an entry decoded from today's file format
 - [ ] 4.4 Send the edit's stamp on the holiday PUT, including from `retryUnacknowledgedHolidayOverrides`; verify a test that a retried PUT carries the original stamp
 
@@ -71,7 +71,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 
 ## 10. Android (its maintainer, after group 3)
 
-- [ ] 10.1 Persist the clock, read `X-TigerSync-Clock`, and send `X-TigerSync-Protocol: 2` and each edit's stamp from `push/PushApiClient.kt` and `push/SyncApiClient.kt`; verify `./gradlew :app:testPlayDebugUnitTest`
+- [ ] 10.1 Persist the clock with design.md D1's cap for a clock ahead, read `X-TigerSync-Clock`, and send `X-TigerSync-Protocol: 2` and each edit's stamp from `push/PushApiClient.kt` and `push/SyncApiClient.kt`; verify `./gradlew :app:testPlayDebugUnitTest`
 - [ ] 10.2 Add a persisted queue of stamped unsent edits, one per field, kept while sync or the category is off; verify unit tests for an offline edit surviving a process restart
 - [ ] 10.3 Apply the snapshot per field (design.md D12) in `HomeBackendSync.pull`, rebuild `CourseSyncReconciler` on tombstones, kinds and resets, and remove the per-assignment conflict dialog; verify the reconciler tests cover each #689 case
 - [ ] 10.4 Pull before the school fetch in `HomeViewModel` and `BackgroundSyncWorker`; verify a unit test of the order
