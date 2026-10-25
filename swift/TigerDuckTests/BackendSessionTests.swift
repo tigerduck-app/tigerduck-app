@@ -1123,6 +1123,47 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
     }
 
+    @Test("a sign-out during the Moodle step keeps the backend sign-in from going out")
+    func aSignOutDuringTheMoodleStepStopsTheBackendSignIn() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = (Defaults[.ntustCredentialsPresent], SSOLoginService.storedPasswordRefusals)
+            defer {
+                Defaults[.ntustCredentialsPresent] = saved.0
+                SSOLoginService.storedPasswordRefusals = saved.1
+            }
+            let backend = BackendFixture(signedIn: false)
+            let signingIn = SheetSignIn()
+            let harvests = CallCount()
+            let auth = AuthService(
+                keychainHasCredentials: { false },
+                notificationCenter: NotificationCenter(),
+                moodleTokens: MoodleTokenService(
+                    storedCredentials: { nil },
+                    // A token that outlives the sign-out, so only the generation stops the backend step.
+                    tokens: .init(load: { "moodle-token" }, save: { _ in }, drop: {}),
+                    harvest: { _, _ in
+                        harvests.increment()
+                        await MainActor.run { signingIn.signOut?() }
+                        return .init(signature: "", wstoken: "harvested", privatetoken: nil)
+                    }
+                ),
+                endSchoolSession: { _ in }
+            )
+            #if os(iOS)
+            auth.accountNotifications = DeliveredNotificationsStub()
+            #endif
+            signingIn.signOut = { auth.logout() }
+            auth.authTokenManager = backend.manager
+
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+                await auth.signInToServices(studentId: "B11000000", password: "password", generation: auth.loginGeneration)
+            }
+
+            #expect(harvests.value == 1)
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+        }
+    }
+
     @Test("a sign-in cancelled after the school step still signs in to the backend")
     func signInCancelledAfterTheSchoolStepFinishes() async throws {
         try await withExclusiveRealDefaults {
@@ -1738,6 +1779,7 @@ nonisolated final class Recorder: @unchecked Sendable {
 @MainActor
 private final class SheetSignIn {
     var task: Task<Bool, Never>?
+    var signOut: (() -> Void)?
 }
 
 private nonisolated final class CallCount: @unchecked Sendable {
