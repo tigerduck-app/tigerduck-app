@@ -18,7 +18,6 @@ nonisolated enum AccentContrast {
         return picked
     }
 
-    /// The accent moved toward black until it reads on the light cards; one that reads is kept.
     static func readableOnLight(_ hex: Int) -> Int {
         let rgb = hex & 0xFFFFFF
         return readsOnLightCards(rgb) ? rgb : firstMix(of: rgb, toward: 0x000000, where: readsOnLightCards)

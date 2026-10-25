@@ -69,6 +69,15 @@ struct CustomAccentTests {
         #expect(preview.hex == nil)
     }
 
+    @Test("Opening the picker on a preset saves nothing, a pale one included",
+          arguments: AppState.themeColors.map(\.hex))
+    func openingOnAPresetSavesNothing(hex: Int) {
+        let preview = AccentPreview()
+        let opening = Int(CustomAccentPicker.openingColour(saved: hex).rgbHex)
+
+        #expect(preview.preview(opening, saved: hex) == nil)
+    }
+
     @Test("A pick is drawn readable and saved as drawn")
     func pickIsSavedReadable() throws {
         let preview = AccentPreview()
