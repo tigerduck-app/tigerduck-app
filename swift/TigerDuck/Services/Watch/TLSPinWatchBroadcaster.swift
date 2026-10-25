@@ -11,18 +11,25 @@ final class TLSPinWatchBroadcaster {
 
     private let session: WatchSessionPushing
     private let engine: TLSPinEngine
+    private let defaults: UserDefaults
     private let clock: () -> Date
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "watch.tlsPins")
 
-    init(session: WatchSessionPushing? = nil, engine: TLSPinEngine = .shared, clock: @escaping () -> Date = { Date() }) {
+    init(
+        session: WatchSessionPushing? = nil,
+        engine: TLSPinEngine = .shared,
+        defaults: UserDefaults = .standard,
+        clock: @escaping () -> Date = { Date() }
+    ) {
         self.session = session ?? WCSession.default
         self.engine = engine
+        self.defaults = defaults
         self.clock = clock
     }
 
     func userInfo() -> [String: Any]? {
         let payload = WatchTLSPinPayload(
-            sentAtMs: Int64(clock().timeIntervalSince1970 * 1000),
+            sentAtMs: WatchTLSPinPayload.nextSentAtMs(defaults: defaults, now: clock()),
             envelope: engine.storedEnvelope,
             acceptances: engine.acceptances
         )
