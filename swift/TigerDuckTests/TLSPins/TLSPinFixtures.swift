@@ -44,13 +44,20 @@ nonisolated enum TLSPinFixtures {
         baselineSerial: Int64 = 0,
         defaults: UserDefaults = defaults(),
         buildNumber: String = "100",
-        now: Date = now
+        now: Date = now,
+        document: Data? = nil
     ) -> TLSPinEngine {
-        TLSPinEngine(
+        let engine = TLSPinEngine(
             builtIn: builtIn, baselineSerial: baselineSerial, keys: keys,
             defaults: defaults, buildNumber: buildNumber, clock: { now }
         )
+        if let document { engine.acceptDocument(document) }
+        return engine
     }
+
+    /// Lists the anchor of `TLSPinMismatchQueueTests.mismatch`, so it may be continued past, at the
+    /// lowest serial so any other test document replaces it.
+    static let promptRootsDocument = envelope(payload(serial: 1, promptRoots: [globalRootSPKI]))
 
     static func set(
         _ id: String, domain: String, pins: [String], expiresAt: Date = now.addingTimeInterval(365 * day)

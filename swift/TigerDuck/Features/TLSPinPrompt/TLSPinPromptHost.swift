@@ -98,8 +98,8 @@ private struct TLSPinPromptHost: ViewModifier {
         }
     }
 
-    /// Restarts whenever the prompt, the holder or the scene phase changes; each run picks up
-    /// where an earlier one left off.
+    /// A change of prompt, holder or scene phase cancels a run at any point, so its progress lives
+    /// in `presentation` and `owner`.
     private func takeTurn() async {
         while !Task.isCancelled {
             guard let prompt = queue.prompt else {
@@ -127,7 +127,6 @@ private struct TLSPinPromptHost: ViewModifier {
         }
     }
 
-    /// Presents the prompt, then gives the window back if the sheet has not come up in time.
     private func show(_ prompt: TLSPinMismatch) async {
         if presentation.prompt != prompt {
             presentation.prompt = prompt

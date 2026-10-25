@@ -10,7 +10,6 @@ nonisolated struct TLSCertificateSummary: Equatable, Sendable {
     let issuerOrganization: String?
     let notBefore: Date?
     let notAfter: Date?
-    /// SHA-256 of the whole certificate DER, upper-case hex bytes separated by spaces.
     let sha256Fingerprint: String
 
     init(der: Data) {

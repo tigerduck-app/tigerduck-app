@@ -61,8 +61,9 @@ struct TLSPinEnforcementTests {
         #expect(mismatch.certificates.last?.name == "TWCA Global Root CA")
         #expect(mismatch.acceptedSPKIs == [F.ntustLeafSPKI, F.secureSSLCASPKI])
         #expect(mismatch.chainSPKIs == [F.ntustLeafSPKI, F.secureSSLCASPKI, F.globalRootSPKI])
+        #expect(mismatch.anchorSPKI == F.globalRootSPKI)
         #expect(engine.isRefusing(host: Self.host))
-        #expect(!engine.allows(mismatch))
+        #expect(engine.isPromptable(mismatch))
     }
 
     @Test("A mismatch whose anchor is not a listed root fails with no prompt")
@@ -211,7 +212,7 @@ struct TLSPinEnforcementTests {
 
     @Test("Accepting the same chain twice stores its SPKIs once")
     func acceptancesAreDeduplicated() {
-        let engine = F.engine()
+        let engine = F.engine(document: F.promptRootsDocument)
         let mismatch = TLSPinMismatchQueueTests.mismatch()
         engine.accept(mismatch)
         engine.accept(mismatch)
@@ -223,7 +224,7 @@ struct TLSPinEnforcementTests {
     @Test("Signing out keeps acceptances")
     func signOutKeepsAcceptances() throws {
         let defaults = F.defaults()
-        F.engine(defaults: defaults).accept(TLSPinMismatchQueueTests.mismatch())
+        F.engine(defaults: defaults, document: F.promptRootsDocument).accept(TLSPinMismatchQueueTests.mismatch())
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         DataCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
