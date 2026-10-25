@@ -11,7 +11,7 @@ struct HomeEditPageTests {
         HomeSection(id: type.rawValue, type: type, title: type.defaultTitle, sortOrder: 0, isVisible: true, widgets: widgets)
     }
 
-    /// The time machine's slider and course cards used to take touches while Home was arranged.
+    /// The time machine's slider and course cards must not take touches while Home is arranged.
     @Test func onlyTheEditControlsRespond() async throws {
         try await withAccessibilityAutomation {
             let viewModel = HomeViewModel()
