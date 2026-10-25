@@ -113,6 +113,28 @@ struct UnchangedUploadTests {
         #expect(backend.uploads == 4)
     }
 
+    @Test("A refused list held back after the accepted one was resent still counts as unsent")
+    func heldBackListStaysUnsent() async throws {
+        let backend = Backend()
+        backend.answer()
+        backend.answer(status: 422)
+        let coordinator = backend.makeCoordinator()
+        let clock = Clock()
+        coordinator.clock = { clock.now }
+        let accepted = Self.courses(Self.entry("CS1"))
+        let refused = Self.courses(Self.entry("CS2"))
+
+        #expect(try await coordinator.uploadCoursesIfChanged(accepted, semester: "1151", isCurrent: { true }))
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(refused, semester: "1151", isCurrent: { true })
+        }
+        #expect(try await !coordinator.uploadCoursesIfChanged(accepted, semester: "1151", isCurrent: { true }))
+        #expect(try await !coordinator.uploadCoursesIfChanged(refused, semester: "1151", isCurrent: { true }))
+
+        #expect(coordinator.holdsUnsentCourseUploads)
+        #expect(backend.uploads == 2)
+    }
+
     @Test("A list answered 401 goes again at once, as the retry after signing in sends it")
     func unauthorizedListIsNotHeldBack() async throws {
         let backend = Backend()

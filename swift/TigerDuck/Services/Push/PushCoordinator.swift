@@ -255,7 +255,11 @@ final class PushCoordinator {
             await previous?.value
             guard let self, isCurrent() else { return false }
             let now = self.clock()
-            if !always, self.uploads.isHeldBack(key, fingerprint: fingerprint, now: now) { return false }
+            if !always, self.uploads.isHeldBack(key, fingerprint: fingerprint, now: now) {
+                // An unchanged resend in between cleared the failure, and this list is still unsent.
+                self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: self.uploads.generation(of: key))
+                return false
+            }
             guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else {
                 self.uploads.forgetFailure(key)
                 return false
