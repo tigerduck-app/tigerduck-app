@@ -147,7 +147,6 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
     func accept(_ mismatch: TLSPinMismatch) -> Bool {
         withState { state in
             guard case .pinned(let set) = policy(forHost: mismatch.host, in: state, at: clock()) else { return true }
-            guard set.id == mismatch.setID else { return false }
             if set.pins.isDisjoint(with: mismatch.chainSPKIs) {
                 guard isPromptable(mismatch, in: state) else { return false }
                 let held = state.acceptances.filter { $0.setID == mismatch.setID }.flatMap(\.spkis)
@@ -159,7 +158,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
                     persist(state.acceptances)
                 }
             }
-            state.refusedSets.remove(mismatch.setID)
+            state.refusedSets.remove(set.id)
             return true
         }
     }

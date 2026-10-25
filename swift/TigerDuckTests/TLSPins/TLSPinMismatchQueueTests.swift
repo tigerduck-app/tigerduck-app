@@ -183,6 +183,24 @@ struct TLSPinMismatchQueueTests {
         #expect(refreshed == 1)
     }
 
+    @Test("Continue refreshes when a newer document moves the host to a set that lets the chain through")
+    func continueAfterTheHostMovesRefreshes() {
+        let engine = F.engine(document: F.promptRootsDocument)
+        var refreshed = 0
+        let queue = queue(engine: engine, afterContinue: { refreshed += 1 })
+        var mismatch = Self.mismatch()
+        mismatch.chainSPKIs = [F.ntustLeafSPKI]
+        queue.report(mismatch)
+        #expect(queue.prompt == mismatch)
+        engine.acceptDocument(F.envelope(F.payload(
+            serial: 2, sets: [F.set("library", domain: "moodle2.ntust.edu.tw", pins: [F.ntustLeafSPKI])],
+            promptRoots: [F.globalRootSPKI]
+        )))
+        queue.continue()
+        #expect(engine.acceptances.isEmpty)
+        #expect(refreshed == 1)
+    }
+
     @Test("Cancel stores nothing")
     func cancelStoresNothing() {
         let engine = F.engine(document: F.promptRootsDocument)
