@@ -10,6 +10,7 @@ struct MailHTMLView: UIViewRepresentable {
     var theme: MailHTMLTheme = .app
     @Binding var contentHeight: CGFloat
     let onLinkTap: (Int) -> Void
+    var onLoaded: () -> Void = {}
 
     nonisolated static let maximumContentHeight: CGFloat = 50_000
 
@@ -100,6 +101,14 @@ struct MailHTMLView: UIViewRepresentable {
                 MailHTMLView.paint(webView, with: theme)
                 webView.loadHTMLString(document, baseURL: nil)
             }
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            parent.onLoaded()
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            parent.onLoaded()
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
