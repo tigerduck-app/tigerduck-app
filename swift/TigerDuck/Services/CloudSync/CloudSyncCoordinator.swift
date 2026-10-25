@@ -52,6 +52,8 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private var courseAddTimes: [String: Date] = [:]
     @ObservationIgnored private var sending: Task<Void, Error>?
     @ObservationIgnored private var cutoffs: [String: Date] = [:]
+    @ObservationIgnored private var signOuts = 0
+    @ObservationIgnored private var signOutsSettling = 0
 
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
@@ -128,15 +130,18 @@ final class CloudSyncCoordinator {
     }
 
     /// A drain the timer, `scheduleTick` or an edit started runs in a task the sign-out does not
-    /// cancel, so its request is cancelled here, again once no tick can start another.
+    /// cancel, so its request is cancelled here, and `execute` sends nothing more for a drain
+    /// begun before the sign-out or while it settles.
     func settleForSignOut() async {
+        signOuts += 1
+        signOutsSettling += 1
+        defer { signOutsSettling -= 1 }
         sending?.cancel()
         await enqueueTransition { [weak self] in
             await self?.matchPreference()
             await self?.outbox.clearAll()
-            self?.sending?.cancel()
-            _ = await self?.sending?.result
         }.value
+        _ = await sending?.result
     }
 
     private func matchPreference() async {
@@ -204,6 +209,7 @@ final class CloudSyncCoordinator {
         await outbox.loadOrGiveUp(protectedDataAvailable: protectedDataAvailable)
         guard await outbox.pendingCount() > 0 else { return }
 
+        let signOutsBefore = signOuts
         let syncsMarks = syncsAssignmentMarks
         let syncsIgnores = syncsCourseIgnores
         let syncsOverrides = syncsCourseOverrides
@@ -219,7 +225,7 @@ final class CloudSyncCoordinator {
             }
         }) { [weak self] op in
             guard let self else { throw CancellationError() }
-            try await self.execute(op)
+            try await self.execute(op, signOutsBefore: signOutsBefore)
         }
     }
 
@@ -462,7 +468,8 @@ final class CloudSyncCoordinator {
         await outbox.requeueParked()
     }
 
-    private func execute(_ op: SyncOp) async throws {
+    private func execute(_ op: SyncOp, signOutsBefore: Int) async throws {
+        guard signOuts == signOutsBefore, signOutsSettling == 0 else { throw CancellationError() }
         guard !SyncOutbox.isCutOff(op, by: cutoffs) else { return }
         let request = Task { try await self.send(SyncOutbox.resolve(op)) }
         sending = request

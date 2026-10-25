@@ -311,6 +311,34 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
+    /// The drain asks whether colours sync for the second edit after it sent the first, so holding
+    /// that answer starts the sign-out while the drain is between two requests.
+    @available(iOS 26.0, macOS 26.0, *)
+    @Test("Signing out stops a drain under way before it sends its next edit")
+    func signOutStopsTheRestOfADrain() async throws {
+        let backend = Backend()
+        let courses = ["1151CS1", "1151EE2", "1151GE3"]
+        for course in courses { backend.answer("sync/courses/\(course)/override", body: Self.colourReply) }
+        let asks = OSAllocatedUnfairLock(initialState: 0)
+        let release = DispatchSemaphore(value: 0)
+        let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { _ in
+            if asks.withLock({ $0 += 1; return $0 }) == 2 { release.wait() }
+            return true
+        })
+        for course in courses {
+            await coordinator.enqueueCourseColorOverride(moodleId: course, semester: "1151", colorHex: "#FF6B6B")?.value
+        }
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { asks.withLock { $0 } == 2 }
+
+        let signOut = Task.immediate { await coordinator.settleForSignOut() }
+        release.signal()
+        await signOut.value
+        await drain.value
+
+        #expect(courses.map { backend.requests("sync/courses/\($0)/override").count } == [1, 0, 0])
+    }
+
     @Test("A colour or name edit counts as pending from the edit until its request is sent")
     func colourAndNameEditsArePendingUntilSent() async {
         let backend = Backend()
