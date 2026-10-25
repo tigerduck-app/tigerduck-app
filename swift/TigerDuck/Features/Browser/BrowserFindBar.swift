@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The bar find in page puts at the bottom: close, the field with its mode under the magnifier
-/// and the match count, and previous and next.
 struct BrowserFindBar: View {
     @Bindable var find: BrowserFind
     @FocusState private var focused: Bool

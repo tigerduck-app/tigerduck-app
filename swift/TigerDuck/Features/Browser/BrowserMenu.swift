@@ -60,7 +60,6 @@ struct BrowserMenu: View {
             HStack(spacing: 4) {
                 zoomButton("textformat.size.smaller", String(localized: "browser_zoom_out"),
                            enabled: BrowserZoom.smaller(than: page.zoom) != nil, page.zoomOut)
-                // Tapping the percentage puts the page back to 100%.
                 Button { zoom(page.resetZoom) } label: {
                     Text((Double(page.zoom) / 100).formatted(.percent))
                         .monospacedDigit()
