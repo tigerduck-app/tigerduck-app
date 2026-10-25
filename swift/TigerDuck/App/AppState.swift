@@ -45,6 +45,7 @@ final class AppState {
                 AuthTokenManager.accessTokenKey,
                 AuthTokenManager.refreshTokenKey,
                 AuthTokenManager.expiresAtKey,
+                AuthTokenManager.refreshTokenUsesKey,
                 AuthTokenManager.departingSessionKey,
             ]
             let allOk = keysToWipe

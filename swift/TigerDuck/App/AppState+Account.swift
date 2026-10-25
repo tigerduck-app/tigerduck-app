@@ -65,27 +65,17 @@ extension AppState {
         boundaryRefreshTask = nil
         #endif
 
+        // The order and what each step clears: docs/decisions/0026-one-sign-out-path.md.
         authService.logout()
-        LibraryService.schoolAccountDidSignOut()
         let endingSession = Task { await authTokenManager.endSession() }
-        ServerStatusTracker.shared.reset()
-        Defaults[.schoolDataSyncedAt] = nil
-        Defaults[.classTableSelectedSemester] = nil
-        Defaults[.emptyClassroomBuilding] = nil
+        Self.forgetAccountOnDevice()
         didSkipMacLogin = false
-        MoodleFileDownloads.shared.cancelAll()
-        DataCache.shared.clearUserScopedData()
-        TigerDuckTheme.reload()
-        ImportedClassTableStore.shared.removeAll()
-        BulletinsViewModel.forgetListSession()
         syncConflicts = []
         pendingSyncServerArchived = []
         pendingSyncServerCompleted = []
         reenableConflict = nil
-        Self.forgetSyncProgress()
         pushCoordinator.forgetUploads()
         cancelHolidayUploads()
-        AcademicCalendarStore.shared.forgetHolidayOverrides()
         #if os(iOS)
         cancelNotificationSettingsPushes()
         #endif
@@ -100,6 +90,23 @@ extension AppState {
             await liveActivityCoordinator.endAll()
             #endif
         }
+    }
+
+    /// What the device keeps of the school account outside `AppState`, which a sign-out clears
+    /// after the account generation has moved. docs/account-state.md lists each store.
+    static func forgetAccountOnDevice(cache: DataCache = .shared) {
+        LibraryService.schoolAccountDidSignOut()
+        ServerStatusTracker.shared.reset()
+        Defaults[.schoolDataSyncedAt] = nil
+        Defaults[.classTableSelectedSemester] = nil
+        Defaults[.emptyClassroomBuilding] = nil
+        MoodleFileDownloads.shared.cancelAll()
+        cache.clearUserScopedData()
+        TigerDuckTheme.reload()
+        ImportedClassTableStore.shared.removeAll()
+        BulletinsViewModel.forgetListSession()
+        forgetSyncProgress()
+        AcademicCalendarStore.shared.forgetHolidayOverrides()
     }
 
     nonisolated static func retriesDepartingUnregister(onboarded: Bool, signedIn: Bool, sessionKept: Bool) -> Bool {
