@@ -6,6 +6,7 @@ struct ClassTableView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.requestClassTableImport) private var requestImport
+    @Environment(\.isUpdatingImportedClassTable) private var isUpdatingImport
     @State private var viewModel = ClassTableViewModel(
         isClassDay: { AcademicCalendarStore.shared.isClassDay($0) }
     )
@@ -495,8 +496,13 @@ struct ClassTableView: View {
             } label: {
                 HStack(spacing: TigerDuckTheme.Spacing.xs) {
                     Text(creditsLabel)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .imageScale(.small)
+                    if isUpdatingImport {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "chevron.up.chevron.down")
+                            .imageScale(.small)
+                    }
                 }
                 .font(TigerDuckTheme.Typography.body)
             }

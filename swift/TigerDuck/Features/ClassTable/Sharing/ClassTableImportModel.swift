@@ -7,6 +7,9 @@ final class ClassTableImportModel: Identifiable {
     struct Job: Equatable {
         let code: ClassTableShareCode
         let nickname: String
+        /// When the person an update is for was imported; deleted or imported anew meanwhile,
+        /// the update is dropped.
+        var updatesImport: Date? = nil
     }
 
     /// The alerts that start a lookup carry its job, so their buttons work
@@ -199,7 +202,7 @@ final class ClassTableImportModel: Identifiable {
                 return
             }
             if let person = store.person(withStudentId: studentId) {
-                prompt = .replace(Job(code: code, nickname: person.nickname))
+                prompt = .replace(Job(code: code, nickname: person.nickname, updatesImport: person.importedAt))
                 return
             }
         }
@@ -228,7 +231,16 @@ final class ClassTableImportModel: Identifiable {
                 prompt = .lookupFailed(job)
                 return
             }
-            guard let person = store.add(job.code, nickname: job.nickname, courses: courses) else {
+            var nickname = job.nickname
+            if let importedAt = job.updatesImport {
+                guard let current = store.person(withStudentId: job.code.studentId ?? ""),
+                      current.importedAt == importedAt else {
+                    isFinished = true
+                    return
+                }
+                nickname = current.nickname
+            }
+            guard let person = store.add(job.code, nickname: nickname, courses: courses) else {
                 prompt = .saveFailed(job)
                 return
             }
