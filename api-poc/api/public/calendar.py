@@ -28,4 +28,4 @@ def get_calendar_urls(url: str) -> dict[int, str]:
 
 
 if __name__ == "__main__":
-    print(get_calendar_urls("https://r.xinshou.tw/ntust-calender"))
+    print(get_calendar_urls("https://api.tigerduck.app/links/ntust-calendar"))

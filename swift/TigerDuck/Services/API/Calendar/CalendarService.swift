@@ -2,7 +2,7 @@ import Foundation
 
 enum CalendarService {
 
-    private static let calendarPageURL = URL(string: "https://r.xinshou.tw/ntust-calender")!
+    private static let calendarPageURL = URL(string: "https://api.tigerduck.app/links/ntust-calendar")!
 
     private static let linkRegex = try! NSRegularExpression(
         pattern: "<a[^>]*href=\"([^\"]*)\"[^>]*>(.*?)</a>",
@@ -11,11 +11,9 @@ enum CalendarService {
     private static let yearRegex = try! NSRegularExpression(pattern: "(\\d{3})")
 
     /// URLSession with browser-like User-Agent (NTUST server returns 403 without one).
-    /// Pinned because the ICS download URL scraped from r.xinshou.tw can
-    /// resolve to an *.ntust.edu.tw host (covered by the pin set); the
-    /// delegate's host-matcher falls through to system trust for the
-    /// non-NTUST r.xinshou.tw fetch itself, so this is safe to install
-    /// on a mixed-host session.
+    /// Pinned because the backend's redirect and the ICS links on the page lead to
+    /// *.ntust.edu.tw hosts the pin set covers; api.tigerduck.app itself has no pin set
+    /// and gets system trust, so one session serves every host.
     private static let browserSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = [
