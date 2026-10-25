@@ -127,10 +127,15 @@ final class CloudSyncCoordinator {
         }
     }
 
+    /// A drain the timer, `scheduleTick` or an edit started runs in a task the sign-out does not
+    /// cancel, so its request is cancelled here, again once no tick can start another.
     func settleForSignOut() async {
+        sending?.cancel()
         await enqueueTransition { [weak self] in
             await self?.matchPreference()
             await self?.outbox.clearAll()
+            self?.sending?.cancel()
+            _ = await self?.sending?.result
         }.value
     }
 
