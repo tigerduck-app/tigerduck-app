@@ -142,10 +142,17 @@ private struct BrowserCertificateView: View {
         Section {
             ForEach(chain) { link in
                 Button { selected = link.id } label: {
-                    Label(link.title, systemImage: "seal")
-                        .padding(.leading, CGFloat(link.id) * 18)
-                        .foregroundStyle(link.id == selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                    Label {
+                        Text(link.title)
+                    } icon: {
+                        Image(systemName: "seal")
+                            .foregroundStyle(link.id == selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    }
+                    .padding(.leading, CGFloat(link.id) * 18)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
                 }
+                .buttonStyle(.plain)
                 .listRowBackground(link.id == selected ? Color.accentColor.opacity(0.12) : nil)
                 .accessibilityAddTraits(link.id == selected ? .isSelected : [])
             }
@@ -154,7 +161,7 @@ private struct BrowserCertificateView: View {
             Section(section.title) {
                 ForEach(section.rows, id: \.label) { row in
                     LabeledContent(row.label) {
-                        Text(row.value).textSelection(.enabled).multilineTextAlignment(.trailing)
+                        Text(row.value).textSelection(.enabled)
                     }
                 }
             }

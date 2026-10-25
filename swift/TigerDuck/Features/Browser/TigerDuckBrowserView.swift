@@ -128,7 +128,7 @@ struct TigerDuckBrowserView: View {
                 addressPill {
                     HStack(spacing: 0) {
                         // Find in page takes this side.
-                        Color.clear.frame(width: 40)
+                        Color.clear.frame(width: 40, height: Self.barHeight)
                         Text(page.host).font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity)
                         reloadButton(size: 16).frame(width: 40, height: Self.barHeight)
                     }
@@ -285,7 +285,7 @@ struct TigerDuckBrowserView: View {
     private var failureView: some View {
         if let failure = page.failure {
             ZStack {
-                Color.backgroundPrimary.ignoresSafeArea()
+                Color(uiColor: .systemBackground).ignoresSafeArea()
                 switch failure {
                 case .certificate(let host):
                     ContentUnavailableView {

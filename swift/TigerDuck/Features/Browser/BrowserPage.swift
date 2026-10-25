@@ -18,6 +18,8 @@ final class BrowserPage {
     fileprivate(set) var isCollapsed = false
     var failure: Failure?
     var outside: URL?
+    /// The page the browser opened with, which the bars name until a page commits.
+    fileprivate(set) var start: URL?
 
     let signIn: BrowserSignIn
     let store: WKWebsiteDataStore
@@ -42,8 +44,8 @@ final class BrowserPage {
     /// The address the bars, the sheet, Copy and Share go by: a one-time sign-in link stands for
     /// the page it signs in to, as its key must never leave the browser.
     var address: URL? {
-        guard let url, BrowserRouting.isMoodleSignInLink(url) else { return url }
-        return signIn.target ?? AppConstants.moodleBaseURL
+        guard let shown = url ?? start else { return nil }
+        return BrowserRouting.isMoodleSignInLink(shown) ? signIn.target ?? AppConstants.moodleBaseURL : shown
     }
 
     var host: String { address?.host(percentEncoded: false) ?? "" }
@@ -101,6 +103,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.frame = container.bounds
         container.addSubview(webView)
         page.webView = webView
+        page.start = start
         observe(webView)
 
         let store = page.store
