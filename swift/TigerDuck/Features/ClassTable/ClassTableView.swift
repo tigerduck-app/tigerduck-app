@@ -326,11 +326,10 @@ struct ClassTableView: View {
             } label: {
                 Label(String(localized: "add_course_title"), systemImage: "plus")
             }
-            Button {
-                viewModel.showResetConfirm = true
-            } label: {
-                Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
+            Button {} label: {
+                Label(String(localized: "class_table_subscribe_clubs"), systemImage: "person.2")
             }
+            .disabled(true)
         }
         Section {
             Button {
@@ -344,13 +343,20 @@ struct ClassTableView: View {
                 semesters: viewModel.availableSemesters,
                 memo: shareAvailability
             ))
-            exportButton
-        }
-        Section {
             Button {
                 requestImport()
             } label: {
                 Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
+            }
+        }
+        Section {
+            exportButton
+        }
+        Section {
+            Button(role: .destructive) {
+                viewModel.showResetConfirm = true
+            } label: {
+                Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
             }
         }
     }
