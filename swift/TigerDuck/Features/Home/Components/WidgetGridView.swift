@@ -93,7 +93,6 @@ struct WidgetGridView: View {
                 .offset(x: -6, y: -6)
             }
         }
-        .wiggling(isEditing)
         .opacity(activeWidgetDrag?.id == widget.id ? 0.35 : 1)
     }
 
@@ -138,41 +137,5 @@ private struct WidgetDragPreview: View {
                 .fill(Color(.secondarySystemGroupedBackground))
                 .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
         )
-    }
-}
-
-extension View {
-    func wiggling(_ isWiggling: Bool) -> some View {
-        modifier(WiggleModifier(isWiggling: isWiggling))
-    }
-}
-
-struct WiggleModifier: ViewModifier {
-    let isWiggling: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var angle: Double = 0
-
-    func body(content: Content) -> some View {
-        content
-            .rotationEffect(.degrees(isWiggling && !reduceMotion ? angle : 0))
-            .onAppear {
-                if isWiggling, !reduceMotion {
-                    withAnimation(.linear(duration: 0.15).repeatForever(autoreverses: true)) {
-                        angle = 1.5
-                    }
-                }
-            }
-            .onChange(of: isWiggling) { _, newValue in
-                if newValue, !reduceMotion {
-                    angle = -1.5
-                    withAnimation(.linear(duration: 0.15).repeatForever(autoreverses: true)) {
-                        angle = 1.5
-                    }
-                } else {
-                    withAnimation(reduceMotion ? nil : .quickSpring) {
-                        angle = 0
-                    }
-                }
-            }
     }
 }

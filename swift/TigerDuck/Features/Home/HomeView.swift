@@ -292,7 +292,6 @@ struct HomeView: View {
                     .offset(x: 6, y: -6)
                 }
             }
-            .wiggling(viewModel.isEditingHome)
             .opacity(activeSectionDrag?.id == section.id ? 0.35 : 1)
     }
 
