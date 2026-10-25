@@ -8,12 +8,25 @@ extension AppState {
     /// returns the deletes the reconcile still has to wait for.
     func settleQueuedCourseEdits(deleting: Set<String>, reset: (apply: Bool, remember: Date)) async -> Set<String> {
         guard reset.apply else { return deleting }
-        DataCache.shared.saveUserAddedCourses([])
-        DataCache.shared.saveDeletedCourseNos([])
         Defaults[.lastSeenCoursesResetAt] = reset.remember
         recentCourseDeletions = [:]
-        AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: reset.remember), privacy: .public)), wiped local state")
-        return deleting.subtracting(await cloudSyncCoordinator.dropCourseEdits(madeBeforeReset: reset.remember))
+        AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: reset.remember), privacy: .public)), wiping local state")
+        return deleting.subtracting(await Self.applyCourseReset(at: reset.remember, cache: .shared, on: cloudSyncCoordinator))
+    }
+
+    /// Drops the course edits queued before a reset made elsewhere and wipes the hand-added and
+    /// hidden courses, but keeps those whose add or delete made after it still goes out, as the
+    /// add uploads its course from them. Returns the keys of the dropped deletes.
+    static func applyCourseReset(at resetAt: Date, cache: DataCache, on coordinator: CloudSyncCoordinator) async -> Set<String> {
+        let dropped = await coordinator.dropCourseEdits(madeBeforeReset: resetAt)
+        let adding = await coordinator.courseAddKeys(unlandedAt: resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin))
+        let deleting = await coordinator.pendingCourseDeleteKeys()
+        let added = adding.compactMap(CourseTombstone.parts(of:))
+        cache.saveUserAddedCourses(cache.loadUserAddedCourses().filter { course in
+            added.contains { $0.courseNo == course.courseNo && DataCache.userAddedCourse(course, belongsTo: $0.semester) }
+        })
+        cache.saveDeletedCourseNos(cache.loadDeletedCourseNos().filter(deleting.contains))
+        return dropped
     }
 
     @discardableResult
