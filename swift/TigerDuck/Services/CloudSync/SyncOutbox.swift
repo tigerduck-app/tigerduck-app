@@ -241,7 +241,7 @@ actor SyncOutbox {
         return discard { Self.isCutOff($0, by: scopeCutoffs) }
     }
 
-    private nonisolated static func isCutOff(_ op: SyncOp, by cutoffs: [String: Date]) -> Bool {
+    nonisolated static func isCutOff(_ op: SyncOp, by cutoffs: [String: Date]) -> Bool {
         op.scopes.contains { scope in cutoffs[scope].map { op.stamp < $0 } ?? false }
     }
 
@@ -283,7 +283,7 @@ actor SyncOutbox {
     @discardableResult
     func drain(
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
-        execute: @Sendable (ResolvedSyncOp) async throws -> Void
+        execute: @Sendable (SyncOp) async throws -> Void
     ) async -> Bool {
         // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
         // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
@@ -321,7 +321,7 @@ actor SyncOutbox {
             }
 
             do {
-                try await execute(resolve(entry.op))
+                try await execute(entry.op)
             } catch {
                 guard generation == startGeneration else { return entries.isEmpty }
                 if Self.keepsWithoutAttempt(error, for: entry.op) {
@@ -362,7 +362,7 @@ actor SyncOutbox {
         parked.append(entry)
     }
 
-    private func resolve(_ op: SyncOp) -> ResolvedSyncOp {
+    nonisolated static func resolve(_ op: SyncOp) -> ResolvedSyncOp {
         switch op {
         case .courseOverride(_, let moodleId, let customName, let colorHex, let locale, _):
             let resolvedLocale = customName != nil

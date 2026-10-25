@@ -51,6 +51,7 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private var courseAddsEnqueuing: [UUID: String] = [:]
     @ObservationIgnored private var courseAddTimes: [String: Date] = [:]
     @ObservationIgnored private var sending: Task<Void, Error>?
+    @ObservationIgnored private var cutoffs: [String: Date] = [:]
 
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
@@ -317,8 +318,17 @@ final class CloudSyncCoordinator {
         courseOverridesEnqueuing = courseOverridesEnqueuing.filter { scopes.isDisjoint(with: $0.value.scopes) }
         if scopes.contains("ca") { courseAddsEnqueuing = [:] }
         let now = Date()
-        await outbox.discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
+        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
         _ = await sending?.result
+    }
+
+    /// Discards by time in the outbox, and refuses those ops at `execute` too: a drain picks its
+    /// op on the outbox, so it can be on its way to `execute` with one the discard dropped.
+    @discardableResult
+    private func discard(madeBefore scopeCutoffs: [String: Date]) async -> [SyncOp] {
+        let now = Date()
+        cutoffs.merge(scopeCutoffs.mapValues { min($0, now) }, uniquingKeysWith: max)
+        return await outbox.discard(madeBefore: scopeCutoffs)
     }
 
     func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
@@ -411,7 +421,7 @@ final class CloudSyncCoordinator {
     @discardableResult
     func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
         let cutoff = resetAt.addingTimeInterval(-Self.clockSkewMargin)
-        let dropped = await outbox.discard(madeBefore: ["ca": cutoff, "cd": cutoff])
+        let dropped = await discard(madeBefore: ["ca": cutoff, "cd": cutoff])
         return Self.courseKeys(of: dropped.filter { op in
             if case .courseDelete = op { return true }
             return false
@@ -429,7 +439,7 @@ final class CloudSyncCoordinator {
             }
         } ?? [semester.map { "cd|\($0)" } ?? "cd"]
         let now = Date()
-        await outbox.discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
+        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
     }
 
     private nonisolated static func courseKeys(of ops: [SyncOp]) -> Set<String> {
@@ -447,8 +457,9 @@ final class CloudSyncCoordinator {
         await outbox.requeueParked()
     }
 
-    private func execute(_ op: ResolvedSyncOp) async throws {
-        let request = Task { try await self.send(op) }
+    private func execute(_ op: SyncOp) async throws {
+        guard !SyncOutbox.isCutOff(op, by: cutoffs) else { return }
+        let request = Task { try await self.send(SyncOutbox.resolve(op)) }
         sending = request
         defer { if sending == request { sending = nil } }
         try await withTaskCancellationHandler {

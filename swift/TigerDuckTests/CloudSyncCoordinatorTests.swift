@@ -256,6 +256,35 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
     }
 
+    /// The drain asks whether colours sync after it picked the edit on the outbox and before it
+    /// sends it, so holding that answer opens the gap Use Server must close.
+    @available(iOS 26.0, macOS 26.0, *)
+    @Test("Use Server drops a colour edit a drain picked just before it, though its request had not started")
+    func useServerDropsAnEditPickedBeforeIt() async throws {
+        let backend = Backend()
+        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
+        let picked = OSAllocatedUnfairLock(initialState: false)
+        let release = DispatchSemaphore(value: 0)
+        let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { _ in
+            if !picked.withLock({ $0 }) {
+                picked.withLock { $0 = true }
+                release.wait()
+            }
+            return true
+        })
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { picked.withLock { $0 } }
+
+        let useServer = Task.immediate { await coordinator.discardEdits(of: ["course_colors"], courseIgnores: false) }
+        release.signal()
+        await useServer.value
+        await drain.value
+
+        #expect(backend.requests("sync/courses/1151CS1/override").isEmpty)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
     @Test("A colour or name edit counts as pending from the edit until its request is sent")
     func colourAndNameEditsArePendingUntilSent() async {
         let backend = Backend()

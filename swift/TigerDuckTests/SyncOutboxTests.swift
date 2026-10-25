@@ -153,7 +153,7 @@ struct SyncOutboxTests {
 
     private actor Sent {
         private(set) var count = 0
-        func add(_ op: ResolvedSyncOp) { count += 1 }
+        func add(_ op: SyncOp) { count += 1 }
     }
 
     @Test("A full sync that requeues during the drain parking a mark keeps it parked")
