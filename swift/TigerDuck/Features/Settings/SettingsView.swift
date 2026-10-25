@@ -17,6 +17,7 @@ struct SettingsView: View {
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @Default(.pinTodayCoursesOnClassTable) private var pinTodayCoursesOnClassTable
     @Default(.appAppearance) private var appearance
+    @Default(.browserAddressBar) private var browserAddressBar
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -124,6 +125,10 @@ struct SettingsView: View {
                     Text(String(localized: "settings_browser_system_default")).tag(BrowserPreference.system)
                     Text(String(localized: "settings_browser_in_app")).tag(BrowserPreference.inApp)
                 }
+            }
+
+            Section(String(localized: "browser_address_bar")) {
+                BrowserAddressBarPicker(selection: $browserAddressBar)
             }
 
             if LanguageManager.isCurrentLanguageNonChinese(appLanguage: appState.appLanguage) {

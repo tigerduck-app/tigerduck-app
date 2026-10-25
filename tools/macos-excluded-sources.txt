@@ -410,3 +410,4 @@ BrowserPageScripts.swift
 BrowserRouting.swift
 BrowserSessionSignIn.swift
 BrowserSignIn.swift
+BrowserAddressBarPicker.swift

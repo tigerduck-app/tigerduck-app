@@ -78,6 +78,7 @@ nonisolated enum AppConstants {
         static let appHasBeenInstalled = "appHasBeenInstalled"
         static let accentColorHex = "accentColorHex"
         static let browserPreference = "browserPreference"
+        static let browserAddressBar = "browserAddressBar"
         static let macMoodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"
