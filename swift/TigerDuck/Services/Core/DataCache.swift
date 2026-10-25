@@ -239,6 +239,14 @@ final class DataCache {
         save(closed, to: "closed_unsubmitted_assignments.json")
     }
 
+    func saveCourseSearchOptions(_ options: CourseSearchOptions) {
+        save(options, to: "course_search_options.json")
+    }
+
+    func loadCourseSearchOptions() -> CourseSearchOptions? {
+        load(from: "course_search_options.json")
+    }
+
     func saveBulletinSummaries(_ summaries: [BulletinAPI.BulletinSummary]) {
         save(summaries, to: "bulletin_summaries.json")
     }

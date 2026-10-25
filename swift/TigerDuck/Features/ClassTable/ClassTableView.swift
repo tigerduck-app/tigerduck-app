@@ -155,7 +155,7 @@ struct ClassTableView: View {
             .sheet(isPresented: $viewModel.showAddCourse) {
                 AddCourseSheet(
                     semester: viewModel.currentSemester,
-                    existingCourseNos: Set(viewModel.courses.map(\.courseNo)),
+                    tableCourses: viewModel.courses,
                     onAdd: { viewModel.addCourse($0) },
                     onRemove: { courseNo in
                         viewModel.removeUserAddedCourse(courseNo: courseNo)

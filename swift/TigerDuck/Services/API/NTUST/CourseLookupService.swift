@@ -3,6 +3,7 @@ import os
 
 enum CourseLookupService {
     private static let courseSearchAPI = URL.knownGood("https://querycourse.ntust.edu.tw/QueryCourse/api//courses")
+    private static let optionsAPI = URL.knownGood("https://querycourse.ntust.edu.tw/QueryCourse/api/")
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -34,7 +35,7 @@ enum CourseLookupService {
     ) async throws -> [CourseSearchResult] {
         let key = LookupKey(semester: semester, courseNo: courseNo, language: language)
         return try await kept(key, now: Date(), fresh: fresh) {
-            try await searchAPI(body: .forCourseNo(courseNo, semester: semester, language: language))
+            try await search(.forCourseNo(courseNo, semester: semester, language: language))
         }
     }
 
@@ -52,15 +53,7 @@ enum CourseLookupService {
         return results
     }
 
-    static func searchCourses(semester: String, courseName: String, language: String = "zh") async throws -> [CourseSearchResult] {
-        try await searchAPI(body: .forCourseName(courseName, semester: semester, language: language))
-    }
-
-    static func searchByTeacher(semester: String, teacher: String, language: String = "zh") async throws -> [CourseSearchResult] {
-        try await searchAPI(body: .forCourseTeacher(teacher, semester: semester, language: language))
-    }
-
-    private static func searchAPI(body: CourseSearchRequest) async throws -> [CourseSearchResult] {
+    static func search(_ body: CourseSearchRequest) async throws -> [CourseSearchResult] {
         var request = URLRequest(url: courseSearchAPI)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -68,6 +61,64 @@ enum CourseLookupService {
 
         let (data, _) = try await session.data(for: request)
         return try JSONDecoder().decode([CourseSearchResult].self, from: data)
+    }
+
+    // Capitalised to match the wire format, same as `CourseSearchResult`.
+    // swiftlint:disable identifier_name
+    private nonisolated struct CollegeRow: Decodable {
+        let CollegeNo: String
+        let CollegeName: String
+        let CollegeEngName: String
+    }
+
+    private nonisolated struct DepartmentRow: Decodable {
+        let DeptNo: String
+        let Department: String
+        let EngDepartment: String
+    }
+
+    private nonisolated struct DimensionRow: Decodable {
+        let DimNo: String
+        let DimContent: String
+        let EngContent: String
+    }
+    // swiftlint:enable identifier_name
+
+    /// The colleges with their departments, and the GE types. One failed list fails the whole fetch,
+    /// so the device never stores half of them.
+    static func fetchSearchOptions() async throws -> CourseSearchOptions {
+        async let dimensionRows: [DimensionRow] = get("dimensions")
+        let collegeRows: [CollegeRow] = try await get("Colleges/")
+        let departmentRows = try await withThrowingTaskGroup(of: (Int, [DepartmentRow]).self) { group in
+            for (index, college) in collegeRows.enumerated() {
+                group.addTask { (index, try await get("departments", collegeNo: college.CollegeNo)) }
+            }
+            return try await group.reduce(into: [Int: [DepartmentRow]]()) { $0[$1.0] = $1.1 }
+        }
+        let colleges = collegeRows.enumerated().map { index, college in
+            var seen = Set<String>()
+            return CourseSearchOptions.College(
+                name: college.CollegeName,
+                englishName: college.CollegeEngName,
+                departments: (departmentRows[index] ?? [])
+                    .filter { seen.insert($0.DeptNo).inserted }
+                    .map { .init(code: $0.DeptNo, name: $0.Department, englishName: $0.EngDepartment) }
+            )
+        }
+        // The list opens with a "(0)" row that the school's own page swaps for "all".
+        let dimensions = try await dimensionRows
+            .filter { $0.DimNo != "0" }
+            .map { CourseSearchOptions.Option(code: $0.DimNo, name: $0.DimContent, englishName: $0.EngContent) }
+        return CourseSearchOptions(colleges: colleges, dimensions: dimensions)
+    }
+
+    private static func get<Row: Decodable>(_ path: String, collegeNo: String? = nil) async throws -> [Row] {
+        var url = optionsAPI.appending(path: path)
+        if let collegeNo {
+            url.append(queryItems: [URLQueryItem(name: "collegeNo", value: collegeNo)])
+        }
+        let (data, _) = try await session.data(for: URLRequest(url: url))
+        return try JSONDecoder().decode([Row].self, from: data)
     }
 
     nonisolated static func parseNodeToSchedule(_ node: String?) -> [Int: [String]] {

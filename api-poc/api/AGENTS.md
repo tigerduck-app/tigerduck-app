@@ -32,6 +32,7 @@ uv run python -m api.moodle.writes                    # list every write payload
 uv run python -m api.moodle.writes <wsfunction> k=v   # dry-run one; --commit sends it
 uv run python -m api.ntust.course_list
 uv run python -m api.ntust.course_lookup
+uv run python -m api.ntust.course_query <step> --out DIR   # public course query; steps in --help
 uv run python -m api.ntust.score_list
 uv run python -m api.ntust.classroom                  # campuses and buildings
 uv run python -m api.ntust.classroom HQ EE [YYYY-MM-DD]   # one building's grid
@@ -64,6 +65,8 @@ uv run python -m api.public.bulletin          # reads cached pages by default
   forums, submit assignments and change the profile picture of a real account.
 - Do not send `useridto=0` to the notification endpoints. Unlike the quiz ones they have no
   "0 means the current user" fallback and return accessdenied.
+- Do not send querycourse `api/courses` an empty filter. The server works on it for 120 s and
+  then answers HTTP 500; fetch a whole semester by CourseNo prefix (`course_query.SWEEP_PREFIXES`).
 - Do not hardcode the cour01 pager target (`showinfo_grd$_ctl54$_ctl1`); the middle index comes
   from the row count and changes between pages.
 - Do not pick a cour01 building before selecting its campus. The site answers with an HTTP 500
@@ -87,4 +90,6 @@ uv run python -m api.public.bulletin          # reads cached pages by default
 - The browser handoff key (`moodle/autologin.py`) needs a MoodleMobile user agent and is rate
   limited to one every 6 minutes.
 - cour01 uses OIDC with `form_post` and ASP.NET ViewState.
+- querycourse also lists NTNU and NTU alliance courses, numbered with the prefixes `3N` and `3T`;
+  `OnleyNTUST=1` drops them.
 - Campus webmail is implicit TLS only: IMAP on 993, SMTP on 465.
