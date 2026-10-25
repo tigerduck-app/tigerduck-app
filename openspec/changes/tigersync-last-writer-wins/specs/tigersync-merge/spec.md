@@ -111,7 +111,12 @@ refused and SHALL leave the stored add stamp unchanged.
 ### Requirement: Removing a hand-added course leaves the roster in charge
 Removing a course the user added by hand SHALL clear the user's choice for that course with a
 stamped tombstone that refuses older adds and hides but does not bind roster uploads. A roster
-that lists the course SHALL show it and SHALL keep the tombstone's stamp.
+that lists the course SHALL show it and SHALL keep the tombstone's stamp, whichever of the
+removal and the roster arrives first.
+
+#### Scenario: Removal arriving after the roster
+- **WHEN** a hand-added course is removed at 10:00 on an offline device, another device uploads a roster that lists it, and the removal then arrives
+- **THEN** the course shows from the roster
 
 #### Scenario: Enrolled later
 - **WHEN** a hand-added course is removed and the student later enrolls, so the roster lists it
@@ -126,11 +131,16 @@ A term reset SHALL clear the user's adds, hides, removals, colours, names and ig
 for that term's courses that are stamped at or before it, SHALL keep those stamped after it,
 and SHALL refuse any such edit stamped before the reset. A reset older than the term's stored
 reset SHALL change nothing. A reset of every term SHALL do the same for all terms. The school
-roster SHALL stay.
+roster SHALL stay. A hand-added course whose add is stamped at or before the reset SHALL be
+cleared with its colour and name, even those stamped after it.
 
 #### Scenario: Reset arriving last
-- **WHEN** a reset stamped 09:00 arrives after a hide of one course and a colour of another, both stamped 10:00
+- **WHEN** a reset stamped 09:00 arrives after a hide of one course and a colour of a school course, both stamped 10:00
 - **THEN** the hide and the colour stay, and the term's other choices are cleared
+
+#### Scenario: Newer colour on an older hand-add
+- **WHEN** a course is added by hand at 08:00, the term is reset at 09:00 on an offline device, and a colour of that course stamped 10:00 arrives before the reset
+- **THEN** the reset clears the course and its colour
 
 #### Scenario: Older reset
 - **WHEN** a term reset stamped 10:00 is stored and a reset stamped 09:00 arrives

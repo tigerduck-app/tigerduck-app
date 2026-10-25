@@ -188,14 +188,18 @@ protocol 2:
 - An add wins when later than the key's `added_at`, its tombstone and every reset covering it:
   it deletes the tombstone and upserts the row with `added_at` set to its stamp. An add that
   loses changes nothing, so `added_at` never moves back.
-- A hide or removal wins when later than `added_at`, the tombstone and the resets: it deletes
-  the row (with its overrides, as today) and upserts the tombstone. A tombstone is written even
-  when no row exists, so a hide of a course never uploaded still binds.
+- A hide or removal wins when later than `added_at`, the tombstone and the resets, and upserts
+  the tombstone. A hide deletes the row (with its overrides, as today), and so does a removal of
+  a hand-added row. A removal of a school row (`source` other than `user_added`) only clears its
+  `added_at`, so the course shows from the roster whichever of the two arrives first. A
+  tombstone is written even when no row exists, so a hide of a course never uploaded still binds.
 - A reset wins when later than the term's `reset_at` (a full reset: `courses_reset_at`), and
   records its stamp there; an older reset changes nothing, so a marker never moves back. It
-  clears only what is stamped at or before it. Such tombstones go. A row goes unless its
-  `added_at` or one of its override stamps is later, and leaves today's per-course reset
-  tombstone (`deleted_by_reset`) so released apps still obey it. A row that stays loses the
+  clears only what is stamped at or before it. Such tombstones go. A hand-added row goes unless
+  its `added_at` is later: a newer colour or name does not keep a course whose add the reset
+  clears. A school row goes unless its `added_at` or one of its override stamps is later. A row
+  that goes leaves today's per-course reset tombstone (`deleted_by_reset`) so released apps
+  still obey it. A row that stays loses the
   fields stamped at or before the reset, which return to their empty, unstamped state.
   Afterwards every membership or override edit for that term stamped before `reset_at` is
   refused.

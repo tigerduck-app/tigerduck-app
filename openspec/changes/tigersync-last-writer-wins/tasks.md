@@ -28,6 +28,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 - [x] 2.5 Under protocol 2, return every tombstone with `hlc` and `kind`, `term_resets`, `courses_reset_hlc` and `courses[].added_hlc` from `/v3/sync/full`, keeping the 30-day window without the header and leaving out a removal tombstone whose key has a row; verify snapshot tests for both shapes
 - [x] 2.6 Add API-level tests for each case listed in app issue #689 (a delete queued before a re-add elsewhere, a reset then a waiting add, a lost reply and its retry); verify they pass
 - [x] 2.7 Rewrite the tombstone conventions in `server/AGENTS.md` for both protocols; verify the pull request's CI passes and review finds the text matches the code
+- [ ] 2.8 Make a removal of a school row clear only its `added_at`, and make a reset clear a hand-added row whose add it covers even when an override field is newer (design.md D10); verify tests for a removal arriving after the roster, both arrival orders, and a newer colour on an older hand-add
 
 ## 3. Backend release
 
