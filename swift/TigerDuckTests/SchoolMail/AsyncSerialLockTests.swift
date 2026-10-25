@@ -84,6 +84,29 @@ struct AsyncSerialLockTests {
         #expect(events == ["open", "mark read", "index A", "index B"])
     }
 
+    @Test(.timeLimit(.minutes(1)))
+    func onlyACallerThatDoesNotYieldCountsAsWaitingAhead() async throws {
+        let lock = AsyncSerialLock()
+        await lock.acquire(yielding: true)
+        let index = Task {
+            await lock.acquire(yielding: true)
+            await lock.release()
+        }
+        while await lock.waiterCount < 1 { await Task.yield() }
+        #expect(await !lock.hasNonYieldingWaiters)
+
+        let open = Task {
+            await lock.acquire()
+            await lock.release()
+        }
+        while await lock.waiterCount < 2 { await Task.yield() }
+        #expect(await lock.hasNonYieldingWaiters)
+
+        await lock.release()
+        await open.value
+        await index.value
+    }
+
     /// `.timeLimit` because the failure mode this covers is a **hang**, not a wrong value: a
     /// `withLock` that stopped releasing on the error path would leave the second `withLock`
     /// below waiting forever, and Swift Testing applies no default limit.

@@ -313,7 +313,7 @@ actor LiveMailClient: MailClient {
     }
 
     /// This and `searchTexts` feed the search index and yield the connection to every other
-    /// command, so a mail the user opens waits for one batch at most.
+    /// command, so a mail the user opens waits for one fetch at most.
     /// See docs/decisions/0027-mail-local-search-index.md.
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
         try await run(yielding: true) {
@@ -327,7 +327,8 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    /// One summary FETCH for the batch, then each mail's first text part, plain before HTML.
+    /// One summary FETCH for the batch, then each mail's first text part, plain before HTML, with
+    /// any command that queued meanwhile let through before each part.
     func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
         guard !uids.isEmpty else { return [:] }
         return try await run(yielding: true) {
@@ -337,11 +338,23 @@ actor LiveMailClient: MailClient {
             var texts: [UInt32: String] = [:]
             for info in infos {
                 guard let summary = Self.summary(from: info), !summary.isDeleted else { continue }
+                try await self.stepAsideForWaitingCommands(folder: folder, expectedUIDValidity: expectedUIDValidity)
                 let body = try await self.searchBody(of: info, folder: folder, expectedUIDValidity: expectedUIDValidity)
                 texts[summary.uid] = MailSearchIndex.text(of: summary, body: body)
             }
             return texts
         }
+    }
+
+    /// Called holding `commandLock` and returns holding it again, with the folder selected anew,
+    /// since the command let through may have selected another.
+    private func stepAsideForWaitingCommands(folder: String, expectedUIDValidity: UInt32) async throws {
+        guard await commandLock.hasNonYieldingWaiters else { return }
+        await commandLock.release()
+        await commandLock.acquire(yielding: true)
+        try await ensureLiveConnection()
+        let selection = try await imap.examineMailbox(folder)
+        try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
     }
 
     private func searchBody(of info: MessageInfo, folder: String, expectedUIDValidity: UInt32) async throws -> String? {

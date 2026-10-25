@@ -17,6 +17,9 @@ actor AsyncSerialLock {
 
     var waiterCount: Int { waiters.count + yieldingWaiters.count }
 
+    /// Whether a caller that is not `yielding` waits, which a long yielding holder steps aside for.
+    var hasNonYieldingWaiters: Bool { !waiters.isEmpty }
+
     func acquire(yielding: Bool = false) async {
         if !isHeld {
             isHeld = true
