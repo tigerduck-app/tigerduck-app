@@ -19,6 +19,7 @@ final class BrowserSignIn {
     @ObservationIgnored private var attempt: (target: URL, startedAt: Date, next: Step)?
     @ObservationIgnored private var running: Task<Void, Never>?
     @ObservationIgnored private var runs = 0
+    @ObservationIgnored private var closed = false
 
     private enum Step { case key, session, none }
 
@@ -41,6 +42,7 @@ final class BrowserSignIn {
 
     /// Loads `target`, signing in first when it is a Moodle page and the browser has no session.
     func open(_ target: URL) async {
+        guard !closed else { return }
         if BrowserRouting.isMoodleReturnPage(target), !(await hasSession()) {
             signIn(to: target)
         } else {
@@ -68,7 +70,10 @@ final class BrowserSignIn {
         if running == nil { phase = .idle }
     }
 
-    func cancel() {
+    /// The browser closed: what runs stops, and nothing starts again, as each start may spend
+    /// Moodle's one autologin key per six minutes.
+    func close() {
+        closed = true
         running?.cancel()
         running = nil
         runs += 1
@@ -86,7 +91,7 @@ final class BrowserSignIn {
     }
 
     private func run() {
-        guard let target = attempt?.target else { return }
+        guard !closed, let target = attempt?.target else { return }
         phase = .working
         running?.cancel()
         runs += 1

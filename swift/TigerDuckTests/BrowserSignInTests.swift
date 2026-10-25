@@ -174,10 +174,25 @@ struct BrowserSignInTests {
         await signIn.open(Self.page)
         for await _ in started.stream { break }
 
-        signIn.cancel()
+        signIn.close()
         await signIn.settle()
         while !steps.taken.contains("cancelled") { await Task.yield() }
 
+        #expect(steps.loaded.isEmpty)
+        #expect(signIn.phase == .idle)
+    }
+
+    @Test func aBrowserClosedBeforeItsPageOpensStartsNoSignIn() async {
+        let steps = Steps()
+        steps.keys = [Self.keyLink]
+        let signIn = Self.signIn(steps)
+
+        signIn.close()
+        await signIn.open(Self.page)
+        signIn.reachedSignInPage(returningTo: Self.page)
+        await signIn.settle()
+
+        #expect(steps.taken.isEmpty)
         #expect(steps.loaded.isEmpty)
         #expect(signIn.phase == .idle)
     }

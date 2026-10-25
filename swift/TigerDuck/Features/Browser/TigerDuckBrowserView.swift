@@ -51,7 +51,7 @@ struct TigerDuckBrowserView: View {
             .onChange(of: BrowserData.shared.generation, initial: true) { _, now in
                 if now != page.generation { dismiss() }
             }
-            .onDisappear { page.signIn.cancel() }
+            .onDisappear { page.signIn.close() }
     }
 
     private static let barHeight: CGFloat = 44
