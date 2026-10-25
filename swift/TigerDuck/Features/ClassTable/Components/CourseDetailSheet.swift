@@ -312,9 +312,10 @@ struct CourseDetailSheet: View {
                             .foregroundStyle(Color.textSecondary)
                             .font(.caption)
                     }
+                    .cardPadding()
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .cardPadding()
                 .glassCard()
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
@@ -418,7 +419,7 @@ private struct InfoRow: View {
 
     var body: some View {
         if let onTap {
-            Button(action: onTap) { content }
+            Button(action: onTap) { content.contentShape(.rect) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("\(label), \(value)"))
                 .accessibilityHint(Text(String(localized: "course_detail_copy_code")))
