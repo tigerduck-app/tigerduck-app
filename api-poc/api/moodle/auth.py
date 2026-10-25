@@ -140,10 +140,13 @@ class MoodleOidcAuthClient:
     def call(self, wsfunction: str, **args: Any) -> Any:
         params = {"moodlewsrestformat": "json", "wsfunction": wsfunction}
         # The token goes in the form, which Moodle reads as it reads the query,
-        # so it stays out of the URLs that access logs keep.
+        # so it stays out of the URLs that access logs keep. A redirect is not
+        # followed: a 307 or a 308 would send the form, token and all, to its
+        # Location, so raise_for_status() fails on it instead.
         data = {"wstoken": self.get_token()["wstoken"], **args}
         r = self._client.post(
             f"{SITE_URL}/webservice/rest/server.php", params=params, data=data,
+            follow_redirects=False,
         )
         r.raise_for_status()
         return r.json()
