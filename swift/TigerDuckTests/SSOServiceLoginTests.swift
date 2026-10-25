@@ -275,6 +275,97 @@ struct SSOServiceLoginTests {
         #expect(outcome.refusals.count == 1)
     }
 
+    /// The stub reads no cookies, so the jar shows only whether the sign-in ended the SSO session.
+    static func sessionSignedInToSSO() throws -> (session: URLSession, jar: HTTPCookieStorage) {
+        let jar = HTTPCookieStorage.sharedCookieStorage(forGroupContainerIdentifier: "test.\(UUID().uuidString)")
+        jar.cookieAcceptPolicy = .always
+        jar.setCookie(try #require(HTTPCookie(properties: [
+            .domain: "ssoam2.ntust.edu.tw", .path: "/", .name: "session", .value: "live",
+        ])))
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SSOServerStub.self]
+        config.httpCookieStorage = jar
+        return (URLSession(configuration: config), jar)
+    }
+
+    static func enqueueLiveSessionThenSignIn(for service: URL) {
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.page(servicePage), for: service)
+        enqueueSignInForm(for: service)
+        SSOServerStub.enqueue(.page(servicePage), for: postURL)
+        SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: probeURL)
+    }
+
+    static func retry(_ service: URL, on session: URLSession) async -> Result<Bool, Error> {
+        await result {
+            try await SSOLoginService.signInAgain(
+                session: session, serviceURL: service, studentId: "B00000000", password: "unused",
+                generation: NTUSTSessionManager.shared.generation, now: { Self.now }
+            )
+        }
+    }
+
+    @Test("a retry of a refused stored password ends a live session and posts it, and the school's yes clears the refusals")
+    func retryPostsPastALiveSession() async throws {
+        let service = Self.serviceURL()
+        let (session, jar) = try Self.sessionSignedInToSSO()
+        Self.enqueueLiveSessionThenSignIn(for: service)
+
+        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<Bool, Error>, Int) in
+            (await Self.retry(service, on: session), SSOLoginService.storedPasswordRefusals.count)
+        }
+
+        guard case .success(true) = outcome else {
+            Issue.record("expected a sign-in, got \(outcome)")
+            return
+        }
+        #expect(posts.map(\.url) == [Self.postURL])
+        #expect(posts.first?.body.contains("Password=unused") == true)
+        #expect(jar.cookies?.isEmpty == true)
+        #expect(refusals == 0)
+    }
+
+    @Test("a retry whose refusal was settled while it waited for the lock posts nothing and keeps the session",
+          .timeLimit(.minutes(1)))
+    func retryAfterTheRefusalWasSettledPostsNothing() async throws {
+        let service = Self.serviceURL()
+        let (session, jar) = try Self.sessionSignedInToSSO()
+        Self.enqueueLiveSessionThenSignIn(for: service)
+
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
+            let retrying = await SSOLoginService.postingStoredPassword {
+                let retrying = Task { await Self.retry(service, on: session) }
+                await Self.waitForAQueuedPost()
+                SSOLoginService.forgetStoredPasswordRefusals()
+                return retrying
+            }
+            return await retrying.value
+        }
+
+        guard case .success(true) = outcome else {
+            Issue.record("expected a sign-in, got \(outcome)")
+            return
+        }
+        #expect(SSOServerStub.requests.isEmpty)
+        #expect(jar.cookies?.count == 1)
+    }
+
+    @Test("a retry still waits out a refusal's wait, and keeps the live session meanwhile")
+    func retryWaitsOutARefusalsWait() async throws {
+        let service = Self.serviceURL()
+        let (session, jar) = try Self.sessionSignedInToSSO()
+        Self.enqueueLiveSessionThenSignIn(for: service)
+
+        let outcome = await withRefusals(1, last: Self.now) { await Self.retry(service, on: session) }
+
+        guard case .failure(SSOLoginError.loginFailed) = outcome else {
+            Issue.record("expected loginFailed, got \(outcome)")
+            return
+        }
+        #expect(posts.isEmpty)
+        #expect(jar.cookies?.count == 1)
+    }
+
     @Test("a password POST that fails on the network is no refusal")
     func networkFailureIsNoRefusal() async {
         let service = Self.serviceURL()

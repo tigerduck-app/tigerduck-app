@@ -69,16 +69,8 @@ struct StoredPasswordRetryTests {
 
         var sessionIsLive = true
         var answers: [Answer] = []
-        var whileProbing: () -> Void = {}
         weak var auth: AuthService?
-        private(set) var probes = 0
         private(set) var posts = 0
-
-        func probe() -> Bool {
-            probes += 1
-            whileProbing()
-            return sessionIsLive
-        }
 
         func post(at now: Date) throws -> Bool {
             posts += 1
@@ -115,10 +107,10 @@ struct StoredPasswordRetryTests {
         let school = School()
         let harvests: Harvests
 
-        init(harvests: Harvests) {
+        init(harvests: Harvests, moodleToken: String? = nil) {
             self.harvests = harvests
             let (clock, sleeper, school) = (clock, sleeper, school)
-            let token = OSAllocatedUnfairLock<String?>(initialState: nil)
+            let token = OSAllocatedUnfairLock<String?>(initialState: moodleToken)
             let tokens = MoodleTokenService(
                 storedCredentials: {
                     guard let studentId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
@@ -143,8 +135,9 @@ struct StoredPasswordRetryTests {
                 notificationCenter: center,
                 moodleTokens: tokens,
                 schoolSignIn: { _, _ in true },
-                schoolSessionIsLive: { school.probe() },
+                schoolSessionIsLive: { school.sessionIsLive },
                 renewSchoolSignIn: { _, _, _ in try school.post(at: clock.withLock { $0 }) },
+                retrySchoolSignIn: { _, _, _ in try school.post(at: clock.withLock { $0 }) },
                 endSchoolSession: { _ in },
                 now: { clock.withLock { $0 } },
                 retrySleep: { await sleeper.sleep(for: $0) }
@@ -220,7 +213,8 @@ struct StoredPasswordRetryTests {
 
     @Test("a try the school refuses again arms the next for a minute later")
     func refusedTryArmsTheNextWait() async throws {
-        let device = Device(harvests: Harvests(refusing: 2))
+        let device = Device(harvests: Harvests(refusing: 1))
+        device.school.answers = [.refuses]
 
         try await signedIn(refusals: 0, last: nil) { _ in
             await device.auth.ensureBackendSignedIn()
@@ -235,7 +229,8 @@ struct StoredPasswordRetryTests {
             #expect(await device.sleeper.requestedDurations == [.seconds(10), .seconds(60)])
         }
 
-        #expect(device.harvests.count == 2)
+        #expect(device.school.posts == 1)
+        #expect(device.harvests.count == 1)
         #expect(SettingsAPIStub.requests(for: device.backend.loginURL).isEmpty)
     }
 
@@ -255,6 +250,27 @@ struct StoredPasswordRetryTests {
 
         #expect(device.school.posts == 1)
         #expect(device.harvests.count == 1)
+    }
+
+    /// A refusal from Moodle's token sign-in leaves the school session warm, and a warm session
+    /// says nothing about the password: only the school's answer to a post does.
+    @Test("a try past a warm school session posts the stored password, and the school's yes clears the refusal")
+    func warmSchoolSessionStillGetsThePost() async throws {
+        let device = Device(harvests: Harvests(refusing: 0), moodleToken: "stored")
+        device.school.sessionIsLive = true
+        device.answerTheBackendSignIn()
+
+        try await signedIn(refusals: 1, last: Self.start) { _ in
+            _ = try await device.armTheTry()
+            device.advance(by: 10)
+            await device.sleeper.fire()
+            try await waitUntil { device.isSignedInToTheBackend }
+            #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+        }
+
+        #expect(device.school.posts == 1)
+        #expect(device.harvests.count == 0)
+        #expect(try device.backend.sentMoodleTokens() == ["stored"])
     }
 
     @Test("a try that signs in to the school clears the banner a failed automatic sign-in left, and nothing of the sheet's",
@@ -302,32 +318,6 @@ struct StoredPasswordRetryTests {
         #expect(await device.sleeper.armedCount == 1)
     }
 
-    @Test("a sign-in typed while a try's probe is out keeps the sheet's state, and the try posts nothing")
-    func typedSignInDuringTheProbeKeepsTheSheet() async throws {
-        let device = Device(harvests: Harvests(refusing: 0))
-        device.school.sessionIsLive = false
-        device.school.whileProbing = {
-            device.auth.isLoggingIn = true
-            device.auth.loginError = "typed"
-        }
-
-        try await signedIn(refusals: 1, last: Self.start) { _ in
-            let waiting = try await device.armTheTry()
-            device.advance(by: 10)
-            await device.sleeper.fire()
-            await waiting.value
-
-            #expect(device.auth.isLoggingIn)
-            #expect(device.auth.loginError == "typed")
-            try await device.sleeper.waitUntilArmed(atLeast: 2)
-            #expect(await device.sleeper.requestedDurations == [.seconds(10), .seconds(60)])
-        }
-
-        #expect(device.school.probes == 1)
-        #expect(device.school.posts == 0)
-        #expect(device.harvests.count == 0)
-    }
-
     @Test("a try lost to the network is armed again a step further down the schedule, and goes through then")
     func offlineTryIsArmedAgain() async throws {
         let device = Device(harvests: Harvests(refusing: 0))
@@ -365,8 +355,7 @@ struct StoredPasswordRetryTests {
         let hook = SignOutHook()
         let device = Device(harvests: Harvests(refusing: 0, whileOut: { if step == .tokenHarvest { await hook.signOut() } }))
         hook.auth = device.auth
-        device.school.sessionIsLive = step == .tokenHarvest
-        device.school.answers = [.signsOut]
+        device.school.answers = step == .schoolSignIn ? [.signsOut] : []
         device.answerTheBackendSignIn()
 
         try await signedIn(refusals: 1, last: Self.start) { _ in
@@ -465,7 +454,7 @@ struct StoredPasswordRetryTests {
         }
 
         #expect(device.auth.storedPasswordRetry == nil)
-        #expect(device.school.probes == 0)
+        #expect(device.school.posts == 0)
         #expect(device.harvests.count == 0)
     }
 
@@ -485,7 +474,7 @@ struct StoredPasswordRetryTests {
             #expect(await device.sleeper.requestedDurations == [.seconds(10), .seconds(60)])
         }
 
-        #expect(device.school.probes == 0)
+        #expect(device.school.posts == 0)
         #expect(device.harvests.count == 0)
     }
 
@@ -502,7 +491,7 @@ struct StoredPasswordRetryTests {
             await waiting.value
         }
 
-        #expect(device.school.probes == 0)
+        #expect(device.school.posts == 0)
         #expect(device.harvests.count == 0)
         #expect(await device.sleeper.armedCount == 1)
     }
