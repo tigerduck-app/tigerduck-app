@@ -65,6 +65,9 @@ struct TigerDuckBrowserView: View {
             .onChange(of: BrowserData.shared.generation, initial: true) { _, now in
                 if now != page.generation { dismiss() }
             }
+            .onChange(of: page.canUsePage) { _, usable in
+                if !usable && page.find.isActive { page.find.end() }
+            }
             .onDisappear { page.signIn.close() }
     }
 
