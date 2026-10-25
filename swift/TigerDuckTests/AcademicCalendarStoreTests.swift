@@ -198,4 +198,25 @@ struct AcademicCalendarStoreTests {
         #expect(!calendar.suppressesClasses(on: Self.day("2027-02-10"), optedIn: []))
         #expect(!calendar.suppressesClasses(on: Self.day("2027-02-07"), optedIn: [3]))
     }
+
+    @Test("a multi-day holiday is a calendar event on each of its days, each toggling the one holiday")
+    func multiDayHolidayIsAnEventEachDay() {
+        let calendar = AcademicCalendar(
+            revision: 1,
+            terms: [],
+            holidays: [
+                Holiday(
+                    id: 21,
+                    nameZh: "颱風假",
+                    nameEn: "Typhoon Day Off",
+                    start: Self.day("2026-10-23"),
+                    end: Self.day("2026-10-24")
+                )
+            ]
+        )
+        let events = calendar.calendarEvents()
+        #expect(events.map(\.date) == [Self.day("2026-10-23"), Self.day("2026-10-24")])
+        #expect(Set(events.map(\.eventId)).count == 2)
+        #expect(events.map { AcademicCalendar.holidayID(for: $0) } == [21, 21])
+    }
 }
