@@ -7,10 +7,11 @@ category in the PrivacyInfo.xcprivacy of the bundle that holds the code
 and each app and app extension is a bundle of its own. For every application and app-extension
 target in `project.pbxproj` this works out the files the target builds the way Xcode does: the
 files in its synchronized folders minus those their exception sets leave out, plus the files
-other folders' exception sets pull in, plus the sources of a local package it links that ships
-no manifest of its own. It fails when a target builds no PrivacyInfo.xcprivacy or more than one,
+other folders' exception sets pull in, plus the modules of a local package it links that have no
+manifest of their own. It fails when a target builds no PrivacyInfo.xcprivacy or more than one,
 or when its Swift code matches a pattern in CATEGORIES and the manifest does not declare that
-category, or declares a reason Apple does not list for it.
+category, or declares a reason Apple does not list for it. A package module with its own manifest
+is held to the same rules, and Package.swift must list that manifest as a resource.
 
 Remote packages are not scanned, since CI does not resolve them. Defaults, swift-nio's NIOPosix
 and swift-nio-ssl ship their own manifests; Valet, SwiftSoup, swift-markdown-ui and the rest call
@@ -64,6 +65,8 @@ OBJECT_RE = re.compile(r"^\t\t(\w{24}) (?:/\*[^\n]*?\*/ )?= \{\n(.*?)^\t\t\};", 
 COMMENT_RE = re.compile(r"/\*.*?\*/")
 LINE_COMMENT_RE = re.compile(r"(^|\s)//.*$", re.M)
 LIBRARY_RE = re.compile(r"\.library\(\s*name:\s*\"([^\"]+)\"")
+# shortcut: a manifest ships only if Package.swift copies or processes it by name, not a folder.
+RESOURCE_RE = re.compile(r"\.(copy|process)\(\s*\"([^\"]*/)?PrivacyInfo\.xcprivacy\"")
 
 
 def objects(text: str) -> dict[str, str]:
@@ -115,19 +118,34 @@ def target_files(objs: dict[str, str], target_id: str, swift_dir: Path) -> list[
     return files
 
 
-def package_sources(objs: dict[str, str], target_id: str, swift_dir: Path) -> list[Path]:
-    """Swift sources of the local packages a target links, unless a package has its own manifest."""
+def package_sources(
+    objs: dict[str, str], target_id: str, swift_dir: Path, root: Path
+) -> tuple[list[Path], list[str]]:
+    """The local packages' sources the target's manifest covers, and problems with their own.
+
+    A package module with a manifest of its own ships it in a bundle of its own, so its code is
+    checked against that manifest, which Package.swift must list as a resource.
+    """
     products = {field(objs[dep], "productName") for dep in items(objs[target_id], "packageProductDependencies")}
-    sources = []
+    sources, found = [], []
     for body in objs.values():
         if field(body, "isa") != "XCLocalSwiftPackageReference":
             continue
         package = swift_dir / field(body, "relativePath")
-        if not products & set(LIBRARY_RE.findall((package / "Package.swift").read_text(encoding="utf-8"))):
+        package_swift = (package / "Package.swift").read_text(encoding="utf-8")
+        if not products & set(LIBRARY_RE.findall(package_swift)):
             continue
-        if not any((package / "Sources").rglob(MANIFEST)):
-            sources += sorted((package / "Sources").rglob("*.swift"))
-    return sources
+        for module in sorted(path for path in (package / "Sources").iterdir() if path.is_dir()):
+            code = sorted(module.rglob("*.swift"))
+            manifest = next(module.rglob(MANIFEST), None)
+            if manifest is None:
+                sources += code
+            elif not RESOURCE_RE.search(package_swift):
+                found.append(f"{package.name}/{module.name}: {manifest.relative_to(root)} is not a resource in "
+                             f"{(package / 'Package.swift').relative_to(root)}, so it does not ship")
+            else:
+                found += manifest_problems(f"{package.name}/{module.name}", manifest, used_categories(code), root)
+    return sources, found
 
 
 def used_categories(sources: list[Path]) -> dict[str, Path]:
@@ -180,8 +198,9 @@ def problems(root: Path = ROOT) -> list[str]:
             found.append(f"{name}: builds {len(manifests)} {MANIFEST} files, needs one: "
                          + (", ".join(str(p.relative_to(root)) for p in manifests) or "none"))
             continue
-        sources = [path for path in files if path.suffix == ".swift"] + package_sources(objs, target_id, swift_dir)
-        found += manifest_problems(name, manifests[0], used_categories(sources), root)
+        package_code, package_problems = package_sources(objs, target_id, swift_dir, root)
+        sources = [path for path in files if path.suffix == ".swift"] + package_code
+        found += package_problems + manifest_problems(name, manifests[0], used_categories(sources), root)
     return found
 
 

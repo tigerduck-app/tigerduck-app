@@ -91,6 +91,11 @@ PROJECT = """// !$*UTF8*$!
 }
 """
 
+PACKAGE_SHIPPING_MANIFEST = (
+    'products: [.library(name: "Mail", targets: ["Mail"])]\n'
+    'targets: [.target(name: "Mail", resources: [.copy("PrivacyInfo.xcprivacy")])]\n'
+)
+
 DEFAULTS = "NSPrivacyAccessedAPICategoryUserDefaults"
 BOOT_TIME = "NSPrivacyAccessedAPICategorySystemBootTime"
 DISK_SPACE = "NSPrivacyAccessedAPICategoryDiskSpace"
@@ -195,13 +200,31 @@ class PrivacyManifestTests(unittest.TestCase):
         self.assertEqual(cpm.problems(self.root), [
             f"App: `{DEFAULTS}` needs one or more of ['1C8F.1', 'AC6B.1', 'C56D.1', 'CA92.1'], not ['C617.1']"])
 
-    def test_a_linked_local_package_counts_unless_it_has_its_own_manifest(self) -> None:
+    def test_a_linked_local_package_counts_unless_it_ships_its_own_manifest(self) -> None:
         self.write("swift/Packages/Mail/Sources/Mail/Mail.swift", "let keys: Set<URLResourceKey> = [.volumeAvailableCapacityKey]\n")
         self.assertEqual(cpm.problems(self.root), [
             f"App: swift/Packages/Mail/Sources/Mail/Mail.swift uses `{DISK_SPACE}`, "
             "which swift/App/PrivacyInfo.xcprivacy does not declare"])
+        self.write("swift/Packages/Mail/Package.swift", PACKAGE_SHIPPING_MANIFEST)
         self.write("swift/Packages/Mail/Sources/Mail/PrivacyInfo.xcprivacy", manifest(**{DISK_SPACE: ["E174.1"]}))
         self.assertEqual(cpm.problems(self.root), [])
+
+    def test_a_package_manifest_that_is_not_a_resource_fails(self) -> None:
+        self.write("swift/Packages/Mail/Package.swift",
+                   PACKAGE_SHIPPING_MANIFEST.replace('resources: [.copy("PrivacyInfo.xcprivacy")]',
+                                                     'exclude: ["PrivacyInfo.xcprivacy"]'))
+        self.write("swift/Packages/Mail/Sources/Mail/PrivacyInfo.xcprivacy", manifest())
+        self.assertEqual(cpm.problems(self.root), [
+            "Mail/Mail: swift/Packages/Mail/Sources/Mail/PrivacyInfo.xcprivacy is not a resource in "
+            "swift/Packages/Mail/Package.swift, so it does not ship"])
+
+    def test_a_package_manifest_that_misses_a_category_its_module_uses_fails(self) -> None:
+        self.write("swift/Packages/Mail/Package.swift", PACKAGE_SHIPPING_MANIFEST)
+        self.write("swift/Packages/Mail/Sources/Mail/Mail.swift", "let store = UserDefaults.standard\n")
+        self.write("swift/Packages/Mail/Sources/Mail/PrivacyInfo.xcprivacy", manifest())
+        self.assertEqual(cpm.problems(self.root), [
+            f"Mail/Mail: swift/Packages/Mail/Sources/Mail/Mail.swift uses `{DEFAULTS}`, "
+            "which swift/Packages/Mail/Sources/Mail/PrivacyInfo.xcprivacy does not declare"])
 
     def test_a_manifest_that_is_not_a_property_list_fails(self) -> None:
         self.write("swift/My Ext/PrivacyInfo.xcprivacy", "<plist><dict>")
