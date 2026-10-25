@@ -86,6 +86,8 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var refusedHosts: Set<String> = []
     /// The Moodle page asked for last, which a sign-in its navigation ran into goes on to.
     private var lastRequested: URL?
+    /// How long the store keeps Moodle's session cookie on disk; Moodle's own timeout ends it sooner.
+    private static let sessionKept: TimeInterval = 30 * 24 * 60 * 60
 
     init(page: BrowserPage) {
         self.page = page
@@ -112,6 +114,11 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
             await BrowserSessionSignIn(store: store, host: container).signIn()
         }
         Task {
+            await BrowserData.shared.prepare()
+            // A sign-in or sign-out has come since this browser opened, and it is closing.
+            guard BrowserData.shared.generation == page.generation else { return }
+            // Until asked for its records, the store answers with no cookies, not those on disk.
+            _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
             await page.signIn.open(start)
         }
@@ -177,6 +184,16 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         lastRequested = nil
         page.signIn.pageSettled()
+        Task { await keepSession() }
+    }
+
+    private func keepSession() async {
+        let cookies = page.store.httpCookieStore
+        let expiry = Date.now.addingTimeInterval(Self.sessionKept)
+        let lasting = await cookies.allCookies().compactMap { BrowserRouting.lastingSession($0, until: expiry) }
+        // A sign-in or sign-out since has emptied this store for the departing account.
+        guard BrowserData.shared.generation == page.generation else { return }
+        for cookie in lasting { await cookies.setCookie(cookie) }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {

@@ -115,6 +115,29 @@ struct BrowserRoutingTests {
         #expect(!BrowserRouting.hasMoodleSession([Self.cookie("MoodleSession", domain: "i.ntust.edu.tw")]))
     }
 
+    @Test func moodlesSessionCookieGetsAnExpiryAndKeepsItsFlags() throws {
+        let headers = ["Set-Cookie": "MoodleSession=abc; path=/; secure; HttpOnly"]
+        let session = try #require(
+            HTTPCookie.cookies(withResponseHeaderFields: headers, for: Self.url("https://moodle2.ntust.edu.tw/")).first
+        )
+        // Whole seconds within the 400 days HTTPCookie allows.
+        let expiry = Date(timeIntervalSince1970: (Date.now.timeIntervalSince1970 + 86_400).rounded())
+        let lasting = try #require(BrowserRouting.lastingSession(session, until: expiry))
+        #expect(lasting.name == "MoodleSession" && lasting.value == "abc")
+        #expect(lasting.domain == session.domain && lasting.path == "/")
+        #expect(lasting.isSecure && lasting.isHTTPOnly && !lasting.isSessionOnly)
+        #expect(lasting.expiresDate == expiry)
+    }
+
+    @Test func onlyMoodlesSessionCookieWithoutAnExpiryIsGivenOne() {
+        let expiry = Date(timeIntervalSince1970: 2_000_000_000)
+        var dated = [HTTPCookiePropertyKey: Any]()
+        dated = [.name: "MoodleSession", .value: "v", .domain: "moodle2.ntust.edu.tw", .path: "/", .expires: expiry]
+        #expect(BrowserRouting.lastingSession(HTTPCookie(properties: dated)!, until: expiry) == nil)
+        #expect(BrowserRouting.lastingSession(Self.cookie("MOODLEID1_", domain: "moodle2.ntust.edu.tw"), until: expiry) == nil)
+        #expect(BrowserRouting.lastingSession(Self.cookie("MoodleSession", domain: "i.ntust.edu.tw"), until: expiry) == nil)
+    }
+
     @Test func theLogoutRulesBlockBothLogoutsAndNothingElse() throws {
         let rules = try #require(
             JSONSerialization.jsonObject(with: Data(BrowserPageScripts.logoutRules.utf8)) as? [[String: [String: String]]]

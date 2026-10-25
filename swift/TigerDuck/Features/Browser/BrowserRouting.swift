@@ -73,6 +73,16 @@ nonisolated enum BrowserRouting {
         }
     }
 
+    /// Moodle's session cookie given an expiry, as WebKit keeps a cookie without one in memory only
+    /// and the browser keeps its Moodle session across launches. Moodle still ends the session.
+    static func lastingSession(_ cookie: HTTPCookie, until expiry: Date) -> HTTPCookie? {
+        guard cookie.expiresDate == nil, hasMoodleSession([cookie]) else { return nil }
+        var properties = cookie.properties ?? [:]
+        properties[.expires] = expiry
+        properties[.discard] = nil
+        return HTTPCookie(properties: properties)
+    }
+
     /// The cookies the browser and the app's shared jar hand each other: secure ones of the hosts
     /// the Moodle sign-in uses, which `MoodleTokenService.signOut()` also purges from that jar.
     static func isSharedCookie(_ cookie: HTTPCookie) -> Bool {
