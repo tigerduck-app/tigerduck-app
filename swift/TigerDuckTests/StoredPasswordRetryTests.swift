@@ -69,6 +69,7 @@ struct StoredPasswordRetryTests {
 
         var sessionIsLive = true
         var answers: [Answer] = []
+        var whileWaitingForTheLock: () -> Void = {}
         weak var auth: AuthService?
         private(set) var posts = 0
 
@@ -111,7 +112,8 @@ struct StoredPasswordRetryTests {
         init(
             harvests: Harvests,
             moodleToken: String? = nil,
-            retry: ((_ studentId: String, _ password: String, _ generation: Int) async throws -> Bool)? = nil
+            retry: ((_ studentId: String, _ password: String, _ generation: Int, _ mayPost: () -> Bool) async throws -> Bool)?
+                = nil
         ) {
             self.harvests = harvests
             let (clock, sleeper, school) = (clock, sleeper, school)
@@ -142,7 +144,11 @@ struct StoredPasswordRetryTests {
                 schoolSignIn: { _, _ in true },
                 schoolSessionIsLive: { school.sessionIsLive },
                 renewSchoolSignIn: { _, _, _ in try school.post(at: clock.withLock { $0 }, forgetting: true) },
-                retrySchoolSignIn: retry ?? { _, _, _ in try school.post(at: clock.withLock { $0 }, forgetting: false) },
+                retrySchoolSignIn: retry ?? { _, _, _, mayPost in
+                    school.whileWaitingForTheLock()
+                    guard mayPost() else { return false }
+                    return try school.post(at: clock.withLock { $0 }, forgetting: false)
+                },
                 endSchoolSession: { _ in },
                 now: { clock.withLock { $0 } },
                 retrySleep: { await sleeper.sleep(for: $0) }
@@ -321,6 +327,30 @@ struct StoredPasswordRetryTests {
         #expect(device.harvests.count == 0)
         #expect(SettingsAPIStub.requests(for: device.backend.loginURL).isEmpty)
         #expect(await device.sleeper.armedCount == 1)
+    }
+
+    @Test("a sign-in typed while a try waits for the SSO lock keeps the sheet's state, and the try posts nothing")
+    func typedSignInWhileTheTryWaitsKeepsTheSheet() async throws {
+        let device = Device(harvests: Harvests(refusing: 0))
+        device.school.whileWaitingForTheLock = {
+            device.auth.isLoggingIn = true
+            device.auth.loginError = "typed"
+        }
+
+        try await Self.signedIn(refusals: 1, last: Self.start) { _ in
+            let waiting = try await device.armTheTry()
+            device.advance(by: 10)
+            await device.sleeper.fire()
+            await waiting.value
+
+            #expect(device.auth.isLoggingIn)
+            #expect(device.auth.loginError == "typed")
+            try await device.sleeper.waitUntilArmed(atLeast: 2)
+            #expect(await device.sleeper.requestedDurations == [.seconds(10), .seconds(60)])
+        }
+
+        #expect(device.school.posts == 0)
+        #expect(device.harvests.count == 0)
     }
 
     @Test("a try lost to the network is armed again a step further down the schedule, and goes through then")

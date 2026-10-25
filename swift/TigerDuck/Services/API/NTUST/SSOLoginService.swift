@@ -183,20 +183,22 @@ enum SSOLoginService {
     /// ends the session as a typed sign-in does and posts. A refusal is counted, but a yes leaves
     /// the count to the caller, which forgets it once the rest of its retry went through. Once it
     /// holds the SSO locks it posts nothing while no refusal is counted, as a sign-in it waited
-    /// behind may have settled it, nor while a refusal's wait holds, as another automatic post may
-    /// have been refused meanwhile; the session then stays as it is.
+    /// behind may have settled it, nor while `mayPost` says no, as for a sign-in typed meanwhile,
+    /// nor while a refusal's wait holds; the session then stays as it is.
     static func signInAgain(
         session: URLSession,
         serviceURL: URL,
         studentId: String,
         password: String,
         generation: Int,
-        now: () -> Date = { Date() }
+        now: () -> Date = { Date() },
+        mayPost: () -> Bool
     ) async throws -> Bool {
         try await postingStoredPassword {
             try await oneAtATime {
                 try checkSignedIn(generation)
                 guard storedPasswordRefusals.count > 0 else { return true }
+                guard mayPost() else { return false }
                 if storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
                 return try await performServiceLogin(
                     session: session, serviceURL: serviceURL, studentId: studentId, password: password,

@@ -298,13 +298,46 @@ struct SSOServiceLoginTests {
         }
     }
 
-    static func retry(_ service: URL, on session: URLSession) async -> Result<Bool, Error> {
+    static func retry(
+        _ service: URL, on session: URLSession, mayPost: () -> Bool = { true }
+    ) async -> Result<Bool, Error> {
         await result {
             try await SSOLoginService.signInAgain(
                 session: session, serviceURL: service, studentId: "B00000000", password: "unused",
-                generation: NTUSTSessionManager.shared.generation, now: { Self.now }
+                generation: NTUSTSessionManager.shared.generation, now: { Self.now }, mayPost: mayPost
             )
         }
+    }
+
+    @MainActor
+    private final class TypedSignIn {
+        var isUnderWay = false
+    }
+
+    @Test("a retry behind which a sign-in was typed while it waited for the lock posts nothing and leaves the session",
+          .timeLimit(.minutes(1)))
+    func retryBehindATypedSignInPostsNothing() async throws {
+        let service = Self.serviceURL()
+        let (session, jar) = try Self.sessionSignedInToSSO()
+        Self.enqueueLiveSessionThenSignIn(for: service)
+        let typed = TypedSignIn()
+
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
+            let retrying = await SSOLoginService.postingStoredPassword {
+                let retrying = Task { await Self.retry(service, on: session) { !typed.isUnderWay } }
+                await Self.waitForAQueuedPost()
+                typed.isUnderWay = true
+                return retrying
+            }
+            return await retrying.value
+        }
+
+        guard case .success(false) = outcome else {
+            Issue.record("expected no sign-in, got \(outcome)")
+            return
+        }
+        #expect(SSOServerStub.requests.isEmpty)
+        #expect(jar.cookies?.count == 1)
     }
 
     @Test("a retry of a refused stored password ends a live session and posts it, and the school's yes leaves the refusals")
@@ -334,9 +367,10 @@ struct SSOServiceLoginTests {
         let service = Self.serviceURL()
         let (session, _) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service, posts: 3)
-        let device = StoredPasswordRetryTests.Device(harvests: .init(refusing: 4)) { studentId, password, generation in
+        let device = StoredPasswordRetryTests.Device(harvests: .init(refusing: 4)) { studentId, password, generation, mayPost in
             try await SSOLoginService.signInAgain(
-                session: session, serviceURL: service, studentId: studentId, password: password, generation: generation
+                session: session, serviceURL: service, studentId: studentId, password: password, generation: generation,
+                mayPost: mayPost
             )
         }
 
