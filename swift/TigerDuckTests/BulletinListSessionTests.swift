@@ -57,41 +57,45 @@ struct BulletinListSessionTests {
 
     @Test("a later visit asks for the first page and keeps the pages the first visit walked")
     func laterVisitsAskForTheFirstPageOnly() async throws {
-        BulletinsViewModel.forgetListSession()
-        defer { BulletinsViewModel.forgetListSession() }
-        let stub = Stub()
-        let (older, newer, newest) = (stub.id, stub.id + 1, stub.id + 2)
-        stub.serve(Self.page([newer], next: older))
-        stub.serve(Self.page([older]), cursor: older)
-        stub.serve(Self.page([newest, newer], next: older))
+        try await withExclusiveRealDefaults {
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (older, newer, newest) = (stub.id, stub.id + 1, stub.id + 2)
+            stub.serve(Self.page([newer], next: older))
+            stub.serve(Self.page([older]), cursor: older)
+            stub.serve(Self.page([newest, newer], next: older))
 
-        let firstVisit = BulletinsViewModel(apiClient: stub.client)
-        await firstVisit.loadIfNeeded()
-        try await waitUntil { firstVisit.items.contains { $0.id == older } }
-        let secondVisit = BulletinsViewModel(apiClient: stub.client)
-        await secondVisit.loadIfNeeded()
+            let firstVisit = BulletinsViewModel(apiClient: stub.client)
+            await firstVisit.loadIfNeeded()
+            try await waitUntil { firstVisit.items.contains { $0.id == older } }
+            let secondVisit = BulletinsViewModel(apiClient: stub.client)
+            await secondVisit.loadIfNeeded()
 
-        #expect(SettingsAPIStub.requests(for: stub.listURL()).count == 2)
-        #expect(SettingsAPIStub.requests(for: stub.listURL(cursor: older)).count == 1)
-        #expect(secondVisit.items.contains { $0.id == newest })
+            #expect(SettingsAPIStub.requests(for: stub.listURL()).count == 2)
+            #expect(SettingsAPIStub.requests(for: stub.listURL(cursor: older)).count == 1)
+            #expect(secondVisit.items.contains { $0.id == newest })
+        }
     }
 
     @Test("a first page with nothing the kept list has walks the pages behind it")
     func aGapWalksOn() async throws {
-        BulletinsViewModel.forgetListSession()
-        defer { BulletinsViewModel.forgetListSession() }
-        let stub = Stub()
-        let (kept, gap, newest) = (stub.id, stub.id + 1, stub.id + 2)
-        stub.serve(Self.page([kept]))
-        stub.serve(Self.page([newest], next: gap))
-        stub.serve(Self.page([gap]), cursor: gap)
+        try await withExclusiveRealDefaults {
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let stub = Stub()
+            let (kept, gap, newest) = (stub.id, stub.id + 1, stub.id + 2)
+            stub.serve(Self.page([kept]))
+            stub.serve(Self.page([newest], next: gap))
+            stub.serve(Self.page([gap]), cursor: gap)
 
-        let firstVisit = BulletinsViewModel(apiClient: stub.client)
-        await firstVisit.loadIfNeeded()
-        let secondVisit = BulletinsViewModel(apiClient: stub.client)
-        await secondVisit.loadIfNeeded()
+            let firstVisit = BulletinsViewModel(apiClient: stub.client)
+            await firstVisit.loadIfNeeded()
+            let secondVisit = BulletinsViewModel(apiClient: stub.client)
+            await secondVisit.loadIfNeeded()
 
-        try await waitUntil { secondVisit.items.contains { $0.id == gap } }
+            try await waitUntil { secondVisit.items.contains { $0.id == gap } }
+        }
     }
 }
 

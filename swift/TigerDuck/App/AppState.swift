@@ -45,6 +45,7 @@ final class AppState {
                 AuthTokenManager.accessTokenKey,
                 AuthTokenManager.refreshTokenKey,
                 AuthTokenManager.expiresAtKey,
+                AuthTokenManager.refreshTokenUsesKey,
                 AuthTokenManager.departingSessionKey,
             ]
             let allOk = keysToWipe
@@ -163,9 +164,9 @@ final class AppState {
         }
         if Self.retriesDepartingUnregister(
             onboarded: hasCompletedOnboarding, signedIn: authService.hasStoredCredentials,
-            sessionKept: atm.hasDepartingSession
+            keptOn: atm.departingSessionBackends, backend: PushServerConfig.resolveServerURL()
         ) {
-            _ = authService.startSignOutCalls { [pushCoordinator] in
+            authService.startDepartingUnregisterRetry { [pushCoordinator] in
                 await atm.retryDepartingUnregister { await pushCoordinator.registration.unregisterDevice(at: $0) }
             }
         }
