@@ -23,7 +23,8 @@ ignore cancellation.
   DEBUG server override takes effect through a sign-out and a new client
   (docs/decisions/0007-dev-mail-server-override.md).
 - Every `run` call holds `commandLock`, a private FIFO `AsyncSerialLock`, across the liveness probe,
-  any reconnect and the command. It calls `acquire()` and `release()` rather than `withLock`, so the
+  any reconnect and the command. The search index's download asks for it as `yielding`, behind
+  every other command (docs/decisions/0027-mail-local-search-index.md). It calls `acquire()` and `release()` rather than `withLock`, so the
   body keeps the actor's isolation to read `imap`, `credentials` and `connectionGeneration`.
 - The probe is a NOOP, never a STATUS that reselects a folder. A dead connection gets one reconnect
   and login; then the command runs once and to completion, even for a cancelled caller. A command
@@ -44,6 +45,7 @@ ignore cancellation.
 
 ## Consequences
 
-- Commands wait in FIFO order behind a long one, such as a download.
+- Commands wait in FIFO order behind a long one, such as a download; the index's batches wait
+  behind them all.
 - `AsyncSerialLockTests` pins exclusion, FIFO order and release after a throw; `FakeMailClient`'s
   `hold`, `waitForArrival` and `release` replay interleavings such as a poll between mover steps.

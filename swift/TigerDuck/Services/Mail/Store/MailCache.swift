@@ -22,8 +22,9 @@ nonisolated final class MailCache: @unchecked Sendable {
     private var maxEntryBytes: Int { bodyLimitBytes / 2 }
     private let account: @Sendable () -> String?
     private let lock = NSLock()
-    private let wipes = OSAllocatedUnfairLock(initialState: 0)
+    private let wipes: OSAllocatedUnfairLock<Int>
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Cache")
+    let searchIndex: MailSearchIndex
 
     init(
         directory: URL,
@@ -33,6 +34,13 @@ nonisolated final class MailCache: @unchecked Sendable {
         self.directory = directory
         self.bodyLimitBytes = bodyLimitBytes
         self.account = account
+        let wipes = OSAllocatedUnfairLock(initialState: 0)
+        self.wipes = wipes
+        searchIndex = MailSearchIndex(
+            url: directory.appendingPathComponent("search-index.sqlite"),
+            account: account,
+            wipeCount: { wipes.withLock { $0 } }
+        )
     }
 
     func pageURL(folder: String) -> URL {
@@ -161,7 +169,7 @@ nonisolated final class MailCache: @unchecked Sendable {
     func clearAll() {
         lock.withLock {
             wipes.withLock { $0 += 1 }
-            _ = try? FileManager.default.removeItem(at: directory)
+            searchIndex.close { _ = try? FileManager.default.removeItem(at: directory) }
         }
     }
 

@@ -389,11 +389,13 @@ SchoolMailBootstrap.swift
 MailCache.swift
 MailCredentialStore.swift
 MailPreferences.swift
+MailSearchIndex.swift
 
-# Services/Mail/Sync — School Mail's background refresh and new-mail
-# notification; iOS-only, see Features/SchoolMail above
+# Services/Mail/Sync — School Mail's background refresh, new-mail
+# notification and search index download; iOS-only, see Features/SchoolMail above
 MailBackgroundRefresh.swift
 MailChecker.swift
+MailIndexer.swift
 MailNotifier.swift
 
 # Services/Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see

@@ -28,6 +28,10 @@ nonisolated enum MailConstants {
     static let warmPageSize = 20
     static let warmStartDelay: Duration = .milliseconds(500)
     static let bodyPrefetchLimit = 5
+    static let indexBatchSize = 20
+    static let indexResyncInterval: TimeInterval = 15 * 60
+    static let indexRetryDelay: TimeInterval = 60
+    static let searchTextPartBytes = 256 * 1024
 
     static let backgroundTaskIdentifier = "org.ntust.app.TigerDuck.mailRefresh"
     static let backgroundEarliestBegin: TimeInterval = 15 * 60

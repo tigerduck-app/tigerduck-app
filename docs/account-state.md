@@ -29,6 +29,7 @@ account: preferences, the device's own identity and public school data.
 | Live Activities | `LiveActivityCoordinator.endAll()` in the sign-out calls |
 | The backend's device registration | the unregister in the sign-out calls, sent with the kept session until it lands |
 | SwiftData | holds nothing: the models are value types the caches persist |
+| School Mail's cached pages, bodies and search index | `MailCache.clearAll()`, from School Mail's sign-out (`MailAccountManager.logout()`) |
 
 School Mail and the library are accounts of their own, which a school sign-out keeps; School
 Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-out clears them.
