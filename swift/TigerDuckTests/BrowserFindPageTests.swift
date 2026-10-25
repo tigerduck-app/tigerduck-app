@@ -16,11 +16,11 @@ struct BrowserFindPageTests {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded?.resume() }
     }
 
-    private func page() async -> (WKWebView, BrowserFind) {
+    private func page(_ body: String = Self.body) async -> (WKWebView, BrowserFind) {
         let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 800))
         let loader = Loader()
         webView.navigationDelegate = loader
-        await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString("<body>\(Self.body)</body>", baseURL: nil) }
+        await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString("<body>\(body)</body>", baseURL: nil) }
         withExtendedLifetime(loader) {}
         let find = BrowserFind()
         find.run = { [weak webView] in await webView?.runFind($0) }
@@ -40,6 +40,33 @@ struct BrowserFindPageTests {
         #expect(find.count == 3)
         #expect(await evaluate(webView, "return document.querySelector('[contenteditable]').innerHTML") as? String == "作業 answer")
         #expect(await evaluate(webView, "return document.querySelector('svg mark') === null") as? Bool == true)
+
+        find.query = ""
+        await find.search()
+        #expect(await evaluate(webView, "return document.body.innerHTML") as? String == before)
+    }
+
+    @Test func matchesAPhraseSplitByFormattingButNotAcrossALineBreakOrBlock() async {
+        let (webView, find) = await page("""
+        <p>期<b>末</b>作業</p><p><b>assignment</b>
+          <i>deadline</i></p><p>ab<br>cd</p><div>ef<p>gh</p></div>
+        """)
+        let before = await evaluate(webView, "return document.body.innerHTML") as? String
+
+        find.query = "期末作業"
+        await find.search()
+        #expect(find.count == 1)
+        #expect(await evaluate(webView, "return document.querySelectorAll('mark[data-tigerduck-find=\"0\"]').length") as? Int == 3)
+
+        find.query = "assignment deadline"
+        await find.search()
+        #expect(find.count == 1)
+
+        for query in ["bc", "fg"] {
+            find.query = query
+            await find.search()
+            #expect(find.count == 0)
+        }
 
         find.query = ""
         await find.search()

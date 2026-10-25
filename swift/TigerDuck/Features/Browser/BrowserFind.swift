@@ -18,7 +18,6 @@ final class BrowserFind {
     @ObservationIgnored var run: (_ arguments: [String: Any]) async -> Any? = { _ in nil }
     @ObservationIgnored private var searches = 0
 
-    /// What the field shows after the query: the match on screen and how many, or that none matched.
     var position: String {
         if count > 0 { return "\(index + 1)/\(count)" }
         return query.isEmpty ? "" : String(localized: "browser_find_none")
@@ -72,13 +71,17 @@ final class BrowserFind {
     nonisolated static let limit = 1000
 
     /// Each match of `query` in `texts` as `[text, start, end]`, in the UTF-16 offsets the DOM
-    /// counts, ignoring case. None for an expression that does not compile, and none once the
-    /// search has run past `budget`, as a pattern such as `(a+)+$` backtracks exponentially.
+    /// counts, ignoring case. Plain text matches any run of white space where the query has one,
+    /// as a page's source line breaks show as a single space. None for an expression that does
+    /// not compile, and none once the search has run past `budget`, as a pattern such as `(a+)+$`
+    /// backtracks exponentially.
     nonisolated static func ranges(
         of query: String, regex: Bool, in texts: [String], budget: Duration = .milliseconds(500)
     ) -> [[Int]] {
-        let options: NSRegularExpression.Options = regex ? .caseInsensitive : [.caseInsensitive, .ignoreMetacharacters]
-        guard let expression = try? NSRegularExpression(pattern: query, options: options) else { return [] }
+        let pattern = regex ? query : query.split(whereSeparator: \.isWhitespace)
+            .map { NSRegularExpression.escapedPattern(for: String($0)) }
+            .joined(separator: "\\s+")
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [] }
         let deadline = ContinuousClock.now + budget
         var found: [[Int]] = []
         for (text, string) in texts.enumerated() where found.count < limit {
@@ -101,14 +104,16 @@ final class BrowserFind {
         return found
     }
 
-    /// The body `run` calls with `action` and its arguments: texts gives the text of every node
-    /// it searches, mark wraps the ranges found in them and gives how many it marked. Editable
-    /// text, such as a rich-text answer, and SVG are left as they are.
+    /// The body `run` calls with `action` and its arguments: texts gives the text of every run it
+    /// searches, mark wraps the ranges found in them and gives how many matches it marked. A run
+    /// is the text nodes of one stretch of inline text, so a phrase split by `<b>` still matches;
+    /// a block or a line break ends it. Editable text, such as a rich-text answer, and SVG are
+    /// left as they are.
     nonisolated static let script = """
     var marker = 'data-tigerduck-find';
     var marks = function() { return document.querySelectorAll('mark[' + marker + ']'); };
     function clear() {
-      window.tigerduckFindNodes = [];
+      window.tigerduckFindRuns = [];
       marks().forEach(function(mark) {
         var parent = mark.parentNode;
         while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
@@ -117,46 +122,81 @@ final class BrowserFind {
       });
       return 0;
     }
+    function blockOf(element) {
+      while (element !== document.body && /^(inline|contents)$/.test(getComputedStyle(element).display)) {
+        element = element.parentElement;
+      }
+      return element;
+    }
     function texts() {
       clear();
       if (!document.body) return [];
-      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
         acceptNode: function(node) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.isContentEditable || node.matches('script, style, noscript, textarea, select, template, svg')) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return node.localName === 'br' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
           var parent = node.parentElement;
-          if (!parent || parent.isContentEditable) return NodeFilter.FILTER_REJECT;
-          if (parent.closest('script, style, noscript, textarea, select, template, svg')) return NodeFilter.FILTER_REJECT;
-          if (!node.nodeValue.trim() || parent.getClientRects().length === 0) return NodeFilter.FILTER_REJECT;
+          if (!parent || parent.getClientRects().length === 0) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;
         }
       });
-      var nodes = [];
-      while (walker.nextNode()) nodes.push(walker.currentNode);
-      window.tigerduckFindNodes = nodes;
-      return nodes.map(function(node) { return node.nodeValue; });
+      var runs = [], run = null, block = null;
+      while (walker.nextNode()) {
+        var node = walker.currentNode;
+        if (node.nodeType === Node.ELEMENT_NODE) { run = null; continue; }
+        var nodeBlock = blockOf(node.parentElement);
+        if (!run || nodeBlock !== block) {
+          run = { nodes: [], starts: [], text: '' };
+          runs.push(run);
+          block = nodeBlock;
+        }
+        run.nodes.push(node);
+        run.starts.push(run.text.length);
+        run.text += node.nodeValue;
+      }
+      runs = runs.filter(function(run) { return run.text.trim(); });
+      window.tigerduckFindRuns = runs;
+      return runs.map(function(run) { return run.text; });
     }
     function mark() {
-      var nodes = window.tigerduckFindNodes || [];
-      var count = 0;
-      // From the last range back, so wrapping one leaves the offsets before it in place.
-      for (var i = ranges.length - 1; i >= 0; i--) {
-        var node = nodes[ranges[i][0]];
-        if (!node || !node.isConnected || ranges[i][2] > node.nodeValue.length) continue;
+      var runs = window.tigerduckFindRuns || [];
+      var pieces = [], count = 0;
+      ranges.forEach(function(found) {
+        var run = runs[found[0]];
+        if (!run) return;
+        var before = pieces.length;
+        run.nodes.forEach(function(node, i) {
+          var length = (i + 1 < run.nodes.length ? run.starts[i + 1] : run.text.length) - run.starts[i];
+          var start = Math.max(found[1] - run.starts[i], 0), end = Math.min(found[2] - run.starts[i], length);
+          if (start < end && node.isConnected && node.nodeValue.length === length) pieces.push([node, start, end, count]);
+        });
+        if (pieces.length > before) count++;
+      });
+      // From the last piece back, so wrapping one leaves the offsets before it in place.
+      for (var i = pieces.length - 1; i >= 0; i--) {
         var range = document.createRange();
-        range.setStart(node, ranges[i][1]);
-        range.setEnd(node, ranges[i][2]);
+        range.setStart(pieces[i][0], pieces[i][1]);
+        range.setEnd(pieces[i][0], pieces[i][2]);
         var mark = document.createElement('mark');
-        mark.setAttribute(marker, '');
+        mark.setAttribute(marker, pieces[i][3]);
         mark.style.cssText = 'color: #000; background: #FFE8A3; border-radius: 3px; padding: 0; box-shadow: none';
         range.surroundContents(mark);
-        count++;
       }
       return count;
     }
     function select() {
-      var all = marks();
-      all.forEach(function(mark, i) { mark.style.background = i === index ? '#FFB340' : '#FFE8A3'; });
-      if (all[index]) all[index].scrollIntoView({ block: 'center', inline: 'nearest' });
-      return all.length;
+      var shown = null;
+      marks().forEach(function(mark) {
+        var on = Number(mark.getAttribute(marker)) === index;
+        mark.style.background = on ? '#FFB340' : '#FFE8A3';
+        if (on && !shown) shown = mark;
+      });
+      if (shown) shown.scrollIntoView({ block: 'center', inline: 'nearest' });
+      return shown !== null;
     }
     if (action === 'texts') return texts();
     if (action === 'mark') return mark();
