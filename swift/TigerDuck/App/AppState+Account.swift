@@ -107,6 +107,9 @@ extension AppState {
         BulletinsViewModel.forgetListSession()
         forgetSyncProgress()
         AcademicCalendarStore.shared.forgetHolidayOverrides()
+        #if os(iOS)
+        BrowserData.shared.reset()
+        #endif
     }
 
     /// A sign-in hands the device on its backend to the new account, so while signed in only a

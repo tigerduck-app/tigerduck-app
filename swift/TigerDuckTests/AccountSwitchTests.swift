@@ -107,6 +107,9 @@ struct AccountSwitchTests {
                 Defaults[.holidayNotifyOverrides] = [12]
                 SSOLoginService.storedPasswordRefusals = (1, Date())
                 #expect(!Self.files(under: root).isEmpty)
+                #if os(iOS)
+                let browserGeneration = BrowserData.shared.generation
+                #endif
 
                 #expect(await auth.login(studentId: Self.second, password: "second-password"))
 
@@ -127,6 +130,8 @@ struct AccountSwitchTests {
                 #expect(SSOLoginService.storedPasswordRefusals.count == 0)
                 #if os(iOS)
                 #expect((auth.accountNotifications as? DeliveredNotificationsStub)?.delivered.isEmpty == true)
+                // Dropped at the sign-out and again at the sign-in.
+                #expect(BrowserData.shared.generation >= browserGeneration + 2)
                 #endif
             }
         }
