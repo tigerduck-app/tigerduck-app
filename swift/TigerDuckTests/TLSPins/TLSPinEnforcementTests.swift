@@ -1,5 +1,4 @@
 #if os(iOS)
-import Defaults
 import Foundation
 import Security
 import Testing
@@ -126,30 +125,25 @@ struct TLSPinEnforcementTests {
         #expect(await attempts.value == 2)
     }
 
-    @Test("Before onboarding a refusal still fetches the document, and its pins let the sign-in through")
+    @Test("With no stored document, as before onboarding, a refusal fetches one and its pins let the sign-in through")
     @MainActor
     func aRefusalBeforeOnboardingFetches() async throws {
-        try await withExclusiveRealDefaults {
-            let saved = Defaults[.hasCompletedOnboarding]
-            defer { Defaults[.hasCompletedOnboarding] = saved }
-            Defaults[.hasCompletedOnboarding] = false
-            let stale = TLSPinSet(
-                id: "ntust", domains: [.init(name: "ntust.edu.tw", includeSubdomains: true)],
-                pins: [F.unknownSPKI], expiresAt: .distantFuture
-            )
-            let engine = F.engine(builtIn: [stale], now: Self.date)
-            let server = TLSPinDocumentFetcherTests.Server()
-            server.body = F.envelope(F.payload(
-                serial: 101, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.secureSSLCASPKI])]
-            ))
-            engine.installAppHooks(fetcher: TLSPinDocumentFetcher(
-                engine: engine, send: { try server.answer($0) }, clock: { Self.date }
-            ))
-            let chain = try chain()
+        let stale = TLSPinSet(
+            id: "ntust", domains: [.init(name: "ntust.edu.tw", includeSubdomains: true)],
+            pins: [F.unknownSPKI], expiresAt: .distantFuture
+        )
+        let engine = F.engine(builtIn: [stale], now: Self.date)
+        let server = TLSPinDocumentFetcherTests.Server()
+        server.body = F.envelope(F.payload(
+            serial: 101, sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.secureSSLCASPKI])]
+        ))
+        engine.installAppHooks(fetcher: TLSPinDocumentFetcher(
+            engine: engine, send: { try server.answer($0) }, clock: { Self.date }
+        ))
+        let chain = try chain()
 
-            #expect(await engine.resolveRefusal(host: Self.host, chain: chain))
-            #expect(server.requests.count == 1)
-        }
+        #expect(await engine.resolveRefusal(host: Self.host, chain: chain))
+        #expect(server.requests.count == 1)
     }
 
     @Test("A refusal fetches the document once per set per launch")
