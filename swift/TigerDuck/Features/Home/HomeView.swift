@@ -14,8 +14,6 @@ struct HomeView: View {
     @State private var showNotImplementedAlert = false
     @State private var selectedFeature: AppFeature?
     @State private var scrollAnchor = HomeScrollAnchor()
-    /// The section the page being opened scrolls to.
-    @State private var scrollTarget: String?
 
     @State private var termTicker = MinuteTicker(interval: 60)
 
@@ -96,9 +94,9 @@ struct HomeView: View {
             .onDisappear { viewModel.selectedCourseSlot = nil }
         }
         // Leaving Home, by tab, by push or by going to the background, ends editing as Done does.
-        .onDisappear { setEditing(false) }
+        .onDisappear { setEditing(false, keepingPlace: false) }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background { setEditing(false) }
+            if phase == .background { setEditing(false, keepingPlace: false) }
         }
     }
 
@@ -165,16 +163,18 @@ struct HomeView: View {
         }
     }
 
-    private func setEditing(_ isEditing: Bool) {
+    private func setEditing(_ isEditing: Bool, keepingPlace: Bool = true) {
         guard viewModel.isEditingHome != isEditing else { return }
-        scrollTarget = scrollAnchor.section(in: visibleSections.map(\.id))
-        scrollAnchor.reset()
+        if keepingPlace {
+            scrollAnchor.keepPlace(in: visibleSections.map(\.id))
+        } else {
+            scrollAnchor.forgetPlace()
+        }
         withAnimation(reduceMotion ? nil : .smoothSpring) { viewModel.isEditingHome = isEditing }
     }
 
     private func restoreScroll(_ proxy: ScrollViewProxy) {
-        guard let target = scrollTarget else { return }
-        scrollTarget = nil
+        guard let target = scrollAnchor.takeTarget(in: visibleSections.map(\.id)) else { return }
         // The page's rows are laid out once the update that made it appear has finished.
         DispatchQueue.main.async { proxy.scrollTo(target, anchor: .top) }
     }
@@ -302,6 +302,8 @@ private struct HomeSectionView: View {
             filter: viewModel.assignmentFilter,
             showAbsoluteTime: appState.showAbsoluteAssignmentTime,
             asListRows: asListRows,
+            scrollAnchor: scrollAnchor,
+            scrollSectionID: section.id,
             onArchive: {
                 viewModel.archiveAssignment($0)
                 appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
@@ -340,11 +342,13 @@ private struct HomeSectionView: View {
                 .homeScrollAnchor(section.id, in: scrollAnchor)
             filterPicker
                 .homeListRow(top: TigerDuckTheme.Spacing.sm)
+                .homeScrollRow(section.id, in: scrollAnchor)
             if assignmentAccess == .content {
                 assignmentList
             } else {
                 assignmentPlaceholder
                     .homeListRow(top: TigerDuckTheme.Spacing.sm)
+                    .homeScrollRow(section.id, in: scrollAnchor)
             }
         } else {
             stackedBody
