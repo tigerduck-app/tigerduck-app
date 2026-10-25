@@ -37,6 +37,7 @@ final class MailListViewModel {
     @ObservationIgnored private var accountEpoch = 0
     @ObservationIgnored private var unfetchedMatches: [String: (uidValidity: UInt32, uids: [UInt32])] = [:]
     @ObservationIgnored private var searchGeneration = 0
+    @ObservationIgnored private var indexLookup: Task<(uidValidity: UInt32, uids: [UInt32])?, Never>?
     @ObservationIgnored private var warmTask: Task<Void, Never>?
     @ObservationIgnored private var warmDone = false
     @ObservationIgnored private var isPaused = false
@@ -230,8 +231,7 @@ final class MailListViewModel {
         self.selection = selection
         pages = [:]
         rebuildRows()
-        searchResults = nil
-        searchUsedLocalFallback = false
+        clearSearch()
         cancelWarm()
         await load()
         startWarmIfLoaded()
@@ -261,17 +261,19 @@ final class MailListViewModel {
         }
         let selection = self.selection
         let epoch = accountEpoch
-        searchGeneration += 1
+        supersedeSearch()
         let generation = searchGeneration
         var found: [MailListRow] = []
         var unfetched: [String: (uidValidity: UInt32, uids: [UInt32])] = [:]
         var usedFallback = false
         var serverFailed = false
         var recreated: [String] = []
-        let index = cache.searchIndex
         for folder in targets {
-            let indexed = await Task.detached { index.search(folder: folder, query: query) }.value
-            guard isCurrent(selection, epoch), generation == searchGeneration else { return }
+            guard !Task.isCancelled, generation == searchGeneration else { return }
+            let lookup = Task.detached { [index = cache.searchIndex] in index.search(folder: folder, query: query) }
+            indexLookup = lookup
+            let indexed = await lookup.value
+            guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration else { return }
             let page = pages[folder]
             guard let validity = page?.uidValidity ?? indexed?.uidValidity else { continue }
             // Loaded mail counts too: it may have arrived since the index last caught up.
@@ -344,9 +346,15 @@ final class MailListViewModel {
     }
 
     func clearSearch() {
-        searchGeneration += 1
+        supersedeSearch()
         searchResults = nil
         searchUsedLocalFallback = false
+    }
+
+    /// Also stops the scan of the index under way, which holds the lock its download writes under.
+    private func supersedeSearch() {
+        searchGeneration += 1
+        indexLookup?.cancel()
     }
 
     private static func matches(_ summary: MailSummary, _ query: String) -> Bool {
@@ -428,13 +436,9 @@ final class MailListViewModel {
         resetInMemoryState()
     }
 
-    func waitForWarm() async {
-        await warmTask?.value
-    }
+    func waitForWarm() async { await warmTask?.value }
 
-    func waitForIndex() async {
-        await indexer.waitForPass()
-    }
+    func waitForIndex() async { await indexer.waitForPass() }
 
     func waitForCacheWrites() async {
         await pendingCacheWrite?.value
@@ -458,8 +462,7 @@ final class MailListViewModel {
         pages = [:]
         cachePaintedFolders = []
         rows = []
-        searchResults = nil
-        searchUsedLocalFallback = false
+        clearSearch()
         searchText = ""
         unreadOnly = false
         selection = .real(MailConstants.inbox)

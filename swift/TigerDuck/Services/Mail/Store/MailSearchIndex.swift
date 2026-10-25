@@ -80,18 +80,29 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
     }
 
     /// The UIDs, newest first, of the mail in `folder` whose text holds `query`, with the
-    /// UIDVALIDITY they name mail under; nil for a folder not indexed for this account.
-    func search(folder: String, query: String) -> (uidValidity: UInt32, uids: [UInt32])? {
+    /// UIDVALIDITY they name mail under; nil for a folder not indexed for this account, or once
+    /// `shouldStop` says so mid-scan, which frees the lock the download's writes wait for.
+    func search(
+        folder: String, query: String, shouldStop: @escaping @Sendable () -> Bool = { Task.isCancelled }
+    ) -> (uidValidity: UInt32, uids: [UInt32])? {
         let needle = Self.folded(query)
         return lock.withLock {
             guard !needle.isEmpty, openLocked(), ownerLocked() == currentOwner,
                   let validity = validityLocked(folder) else { return nil }
             var uids: [UInt32] = []
-            guard execute("SELECT uid FROM mail WHERE folder = ? AND instr(text, ?) > 0 ORDER BY uid DESC",
-                          [.text(folder), .text(needle)], row: {
-                uids.append(UInt32(truncatingIfNeeded: sqlite3_column_int64($0, 0)))
-            }) else { return nil }
-            return (validity, uids)
+            let check = StopCheck(shouldStop)
+            sqlite3_progress_handler(db, Self.stopCheckSteps, { context in
+                guard let context else { return 0 }
+                return Unmanaged<StopCheck>.fromOpaque(context).takeUnretainedValue().shouldStop() ? 1 : 0
+            }, Unmanaged.passUnretained(check).toOpaque())
+            defer { sqlite3_progress_handler(db, 0, nil, nil) }
+            let found = withExtendedLifetime(check) {
+                execute("SELECT uid FROM mail WHERE folder = ? AND instr(text, ?) > 0 ORDER BY uid DESC",
+                        [.text(folder), .text(needle)], row: {
+                    uids.append(UInt32(truncatingIfNeeded: sqlite3_column_int64($0, 0)))
+                })
+            }
+            return found ? (validity, uids) : nil
         }
     }
 
@@ -109,6 +120,13 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         case text(String)
         case int(Int64)
     }
+
+    private final class StopCheck {
+        let shouldStop: @Sendable () -> Bool
+        init(_ shouldStop: @escaping @Sendable () -> Bool) { self.shouldStop = shouldStop }
+    }
+
+    private static let stopCheckSteps: Int32 = 1_000
 
     private static var transient: sqlite3_destructor_type { unsafeBitCast(-1, to: sqlite3_destructor_type.self) }
 
@@ -226,6 +244,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
             switch sqlite3_step(statement) {
             case SQLITE_ROW: row?(statement)
             case SQLITE_DONE: return true
+            case SQLITE_INTERRUPT: return false
             case let code:
                 AppLogger.persistence.error("Mail search index step failed: \(code, privacy: .public)")
                 return false

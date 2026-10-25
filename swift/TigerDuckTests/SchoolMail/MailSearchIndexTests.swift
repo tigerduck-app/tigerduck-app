@@ -151,6 +151,30 @@ struct MailSearchIndexTests {
         #expect(try file.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
     }
 
+    @Test func aSearchAskedToStopEndsMidScanWithNoAnswer() {
+        final class Count: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value = 0
+            func increment() { lock.withLock { value += 1 } }
+            var total: Int { lock.withLock { value } }
+        }
+        let cache = Self.cache()
+        let texts = Dictionary(uniqueKeysWithValues: (UInt32(1)...2_000).map {
+            ($0, Self.text(subject: "公告 \($0)", body: String(repeating: "內文", count: 50)))
+        })
+        Self.fill(cache, texts)
+        let checks = Count()
+
+        let stopped = cache.searchIndex.search(folder: "INBOX", query: "找不到", shouldStop: {
+            checks.increment()
+            return true
+        })
+
+        #expect(stopped == nil)
+        #expect(checks.total == 1)
+        #expect(cache.searchIndex.search(folder: "INBOX", query: "公告 1999", shouldStop: { false })?.uids == [1999])
+    }
+
     @Test func theTextOfAMailIsCappedInLength() {
         let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchIndex.maxTextLength * 2))
         #expect(text.count == MailSearchIndex.maxTextLength)
