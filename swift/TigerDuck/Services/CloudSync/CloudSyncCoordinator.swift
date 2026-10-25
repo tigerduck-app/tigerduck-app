@@ -49,7 +49,7 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private var lastColorEdit: [String: Int] = [:]
     @ObservationIgnored private var lastNameEdit: [String: Int] = [:]
     @ObservationIgnored private var courseAddsEnqueuing: [UUID: String] = [:]
-    @ObservationIgnored private var courseAddsLanded: [String: Date] = [:]
+    @ObservationIgnored private var courseAddTimes: [String: Date] = [:]
 
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
@@ -381,14 +381,19 @@ final class CloudSyncCoordinator {
     @discardableResult
     func addCourse(semester: String, courseNo: String) -> Task<Void, Never> {
         let id = UUID()
-        courseAddsEnqueuing[id] = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        let stamp = Date()
+        courseAddsEnqueuing[id] = key
+        courseAddTimes[key] = stamp
         return Task {
-            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: Date()))
+            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp))
             courseAddsEnqueuing[id] = nil
             await syncTick()
         }
     }
 
+    /// Sampling the outbox misses an add that starts while it is read, so an add started or
+    /// landed since `date` counts by its time.
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> {
         var keys = Set(courseAddsEnqueuing.values)
         for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
@@ -396,7 +401,7 @@ final class CloudSyncCoordinator {
                 keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
             }
         }
-        return keys.union(courseAddsLanded.filter { $0.value >= date }.keys)
+        return keys.union(courseAddTimes.filter { $0.value >= date }.keys)
     }
 
     func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil) async {
@@ -446,7 +451,7 @@ final class CloudSyncCoordinator {
                     request, semester: semester,
                     isCurrent: { [uploadsCourses, loginGeneration] in uploadsCourses() && loginGeneration() == generation }
                 ) else { return }
-                courseAddsLanded[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
+                courseAddTimes[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
             }
         } catch {
             if isUnauthorized(error) {

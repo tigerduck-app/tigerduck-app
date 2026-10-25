@@ -191,7 +191,34 @@ struct CourseAddSyncTests {
 
         #expect(backend.uploads.isEmpty)
         #expect(!(await coordinator.holdsUnsentEdits()))
-        #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast).isEmpty)
+        #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
+    }
+
+    @Test("An add counts for a full sync whose fetch began before it, though it left the outbox unsent")
+    func addCountsForASyncThatBeganBeforeIt() async {
+        let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:GE1010001"])
+        let coordinator = Self.makeCoordinator(Backend(), cache: cache)
+        let fetchedAt = Date()
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        #expect(!(await coordinator.holdsUnsentEdits()))
+        #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
+    }
+
+    /// The outbox can take an add's enqueue after a full sync read it, so the add is in neither read.
+    @Test("An add that starts while a full sync reads the outbox still counts")
+    func addDuringTheReadCounts() async {
+        let backend = Backend()
+        backend.answer(503)
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
+        let fetchedAt = Date()
+        let reading = Task { await coordinator.courseAddKeys(unlandedAt: fetchedAt) }
+        await Task.yield()
+        let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
+
+        #expect(await reading.value == ["1151:GE1010001"])
+        await add.value
     }
 
     @Test("An add the server keeps refusing is parked, so a full sync still keeps its course and tries it again")
