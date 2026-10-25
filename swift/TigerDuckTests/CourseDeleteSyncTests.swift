@@ -159,15 +159,29 @@ struct CourseDeleteSyncTests {
         await coordinator.enqueueCourseIgnore(semester: "1142", courseNo: "GE3", moodleId: "1142GE3",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardCourseDeletes(courseKeys: ["client:1142:GE3"])
+        await coordinator.discardCourseDeletes(courseKeys: ["client:1142:GE3"], madeBefore: Date())
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:CS1", "1151:EE2", "1142:CS1"])
 
-        await coordinator.discardCourseDeletes(semester: "1151")
+        await coordinator.discardCourseDeletes(semester: "1151", madeBefore: Date())
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1142:CS1"])
 
-        await coordinator.discardCourseDeletes()
+        await coordinator.discardCourseDeletes(madeBefore: Date())
         #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1142:GE3"])
+    }
+
+    @Test("Adding a course back drops its hides made before the re-add, but not one made after it while the drop was on its way")
+    func reAddKeepsAHideMadeAfterIt() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        let addedAt = Date().addingTimeInterval(-10)
+        let hiddenAfter = Date().addingTimeInterval(-5)
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: addedAt.addingTimeInterval(-60))
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "EE2", at: hiddenAfter)
+
+        await coordinator.discardCourseDeletes(courseKeys: ["client:1151:CS1", "client:1151:EE2", "client:1151:GE3"], madeBefore: addedAt)
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3", at: hiddenAfter)
+
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2", "1151:GE3"])
     }
 
     @Test("A course hidden while TigerSync is on but before the coordinator has left disabled is queued for its delete")

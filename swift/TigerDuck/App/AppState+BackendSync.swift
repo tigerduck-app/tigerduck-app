@@ -738,6 +738,7 @@ extension AppState {
             resetLocally()
             return true
         }
+        let resetAt = Date()
         if let semester { resettingSemesters.insert(semester) }
         defer { if let semester { resettingSemesters.remove(semester) } }
         do {
@@ -746,7 +747,7 @@ extension AppState {
             if let semester { DataCache.shared.recordSemesterReset(semester) }
             pushCoordinator.forgetUploads(semester: semester)
             await cloudSyncCoordinator.discardCourseIgnores(semester: semester)
-            await cloudSyncCoordinator.discardCourseDeletes(semester: semester)
+            await cloudSyncCoordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
             resetLocally()
             return true
         } catch {
@@ -757,7 +758,8 @@ extension AppState {
 
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
         if !forceKeys.isEmpty {
-            Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys)) }
+            let addedAt = Date()
+            Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys), madeBefore: addedAt) }
         }
         guard CourseUploadPolicy.uploadsCourses else { return }
         guard forceKeys.isEmpty else {

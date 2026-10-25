@@ -439,7 +439,9 @@ final class CloudSyncCoordinator {
         })
     }
 
-    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil) async {
+    /// Drops the deletes queued before `cutoff`, the time of the re-add or reset, which a caller
+    /// takes before its task hop so a hide made after the action is kept.
+    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil, madeBefore cutoff: Date) async {
         let serverPrefix = CourseTombstone.serverKey(of: "")
         let scopes = courseKeys.map { keys in
             keys.compactMap { key -> String? in
@@ -449,8 +451,7 @@ final class CloudSyncCoordinator {
                 return "cd|" + local
             }
         } ?? [semester.map { "cd|\($0)" } ?? "cd"]
-        let now = Date()
-        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
+        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, cutoff) }))
     }
 
     private nonisolated static func courseKeys(of ops: [SyncOp]) -> Set<String> {
