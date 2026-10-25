@@ -53,8 +53,14 @@ read them back before stamping the first edit after a launch. Signing out SHALL 
 
 ### Requirement: The backend reports its clock on every response
 Every response under `/v3` SHALL carry the header `X-TigerSync-Clock` with the backend's
-current time as a clock value. A client SHALL raise its last seen server value to that header
-and to every clock value in a snapshot or write response it reads, and never lower it.
+current time as a clock value, read after the request's writes commit. A snapshot's
+`server_hlc` SHALL be read before its first query. A client SHALL raise its last seen server
+value to that header and to every clock value in a snapshot or write response it reads, and
+never lower it.
+
+#### Scenario: Snapshot after a write
+- **WHEN** a snapshot's `server_hlc` is later than the header of a write's response
+- **THEN** the snapshot includes that write
 
 #### Scenario: Learning from a snapshot
 - **WHEN** a snapshot holds a field stamped later than the response header

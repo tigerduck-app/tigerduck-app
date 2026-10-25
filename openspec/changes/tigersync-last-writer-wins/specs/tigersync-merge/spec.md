@@ -96,26 +96,45 @@ course back; only a later add can.
 - **THEN** the course stays in the timetable
 
 ### Requirement: Adding a course wins over an earlier hide
-An add stamped later than the course's last hide, removal and reset SHALL put the course in the
-user's timetable on every device and retire the earlier tombstone. An older add SHALL be
-refused.
+An add stamped later than the course's last add, hide, removal and reset SHALL put the course in
+the user's timetable on every device and retire the earlier tombstone. An older add SHALL be
+refused and SHALL leave the stored add stamp unchanged.
 
 #### Scenario: Re-add after delete
 - **WHEN** a course hidden at 09:00 is added at 09:10
 - **THEN** every device shows the course after its next sync
 
+#### Scenario: Older add arriving late
+- **WHEN** an add stamped 10:00 is stored, an add stamped 09:00 arrives, and then a hide stamped 09:30
+- **THEN** the course stays in the timetable
+
 ### Requirement: Removing a hand-added course leaves the roster in charge
 Removing a course the user added by hand SHALL clear the user's choice for that course with a
-stamped tombstone that refuses older adds but does not bind roster uploads.
+stamped tombstone that refuses older adds and hides but does not bind roster uploads. A roster
+that lists the course SHALL show it and SHALL keep the tombstone's stamp.
 
 #### Scenario: Enrolled later
 - **WHEN** a hand-added course is removed and the student later enrolls, so the roster lists it
 - **THEN** the course shows from the roster
 
+#### Scenario: Older hide after the roster lists a removed course
+- **WHEN** a hand-added course is removed at 10:00, a roster then lists it, and a hide stamped 09:00 arrives
+- **THEN** the hide is refused and the course shows from the roster
+
 ### Requirement: A term reset clears the user's choices for that term
 A term reset SHALL clear the user's adds, hides, removals, colours, names and ignore settings
-for that term's courses, and SHALL refuse any such edit stamped before the reset. A reset of
-every term SHALL do the same for all terms. The school roster SHALL stay.
+for that term's courses that are stamped at or before it, SHALL keep those stamped after it,
+and SHALL refuse any such edit stamped before the reset. A reset older than the term's stored
+reset SHALL change nothing. A reset of every term SHALL do the same for all terms. The school
+roster SHALL stay.
+
+#### Scenario: Reset arriving last
+- **WHEN** a reset stamped 09:00 arrives after a hide of one course and a colour of another, both stamped 10:00
+- **THEN** the hide and the colour stay, and the term's other choices are cleared
+
+#### Scenario: Older reset
+- **WHEN** a term reset stamped 10:00 is stored and a reset stamped 09:00 arrives
+- **THEN** the stored reset stays at 10:00 and nothing is cleared
 
 #### Scenario: Stale device after a reset
 - **WHEN** a term is reset at 10:00 and a device that last synced at 09:00 sends a hide stamped 08:30
@@ -166,8 +185,18 @@ backend SHALL answer 422 for such a write without one.
 
 ### Requirement: A client keeps unsent edits over the snapshot
 Applying a snapshot, a client SHALL keep its own value for a field it has an unsent edit for,
-or whose last acknowledged stamp is later than the snapshot's, and SHALL take the snapshot's
-value for every other field, including its absence.
+or whose last acknowledged write answered with an `X-TigerSync-Clock` value not earlier than the
+snapshot's `server_hlc`, and SHALL take the snapshot's value for every other field, including
+its absence. Applying a write response, a client SHALL keep a field it edited again after the
+edit the response answers.
+
+#### Scenario: Colour removed by a hide
+- **WHEN** a device's colour write is acknowledged, the course is then hidden elsewhere, and a snapshot with a later `server_hlc` lacks the colour
+- **THEN** the device drops the colour
+
+#### Scenario: Edit while a write is in flight
+- **WHEN** a red colour is being sent and the user picks blue before the response arrives
+- **THEN** the device keeps blue and sends it
 
 #### Scenario: Edit during a pull
 - **WHEN** the user marks an assignment while a snapshot is downloading

@@ -185,16 +185,24 @@ hidden (tombstone, `user_added = false`), removed (tombstone, `user_added = true
 A term reset is `user_semester_resets.reset_at`; a full reset `users.courses_reset_at`. With
 protocol 2:
 
-- An add wins when later than the key's tombstone and every reset covering it: it deletes the
-  tombstone and upserts the row with `added_at`.
+- An add wins when later than the key's `added_at`, its tombstone and every reset covering it:
+  it deletes the tombstone and upserts the row with `added_at` set to its stamp. An add that
+  loses changes nothing, so `added_at` never moves back.
 - A hide or removal wins when later than `added_at`, the tombstone and the resets: it deletes
   the row (with its overrides, as today) and upserts the tombstone. A tombstone is written even
   when no row exists, so a hide of a course never uploaded still binds.
-- A reset deletes the term's rows and tombstones and records `reset_at`; every membership or
-  override edit for that term stamped earlier is refused. It also writes today's per-course
-  reset tombstones (`deleted_by_reset`), so released apps still obey it.
-- A roster upload upserts school rows, skips keys with a hide tombstone, and deletes reset and
-  removal tombstones for the keys it lists. It never touches `added_at`.
+- A reset wins when later than the term's `reset_at` (a full reset: `courses_reset_at`), and
+  records its stamp there; an older reset changes nothing, so a marker never moves back. It
+  clears only what is stamped at or before it. Such tombstones go. A row goes unless its
+  `added_at` or one of its override stamps is later, and leaves today's per-course reset
+  tombstone (`deleted_by_reset`) so released apps still obey it. A row that stays loses the
+  fields stamped at or before the reset, which return to their empty, unstamped state.
+  Afterwards every membership or override edit for that term stamped before `reset_at` is
+  refused.
+- A roster upload upserts school rows, skips keys with a hide tombstone, and deletes reset
+  tombstones for the keys it lists. It keeps a removal tombstone beside the school row: a
+  removal takes back a hand-add and never hides the school's course, and its stamp still
+  refuses older membership edits. It never touches `added_at`.
 
 Requests without the protocol header keep today's code path: `force_keys`, the author releases
 by `deleted_by_device_id`, and `device_id_required`.
@@ -208,6 +216,10 @@ Lost:
   a stale hand-add from another device.
 - Rows absent from a newer roster removed by the roster upload: a school-freshness change,
   out of scope.
+- A reset that deletes every row and tombstone of the term regardless of stamps: a reset that
+  arrives late would erase adds, hides and colours made after it.
+- Deleting a removal tombstone when the roster lists its key: the removal's stamp is lost, and a
+  hide stamped before the removal but arriving after the roster would hide the course.
 
 ### D11. Tombstones are kept
 
@@ -217,7 +229,8 @@ holiday turned off, already stored as `notify = false` with its stamp. A course 
 clear: the PATCH reads a null colour as no change. A re-add after a delete is D10's add rule: the later stamp wins.
 
 Retention: the snapshot for protocol 2 returns every tombstone and reset; the 30-day filter in
-`_read_full_snapshot` stays for released apps. Tombstones still go when every device turns
+`_read_full_snapshot` stays for released apps, which also do not get a removal tombstone whose
+key has a row, since they hide every tombstone they read. Tombstones still go when every device turns
 course sync off (`server/routes/user_devices.py`) and with a full reset, as today; the rows of
 D9 and the names and holidays above stay as long as their parent row.
 
@@ -230,10 +243,14 @@ Lost:
 ### D12. Clients hold unsent edits and otherwise take the backend's value
 
 On a snapshot, a client keeps its value for a field when the outbox holds an edit for it, or
-when the stamp it got back acknowledging its last write to that field is later than the
-snapshot's (an in-memory map on `CloudSyncCoordinator`; a relaunch fetches a snapshot taken after
-every acknowledged write). Every other field, and its absence, comes from the snapshot. A write
-response's winner is applied at once.
+when the snapshot may predate the client's last acknowledged write to that field: its
+`server_hlc` is not later than that write response's `X-TigerSync-Clock` (an in-memory map on
+`CloudSyncCoordinator`; a relaunch fetches a snapshot taken after every acknowledged write).
+Every other field, and its absence, comes from the snapshot, so a colour a hide or reset took
+away goes too. This works because the backend reads `server_hlc` before the snapshot's first
+query and sets the header after a write commits: a snapshot with a later `server_hlc` includes
+the write. A write response's winner is applied to a field unless the outbox holds an edit for
+it made after the one the response answers.
 
 The outbox keeps entries while TigerSync or their category is off (held, as marks already are),
 `performDisable` stops clearing it, and sign-out still does (`settleForSignOut`).
@@ -246,6 +263,9 @@ and its grace, `resettingSemesters`, `semesterResetAt`, `unlistedCourses`, `cour
 `courseDeletes(around:)`, and the cutoffs on `fix/course-outbox-ordering`.
 
 Lost:
+- Comparing the acknowledged stamp with the field's stamp in the snapshot: a field the snapshot
+  no longer has (hidden course, reset) has no stamp to compare, so the client either keeps a
+  removed value for good or loses the protection against a snapshot read before the write.
 - Clients comparing their own stamps with the backend's: every local value would need a stored
   stamp, and two arbiters can disagree.
 - Keeping the heuristics and adding stamps beside them: each #689 case would need its own rule.
@@ -393,7 +413,10 @@ Backend (`uv run pytest server/tests/` against a throwaway Postgres):
   refused edit, `none` kept and an older mark refused.
 - Membership: each #689 case (delete queued before a re-add elsewhere, reset then a stale hide
   or add, a roster listing a hidden course, removal then a roster listing it, a lost reply and a
-  retry), and a released app's upload still bound by a protocol-2 reset.
+  retry), and a released app's upload still bound by a protocol-2 reset. Arrival orders: an add,
+  an older add, then a hide between them; a reset arriving after a later add, hide and colour,
+  and after a later reset; a removal, a roster listing the course, then an older hide.
+- Snapshot ordering: `server_hlc` not later than the header of a write committed before it.
 - Snapshot: stamps and kinds for protocol 2, today's shape without the header.
 - Migration: upgrade and downgrade on seeded rows.
 
@@ -402,7 +425,9 @@ iOS (`xcodebuild test ... -only-testing:TigerDuckTests`):
 - Outbox: a legacy entry keeps its stamp; entries kept while off; cleared on sign-out.
 - Requests: protocol header and stamps on every write (a stub `URLProtocol`, as
   `swift/TigerDuckTests/SettingsAPIStub.swift` does).
-- Pull: held when queued, held when the ack is newer, otherwise adopted, absence included.
+- Pull: held when queued, held while the snapshot's `server_hlc` is not later than the ack's
+  header, otherwise adopted, absence after a hide or reset included; a write response does not
+  replace an edit made while the write was in flight.
 - Courses: reconcile from tombstones, kinds and resets; the #689 cases end to end against a fake
   backend.
 - Refresh order: a fake school fetch starts only after the TigerSync step returns or fails.
