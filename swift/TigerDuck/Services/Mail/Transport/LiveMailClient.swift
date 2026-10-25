@@ -312,19 +312,54 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    func search(folder: String, query: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
-        try await run {
+    /// This and `searchTexts` feed the search index and yield the connection to every other
+    /// command, so a mail the user opens waits for one batch at most.
+    /// See docs/decisions/0027-mail-local-search-index.md.
+    func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
+        try await run(yielding: true) {
             do {
                 let selection = try await self.imap.examineMailbox(folder)
-                // The SORT/ESEARCH variants need capabilities Mail2000 lacks; this plain
-                // SEARCH is the one that works (the vendored patch adds CHARSET UTF-8 for Chinese).
-                let found = try await self.rawSearch(
-                    criteria: [.or(.or(.from(query), .subject(query)), .body(query))]
-                )
+                let found = try await self.rawSearch(criteria: [.undeleted])
                 return (found.toArray().map(\.value), selection.uidValidity.value)
             } catch let error as IMAPError {
                 throw Self.mapSearchError(error)
             }
+        }
+    }
+
+    /// One summary FETCH for the batch, then each mail's first text part, plain before HTML.
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
+        guard !uids.isEmpty else { return [:] }
+        return try await run(yielding: true) {
+            let selection = try await self.imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
+            let infos = try await self.imap.fetchMessageInfosBulk(using: Self.uidSet(uids), options: Self.summaryOptions)
+            var texts: [UInt32: String] = [:]
+            for info in infos {
+                guard let summary = Self.summary(from: info), !summary.isDeleted else { continue }
+                let body = try await self.searchBody(of: info, folder: folder, expectedUIDValidity: expectedUIDValidity)
+                texts[summary.uid] = MailSearchIndex.text(of: summary, body: body)
+            }
+            return texts
+        }
+    }
+
+    private func searchBody(of info: MessageInfo, folder: String, expectedUIDValidity: UInt32) async throws -> String? {
+        let parts = info.parts.filter { !Self.isAttachment($0) && ($0.size ?? 0) <= MailConstants.searchTextPartBytes }
+        let isHTML = { (part: MessagePart) in part.contentType.lowercased().hasPrefix("text/html") }
+        guard let part = parts.first(where: { $0.contentType.lowercased().hasPrefix("text/plain") })
+            ?? parts.first(where: isHTML) else { return nil }
+        do {
+            let text = MailCharset.decode(try await imap.fetchAndDecodeMessagePartData(messageInfo: info, part: part),
+                                          label: part.declaredCharset)
+            return isHTML(part) ? MailHTMLSanitizer.plainText(fromHTML: text) : text
+        } catch {
+            // A part that will not decode leaves the mail searched by sender and subject. SwiftMail
+            // recycles the connection after a decode failure, so the folder is selected again.
+            guard case .protocolError = Self.map(error) else { throw error }
+            let selection = try await imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
+            return nil
         }
     }
 
@@ -381,7 +416,7 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    /// Wrapped in the same `mapSearchError` as `search(folder:query:)`, and for the same reason:
+    /// Wrapped in the same `mapSearchError` as `undeletedUIDs(folder:)`, and for the same reason:
     /// nothing in Mail2000's CAPABILITY banner promises `SEARCH HEADER "Message-ID"` is honoured,
     /// so a server that refuses the key must come back as `.searchUnsupported` — the typed "this
     /// server will not answer that" — rather than as a raw `IMAPError` flattened into a generic
@@ -426,25 +461,25 @@ actor LiveMailClient: MailClient {
     /// Mail2000's measured banner, `IMAP4 IMAP4rev1 AUTH=LOGIN LITERAL+ ID NAMESPACE STARTTLS`,
     /// has no ESEARCH, SORT or WITHIN: `search(..., sortCriteria:)` throws before sending, and
     /// `extendedSearch(...)` would send SEARCH down a wire and parsing path never run against this
-    /// server, for no gain. `deletedUIDs` (the pre-EXPUNGE check) and `containsMessageID` (the
-    /// sent-copy dedupe) are load-bearing, and vendored patch 3 makes it send `CHARSET UTF-8` for
-    /// Chinese queries. So the vendored copy drops its deprecation (VENDORED.md entry 9). Revisit
-    /// only if the server's CAPABILITY banner changes.
+    /// server, for no gain. `deletedUIDs` (the pre-EXPUNGE check), `undeletedUIDs` (the search
+    /// index) and `containsMessageID` (the sent-copy dedupe) are load-bearing. So the vendored copy
+    /// drops its deprecation (VENDORED.md entry 9). Revisit only if the server's CAPABILITY banner
+    /// changes.
     private func rawSearch(criteria: [SearchCriteria]) async throws -> MessageIdentifierSet<UID> {
         try await imap.search(criteria: criteria)
     }
 
-    /// Runs one command on the held IMAP connection, serialized by `commandLock`. Probes liveness
-    /// with a cheap NOOP (never a folder-reselecting STATUS), reconnects and logs in once if that
-    /// fails, then runs `body` once, to completion. Never retried, since `body` may have sent a
-    /// command that must not be sent twice (COPY, STORE, APPEND, EXPUNGE, a streaming download),
-    /// and never abandoned, since `MailMover.move` relies on each step it starts finishing; the
-    /// SwiftMail calls here ignore cancellation anyway. A network or certificate failure closes
-    /// the socket so the next call reconnects; other errors leave it. Not `withLock`: `body` must
-    /// keep this actor's isolation to read `imap`, `credentials` and `connectionGeneration`.
+    /// Runs one command on the held IMAP connection, serialized by `commandLock` (behind every other
+    /// command when `yielding`). Probes liveness with a cheap NOOP (never a folder-reselecting
+    /// STATUS), reconnects and logs in once if that fails, then runs `body` once, to completion.
+    /// Never retried, since `body` may have sent a command that must not be sent twice (COPY, STORE,
+    /// APPEND, EXPUNGE, a streaming download), and never abandoned, since `MailMover.move` relies on
+    /// each step it starts finishing; the SwiftMail calls here ignore cancellation anyway. A network
+    /// or certificate failure closes the socket so the next call reconnects; other errors leave it. Not
+    /// `withLock`: `body` must keep the actor's isolation to read `imap`, `credentials` and the generation.
     @discardableResult
-    private func run<T>(_ body: () async throws -> T) async throws -> T {
-        await commandLock.acquire()
+    private func run<T>(yielding: Bool = false, _ body: () async throws -> T) async throws -> T {
+        await commandLock.acquire(yielding: yielding)
         do {
             try await ensureLiveConnection()
             let result = try await body()

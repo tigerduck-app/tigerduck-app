@@ -154,14 +154,17 @@ actor DemoMailClient: MailClient {
         return stored.attachments.first { $0.key.section == part.section }?.value ?? Data()
     }
 
-    func search(folder: String, query: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
-        let uids = (folders[folder] ?? []).filter {
-            ($0.summary.subject ?? "").localizedCaseInsensitiveContains(query)
-                || ($0.summary.fromAddress ?? "").localizedCaseInsensitiveContains(query)
-                || ($0.summary.fromName ?? "").localizedCaseInsensitiveContains(query)
-                || $0.text.localizedCaseInsensitiveContains(query)
-        }.map(\.summary.uid)
-        return (uids, fixture.uidValidity)
+    func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
+        ((folders[folder] ?? []).filter { !$0.summary.isDeleted }.map(\.summary.uid), fixture.uidValidity)
+    }
+
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
+        try assertUIDValidity(expectedUIDValidity)
+        var texts: [UInt32: String] = [:]
+        for stored in folders[folder] ?? [] where uids.contains(stored.summary.uid) {
+            texts[stored.summary.uid] = MailSearchIndex.text(of: stored.summary, body: stored.text)
+        }
+        return texts
     }
 
     func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws {
