@@ -316,7 +316,8 @@ private struct PeriodGridContent: View {
 
     private func cellView(_ slot: CourseSlot, size: CGSize) -> some View {
         let isSelected = selection.contains(slot)
-        let fill = isSelected ? Color.accentColor : busy.contains(slot) ? Color.secondary.opacity(0.35) : Color.emptyCellFill
+        let isBusy = busy.contains(slot)
+        let fill = isSelected ? Color.accentColor : isBusy ? Color.secondary.opacity(0.35) : Color.emptyCellFill
         return RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(fill)
             .overlay {
@@ -332,6 +333,7 @@ private struct PeriodGridContent: View {
             .padding(2)
             .accessibilityElement()
             .accessibilityLabel("\(String(localized: Self.captionKeys[slot.day - 1])) \(slot.period)")
+            .accessibilityValue(isBusy ? String(localized: "a11y_course_search_period_busy") : "")
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { selection.formSymmetricDifference([slot]) }
     }
