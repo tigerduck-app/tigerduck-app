@@ -59,6 +59,7 @@ private struct ClassTableImportHost: ViewModifier {
                 guard importModel == nil else { return }
                 importModel = .live(authService: appState.authService)
             }
+            .environment(\.isUpdatingImportedClassTable, linkModel?.isUpdating == true)
             .readsHostWindow(into: hostWindow)
             .environment(\.hostWindow, hostWindow)
     }
