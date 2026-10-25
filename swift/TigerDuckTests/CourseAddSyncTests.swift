@@ -50,7 +50,7 @@ struct CourseAddSyncTests {
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: push ?? makePush(backend), outbox: outbox, isEnabled: true,
-            syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
+            syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:]) },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
             loginGeneration: loginGeneration

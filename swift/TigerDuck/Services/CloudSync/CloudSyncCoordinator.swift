@@ -32,6 +32,7 @@ final class CloudSyncCoordinator {
     @ObservationIgnored let outbox: SyncOutbox
     @ObservationIgnored private let syncsAssignmentMarks: @Sendable () -> Bool
     @ObservationIgnored private let syncsCourseIgnores: @Sendable () -> Bool
+    @ObservationIgnored private let syncsCourseOverrides: @Sendable (_ category: String) -> Bool
     @ObservationIgnored private let addedCourseUpload: @MainActor (_ semester: String, _ courseNo: String)
         -> PushAPI.CourseUploadRequest?
     @ObservationIgnored private let uploadsCourses: @MainActor () -> Bool
@@ -70,6 +71,9 @@ final class CloudSyncCoordinator {
                 pendingChecks: Defaults[.pendingConflictCategories]
             )
         },
+        syncsCourseOverrides: @escaping @Sendable (_ category: String) -> Bool = {
+            !Defaults[.pendingConflictCategories].contains($0)
+        },
         addedCourseUpload: @escaping @MainActor (_ semester: String, _ courseNo: String)
             -> PushAPI.CourseUploadRequest? = { _, _ in nil },
         uploadsCourses: @escaping @MainActor () -> Bool = { false },
@@ -88,6 +92,7 @@ final class CloudSyncCoordinator {
         self.loginGeneration = loginGeneration
         self.syncsAssignmentMarks = syncsAssignmentMarks
         self.syncsCourseIgnores = syncsCourseIgnores
+        self.syncsCourseOverrides = syncsCourseOverrides
         self.addedCourseUpload = addedCourseUpload
         self.uploadsCourses = uploadsCourses
 
@@ -194,12 +199,16 @@ final class CloudSyncCoordinator {
 
         let syncsMarks = syncsAssignmentMarks
         let syncsIgnores = syncsCourseIgnores
+        let syncsOverrides = syncsCourseOverrides
         await outbox.drain(holding: { op in
             switch op {
             case .assignmentOverride: return !syncsMarks()
             case .courseIgnore: return !syncsIgnores()
             case .courseAdd: return !protectedDataAvailable
-            case .courseOverride, .courseDelete: return false
+            case .courseOverride(_, _, let customName, let colorHex, _, _):
+                return (colorHex != nil && !syncsOverrides("course_colors"))
+                    || (customName != nil && !syncsOverrides("course_names"))
+            case .courseDelete: return false
             }
         }) { [weak self] op in
             guard let self else { throw CancellationError() }

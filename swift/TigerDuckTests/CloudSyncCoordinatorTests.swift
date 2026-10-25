@@ -22,6 +22,7 @@ struct CloudSyncCoordinatorTests {
     private static func makeCoordinator(
         _ backend: Backend,
         syncsAssignmentMarks: (@Sendable () -> Bool)? = { true },
+        syncsCourseOverrides: @escaping @Sendable (String) -> Bool = { _ in true },
         authHeader: @escaping @Sendable () async -> String? = { "Bearer test" }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
@@ -39,7 +40,7 @@ struct CloudSyncCoordinatorTests {
         }
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: syncsAssignmentMarks
+            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseOverrides: syncsCourseOverrides
         )
     }
 
@@ -173,6 +174,31 @@ struct CloudSyncCoordinatorTests {
         syncsMarks.withLock { $0 = true }
         await coordinator.syncTick()
         #expect(backend.requests("sync/assignments/42/override").count == 1)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("A colour or name edit waits in the outbox while its re-enable check is pending, and goes once that is settled")
+    func colourAndNameEditsWaitForTheirReenableCheck() async {
+        let backend = Backend()
+        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
+        backend.answer("sync/courses/1151EE2/override", body: Self.colourReply)
+        let pending = OSAllocatedUnfairLock<Set<String>>(initialState: ["course_colors"])
+        let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { category in
+            !pending.withLock { $0.contains(category) }
+        })
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+
+        await coordinator.syncTick()
+        #expect(backend.requests("sync/courses/1151CS1/override").isEmpty)
+        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        #expect(await coordinator.pendingCourseOverrides().colors == ["1151CS1"])
+
+        pending.withLock { $0 = ["course_names"] }
+        await coordinator.syncTick()
+        #expect(backend.requests("sync/courses/1151CS1/override").count == 1)
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
