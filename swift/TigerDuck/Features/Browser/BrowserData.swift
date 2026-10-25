@@ -51,6 +51,7 @@ final class BrowserData {
     func reset() -> Task<Void, Never>? {
         generation += 1
         current = nil
+        Defaults.reset(.browserZoom, .browserDesktopSites)
         guard loadState() != .empty else { return nil }
         saveState(.stale)
         let opensAtStart = opens

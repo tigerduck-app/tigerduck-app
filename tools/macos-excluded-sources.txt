@@ -414,5 +414,6 @@ BrowserRouting.swift
 BrowserSessionSignIn.swift
 BrowserSheets.swift
 BrowserSignIn.swift
+BrowserSites.swift
 TigerDuckBrowserView.swift
 BrowserAddressBarPicker.swift

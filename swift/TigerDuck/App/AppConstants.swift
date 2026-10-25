@@ -80,6 +80,8 @@ nonisolated enum AppConstants {
         static let browserPreference = "browserPreference"
         static let browserAddressBar = "browserAddressBar"
         static let browserDataState = "browserDataState"
+        static let browserZoom = "browserZoom"
+        static let browserDesktopSites = "browserDesktopSites"
         static let macMoodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"

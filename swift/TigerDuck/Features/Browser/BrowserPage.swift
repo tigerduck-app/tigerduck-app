@@ -23,6 +23,8 @@ final class BrowserPage {
 
     let signIn: BrowserSignIn
     let find = BrowserFind()
+    fileprivate(set) var zoom = BrowserZoom.standard
+    fileprivate(set) var isDesktopSite = false
     let store: WKWebsiteDataStore
     let generation: Int
     @ObservationIgnored fileprivate weak var webView: WKWebView?
@@ -85,6 +87,31 @@ final class BrowserPage {
 
     static func canUsePage(failure: Failure?, signIn: BrowserSignIn.Phase, url: URL?) -> Bool {
         failure == nil && signIn == .idle && url != nil
+    }
+
+    func zoomIn() { BrowserZoom.larger(than: zoom).map(setZoom) }
+    func zoomOut() { BrowserZoom.smaller(than: zoom).map(setZoom) }
+    func resetZoom() { setZoom(BrowserZoom.standard) }
+
+    private func setZoom(_ percent: Int) {
+        guard !host.isEmpty else { return }
+        BrowserSites.stored.setZoom(percent, for: host)
+        applySiteSettings()
+    }
+
+    /// The page loads again, as its site sends a desktop layout only to a new request.
+    func setDesktopSite(_ isDesktop: Bool) {
+        guard !host.isEmpty else { return }
+        BrowserSites.stored.setDesktop(isDesktop, for: host)
+        isDesktopSite = isDesktop
+        webView?.reload()
+    }
+
+    fileprivate func applySiteSettings() {
+        let sites = BrowserSites.stored
+        zoom = sites.zoom(for: host)
+        isDesktopSite = sites.isDesktop(host)
+        webView?.pageZoom = CGFloat(zoom) / 100
     }
 
     func expandChrome() {
@@ -170,7 +197,19 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(
         _ webView: WKWebView,
         decidePolicyFor action: WKNavigationAction,
-        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
+        preferences: WKWebpagePreferences,
+        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
+    ) {
+        if action.targetFrame?.isMainFrame != false, let host = action.request.url?.host(percentEncoded: false) {
+            preferences.preferredContentMode = BrowserSites.stored.isDesktop(host) ? .desktop : .mobile
+        }
+        decidePolicy(for: action, in: webView) { decisionHandler($0, preferences) }
+    }
+
+    private func decidePolicy(
+        for action: WKNavigationAction,
+        in webView: WKWebView,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
         if BrowserRouting.isMoodleLogout(url) { return decisionHandler(.cancel) }
@@ -201,6 +240,10 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         case .refuse:
             decisionHandler(.cancel)
         }
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        page.applySiteSettings()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
