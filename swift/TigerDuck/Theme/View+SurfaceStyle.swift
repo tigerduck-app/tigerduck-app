@@ -18,6 +18,11 @@ extension View {
     func presetGroupedListContainer(policy: VisualStylePolicy) -> some View {
         modifier(PresetGroupedListContainerModifier(policy: policy))
     }
+
+    /// One row's part of a `presetCard` split into list rows, which join into the one card.
+    func presetCardRow(policy: VisualStylePolicy, isFirst: Bool, isLast: Bool) -> some View {
+        background { PresetCardRow(policy: policy, isFirst: isFirst, isLast: isLast) }
+    }
 }
 
 // Shadows go on the background shape, not on `content`: SwiftUI applies `.shadow`
@@ -96,5 +101,52 @@ private struct PresetGroupedListContainerModifier: ViewModifier {
                         .strokeBorder(Color.textPrimary.opacity(0.08), lineWidth: 0.5)
                 )
         }
+    }
+}
+
+/// The card runs on past the row where a neighbour continues it, and a clip at the row cuts it
+/// there; the clip is wider than the row and reaches past the card's two ends, for the shadow. A
+/// material blurs everything under its frame, so the glass surface covers only the row, and the
+/// shadow comes from a card in the page's color under it.
+private struct PresetCardRow: View {
+    let policy: VisualStylePolicy
+    let isFirst: Bool
+    let isLast: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    private static let reach: CGFloat = 48
+    private static let cornerRadius = TigerDuckTheme.CornerRadius.lg
+
+    var body: some View {
+        switch policy.cardSurface {
+        case .glass:
+            ZStack {
+                runningOn(
+                    RoundedRectangle(cornerRadius: Self.cornerRadius)
+                        .fill(Color.backgroundPrimary)
+                        .glassCardShadow()
+                )
+                UnevenRoundedRectangle(
+                    topLeadingRadius: isFirst ? Self.cornerRadius : 0,
+                    bottomLeadingRadius: isLast ? Self.cornerRadius : 0,
+                    bottomTrailingRadius: isLast ? Self.cornerRadius : 0,
+                    topTrailingRadius: isFirst ? Self.cornerRadius : 0
+                )
+                .fill(GlassCard.surface(colorScheme))
+            }
+        case .grouped:
+            runningOn(Color.clear.presetCard(policy: policy, cornerRadius: Self.cornerRadius))
+        }
+    }
+
+    private func runningOn(_ card: some View) -> some View {
+        let top = isFirst ? Self.reach : 0
+        let bottom = isLast ? Self.reach : 0
+        return card
+            .padding(.top, top - Self.reach)
+            .padding(.bottom, bottom - Self.reach)
+            .padding(EdgeInsets(top: top, leading: Self.reach, bottom: bottom, trailing: Self.reach))
+            .clipped()
+            .padding(EdgeInsets(top: -top, leading: -Self.reach, bottom: -bottom, trailing: -Self.reach))
     }
 }

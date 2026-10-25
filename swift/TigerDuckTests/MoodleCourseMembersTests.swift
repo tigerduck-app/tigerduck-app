@@ -854,6 +854,37 @@ extension MoodleCourseMembersTests {
         return window
     }
 
+    @Test("only the rows on screen ask for their pictures, and a row asks once it scrolls in")
+    func onlyRowsOnScreenAskForTheirPictures() async throws {
+        let folder = Folder()
+        let site = Site()
+        let members = (0..<60).map { index in
+            let id = String(format: "B113990%02d", index)
+            return Self.withPicture(Self.member(100 + index, "\(id) @ Duck \(index)", idNumber: id), rev: 1)
+        }
+        site.set(members: members)
+        let store = Self.store(folder, site: site)
+        await store.refreshMembers()
+        let first = try #require(members.first?.pictureURL)
+        let last = try #require(members.last?.pictureURL)
+
+        let window = try show(NavigationStack {
+            MoodleMembersView(store: store, policy: VisualStylePolicy(preset: .default)) { _ in }
+        })
+        defer { window.isHidden = true }
+        try await waitUntil { store.pictures[first] != nil }
+        // Pictures download one at a time in the order rows ask, so this one comes after every row's.
+        await store.loadPicture(of: Self.withPicture(Self.member(999, "B11399999 @ Late", idNumber: "B11399999"), rev: 1))
+
+        #expect(!site.pictureCalls.contains(last))
+        #expect(site.pictureCalls.count < members.count)
+
+        let list = try #require(window.descendants(ofType: UIScrollView.self).first)
+        let bottom = list.contentSize.height - list.bounds.height + list.adjustedContentInset.bottom
+        list.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+        try await waitUntil { site.pictureCalls.contains(last) }
+    }
+
     @Test("a row tells the student ID and the short name of the department it names, a graduate's only the ID")
     func aRowTellsTheDepartmentAfterTheStudentId() async throws {
         try await withAccessibilityAutomation {
