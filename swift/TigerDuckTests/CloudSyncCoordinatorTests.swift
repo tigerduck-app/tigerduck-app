@@ -230,6 +230,32 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
+    @Test("Cancelling a drain, as a sign-out does, cancels the request it is sending, and the edit stays queued")
+    func cancellingADrainCancelsItsRequest() async throws {
+        let backend = Backend()
+        let gate = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(Self.colourReply.utf8), gate: gate),
+            for: backend.url("sync/courses/1151CS1/override")
+        )
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { !backend.requests("sync/courses/1151CS1/override").isEmpty }
+
+        let ended = OSAllocatedUnfairLock(initialState: false)
+        let watcher = Task {
+            await drain.value
+            ended.withLock { $0 = true }
+        }
+        drain.cancel()
+        try await waitUntil(timeout: .seconds(10)) { ended.withLock { $0 } }
+        gate.open()
+        await watcher.value
+
+        #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
+    }
+
     @Test("A colour or name edit counts as pending from the edit until its request is sent")
     func colourAndNameEditsArePendingUntilSent() async {
         let backend = Backend()

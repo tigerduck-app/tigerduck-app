@@ -450,8 +450,12 @@ final class CloudSyncCoordinator {
     private func execute(_ op: ResolvedSyncOp) async throws {
         let request = Task { try await self.send(op) }
         sending = request
-        defer { sending = nil }
-        try await request.value
+        defer { if sending == request { sending = nil } }
+        try await withTaskCancellationHandler {
+            try await request.value
+        } onCancel: {
+            request.cancel()
+        }
     }
 
     private func send(_ op: ResolvedSyncOp) async throws {
