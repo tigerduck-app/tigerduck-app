@@ -158,7 +158,6 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         }
     }
 
-    /// The Watch takes the phone's list whole, keeping only acceptances made under its own build.
     func replaceAcceptances(with phone: [TLSPinAcceptance]) {
         withState { state in
             state.acceptances = phone.filter { $0.buildNumber == buildNumber }
@@ -236,7 +235,8 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         }
     }
 
-    /// Stored values are checked again on every load, and acceptances from another build dropped.
+    /// The stored document is verified again because this build may trust other signing keys than
+    /// the build that stored it.
     private func load() -> State {
         var state = State()
         if let envelope = defaults.data(forKey: Key.document) {

@@ -160,7 +160,6 @@ struct TLSPinPromptSheet: View {
     }
 }
 
-/// One section per served certificate, leaf first: its name, issuer, validity and fingerprint.
 private struct TLSCertificateList: View {
     let prompt: TLSPinMismatch
     let onBack: () -> Void

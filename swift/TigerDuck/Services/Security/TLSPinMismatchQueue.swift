@@ -11,7 +11,6 @@ final class TLSPinMismatchQueue {
     static let quietPeriod: TimeInterval = 60 * 60
     private static let quietUntilKey = "tlsPinPromptQuietUntil"
 
-    /// What the prompt presents; nil while nothing is due or the app is in the background.
     private(set) var prompt: TLSPinMismatch?
 
     /// Set from the scene phase; a held mismatch shows once this turns true. A prompt still open
