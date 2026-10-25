@@ -37,13 +37,16 @@ The mail page shares one IMAP connection, whose `AsyncSerialLock` was strictly f
   they wait behind every other command, and a batch lets a command that queued meanwhile go
   before each mail's text part, so a mail the user opens waits at most for one fetch
   (https://github.com/tigerduck-app/tigerduck-app/issues/817).
-- A pass that fails waits 1, 2, 4, 8 and then 15 minutes before the next try. A batch that fails
-  is fetched a mail at a time; a mail that fails alone twice is skipped until the account changes
-  or the app quits, so the rest of its folder still downloads.
+- A pass that fails waits 1, 2, 4, 8 and then 15 minutes before the next try. A batch whose
+  answer will not parse is fetched a mail at a time; a mail whose own answer will not parse
+  twice is skipped until the account changes or the app quits, so the rest of its folder still
+  downloads.
+  A lost connection counts against no mail.
 - Low Data Mode (`NetworkMonitor.isConstrained`) keeps a pass from starting and stops one after
   its batch in flight; the page's poll starts it again once Low Data Mode is off. Cellular
   without Low Data Mode downloads as Wi-Fi does. Search reads what is indexed either way.
-- A file SQLite cannot read is deleted once and the index starts over.
+- A file SQLite cannot read, on opening or in a later query, is deleted and the index starts
+  over. Sign-out closes and deletes the file under the lock a search opens it with.
 
 ## Consequences
 
