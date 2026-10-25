@@ -133,6 +133,7 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | cache | `course_color_map.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
 | cache | `course_custom_colors.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
 | cache | `course_custom_names.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
+| cache | `course_search_options.json` | device |  |
 | cache | `courses_*` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
 | cache | `deleted_courses.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
 | cache | `ignored_courses.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
