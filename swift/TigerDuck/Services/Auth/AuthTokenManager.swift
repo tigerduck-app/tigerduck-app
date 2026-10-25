@@ -397,13 +397,15 @@ actor AuthTokenManager {
             return await signedInAgain(since: generation) ? accessToken : nil
         }
         var send = await postCounted(refreshToken, usedBefore: refreshTokenUses)
-        if send.reply == nil, signInGeneration == generation, send.uses < Self.refreshTokenUseLimit {
+        if send.reply == nil, !send.uncounted, signInGeneration == generation, send.uses < Self.refreshTokenUseLimit {
             send = await postCounted(refreshToken, usedBefore: send.uses)
         }
         let uses = send.uses
         if self.refreshToken == refreshToken { refreshTokenUses = uses }
         let reply = send.reply
         let mayResend = uses < Self.refreshTokenUseLimit
+        // A sign-in sends no refresh token, so a Keychain that refuses every count still leaves a session.
+        if send.uncounted, await signedInAgain(since: generation) { return accessToken }
         guard let (data, http) = reply else {
             noteOvertaken(generation, accessToken: nil, mayResend: mayResend)
             return nil
@@ -470,14 +472,16 @@ actor AuthTokenManager {
         .appTransportSecurityRequiresSecureConnection, .badURL, .unsupportedURL,
     ]
 
+    /// `uncounted` when the Keychain refused the count, so nothing went out. A token a sign-in
+    /// replaced meanwhile is not sent either, but it is no longer this refresh's to sign in for.
     private func postCounted(
         _ refreshToken: String, usedBefore uses: Int
-    ) async -> (reply: (Data, HTTPURLResponse)?, uses: Int) {
-        guard saveUses(uses + 1, of: refreshToken) else { return (nil, uses) }
+    ) async -> (reply: (Data, HTTPURLResponse)?, uses: Int, uncounted: Bool) {
+        guard saveUses(uses + 1, of: refreshToken) else { return (nil, uses, self.refreshToken == refreshToken) }
         let send = await postRefresh(refreshToken, on: baseURLProvider())
         let total = send.mayHaveUsed ? uses + 1 : uses
         _ = saveUses(total, of: refreshToken)
-        return (send.reply, total)
+        return (send.reply, total, false)
     }
 
     private func saveUses(_ uses: Int, of token: String) -> Bool {
