@@ -239,12 +239,25 @@ private struct CoursePeriodsPage: View {
 struct CoursePeriodGrid: View {
     @Binding var selection: Set<CourseSlot>
     let busy: Set<CourseSlot>
-    @State private var drag: PeriodDrag?
+
+    // Past this size fourteen rows no longer fit a phone screen. The cap sits outside the grid
+    // so that its scaled sizes follow it too.
+    var body: some View {
+        PeriodGridContent(selection: $selection, busy: busy)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+    }
+}
+
+private struct PeriodGridContent: View {
+    @Binding var selection: Set<CourseSlot>
+    let busy: Set<CourseSlot>
+    // Gesture state resets when a drag ends or is cancelled, so no drag decides the next one.
+    @GestureState private var drag: PeriodDrag? = nil
+    @ScaledMetric(relativeTo: .caption) private var labelWidth: CGFloat = 28
+    @ScaledMetric(relativeTo: .caption) private var headerHeight: CGFloat = 24
+    @ScaledMetric(relativeTo: .caption) private var maxCellHeight: CGFloat = 38
 
     private static let periods = AppConstants.Periods.chronologicalOrder
-    private static let labelWidth: CGFloat = 28
-    private static let headerHeight: CGFloat = 24
-    private static let maxCellHeight: CGFloat = 38
     private static let captionKeys: [String.LocalizationValue] = [
         "weekday_mon_caption", "weekday_tue_caption", "weekday_wed_caption",
         "weekday_thu_caption", "weekday_fri_caption", "weekday_sat_caption",
@@ -253,26 +266,26 @@ struct CoursePeriodGrid: View {
     var body: some View {
         GeometryReader { proxy in
             let cell = CGSize(
-                width: (proxy.size.width - Self.labelWidth) / CGFloat(CourseSearch.gridDays.count),
-                height: min(Self.maxCellHeight, (proxy.size.height - Self.headerHeight) / CGFloat(Self.periods.count))
+                width: (proxy.size.width - labelWidth) / CGFloat(CourseSearch.gridDays.count),
+                height: min(maxCellHeight, (proxy.size.height - headerHeight) / CGFloat(Self.periods.count))
             )
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    Color.clear.frame(width: Self.labelWidth)
+                    Color.clear.frame(width: labelWidth)
                     ForEach(CourseSearch.gridDays, id: \.self) { day in
-                        Text(AppConstants.Periods.shortWeekdayLabel(day))
+                        label(AppConstants.Periods.shortWeekdayLabel(day))
                             .frame(width: cell.width)
                     }
                 }
-                .frame(height: Self.headerHeight)
+                .frame(height: headerHeight)
                 .accessibilityHidden(true)
                 ForEach(Self.periods, id: \.self) { period in
                     HStack(spacing: 0) {
-                        Text(period)
-                            .frame(width: Self.labelWidth)
+                        label(period)
+                            .frame(width: labelWidth, height: cell.height)
                             .accessibilityHidden(true)
                         ForEach(CourseSearch.gridDays, id: \.self) { day in
-                            cellView(CourseSlot(day: day, period: period))
+                            cellView(CourseSlot(day: day, period: period), size: cell)
                                 .frame(width: cell.width, height: cell.height)
                         }
                     }
@@ -283,20 +296,25 @@ struct CoursePeriodGrid: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        guard let slot = Self.slot(at: value.location, cell: cell) else { return }
+                    .updating($drag) { value, drag, _ in
+                        guard let slot = slot(at: value.location, cell: cell) else { return }
                         var current = drag ?? PeriodDrag()
                         var picked = selection
                         current.touch(slot, in: &picked)
                         drag = current
                         if picked != selection { selection = picked }
                     }
-                    .onEnded { _ in drag = nil }
             )
         }
     }
 
-    private func cellView(_ slot: CourseSlot) -> some View {
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+    }
+
+    private func cellView(_ slot: CourseSlot, size: CGSize) -> some View {
         let isSelected = selection.contains(slot)
         let fill = isSelected ? Color.accentColor : busy.contains(slot) ? Color.secondary.opacity(0.35) : Color.emptyCellFill
         return RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -304,8 +322,11 @@ struct CoursePeriodGrid: View {
             .overlay {
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.caption.weight(.bold))
+                        .resizable()
+                        .scaledToFit()
+                        .fontWeight(.bold)
                         .foregroundStyle(.white)
+                        .frame(width: min(size.width, size.height) * 0.4)
                 }
             }
             .padding(2)
@@ -315,11 +336,11 @@ struct CoursePeriodGrid: View {
             .accessibilityAction { selection.formSymmetricDifference([slot]) }
     }
 
-    private static func slot(at point: CGPoint, cell: CGSize) -> CourseSlot? {
+    private func slot(at point: CGPoint, cell: CGSize) -> CourseSlot? {
         guard cell.width > 0, cell.height > 0 else { return nil }
         let column = Int(((point.x - labelWidth) / cell.width).rounded(.down))
         let row = Int(((point.y - headerHeight) / cell.height).rounded(.down))
-        guard CourseSearch.gridDays.indices.contains(column), periods.indices.contains(row) else { return nil }
-        return CourseSlot(day: CourseSearch.gridDays[column], period: periods[row])
+        guard CourseSearch.gridDays.indices.contains(column), Self.periods.indices.contains(row) else { return nil }
+        return CourseSlot(day: CourseSearch.gridDays[column], period: Self.periods[row])
     }
 }
