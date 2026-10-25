@@ -59,6 +59,31 @@ struct AsyncSerialLockTests {
         #expect(events == ["A", "B", "C"])
     }
 
+    /// The search index's download asks as `yielding`, so a mail opened meanwhile goes next.
+    @Test(.timeLimit(.minutes(1)))
+    func aYieldingWaiterGoesAfterEveryOtherWaiter() async throws {
+        let lock = AsyncSerialLock()
+        let recorder = LockOrderRecorder()
+
+        await lock.acquire()
+
+        var tasks: [Task<Void, Never>] = []
+        for (name, yielding) in [("index A", true), ("open", false), ("index B", true), ("mark read", false)] {
+            tasks.append(Task {
+                await lock.acquire(yielding: yielding)
+                await recorder.record(name)
+                await lock.release()
+            })
+            while await lock.waiterCount < tasks.count { await Task.yield() }
+        }
+
+        await lock.release()
+
+        for task in tasks { await task.value }
+        let events = await recorder.events
+        #expect(events == ["open", "mark read", "index A", "index B"])
+    }
+
     /// `.timeLimit` because the failure mode this covers is a **hang**, not a wrong value: a
     /// `withLock` that stopped releasing on the error path would leave the second `withLock`
     /// below waiting forever, and Swift Testing applies no default limit.

@@ -1,8 +1,8 @@
 import Foundation
 
 /// A minimal FIFO async mutex: at most one `withLock` or `acquire`/`release` section runs at a
-/// time, and queued callers get the lock in the order they asked for it. It knows nothing of
-/// IMAP, so tests cover exclusion, FIFO order and release after a throw without a network.
+/// time, and callers get it in the order they asked, except that a `yielding` one waits behind
+/// every other, even a later one. It knows nothing of IMAP, so tests run without a network.
 ///
 /// `LiveMailClient` serializes each whole `run` body, liveness probe and reconnect included,
 /// with one. Actor isolation alone does not: it excludes only synchronous execution, so a
@@ -11,27 +11,34 @@ import Foundation
 actor AsyncSerialLock {
     private var isHeld = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var yieldingWaiters: [CheckedContinuation<Void, Never>] = []
 
     init() {}
 
-    var waiterCount: Int { waiters.count }
+    var waiterCount: Int { waiters.count + yieldingWaiters.count }
 
-    func acquire() async {
+    func acquire(yielding: Bool = false) async {
         if !isHeld {
             isHeld = true
             return
         }
         await withCheckedContinuation { continuation in
-            waiters.append(continuation)
+            if yielding {
+                yieldingWaiters.append(continuation)
+            } else {
+                waiters.append(continuation)
+            }
         }
     }
 
     func release() {
-        guard !waiters.isEmpty else {
+        if !waiters.isEmpty {
+            waiters.removeFirst().resume()
+        } else if !yieldingWaiters.isEmpty {
+            yieldingWaiters.removeFirst().resume()
+        } else {
             isHeld = false
-            return
         }
-        waiters.removeFirst().resume()
     }
 
     func withLock<T>(_ body: () async throws -> T) async throws -> T {
