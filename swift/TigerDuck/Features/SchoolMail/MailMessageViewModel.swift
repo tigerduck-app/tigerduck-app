@@ -367,16 +367,15 @@ final class MailMessageViewModel {
         let folder = route.folder
         let uid = route.uid
         let validity = pageUIDValidity
+        let cache = self.cache
+        let wipeCount = cache.wipeCount
         do {
             let data = try await session.use { client in
                 try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: validity)
             }
-            let cache = self.cache
             let filename = MailWarnings.displayFilename(part.filename ?? "attachment")
             return try await Task.detached {
-                let url = try cache.temporaryFileURL(filename: filename)
-                try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-                return url
+                try cache.saveAttachment(data, filename: filename, wipeCount: wipeCount)
             }.value
         } catch {
             actionError = MailAccountManager.LoginError(error).message
