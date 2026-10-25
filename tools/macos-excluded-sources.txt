@@ -97,6 +97,8 @@ SuggestionCard.swift
 
 # Features/Home — iOS home surfaces; macOS has its own dashboard under Platform/Mac
 AddSectionSheet.swift
+HomeEditPage.swift
+HomeScrollAnchor.swift
 ReorderDropSupport.swift
 CourseTimeCard.swift
 FluidGlassTrackView.swift

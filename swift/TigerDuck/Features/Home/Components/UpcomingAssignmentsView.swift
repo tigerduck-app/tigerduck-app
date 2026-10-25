@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// Home is one `List`, so each assignment is a row that takes the system's `.swipeActions`.
-/// In edit mode Home is a stack instead (HomeView says why), and so are these rows.
 struct UpcomingAssignmentsView: View {
     static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
@@ -10,6 +9,9 @@ struct UpcomingAssignmentsView: View {
     var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
     var asListRows = false
+    /// Where the rows report their tops, as rows of Home's section `scrollSectionID`.
+    var scrollAnchor: HomeScrollAnchor? = nil
+    var scrollSectionID = ""
     var onArchive: ((SDAssignment) -> Void)? = nil
     var onMarkComplete: ((SDAssignment) -> Void)? = nil
     var onUnarchive: ((SDAssignment) -> Void)? = nil
@@ -64,6 +66,7 @@ struct UpcomingAssignmentsView: View {
                 bottom: isLast ? 0 : gap,
                 horizontal: TigerDuckTheme.Spacing.lg
             )
+            .homeScrollRow(scrollSectionID, in: scrollAnchor)
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 if let leading = actions.leading { swipeButton(leading) }
             }
