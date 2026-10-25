@@ -167,6 +167,25 @@ struct MailIndexerTests {
         #expect(h.search("公告") == [3, 2, 1])
     }
 
+    @Test func aLostConnectionCountsAgainstNoMail() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.update { $0.searchTextsFailingUIDs = [2] }
+        #expect(try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount) == false)
+        await h.fake.update { fake in
+            fake.searchTextsFailingUIDs = []
+            fake.searchTextsError = .unreachable
+        }
+        for _ in 0..<2 {
+            await #expect(throws: MailClientError.unreachable) {
+                try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount)
+            }
+        }
+        await h.fake.update { $0.searchTextsError = nil }
+
+        #expect(try await h.indexer.update(folder: "INBOX", wipeCount: h.cache.wipeCount))
+        #expect(h.search("公告") == [3, 2, 1])
+    }
+
     @Test func aFailedPassWaitsLongerBeforeEachRetry() async {
         let h = Self.harness(inboxCount: 3)
         await h.fake.update { $0.searchTextsError = .serverBusy }

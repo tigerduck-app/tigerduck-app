@@ -29,8 +29,9 @@ final class MailIndexer {
     private var retryAt: Date?
     private var failedPasses = 0
     private var arrivals = 0
-    /// Mails a failed batch held: fetched one at a time from then on, and skipped after failing
-    /// alone `failuresBeforeSkipping` times. Kept until the account changes or the app quits.
+    /// Mails of a batch whose answer would not parse: fetched one at a time from then on, and
+    /// skipped after failing alone `failuresBeforeSkipping` times. Kept until the account changes
+    /// or the app quits.
     private var strikes: [MailKey: Int] = [:]
 
     init(
@@ -156,7 +157,6 @@ final class MailIndexer {
                 // A stop, as at sign-out, can be what failed it.
                 guard !Task.isCancelled else { return false }
                 strike(batch, folder: folder, uidValidity: validity)
-                if MailChecker.endsPrefetch(error) { throw error }
                 complete = false
                 continue
             }
@@ -196,13 +196,13 @@ final class MailIndexer {
         }
     }
 
-    /// A timeout or an answer that will not parse can be one mail's doing; a rejected password,
-    /// a busy server, a certificate or a recreated folder is not.
+    /// An answer that will not parse can be one mail's doing; a lost connection, a rejected
+    /// password, a busy server, a certificate or a recreated folder is not.
     nonisolated static func blamesTheMail(_ error: MailClientError) -> Bool {
         switch error {
-        case .unreachable, .protocolError: true
-        case .authenticationFailed, .certificateRejected, .serverBusy, .searchUnsupported, .folderChanged,
-             .sendUnconfirmed: false
+        case .protocolError: true
+        case .unreachable, .authenticationFailed, .certificateRejected, .serverBusy, .searchUnsupported,
+             .folderChanged, .sendUnconfirmed: false
         }
     }
 }
