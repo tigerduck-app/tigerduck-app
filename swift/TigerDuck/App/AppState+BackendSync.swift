@@ -40,9 +40,10 @@ extension AppState {
             #if os(iOS)
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
-            let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
+            let (json, fetchedDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
                 try await pushCoordinator.fetchFullSync()
             })
+            var courseDeletes = fetchedDeletes
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             var changed = false
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
@@ -92,6 +93,17 @@ extension AppState {
 
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
+            guard fullSyncMayWrite(since: generation) else { return .skipped }
+            let takesCourses = Self.switchedOnCategories().contains("courses")
+                && !Defaults[.pendingConflictCategories].contains("courses")
+            let reset = Self.coursesReset(
+                server: Self.backendDate(json["courses_reset_at"]), lastSeen: Defaults[.lastSeenCoursesResetAt],
+                takesCourses: takesCourses
+            )
+            if takesCourses {
+                courseDeletes = await settleQueuedCourseEdits(deleting: courseDeletes, reset: reset)
+                changed = reset.apply || changed
+            }
             let courseAdds = await cloudSyncCoordinator.courseAddKeys(unlandedAt: fetchedAt)
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
@@ -198,19 +210,7 @@ extension AppState {
                 changed = AcademicCalendarStore.shared.applySyncedOverrides(optedIn, fetchedAt: fetchedAt) || changed
             }
 
-            let coursesResetAt = Self.backendDate(json["courses_reset_at"])
             let tombstoneArray = json["course_tombstones"] as? [[String: Any]] ?? []
-            let lastSeenReset = Defaults[.lastSeenCoursesResetAt]
-            let reset = Self.coursesReset(
-                server: coursesResetAt, lastSeen: lastSeenReset, takesCourses: taken.contains("courses")
-            )
-
-            if reset.apply {
-                DataCache.shared.saveUserAddedCourses([])
-                DataCache.shared.saveDeletedCourseNos([])
-                changed = true
-                AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: coursesResetAt), privacy: .public) > lastSeen=\(String(describing: lastSeenReset), privacy: .public)), wiped local state")
-            }
             Self.recordFullSync(coursesReset: reset.remember, taken: taken)
 
             if taken.contains("courses") {
@@ -723,9 +723,10 @@ extension AppState {
 
     func deleteBackendCourse(courseNo: String, semester: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        recentCourseDeletions[courseNo] = Date()
+        let hiddenAt = Date()
+        recentCourseDeletions[courseNo] = hiddenAt
         revisionPoller.noteActivity()
-        Task { await cloudSyncCoordinator.deleteCourse(semester: semester, courseNo: courseNo) }
+        Task { await cloudSyncCoordinator.deleteCourse(semester: semester, courseNo: courseNo, at: hiddenAt) }
     }
 
     @discardableResult

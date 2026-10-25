@@ -4,6 +4,18 @@ import os
 
 extension AppState {
 
+    /// Applies a course reset made elsewhere before the snapshot's courses are reconciled, and
+    /// returns the deletes the reconcile still has to wait for.
+    func settleQueuedCourseEdits(deleting: Set<String>, reset: (apply: Bool, remember: Date)) async -> Set<String> {
+        guard reset.apply else { return deleting }
+        DataCache.shared.saveUserAddedCourses([])
+        DataCache.shared.saveDeletedCourseNos([])
+        Defaults[.lastSeenCoursesResetAt] = reset.remember
+        recentCourseDeletions = [:]
+        AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: reset.remember), privacy: .public)), wiped local state")
+        return deleting.subtracting(await cloudSyncCoordinator.dropCourseEdits(madeBefore: Date()))
+    }
+
     @discardableResult
     func reconcileCourses(
         serverRows: [[String: Any]], tombstones: [[String: Any]], deleting queuedDeletes: Set<String>,

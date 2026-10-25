@@ -187,6 +187,24 @@ struct CourseDeleteSyncTests {
         }
     }
 
+    @Test("A reset made elsewhere drops the course adds and deletes made here before it, one still on its way in too")
+    func resetElsewhereDropsTheCourseEditsBeforeIt() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        let reset = Date()
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: reset.addingTimeInterval(-60))
+        await coordinator.enqueueCourseDelete(semester: "1142", courseNo: "EE2", at: reset.addingTimeInterval(60))
+        await coordinator.outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE3", stamp: reset.addingTimeInterval(-60)))
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1", moodleId: "1151CS1",
+                                              moodleCourseId: nil, ignore: true)
+
+        #expect(await coordinator.dropCourseEdits(madeBefore: reset) == ["1151:CS1"])
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "PE4", at: reset.addingTimeInterval(-1))
+
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1142:EE2"])
+        #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
+        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1"])
+    }
+
     @Test("A full sync shows a hidden course the server lists again only once no delete of it from here may be on its way")
     func listedCourseStaysHiddenWhileItsDeleteMayBeOnItsWay() {
         var hidden: Set<String> = ["1151:CS1", "1151:EE2", "1151:GE3", "PE4", "1142:MA5"]

@@ -356,14 +356,14 @@ final class CloudSyncCoordinator {
         return keys
     }
 
-    func enqueueCourseDelete(semester: String, courseNo: String) async {
+    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date = Date()) async {
         guard takesEdits else { return }
-        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: Date()))
+        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp))
     }
 
-    func deleteCourse(semester: String, courseNo: String) async {
+    func deleteCourse(semester: String, courseNo: String, at stamp: Date = Date()) async {
         await discardCourseIgnores(semester: semester, courseNo: courseNo)
-        await enqueueCourseDelete(semester: semester, courseNo: courseNo)
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp)
         await syncTick()
     }
 
@@ -411,12 +411,39 @@ final class CloudSyncCoordinator {
         return keys.union(courseAddTimes.filter { $0.value >= date }.keys)
     }
 
+    /// Drops the course adds and deletes made before a course reset another device made, and
+    /// returns the keys of the deletes.
+    @discardableResult
+    func dropCourseEdits(madeBefore cutoff: Date) async -> Set<String> {
+        let dropped = await outbox.discard(madeBefore: cutoff) { op in
+            switch op {
+            case .courseAdd, .courseDelete: return true
+            case .courseOverride, .assignmentOverride, .courseIgnore: return false
+            }
+        }
+        return Self.courseKeys(of: dropped.filter { op in
+            if case .courseDelete = op { return true }
+            return false
+        })
+    }
+
     func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil) async {
-        await outbox.discard { op in
+        await outbox.discard(madeBefore: Date()) { op in
             guard case .courseDelete(let opSemester, let courseNo, _) = op else { return false }
             let key = CourseTombstone.serverKey(semester: opSemester, courseNo: courseNo)
             return (semester == nil || semester == opSemester) && (courseKeys?.contains(key) ?? true)
         }
+    }
+
+    private nonisolated static func courseKeys(of ops: [SyncOp]) -> Set<String> {
+        Set(ops.compactMap { op -> String? in
+            switch op {
+            case .courseAdd(let semester, let courseNo, _), .courseDelete(let semester, let courseNo, _):
+                return CourseTombstone.key(semester: semester, courseNo: courseNo)
+            case .courseOverride, .assignmentOverride, .courseIgnore:
+                return nil
+            }
+        })
     }
 
     func requeueParkedMarks() async {
