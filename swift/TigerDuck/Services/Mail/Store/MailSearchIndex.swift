@@ -114,26 +114,52 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
 
     private var currentOwner: String { account() ?? "" }
 
+    /// A file SQLite cannot read is only a copy of the server's mail: it is deleted, once, and
+    /// the index starts over.
     private func openLocked() -> Bool {
         guard db == nil else { return true }
+        let result = openOnceLocked()
+        guard result == SQLITE_CORRUPT || result == SQLITE_NOTADB else { return result == SQLITE_OK }
+        AppLogger.persistence.error("Mail search index unreadable, starting over: \(result, privacy: .public)")
+        for suffix in ["", "-journal", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: url.path + suffix)
+        }
+        return openOnceLocked() == SQLITE_OK
+    }
+
+    /// `SQLITE_OK`, or the primary result code that kept the file from opening.
+    private func openOnceLocked() -> Int32 {
+        let directory = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+            at: directory, withIntermediateDirectories: true,
             attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
         )
+        excludeFromBackup(directory)
         var handle: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FILEPROTECTION_COMPLETEUNTILFIRSTUSERAUTHENTICATION
-        guard sqlite3_open_v2(url.path, &handle, flags, nil) == SQLITE_OK else {
-            AppLogger.persistence.error("Mail search index open failed: \(sqlite3_errcode(handle), privacy: .public)")
+        let opened = sqlite3_open_v2(url.path, &handle, flags, nil)
+        guard opened == SQLITE_OK else {
+            AppLogger.persistence.error("Mail search index open failed: \(opened, privacy: .public)")
             sqlite3_close_v2(handle)
-            return false
+            return opened & 0xFF
         }
         db = handle
         guard migrateLocked() else {
+            let code = sqlite3_errcode(handle) & 0xFF
             sqlite3_close_v2(handle)
             db = nil
-            return false
+            return code == SQLITE_OK ? SQLITE_ERROR : code
         }
-        return true
+        excludeFromBackup(url)
+        return SQLITE_OK
+    }
+
+    /// As `MailCache` does for its directory, which the index can create first, as after a wipe.
+    private func excludeFromBackup(_ url: URL) {
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var url = url
+        try? url.setResourceValues(values)
     }
 
     /// Only a copy of the server's mail: another layout starts over and downloads it again.

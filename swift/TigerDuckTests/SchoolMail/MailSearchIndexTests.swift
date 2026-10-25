@@ -125,6 +125,32 @@ struct MailSearchIndexTests {
         #expect(cache.searchIndex.search(folder: "INBOX", query: "成績單")?.uids == [])
     }
 
+    static func directory(of cache: MailCache) -> URL {
+        cache.pageURL(folder: "INBOX").deletingLastPathComponent().deletingLastPathComponent()
+    }
+
+    @Test func aFileSQLiteCannotReadIsReplacedByAnEmptyIndex() throws {
+        let cache = Self.cache()
+        let directory = Self.directory(of: cache)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("not a database, only bytes".utf8).write(to: directory.appendingPathComponent("search-index.sqlite"))
+
+        #expect(Self.fill(cache, [1: Self.text(subject: "成績單", body: nil)]))
+        #expect(cache.searchIndex.search(folder: "INBOX", query: "成績單")?.uids == [1])
+    }
+
+    @Test func theIndexIsLeftOutOfBackupsEvenWhenItCreatesTheDirectory() throws {
+        let cache = Self.cache()
+        Self.fill(cache, [1: Self.text(subject: "成績單", body: nil)])
+        cache.clearAll()
+        _ = cache.searchIndex.search(folder: "INBOX", query: "成績單")
+
+        let directory = URL(fileURLWithPath: Self.directory(of: cache).path)
+        let file = directory.appendingPathComponent("search-index.sqlite")
+        #expect(try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
+        #expect(try file.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
+    }
+
     @Test func theTextOfAMailIsCappedInLength() {
         let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchIndex.maxTextLength * 2))
         #expect(text.count == MailSearchIndex.maxTextLength)
