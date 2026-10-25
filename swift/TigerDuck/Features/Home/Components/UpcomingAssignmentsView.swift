@@ -19,6 +19,7 @@ struct UpcomingAssignmentsView: View {
     var onOpen: (SDAssignment) -> Void = { _ in }
 
     @Environment(AppState.self) private var appState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var ticker = MinuteTicker(interval: 60)
 
     private var courseByNo: [String: SDCourse] {
@@ -185,26 +186,39 @@ struct UpcomingAssignmentsView: View {
     @ViewBuilder
     private func assignmentRow(assignment: SDAssignment, now: Date, policy: VisualStylePolicy) -> some View {
         let status = assignment.status(now: now)
+        // Side by side at accessibility sizes, the title and the status squeeze each other to a few
+        // letters, so the status goes under the title, as in MoodleAssignmentsView.
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
+            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
         HStack(spacing: TigerDuckTheme.Spacing.md) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(assignment.displayTitle)
-                    .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(policy.primaryTextColor)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(courseLineLabel(for: assignment))
-                    .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(policy.secondaryTextColor)
-                    .lineLimit(1)
+            layout {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(assignment.displayTitle)
+                        .font(TigerDuckTheme.Typography.body)
+                        .foregroundStyle(policy.primaryTextColor)
+                        .lineLimit(stacked ? nil : 2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(courseLineLabel(for: assignment))
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(policy.secondaryTextColor)
+                        .lineLimit(stacked ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: stacked ? .infinity : nil, alignment: .leading)
+                if !stacked {
+                    Spacer(minLength: TigerDuckTheme.Spacing.xs)
+                }
+                trailingStatus(
+                    assignment: assignment,
+                    status: status,
+                    now: now,
+                    policy: policy,
+                    stacked: stacked
+                )
             }
-            Spacer(minLength: TigerDuckTheme.Spacing.xs)
-            trailingStatus(
-                assignment: assignment,
-                status: status,
-                now: now,
-                policy: policy
-            )
 
             if policy.assignmentRowStyle == .groupedList {
                 Image(systemName: "chevron.right")
@@ -223,26 +237,29 @@ struct UpcomingAssignmentsView: View {
         assignment: SDAssignment,
         status: AssignmentStatus,
         now: Date,
-        policy: VisualStylePolicy
+        policy: VisualStylePolicy,
+        stacked: Bool
     ) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
+        let lineLimit = stacked ? nil : 1
+        VStack(alignment: stacked ? .leading : .trailing, spacing: 2) {
             if let extra = secondaryBadge(for: assignment, status: status, now: now) {
                 Text(extra.label)
                     .font(statusFont(status: status))
                     .foregroundStyle(extra.tint)
-                    .lineLimit(1)
+                    .lineLimit(lineLimit)
             }
             if let label = status.badgeLabel {
                 Text(label)
                     .font(statusFont(status: status))
                     .foregroundStyle(status.tint)
-                    .lineLimit(1)
+                    .lineLimit(lineLimit)
             }
             Text(timeLabel(for: assignment, now: now))
                 .font(timeFont(status: status))
                 .foregroundStyle(timeColor(status: status, policy: policy))
-                .lineLimit(1)
+                .lineLimit(lineLimit)
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func secondaryBadge(
