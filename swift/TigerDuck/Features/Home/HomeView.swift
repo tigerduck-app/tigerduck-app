@@ -8,6 +8,7 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
     @Environment(\.hostWindow) private var hostWindow
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
@@ -93,6 +94,11 @@ struct HomeView: View {
                 periods: slot?.periods
             )
             .onDisappear { viewModel.selectedCourseSlot = nil }
+        }
+        // Leaving Home, by tab, by push or by going to the background, ends editing as Done does.
+        .onDisappear { setEditing(false) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { setEditing(false) }
         }
     }
 
