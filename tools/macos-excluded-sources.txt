@@ -406,8 +406,11 @@ MailTLSVerifier.swift
 BrowserCertificate.swift
 BrowserChromeCollapse.swift
 BrowserData.swift
+BrowserPage.swift
 BrowserPageScripts.swift
 BrowserRouting.swift
 BrowserSessionSignIn.swift
+BrowserSheets.swift
 BrowserSignIn.swift
+TigerDuckBrowserView.swift
 BrowserAddressBarPicker.swift
