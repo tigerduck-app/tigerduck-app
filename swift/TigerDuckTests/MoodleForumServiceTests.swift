@@ -81,7 +81,7 @@ struct MoodleForumServiceTests {
         )
 
         #expect(try Self.body(of: MoodleForumService.forumsFunction, token: token)
-            == "courseids%5B0%5D=20119&courseids%5B1%5D=20103")
+            == "wstoken=\(token)&courseids%5B0%5D=20119&courseids%5B1%5D=20103")
         #expect(forums == [
             MoodleForum(id: 501, courseId: 20119, type: "news", name: "Announcements & news", cmid: 9001,
                         discussionCount: 6, unreadPostCount: 2, intro: "General news and announcements"),
@@ -101,7 +101,7 @@ struct MoodleForumServiceTests {
         )
 
         #expect(try Self.body(of: MoodleForumService.discussionsFunction, token: token)
-            == "forumid=501&page=2&perpage=20&moodlewssettingfilter=true")
+            == "wstoken=\(token)&forumid=501&page=2&perpage=20&moodlewssettingfilter=true")
     }
 
     @Test("a discussion decodes its first post, counts, author and attachments, and a hidden author as none")
@@ -184,7 +184,7 @@ struct MoodleForumServiceTests {
         _ = try await MoodleForumService.posts(discussionId: 901, token: token, session: Self.session(), siteURL: Self.site)
 
         #expect(try Self.body(of: MoodleForumService.discussionPostsFunction, token: token)
-            == "discussionid=901&sortby=created&sortdirection=ASC&moodlewssettingfilter=true")
+            == "wstoken=\(token)&discussionid=901&sortby=created&sortdirection=ASC&moodlewssettingfilter=true")
     }
 
     @Test("a post decodes its parent, author, time, read state and attachments, and a deleted one Moodle's note")
@@ -231,7 +231,7 @@ struct MoodleForumServiceTests {
 
         try await MoodleForumService.markViewed(discussionId: 801, token: token, session: Self.session(), siteURL: Self.site)
 
-        #expect(try Self.body(of: MoodleForumService.viewDiscussionFunction, token: token) == "discussionid=801")
+        #expect(try Self.body(of: MoodleForumService.viewDiscussionFunction, token: token) == "wstoken=\(token)&discussionid=801")
     }
 
     enum TokenWait: CaseIterable {
@@ -304,7 +304,7 @@ struct MoodleForumServiceTests {
         )
 
         #expect(SettingsAPIStub.requests(for: Self.endpoint(MoodleForumService.viewDiscussionFunction, token: token)).count == 1)
-        #expect(try Self.body(of: MoodleForumService.viewDiscussionFunction, token: token) == "discussionid=801")
+        #expect(try Self.body(of: MoodleForumService.viewDiscussionFunction, token: token) == "wstoken=\(token)&discussionid=801")
     }
 
     @Test("site info gives the account's user id and the functions the site allows, none when it lists none")

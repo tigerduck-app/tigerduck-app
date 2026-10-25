@@ -296,7 +296,7 @@ extension SSOServiceLoginTests {
         struct Answer: Decodable, Sendable {}
         let site = try #require(URL(string: "https://moodle.stub.invalid"))
         let endpoint = try #require(URL(string: "https://moodle.stub.invalid/webservice/rest/server.php"
-            + "?moodlewsrestformat=json&wsfunction=tool_mobile_get_autologin_key&wstoken=stub-token"))
+            + "?moodlewsrestformat=json&wsfunction=tool_mobile_get_autologin_key"))
         let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/webservice/rest/server.php"))
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: endpoint)
@@ -307,6 +307,25 @@ extension SSOServiceLoginTests {
             )
         }
         #expect(requests(to: endpoint).map(\.method) == ["POST"])
+        #expect(requests(to: elsewhere).isEmpty)
+    }
+
+    @Test("a Moodle file download without the access key stops at a 307 or a 308 rather than send the token on",
+          arguments: [307, 308])
+    func moodleFileDownloadStopsAtARedirect(status: Int) async throws {
+        let site = try #require(URL(string: "https://moodle.stub.invalid"))
+        let file = try #require(URL(string: "https://moodle.stub.invalid/pluginfile.php/31/mod_resource/content/2/a.pdf"))
+        let download = try #require(URL(string: "https://moodle.stub.invalid/webservice/pluginfile.php/31/mod_resource/content/2/a.pdf"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/a.pdf"))
+        SSOServerStub.reset()
+        SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: download)
+        let request = try #require(MoodleFileTransfer.downloadRequest(for: file, accessKey: nil, token: "stub-token", siteURL: site))
+        await #expect(throws: (any Error).self) {
+            _ = try await MoodleFileTransfer.fetch(
+                request, mimeType: "application/pdf", expectedSize: 0, session: SSOServerStub.session()
+            ) { _ in }
+        }
+        #expect(requests(to: download).map { "\($0.method) \($0.body)" } == ["POST token=stub-token"])
         #expect(requests(to: elsewhere).isEmpty)
     }
 

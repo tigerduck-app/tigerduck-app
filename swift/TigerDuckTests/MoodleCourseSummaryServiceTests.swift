@@ -45,7 +45,7 @@ struct MoodleCourseSummaryServiceTests {
 
         let request = try #require(SettingsAPIStub.requests(for: Self.endpoint(token: token)).first)
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
-        #expect(body == "field=id&value=20119&moodlewssettingfilter=true")
+        #expect(body == "wstoken=\(token)&field=id&value=20119&moodlewssettingfilter=true")
     }
 
     @Test("a course decodes its summary as HTML and as one line of text, with its names as text")

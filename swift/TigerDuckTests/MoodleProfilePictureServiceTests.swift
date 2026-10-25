@@ -45,7 +45,7 @@ struct MoodleProfilePictureServiceTests {
         #expect(body == expected)
 
         let set = try #require(SettingsAPIStub.requests(for: Self.update(site: site, token: token)).first)
-        #expect(SettingsAPIStub.bodyData(from: set).flatMap { String(data: $0, encoding: .utf8) } == "draftitemid=987654&delete=0")
+        #expect(SettingsAPIStub.bodyData(from: set).flatMap { String(data: $0, encoding: .utf8) } == "wstoken=\(token)&draftitemid=987654&delete=0")
     }
 
     @Test("an upload Moodle refuses throws its error and sets nothing")
