@@ -55,6 +55,8 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
 
 extension EnvironmentValues {
     @Entry var requestClassTableImport: () -> Void = {}
+    /// A link's update of someone imported runs with no screen of its own, so the switcher shows it.
+    @Entry var isUpdatingImportedClassTable = false
 }
 
 enum ClassTableOtherPersonAction: Hashable {
