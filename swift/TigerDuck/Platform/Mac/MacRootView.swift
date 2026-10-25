@@ -12,6 +12,7 @@ struct MacRootView: View {
                 MacLoginView()
             }
         }
+        .tlsPinPrompt()
         .tint(AccentPreview.shared.tint(saved: appState.accentColor))
     }
 }

@@ -43,6 +43,7 @@ struct TigerDuckApp: App {
     private var widgetSnapshotWriter: WidgetSnapshotWriter { launch.value.widgetSnapshotWriter }
 
     init() {
+        TLSPinEngine.installAppHooks()
         // push or a Watch message can launch the app in the background, where no scene appears
         // and `.onAppear` never runs.
         let launch = Self.makeLaunch(hasUnlocked: FirstUnlock.hasHappened(), center: .default)
@@ -82,6 +83,7 @@ struct TigerDuckApp: App {
             ContentView()
                 .id(rootLanguageId)
                 .updateRequiredAlert()
+                .tlsPinPrompt()
                 .tint(AccentPreview.shared.tint(saved: appState.accentColor))
                 .appAppearance()
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
@@ -108,6 +110,8 @@ struct TigerDuckApp: App {
                     // value, so the first background check starts here; later foreground
                     appState.updateNotifyCoordinator.checkInBackground()
                     UNUserNotificationCenter.current().setBadgeCount(0)
+                    TLSPinMismatchQueue.shared.isForeground = true
+                    fetchPinDocumentIfDue()
                 }
                 .onOpenURL { url in
                     if let text = ClassTableShareLink.codeText(url) {
@@ -127,41 +131,49 @@ struct TigerDuckApp: App {
                 ) { _ in
                     rootLanguageId = UUID()
                 }
+                .onReceive(
+                    NotificationCenter.default.publisher(for: AppConstants.tlsPinAcceptanceDidChange)
+                ) { _ in
+                    sceneDidBecomeActive()
+                }
                 .onChange(of: scenePhase) { _, newPhase in
-                    switch newPhase {
-                    case .active: SchoolMailBootstrap.sceneDidBecomeActive()
-                    case .background: SchoolMailBootstrap.sceneDidEnterBackground()
-                    default: break
-                    }
+                    TLSPinMismatchQueue.shared.isForeground = newPhase != .background
                     if newPhase == .active {
-                        UNUserNotificationCenter.current().setBadgeCount(0)
-                        Task {
-                            if await AcademicCalendarStore.shared.refresh() {
-                                await appState.refreshLiveActivity()
-                                widgetSnapshotWriter.regenerate()
-                            }
-                        }
-                        sceneRefreshTask?.cancel()
-                        sceneRefreshTask = Task {
-                            await appState.refreshLiveActivity()
-                            guard !Task.isCancelled else { return }
-                            appState.requestPushScheduleSync()
-                            await appState.refreshMoodleCredentials()
-                        }
-                        if appState.hasCompletedOnboarding {
-                            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
-                        }
-                        Task { await LibraryService.signInIfCredentialed() }
-                        appState.startRevisionPolling()
-                        appState.pushCoordinator.registerAgainIfGaveUp()
-                        widgetSnapshotWriter.regenerate()
-                        appState.updateNotifyCoordinator.checkInBackground()
+                        sceneDidBecomeActive()
                     } else if newPhase == .background {
+                        SchoolMailBootstrap.sceneDidEnterBackground()
                         appState.stopRevisionPolling()
                     }
                 }
         }
         .modelContainer(Self.sharedModelContainer)
+    }
+
+    private func sceneDidBecomeActive() {
+        SchoolMailBootstrap.sceneDidBecomeActive()
+        UNUserNotificationCenter.current().setBadgeCount(0)
+        Task {
+            if await AcademicCalendarStore.shared.refresh() {
+                await appState.refreshLiveActivity()
+                widgetSnapshotWriter.regenerate()
+            }
+        }
+        sceneRefreshTask?.cancel()
+        sceneRefreshTask = Task {
+            await appState.refreshLiveActivity()
+            guard !Task.isCancelled else { return }
+            appState.requestPushScheduleSync()
+            await appState.refreshMoodleCredentials()
+        }
+        if appState.hasCompletedOnboarding {
+            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
+        }
+        Task { await LibraryService.signInIfCredentialed() }
+        appState.startRevisionPolling()
+        appState.pushCoordinator.registerAgainIfGaveUp()
+        widgetSnapshotWriter.regenerate()
+        appState.updateNotifyCoordinator.checkInBackground()
+        fetchPinDocumentIfDue()
     }
 
     @MainActor
@@ -230,6 +242,7 @@ struct TigerDuckApp: App {
 
     init() {
         PushCoordinator.assertEnvConsistency()
+        TLSPinEngine.installAppHooks()
     }
 
     var body: some Scene {
@@ -249,7 +262,9 @@ struct TigerDuckApp: App {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
                     }
-}
+                    TLSPinMismatchQueue.shared.isForeground = true
+                    fetchPinDocumentIfDue()
+                }
                 .onOpenURL { url in
                     if let text = ClassTableShareLink.codeText(url) {
                         HeldShareLink.shared.arrived(text, loginGeneration: appState.authService.loginGeneration)
@@ -264,25 +279,15 @@ struct TigerDuckApp: App {
                 ) { _ in
                     rootLanguageId = UUID()
                 }
+                .onReceive(
+                    NotificationCenter.default.publisher(for: AppConstants.tlsPinAcceptanceDidChange)
+                ) { _ in
+                    sceneDidBecomeActive()
+                }
                 .onChange(of: scenePhase) { _, newPhase in
+                    TLSPinMismatchQueue.shared.isForeground = newPhase != .background
                     if newPhase == .active {
-                        Task {
-                            if await AcademicCalendarStore.shared.refresh() {
-                                widgetSnapshotWriter?.regenerate()
-                            }
-                        }
-                        sceneRefreshTask?.cancel()
-                        sceneRefreshTask = Task {
-                            appState.requestPushScheduleSync()
-                            await appState.refreshMoodleCredentials()
-                        }
-                        if appState.hasCompletedOnboarding {
-                            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
-                        }
-                        appState.startRevisionPolling()
-                        appState.pushCoordinator.registerAgainIfGaveUp()
-                        widgetSnapshotWriter?.regenerate()
-                        appState.updateNotifyCoordinator.checkInBackground()
+                        sceneDidBecomeActive()
                     } else if newPhase == .background {
                         appState.stopRevisionPolling()
                     }
@@ -323,11 +328,38 @@ struct TigerDuckApp: App {
         }
         .defaultSize(width: 900, height: 600)
     }
+
+    private func sceneDidBecomeActive() {
+        Task {
+            if await AcademicCalendarStore.shared.refresh() {
+                widgetSnapshotWriter?.regenerate()
+            }
+        }
+        sceneRefreshTask?.cancel()
+        sceneRefreshTask = Task {
+            appState.requestPushScheduleSync()
+            await appState.refreshMoodleCredentials()
+        }
+        if appState.hasCompletedOnboarding {
+            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
+        }
+        appState.startRevisionPolling()
+        appState.pushCoordinator.registerAgainIfGaveUp()
+        widgetSnapshotWriter?.regenerate()
+        appState.updateNotifyCoordinator.checkInBackground()
+        fetchPinDocumentIfDue()
+    }
 }
 
 #endif
 
 extension TigerDuckApp {
+    /// The pin document is on the TigerDuck backend, which launch code reaches only after onboarding.
+    private func fetchPinDocumentIfDue() {
+        guard appState.hasCompletedOnboarding else { return }
+        Task { await TLSPinDocumentFetcher.shared.fetchIfDue() }
+    }
+
     /// `static` so the store is opened once per process: SwiftData expects one `ModelContainer`
     /// per on-disk store, and the open (disk and schema check) runs in front of the first frame.
     static let sharedModelContainer: ModelContainer = {

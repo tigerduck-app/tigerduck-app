@@ -48,9 +48,11 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
   delegate for redirects, and its target check for a form a page names.
 - Do not route School Mail through the TigerDuck backend. The phone talks to the school's mail
   server directly, and the mail password stays on the device (`Mail/Store/MailCredentialStore.swift`).
-- Do not add a way around a failed TLS pin check (`TLSPinningDelegate`,
-  `Mail/Transport/MailTLSVerifier.swift`). Once a pin set expires, the check falls back to
-  system trust by design.
+- Do not add a way around a failed TLS pin check (`swift/Shared/TLSPins/`,
+  `Mail/Transport/MailTLSVerifier.swift`) other than the user's Continue on a mismatch whose
+  anchor is in the signed document's `prompt_roots`, which trusts the leaf and intermediates for
+  one build. Pins only narrow system trust, and once a set expires the check falls back to system
+  trust by design (docs/decisions/0025-remote-tls-pins.md).
 - Do not reference `Migrations/` types from feature services.
 
 ## Gotchas

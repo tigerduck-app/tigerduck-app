@@ -610,5 +610,37 @@
         }
       ]
     }
+  },
+  "2.7.1": {
+    "zh-TW": {
+      "title": "2.7.1 更新內容",
+      "items": [
+        {
+          "symbol": "lock.shield",
+          "title": "安全連線",
+          "body": "網站憑證檢查，避免中間人攻擊。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "將第三方端點改為 TigerDuck API 提供。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.7.1",
+      "items": [
+        {
+          "symbol": "lock.shield",
+          "title": "Secure connections",
+          "body": "Website certificate checks guard against man-in-the-middle attacks."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Third-party endpoints are now served by the TigerDuck API."
+        }
+      ]
+    }
   }
 }

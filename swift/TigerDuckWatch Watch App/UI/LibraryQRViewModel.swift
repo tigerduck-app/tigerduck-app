@@ -131,6 +131,8 @@ final class LibraryQRViewModel {
             return (try await WatchLibraryService.generateQRCode(), LibraryQRCache.lifetime)
         } catch WatchLibraryServiceError.credentialsNotFound {
             throw WatchLibraryServiceError.credentialsNotFound
+        } catch WatchLibraryServiceError.pinMismatch {
+            throw WatchLibraryServiceError.pinMismatch
         } catch {
             throw phoneError ?? error
         }
