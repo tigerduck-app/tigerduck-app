@@ -32,7 +32,8 @@ private struct GlassCardModifier: ViewModifier {
     }
 }
 
-/// The glass card's surface and shadow, which `presetCardRow` draws apart.
+/// Shared by `glassCard` and `presetCardRow`, so a card split across list rows looks the same as
+/// a whole one.
 enum GlassCard {
     // The material over the flat light page reads as grey, so light cards are white.
     static func surface(_ colorScheme: ColorScheme) -> AnyShapeStyle {

@@ -19,7 +19,8 @@ extension View {
         modifier(PresetGroupedListContainerModifier(policy: policy))
     }
 
-    /// One row's part of a `presetCard` split into list rows, which join into the one card.
+    /// Draws a `presetCard` behind each row of a lazy list, which builds only the rows on screen,
+    /// so a long list still reads as one card without building every row up front.
     func presetCardRow(policy: VisualStylePolicy, isFirst: Bool, isLast: Bool) -> some View {
         background { PresetCardRow(policy: policy, isFirst: isFirst, isLast: isLast) }
     }
