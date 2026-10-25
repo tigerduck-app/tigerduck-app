@@ -18,6 +18,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
     private let wipeCount: @Sendable () -> Int
     private let lock = NSLock()
     private var db: OpaquePointer?
+    private var isDamaged = false
 
     init(url: URL, account: @escaping @Sendable () -> String?, wipeCount: @escaping @Sendable () -> Int) {
         self.url = url
@@ -41,7 +42,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
     /// or the UIDVALIDITY changed, and drops the mail no longer `onServer`. Returns the UIDs it
     /// still holds, or nil when refused.
     func prepare(folder: String, uidValidity: UInt32, onServer: Set<UInt32>, wipeCount expected: Int) -> Set<UInt32>? {
-        lock.withLock {
+        withFile {
             guard expected == wipeCount(), openLocked() else { return nil }
             return transactionLocked { () -> Set<UInt32>? in
                 guard adoptOwnerLocked() else { return nil }
@@ -66,7 +67,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
 
     /// Adds `texts` by UID, unless `folder` is no longer the account's at `uidValidity`.
     func add(_ texts: [UInt32: String], folder: String, uidValidity: UInt32, wipeCount expected: Int) -> Bool {
-        lock.withLock {
+        withFile {
             guard expected == wipeCount(), openLocked(), ownerLocked() == currentOwner,
                   validityLocked(folder) == uidValidity else { return false }
             return transactionLocked { () -> Bool? in
@@ -86,7 +87,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         folder: String, query: String, shouldStop: @escaping @Sendable () -> Bool = { Task.isCancelled }
     ) -> (uidValidity: UInt32, uids: [UInt32])? {
         let needle = Self.folded(query)
-        return lock.withLock {
+        return withFile {
             guard !needle.isEmpty, openLocked(), ownerLocked() == currentOwner,
                   let validity = validityLocked(folder) else { return nil }
             var uids: [UInt32] = []
@@ -134,17 +135,41 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
 
     private var currentOwner: String { account() ?? "" }
 
+    /// A table found damaged mid-query is dropped with its file once the call is done, and the
+    /// next call starts over.
+    private func withFile<T>(_ body: () -> T) -> T {
+        lock.withLock {
+            let result = body()
+            if isDamaged {
+                sqlite3_close_v2(db)
+                db = nil
+                isDamaged = false
+                deleteFileLocked()
+            }
+            return result
+        }
+    }
+
+    private static func isDamage(_ code: Int32) -> Bool {
+        code & 0xFF == SQLITE_CORRUPT || code & 0xFF == SQLITE_NOTADB
+    }
+
     /// A file SQLite cannot read is only a copy of the server's mail: it is deleted, once, and
     /// the index starts over.
     private func openLocked() -> Bool {
         guard db == nil else { return true }
         let result = openOnceLocked()
-        guard result == SQLITE_CORRUPT || result == SQLITE_NOTADB else { return result == SQLITE_OK }
-        AppLogger.persistence.error("Mail search index unreadable, starting over: \(result, privacy: .public)")
+        guard Self.isDamage(result) else { return result == SQLITE_OK }
+        deleteFileLocked()
+        isDamaged = false
+        return openOnceLocked() == SQLITE_OK
+    }
+
+    private func deleteFileLocked() {
+        AppLogger.persistence.error("Mail search index unreadable, starting over")
         for suffix in ["", "-journal", "-wal", "-shm"] {
             try? FileManager.default.removeItem(atPath: url.path + suffix)
         }
-        return openOnceLocked() == SQLITE_OK
     }
 
     /// `SQLITE_OK`, or the primary result code that kept the file from opening.
@@ -231,7 +256,9 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
     private func execute(_ sql: String, _ values: [Value] = [], row: ((OpaquePointer) -> Void)? = nil) -> Bool {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-            AppLogger.persistence.error("Mail search index prepare failed: \(sqlite3_errcode(self.db), privacy: .public)")
+            let code = sqlite3_errcode(db)
+            AppLogger.persistence.error("Mail search index prepare failed: \(code, privacy: .public)")
+            if Self.isDamage(code) { isDamaged = true }
             return false
         }
         defer { sqlite3_finalize(statement) }
@@ -249,6 +276,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
             case SQLITE_INTERRUPT: return false
             case let code:
                 AppLogger.persistence.error("Mail search index step failed: \(code, privacy: .public)")
+                if Self.isDamage(code) { isDamaged = true }
                 return false
             }
         }

@@ -199,6 +199,25 @@ struct MailSearchIndexTests {
         #expect(found.uids == nil)
     }
 
+    @Test func aTableFoundDamagedInAQueryIsReplacedByAnEmptyIndex() throws {
+        let account = Account("B10000000")
+        let first = Self.cache(account: account)
+        let directory = Self.directory(of: first)
+        Self.fill(first, [1: Self.text(subject: "成績單", body: nil)])
+        first.searchIndex.close {}
+        // The header page still reads; the pages after it, which hold the tables, do not.
+        let file = directory.appendingPathComponent("search-index.sqlite")
+        var bytes = try Data(contentsOf: file)
+        try #require(bytes.count > 4_096)
+        bytes.replaceSubrange(4_096..., with: Data(repeating: 0xFF, count: bytes.count - 4_096))
+        try bytes.write(to: file)
+        let second = MailCache(directory: directory, account: { account.current })
+
+        #expect(second.searchIndex.search(folder: "INBOX", query: "成績單")?.uids == nil)
+        #expect(Self.fill(second, [2: Self.text(subject: "選課", body: nil)]))
+        #expect(second.searchIndex.search(folder: "INBOX", query: "選課")?.uids == [2])
+    }
+
     @Test func theTextOfAMailIsCappedInLength() {
         let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchIndex.maxTextLength * 2))
         #expect(text.count == MailSearchIndex.maxTextLength)
