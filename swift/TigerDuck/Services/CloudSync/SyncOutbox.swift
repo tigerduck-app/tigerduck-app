@@ -216,6 +216,7 @@ actor SyncOutbox {
     func clearAll() {
         entries = []
         parked = []
+        cutoffs = [:]
         isLoaded = true
         generation += 1
         persist()

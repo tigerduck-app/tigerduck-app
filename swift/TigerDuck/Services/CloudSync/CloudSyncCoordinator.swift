@@ -140,6 +140,7 @@ final class CloudSyncCoordinator {
         await enqueueTransition { [weak self] in
             await self?.matchPreference()
             await self?.outbox.clearAll()
+            self?.forgetDiscards()
         }.value
         _ = await sending?.result
     }
@@ -186,6 +187,7 @@ final class CloudSyncCoordinator {
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
 
         await outbox.clearAll()
+        forgetDiscards()
 
         state = .disabled
     }
@@ -463,6 +465,12 @@ final class CloudSyncCoordinator {
                 return nil
             }
         })
+    }
+
+    /// Nothing a discard or an add recorded carries over once the queue is cleared.
+    private func forgetDiscards() {
+        cutoffs = [:]
+        courseAddTimes = [:]
     }
 
     func requeueParkedMarks() async {

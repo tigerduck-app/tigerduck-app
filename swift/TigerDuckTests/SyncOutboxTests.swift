@@ -156,6 +156,19 @@ struct SyncOutboxTests {
         func add(_ op: SyncOp) { count += 1 }
     }
 
+    @Test("Clearing the queue forgets its discard cutoffs, so the next account's edits are not refused by them")
+    func clearingForgetsTheCutoffs() async {
+        let outbox = Self.makeOutbox()
+        let earlier = SyncOp.assignmentOverride(
+            moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored", stamp: Date().addingTimeInterval(-60))
+        await outbox.discard(madeBefore: ["assignments": Date()])
+
+        await outbox.clearAll()
+        await outbox.enqueue(earlier)
+
+        #expect(await outbox.snapshot().map(\.op.dedupKey) == [earlier.dedupKey])
+    }
+
     @Test("A full sync that requeues during the drain parking a mark keeps it parked")
     func requeueDuringTheParkingDrainKeepsTheMark() async {
         let outbox = Self.makeOutbox()

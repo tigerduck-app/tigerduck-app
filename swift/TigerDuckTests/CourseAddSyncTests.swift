@@ -195,6 +195,17 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
+    @Test("A sign-out forgets when the adds landed, so none counts for the next account's full sync")
+    func signOutForgetsTheAddTimes() async {
+        let coordinator = Self.makeCoordinator(Backend(), cache: Self.makeCache(userAdded: [Self.art()]))
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+        #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast) == ["1151:GE1010001"])
+
+        await coordinator.settleForSignOut()
+
+        #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast).isEmpty)
+    }
+
     @Test("An add counts for a full sync whose fetch began before it, though it left the outbox unsent")
     func addCountsForASyncThatBeganBeforeIt() async {
         let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:GE1010001"])
