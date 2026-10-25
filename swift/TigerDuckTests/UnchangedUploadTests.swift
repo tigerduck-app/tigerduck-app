@@ -113,6 +113,24 @@ struct UnchangedUploadTests {
         #expect(backend.uploads == 4)
     }
 
+    @Test("A list answered 401 goes again at once, as the retry after signing in sends it")
+    func unauthorizedListIsNotHeldBack() async throws {
+        let backend = Backend()
+        backend.answer(status: 401)
+        backend.answer()
+        let coordinator = backend.makeCoordinator()
+        let clock = Clock()
+        coordinator.clock = { clock.now }
+        let list = Self.courses(Self.entry("CS1"))
+
+        await #expect(throws: PushAPIError.self) {
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
+        }
+        clock.now += 1
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(backend.uploads == 2)
+    }
+
     @Test("A refused list still goes at once when resent, forced, after a reset, or when it never reached the server")
     func refusalHoldsOnlyAnAnsweredList() async throws {
         let backend = Backend()
