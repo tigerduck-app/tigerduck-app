@@ -1131,6 +1131,19 @@ struct DepartingSessionTests {
         #expect(try Self.kept(backend) == nil)
     }
 
+    @Test("the unregister of a sign-out that kept nothing leaves the session an earlier sign-out kept")
+    func aSignOutThatKeptNothingForgetsNoEarlierSession() async throws {
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+        let manager = backend.manager
+        let token = await manager.endSession()
+        await manager.unregisterDeparting(accessToken: token) { false }
+
+        #expect(await manager.endSession() == nil)
+        await manager.unregisterDeparting(accessToken: nil) { true }
+
+        #expect(try Self.kept(backend)?.token == "R0")
+    }
+
     @Test("a sign-in forgets the kept session: the backend has the device for that account now")
     func aSignInForgetsTheKeptSession() async throws {
         let backend = await Self.signedOut()

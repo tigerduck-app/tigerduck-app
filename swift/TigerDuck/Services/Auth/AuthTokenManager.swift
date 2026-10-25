@@ -232,6 +232,7 @@ actor AuthTokenManager {
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
         let refreshOut = refreshTask, generation = signInGeneration, uses = refreshTokenUses
         logout()
+        signOutSession = nil
         guard let refresh else { return nil }
         let departing = DepartingSession(
             refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURLProvider(),
