@@ -178,6 +178,18 @@ class PrivacyManifestTests(unittest.TestCase):
                 self.assertEqual(cpm.problems(self.root), [
                     f"App: swift/Shared/Boot.swift uses `{category}`, which swift/App/PrivacyInfo.xcprivacy does not declare"])
 
+    def test_a_project_the_parser_finds_no_app_in_fails(self) -> None:
+        projects = {
+            "no app target": PROJECT.replace('"com.apple.product-type.application"', '"com.apple.product-type.framework"'),
+            "no targets": PROJECT.replace("isa = PBXNativeTarget;", "isa = PBXAggregateTarget;"),
+        }
+        for label, project in projects.items():
+            with self.subTest(label):
+                self.write("swift/TigerDuck.xcodeproj/project.pbxproj", project)
+                self.assertEqual(cpm.problems(self.root), [
+                    "found no application target in swift/TigerDuck.xcodeproj/project.pbxproj; "
+                    "the parser no longer matches its format"])
+
     def test_a_reason_apple_does_not_list_for_the_category_fails(self) -> None:
         self.write("swift/App/PrivacyInfo.xcprivacy", manifest(**{DEFAULTS: ["C617.1"]}))
         self.assertEqual(cpm.problems(self.root), [

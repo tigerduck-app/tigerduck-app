@@ -166,10 +166,13 @@ def manifest_problems(name: str, manifest: Path, used: dict[str, Path], root: Pa
 def problems(root: Path = ROOT) -> list[str]:
     objs = objects((root / PROJECT).read_text(encoding="utf-8"))
     swift_dir = (root / PROJECT).parent.parent
+    targets = {target_id: body for target_id, body in objs.items()
+               if field(body, "isa") == "PBXNativeTarget" and field(body, "productType") in SHIPPING}
+    # Finding no app means the parser no longer reads this project, not that nothing needs a manifest.
+    if not any(field(body, "productType") == "com.apple.product-type.application" for body in targets.values()):
+        return [f"found no application target in {PROJECT}; the parser no longer matches its format"]
     found = []
-    for target_id, body in objs.items():
-        if field(body, "isa") != "PBXNativeTarget" or field(body, "productType") not in SHIPPING:
-            continue
+    for target_id, body in targets.items():
         name = field(body, "name")
         files = target_files(objs, target_id, swift_dir)
         manifests = [path for path in files if path.name == MANIFEST]
