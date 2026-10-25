@@ -280,12 +280,12 @@ Lost:
 - Starting school fetches only after a successful TigerSync: an unreachable backend would block
   school data.
 
-### D15. "Use Server / Use Local" (recommendation, owner to decide)
+### D15. "Use Server / Use Local": removed
 
 Two prompts exist: the per-assignment alert after a full sync (`resolveSyncConflicts`, shown from
 `HomeView` and `MacHomeView`) and the re-enable check (`checkPendingConflicts`,
 `resolveReenableConflict`, shown from `CloudSyncSettingsView` and `MacTigerSyncSettingsView`).
-The first is decided away by the clock. For the second, recommended: remove it with
+The first is decided away by the clock. The second goes too, with
 `pendingConflictCategories`, `UseLocalHold`, `ConflictCheckRetry`, `ReenableConflict`,
 `keepLocalCourses` and `queueLocalEdits`. Turning sync on sends the stamped unsent edits and
 applies the snapshot (D12, D13). What is lost: a deliberate "make this device match the server"
@@ -432,18 +432,13 @@ backend, for colour, mark, hide and reset.
 - [Removed prompts leave unused strings] → remove the keys in an `app-translation` pull request
   and bump the submodule.
 
-## Owner decisions pending
+## Owner decisions
 
-The specs and tasks follow each recommendation; a different answer changes only the named part.
-
-1. Re-enable "Use Server / Use Local" (D15). Recommended: remove it. Otherwise
-   `tigersync-merge`'s "Turning sync on merges without a prompt" and task group 8 and task 10.5 change.
-2. Cap the wait for TigerSync before the school fetches, for example at 10 seconds. Recommended:
-   yes, since the base layer keeps user choices safe while the pull finishes; the backend client
-   times out a request at 15 seconds and a drain can run several. Otherwise nothing changes; with
-   a cap, the first requirement of `tigersync-refresh-order` names it and task 7.1 sets it.
-3. When to remove the legacy branches (Rollout step 4). Recommended: once no active device has
-   reported an older version for 30 days; a separate change.
-4. The `fix/course-outbox-ordering` branch (#689). Recommended: close it unmerged once the iOS
-   course group lands with a test per case listed in #689, then close #689 and the issues merged
-   into it.
+1. Re-enable "Use Server / Use Local" (D15): removed.
+2. The school fetches wait for TigerSync at most 3 seconds, then start; TigerSync keeps running
+   and the base layer keeps user choices safe whatever finishes first.
+3. The legacy branches (Rollout step 4) go in a separate change once no active device has
+   reported an older version for 30 days.
+4. `fix/course-outbox-ordering` (#689) merges into the current patch release. The iOS course
+   group removes its heuristics with a test per case listed in #689, then #689 and the issues
+   merged into it close.

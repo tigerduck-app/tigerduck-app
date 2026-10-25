@@ -54,7 +54,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 
 ## 7. iOS PR: refresh order
 
-- [ ] 7.1 Make `backgroundSync` the pipeline of design.md D14 and call it from `HomeView.refreshable`, `MacRootView`'s Refresh and the Calendar, Class Table and Score pulls before their own fetch; apply the wait cap if the owner chooses one (design.md, Owner decisions pending, item 2); verify a test where a fake school fetch starts only after the TigerSync step returns, and one where the step fails
+- [ ] 7.1 Make `backgroundSync` the pipeline of design.md D14 and call it from `HomeView.refreshable`, `MacRootView`'s Refresh and the Calendar, Class Table and Score pulls before their own fetch; with the 3-second wait cap (design.md, Owner decisions, item 2); verify a test where a fake school fetch starts only after the TigerSync step returns, and one where the step fails
 - [ ] 7.2 Verify that a revision change and a sync push still run TigerSync alone, with a test that records no school fetch
 
 ## 8. iOS PR: the re-enable prompt (after the owner decides D15)
@@ -64,7 +64,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 
 ## 9. iOS release
 
-- [ ] 9.1 Close `fix/course-outbox-ordering` unmerged and close #689 and the issues merged into it, each with the test that covers it; verify every item listed in #689 names a passing test from group 2 or 6
+- [ ] 9.1 Confirm group 6 removed the heuristics the merged `fix/course-outbox-ordering` added, and close #689 and the issues merged into it, each with the test that covers it; verify every item listed in #689 names a passing test from group 2 or 6
 - [ ] 9.2 Ship the release with the `release-bump` skill; verify its review of `origin/main...origin/dev` leaves no finding of High severity or above
 
 ## 10. Android (its maintainer, after group 3)

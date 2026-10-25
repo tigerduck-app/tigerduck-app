@@ -11,8 +11,8 @@ failure can let school data replace something the user chose.
 ### Requirement: A refresh runs local state, then TigerSync, then the school
 A refresh that fetches school data (launch, return to the app, pull to refresh, the Mac's
 Refresh) SHALL first show the device's stored data, then run TigerSync (send unsent edits, then
-pull), and SHALL start the course selection, Moodle and grade fetches only once TigerSync has
-finished or failed.
+pull), and SHALL start the course selection, Moodle and grade fetches once TigerSync has
+finished or failed, or after 3 seconds if it is still running.
 
 #### Scenario: Pull to refresh on Home
 - **WHEN** the user pulls to refresh Home with TigerSync on
@@ -21,6 +21,11 @@ finished or failed.
 #### Scenario: Backend unreachable
 - **WHEN** the TigerSync pull fails
 - **THEN** the school fetches start right after the failure and the refresh completes
+
+#### Scenario: Slow backend
+- **WHEN** the TigerSync pull has not returned after 3 seconds
+- **THEN** the school fetches start while the pull keeps running, and no school value replaces a
+  user choice the pull later brings
 
 #### Scenario: TigerSync off
 - **WHEN** TigerSync is off

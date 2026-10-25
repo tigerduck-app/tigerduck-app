@@ -30,10 +30,10 @@ apps and the backend share.
   hid. A reset no longer depends on which device wrote it.
 - iOS: refresh runs local state, then TigerSync, then course selection, Moodle and grades. The
   outbox becomes the record of unsent edits, kept while TigerSync or a category is off.
-- **BREAKING (UI)**: the per-assignment conflict alert goes away. Removing the re-enable
-  "Use Server / Use Local" prompt is recommended and needs the owner's confirmation.
-- iOS drops the race heuristics that the `fix/course-outbox-ordering` branch (#689) adds or
-  extends; that branch is superseded.
+- **BREAKING (UI)**: the per-assignment conflict alert and the re-enable "Use Server / Use Local"
+  prompt go away.
+- The `fix/course-outbox-ordering` fixes (#689) ship first in a patch release; the iOS course
+  work then replaces the heuristics they add or extend.
 - Android makes the same client changes (listed in design.md); its maintainer implements them.
 
 ## Capabilities
