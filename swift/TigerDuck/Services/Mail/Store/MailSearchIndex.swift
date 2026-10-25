@@ -106,11 +106,13 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         }
     }
 
-    /// Closes the file, for `MailCache.clearAll`, which then deletes it.
-    func close() {
+    /// Closes the file and runs `remove`, for `MailCache.clearAll`, under the lock every open
+    /// takes, so no search reopens the file before `remove` has deleted it.
+    func close(thenRemove remove: () -> Void) {
         lock.withLock {
             sqlite3_close_v2(db)
             db = nil
+            remove()
         }
     }
 

@@ -169,8 +169,7 @@ nonisolated final class MailCache: @unchecked Sendable {
     func clearAll() {
         lock.withLock {
             wipes.withLock { $0 += 1 }
-            searchIndex.close()
-            _ = try? FileManager.default.removeItem(at: directory)
+            searchIndex.close { _ = try? FileManager.default.removeItem(at: directory) }
         }
     }
 

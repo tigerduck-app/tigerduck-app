@@ -175,6 +175,30 @@ struct MailSearchIndexTests {
         #expect(cache.searchIndex.search(folder: "INBOX", query: "公告 1999", shouldStop: { false })?.uids == [1999])
     }
 
+    @Test func aSearchDuringTheWipeWaitsUntilTheFileIsDeleted() {
+        final class Found: @unchecked Sendable {
+            var uids: [UInt32]?
+        }
+        let cache = Self.cache()
+        Self.fill(cache, [1: Self.text(subject: "成績單", body: nil)])
+        let index = cache.searchIndex
+        let directory = Self.directory(of: cache)
+        let found = Found()
+        let finished = DispatchSemaphore(value: 0)
+
+        index.close {
+            Thread.detachNewThread {
+                found.uids = index.search(folder: "INBOX", query: "成績單")?.uids
+                finished.signal()
+            }
+            #expect(finished.wait(timeout: .now() + .milliseconds(200)) == .timedOut)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        finished.wait()
+
+        #expect(found.uids == nil)
+    }
+
     @Test func theTextOfAMailIsCappedInLength() {
         let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchIndex.maxTextLength * 2))
         #expect(text.count == MailSearchIndex.maxTextLength)
