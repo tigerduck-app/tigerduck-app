@@ -138,13 +138,12 @@ class MoodleOidcAuthClient:
             self._write(store)
 
     def call(self, wsfunction: str, **args: Any) -> Any:
-        params = {
-            "moodlewsrestformat": "json",
-            "wsfunction": wsfunction,
-            "wstoken": self.get_token()["wstoken"],
-        }
+        params = {"moodlewsrestformat": "json", "wsfunction": wsfunction}
+        # The token goes in the form, which Moodle reads as it reads the query,
+        # so it stays out of the URLs that access logs keep.
+        data = {"wstoken": self.get_token()["wstoken"], **args}
         r = self._client.post(
-            f"{SITE_URL}/webservice/rest/server.php", params=params, data=args,
+            f"{SITE_URL}/webservice/rest/server.php", params=params, data=data,
         )
         r.raise_for_status()
         return r.json()
