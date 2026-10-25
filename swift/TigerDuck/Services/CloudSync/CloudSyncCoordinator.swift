@@ -400,10 +400,17 @@ final class CloudSyncCoordinator {
         return keys.union(courseAddTimes.filter { $0.value >= date }.keys)
     }
 
-    /// Drops the course adds and deletes made before a course reset another device made, and
-    /// returns the keys of the deletes.
+    /// How far this device's clock may be off the server's when an edit stamped here is compared
+    /// with a server time. NTP keeps it within seconds; inside the margin the order cannot be told,
+    /// and the edit made here is kept, as it was before such checks.
+    nonisolated static let clockSkewMargin: TimeInterval = 2 * 60
+
+    /// Drops the course adds and deletes made here before another device's course reset at
+    /// `resetAt`, the server's `courses_reset_at`, and returns the keys of the deletes. One made
+    /// after the reset, or within the skew margin of it, stays.
     @discardableResult
-    func dropCourseEdits(madeBefore cutoff: Date) async -> Set<String> {
+    func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
+        let cutoff = resetAt.addingTimeInterval(-Self.clockSkewMargin)
         let dropped = await outbox.discard(madeBefore: ["ca": cutoff, "cd": cutoff])
         return Self.courseKeys(of: dropped.filter { op in
             if case .courseDelete = op { return true }

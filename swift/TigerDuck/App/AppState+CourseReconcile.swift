@@ -13,7 +13,7 @@ extension AppState {
         Defaults[.lastSeenCoursesResetAt] = reset.remember
         recentCourseDeletions = [:]
         AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: reset.remember), privacy: .public)), wiped local state")
-        return deleting.subtracting(await cloudSyncCoordinator.dropCourseEdits(madeBefore: Date()))
+        return deleting.subtracting(await cloudSyncCoordinator.dropCourseEdits(madeBeforeReset: reset.remember))
     }
 
     @discardableResult

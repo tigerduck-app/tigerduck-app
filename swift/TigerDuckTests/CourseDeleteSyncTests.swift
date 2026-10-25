@@ -187,22 +187,38 @@ struct CourseDeleteSyncTests {
         }
     }
 
-    @Test("A reset made elsewhere drops the course adds and deletes made here before it, one still on its way in too")
+    @Test("A reset made elsewhere drops the course adds and deletes made here before it, one still on its way in too, and keeps those made after it or within the skew margin")
     func resetElsewhereDropsTheCourseEditsBeforeIt() async {
         let coordinator = Self.makeCoordinator(Backend())
         let reset = Date()
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: reset.addingTimeInterval(-60))
+        let margin = CloudSyncCoordinator.clockSkewMargin
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: reset.addingTimeInterval(-margin - 60))
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "MA5", at: reset.addingTimeInterval(-margin + 60))
         await coordinator.enqueueCourseDelete(semester: "1142", courseNo: "EE2", at: reset.addingTimeInterval(60))
-        await coordinator.outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE3", stamp: reset.addingTimeInterval(-60)))
+        await coordinator.outbox.enqueue(.courseAdd(
+            semester: "1151", courseNo: "GE3", stamp: reset.addingTimeInterval(-margin - 60)
+        ))
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1", moodleId: "1151CS1",
                                               moodleCourseId: nil, ignore: true)
 
-        #expect(await coordinator.dropCourseEdits(madeBefore: reset) == ["1151:CS1"])
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "PE4", at: reset.addingTimeInterval(-1))
+        #expect(await coordinator.dropCourseEdits(madeBeforeReset: reset) == ["1151:CS1"])
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "PE4", at: reset.addingTimeInterval(-margin - 1))
 
-        #expect(await coordinator.pendingCourseDeleteKeys() == ["1142:EE2"])
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:MA5", "1142:EE2"])
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1"])
+    }
+
+    @Test("A full sync after a reset made elsewhere drops the deletes made here before the server's reset time, and keeps one made after it but before the sync")
+    func fullSyncAfterAResetElsewhereDropsTheDeletesBeforeIt() async {
+        let coordinator = Self.makeCoordinator(Backend())
+        let resetAt = Date().addingTimeInterval(-3600)
+        let margin = CloudSyncCoordinator.clockSkewMargin
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: resetAt.addingTimeInterval(-margin - 60))
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "EE2", at: resetAt.addingTimeInterval(600))
+
+        #expect(await coordinator.dropCourseEdits(madeBeforeReset: resetAt) == ["1151:CS1"])
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2"])
     }
 
     @Test("A full sync shows a hidden course the server lists again only once no delete of it from here may be on its way")
