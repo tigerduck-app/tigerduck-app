@@ -173,10 +173,68 @@ enum CourseSearch {
     }
 }
 
+/// Where the periods grid's cells sit: from `origin`, past the label column and the header row,
+/// in equal cells of `cell`, weekdays across and periods down.
+struct PeriodGridGeometry {
+    let origin: CGPoint
+    let cell: CGSize
+
+    private static let periods = AppConstants.Periods.chronologicalOrder
+
+    /// The cells the line from `start` to `end` crosses, in order, leaving out what falls outside
+    /// the grid. A line through a corner steps diagonally instead of taking a neighbour.
+    func slots(from start: CGPoint, to end: CGPoint) -> [CourseSlot] {
+        guard cell.width > 0, cell.height > 0 else { return [] }
+        let from = (x: (start.x - origin.x) / cell.width, y: (start.y - origin.y) / cell.height)
+        let to = (x: (end.x - origin.x) / cell.width, y: (end.y - origin.y) / cell.height)
+        let (dx, dy) = (to.x - from.x, to.y - from.y)
+        var (column, row) = (Int(from.x.rounded(.down)), Int(from.y.rounded(.down)))
+        let last = (column: Int(to.x.rounded(.down)), row: Int(to.y.rounded(.down)))
+        let step = (x: dx > 0 ? 1 : -1, y: dy > 0 ? 1 : -1)
+        // The fraction of the line at which it next crosses a column or a row boundary.
+        var nextX = dx == 0 ? CGFloat.infinity : (CGFloat(column + (dx > 0 ? 1 : 0)) - from.x) / dx
+        var nextY = dy == 0 ? CGFloat.infinity : (CGFloat(row + (dy > 0 ? 1 : 0)) - from.y) / dy
+        let deltaX = dx == 0 ? CGFloat.infinity : 1 / abs(dx)
+        let deltaY = dy == 0 ? CGFloat.infinity : 1 / abs(dy)
+
+        var crossed = [slot(column: column, row: row)]
+        for _ in 0..<(abs(last.column - column) + abs(last.row - row)) {
+            guard column != last.column || row != last.row else { break }
+            let crossesColumn = nextX <= nextY
+            let crossesRow = nextY <= nextX
+            if crossesColumn {
+                column += step.x
+                nextX += deltaX
+            }
+            if crossesRow {
+                row += step.y
+                nextY += deltaY
+            }
+            crossed.append(slot(column: column, row: row))
+        }
+        return crossed.compactMap { $0 }
+    }
+
+    private func slot(column: Int, row: Int) -> CourseSlot? {
+        guard CourseSearch.gridDays.indices.contains(column), Self.periods.indices.contains(row) else { return nil }
+        return CourseSlot(day: CourseSearch.gridDays[column], period: Self.periods[row])
+    }
+}
+
 /// One drag across the periods grid. The first cell decides whether the drag selects or clears,
 /// and every cell it crosses follows.
 struct PeriodDrag {
     private var selects: Bool?
+    private var last: CGPoint?
+
+    /// Applies the drag to every cell from the previous point to `point`, since a fast drag
+    /// reports points several cells apart.
+    mutating func move(to point: CGPoint, in grid: PeriodGridGeometry, picked: inout Set<CourseSlot>) {
+        for slot in grid.slots(from: last ?? point, to: point) {
+            touch(slot, in: &picked)
+        }
+        last = point
+    }
 
     mutating func touch(_ slot: CourseSlot, in picked: inout Set<CourseSlot>) {
         let selects = self.selects ?? !picked.contains(slot)

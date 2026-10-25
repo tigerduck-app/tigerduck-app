@@ -190,6 +190,54 @@ struct CourseSearchTests {
         #expect(picked == [b])
     }
 
+    /// Cells 50 by 30 after a 28-point label column and a 24-point header.
+    private static let grid = PeriodGridGeometry(origin: CGPoint(x: 28, y: 24), cell: CGSize(width: 50, height: 30))
+
+    private static func center(column: Int, row: Int) -> CGPoint {
+        CGPoint(x: 28 + 50 * CGFloat(column) + 25, y: 24 + 30 * CGFloat(row) + 15)
+    }
+
+    private static func slots(_ pairs: [(Int, String)]) -> [CourseSlot] {
+        pairs.map { CourseSlot(day: $0.0, period: $0.1) }
+    }
+
+    @Test("a fast vertical drag crosses every period between two updates")
+    func fastVerticalDrag() {
+        let crossed = Self.grid.slots(from: Self.center(column: 0, row: 0), to: Self.center(column: 0, row: 5))
+        #expect(crossed == Self.slots([(1, "1"), (1, "2"), (1, "3"), (1, "4"), (1, "5"), (1, "6")]))
+        let back = Self.grid.slots(from: Self.center(column: 2, row: 13), to: Self.center(column: 2, row: 11))
+        #expect(back == Self.slots([(3, "D"), (3, "C"), (3, "B")]))
+    }
+
+    @Test("a fast diagonal drag crosses the cells on its line")
+    func fastDiagonalDrag() {
+        let diagonal = Self.grid.slots(from: Self.center(column: 0, row: 0), to: Self.center(column: 3, row: 3))
+        #expect(diagonal == Self.slots([(1, "1"), (2, "2"), (3, "3"), (4, "4")]))
+        let shallow = Self.grid.slots(from: Self.center(column: 0, row: 0), to: Self.center(column: 2, row: 1))
+        #expect(shallow == Self.slots([(1, "1"), (2, "1"), (2, "2"), (3, "2")]))
+    }
+
+    @Test("a drag from outside the grid crosses only the cells inside it")
+    func dragFromOutside() {
+        let crossed = Self.grid.slots(from: CGPoint(x: 5, y: 39), to: Self.center(column: 2, row: 0))
+        #expect(crossed == Self.slots([(1, "1"), (2, "1"), (3, "1")]))
+        #expect(Self.grid.slots(from: CGPoint(x: 5, y: 5), to: CGPoint(x: 20, y: 10)).isEmpty)
+    }
+
+    @Test("a drag applies its first cell's choice to every cell between two far updates")
+    func dragAppliesAlongTheLine() {
+        var picked = Set(Self.slots([(1, "3")]))
+        var drag = PeriodDrag()
+        drag.move(to: Self.center(column: 0, row: 0), in: Self.grid, picked: &picked)
+        drag.move(to: Self.center(column: 0, row: 4), in: Self.grid, picked: &picked)
+        #expect(picked == Set(Self.slots([(1, "1"), (1, "2"), (1, "3"), (1, "4"), (1, "5")])))
+
+        var clearing = PeriodDrag()
+        clearing.move(to: Self.center(column: 0, row: 4), in: Self.grid, picked: &picked)
+        clearing.move(to: Self.center(column: 0, row: 1), in: Self.grid, picked: &picked)
+        #expect(picked == Set(Self.slots([(1, "1")])))
+    }
+
     // MARK: Results
 
     @Test("the primary language's rows come first, with the other language's names beside them")

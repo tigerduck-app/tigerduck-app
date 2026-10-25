@@ -297,10 +297,10 @@ private struct PeriodGridContent: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .updating($drag) { value, drag, _ in
-                        guard let slot = slot(at: value.location, cell: cell) else { return }
+                        let grid = PeriodGridGeometry(origin: CGPoint(x: labelWidth, y: headerHeight), cell: cell)
                         var current = drag ?? PeriodDrag()
                         var picked = selection
-                        current.touch(slot, in: &picked)
+                        current.move(to: value.location, in: grid, picked: &picked)
                         drag = current
                         if picked != selection { selection = picked }
                     }
@@ -336,13 +336,5 @@ private struct PeriodGridContent: View {
             .accessibilityValue(isBusy ? String(localized: "a11y_course_search_period_busy") : "")
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { selection.formSymmetricDifference([slot]) }
-    }
-
-    private func slot(at point: CGPoint, cell: CGSize) -> CourseSlot? {
-        guard cell.width > 0, cell.height > 0 else { return nil }
-        let column = Int(((point.x - labelWidth) / cell.width).rounded(.down))
-        let row = Int(((point.y - headerHeight) / cell.height).rounded(.down))
-        guard CourseSearch.gridDays.indices.contains(column), Self.periods.indices.contains(row) else { return nil }
-        return CourseSlot(day: CourseSearch.gridDays[column], period: Self.periods[row])
     }
 }
