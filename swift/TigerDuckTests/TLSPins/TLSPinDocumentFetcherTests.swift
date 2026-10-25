@@ -131,6 +131,18 @@ struct TLSPinDocumentFetcherTests {
         #expect(engine.storedEnvelope == server.body)
     }
 
+    @Test("A refetch counts any HTTP answer as answered and only a transport failure as not")
+    func aRefetchReportsWhetherTheServerAnswered() async {
+        let server = Server()
+        let fetcher = fetcher(server)
+        server.status = 503
+        #expect(await fetcher.refetch())
+        server.status = 404
+        #expect(await fetcher.refetch())
+        server.failure = URLError(.timedOut)
+        #expect(await fetcher.refetch() == false)
+    }
+
     @Test("A failed fetch is silent and keeps the held document")
     func failuresKeepWhatTheEngineHas() async {
         let server = Server()
