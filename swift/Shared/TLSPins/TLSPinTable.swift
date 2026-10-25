@@ -17,7 +17,7 @@ nonisolated struct TLSPinSet: Equatable, Sendable {
 /// See docs/decisions/0025-remote-tls-pins.md.
 nonisolated enum TLSPinTable {
     /// The serial of the first production document. A document must be newer to replace these sets.
-    static let baselineSerial: Int64 = 0
+    static let baselineSerial: Int64 = 1792888799
 
     /// Ed25519 public keys that may sign the pin document, by `key_id`: base64 of the 32 raw bytes.
     /// `td-pins-2026a` signs on the server; `td-pins-2026b` is the standby kept offline.
