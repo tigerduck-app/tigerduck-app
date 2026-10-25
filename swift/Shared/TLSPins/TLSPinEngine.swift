@@ -61,6 +61,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         var acceptances: [TLSPinAcceptance] = []
         var refusedSets: Set<String> = []
         var refreshes: [String: Task<Bool, Never>] = [:]
+        var failedRefreshAt: [String: Date] = [:]
     }
 
     private let builtIn: [TLSPinSet]
@@ -254,11 +255,14 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         }
     }
 
-    /// A refetch the server answered counts for the launch; one that failed, as in a network blip,
-    /// leaves the next refusal free to try again.
+    /// A refetch the server answered counts for the launch. After one that failed, as in a network
+    /// blip, the next may start 30 seconds later: with the backend out of reach while NTUST answers,
+    /// as behind a captive portal, each refused request would otherwise wait out its own refetch.
     private func refreshOnce(setID: String) async {
         let task: Task<Bool, Never>? = withState { state in
             if let running = state.refreshes[setID] { return running }
+            if let failed = state.failedRefreshAt[setID],
+               clock().timeIntervalSince(failed) < Self.refreshRetryDelay { return nil }
             guard let refresh else { return nil }
             let task = Task { await refresh() }
             state.refreshes[setID] = task
@@ -266,9 +270,13 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         }
         guard let task, !(await task.value) else { return }
         withState { state in
-            if state.refreshes[setID] == task { state.refreshes[setID] = nil }
+            guard state.refreshes[setID] == task else { return }
+            state.refreshes[setID] = nil
+            state.failedRefreshAt[setID] = clock()
         }
     }
+
+    static let refreshRetryDelay: TimeInterval = 30
 
     /// The sets the document replaces, when it is newer than the built-in table; a set it does not
     /// list keeps the built-in pins, and an expiry it moves earlier is ignored.

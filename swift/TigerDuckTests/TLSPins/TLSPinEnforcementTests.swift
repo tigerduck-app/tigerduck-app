@@ -98,13 +98,30 @@ struct TLSPinEnforcementTests {
         #expect(reports.all.isEmpty)
     }
 
-    @Test("A refetch that failed, as in a network blip, leaves the next refusal free to try again")
-    func aFailedRefreshIsTriedAgain() async throws {
-        let engine = engine(document: Self.movedPins(promptRoots: []))
+    final class Clock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var date = TLSPinEnforcementTests.date
+        var now: Date { lock.withLock { date } }
+        func advance(_ seconds: TimeInterval) { lock.withLock { date += seconds } }
+    }
+
+    @Test("A refetch that failed, as in a network blip, may be tried again 30 seconds later")
+    func aFailedRefreshIsTriedAgainLater() async throws {
+        let clock = Clock()
+        let engine = TLSPinEngine(
+            builtIn: TLSPinTable.builtIn, baselineSerial: 0, keys: F.keys,
+            defaults: F.defaults(), buildNumber: "100", clock: { clock.now }
+        )
+        engine.acceptDocument(Self.movedPins(promptRoots: []))
         let attempts = Counter()
         engine.install(refresh: { await attempts.increment(); return false }, report: nil)
         let chain = try chain()
+
         _ = await engine.resolveRefusal(host: Self.host, chain: chain)
+        clock.advance(29)
+        _ = await engine.resolveRefusal(host: Self.host, chain: chain)
+        #expect(await attempts.value == 1)
+        clock.advance(2)
         _ = await engine.resolveRefusal(host: Self.host, chain: chain)
         #expect(await attempts.value == 2)
     }
