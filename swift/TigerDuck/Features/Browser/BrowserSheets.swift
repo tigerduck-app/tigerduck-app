@@ -12,20 +12,26 @@ enum BrowserSheet: String, Identifiable {
 struct BrowserSheetView: View {
     let page: BrowserPage
     let sheet: BrowserSheet
+    let showsNavigation: Bool
+    let afterClosing: (@escaping () -> Void) -> Void
 
     @State private var showsCertificate: Bool
     @State private var height: CGFloat = 160
+    @State private var peeking = false
 
-    init(page: BrowserPage, sheet: BrowserSheet) {
+    init(page: BrowserPage, sheet: BrowserSheet, showsNavigation: Bool, afterClosing: @escaping (@escaping () -> Void) -> Void) {
         self.page = page
         self.sheet = sheet
+        self.showsNavigation = showsNavigation
+        self.afterClosing = afterClosing
         _showsCertificate = State(initialValue: sheet == .certificate)
     }
 
     var body: some View {
         Group {
             if sheet == .more {
-                BrowserMoreRow(page: page).fittedHeight($height)
+                BrowserMenu(page: page, showsNavigation: showsNavigation, peeking: $peeking, afterClosing: afterClosing)
+                    .fittedHeight($height)
             } else {
                 NavigationStack {
                     BrowserAddressView(page: page, showsCertificate: $showsCertificate)
@@ -39,10 +45,16 @@ struct BrowserSheetView: View {
                 }
             }
         }
+        .opacity(peeking ? Self.peekOpacity : 1)
         .presentationDetents(showsCertificate ? [.large] : [.height(height)])
         .presentationDragIndicator(.visible)
-        .presentationBackground(Color(uiColor: .systemGroupedBackground))
+        .presentationBackground(Color(uiColor: .systemGroupedBackground).opacity(peeking ? Self.peekOpacity : 1))
+        // Undimmed while peeking, so the page shows as it is.
+        .presentationBackgroundInteraction(peeking ? .enabled : .automatic)
+        .animation(.easeInOut(duration: 0.2), value: peeking)
     }
+
+    private static let peekOpacity = 0.28
 }
 
 private extension View {
@@ -218,43 +230,5 @@ private struct BrowserCertificateView: View {
         ([certificate.title] + sections(of: certificate).map { section in
             ([section.title] + section.rows.map { "\($0.label): \($0.value)" }).joined(separator: "\n")
         }).joined(separator: "\n\n")
-    }
-}
-
-/// The bottom layout's More sheet opens with back, forward and share, which have no button there.
-private struct BrowserMoreRow: View {
-    let page: BrowserPage
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            tile("chevron.backward", String(localized: "browser_back"), enabled: page.canGoBack) { page.goBack() }
-            tile("chevron.forward", String(localized: "browser_forward"), enabled: page.canGoForward) { page.goForward() }
-            if let address = page.address {
-                ShareLink(item: address) { icon("square.and.arrow.up") }
-                    .accessibilityLabel(String(localized: "browser_share"))
-            }
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .padding(.top, TigerDuckTheme.Spacing.xl)
-        .padding(.bottom, TigerDuckTheme.Spacing.lg)
-    }
-
-    private func tile(_ symbol: String, _ label: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            dismiss()
-        } label: {
-            icon(symbol)
-        }
-        .disabled(!enabled)
-        .accessibilityLabel(label)
-    }
-
-    private func icon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.title3.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
     }
 }

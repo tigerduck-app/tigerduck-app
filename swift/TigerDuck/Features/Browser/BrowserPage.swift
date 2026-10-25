@@ -114,6 +114,16 @@ final class BrowserPage {
         webView?.pageZoom = CGFloat(zoom) / 100
     }
 
+    func print() {
+        guard let webView else { return }
+        let info = UIPrintInfo(dictionary: nil)
+        info.jobName = title.isEmpty ? host : title
+        let controller = UIPrintInteractionController.shared
+        controller.printInfo = info
+        controller.printFormatter = webView.viewPrintFormatter()
+        controller.present(animated: true)
+    }
+
     func expandChrome() {
         collapse.expand()
         isCollapsed = false

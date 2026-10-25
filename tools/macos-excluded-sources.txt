@@ -408,6 +408,7 @@ BrowserChromeCollapse.swift
 BrowserData.swift
 BrowserFind.swift
 BrowserFindBar.swift
+BrowserMenu.swift
 BrowserPage.swift
 BrowserPageScripts.swift
 BrowserRouting.swift

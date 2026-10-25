@@ -10,14 +10,16 @@ struct TigerDuckBrowserView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Default(.browserAddressBar) private var addressBar
+    @Default(.browserAppearance) private var appearance
     @State private var page = BrowserPage()
     @State private var sheet: BrowserSheet?
+    @State private var afterSheet: (() -> Void)?
     @State private var copied = false
 
     private var collapsed: Bool { page.isCollapsed }
 
     var body: some View {
-        BrowserWebView(page: page, start: url, insets: contentInsets)
+        BrowserWebView(page: page, start: url, insets: contentInsets, appearance: appearance)
             .ignoresSafeArea(edges: addressBar == .top ? .all : .bottom)
             .overlay { failureView }
             .overlay(alignment: .top) {
@@ -40,8 +42,14 @@ struct TigerDuckBrowserView: View {
             }
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.35), value: collapsed)
             .animation(.default, value: page.signIn.phase)
-            .sheet(item: $sheet) { sheet in
-                BrowserSheetView(page: page, sheet: sheet)
+            .sheet(item: $sheet, onDismiss: {
+                afterSheet?()
+                afterSheet = nil
+            }) { shown in
+                BrowserSheetView(page: page, sheet: shown, showsNavigation: addressBar == .bottom) { work in
+                    afterSheet = work
+                    sheet = nil
+                }
             }
             .alert(
                 String(localized: "browser_outside_title"),
@@ -107,6 +115,7 @@ struct TigerDuckBrowserView: View {
             toolbarButton("chevron.forward", String(localized: "browser_forward"), enabled: page.canGoForward, page.goForward)
             reloadButton(size: 21).foregroundStyle(.tint).frame(maxWidth: .infinity)
             toolbarButton("magnifyingglass", String(localized: "browser_find"), enabled: page.canUsePage, page.find.start)
+            toolbarButton("ellipsis", String(localized: "browser_more"), enabled: true) { sheet = .more }
         }
         .frame(height: Self.toolbarHeight)
         .browserGlass(in: Capsule())
@@ -326,6 +335,7 @@ private struct BrowserWebView: UIViewRepresentable {
     let page: BrowserPage
     let start: URL
     let insets: UIEdgeInsets
+    let appearance: BrowserAppearance
 
     func makeCoordinator() -> BrowserNavigator { BrowserNavigator(page: page) }
 
@@ -334,9 +344,16 @@ private struct BrowserWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ container: UIView, context: Context) {
-        guard let scrollView = container.subviews.compactMap({ $0 as? WKWebView }).last?.scrollView,
-              scrollView.contentInset != insets else { return }
-        scrollView.contentInset = insets
-        scrollView.verticalScrollIndicatorInsets = insets
+        guard let webView = container.subviews.compactMap({ $0 as? WKWebView }).last else { return }
+        // The page's prefers-color-scheme follows the web view's own style.
+        let style: UIUserInterfaceStyle = switch appearance {
+        case .automatic: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        if webView.overrideUserInterfaceStyle != style { webView.overrideUserInterfaceStyle = style }
+        guard webView.scrollView.contentInset != insets else { return }
+        webView.scrollView.contentInset = insets
+        webView.scrollView.verticalScrollIndicatorInsets = insets
     }
 }
