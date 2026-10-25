@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -207,17 +208,37 @@ struct CourseAddSyncTests {
     }
 
     /// The outbox can take an add's enqueue after a full sync read it, so the add is in neither read.
+    /// The read is held on a queue file the outbox has not loaded yet, as behind the lock screen.
     @Test("An add that starts while a full sync reads the outbox still counts")
-    func addDuringTheReadCounts() async {
+    func addDuringTheReadCounts() async throws {
         let backend = Backend()
         backend.answer(503)
-        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
+        let directory = Self.freshDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for name in ["outbox.json", "outbox-parked.json"] {
+            try Data("[]".utf8).write(to: directory.appendingPathComponent(name))
+        }
+        let locked = OSAllocatedUnfairLock(initialState: true)
+        let reading = OSAllocatedUnfairLock(initialState: false)
+        let release = DispatchSemaphore(value: 0)
+        let outbox = SyncOutbox(directory: directory) { url in
+            guard !locked.withLock({ $0 }) else { throw CocoaError(.fileReadNoPermission) }
+            if !reading.withLock({ $0 }) {
+                reading.withLock { $0 = true }
+                release.wait()
+            }
+            return try Data(contentsOf: url)
+        }
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]), outbox: outbox)
         let fetchedAt = Date()
-        let reading = Task { await coordinator.courseAddKeys(unlandedAt: fetchedAt) }
-        await Task.yield()
-        let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
+        locked.withLock { $0 = false }
 
-        #expect(await reading.value == ["1151:GE1010001"])
+        let keys = Task { await coordinator.courseAddKeys(unlandedAt: fetchedAt) }
+        try await waitUntil { reading.withLock { $0 } }
+        let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
+        release.signal()
+
+        #expect(await keys.value == ["1151:GE1010001"])
         await add.value
     }
 
