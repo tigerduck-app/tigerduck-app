@@ -13,6 +13,7 @@ struct MailMessageView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var webHeight: CGFloat = 1
+    @State private var webLoaded = false
     @State private var pendingLinkTarget: MailLinkTarget?
     @State private var inAppURL: MailFileItem?
     @State private var previewURL: URL?
@@ -250,10 +251,15 @@ struct MailMessageView: View {
                         contentHeight: $webHeight,
                         onLinkTap: { index in
                             if let target = viewModel.linkTarget(forIndex: index) { pendingLinkTarget = target }
-                        }
+                        },
+                        onLoadedChange: { webLoaded = $0 }
                     )
                     .frame(height: webHeight)
                     .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
+                    // The page is blank until its rules compile and it first loads.
+                    if !webLoaded {
+                        ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
+                    }
                 } else {
                     plainBody
                 }

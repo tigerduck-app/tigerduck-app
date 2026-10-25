@@ -6,6 +6,7 @@ struct ClassTableView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.requestClassTableImport) private var requestImport
+    @Environment(\.isUpdatingImportedClassTable) private var isUpdatingImport
     @State private var viewModel = ClassTableViewModel(
         isClassDay: { AcademicCalendarStore.shared.isClassDay($0) }
     )
@@ -325,11 +326,10 @@ struct ClassTableView: View {
             } label: {
                 Label(String(localized: "add_course_title"), systemImage: "plus")
             }
-            Button {
-                viewModel.showResetConfirm = true
-            } label: {
-                Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
+            Button {} label: {
+                Label(String(localized: "class_table_subscribe_clubs"), systemImage: "person.2")
             }
+            .disabled(true)
         }
         Section {
             Button {
@@ -343,13 +343,20 @@ struct ClassTableView: View {
                 semesters: viewModel.availableSemesters,
                 memo: shareAvailability
             ))
-            exportButton
-        }
-        Section {
             Button {
                 requestImport()
             } label: {
                 Label(String(localized: "class_table_import"), systemImage: "qrcode.viewfinder")
+            }
+        }
+        Section {
+            exportButton
+        }
+        Section {
+            Button(role: .destructive) {
+                viewModel.showResetConfirm = true
+            } label: {
+                Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
             }
         }
     }
@@ -495,8 +502,13 @@ struct ClassTableView: View {
             } label: {
                 HStack(spacing: TigerDuckTheme.Spacing.xs) {
                     Text(creditsLabel)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .imageScale(.small)
+                    if isUpdatingImport {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "chevron.up.chevron.down")
+                            .imageScale(.small)
+                    }
                 }
                 .font(TigerDuckTheme.Typography.body)
             }

@@ -61,7 +61,7 @@ struct CustomAccentPicker: View {
     init(appState: AppState, size: CGFloat) {
         self.appState = appState
         self.size = size
-        _picked = State(initialValue: appState.accentColor)
+        _picked = State(initialValue: Self.openingColour(saved: appState.accentColorHex))
         let preview = AccentPreview.shared
         _picks = State(initialValue: CustomColorPickDebouncer(
             apply: { [weak appState] hex in
@@ -107,6 +107,11 @@ struct CustomAccentPicker: View {
     private func followPreset() {
         let saved = appState.accentColorHex
         guard preview.hex == nil, !preview.isCustom(saved: saved) else { return }
-        picked = Color(hex: UInt(saved & 0xFFFFFF))
+        picked = Self.openingColour(saved: saved)
+    }
+
+    /// The saved accent, not the tone light mode draws it in, so opening the picker saves nothing.
+    static func openingColour(saved: Int) -> Color {
+        Color(hex: UInt(saved & 0xFFFFFF))
     }
 }
