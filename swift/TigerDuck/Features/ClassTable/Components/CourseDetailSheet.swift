@@ -419,7 +419,7 @@ private struct InfoRow: View {
 
     var body: some View {
         if let onTap {
-            Button(action: onTap) { content.contentShape(.rect) }
+            Button(action: onTap) { content }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("\(label), \(value)"))
                 .accessibilityHint(Text(String(localized: "course_detail_copy_code")))
