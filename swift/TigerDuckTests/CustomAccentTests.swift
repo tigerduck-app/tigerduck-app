@@ -39,6 +39,20 @@ struct CustomAccentTests {
         #expect(AccentContrast.readable(hex) == hex)
     }
 
+    @Test("A preset reads on the light cards in light mode and keeps its tone in dark mode",
+          arguments: AppState.themeColors.map(\.hex))
+    func presetReadsInBothModes(hex: Int) {
+        var environment = EnvironmentValues()
+        environment.colorScheme = .light
+        let light = Int(Color(AppState.accentColor(hex: hex).resolve(in: environment)).rgbHex)
+        environment.colorScheme = .dark
+        let dark = Int(Color(AppState.accentColor(hex: hex).resolve(in: environment)).rgbHex)
+
+        #expect(Self.contrast(light, AccentContrast.lightCardHex) >= 3)
+        #expect(dark == hex)
+        #expect((light == hex) == [0xFF9500, 0x34C759, 0x5AC8FA].allSatisfy { $0 != hex })
+    }
+
     @Test(
         "A colour's hex survives the trip through Color",
         arguments: TigerDuckTheme.coursePaletteHexes + AppState.themeColors.map { UInt32($0.hex) } + [0x5856D6]
