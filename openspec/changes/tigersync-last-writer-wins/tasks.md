@@ -17,7 +17,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 - [x] 1.7 Add `server_hlc` and the `*_hlc` fields to `/v3/sync/full` and the serializers (`server/sync/serializers.py`); verify a snapshot test reads them and that the existing snapshot tests pass unchanged
 - [x] 1.8 Add a test that writes one field from two sessions at once with stamps a second apart; verify the later stamp is stored in each of 20 rounds the test runs
 - [x] 1.9 Describe the clock and merge rules in `server/AGENTS.md`'s Conventions; verify the pull request's CI passes and review finds the text matches the code
-- [ ] 1.10 Read `server_hlc` in `server/routes/sync/snapshot.py` before the snapshot's first query; verify a test that a write's `X-TigerSync-Clock` is earlier than the `server_hlc` of a snapshot read after it
+- [x] 1.10 Read `server_hlc` in `server/routes/sync/snapshot.py` before the snapshot's first query; verify a test that a write's `X-TigerSync-Clock` is earlier than the `server_hlc` of a snapshot read after it
 
 ## 2. Backend PR: course membership by the clock
 
