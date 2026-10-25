@@ -585,6 +585,40 @@ struct MoodleCourseMembersTests {
         #expect(try picture(folder, "B11399002") == Self.largePNG)
     }
 
+    @Test("an older upload whose download ends after a newer one's replaces neither its picture nor its 512 px size")
+    func olderPictureLandingLateIsDropped() async throws {
+        let folder = Folder()
+        let site = Site()
+        let store = Self.store(folder, site: site)
+        let held = OSAllocatedUnfairLock(initialState: false)
+        let release = DispatchSemaphore(value: 0)
+        let decode = store.decodePicture
+        store.decodePicture = { data in
+            if data == Self.png {
+                held.withLock { $0 = true }
+                release.wait()
+            }
+            return decode(data)
+        }
+        let older = Self.withPicture(Self.classmate, rev: 5)
+        let newer = Self.withPicture(Self.classmate, rev: 6)
+
+        let late = Task { await store.loadPicture(of: older) }
+        try await waitUntil { held.withLock { $0 } }
+        site.set(picture: Self.largePNG)
+        await store.loadPicture(of: newer)
+        let preview = await store.picturePreview(of: newer)
+        release.signal()
+        await late.value
+
+        #expect(preview != nil)
+
+        #expect(try picture(folder, "B11399002") == Self.largePNG)
+        #expect(pictures(folder) == ["B11399002", "B11399002-6-f3", "B11399002-preview"])
+        #expect(store.pictures[try #require(newer.pictureURL)] != nil)
+        #expect(store.pictures[try #require(older.pictureURL)] == nil)
+    }
+
     @Test("a picture that is not an image, fails, or lands after a sign-out is neither shown nor kept")
     func pictureNotKept() async throws {
         let member = Self.withPicture(Self.classmate, rev: 5)

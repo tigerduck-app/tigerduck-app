@@ -657,6 +657,8 @@ final class MoodleCourseStore {
     private(set) var pictures: [URL: CGImage] = [:]
     @ObservationIgnored private var askedPictures: Set<URL> = []
     @ObservationIgnored private var picturesInFlight: Set<URL> = []
+    /// Shared because every course's store keeps an account's pictures in one folder.
+    private static var placedRevisions: [URL: Int] = [:]
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
     @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
     @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
@@ -671,6 +673,7 @@ final class MoodleCourseStore {
         if picturesInFlight.contains(url) { _ = await lastPictureDownload?.value }
         guard !askedPictures.contains(url) else { return }
         let file = pictureFile(of: member, url: url)
+        let revision = Int(Self.revision(of: url)) ?? 0
         if pictures[url] == nil, let kept = await readInTurn(file) {
             guard context.isCurrent() else { return }
             pictures[url] = kept
@@ -680,14 +683,16 @@ final class MoodleCourseStore {
         let decode = decodePicture
         let changed = await Task.detached(priority: .userInitiated) { () -> (CGImage, URL)? in
             guard read(file) != data, let image = decode(data),
-                  let staged = Self.stage(data, for: file) else { return nil }
+                  let staged = Self.stage(data, for: file, revision: revision) else { return nil }
             return (image, staged)
         }.value
         guard case let (image, staged)? = changed else { return }
-        guard context.isCurrent() else {
+        // An older revision's disk work can end after a newer one's, which it must not replace.
+        guard context.isCurrent(), revision >= Self.placedRevisions[file, default: 0] else {
             try? FileManager.default.removeItem(at: staged)
             return
         }
+        Self.placedRevisions[file] = revision
         Self.place(staged, at: file)
         pictures[url] = image
     }
@@ -795,9 +800,10 @@ final class MoodleCourseStore {
         folderName(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "rev" }?.value ?? "")
     }
 
-    /// Deletes the member's other files, which a new picture outdates, but not the preview folders
-    /// Quick Look may have open, and writes the picture to a temporary file for `place`.
-    private nonisolated static func stage(_ data: Data, for file: URL) -> URL? {
+    /// Deletes the member's other files, which a new picture outdates, but not a newer revision's
+    /// or the preview folders Quick Look may have open, and writes the picture to a temporary file
+    /// for `place`.
+    private nonisolated static func stage(_ data: Data, for file: URL, revision: Int) -> URL? {
         let files = FileManager.default
         let prefix = String(file.lastPathComponent.prefix { $0 != "-" }) + "-"
         let earlier = (try? files.contentsOfDirectory(
@@ -805,7 +811,8 @@ final class MoodleCourseStore {
         )) ?? []
         for old in earlier where old.lastPathComponent.hasPrefix(prefix) && old.lastPathComponent != file.lastPathComponent
             && (try? old.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true {
-            try? files.removeItem(at: old)
+            let oldRevision = Int(old.lastPathComponent.dropFirst(prefix.count).prefix { $0 != "-" })
+            if (oldRevision ?? 0) <= revision { try? files.removeItem(at: old) }
         }
         let staged = files.temporaryDirectory.appendingPathComponent("MoodlePicture-\(UUID().uuidString)")
         do {
