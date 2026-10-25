@@ -25,6 +25,9 @@ final class AuthService {
 
     private let schoolSessionIsLive: () async -> Bool
     private let renewSchoolSignIn: (_ studentId: String, _ password: String, _ generation: Int) async throws -> Bool
+    private let retrySchoolSignIn: (
+        _ studentId: String, _ password: String, _ generation: Int, _ mayPost: () -> Bool
+    ) async throws -> Bool
 
     private let now: () -> Date
     private let retrySleep: @Sendable (Duration) async -> Void
@@ -52,6 +55,9 @@ final class AuthService {
         schoolSessionIsLive: @escaping () async -> Bool = { await NTUSTSessionManager.shared.probeCookiesValid() },
         renewSchoolSignIn: @escaping (_ studentId: String, _ password: String, _ generation: Int) async throws -> Bool
             = AuthService.renewSignInToSchool,
+        retrySchoolSignIn: @escaping (
+            _ studentId: String, _ password: String, _ generation: Int, _ mayPost: () -> Bool
+        ) async throws -> Bool = AuthService.retrySignInToSchool,
         endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
             = AuthService.endSchoolSession(departing:),
         now: @escaping () -> Date = { Date() },
@@ -62,6 +68,7 @@ final class AuthService {
         self.schoolSignIn = schoolSignIn
         self.schoolSessionIsLive = schoolSessionIsLive
         self.renewSchoolSignIn = renewSchoolSignIn
+        self.retrySchoolSignIn = retrySchoolSignIn
         self.endSchoolSession = endSchoolSession
         self.now = now
         self.retrySleep = retrySleep
@@ -265,6 +272,19 @@ final class AuthService {
             studentId: studentId,
             password: password,
             generation: generation
+        )
+    }
+
+    static func retrySignInToSchool(
+        studentId: String, password: String, generation: Int, mayPost: () -> Bool
+    ) async throws -> Bool {
+        try await SSOLoginService.signInAgain(
+            session: NTUSTSessionManager.shared.session,
+            serviceURL: ssoServiceURL,
+            studentId: studentId,
+            password: password,
+            generation: generation,
+            mayPost: mayPost
         )
     }
 
@@ -536,14 +556,16 @@ final class AuthService {
         guard !isLoggingIn, let studentId = storedStudentId, let password = storedPassword else { return false }
         let generation = loginGeneration
         let sessionGeneration = NTUSTSessionManager.shared.generation
-        if await !schoolSessionIsLive() {
-            guard !isLoggingIn,
-                  (try? await renewSchoolSignIn(studentId, password, sessionGeneration)) == true else { return false }
-            _revision &+= 1
-        }
+        // A sign-in typed while the retry waited for the SSO lock posts what was typed instead.
+        let posted = try? await retrySchoolSignIn(studentId, password, sessionGeneration) { !self.isLoggingIn }
+        guard posted == true else { return false }
+        _revision &+= 1
         guard loginGeneration == generation else { return false }
         reauthErrorMessage = nil
         guard (try? await moodleTokens.refreshTokenIfNeeded()) != nil, loginGeneration == generation else { return false }
+        // Not at the school's yes: a refused Moodle token sign-in after it would count from one
+        // again, and the password would go out every ten seconds. The backend takes no password.
+        SSOLoginService.forgetStoredPasswordRefusals()
         await signInToBackendAgain()
         return true
     }

@@ -80,23 +80,97 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenUsesKey) == nil)
     }
 
-    @Test("a refresh whose count could not be saved sends nothing")
-    func anUnsavedCountSendsNothing() async throws {
+    /// A sign-in sends no refresh token, so a Keychain that refuses every count does not leave the
+    /// device without a session once the access token runs out.
+    @Test("a refresh whose count could not be saved sends nothing and signs in again")
+    func anUnsavedCountSignsInAgain() async throws {
         let backend = BackendFixture()
-        var tokens = backend.recorder.tokenStore
-        tokens.confirmedSave = { _, _ in false }
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let manager = AuthTokenManager(
-            baseURLProvider: { backend.refreshURL.deletingLastPathComponent().deletingLastPathComponent() },
-            deviceUUID: "test-device", session: URLSession(configuration: config), tokens: tokens,
-            beginBackgroundTask: { {} }
-        )
+        let manager = backend.refusingWrites { key, _ in key == AuthTokenManager.refreshTokenUsesKey }
+        let relogins = CallCount()
+        await manager.setRefreshFailedHandler {
+            relogins.increment()
+            return (try? await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )) != nil
+        }
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        #expect(await manager.validAccessToken() == "A9")
+
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
+        #expect(relogins.value == 1)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+    }
+
+    @Test("a refresh whose count could not be saved keeps the token when the sign-in fails too")
+    func anUnsavedCountKeepsTheTokenWhenTheSignInFails() async throws {
+        let backend = BackendFixture()
+        let manager = backend.refusingWrites { key, _ in key == AuthTokenManager.refreshTokenUsesKey }
+        let relogins = CallCount()
+        await manager.setRefreshFailedHandler {
+            relogins.increment()
+            return false
+        }
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
 
         #expect(await manager.validAccessToken() == nil)
 
         #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
+        #expect(relogins.value == 1)
+        #expect(await manager.isLoggedIn)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R0")
+    }
+
+    @Test("a resend after a lost reply whose count could not be saved signs in again")
+    func anUnsavedResendCountSignsInAgain() async throws {
+        let backend = BackendFixture()
+        let manager = backend.refusingWrites { key, value in key == AuthTokenManager.refreshTokenUsesKey && value == "2" }
+        let relogins = CallCount()
+        await manager.setRefreshFailedHandler {
+            relogins.increment()
+            return (try? await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )) != nil
+        }
+        SettingsAPIStub.enqueue(.noReply, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        #expect(await manager.validAccessToken() == "A9")
+
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+        #expect(relogins.value == 1)
+    }
+
+    @Test("a refresh whose token a sign-in replaced while its reply was lost sends it no more and signs nothing in")
+    func aTokenASignInReplacedIsNotResent() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        let relogins = CallCount()
+        await manager.setRefreshFailedHandler {
+            relogins.increment()
+            return false
+        }
+        var lost = SettingsAPIStub.StubResponse.noReply
+        lost.gate = gate
+        SettingsAPIStub.enqueue(lost, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A2", refresh: "R2"), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        _ = try await manager.login(
+            studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+        #expect(relogins.value == 0)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
     }
 
     @Test("a new token the Keychain refused goes out only once it is stored, and the old one never again")
@@ -1703,19 +1777,23 @@ struct BackendFixture {
     }
 
     func refusingRefreshToken(while refused: OSAllocatedUnfairLock<Bool>) -> AuthTokenManager {
+        refusingWrites { key, _ in key == AuthTokenManager.refreshTokenKey && refused.withLock { $0 } }
+    }
+
+    /// A manager whose Keychain refuses each write `refuses` names; a delete has no value.
+    func refusingWrites(_ refuses: @escaping @Sendable (_ key: String, _ value: String?) -> Bool) -> AuthTokenManager {
         let keychain = recorder.tokenStore
-        let refuses = { @Sendable (key: String) in key == AuthTokenManager.refreshTokenKey && refused.withLock { $0 } }
         let tokens = AuthTokenManager.TokenStore(
             load: keychain.load,
-            save: { key, value in if !refuses(key) { keychain.save(key, value) } },
-            delete: { key in if !refuses(key) { keychain.delete(key) } },
+            save: { key, value in if !refuses(key, value) { keychain.save(key, value) } },
+            delete: { key in if !refuses(key, nil) { keychain.delete(key) } },
             confirmedSave: { key, value in
-                guard !refuses(key) else { return false }
+                guard !refuses(key, value) else { return false }
                 keychain.save(key, value)
                 return true
             },
             confirmedDelete: { key in
-                guard !refuses(key) else { return false }
+                guard !refuses(key, nil) else { return false }
                 keychain.delete(key)
                 return true
             }
