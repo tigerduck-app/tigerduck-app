@@ -131,16 +131,11 @@ A term reset SHALL clear the user's adds, hides, removals, colours, names and ig
 for that term's courses that are stamped at or before it, SHALL keep those stamped after it,
 and SHALL refuse any such edit stamped before the reset. A reset older than the term's stored
 reset SHALL change nothing. A reset of every term SHALL do the same for all terms. The school
-roster SHALL stay. A hand-added course whose add is stamped at or before the reset SHALL be
-cleared with its colour and name, even those stamped after it.
+roster SHALL stay.
 
 #### Scenario: Reset arriving last
 - **WHEN** a reset stamped 09:00 arrives after a hide of one course and a colour of a school course, both stamped 10:00
 - **THEN** the hide and the colour stay, and the term's other choices are cleared
-
-#### Scenario: Newer colour on an older hand-add
-- **WHEN** a course is added by hand at 08:00, the term is reset at 09:00 on an offline device, and a colour of that course stamped 10:00 arrives before the reset
-- **THEN** the reset clears the course and its colour
 
 #### Scenario: Older reset
 - **WHEN** a term reset stamped 10:00 is stored and a reset stamped 09:00 arrives
@@ -153,6 +148,14 @@ cleared with its colour and name, even those stamped after it.
 #### Scenario: Roster after a reset
 - **WHEN** any device uploads the term's roster after the reset
 - **THEN** the roster's courses show on every device
+
+### Requirement: A reset clears the hand-added courses it covers
+A term reset SHALL clear a hand-added course whose add is stamped at or before it, with the
+course's colour and name, even those stamped after the reset.
+
+#### Scenario: Newer colour on an older hand-add
+- **WHEN** a course is added by hand at 08:00, the term is reset at 09:00 on an offline device, and a colour of that course stamped 10:00 arrives before the reset
+- **THEN** the reset clears the course and its colour
 
 ### Requirement: Tombstones and resets are kept
 The backend SHALL keep every course tombstone and reset marker, with its stamp and kind, for
