@@ -723,6 +723,29 @@ struct ClassTableImportModelTests {
         #expect(model.isIdle)
     }
 
+    @Test("a person deleted during their update stays deleted")
+    func deletedDuringUpdate() async throws {
+        let person = try #require(
+            store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
+        )
+        let gate = Gate()
+        let model = gatedModel(gate)
+        model.scanned(try Self.code("B11300001", [Self.spring]))
+        guard case .replace(let job) = model.prompt else {
+            Issue.record("expected the replace prompt, got \(String(describing: model.prompt))")
+            return
+        }
+        model.lookUp(job)
+        try await Self.waitUntil { gate.isWaiting }
+
+        store.delete(person.id)
+        gate.open()
+        await model.lookupTask?.value
+
+        #expect(store.people.isEmpty)
+        #expect(model.isFinished)
+    }
+
     private func gatedModel(_ gate: Gate) -> ClassTableImportModel {
         ClassTableImportModel(
             store: store,
