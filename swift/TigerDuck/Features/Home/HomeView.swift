@@ -138,8 +138,8 @@ struct HomeView: View {
                     homeSection(section, asListRows: true)
                 } else {
                     homeSection(section)
-                        .homeListRow(top: TigerDuckTheme.Spacing.lg)
                         .homeScrollAnchor(section.id, in: scrollAnchor)
+                        .homeListRow(top: TigerDuckTheme.Spacing.lg)
                 }
             }
         }
@@ -338,17 +338,17 @@ private struct HomeSectionView: View {
     var body: some View {
         if asListRows {
             SectionHeader(title: section.title)
-                .homeListRow(top: TigerDuckTheme.Spacing.lg)
                 .homeScrollAnchor(section.id, in: scrollAnchor)
+                .homeListRow(top: TigerDuckTheme.Spacing.lg)
             filterPicker
-                .homeListRow(top: TigerDuckTheme.Spacing.sm)
                 .homeScrollRow(section.id, in: scrollAnchor)
+                .homeListRow(top: TigerDuckTheme.Spacing.sm)
             if assignmentAccess == .content {
                 assignmentList
             } else {
                 assignmentPlaceholder
-                    .homeListRow(top: TigerDuckTheme.Spacing.sm)
                     .homeScrollRow(section.id, in: scrollAnchor)
+                    .homeListRow(top: TigerDuckTheme.Spacing.sm)
             }
         } else {
             stackedBody

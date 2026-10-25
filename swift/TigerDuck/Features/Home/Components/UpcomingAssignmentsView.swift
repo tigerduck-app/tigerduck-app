@@ -61,12 +61,12 @@ struct UpcomingAssignmentsView: View {
                 }
             }
             .buttonStyle(.plain)
+            .homeScrollRow(scrollSectionID, in: scrollAnchor)
             .homeListRow(
                 top: isFirst ? TigerDuckTheme.Spacing.sm : gap,
                 bottom: isLast ? 0 : gap,
                 horizontal: TigerDuckTheme.Spacing.lg
             )
-            .homeScrollRow(scrollSectionID, in: scrollAnchor)
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 if let leading = actions.leading { swipeButton(leading) }
             }
