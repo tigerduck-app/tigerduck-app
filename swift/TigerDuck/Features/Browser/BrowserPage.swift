@@ -52,6 +52,19 @@ final class BrowserPage {
 
     var serverTrust: SecTrust? { webView?.serverTrust }
 
+    enum Connection { case secure, refused, unknown }
+
+    /// Only a page that loaded over a trusted connection is called secure.
+    var connection: Connection { Self.connection(failure: failure, hasTrust: serverTrust != nil) }
+
+    static func connection(failure: Failure?, hasTrust: Bool) -> Connection {
+        switch failure {
+        case .certificate: .refused
+        case .unreachable: .unknown
+        case nil: hasTrust ? .secure : .unknown
+        }
+    }
+
     func goBack() { webView?.goBack() }
     func goForward() { webView?.goForward() }
 

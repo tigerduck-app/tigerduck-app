@@ -34,7 +34,7 @@ struct BrowserSheetView: View {
                         .background(Color(uiColor: .systemGroupedBackground))
                         .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(isPresented: $showsCertificate) {
-                            BrowserCertificateView(chain: BrowserCertificate.chain(of: page.serverTrust))
+                            BrowserCertificateView(chain: BrowserCertificate.chain(of: page.connection == .secure ? page.serverTrust : nil))
                         }
                 }
             }
@@ -64,34 +64,26 @@ private struct BrowserAddressView: View {
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .padding(.horizontal, TigerDuckTheme.Spacing.xs)
-            VStack(spacing: 0) {
-                Button { showsCertificate = true } label: {
-                    HStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Image(systemName: "lock.fill").foregroundStyle(.green).frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(localized: "browser_connection_secure")).fontWeight(.semibold)
-                            Text(String(localized: "browser_connection_secure_detail"))
-                                .font(.footnote).foregroundStyle(.secondary)
+            let connection = page.connection
+            if connection != .unknown || signedIn {
+                VStack(spacing: 0) {
+                    if connection != .unknown {
+                        connectionRow(connection)
+                    }
+                    if connection != .unknown, signedIn {
+                        Divider().padding(.leading, 52)
+                    }
+                    if signedIn {
+                        HStack(spacing: TigerDuckTheme.Spacing.md) {
+                            Image(systemName: "person.crop.circle.badge.checkmark").foregroundStyle(.tint).frame(width: 24)
+                            Text(String(localized: "browser_signed_in"))
+                            Spacer(minLength: 0)
                         }
-                        Spacer(minLength: 0)
-                        Text(String(localized: "browser_certificate")).font(.subheadline).foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        .padding(TigerDuckTheme.Spacing.lg)
                     }
-                    .padding(TigerDuckTheme.Spacing.lg)
-                    .contentShape(.rect)
                 }
-                .buttonStyle(.plain)
-                if signedIn {
-                    Divider().padding(.leading, 52)
-                    HStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Image(systemName: "person.crop.circle.badge.checkmark").foregroundStyle(.tint).frame(width: 24)
-                        Text(String(localized: "browser_signed_in"))
-                        Spacer(minLength: 0)
-                    }
-                    .padding(TigerDuckTheme.Spacing.lg)
-                }
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26))
             }
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26))
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.xl)
@@ -99,6 +91,36 @@ private struct BrowserAddressView: View {
         .task {
             guard let address = page.address, BrowserRouting.isMoodleReturnPage(address) else { return }
             signedIn = BrowserRouting.hasMoodleSession(await page.store.httpCookieStore.allCookies())
+        }
+    }
+
+    @ViewBuilder
+    private func connectionRow(_ connection: BrowserPage.Connection) -> some View {
+        if connection == .refused {
+            // The web view still holds the last trusted page's certificate, so nothing links to it.
+            HStack(spacing: TigerDuckTheme.Spacing.md) {
+                Image(systemName: "exclamationmark.shield.fill").foregroundStyle(.red).frame(width: 24)
+                Text(String(localized: "browser_certificate_invalid")).fontWeight(.semibold)
+                Spacer(minLength: 0)
+            }
+            .padding(TigerDuckTheme.Spacing.lg)
+        } else {
+            Button { showsCertificate = true } label: {
+                HStack(spacing: TigerDuckTheme.Spacing.md) {
+                    Image(systemName: "lock.fill").foregroundStyle(.green).frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(localized: "browser_connection_secure")).fontWeight(.semibold)
+                        Text(String(localized: "browser_connection_secure_detail"))
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Text(String(localized: "browser_certificate")).font(.subheadline).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .padding(TigerDuckTheme.Spacing.lg)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
         }
     }
 }

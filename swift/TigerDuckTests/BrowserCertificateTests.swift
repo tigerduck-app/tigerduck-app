@@ -35,6 +35,16 @@ struct BrowserCertificateTests {
     }
 }
 
+@MainActor
+struct BrowserConnectionTests {
+    @Test func onlyAPageLoadedOverATrustedConnectionIsSecure() {
+        #expect(BrowserPage.connection(failure: nil, hasTrust: true) == .secure)
+        #expect(BrowserPage.connection(failure: nil, hasTrust: false) == .unknown)
+        #expect(BrowserPage.connection(failure: .certificate(host: "moodle2.ntust.edu.tw"), hasTrust: true) == .refused)
+        #expect(BrowserPage.connection(failure: .unreachable(host: "moodle2.ntust.edu.tw"), hasTrust: true) == .unknown)
+    }
+}
+
 struct BrowserChromeCollapseTests {
     @Test func scrollingDownHidesTheChromeAndUpBringsItBack() {
         var chrome = BrowserChromeCollapse()
