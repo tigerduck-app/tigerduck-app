@@ -45,16 +45,24 @@ final class CourseSearchModel {
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
         }
-        for round in CourseSearch.rounds(for: query, semester: semester, filters: filters) {
-            let allFailed = await run(round)
+        let rounds = CourseSearch.rounds(for: query, semester: semester, filters: filters)
+        for (index, round) in rounds.enumerated() {
+            let (answered, firstError) = await run(round)
             guard !Task.isCancelled else { return }
-            if allFailed || !results.isEmpty { break }
+            if !results.isEmpty { break }
+            // With nothing found, a failed request in the last round may have held the match.
+            if let firstError, !answered || index == rounds.count - 1 {
+                failure = firstError
+                AppLogger.captureError(firstError, context: ["feature": "addCourseSheet.search"])
+                break
+            }
         }
         isSearching = false
     }
 
-    /// Adds each request's rows as it answers. True when every request in the round failed.
-    private func run(_ requests: [CourseSearchRequest]) async -> Bool {
+    /// Adds each request's rows as it answers. Returns whether any request answered, and the
+    /// first error of those that failed.
+    private func run(_ requests: [CourseSearchRequest]) async -> (answered: Bool, firstError: (any Error)?) {
         let search = search
         var answered = false
         var firstError: (any Error)?
@@ -80,10 +88,7 @@ final class CourseSearchModel {
                 }
             }
         }
-        guard !answered, let firstError, !Task.isCancelled else { return false }
-        failure = firstError
-        AppLogger.captureError(firstError, context: ["feature": "addCourseSheet.search"])
-        return true
+        return (answered, firstError)
     }
 
     /// The row to add a course from, in the app's course language. A course only the other

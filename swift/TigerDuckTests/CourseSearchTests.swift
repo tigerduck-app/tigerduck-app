@@ -319,6 +319,31 @@ struct CourseSearchTests {
         #expect(!model.hasSearched)
     }
 
+    @Test("a failed request in the last round shows the error, not \"not found\"")
+    func lastRoundFailure() async {
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
+            guard request.Language == "zh", !request.CourseName.isEmpty else { throw URLError(.timedOut) }
+            return []
+        }, fetchOptions: Self.noOptions)
+        await model.search("微積分", semester: "1151")
+        #expect((model.failure as? URLError)?.code == .timedOut)
+        #expect(!model.isSearching)
+    }
+
+    @Test("an empty answer beside a failure in the prefix round still falls back")
+    func prefixRoundFailureFallsBack() async {
+        let sent = Box(0)
+        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
+            sent.value += 1
+            if request.CourseNo == "CALC", request.Language == "zh" { throw URLError(.timedOut) }
+            return []
+        }, fetchOptions: Self.noOptions)
+        await model.search("calc", semester: "1151")
+        #expect(sent.value == 6)
+        #expect(model.failure == nil)
+        #expect(model.results.isEmpty)
+    }
+
     @Test("each request's courses show while another request is still out")
     func showsEachAnswer() async {
         let gate = Gate()
