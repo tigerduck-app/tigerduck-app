@@ -58,6 +58,7 @@ struct MailSearchIndexTests {
         let cache = Self.cache()
         Self.fill(cache, [1: Self.text(subject: "公告", body: "選課\r\n\t  說明會")])
         #expect(cache.searchIndex.search(folder: "INBOX", query: "選課 說明會")?.uids == [1])
+        #expect(cache.searchIndex.search(folder: "INBOX", query: "選課  \n說明會")?.uids == [1])
     }
 
     @Test func aFolderNeverIndexedHasNoAnswer() {

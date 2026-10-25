@@ -90,7 +90,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
     func search(
         folder: String, query: String, shouldStop: @escaping @Sendable () -> Bool = { Task.isCancelled }
     ) -> (uidValidity: UInt32, uids: [UInt32])? {
-        let needle = Self.folded(query)
+        let needle = Self.folded(MailTextCleaner.clean(query))
         return withFile {
             guard !needle.isEmpty, openLocked(), ownerLocked() == currentOwner,
                   let validity = validityLocked(folder) else { return nil }
