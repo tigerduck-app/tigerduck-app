@@ -1,5 +1,6 @@
 #if os(iOS)
 import SwiftUI
+import WatchConnectivity
 
 extension WhatsNewPage {
     static let moodleInCourseDetail = WhatsNewPage.feature(
@@ -29,7 +30,12 @@ extension WhatsNewPage {
         body: WhatsNewText(
             en: "See your next class right on the watch face.",
             zhHant: "錶面直接顯示下一堂課。"
-        )
+        ),
+        // isPaired reads false until the session WatchSyncCoordinator starts at launch activates, so
+        // an upgrade launch can skip the page for a paired Watch too; the Settings replay shows it.
+        isApplicable: { _ in
+            WCSession.isSupported() && WCSession.default.activationState == .activated && WCSession.default.isPaired
+        }
     )
 }
 
