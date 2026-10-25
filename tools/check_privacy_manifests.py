@@ -41,7 +41,8 @@ CATEGORIES = {
         {"CA92.1", "1C8F.1", "C56D.1", "AC6B.1"},
     ),
     "NSPrivacyAccessedAPICategoryFileTimestamp": (
-        r"\.(creationDate|modificationDate|contentModificationDateKey|creationDateKey)\b"
+        r"\.(creationDate|modificationDate)(Key)?\b|\b(contentModificationDate|contentAccessDate)(Key)?\b"
+        r"|\bNS(FileCreationDate|FileModificationDate|URLContentModificationDateKey|URLCreationDateKey)\b"
         r"|\bfileModificationDate\b|\b[fl]?stat(at)?\(|\bf?getattrlist(at|bulk)?\(",
         {"DDA9.1", "C617.1", "3B52.1", "0A2A.1"},
     ),
@@ -50,7 +51,7 @@ CATEGORIES = {
         {"35F9.1", "8FFB.1", "3D61.1"},
     ),
     "NSPrivacyAccessedAPICategoryDiskSpace": (
-        r"\bvolume(AvailableCapacity\w*|TotalCapacity)Key\b|\bsystem(Free)?Size\b|\bf?statv?fs\(",
+        r"\bvolume(Available|Total)Capacity\w*|\b(system|NSFileSystem)(Free)?Size\b|\bf?statv?fs\(",
         {"85F4.1", "E174.1", "7D9E.1", "B728.1"},
     ),
     "NSPrivacyAccessedAPICategoryActiveKeyboards": (

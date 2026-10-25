@@ -94,6 +94,7 @@ PROJECT = """// !$*UTF8*$!
 DEFAULTS = "NSPrivacyAccessedAPICategoryUserDefaults"
 BOOT_TIME = "NSPrivacyAccessedAPICategorySystemBootTime"
 DISK_SPACE = "NSPrivacyAccessedAPICategoryDiskSpace"
+TIMESTAMP = "NSPrivacyAccessedAPICategoryFileTimestamp"
 
 
 def manifest(**reasons: list[str]) -> bytes:
@@ -156,6 +157,26 @@ class PrivacyManifestTests(unittest.TestCase):
         self.write("swift/Shared/Boot.swift", "let up = ProcessInfo.processInfo.systemUptime // systemUptime\n")
         self.assertEqual(cpm.problems(self.root), [
             f"App: swift/Shared/Boot.swift uses `{BOOT_TIME}`, which swift/App/PrivacyInfo.xcprivacy does not declare"])
+
+    def test_each_spelling_of_a_timestamp_or_disk_space_api_counts(self) -> None:
+        spellings = {
+            "let date = values.contentModificationDate": TIMESTAMP,
+            "let keys: [URLResourceKey] = [.contentAccessDateKey]": TIMESTAMP,
+            "let date = values.contentAccessDate": TIMESTAMP,
+            "let key = NSFileCreationDate": TIMESTAMP,
+            "let key = NSFileModificationDate": TIMESTAMP,
+            "let key = NSURLContentModificationDateKey": TIMESTAMP,
+            "let key = NSURLCreationDateKey": TIMESTAMP,
+            "let free = values.volumeAvailableCapacityForImportantUsage": DISK_SPACE,
+            "let total = values.volumeTotalCapacity": DISK_SPACE,
+            "let key = NSFileSystemFreeSize": DISK_SPACE,
+            "let key = NSFileSystemSize": DISK_SPACE,
+        }
+        for line, category in spellings.items():
+            with self.subTest(line):
+                self.write("swift/Shared/Boot.swift", line + "\n")
+                self.assertEqual(cpm.problems(self.root), [
+                    f"App: swift/Shared/Boot.swift uses `{category}`, which swift/App/PrivacyInfo.xcprivacy does not declare"])
 
     def test_a_reason_apple_does_not_list_for_the_category_fails(self) -> None:
         self.write("swift/App/PrivacyInfo.xcprivacy", manifest(**{DEFAULTS: ["C617.1"]}))
