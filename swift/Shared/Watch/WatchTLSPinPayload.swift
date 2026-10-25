@@ -20,8 +20,8 @@ nonisolated struct WatchTLSPinPayload: Codable, Equatable, Sendable {
 
     /// The phone's stamp for its next payload: its clock, or one past its last stamp when the clock
     /// was set back after running ahead, so the Watch still orders later payloads after the ones it
-    /// took. A last stamp more than `maxClockLead` ahead of the clock is one the Watch refused, so
-    /// the clock is used again rather than held back by it.
+    /// took. A last stamp more than `maxClockLead` ahead of the clock is one the Watch refused, or
+    /// ignores once its own clock is set back too, so the clock is used again.
     static func nextSentAtMs(defaults: UserDefaults, now: Date) -> Int64 {
         let clock = Int64(now.timeIntervalSince1970 * 1000)
         let last = Int64(defaults.double(forKey: lastStampKey))
@@ -40,7 +40,10 @@ nonisolated struct WatchTLSPinPayload: Codable, Equatable, Sendable {
             engine.acceptDocument(envelope)
         }
         let latest = Int64(now.addingTimeInterval(maxClockLead).timeIntervalSince1970 * 1000)
-        guard payload.sentAtMs > Int64(defaults.double(forKey: lastSentKey)), payload.sentAtMs <= latest else {
+        // A saved stamp past the window was taken while both clocks ran ahead, and both have
+        // been set back since; ordering against it would refuse the phone's lists until then.
+        let last = Int64(defaults.double(forKey: lastSentKey))
+        guard payload.sentAtMs > (last > latest ? 0 : last), payload.sentAtMs <= latest else {
             return false
         }
         engine.replaceAcceptances(with: payload.acceptances)

@@ -84,5 +84,18 @@ struct TLSPinWatchSyncTests {
         #expect(WatchTLSPinPayload.apply(json: corrected, to: watch, defaults: defaults, now: F.now))
         #expect(!WatchTLSPinPayload.apply(json: ahead, to: watch, defaults: defaults, now: F.now))
     }
+
+    @Test("Phone and Watch clocks set back together after running days ahead do not hold back later payloads")
+    func clocksSetBackTogetherKeepTheOrder() throws {
+        let phoneDefaults = F.defaults()
+        let defaults = F.defaults()
+        let watch = F.engine()
+        let envelope = F.envelope(F.payload(serial: 150))
+        let ahead = F.now.addingTimeInterval(2 * F.day)
+        let early = try phonePayload(envelope: envelope, sentAt: ahead, phoneDefaults: phoneDefaults)
+        #expect(WatchTLSPinPayload.apply(json: early, to: watch, defaults: defaults, now: ahead))
+        let corrected = try phonePayload(envelope: envelope, sentAt: F.now, phoneDefaults: phoneDefaults)
+        #expect(WatchTLSPinPayload.apply(json: corrected, to: watch, defaults: defaults, now: F.now))
+    }
 }
 #endif
