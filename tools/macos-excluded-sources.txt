@@ -219,6 +219,7 @@ WidgetContainer.swift
 # there even though it lives under Shared/.
 NextClassResolver.swift
 WatchCourse.swift
+WatchLanguage.swift
 WatchLibraryPayload.swift
 WatchPayloadCodec.swift
 WatchSnapshot.swift

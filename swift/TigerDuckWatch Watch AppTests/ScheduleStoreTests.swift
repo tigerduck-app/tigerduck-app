@@ -1,5 +1,6 @@
 import XCTest
 import WatchKit
+import WidgetKit
 @testable import TigerDuckWatch_Watch_App
 
 final class ScheduleStoreTests: XCTestCase {
@@ -72,6 +73,26 @@ final class ScheduleStoreTests: XCTestCase {
 
         XCTAssertEqual(store.snapshot?.courses.map(\.courseNo), ["X1"])
         XCTAssertEqual(store.snapshot?.visualPreset, .default)
+    }
+
+    @MainActor
+    func test_persist_aNewLanguage_reloadsTheComplicationWhichReadsIt() throws {
+        var reloads = 0
+        let store = ScheduleStore(snapshotFileURL: snapshotFile, defaults: defaults, widgetReloader: { reloads += 1 })
+        let chinese = WatchSnapshot(
+            courses: [], accentHex: "#FF8800", syncedAtMs: 1_747_000_000_000, loggedIn: true, languageTag: "zh-Hant"
+        )
+        try store.persist(chinese)
+
+        let provider = NextClassProvider(snapshotFileURL: snapshotFile)
+        let entry = provider.timeline(for: provider.loadSnapshot(), now: Date()).entries.first
+        XCTAssertEqual(reloads, 1)
+        XCTAssertEqual(entry?.languageTag, "zh-Hant")
+        XCTAssertEqual(store.language, WatchLanguage(tag: "zh-Hant"))
+    }
+
+    func test_theComplicationReadsTheAppGroupFileTheWatchAppWrites() {
+        XCTAssertEqual(NextClassProvider().snapshotFileURL, SharedAppGroup.snapshotFileURL)
     }
 
     @MainActor

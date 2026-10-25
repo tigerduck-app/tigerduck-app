@@ -13,34 +13,34 @@ public nonisolated enum NextClassResolver {
         case tomorrow
         case later(weekday: Int)
 
-        public var headline: String {
+        public func headline(in language: WatchLanguage) -> String {
             switch self {
-            case .today: return String(localized: "watch_next")
-            case .tomorrow: return String(localized: "widget_tomorrow")
-            case .later(let weekday): return Self.caption(of: weekday)
+            case .today: return language.string("watch_next")
+            case .tomorrow: return language.string("widget_tomorrow")
+            case .later(let weekday): return Self.caption(of: weekday, in: language)
             }
         }
 
-        public func inlineCaption(_ time: String) -> String {
+        public func inlineCaption(_ time: String, in language: WatchLanguage) -> String {
             switch self {
             case .today:
                 return time
             case .tomorrow:
-                return String.localizedStringWithFormat(String(localized: "widget_tomorrow_time"), time)
+                return language.format("widget_tomorrow_time", time)
             case .later(let weekday):
-                return "\(Self.caption(of: weekday)) \(time)"
+                return "\(Self.caption(of: weekday, in: language)) \(time)"
             }
         }
 
-        private static func caption(of weekday: Int) -> String {
+        private static func caption(of weekday: Int, in language: WatchLanguage) -> String {
             switch weekday {
-            case 1: return String(localized: "weekday_mon_caption")
-            case 2: return String(localized: "weekday_tue_caption")
-            case 3: return String(localized: "weekday_wed_caption")
-            case 4: return String(localized: "weekday_thu_caption")
-            case 5: return String(localized: "weekday_fri_caption")
-            case 6: return String(localized: "weekday_sat_caption")
-            default: return String(localized: "weekday_sun_caption")
+            case 1: return language.string("weekday_mon_caption")
+            case 2: return language.string("weekday_tue_caption")
+            case 3: return language.string("weekday_wed_caption")
+            case 4: return language.string("weekday_thu_caption")
+            case 5: return language.string("weekday_fri_caption")
+            case 6: return language.string("weekday_sat_caption")
+            default: return language.string("weekday_sun_caption")
             }
         }
     }
