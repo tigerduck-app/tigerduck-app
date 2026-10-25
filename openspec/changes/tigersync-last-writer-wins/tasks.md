@@ -8,15 +8,15 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 
 ## 1. Backend PR: clock and per-field merge
 
-- [ ] 1.1 In `server/sync/merge.py`, add the microsecond conversion, clamp at backend time plus five seconds (replacing `clamp_ts`), and make `apply_field` keep ties, raise the stamp on equal content without reporting a change, and take any stamp when none is stored; verify new cases in `server/tests/test_sync_merge.py` pass
-- [ ] 1.2 Add the `X-TigerSync-Clock` middleware for every `/v3` response in `server/main.py` and a dependency that reads `X-TigerSync-Protocol: 2`; verify a test sees the header on a 200, a 404 and a 422
-- [ ] 1.3 Make both PATCH routes in `server/routes/overrides.py` take `lock_sync_state` before reading, accept `hlc` (arrival time when absent, 422 when absent under protocol 2), compare colour, each locale's name and the ignore setting by stamp, keep a cleared mark as a stamped `none` on every row of the assignment, return the winners with `applied`, and log a change and queue `sync_trigger` only when a value changed; verify new cases in `server/tests/test_sync_overrides.py` pass, including a refused edit that leaves the revision unchanged
-- [ ] 1.4 Take the stamp in `PUT /v3/sync/holiday-overrides/{id}` (`server/routes/holiday_overrides.py`), stored in `updated_at`, under the same lock and rules; verify `server/tests/test_holiday_overrides.py` covers older, newer and same-content edits
-- [ ] 1.5 Route `server/routes/academics.py`'s PUTs and `server/sync/upload.py` through the locked merge, counting a value without a time as oldest; verify `server/tests/test_sync_initial_upload.py` passes with that expectation
-- [ ] 1.6 Write the Alembic revision for `custom_names_updated_at` and the missing-stamp backfill (design.md, Migration Plan steps 1 and 2); verify a migration test seeds rows, upgrades, checks the stamps and downgrades
-- [ ] 1.7 Add `server_hlc` and the `*_hlc` fields to `/v3/sync/full` and the serializers (`server/sync/serializers.py`); verify a snapshot test reads them and that the existing snapshot tests pass unchanged
-- [ ] 1.8 Add a test that writes one field from two sessions at once with stamps a second apart; verify the later stamp is stored in each of 20 rounds the test runs
-- [ ] 1.9 Describe the clock and merge rules in `server/AGENTS.md`'s Conventions; verify the pull request's CI passes and review finds the text matches the code
+- [x] 1.1 In `server/sync/merge.py`, add the microsecond conversion, clamp at backend time plus five seconds (replacing `clamp_ts`), and make `apply_field` keep ties, raise the stamp on equal content without reporting a change, and take any stamp when none is stored; verify new cases in `server/tests/test_sync_merge.py` pass
+- [x] 1.2 Add the `X-TigerSync-Clock` middleware for every `/v3` response in `server/main.py` and a dependency that reads `X-TigerSync-Protocol: 2`; verify a test sees the header on a 200, a 404 and a 422
+- [x] 1.3 Make both PATCH routes in `server/routes/overrides.py` take `lock_sync_state` before reading, accept `hlc` (arrival time when absent, 422 when absent under protocol 2), compare colour, each locale's name and the ignore setting by stamp, keep a cleared mark as a stamped `none` on every row of the assignment, return the winners with `applied`, and log a change and queue `sync_trigger` only when a value changed; verify new cases in `server/tests/test_sync_overrides.py` pass, including a refused edit that leaves the revision unchanged
+- [x] 1.4 Take the stamp in `PUT /v3/sync/holiday-overrides/{id}` (`server/routes/holiday_overrides.py`), stored in `updated_at`, under the same lock and rules; verify `server/tests/test_holiday_overrides.py` covers older, newer and same-content edits
+- [x] 1.5 Route `server/routes/academics.py`'s PUTs and `server/sync/upload.py` through the locked merge, counting a value without a time as oldest; verify `server/tests/test_sync_initial_upload.py` passes with that expectation
+- [x] 1.6 Write the Alembic revision for `custom_names_updated_at` and the missing-stamp backfill (design.md, Migration Plan steps 1 and 2); verify a migration test seeds rows, upgrades, checks the stamps and downgrades
+- [x] 1.7 Add `server_hlc` and the `*_hlc` fields to `/v3/sync/full` and the serializers (`server/sync/serializers.py`); verify a snapshot test reads them and that the existing snapshot tests pass unchanged
+- [x] 1.8 Add a test that writes one field from two sessions at once with stamps a second apart; verify the later stamp is stored in each of 20 rounds the test runs
+- [x] 1.9 Describe the clock and merge rules in `server/AGENTS.md`'s Conventions; verify the pull request's CI passes and review finds the text matches the code
 
 ## 2. Backend PR: course membership by the clock
 
