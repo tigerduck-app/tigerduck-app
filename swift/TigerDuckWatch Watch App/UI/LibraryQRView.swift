@@ -5,6 +5,7 @@ import SwiftUI
 // Apple Pay or Express Transit here. If watchOS adds it, mirror `LibraryView`'s suppress/release.
 
 struct LibraryQRView: View {
+    @EnvironmentObject private var store: ScheduleStore
     @State private var viewModel = LibraryQRViewModel()
     @State private var isFullScreen = false
     @Environment(\.scenePhase) private var scenePhase
@@ -17,15 +18,15 @@ struct LibraryQRView: View {
                 } else {
                     qrSection
                     countdownSection
-                    if let message = viewModel.errorMessage {
-                        errorRow(message)
+                    if let error = viewModel.error {
+                        errorRow(WatchLibraryServiceError.message(for: error, in: store.language))
                     }
                 }
             }
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity)
         }
-        .navigationTitle(String(localized: "library_virtual_pass_title"))
+        .navigationTitle(store.language.string("library_virtual_pass_title"))
         .onAppear { viewModel.onAppear() }
         .onDisappear {
             if !isFullScreen {
@@ -46,9 +47,9 @@ struct LibraryQRView: View {
 
     private var emptyState: some View {
         ContentUnavailableView(
-            String(localized: "library_sign_in_qr_prompt"),
+            store.language.string("library_sign_in_qr_prompt"),
             systemImage: "iphone.gen3",
-            description: Text(String(localized: "watch_open_phone_to_sync"))
+            description: Text(store.language.string("watch_open_phone_to_sync"))
         )
     }
 
@@ -63,7 +64,7 @@ struct LibraryQRView: View {
                 .padding(6)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 4)
-                .accessibilityLabel(String(localized: "library_qr_content_description"))
+                .accessibilityLabel(store.language.string("library_qr_content_description"))
                 // No-op on watchOS, which lacks a window capture-exclusion API like Wear OS's
                 // FLAG_SECURE. Kept for parity with the phone so a future API needs no call-site
                 // change. Capture still needs the user's own side button + Digital Crown press.
@@ -79,7 +80,7 @@ struct LibraryQRView: View {
                 Image(systemName: "qrcode")
                     .font(.system(size: 40))
                     .foregroundStyle(.secondary)
-                Text(String(localized: "library_qr_not_generated"))
+                Text(store.language.string("library_qr_not_generated"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

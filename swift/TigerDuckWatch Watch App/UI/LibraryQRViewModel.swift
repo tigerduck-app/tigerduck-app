@@ -9,7 +9,7 @@ final class LibraryQRViewModel {
     var qrImage: UIImage?
     var countdown: Int = 30
     var isLoading = false
-    var errorMessage: String?
+    var error: Error?
     var username: String?
     var hasCredentials: Bool
 
@@ -40,7 +40,7 @@ final class LibraryQRViewModel {
                     self.stopTimers()
                     self.qrImage = nil
                     self.renderedPayload = nil
-                    self.errorMessage = nil
+                    self.error = nil
                     LibraryQRCache.shared.clear()
                 }
             }
@@ -90,7 +90,7 @@ final class LibraryQRViewModel {
     private func fetchAndRender() {
         Task { @MainActor in
             isLoading = qrImage == nil
-            errorMessage = nil
+            error = nil
             do {
                 let (payload, remaining) = try await fetchPayload()
                 guard let image = Self.makeQRImage(from: payload) else {
@@ -110,7 +110,7 @@ final class LibraryQRViewModel {
                 renderedPayload = nil
                 stopTimers()
             } catch {
-                errorMessage = error.localizedDescription
+                self.error = error
                 isLoading = false
                 consecutiveErrors += 1
                 rescheduleAfterError()

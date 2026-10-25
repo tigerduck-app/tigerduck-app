@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var store: ScheduleStore
-    @Environment(\.locale) private var locale
 
     var body: some View {
         List {
@@ -24,7 +23,7 @@ struct SettingsView: View {
                 Button {
                     store.requestSync(force: true)
                 } label: {
-                    Label(String(localized: "watch_settings_sync_now"),
+                    Label(store.language.string("watch_settings_sync_now"),
                           systemImage: "arrow.clockwise")
                 }
             }
@@ -34,39 +33,33 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .navigationTitle(String(localized: "watch_settings"))
+        .navigationTitle(store.language.string("watch_settings"))
     }
 
     private var loginText: String {
         store.snapshot?.loggedIn == true
-            ? String(localized: "watch_settings_signed_in", locale: locale)
-            : String(localized: "watch_settings_signed_out", locale: locale)
+            ? store.language.string("watch_settings_signed_in")
+            : store.language.string("watch_settings_signed_out")
     }
 
-    // Pass `locale:` so lookups follow the in-app language pushed from the phone (WatchTheme's
-    // `.environment(\.locale)`). Without it `String(localized:)` uses the watch system locale
-    // from `Bundle.main.preferredLocalizations` and the row mixes languages.
     private func lastSyncedText(now: Date) -> String {
+        let language = store.language
         guard let ms = store.snapshot?.syncedAtMs, ms > 0 else {
-            return String(localized: "watch_last_synced_never", locale: locale)
+            return language.string("watch_last_synced_never")
         }
         let synced = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
         let ageSec = max(0, Int(now.timeIntervalSince(synced)))
         let pretty: String
         if ageSec < 60 {
-            pretty = String(localized: "watch_just_now", locale: locale)
+            pretty = language.string("watch_just_now")
         } else if ageSec < 3_600 {
-            let fmt = String(localized: "watch_relative_minutes_ago_short", locale: locale)
-            pretty = String(format: fmt, locale: locale, ageSec / 60)
+            pretty = language.format("watch_relative_minutes_ago_short", ageSec / 60)
         } else if ageSec < 86_400 {
-            let fmt = String(localized: "watch_relative_hours_ago_short", locale: locale)
-            pretty = String(format: fmt, locale: locale, ageSec / 3_600)
+            pretty = language.format("watch_relative_hours_ago_short", ageSec / 3_600)
         } else {
-            let fmt = String(localized: "watch_relative_days_ago_short", locale: locale)
-            pretty = String(format: fmt, locale: locale, ageSec / 86_400)
+            pretty = language.format("watch_relative_days_ago_short", ageSec / 86_400)
         }
-        let wrapper = String(localized: "watch_last_synced_relative", locale: locale)
-        return String(format: wrapper, locale: locale, pretty)
+        return language.format("watch_last_synced_relative", pretty)
     }
 
     private var versionText: String {
