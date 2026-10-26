@@ -497,6 +497,16 @@ struct CourseSearchTests {
         #expect(model.revision == 1)
         #expect(sent.value.count == 4)
     }
+
+    @Test("each row mark looks and reads differently, and only a course already in the table is dimmed")
+    func rowMarks() {
+        let marks: [AddCourseRowMark] = [.inTable, .addedHere, .notAdded]
+        #expect(marks.map(\.symbol) == ["checkmark", "checkmark.circle.fill", "plus.circle"])
+        let heard = marks.map { [$0.accessibilityValue, $0.accessibilityHint, "\($0 == .inTable)"] }
+        #expect(Set(heard).count == marks.count)
+        #expect(AddCourseRowMark.notAdded.accessibilityValue.isEmpty)
+        #expect(AddCourseRowMark.addedHere.accessibilityValue == String(localized: "add_course_added"))
+    }
 }
 
 @MainActor
