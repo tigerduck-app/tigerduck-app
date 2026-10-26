@@ -83,6 +83,7 @@ struct TigerDuckApp: App {
             ContentView()
                 .id(rootLanguageId)
                 .updateRequiredAlert()
+                .linkRouting()
                 .tlsPinPrompt()
                 .tint(AccentPreview.shared.tint(saved: appState.accentColor))
                 .appAppearance()

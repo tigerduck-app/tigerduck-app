@@ -151,6 +151,7 @@ struct ClassTableView: View {
                     periods: viewModel.selectedCoursePeriods,
                     showsMoodle: viewModel.shownPerson == nil
                 )
+                .linkRouting()
             }
             .sheet(isPresented: $viewModel.showAddCourse) {
                 AddCourseSheet(

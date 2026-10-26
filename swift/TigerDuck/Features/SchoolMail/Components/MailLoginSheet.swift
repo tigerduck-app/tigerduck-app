@@ -75,6 +75,7 @@ struct MailLoginSheet: View {
                 isPresented = false
             }
         )
+        .linkRouting()
     }
 }
 #endif

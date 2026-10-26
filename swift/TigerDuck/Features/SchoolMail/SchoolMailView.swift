@@ -297,6 +297,8 @@ struct SchoolMailView: View {
                 onFolderChanged: { folder in Task { await viewModel.recoverFromFolderChange(folder) } },
                 onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) }
             )
+            // The browser opens as the link confirmation closes, from the view that showed it.
+            .linkRouting()
         }
         .onAppear {
             isOnScreen = true
