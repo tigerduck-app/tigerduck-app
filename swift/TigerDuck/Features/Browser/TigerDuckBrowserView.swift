@@ -53,6 +53,7 @@ struct TigerDuckBrowserView: View {
                 afterSheet = nil
             }) { shown in
                 BrowserSheetView(page: page, sheet: shown, showsNavigation: addressBar == .bottom) { work in
+                    guard sheet != nil else { return }
                     afterSheet = work
                     sheet = nil
                 }
