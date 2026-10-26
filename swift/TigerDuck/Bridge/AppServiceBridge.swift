@@ -84,7 +84,7 @@ enum AppServiceBridge {
         }
     }
 
-    /// Moodle's course sites, or nil when Moodle cannot answer. Records Moodle's answer.
+    /// Nil lets a term fetch go on without Moodle, which only adds names and links.
     static func fetchMoodleCourses(authService: AuthService) async -> [MoodleEnrolledCourse]? {
         let startGeneration = authService.loginGeneration
         do {
@@ -98,8 +98,8 @@ enum AppServiceBridge {
         }
     }
 
-    /// The transcript, or nil when it cannot be fetched. Records the score system's answer. A pull
-    /// does not skip the day-long cache, so a past term's refresh adds no score-system sign-in.
+    /// A pull does not skip the day-long cache either, so a past term's refresh adds no
+    /// score-system sign-in.
     static func fetchTranscript(authService: AuthService) async -> ScoreReport? {
         let startGeneration = authService.loginGeneration
         guard let studentId = authService.storedStudentId,
