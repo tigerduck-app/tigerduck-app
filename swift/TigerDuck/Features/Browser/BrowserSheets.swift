@@ -37,7 +37,9 @@ struct BrowserSheetView: View {
                         .fittedHeight($height)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(Color(uiColor: .systemGroupedBackground))
-                        .toolbar(.hidden, for: .navigationBar)
+                        // The content runs under the empty bar, which stays shown: a push that brings
+                        // a hidden bar in lays it out too high until the push ends.
+                        .ignoresSafeArea(.container, edges: .top)
                         .navigationDestination(isPresented: $showsCertificate) {
                             BrowserCertificateView(chain: BrowserCertificate.chain(of: page.connection == .secure ? page.serverTrust : nil))
                         }
