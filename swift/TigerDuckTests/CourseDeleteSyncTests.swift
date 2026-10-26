@@ -170,6 +170,22 @@ struct CourseDeleteSyncTests {
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1142:GE3"])
     }
 
+    @Test("A term reset drops the hides made while its request was out, which it clears here too, and keeps one made after it in both")
+    func termResetAgreesWithItsLocalClear() async throws {
+        let coordinator = Self.makeCoordinator(Backend())
+        var hidden: Set<String> = []
+
+        try await AppState.resetCourses(semester: "1151", on: coordinator, onServer: {
+            hidden.insert("1151:CS1")
+            await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: Date())
+        }, thenLocally: { hidden.removeAll() })
+        hidden.insert("1151:EE2")
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "EE2", at: Date())
+
+        #expect(hidden == ["1151:EE2"])
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2"])
+    }
+
     @Test("Adding a course back drops its hides made before the re-add, but not one made after it while the drop was on its way")
     func reAddKeepsAHideMadeAfterIt() async {
         let coordinator = Self.makeCoordinator(Backend())

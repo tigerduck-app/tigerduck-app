@@ -741,22 +741,33 @@ extension AppState {
             resetLocally()
             return true
         }
-        let resetAt = Date()
         if let semester { resettingSemesters.insert(semester) }
         defer { if let semester { resettingSemesters.remove(semester) } }
         do {
-            try await pushCoordinator.deleteAllCourses(semester: semester)
-            AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
-            if let semester { DataCache.shared.recordSemesterReset(semester) }
-            pushCoordinator.forgetUploads(semester: semester)
-            await cloudSyncCoordinator.discardCourseIgnores(semester: semester)
-            await cloudSyncCoordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
-            resetLocally()
+            try await Self.resetCourses(semester: semester, on: cloudSyncCoordinator, onServer: { [pushCoordinator] in
+                try await pushCoordinator.deleteAllCourses(semester: semester)
+                AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
+                if let semester { DataCache.shared.recordSemesterReset(semester) }
+                pushCoordinator.forgetUploads(semester: semester)
+            }, thenLocally: resetLocally)
             return true
         } catch {
             AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .private)")
             return false
         }
+    }
+
+    /// Resets the courses on the server, then clears them here and drops the deletes queued until
+    /// that moment, so a hide made during the request is gone from both and a later one kept in both.
+    static func resetCourses(
+        semester: String?, on coordinator: CloudSyncCoordinator,
+        onServer reset: () async throws -> Void, thenLocally resetLocally: () -> Void
+    ) async throws {
+        try await reset()
+        let resetAt = Date()
+        resetLocally()
+        await coordinator.discardCourseIgnores(semester: semester)
+        await coordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
     }
 
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
