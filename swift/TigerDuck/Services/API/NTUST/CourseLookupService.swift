@@ -54,10 +54,11 @@ enum CourseLookupService {
 
     private static let syllabusAPI = URL.knownGood("https://querycourse.ntust.edu.tw/querycourse/api/coursedetials")
 
-    private static var syllabi: [LookupKey: CourseSyllabus?] = [:]
+    private static var syllabi: [LookupKey: Task<CourseSyllabus?, any Error>] = [:]
 
     /// The course's syllabus, nil when the school has none. Kept for the app's run, since a
-    /// syllabus rarely changes within a term; a failure is not kept.
+    /// syllabus rarely changes within a term, and shared by callers while it loads; a failure is
+    /// not kept.
     static func syllabus(semester: String, courseNo: String, language: String) async throws -> CourseSyllabus? {
         let key = LookupKey(semester: semester, courseNo: courseNo, language: language)
         return try await keptSyllabus(key) {
@@ -73,17 +74,33 @@ enum CourseLookupService {
 
     static func keptSyllabus(
         _ key: LookupKey,
-        fetch: () async throws -> CourseSyllabus?
+        fetch: @escaping () async throws -> CourseSyllabus?
     ) async throws -> CourseSyllabus? {
-        if let kept = syllabi[key] { return kept }
-        let syllabus = try await fetch()
-        syllabi.updateValue(syllabus, forKey: key)
-        return syllabus
+        if let kept = syllabi[key] { return try await kept.value }
+        let task = Task { try await fetch() }
+        syllabi[key] = task
+        do {
+            return try await task.value
+        } catch {
+            if syllabi[key] == task { syllabi[key] = nil }
+            throw error
+        }
     }
 
-    /// The response is an array; an unknown course answers with an error object, which throws.
+    /// The first syllabus of the array the service answers. For a course it has no row for, it
+    /// answers with the .NET exception for reading row 0 instead, which means no syllabus.
     nonisolated static func decodeSyllabus(_ data: Data) throws -> CourseSyllabus? {
-        try JSONDecoder().decode([CourseSyllabus].self, from: data).first
+        do {
+            return try JSONDecoder().decode([CourseSyllabus].self, from: data).first
+        } catch {
+            let exception = try? JSONDecoder().decode(ServiceException.self, from: data)
+            guard exception?.ClassName == "System.IndexOutOfRangeException" else { throw error }
+            return nil
+        }
+    }
+
+    private nonisolated struct ServiceException: Decodable {
+        let ClassName: String
     }
 
     static func search(_ body: CourseSearchRequest) async throws -> [CourseSearchResult] {

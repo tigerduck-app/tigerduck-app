@@ -49,12 +49,15 @@ struct CourseSyllabusTests {
         #expect(!syllabus.hasContent)
     }
 
-    @Test("an empty answer is no syllabus, and the error object for an unknown course throws")
+    @Test("an empty answer and the exception for an unknown course are no syllabus, and other errors throw")
     func unknownCourse() throws {
         #expect(try CourseLookupService.decodeSyllabus(Data("[]".utf8)) == nil)
+        let unknown = #"{"ClassName":"System.IndexOutOfRangeException","Message":"no row","Data":null}"#
+        #expect(try CourseLookupService.decodeSyllabus(Data(unknown.utf8)) == nil)
         #expect(throws: DecodingError.self) {
-            try CourseLookupService.decodeSyllabus(Data(#"{"ClassName":"System.IndexOutOfRangeException"}"#.utf8))
+            try CourseLookupService.decodeSyllabus(Data(#"{"ClassName":"System.TimeoutException"}"#.utf8))
         }
+        #expect(throws: DecodingError.self) { try CourseLookupService.decodeSyllabus(Data("<html>".utf8)) }
     }
 
     @Test("a number reads as its digits and a field of another type as blank")
@@ -87,6 +90,23 @@ struct CourseSyllabusTests {
         let english = CourseLookupService.LookupKey(semester: key.semester, courseNo: key.courseNo, language: "en")
         _ = try await CourseLookupService.keptSyllabus(english, fetch: fetch)
         #expect(calls == 2)
+    }
+
+    @Test("callers asking at once for one syllabus share its fetch")
+    func concurrentCallersShareOneFetch() async throws {
+        var calls = 0
+        let fetch: () async throws -> CourseSyllabus? = {
+            calls += 1
+            try await Task.sleep(for: .milliseconds(50))
+            return nil
+        }
+        let key = Self.key()
+
+        async let first = CourseLookupService.keptSyllabus(key, fetch: fetch)
+        async let second = CourseLookupService.keptSyllabus(key, fetch: fetch)
+        _ = try await (first, second)
+
+        #expect(calls == 1)
     }
 
     @Test("a failed fetch is not kept")
