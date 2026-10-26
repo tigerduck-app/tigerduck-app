@@ -70,11 +70,11 @@ extension AppState {
         for semester in semesters.sorted() {
             if resettingSemesters.contains(semester) { continue }
             if let reset = resetAt[semester], reset > fetchedAt { continue }
-            let droppedHere = Set(selectionDropped[semester] ?? [])
-            let rows = (rowsBySemester[semester] ?? []).filter {
-                Self.isFiled($0, under: semester)
-                    && !droppedHere.contains(($0["course_no"] as? String) ?? "")
-            }
+            let handAdded = Set(userAdded.filter { DataCache.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo))
+            let rows = Self.keptRows(
+                rowsBySemester[semester] ?? [], semester: semester,
+                dropped: Set(selectionDropped[semester] ?? []), handAdded: handAdded
+            )
             let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
             let localCourses = DataCache.shared.loadCourses(semester: semester)
 
@@ -94,7 +94,7 @@ extension AppState {
             let unlisted = Self.unlistedCourses(
                 in: semester, listed: serverNos, tombstoned: Set(tombstoned),
                 fetched: Set(localCourses.map(\.courseNo)),
-                handAdded: Set(userAdded.filter { DataCache.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo)),
+                handAdded: handAdded,
                 hidden: deletedNos, adding: adding
             )
             for courseNo in unlisted.hide { hide(courseNo) }
@@ -193,6 +193,15 @@ extension AppState {
         let byTombstone = tombstoned.filter { isGone($0) && isShown($0) }
         guard !listed.isEmpty else { return (byTombstone, []) }
         return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
+    }
+
+    /// The term's server rows, less those of courses course selection dropped. A course added by
+    /// hand keeps its row, so a drop never takes it out of the hand-added courses.
+    static func keptRows(
+        _ rows: [[String: Any]], semester: String, dropped: Set<String>, handAdded: Set<String>
+    ) -> [[String: Any]] {
+        let dropped = dropped.subtracting(handAdded)
+        return rows.filter { isFiled($0, under: semester) && !dropped.contains(($0["course_no"] as? String) ?? "") }
     }
 
     static func isFiled(_ row: [String: Any], under semester: String) -> Bool {

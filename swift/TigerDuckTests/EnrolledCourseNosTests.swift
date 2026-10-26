@@ -111,6 +111,23 @@ struct SelectionDropsTests {
         ) == ["D"])
     }
 
+    @Test("A course course selection dropped and then added by hand keeps its server row, so the reconcile keeps it")
+    @MainActor
+    func handAddedCourseOutlivesADrop() {
+        let rows: [[String: Any]] = [["course_no": "CS1001301"], ["course_no": "GE1010001"]]
+        let kept = AppState.keptRows(rows, semester: "1151", dropped: ["GE1010001"], handAdded: ["GE1010001"])
+        let listed = Set(kept.compactMap { $0["course_no"] as? String })
+        #expect(listed == ["CS1001301", "GE1010001"])
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
+            handAdded: ["GE1010001"], hidden: [], adding: []
+        )
+        #expect(unlisted.drop.isEmpty)
+
+        let notAdded = AppState.keptRows(rows, semester: "1151", dropped: ["GE1010001"], handAdded: [])
+        #expect(notAdded.compactMap { $0["course_no"] as? String } == ["CS1001301"])
+    }
+
     @Test("An empty answer records nothing and clears nothing: parser drift is not a mass drop")
     func emptyAnswerIsInert() {
         #expect(AppServiceBridge.selectionDrops(
