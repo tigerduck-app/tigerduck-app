@@ -8,6 +8,6 @@ enum AppURLs {
     static let learnMoreTigerSync = URL(string: "https://tigerduck.app/tigersync")!
     static let issues         = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
     /// Public uptime page for every TigerDuck-facing service. It 302s to
-    /// `status.ntust.org`, which the TigerDuck browser follows in place.
+    /// `status.ntust.org`, which the system browser follows in place.
     static let serverStatus   = URL(string: "https://status.tigerduck.app/")!
 }

@@ -18,6 +18,7 @@ final class BrowserPage {
     fileprivate(set) var progress = 0.0
     fileprivate(set) var isCollapsed = false
     var failure: Failure?
+    @ObservationIgnored fileprivate var failedDownload: URLRequest?
     var outside: URL?
     /// The page the browser opened with, which the bars name until a page commits.
     fileprivate(set) var start: URL?
@@ -29,7 +30,6 @@ final class BrowserPage {
     fileprivate(set) var isDesktopSite = false
     let store: WKWebsiteDataStore
     let generation: Int
-    /// Shows a file the browser saved, as a Moodle file is shown.
     let files = MoodleFileOpener()
     /// This browser's saved files, removed with it; `BrowserData.reset()` removes every browser's.
     nonisolated let downloads = BrowserPage.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -86,12 +86,18 @@ final class BrowserPage {
     func reloadOrStop() {
         if isLoading {
             webView?.stopLoading()
-        } else if failure != nil, let address {
+        } else if failure != nil, let request = Self.retryRequest(failedDownload: failedDownload, address: address) {
             failure = nil
-            webView?.load(URLRequest(url: address))
+            failedDownload = nil
+            webView?.load(request)
         } else {
             webView?.reload()
         }
+    }
+
+    /// A download never commits as a page, so the address still names the page it started from.
+    static func retryRequest(failedDownload: URLRequest?, address: URL?) -> URLRequest? {
+        failedDownload ?? address.map { URLRequest(url: $0) }
     }
 
     /// Find and print need a page on screen, not an error or a sign-in under way.
@@ -256,6 +262,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
             }
             if BrowserRouting.isMoodleReturnPage(url) { lastRequested = url }
             page.failure = nil
+            page.failedDownload = nil
             decisionHandler(.allow)
         case .openOutside(let outside):
             decisionHandler(.cancel)
@@ -298,6 +305,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
         saving[ObjectIdentifier(download)] = nil
+        page.failedDownload = download.originalRequest
         page.failure = .unreachable(host: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host)
     }
 
@@ -331,6 +339,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
 
     private func failed(with error: any Error) {
         guard let failure = Self.failure(for: error, refusedHosts: refusedHosts) else { return }
+        page.failedDownload = nil
         page.failure = failure
         page.signIn.pageSettled()
     }

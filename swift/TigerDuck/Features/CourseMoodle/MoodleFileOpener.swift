@@ -69,7 +69,6 @@ final class MoodleFileOpener {
         present(link)
     }
 
-    /// A file the TigerDuck browser saved.
     func show(downloaded copy: URL, mimeType: String?) {
         _ = nextAction()
         if MoodleFile.opensInShareSheet(mimeType: mimeType, name: copy.lastPathComponent) {
