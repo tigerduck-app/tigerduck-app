@@ -31,6 +31,7 @@ enum AppServiceBridge {
             authService: authService,
             semester: semester,
             forceRefresh: forceRefresh,
+            startGeneration: authService.loginGeneration,
             moodle: { await fetchMoodleCourses(authService: authService) },
             transcript: { await fetchTranscript(authService: authService) }
         )
@@ -45,21 +46,40 @@ enum AppServiceBridge {
         let semesters = SemesterCatalog.availableSemesters().filter {
             DataCache.shared.loadCourses(semester: $0).isEmpty
         }
-        guard !semesters.isEmpty else { return }
-        let moodle = await fetchMoodleCourses(authService: authService)
-        let transcript = await fetchTranscript(authService: authService)
+        await warmTerms(
+            semesters,
+            generation: { authService.loginGeneration },
+            shared: { (await fetchMoodleCourses(authService: authService), await fetchTranscript(authService: authService)) }
+        ) { semester, generation, moodle, transcript in
+            _ = await fetchCourses(
+                authService: authService,
+                semester: semester,
+                forceRefresh: false,
+                startGeneration: generation,
+                moodle: { moodle },
+                transcript: { transcript }
+            )
+        }
+    }
 
+    /// Hands every term the answers fetched once for all of them, with the generation they were
+    /// fetched under: another account's answers must never pass a term's save check. Answers that
+    /// outlive a sign-out are dropped.
+    static func warmTerms(
+        _ semesters: [String],
+        generation: () -> Int,
+        shared: () async -> (moodle: [MoodleEnrolledCourse]?, transcript: ScoreReport?),
+        fetch: @escaping @Sendable (
+            _ semester: String, _ generation: Int, _ moodle: [MoodleEnrolledCourse]?, _ transcript: ScoreReport?
+        ) async -> Void
+    ) async {
+        guard !semesters.isEmpty else { return }
+        let startGeneration = generation()
+        let answers = await shared()
+        guard generation() == startGeneration else { return }
         await withTaskGroup(of: Void.self) { group in
             for semester in semesters {
-                group.addTask {
-                    _ = await fetchCourses(
-                        authService: authService,
-                        semester: semester,
-                        forceRefresh: false,
-                        moodle: { moodle },
-                        transcript: { transcript }
-                    )
-                }
+                group.addTask { await fetch(semester, startGeneration, answers.moodle, answers.transcript) }
             }
         }
     }
@@ -109,10 +129,10 @@ enum AppServiceBridge {
         authService: AuthService,
         semester: String,
         forceRefresh: Bool,
+        startGeneration: Int,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
     ) async -> [SDCourse] {
-        let startGeneration = authService.loginGeneration
         await SemesterCatalog.refreshIfStale()
         // The course-selection system serves one term and its list has no term
         // marker, so its numbers belong to the term the catalogue reports open.

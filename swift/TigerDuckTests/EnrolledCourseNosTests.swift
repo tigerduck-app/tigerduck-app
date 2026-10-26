@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -293,5 +294,33 @@ struct PastTermRebuildTests {
 
         #expect(filled.schedule == [2: ["3", "4"]])
         #expect(filled.moodleIdNumber == nil)
+    }
+}
+
+@MainActor
+struct WarmTermsTests {
+    @MainActor
+    private final class Account {
+        var generation = 1
+    }
+
+    @Test("Shared answers that outlive a sign-out reach no term; the terms save under the generation they were fetched in")
+    func answersFromAnotherAccountReachNoTerm() async {
+        let account = Account()
+        let calls = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let fetch: @Sendable (String, Int, [MoodleEnrolledCourse]?, ScoreReport?) async -> Void = { semester, generation, _, _ in
+            calls.withLock { $0[semester] = generation }
+        }
+
+        await AppServiceBridge.warmTerms(["1141", "1142"], generation: { account.generation }, shared: {
+            account.generation += 1
+            return (nil, nil)
+        }, fetch: fetch)
+        #expect(calls.withLock { $0 }.isEmpty)
+
+        await AppServiceBridge.warmTerms(
+            ["1141", "1142"], generation: { account.generation }, shared: { (nil, nil) }, fetch: fetch
+        )
+        #expect(calls.withLock { $0 } == ["1141": 2, "1142": 2])
     }
 }
