@@ -64,8 +64,11 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `assignmentMarksSyncedOnce` | account | `swift/TigerDuck/App/AppState+Account.swift` `forgetSyncProgress` |
 | defaults | `assignmentReminderOffsetsData` | device |  |
 | defaults | `browserAddressBar` | device |  |
+| defaults | `browserAppearance` | device |  |
 | defaults | `browserDataState` | device |  |
+| defaults | `browserDesktopSites` | account | `swift/TigerDuck/Features/Browser/BrowserData.swift` `reset` |
 | defaults | `browserPreference` | device |  |
+| defaults | `browserZoom` | account | `swift/TigerDuck/Features/Browser/BrowserData.swift` `reset` |
 | defaults | `bulletinPushEnabled` | device |  |
 | defaults | `bulletinReadIds` | device |  |
 | defaults | `bulletinsSyncedAt` | account | `swift/TigerDuck/Features/Bulletins/BulletinsViewModel.swift` `forgetListSession` |

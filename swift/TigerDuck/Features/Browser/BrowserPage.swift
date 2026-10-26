@@ -15,6 +15,7 @@ final class BrowserPage {
     fileprivate(set) var canGoBack = false
     fileprivate(set) var canGoForward = false
     fileprivate(set) var isLoading = false
+    fileprivate(set) var progress = 0.0
     fileprivate(set) var isCollapsed = false
     var failure: Failure?
     var outside: URL?
@@ -22,6 +23,10 @@ final class BrowserPage {
     fileprivate(set) var start: URL?
 
     let signIn: BrowserSignIn
+    let find = BrowserFind()
+    let zoomPeek = BrowserZoomPeek()
+    fileprivate(set) var zoom = BrowserZoom.standard
+    fileprivate(set) var isDesktopSite = false
     let store: WKWebsiteDataStore
     let generation: Int
     @ObservationIgnored fileprivate weak var webView: WKWebView?
@@ -79,6 +84,50 @@ final class BrowserPage {
         }
     }
 
+    /// Find and print need a page on screen, not an error or a sign-in under way.
+    var canUsePage: Bool { Self.canUsePage(failure: failure, signIn: signIn.phase, url: url) }
+
+    static func canUsePage(failure: Failure?, signIn: BrowserSignIn.Phase, url: URL?) -> Bool {
+        failure == nil && signIn == .idle && url != nil
+    }
+
+    func zoomIn() { BrowserZoom.larger(than: zoom).map(setZoom) }
+    func zoomOut() { BrowserZoom.smaller(than: zoom).map(setZoom) }
+    func resetZoom() { setZoom(BrowserZoom.standard) }
+
+    private func setZoom(_ percent: Int) {
+        guard !host.isEmpty, let webView else { return }
+        BrowserSites.stored.setZoom(percent, for: host)
+        BrowserPageScripts.addScripts(to: webView.configuration.userContentController)
+        applySiteSettings()
+    }
+
+    /// The page loads again, as its site sends a desktop layout only to a new request.
+    func setDesktopSite(_ isDesktop: Bool) {
+        guard !host.isEmpty else { return }
+        BrowserSites.stored.setDesktop(isDesktop, for: host)
+        isDesktopSite = isDesktop
+        webView?.reload()
+    }
+
+    fileprivate func applySiteSettings() {
+        let sites = BrowserSites.stored
+        zoom = sites.zoom(for: host)
+        isDesktopSite = sites.isDesktop(host)
+        // A page back from the history cache keeps the zoom it was left with.
+        webView?.evaluateJavaScript(BrowserPageScripts.zoom(sites.zoom))
+    }
+
+    func print() {
+        guard let webView else { return }
+        let info = UIPrintInfo(dictionary: nil)
+        info.jobName = title.isEmpty ? host : title
+        let controller = UIPrintInteractionController.shared
+        controller.printInfo = info
+        controller.printFormatter = webView.viewPrintFormatter()
+        controller.present(animated: true)
+    }
+
     func expandChrome() {
         collapse.expand()
         isCollapsed = false
@@ -126,6 +175,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         page.signIn.signInWithSession = { [weak container] in
             await BrowserSessionSignIn(store: store, host: container).signIn()
         }
+        page.find.run = { [weak webView] in await webView?.runFind($0) }
         Task {
             await BrowserData.shared.prepare()
             // A sign-in or sign-out has come since this browser opened, and it is closing.
@@ -150,6 +200,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         track(\.canGoBack) { if page.canGoBack != $0.canGoBack { page.canGoBack = $0.canGoBack } }
         track(\.canGoForward) { if page.canGoForward != $0.canGoForward { page.canGoForward = $0.canGoForward } }
         track(\.isLoading) { if page.isLoading != $0.isLoading { page.isLoading = $0.isLoading } }
+        track(\.estimatedProgress) { if page.progress != $0.estimatedProgress { page.progress = $0.estimatedProgress } }
         observations.append(webView.scrollView.observe(\.contentOffset) { scrollView, _ in
             MainActor.assumeIsolated {
                 guard scrollView.isTracking || scrollView.isDecelerating else { return }
@@ -161,7 +212,19 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(
         _ webView: WKWebView,
         decidePolicyFor action: WKNavigationAction,
-        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
+        preferences: WKWebpagePreferences,
+        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
+    ) {
+        if action.targetFrame?.isMainFrame != false, let host = action.request.url?.host(percentEncoded: false) {
+            preferences.preferredContentMode = BrowserSites.stored.isDesktop(host) ? .desktop : .mobile
+        }
+        decidePolicy(for: action, in: webView) { decisionHandler($0, preferences) }
+    }
+
+    private func decidePolicy(
+        for action: WKNavigationAction,
+        in webView: WKWebView,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
         if BrowserRouting.isMoodleLogout(url) { return decisionHandler(.cancel) }
@@ -194,10 +257,15 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        page.applySiteSettings()
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         lastRequested = nil
         page.signIn.pageSettled()
         Task { await keepSession() }
+        if page.find.isActive { Task { await page.find.search() } }
     }
 
     private func keepSession() async {

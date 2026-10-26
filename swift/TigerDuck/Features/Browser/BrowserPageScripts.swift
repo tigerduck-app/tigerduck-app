@@ -1,6 +1,7 @@
 import WebKit
 
-/// What the browser adds to Moodle's pages so its logout cannot be reached.
+/// What the browser adds to pages: Moodle's logout hidden and blocked, each site's zoom, and a
+/// dark page where the site has none.
 enum BrowserPageScripts {
     private nonisolated static let logoutTargets = ["/login/logout.php", "/auth/oidc/logout.php"]
         .flatMap { ["https://\(BrowserRouting.moodleHost)\($0)", $0] }
@@ -27,6 +28,57 @@ enum BrowserPageScripts {
     })();
     """
 
+    /// Each site's zoom in `zooms`, by lowercased host, as Safari's page zoom: the body grows and
+    /// its text wraps again. On iOS `WKWebView.pageZoom` only magnifies the page, which then
+    /// scrolls sideways. Run again on a page, it applies a changed zoom.
+    nonisolated static func zoom(_ zooms: [String: Int]) -> String {
+        let table = (try? JSONSerialization.data(withJSONObject: zooms)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return """
+        (function() {
+          var zoom = (\(table))[location.hostname.toLowerCase()];
+          var style = document.querySelector('style[data-tigerduck-zoom]');
+          if (!style) {
+            style = document.createElement('style');
+            style.setAttribute('data-tigerduck-zoom', '');
+            (document.head || document.documentElement).appendChild(style);
+          }
+          style.textContent = zoom ? 'body { zoom: ' + zoom / 100 + ' !important; }' : '';
+        })();
+        """
+    }
+
+    /// Under a dark appearance, a page that draws itself light is inverted and its pictures and
+    /// find marks inverted back, as most school pages have no dark style. Checked again once the
+    /// page's styles load and when the appearance changes; a page with its own dark style is kept.
+    nonisolated static let darken = """
+    (function() {
+      var dark = matchMedia('(prefers-color-scheme: dark)');
+      var style = document.createElement('style');
+      style.setAttribute('data-tigerduck-dark', '');
+      (document.head || document.documentElement).appendChild(style);
+      var invert = '{ filter: invert(1) hue-rotate(180deg) !important; }';
+      var back = 'img, video, canvas, iframe, embed, object, svg image, [style*="background-image"], mark[data-tigerduck-find]';
+      function drawsLight() {
+        var root = document.documentElement;
+        var color = [document.body, root].filter(Boolean)
+          .map(function(element) { return getComputedStyle(element).backgroundColor; })
+          .filter(function(color) { return !/^transparent$|, 0\\)$/.test(color); })[0];
+        var meta = document.querySelector('meta[name="color-scheme"]');
+        if (!color) return !/dark/.test(getComputedStyle(root).colorScheme + (meta ? meta.content : ''));
+        var rgb = color.match(/[\\d.]+/g).map(Number);
+        return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 127.5;
+      }
+      function update() {
+        style.textContent = '';
+        if (dark.matches && drawsLight()) style.textContent = '@media screen { html ' + invert + ' ' + back + ' ' + invert + ' }';
+      }
+      update();
+      dark.addEventListener('change', update);
+      document.addEventListener('DOMContentLoaded', update);
+      addEventListener('load', update);
+    })();
+    """
+
     /// Blocks the logout for every resource type, frames and scripts' requests included, which
     /// the navigation delegate never sees. Content blocker patterns have no alternation, so one rule each.
     nonisolated static let logoutRules: String = {
@@ -44,11 +96,19 @@ enum BrowserPageScripts {
     /// The page loads without the rule list when WebKit's store does not answer in time; the
     /// navigation delegate still refuses the logout, and a later browser gets the list.
     static func install(in controller: WKUserContentController) async {
-        controller.addUserScript(WKUserScript(source: hideLogout, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        addScripts(to: controller)
         guard let rules = await answer(within: rulesDeadline, compileLogoutRules) else {
             return AppLogger.breadcrumb("browser opened without its logout rule list", category: "browser")
         }
         controller.add(rules)
+    }
+
+    /// Again after a zoom changes, for the pages loaded next: a user script cannot be replaced alone.
+    static func addScripts(to controller: WKUserContentController) {
+        controller.removeAllUserScripts()
+        controller.addUserScript(WKUserScript(source: hideLogout, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        controller.addUserScript(WKUserScript(source: zoom(BrowserSites.stored.zoom), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        controller.addUserScript(WKUserScript(source: darken, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
     private static func compileLogoutRules() async -> WKContentRuleList? {

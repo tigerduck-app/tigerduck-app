@@ -10,6 +10,14 @@ enum BrowserAddressBar: String, CaseIterable {
     case bottom
 }
 
+/// The color scheme the TigerDuck browser tells its pages, darkening a page with no dark style
+/// under dark; automatic follows the system.
+enum BrowserAppearance: String, CaseIterable {
+    case automatic
+    case light
+    case dark
+}
+
 /// What the TigerDuck browser's store holds: nothing, the signed-in account's data, or data a
 /// sign-in or sign-out could not remove, which the next browser clears before it loads.
 enum BrowserDataState: String {

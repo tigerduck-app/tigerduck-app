@@ -10,14 +10,18 @@ struct TigerDuckBrowserView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Default(.browserAddressBar) private var addressBar
+    @Default(.browserAppearance) private var appearance
     @State private var page = BrowserPage()
     @State private var sheet: BrowserSheet?
+    @State private var afterSheet: (() -> Void)?
     @State private var copied = false
+    /// The find bar's top edge in the window, which the keyboard under it pushes up.
+    @State private var findBarTop: CGFloat?
 
     private var collapsed: Bool { page.isCollapsed }
 
     var body: some View {
-        BrowserWebView(page: page, start: url, insets: contentInsets)
+        BrowserWebView(page: page, start: url, insets: contentInsets, findBarTop: page.find.isActive ? findBarTop : nil, appearance: appearance)
             .ignoresSafeArea(edges: addressBar == .top ? .all : .bottom)
             .overlay { failureView }
             .overlay(alignment: .top) {
@@ -29,13 +33,30 @@ struct TigerDuckBrowserView: View {
             }
             .overlay(alignment: .bottom) {
                 Group {
-                    if addressBar == .top { toolbar } else { bottomBar }
+                    if page.find.isActive {
+                        BrowserFindBar(find: page.find)
+                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { findBarTop = $0 }
+                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    } else if addressBar == .top {
+                        toolbar
+                    } else {
+                        bottomBar
+                    }
                 }
             }
-            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.35), value: collapsed)
+            .overlay(alignment: .topLeading) { zoomCopy }
+            .animation(motion, value: collapsed)
+            .animation(motion, value: page.find.isActive)
             .animation(.default, value: page.signIn.phase)
-            .sheet(item: $sheet) { sheet in
-                BrowserSheetView(page: page, sheet: sheet)
+            .sheet(item: $sheet, onDismiss: {
+                afterSheet?()
+                afterSheet = nil
+            }) { shown in
+                BrowserSheetView(page: page, sheet: shown, showsNavigation: addressBar == .bottom) { work in
+                    guard sheet != nil else { return }
+                    afterSheet = work
+                    sheet = nil
+                }
             }
             .alert(
                 String(localized: "browser_outside_title"),
@@ -51,14 +72,39 @@ struct TigerDuckBrowserView: View {
             .onChange(of: BrowserData.shared.generation, initial: true) { _, now in
                 if now != page.generation { dismiss() }
             }
+            .onChange(of: page.canUsePage) { _, usable in
+                if !usable && page.find.isActive { page.find.end() }
+            }
             .onDisappear { page.signIn.close() }
     }
+
+    /// The zoom buttons while a zoom change fades the More sheet, under the sheet's own.
+    @ViewBuilder
+    private var zoomCopy: some View {
+        let peek = page.zoomPeek
+        if peek.showsCopy, let frame = peek.frame, peek.size.width > 0 {
+            GeometryReader { proxy in
+                let origin = proxy.frame(in: .global).origin
+                // On the sheet card's color, so they read as they do in the sheet.
+                BrowserZoomButtons(page: page)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                    .frame(width: peek.size.width, height: peek.size.height)
+                    .scaleEffect(frame.width / peek.size.width, anchor: .topLeading)
+                    .offset(x: frame.minX - origin.x, y: frame.minY - origin.y)
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    private var motion: Animation { reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.35) }
 
     private static let barHeight: CGFloat = 44
     private static let capsuleHeight: CGFloat = 30
     private static let toolbarHeight: CGFloat = 56
     /// From the screen's bottom edge: the home indicator takes about 13 points, and a small gap.
-    private static let homeIndicatorClearance: CGFloat = 20
+    private static let homeIndicatorClearance: CGFloat = 16
+    /// How far a button hidden by the collapse moves toward the address capsule as it fades.
+    private static let toCapsule: CGFloat = 56
 
     private var contentInsets: UIEdgeInsets {
         let gap = TigerDuckTheme.Spacing.lg
@@ -71,7 +117,7 @@ struct TigerDuckBrowserView: View {
 
     private var topBar: some View {
         HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
-            closeButton.hiddenWhenCollapsed(collapsed, edge: .top, moving: !reduceMotion)
+            closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.toCapsule, height: -24), moving: !reduceMotion)
             address {
                 VStack(spacing: 0) {
                     HStack(spacing: collapsed ? 4 : 5) {
@@ -90,7 +136,7 @@ struct TigerDuckBrowserView: View {
                 }
                 .accessibilityLabel(String(localized: "browser_share"))
             }
-            .hiddenWhenCollapsed(collapsed, edge: .top, moving: !reduceMotion)
+            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: -Self.toCapsule, height: -24), moving: !reduceMotion)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
@@ -100,11 +146,13 @@ struct TigerDuckBrowserView: View {
             toolbarButton("chevron.backward", String(localized: "browser_back"), enabled: page.canGoBack, page.goBack)
             toolbarButton("chevron.forward", String(localized: "browser_forward"), enabled: page.canGoForward, page.goForward)
             reloadButton(size: 21).foregroundStyle(.tint).frame(maxWidth: .infinity)
+            toolbarButton("magnifyingglass", String(localized: "browser_find"), enabled: page.canUsePage, page.find.start)
+            toolbarButton("ellipsis", String(localized: "browser_more"), enabled: true) { sheet = .more }
         }
         .frame(height: Self.toolbarHeight)
         .browserGlass(in: Capsule())
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
+        .hiddenWhenCollapsed(collapsed, toward: CGSize(width: 0, height: 120), moving: !reduceMotion)
     }
 
     private func toolbarButton(_ symbol: String, _ label: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -121,14 +169,25 @@ struct TigerDuckBrowserView: View {
 
     private var bottomBar: some View {
         HStack(alignment: .bottom, spacing: TigerDuckTheme.Spacing.md) {
-            closeButton.hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
+            closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.toCapsule, height: 24), moving: !reduceMotion)
             address {
                 HStack(spacing: 0) {
-                    // Find in page takes this side.
-                    if !collapsed { Color.clear.frame(width: 40, height: Self.barHeight) }
+                    if !collapsed {
+                        Button { page.find.start() } label: {
+                            Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold))
+                                .frame(width: 40, height: Self.barHeight)
+                                .contentShape(.rect)
+                        }
+                        .disabled(!page.canUsePage)
+                        .accessibilityLabel(String(localized: "browser_find"))
+                        .transition(intoCapsule(from: .leading))
+                    }
                     Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
                         .frame(maxWidth: collapsed ? nil : .infinity)
-                    if !collapsed { reloadButton(size: 16).frame(width: 40, height: Self.barHeight) }
+                    if !collapsed {
+                        reloadButton(size: 16).frame(width: 40, height: Self.barHeight)
+                            .transition(intoCapsule(from: .trailing))
+                    }
                 }
             }
             circle {
@@ -139,7 +198,7 @@ struct TigerDuckBrowserView: View {
                 }
                 .accessibilityLabel(String(localized: "browser_more"))
             }
-            .hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
+            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: -Self.toCapsule, height: 24), moving: !reduceMotion)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         // Collapsed, the row leaves the safe area for a spot just above the home indicator; the
@@ -147,6 +206,11 @@ struct TigerDuckBrowserView: View {
         .padding(.bottom, collapsed ? Self.homeIndicatorClearance : 0)
         .frame(maxHeight: .infinity, alignment: .bottom)
         .ignoresSafeArea(.container, edges: collapsed ? .bottom : [])
+    }
+
+    /// A button inside the address pill shrinks with it, toward the host name and down.
+    private func intoCapsule(from side: HorizontalEdge) -> AnyTransition {
+        reduceMotion ? .opacity : .offset(x: side == .leading ? 16 : -16, y: 10).combined(with: .opacity)
     }
 
     // MARK: - Shared pieces
@@ -179,6 +243,7 @@ struct TigerDuckBrowserView: View {
                 .contentTransition(.interpolate)
                 .padding(.horizontal, collapsed ? 14 : 0)
                 .frame(maxWidth: collapsed ? nil : .infinity, minHeight: collapsed ? Self.capsuleHeight : Self.barHeight)
+                .overlay(alignment: .bottom) { loadProgress }
                 // What fades in or out mid-morph stays inside the capsule as it grows or shrinks.
                 .clipShape(.capsule)
                 .contentShape(.capsule)
@@ -190,6 +255,22 @@ struct TigerDuckBrowserView: View {
         .id(reduceMotion && collapsed)
         .transition(.opacity)
         .frame(maxWidth: .infinity)
+    }
+
+    /// Safari's load bar, along the pill's bottom edge in the accent colour while a page loads.
+    private var loadProgress: some View {
+        ZStack {
+            if page.isLoading {
+                Rectangle().fill(.tint)
+                    .frame(height: 3)
+                    .scaleEffect(x: page.progress, anchor: .leading)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: page.progress)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.3), value: page.isLoading)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -300,8 +381,8 @@ struct TigerDuckBrowserView: View {
 }
 
 private extension View {
-    func hiddenWhenCollapsed(_ collapsed: Bool, edge: VerticalEdge, moving: Bool) -> some View {
-        offset(y: collapsed && moving ? (edge == .top ? -24 : 120) : 0)
+    func hiddenWhenCollapsed(_ collapsed: Bool, toward offset: CGSize, moving: Bool) -> some View {
+        self.offset(collapsed && moving ? offset : .zero)
             .opacity(collapsed ? 0 : 1)
             .allowsHitTesting(!collapsed)
             .accessibilityHidden(collapsed)
@@ -312,6 +393,8 @@ private struct BrowserWebView: UIViewRepresentable {
     let page: BrowserPage
     let start: URL
     let insets: UIEdgeInsets
+    let findBarTop: CGFloat?
+    let appearance: BrowserAppearance
 
     func makeCoordinator() -> BrowserNavigator { BrowserNavigator(page: page) }
 
@@ -320,9 +403,22 @@ private struct BrowserWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ container: UIView, context: Context) {
-        guard let scrollView = container.subviews.compactMap({ $0 as? WKWebView }).last?.scrollView,
-              scrollView.contentInset != insets else { return }
-        scrollView.contentInset = insets
-        scrollView.verticalScrollIndicatorInsets = insets
+        guard let webView = container.subviews.compactMap({ $0 as? WKWebView }).last else { return }
+        // The page's prefers-color-scheme follows the web view's own style.
+        let style: UIUserInterfaceStyle = switch appearance {
+        case .automatic: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        if webView.overrideUserInterfaceStyle != style { webView.overrideUserInterfaceStyle = style }
+        var insets = insets
+        if let findBarTop {
+            // The find bar and the keyboard under it cover the page from the bar's top edge down.
+            let covered = webView.bounds.height - webView.convert(CGPoint(x: 0, y: findBarTop), from: nil).y
+            insets.bottom = covered - webView.safeAreaInsets.bottom + TigerDuckTheme.Spacing.lg
+        }
+        guard webView.scrollView.contentInset != insets else { return }
+        webView.scrollView.contentInset = insets
+        webView.scrollView.verticalScrollIndicatorInsets = insets
     }
 }

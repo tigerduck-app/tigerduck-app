@@ -408,11 +408,15 @@ MailTLSVerifier.swift
 BrowserCertificate.swift
 BrowserChromeCollapse.swift
 BrowserData.swift
+BrowserFind.swift
+BrowserFindBar.swift
+BrowserMenu.swift
 BrowserPage.swift
 BrowserPageScripts.swift
 BrowserRouting.swift
 BrowserSessionSignIn.swift
 BrowserSheets.swift
 BrowserSignIn.swift
+BrowserSites.swift
 TigerDuckBrowserView.swift
 BrowserAddressBarPicker.swift

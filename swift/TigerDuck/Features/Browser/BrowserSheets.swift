@@ -12,27 +12,34 @@ enum BrowserSheet: String, Identifiable {
 struct BrowserSheetView: View {
     let page: BrowserPage
     let sheet: BrowserSheet
+    let showsNavigation: Bool
+    let afterClosing: (@escaping () -> Void) -> Void
 
     @State private var showsCertificate: Bool
     @State private var height: CGFloat = 160
 
-    init(page: BrowserPage, sheet: BrowserSheet) {
+    init(page: BrowserPage, sheet: BrowserSheet, showsNavigation: Bool, afterClosing: @escaping (@escaping () -> Void) -> Void) {
         self.page = page
         self.sheet = sheet
+        self.showsNavigation = showsNavigation
+        self.afterClosing = afterClosing
         _showsCertificate = State(initialValue: sheet == .certificate)
     }
 
     var body: some View {
         Group {
             if sheet == .more {
-                BrowserMoreRow(page: page).fittedHeight($height)
+                BrowserMenu(page: page, showsNavigation: showsNavigation, afterClosing: afterClosing)
+                    .fittedHeight($height)
             } else {
                 NavigationStack {
                     BrowserAddressView(page: page, showsCertificate: $showsCertificate)
                         .fittedHeight($height)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(Color(uiColor: .systemGroupedBackground))
-                        .toolbar(.hidden, for: .navigationBar)
+                        // The content runs under the empty bar, which stays shown: a push that brings
+                        // a hidden bar in lays it out too high until the push ends.
+                        .ignoresSafeArea(.container, edges: .top)
                         .navigationDestination(isPresented: $showsCertificate) {
                             BrowserCertificateView(chain: BrowserCertificate.chain(of: page.connection == .secure ? page.serverTrust : nil))
                         }
@@ -41,6 +48,7 @@ struct BrowserSheetView: View {
         }
         .presentationDetents(showsCertificate ? [.large] : [.height(height)])
         .presentationDragIndicator(.visible)
+        .centeredPlacement()
         .presentationBackground(Color(uiColor: .systemGroupedBackground))
     }
 }
@@ -49,6 +57,16 @@ private extension View {
     func fittedHeight(_ height: Binding<CGFloat>) -> some View {
         fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height.wrappedValue = $0 }
+    }
+
+    /// The iOS 27 SDK's automatic placement moves a small sheet toward the button that opened it.
+    @ViewBuilder
+    func centeredPlacement() -> some View {
+        #if compiler(>=6.4)
+        if #available(iOS 27, *) { presentationPlacement(.center) } else { self }
+        #else
+        self
+        #endif
     }
 }
 
@@ -170,7 +188,6 @@ private struct BrowserCertificateView: View {
                         Image(systemName: "seal")
                             .foregroundStyle(link.id == selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                     }
-                    .padding(.leading, CGFloat(link.id) * 18)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(.rect)
                 }
@@ -218,43 +235,5 @@ private struct BrowserCertificateView: View {
         ([certificate.title] + sections(of: certificate).map { section in
             ([section.title] + section.rows.map { "\($0.label): \($0.value)" }).joined(separator: "\n")
         }).joined(separator: "\n\n")
-    }
-}
-
-/// The bottom layout's More sheet opens with back, forward and share, which have no button there.
-private struct BrowserMoreRow: View {
-    let page: BrowserPage
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            tile("chevron.backward", String(localized: "browser_back"), enabled: page.canGoBack) { page.goBack() }
-            tile("chevron.forward", String(localized: "browser_forward"), enabled: page.canGoForward) { page.goForward() }
-            if let address = page.address {
-                ShareLink(item: address) { icon("square.and.arrow.up") }
-                    .accessibilityLabel(String(localized: "browser_share"))
-            }
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .padding(.top, TigerDuckTheme.Spacing.xl)
-        .padding(.bottom, TigerDuckTheme.Spacing.lg)
-    }
-
-    private func tile(_ symbol: String, _ label: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            dismiss()
-        } label: {
-            icon(symbol)
-        }
-        .disabled(!enabled)
-        .accessibilityLabel(label)
-    }
-
-    private func icon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.title3.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
     }
 }
