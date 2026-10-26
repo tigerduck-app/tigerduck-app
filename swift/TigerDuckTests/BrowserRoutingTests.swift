@@ -9,26 +9,38 @@ struct BrowserRoutingTests {
     @Test(arguments: [
         "https://moodle2.ntust.edu.tw/my/",
         "https://i.ntust.edu.tw/student",
-        "https://a.b.ntust.edu.tw/",
         "https://MOODLE2.NTUST.EDU.TW/user/edit.php",
-        "https://moodle2.ntust.edu.tw:443/course/view.php?id=1",
+        "https://moodle2.ntust.edu.tw:8443/my/",
+        "https://docs.google.com/document/d/1",
+        "https://github.com/tigerduck-app",
+        "https://status.tigerduck.app/",
     ])
-    func schoolPagesLoadInside(_ address: String) {
+    func httpsPagesLoadInside(_ address: String) {
         #expect(BrowserRouting.decision(for: Self.url(address)) == .load)
     }
 
     @Test(arguments: [
-        "https://docs.google.com/document/d/1",
         "http://moodle2.ntust.edu.tw/my/",
-        "https://moodle2.ntust.edu.tw:8443/my/",
+        "http://example.com/",
+        "https://apps.apple.com/app/id6740000000",
+        "https://ITUNES.apple.com/app/id6740000000",
+    ])
+    func plainHTTPAndTheAppStoreAskBeforeLeaving(_ address: String) {
+        let url = Self.url(address)
+        #expect(BrowserRouting.decision(for: url) == .openOutside(url))
+    }
+
+    @Test(arguments: [
         "https://ntust.edu.tw/",
         "https://evilntust.edu.tw/",
         "https://ntust.edu.tw.evil.com/",
         "https://user:pw@moodle2.ntust.edu.tw/",
+        "https://moodle2.ntust.edu.tw:8443/my/",
     ])
-    func otherWebPagesAskBeforeLeaving(_ address: String) {
-        let url = Self.url(address)
-        #expect(BrowserRouting.decision(for: url) == .openOutside(url))
+    func onlySchoolHostsAreSchoolPages(_ address: String) {
+        #expect(!BrowserRouting.isAllowed(Self.url(address)))
+        #expect(BrowserRouting.isAllowed(Self.url("https://a.b.ntust.edu.tw/")))
+        #expect(BrowserRouting.isAllowed(Self.url("https://moodle2.ntust.edu.tw:443/course/view.php?id=1")))
     }
 
     @Test func mailLinksGoToTheMailAppAndOtherSchemesNowhere() {

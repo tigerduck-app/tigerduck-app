@@ -2,7 +2,7 @@ import Defaults
 import SwiftUI
 import WebKit
 
-/// TigerDuck's own browser: school pages only, signed in to Moodle, with its chrome in glass
+/// TigerDuck's own browser: https pages, signed in to Moodle, with its chrome in glass
 /// over the page. Opens `url` and closes when the browser's data is reset under it.
 struct TigerDuckBrowserView: View {
     let url: URL

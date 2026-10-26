@@ -5,7 +5,8 @@ import Foundation
 nonisolated enum BrowserRouting {
     enum Decision: Equatable {
         case load
-        /// Off the allowlist: the browser asks before handing it to the system.
+        /// A page the browser cannot show, plain http or the App Store: it asks before handing
+        /// it to the system.
         case openOutside(URL)
         /// A `mailto:` link, for the system's mail app.
         case handOff(URL)
@@ -23,7 +24,7 @@ nonisolated enum BrowserRouting {
         switch url.scheme?.lowercased() {
         case "https", "http":
             if isMoodleLogout(url) { return .refuse }
-            return isAllowed(url) ? .load : .openOutside(url)
+            return url.scheme?.lowercased() == "https" && !isAppStore(url) ? .load : .openOutside(url)
         case "about":
             // Pages open about:blank to write into.
             return url.absoluteString.lowercased() == "about:blank" ? .load : .refuse
@@ -39,6 +40,11 @@ nonisolated enum BrowserRouting {
         guard url.scheme?.lowercased() == "https", url.port == nil || url.port == 443,
               url.user == nil, url.password == nil, let host = host(of: url) else { return false }
         return host.hasSuffix(".ntust.edu.tw")
+    }
+
+    /// An App Store page, which the App Store app shows and a web view shows only as a page.
+    static func isAppStore(_ url: URL) -> Bool {
+        ["apps.apple.com", "itunes.apple.com"].contains(host(of: url))
     }
 
     /// Moodle's logout and auth_oidc's, as the server reads the path: any case, encoding, doubled
