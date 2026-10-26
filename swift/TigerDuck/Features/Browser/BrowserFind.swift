@@ -157,6 +157,7 @@ final class BrowserFind {
             return skipped ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
           }
           var parent = node.parentElement;
+          if (!parent || getComputedStyle(parent).visibility !== 'visible') return NodeFilter.FILTER_REJECT;
           while (parent && getComputedStyle(parent).display === 'contents') parent = parent.parentElement;
           if (!parent || parent.getClientRects().length === 0) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;

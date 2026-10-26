@@ -134,9 +134,9 @@ struct BrowserFindPageTests {
     @Test func doesNotMatchAcrossSkippedTextOrAnEmptyBlockButDoesAcrossHiddenText() async {
         let (webView, find) = await page("""
         <p>ab<span contenteditable="true">XX</span>cd</p><div>ef<p></p>gh</div><p>ij<svg><text>XX</text></svg>kl</p>\
-        <p>mn<span style="display:none">XX</span>op</p>
+        <p>mn<span style="display:none">XX</span>op</p><p>qr<span style="visibility:hidden">XX<i style="visibility:visible">uv</i></span>st</p>
         """)
-        for (query, count) in [("ab", 1), ("abcd", 0), ("fg", 0), ("jk", 0), ("mnop", 1)] {
+        for (query, count) in [("ab", 1), ("abcd", 0), ("fg", 0), ("jk", 0), ("mnop", 1), ("XX", 0), ("qruvst", 1)] {
             find.query = query
             await find.search()
             #expect(find.count == count, "\(query)")
