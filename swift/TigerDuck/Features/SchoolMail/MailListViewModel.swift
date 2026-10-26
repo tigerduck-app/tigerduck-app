@@ -178,6 +178,8 @@ final class MailListViewModel {
                 }
                 return (pages, failure)
             }
+            // Caught above to keep the other folders' pages, so `use(_:)` never saw it.
+            if fetched.failure == .authenticationFailed { session.reportAuthenticationRejection() }
             guard isCurrent(selection, epoch) else { return }
             let fetchedAt = Date()
             for (folder, page) in fetched.pages {

@@ -7,6 +7,7 @@ import Testing
 struct MailListViewModelTests {
     final class SeenLog {
         var noted: [MailboxStatusInfo] = []
+        var authFailures = 0
     }
 
     struct Harness {
@@ -43,7 +44,8 @@ struct MailListViewModelTests {
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
         let seen = SeenLog()
-        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake }, signOutEvents: signOutEvents)
+        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
+                                      onAuthFailure: { seen.authFailures += 1 }, signOutEvents: signOutEvents)
         let model = MailListViewModel(session: session, cache: cache, noteSeenByPage: { seen.noted.append($0) },
                                       signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
         return Harness(model: model, fake: fake, cache: cache, seen: seen)
@@ -795,6 +797,16 @@ struct MailListViewModelTests {
 
         #expect(h.model.selection == .allMail)
         #expect(h.model.displayedRows.map { "\($0.folder) \($0.uid)" } == ["\(Self.moodle) 4"])
+    }
+
+    @Test func aRejectedPasswordInOneFolderOfAllMailIsReported() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.update { $0.pageErrors[Self.moodle] = .authenticationFailed }
+        await h.model.load()
+
+        #expect(h.seen.authFailures == 1)
+        #expect(h.model.serverStatus == .failed)
+        #expect(Self.labels(h.model.rows) == ["收3", "收2", "收1"])
     }
 
     @Test func aFolderThatFailsToLoadLeavesTheOthersInAllMail() async {
