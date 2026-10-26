@@ -24,6 +24,7 @@ final class BrowserPage {
 
     let signIn: BrowserSignIn
     let find = BrowserFind()
+    let zoomPeek = BrowserZoomPeek()
     fileprivate(set) var zoom = BrowserZoom.standard
     fileprivate(set) var isDesktopSite = false
     let store: WKWebsiteDataStore

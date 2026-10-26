@@ -17,7 +17,6 @@ struct BrowserSheetView: View {
 
     @State private var showsCertificate: Bool
     @State private var height: CGFloat = 160
-    @State private var peeking = false
 
     init(page: BrowserPage, sheet: BrowserSheet, showsNavigation: Bool, afterClosing: @escaping (@escaping () -> Void) -> Void) {
         self.page = page
@@ -30,7 +29,7 @@ struct BrowserSheetView: View {
     var body: some View {
         Group {
             if sheet == .more {
-                BrowserMenu(page: page, showsNavigation: showsNavigation, peeking: $peeking, afterClosing: afterClosing)
+                BrowserMenu(page: page, showsNavigation: showsNavigation, afterClosing: afterClosing)
                     .fittedHeight($height)
             } else {
                 NavigationStack {
@@ -48,9 +47,7 @@ struct BrowserSheetView: View {
         .presentationDetents(showsCertificate ? [.large] : [.height(height)])
         .presentationDragIndicator(.visible)
         .centeredPlacement()
-        .presentationBackground { Color(uiColor: .systemGroupedBackground).opacity(peeking ? 0 : 1) }
-        // Undimmed while peeking, so the page shows as it is.
-        .presentationBackgroundInteraction(peeking ? .enabled : .automatic)
+        .presentationBackground(Color(uiColor: .systemGroupedBackground))
     }
 }
 

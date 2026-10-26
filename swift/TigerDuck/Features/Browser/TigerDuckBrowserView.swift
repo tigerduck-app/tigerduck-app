@@ -44,6 +44,7 @@ struct TigerDuckBrowserView: View {
                     }
                 }
             }
+            .overlay(alignment: .topLeading) { zoomCopy }
             .animation(motion, value: collapsed)
             .animation(motion, value: page.find.isActive)
             .animation(.default, value: page.signIn.phase)
@@ -74,6 +75,24 @@ struct TigerDuckBrowserView: View {
                 if !usable && page.find.isActive { page.find.end() }
             }
             .onDisappear { page.signIn.close() }
+    }
+
+    /// The zoom buttons while a zoom change fades the More sheet, under the sheet's own.
+    @ViewBuilder
+    private var zoomCopy: some View {
+        let peek = page.zoomPeek
+        if peek.showsCopy, let frame = peek.frame, peek.size.width > 0 {
+            GeometryReader { proxy in
+                let origin = proxy.frame(in: .global).origin
+                // On the sheet card's color, so they read as they do in the sheet.
+                BrowserZoomButtons(page: page)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                    .frame(width: peek.size.width, height: peek.size.height)
+                    .scaleEffect(frame.width / peek.size.width, anchor: .topLeading)
+                    .offset(x: frame.minX - origin.x, y: frame.minY - origin.y)
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var motion: Animation { reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.35) }

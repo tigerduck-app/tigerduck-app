@@ -54,4 +54,28 @@ struct BrowserSitesTests {
         #expect(BrowserSites.stored == BrowserSites())
     }
 }
+
+@MainActor
+struct BrowserZoomPeekTests {
+    @Test func aZoomFadesTheSheetForAMomentAndKeepsTheCopyUntilTheSheetIsBack() async throws {
+        let peek = BrowserZoomPeek()
+        var changes = 0
+        peek.zoom { changes += 1 }
+        #expect(changes == 1 && peek.isPeeking && peek.showsCopy)
+
+        peek.sheetShown()
+        #expect(peek.showsCopy, "a fade back that another zoom cut short leaves the copy")
+        try await waitUntil(timeout: .seconds(5)) { !peek.isPeeking }
+        #expect(peek.showsCopy)
+        peek.sheetShown()
+        #expect(!peek.showsCopy)
+    }
+
+    @Test func closingTheSheetEndsThePeek() {
+        let peek = BrowserZoomPeek()
+        peek.zoom {}
+        peek.stop()
+        #expect(!peek.isPeeking && !peek.showsCopy)
+    }
+}
 #endif
