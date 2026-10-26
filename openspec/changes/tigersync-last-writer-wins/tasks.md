@@ -50,7 +50,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 
 ## 6. iOS PR: course membership on protocol 2
 
-- [ ] 6.1 Send `X-TigerSync-Protocol: 2` on every backend request; send hides and removals with `kind` (a hand-added course by the rule in `DataCache.deleteCourse`), adds as `adds` with their stamp, and resets with `hlc`; verify request tests for each
+- [ ] 6.1 Send `X-TigerSync-Protocol: 2` on every backend request; send hides and removals with `kind` (a hand-added course by the rule in `DataCache.deleteCourse`), adds as `adds` with their stamp and never in the upload's `courses`, and resets with `hlc`; verify request tests for each
 - [ ] 6.2 Rebuild `AppState.reconcileCourses` on tombstones, kinds, `term_resets` and `courses_reset_hlc`, with pending outbox ops held, and delete the course heuristics D12 lists; verify tests for each #689 case against a fake backend, then update `docs/decisions/0005-course-tombstones.md` (or supersede it with a new ADR) and verify `python3 tools/check_comments.py check --base origin/dev` passes
 - [ ] 6.3 Run the two-device checks of design.md's test plan on real devices against a backend built from `dev`; verify each #689 case ends with both devices agreeing
 
