@@ -6,7 +6,7 @@ import SwiftUI
 struct BrowserMenu: View {
     let page: BrowserPage
     let showsNavigation: Bool
-    /// The sheet fades while the zoom changes, so the page behind it shows the new size.
+    /// While the zoom changes, all but the zoom buttons fade out, so the page behind shows its new size.
     @Binding var peeking: Bool
     /// Runs its work once the sheet has closed, as print presents a sheet of its own.
     let afterClosing: (@escaping () -> Void) -> Void
@@ -15,37 +15,31 @@ struct BrowserMenu: View {
     @State private var peekEnd: Task<Void, Never>?
 
     static let peekDuration: Duration = .seconds(1.5)
+    private static let fade = Animation.easeInOut(duration: 0.25)
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
-            if showsNavigation { BrowserMoreRow(page: page) }
+            if showsNavigation { BrowserMoreRow(page: page).opacity(shown) }
             card {
                 zoomRow
-                Divider().padding(.leading, TigerDuckTheme.Spacing.lg)
-                HStack {
-                    Text(String(localized: "browser_appearance"))
-                    Spacer(minLength: TigerDuckTheme.Spacing.md)
-                    Picker(String(localized: "browser_appearance"), selection: $appearance) {
-                        Text(String(localized: "common_automatic")).tag(BrowserAppearance.automatic)
-                        Text(String(localized: "browser_appearance_light")).tag(BrowserAppearance.light)
-                        Text(String(localized: "browser_appearance_dark")).tag(BrowserAppearance.dark)
-                    }
-                    .pickerStyle(.segmented)
-                    .fixedSize()
+                VStack(spacing: 0) {
+                    Divider().padding(.leading, TigerDuckTheme.Spacing.lg)
+                    appearanceRow
+                    Divider().padding(.leading, TigerDuckTheme.Spacing.lg)
+                    Toggle(String(localized: "browser_desktop_site"), isOn: Binding(
+                        get: { page.isDesktopSite },
+                        set: { page.setDesktopSite($0) }
+                    ))
+                    .row()
                 }
-                .row()
-                Divider().padding(.leading, TigerDuckTheme.Spacing.lg)
-                Toggle(String(localized: "browser_desktop_site"), isOn: Binding(
-                    get: { page.isDesktopSite },
-                    set: { page.setDesktopSite($0) }
-                ))
-                .row()
+                .opacity(shown)
             }
             card {
                 action("magnifyingglass", String(localized: "browser_find")) { page.find.start() }
                 Divider().padding(.leading, 52)
                 action("printer", String(localized: "browser_print")) { page.print() }
             }
+            .opacity(shown)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.xl)
@@ -53,9 +47,26 @@ struct BrowserMenu: View {
         .onDisappear { peekEnd?.cancel() }
     }
 
+    private var shown: Double { peeking ? 0 : 1 }
+
+    private var appearanceRow: some View {
+        HStack {
+            Text(String(localized: "browser_appearance"))
+            Spacer(minLength: TigerDuckTheme.Spacing.md)
+            Picker(String(localized: "browser_appearance"), selection: $appearance) {
+                Text(String(localized: "common_automatic")).tag(BrowserAppearance.automatic)
+                Text(String(localized: "browser_appearance_light")).tag(BrowserAppearance.light)
+                Text(String(localized: "browser_appearance_dark")).tag(BrowserAppearance.dark)
+            }
+            .pickerStyle(.segmented)
+            .fixedSize()
+        }
+        .row()
+    }
+
     private var zoomRow: some View {
         HStack {
-            Text(String(localized: "browser_zoom"))
+            Text(String(localized: "browser_zoom")).opacity(shown)
             Spacer(minLength: TigerDuckTheme.Spacing.md)
             HStack(spacing: 4) {
                 zoomButton("textformat.size.smaller", String(localized: "browser_zoom_out"),
@@ -89,11 +100,11 @@ struct BrowserMenu: View {
 
     private func zoom(_ change: () -> Void) {
         change()
-        peeking = true
+        withAnimation(Self.fade) { peeking = true }
         peekEnd?.cancel()
         peekEnd = Task {
             try? await Task.sleep(for: Self.peekDuration)
-            if !Task.isCancelled { peeking = false }
+            if !Task.isCancelled { withAnimation(Self.fade) { peeking = false } }
         }
     }
 
@@ -113,7 +124,7 @@ struct BrowserMenu: View {
 
     private func card(@ViewBuilder _ content: () -> some View) -> some View {
         VStack(spacing: 0) { content() }
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26))
+            .background(Color(uiColor: .secondarySystemGroupedBackground).opacity(shown), in: RoundedRectangle(cornerRadius: 26))
     }
 }
 

@@ -45,17 +45,13 @@ struct BrowserSheetView: View {
                 }
             }
         }
-        .opacity(peeking ? Self.peekOpacity : 1)
         .presentationDetents(showsCertificate ? [.large] : [.height(height)])
         .presentationDragIndicator(.visible)
         .centeredPlacement()
-        .presentationBackground(Color(uiColor: .systemGroupedBackground).opacity(peeking ? Self.peekOpacity : 1))
+        .presentationBackground { Color(uiColor: .systemGroupedBackground).opacity(peeking ? 0 : 1) }
         // Undimmed while peeking, so the page shows as it is.
         .presentationBackgroundInteraction(peeking ? .enabled : .automatic)
-        .animation(.easeInOut(duration: 0.2), value: peeking)
     }
-
-    private static let peekOpacity = 0.28
 }
 
 private extension View {
