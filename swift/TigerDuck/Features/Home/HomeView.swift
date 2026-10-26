@@ -91,6 +91,7 @@ struct HomeView: View {
                 weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday,
                 periods: slot?.periods
             )
+            .linkRouting()
             .onDisappear { viewModel.selectedCourseSlot = nil }
         }
         // Leaving Home, by tab, by push or by going to the background, ends editing as Done does.

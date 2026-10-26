@@ -23,6 +23,7 @@ struct TigerDuckBrowserView: View {
     var body: some View {
         BrowserWebView(page: page, start: url, insets: contentInsets, findBarTop: page.find.isActive ? findBarTop : nil, appearance: appearance)
             .ignoresSafeArea(edges: addressBar == .top ? .all : .bottom)
+            .moodleFilePresentation(page.files)
             .overlay { failureView }
             .overlay(alignment: .top) {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
@@ -75,7 +76,10 @@ struct TigerDuckBrowserView: View {
             .onChange(of: page.canUsePage) { _, usable in
                 if !usable && page.find.isActive { page.find.end() }
             }
-            .onDisappear { page.signIn.close() }
+            .onDisappear {
+                // Quick Look over the browser may take it off screen; the browser stays open under it.
+                if page.files.preview == nil { page.signIn.close() }
+            }
     }
 
     /// The zoom buttons while a zoom change fades the More sheet, under the sheet's own.

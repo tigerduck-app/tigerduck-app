@@ -8,7 +8,6 @@ import Testing
 struct MailSettingsTests {
     @Test func linksPointWhereTheSpecSays() {
         #expect(MailConstants.webmailURL.absoluteString == "https://mail.ntust.edu.tw")
-        #expect(MailConstants.mail2000AppStoreURL.absoluteString == "https://apps.apple.com/tw/app/mail2000/id509471262")
     }
 
     @Test func theLoginSheetCarriesTheResetLink() {
@@ -75,34 +74,6 @@ struct MailSettingsTests {
             #expect(!MailNotificationSettingsView.notificationsToggleIsEnabled(
                 isLoggedIn: false, authFailed: authFailed))
         }
-    }
-
-    @Test func theCacheRowMeasuresEverythingAndClearingEmptiesIt() async throws {
-        let cache = SchoolMailTestDoubles.temporaryCache()
-        defer { cache.clearAll() }
-        cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1,
-                                      summaries: [SchoolMailTestDoubles.summary(uid: 1)], oldestLoadedSequence: nil))
-        let detail = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 1), messageID: nil, inReplyTo: nil,
-                                       references: nil, parts: [], textBody: String(repeating: "x", count: 500),
-                                       htmlBody: nil, inlineImages: nil)
-        cache.saveDetail(detail, folder: "INBOX", uidValidity: 1)
-        cache.saveSource(String(repeating: "s", count: 400), folder: "INBOX", uidValidity: 1, uid: 1)
-        let attachment = try cache.temporaryFileURL(filename: "課程.pdf")
-        try Data(repeating: 0, count: 700).write(to: attachment)
-
-        let measured = await MailSettingsView.measureCache(cache)
-        #expect(measured > cache.bodyBytes())
-        #expect(measured > 700)
-
-        let afterClear = await MailSettingsView.clearCache(cache)
-        #expect(afterClear == 0)
-        #expect(cache.loadPage(folder: "INBOX") == nil)
-        #expect(!FileManager.default.fileExists(atPath: attachment.path))
-    }
-
-    @Test func theCacheSizeIsFormattedAsAFileSize() {
-        #expect(MailSettingsView.cacheSizeText(bytes: 0) == ByteCountFormatter.string(fromByteCount: 0, countStyle: .file))
-        #expect(MailSettingsView.cacheSizeText(bytes: 5_242_880) != "5242880")
     }
 
     @Test func eachLoginErrorHasItsOwnCopy() {

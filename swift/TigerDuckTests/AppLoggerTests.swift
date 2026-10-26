@@ -51,4 +51,17 @@ struct AppLoggerTests {
         #expect(line.contains("https://ssoam2.ntust.edu.tw/connect/authorize/callback?***"))
         #expect(!line.contains("SECRETCODE"))
     }
+
+    @Test("a bounce keeps only a label for the host it landed on", arguments: [
+        ("https://i.ntust.edu.tw/student/B11000000?token=abc", "i.ntust.edu.tw"),
+        ("https://SSOAM2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect", "ssoam2"),
+        ("https://ssoam.ntust.edu.tw/nidp/app/login?id=B11000000", "ssoam"),
+        ("https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/Login", "service"),
+        ("https://moodle2.ntust.edu.tw/login/index.php", "other"),
+        ("about:blank", "other"),
+    ])
+    func landedHostIsALabel(landed: String, expected: String) {
+        let service = URL(string: "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery/DisplayAll")!
+        #expect(AppLogger.landedHost(URL(string: landed), service: service) == expected)
+    }
 }

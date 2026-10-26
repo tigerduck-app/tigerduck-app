@@ -4,6 +4,9 @@ nonisolated struct MoodleCourseSummary: Codable, Sendable, Equatable {
     let html: String
     let text: String
     let names: [String]
+    /// The course format, such as `weeks` or `topics`, and its start date, which find the current week.
+    var format: String? = nil
+    var startDate: Date? = nil
 
     static let empty = MoodleCourseSummary(html: "", text: "", names: [])
 
@@ -49,6 +52,8 @@ private nonisolated struct RawCourse: Decodable, Sendable {
     let shortname: String?
     let idnumber: String?
     let summary: String?
+    let format: String?
+    let startdate: Int?
 
     var model: MoodleCourseSummary {
         let html = summary ?? ""
@@ -57,7 +62,9 @@ private nonisolated struct RawCourse: Decodable, Sendable {
             text: MoodleHTMLText.plainText(fromHTML: html),
             names: [fullname, displayname, shortname, idnumber].compactMap { $0 }
                 .map(MoodleHTMLText.plainText(fromHTML:))
-                .filter { !$0.isEmpty }
+                .filter { !$0.isEmpty },
+            format: format,
+            startDate: startdate.map { Date(timeIntervalSince1970: TimeInterval($0)) }
         )
     }
 }

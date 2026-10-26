@@ -3,7 +3,7 @@ import os
 
 enum CourseServiceError: LocalizedError {
     case notAuthenticated
-    case redirectedToSSO
+    case redirectedToSSO(landedHost: String)
     case noCourseData
     case networkError(Error)
 
@@ -58,6 +58,11 @@ enum CourseSelectionService {
         let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != courseListURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
         if landedElsewhere || bodyIsSSO {
+            let landedHost = AppLogger.landedHost(response.url, service: courseListURL)
+            var outcome = AppLogger.BounceOutcome.failed
+            defer {
+                AppLogger.serviceBounce(service: "courseList", landedHost: landedHost, ssoBody: bodyIsSSO, outcome: outcome)
+            }
             NTUSTSessionManager.shared.dropServiceCookies(for: courseListURL)
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
@@ -74,8 +79,12 @@ enum CourseSelectionService {
             }
             let retryHost = (retryResponse as? HTTPURLResponse)?.url?.host
             if retryHost != courseListURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
-                throw CourseServiceError.redirectedToSSO
+                outcome = .bouncedAgain
+                throw CourseServiceError.redirectedToSSO(
+                    landedHost: AppLogger.landedHost(retryResponse.url, service: courseListURL)
+                )
             }
+            outcome = .recovered
             let retryCourseNos = courseNos(inListPage: retryHTML)
             if persistGuard?() ?? true {
                 saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)

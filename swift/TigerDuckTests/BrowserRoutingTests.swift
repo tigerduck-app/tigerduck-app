@@ -31,6 +31,25 @@ struct BrowserRoutingTests {
         #expect(BrowserRouting.decision(for: url) == .openOutside(url))
     }
 
+    @Test func aDownloadFollowsARedirectOnlyToASchoolPage() {
+        #expect(BrowserRouting.allowsDownloadRedirect(to: Self.url("https://moodle2.ntust.edu.tw/pluginfile.php/1/a.pdf")))
+        #expect(!BrowserRouting.allowsDownloadRedirect(to: Self.url("https://files.example.com/a.pdf")))
+        #expect(!BrowserRouting.allowsDownloadRedirect(to: Self.url("http://moodle2.ntust.edu.tw/a.pdf")))
+        #expect(!BrowserRouting.allowsDownloadRedirect(to: nil))
+    }
+
+    @Test func aPageThatCannotBeShownOrIsAnAttachmentIsSaved() {
+        func action(_ canShow: Bool, _ disposition: String?, mainFrame: Bool = true) -> BrowserRouting.ResponseAction {
+            BrowserRouting.responseAction(canShow: canShow, contentDisposition: disposition, isMainFrame: mainFrame)
+        }
+        #expect(action(true, nil) == .show)
+        #expect(action(true, "inline; filename=\"week1.pdf\"") == .show)
+        #expect(action(false, nil) == .download)
+        #expect(action(true, "attachment; filename=\"notes.docx\"") == .download)
+        #expect(action(true, " Attachment ") == .download)
+        #expect(action(false, "attachment", mainFrame: false) == .show)
+    }
+
     @Test func mailLinksGoToTheMailAppAndOtherSchemesNowhere() {
         let mail = Self.url("mailto:someone@mail.ntust.edu.tw")
         #expect(BrowserRouting.decision(for: mail, byLinkTap: true) == .handOff(mail))

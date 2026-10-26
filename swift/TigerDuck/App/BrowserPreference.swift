@@ -1,10 +1,5 @@
 import Foundation
 
-enum BrowserPreference: String, CaseIterable {
-    case system
-    case inApp
-}
-
 enum BrowserAddressBar: String, CaseIterable {
     case top
     case bottom

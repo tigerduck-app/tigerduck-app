@@ -18,6 +18,11 @@ nonisolated enum BrowserRouting {
     /// Moodle's OIDC entry, which signs the browser in with the school SSO session it holds.
     static let webSignInURL = URL.knownGood("https://moodle2.ntust.edu.tw/auth/oidc/?source=loginpage")
 
+    /// A download leaves the web view's navigation delegate, so its redirects get the same check here.
+    static func allowsDownloadRedirect(to url: URL?) -> Bool {
+        url.map { decision(for: $0) == .load } ?? false
+    }
+
     /// `byLinkTap` is whether the student tapped a link: a script's navigation never opens Mail.
     static func decision(for url: URL, byLinkTap: Bool = false) -> Decision {
         switch url.scheme?.lowercased() {
@@ -32,6 +37,19 @@ nonisolated enum BrowserRouting {
         default:
             return .refuse
         }
+    }
+
+    enum ResponseAction: Equatable {
+        case show
+        case download
+    }
+
+    /// A page's response WebKit cannot show, or one its server sends as an attachment, is a file
+    /// to save. A frame's is left to WebKit, as the browser shows only the page's own files.
+    static func responseAction(canShow: Bool, contentDisposition: String?, isMainFrame: Bool) -> ResponseAction {
+        guard isMainFrame else { return .show }
+        let disposition = contentDisposition?.split(separator: ";").first?.trimmingCharacters(in: .whitespaces).lowercased()
+        return canShow && disposition != "attachment" ? .show : .download
     }
 
     /// https on the default port with no user in the address, on a subdomain of ntust.edu.tw.

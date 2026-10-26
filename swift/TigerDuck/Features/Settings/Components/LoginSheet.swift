@@ -24,9 +24,7 @@ struct LoginSheet: View {
     /// (RFC 5321 §2.3.11), so the upper-cased form is what would be sent to `LOGIN`.
     let usernameIsAnAddress: Bool
 
-    @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    @State private var inAppURL: URL?
 
     @State private var username: String
     @State private var password: String
@@ -89,7 +87,7 @@ struct LoginSheet: View {
                                 .font(.caption)
                         }
                         if let footerLink {
-                            Button(footerLink.title) { open(footerLink.url) }
+                            Button(footerLink.title) { openURL(footerLink.url) }
                                 .font(.caption)
                         }
                     }
@@ -131,13 +129,6 @@ struct LoginSheet: View {
                 focusedField = username.isEmpty ? .username : (password.isEmpty ? .password : nil)
             }
             .interactiveDismissDisabled(isLoggingIn)
-            #if os(iOS)
-            .sheet(isPresented: Binding(get: { inAppURL != nil }, set: { if !$0 { inAppURL = nil } })) {
-                if let inAppURL {
-                    InAppBrowserView(url: inAppURL).ignoresSafeArea()
-                }
-            }
-            #endif
         }
         .presentationDetents([.medium])
     }
@@ -149,15 +140,5 @@ struct LoginSheet: View {
         #endif
         focusedField = nil
         onLogin(username, password)
-    }
-
-    private func open(_ url: URL) {
-        #if os(iOS)
-        if appState.browserPreference == .inApp {
-            inAppURL = url
-            return
-        }
-        #endif
-        openURL(url)
     }
 }

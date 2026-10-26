@@ -64,5 +64,11 @@
     <array>
         <string>org.ntust.app.TigerDuck.mailRefresh</string>
     </array>
+    <!-- `LinkRouting` asks canOpenURL whether the Moodle app is installed before it opens
+         a Moodle link, which iOS answers only for schemes listed here. -->
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>moodlemobile</string>
+    </array>
 </dict>
 </plist>

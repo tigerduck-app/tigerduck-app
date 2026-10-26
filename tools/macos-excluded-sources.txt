@@ -154,6 +154,8 @@ NotificationPermissionSettingsView.swift  # macOS never receives notifications, 
 OpenSourceLicensesView.swift
 OtherSettingsView.swift
 SourceCodePickerView.swift
+StorageSettingsView.swift  # School Mail and the TigerDuck browser are iOS only; the Mac keeps MoodleFilesCacheSection
+StorageUsage.swift
 SyncContentSettingsView.swift
 TabEditorView.swift
 SettingsView.swift
@@ -204,7 +206,6 @@ EmptyStateView.swift
 GlassTextButtonModifier.swift
 HeaderMenuButton.swift
 HostScreenReader.swift
-InAppBrowserView.swift
 JustifiedText.swift
 LoginRequiredView.swift
 NTUSTReauthErrorBanner.swift
@@ -317,7 +318,6 @@ SettingsDocumentClient.swift
 MailComposeView.swift
 MailComposeViewModel.swift
 MailDateFormatter.swift
-MailGuideView.swift
 MailListViewModel.swift
 MailMessageView.swift
 MailMessageViewModel.swift
@@ -332,7 +332,6 @@ SchoolMailView.swift
 MailAttachmentList.swift
 MailCredentialPrefill.swift
 MailFolderChipBar.swift
-MailGuideWebView.swift
 MailHTMLView.swift
 MailLoginCard.swift
 MailLoginSheet.swift
@@ -418,5 +417,6 @@ BrowserSessionSignIn.swift
 BrowserSheets.swift
 BrowserSignIn.swift
 BrowserSites.swift
+LinkRouting.swift
 TigerDuckBrowserView.swift
 BrowserAddressBarPicker.swift

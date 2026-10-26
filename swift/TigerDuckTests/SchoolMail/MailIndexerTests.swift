@@ -158,7 +158,7 @@ struct MailIndexerTests {
         h.indexer.startIfDue(folders: ["INBOX", "Sent"])
         await h.indexer.waitForPass()
         let calls = await h.fake.calls
-        #expect(!calls.contains("undeletedUIDs Sent"))
+        #expect(!calls.contains { $0.hasPrefix("searchTexts Sent") })
 
         await h.fake.update { $0.searchTextsError = nil }
         h.clock.now += MailConstants.indexRetryDelay
@@ -294,11 +294,47 @@ struct MailIndexerTests {
         await h.indexer.waitForPass()
         #expect(await h.textBatches().count == 1)
         #expect(h.search("公告 45") == [45])
+        #expect(h.indexer.progress == nil)
 
         h.network.isConstrained = false
         await h.runPass()
         #expect(await h.textBatches().count == 3)
         #expect(h.search("公告 1") == [19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 1])
+    }
+
+    @Test func aPassListsEveryFolderBeforeItDownloadsAndCountsEachBatch() async throws {
+        let h = Self.harness()
+        await h.fake.hold("undeletedUIDs")
+        h.indexer.startIfDue(folders: ["INBOX", "Sent"])
+        await h.fake.waitForArrival("undeletedUIDs")
+        #expect(h.indexer.progress == .counting)
+
+        await h.fake.update { fake in
+            fake.release("undeletedUIDs")
+            fake.hold("searchTexts")
+        }
+        await h.fake.waitForArrival("searchTexts")
+        #expect(await h.fake.calls.contains("undeletedUIDs Sent"))
+        #expect(h.indexer.progress == MailIndexProgress(total: 46))
+
+        await h.fake.update { fake in
+            fake.release("searchTexts")
+            fake.hold("searchTexts")
+        }
+        try await waitUntil { h.indexer.progress?.done == 20 }
+        #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "20/46")
+        await h.fake.release("searchTexts")
+        await h.indexer.waitForPass()
+        #expect(h.indexer.progress == nil)
+        #expect(h.search("寄件", in: "Sent") == [1])
+    }
+
+    @Test func progressTextGroupsDigitsAsTheLocaleDoes() {
+        var progress = MailIndexProgress(total: 5_678)
+        progress.advance(by: 1_234)
+        #expect(progress.text(locale: Locale(identifier: "en_US")) == "1,234/5,678")
+        #expect(progress.text(locale: Locale(identifier: "de_DE")) == "1.234/5.678")
+        #expect(MailIndexProgress.counting.text(locale: Locale(identifier: "en_US")) == nil)
     }
 
     @Test func aCancelledDownloadKeepsTheBatchInFlightAndSendsNoOther() async throws {

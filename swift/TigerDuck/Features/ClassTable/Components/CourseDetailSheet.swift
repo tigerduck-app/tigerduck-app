@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -21,6 +22,7 @@ struct CourseDetailSheet: View {
     @State private var ownMoodlePath: [MoodleCourseRoute] = []
     @State private var moodle: MoodleCourseStore?
     @State private var moodleAttempt = 0
+    @State private var syllabus: CourseSyllabus?
     #if os(iOS)
     @State private var detent: PresentationDetent = .medium
     #endif
@@ -52,7 +54,10 @@ struct CourseDetailSheet: View {
             .courseDetailRootBar()
             #endif
             .navigationDestination(for: MoodleCourseRoute.self) { route in
-                if let moodle {
+                if case .syllabus(let syllabus) = route {
+                    CourseSyllabusView(syllabus: syllabus, policy: appState.visualStylePolicy)
+                        .moodleLinkOpening()
+                } else if let moodle {
                     moodleDestination(route, store: moodle)
                         .moodleLinkOpening()
                 }
@@ -62,6 +67,11 @@ struct CourseDetailSheet: View {
             courseNo: course.courseNo, attempt: moodleAttempt, generation: appState.authService.loginGeneration
         )) {
             moodle = makeMoodleStore()
+        }
+        .task(id: [course.semester, course.courseNo]) {
+            syllabus = nil
+            let loaded = await loadSyllabus()
+            if !Task.isCancelled { syllabus = loaded }
         }
         .onChange(of: appState.authService.loginGeneration) {
             routes.wrappedValue = []
@@ -98,7 +108,7 @@ struct CourseDetailSheet: View {
         case .announcement(let discussion):
             MoodleAnnouncementView(store: store, discussion: discussion) { routes.wrappedValue.append($0) }
         case .materials:
-            MoodleMaterialsView(store: store)
+            MoodleMaterialsView(store: store, policy: appState.visualStylePolicy)
         case .grades:
             MoodleGradesView(store: store)
         case .members:
@@ -124,7 +134,21 @@ struct CourseDetailSheet: View {
             #else
             EmptyView()
             #endif
+        case .syllabus:
+            EmptyView()
         }
+    }
+
+    /// Nil for a course without a term or course number, such as one the student added by hand,
+    /// and when the fetch fails or the syllabus has nothing to show.
+    private func loadSyllabus() async -> CourseSyllabus? {
+        guard !course.semester.isEmpty, !course.courseNo.isEmpty else { return nil }
+        let syllabus = try? await CourseLookupService.syllabus(
+            semester: course.semester,
+            courseNo: course.courseNo,
+            language: LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
+        )
+        return syllabus?.hasContent == true ? syllabus : nil
     }
 
     private func makeMoodleStore() -> MoodleCourseStore? {
@@ -158,6 +182,17 @@ struct CourseDetailSheet: View {
                     .font(.title.bold())
                     .foregroundStyle(Color.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let syllabus {
+                    Button {
+                        routes.wrappedValue.append(.syllabus(syllabus))
+                    } label: {
+                        Image(systemName: "doc.text.fill")
+                            .font(.title2)
+                            .foregroundStyle(.tint)
+                    }
+                    .accessibilityLabel(String(localized: "course_detail_syllabus"))
+                }
 
                 if showsMoodle, course.moodleOpenURL != nil {
                     Button(action: openMoodleCourse) {

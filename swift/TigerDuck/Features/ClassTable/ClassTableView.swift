@@ -151,6 +151,7 @@ struct ClassTableView: View {
                     periods: viewModel.selectedCoursePeriods,
                     showsMoodle: viewModel.shownPerson == nil
                 )
+                .linkRouting()
             }
             .sheet(isPresented: $viewModel.showAddCourse) {
                 AddCourseSheet(
@@ -299,7 +300,7 @@ struct ClassTableView: View {
             Spacer()
             if pageAccessState != .loginRequired {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    SyncStatusDot(servers: [.moodle, .courseSelection, .backend], lastSynced: .schoolData)
+                    SyncStatusDot(servers: ServerKind.classTableSources, lastSynced: .schoolData)
                     headerActions
                 }
             }

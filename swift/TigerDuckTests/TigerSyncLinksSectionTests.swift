@@ -11,14 +11,14 @@ struct TigerSyncLinksSectionTests {
         var urls: [URL] = []
     }
 
-    @Test(arguments: [BrowserPreference.inApp, .system])
-    func aLinkOpensWhereTheSettingSays(preference: BrowserPreference) async throws {
+    @Test func aLinkToTheWebsiteOpensInTheSystemBrowser() async throws {
         try await withAccessibilityAutomation {
             let opened = Opened()
             let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
             let window = UIWindow(windowScene: scene)
             window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-            let host = UIHostingController(rootView: Form { TigerSyncLinksSection(browserPreference: preference) }
+            let host = UIHostingController(rootView: Form { TigerSyncLinksSection() }
+                .linkRouting()
                 .environment(\.openURL, OpenURLAction { url in
                     opened.urls.append(url)
                     return .handled
@@ -34,15 +34,9 @@ struct TigerSyncLinksSectionTests {
             try await waitUntil { accessibilityElement(labeled: label, in: host.view) != nil }
             _ = try #require(accessibilityElement(labeled: label, in: host.view)).accessibilityActivate()
 
-            switch preference {
-            case .inApp:
-                try await waitUntil(timeout: .seconds(10)) { host.presentedViewController != nil }
-                #expect(opened.urls.isEmpty)
-            case .system:
-                try await waitUntil(timeout: .seconds(10)) { !opened.urls.isEmpty }
-                #expect(opened.urls == [AppURLs.privacyPolicy])
-                #expect(host.presentedViewController == nil)
-            }
+            try await waitUntil(timeout: .seconds(10)) { !opened.urls.isEmpty }
+            #expect(opened.urls == [AppURLs.privacyPolicy])
+            #expect(host.presentedViewController == nil)
         }
     }
 }

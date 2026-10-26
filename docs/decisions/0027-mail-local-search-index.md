@@ -24,10 +24,13 @@ The mail page shares one IMAP connection, whose `AsyncSerialLock` was strictly f
 - `MailCache.clearAll()`, which School Mail's sign-out and Clear Cache run, closes and deletes it.
   Every write is refused once `MailCache.wipeCount` has moved since the download began.
 - `MailIndexer` (`swift/TigerDuck/Services/Mail/Sync/MailIndexer.swift`) downloads while the mail
-  page is on screen and the app is active: Inbox and Sent first, then the other folders. For each
-  folder it lists the undeleted UIDs, drops the mail the server no longer has and fetches what is
-  missing, newest first, 20 mails per command. A pass that got through holds off the next for 15
-  minutes, unless the list found new mail.
+  page is on screen and the app is active: Inbox and Sent first, then the other folders. A pass
+  first lists every folder's undeleted UIDs and drops the mail the server no longer has, then
+  fetches what is missing, newest first, 20 mails per command. A pass that got through holds off
+  the next for 15 minutes, unless the list found new mail.
+- Through a pass the mail page's status dot spins, and its School Mail row shows the mail fetched
+  of the pass's total, such as "120/3,456", or "Syncing…" while the folders are still being
+  listed, as the Android app's does.
 - A search looks in the index and in the mail the list has loaded, a folder at a time, and stops
   mid-scan once a newer search replaces it. It then fetches the newest 50 matches' summaries from
   the server, which drops mail deleted since. While the index is still filling, it shows what it
@@ -56,4 +59,5 @@ The mail page shares one IMAP connection, whose `AsyncSerialLock` was strictly f
 - A mail's text part over 256 KB, or one that will not decode, is found by sender and subject only.
 - `MailSearchIndexTests`, `MailIndexerTests` and `AsyncSerialLockTests` pin the matching, the
   incremental download, UIDVALIDITY and deletion handling, the wipe, the retries and skips, the
-  Low Data Mode pause, the interrupted scan, the unreadable file and the yielding order.
+  Low Data Mode pause, the progress, the interrupted scan, the unreadable file and the yielding
+  order.

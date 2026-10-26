@@ -48,7 +48,7 @@ struct MoodleCourseSummaryServiceTests {
         #expect(body == "wstoken=\(token)&field=id&value=20119&moodlewssettingfilter=true")
     }
 
-    @Test("a course decodes its summary as HTML and as one line of text, with its names as text")
+    @Test("a course decodes its summary as HTML and as one line of text, its names as text, and its format and start date")
     func decode() async throws {
         let token = UUID().uuidString
         Self.answer(Self.course, token: token)
@@ -60,6 +60,8 @@ struct MoodleCourseSummaryServiceTests {
         #expect(summary.html.hasPrefix("<p dir=\"ltr\">Layers and protocols"))
         #expect(summary.text == "Layers and protocols, from HTTP to TCP. Lab every two weeks")
         #expect(summary.names == ["Computer Networks & Lab", "Computer Networks & Lab", "1141CS3105301 Networks"])
+        #expect(summary.format == "weeks")
+        #expect(summary.startDate == Date(timeIntervalSince1970: 1_788_192_000))
     }
 
     @Test("a course Moodle does not list has no summary")

@@ -2,29 +2,42 @@ import SwiftUI
 
 struct MoodleMaterialsView: View {
     let store: MoodleCourseStore
+    let policy: VisualStylePolicy
 
-    @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
     @State private var files = MoodleFileOpener()
+    @State private var isLaidOut = false
+    @State private var hasScrolledToWeek = false
 
     var body: some View {
-        // Not a List: a long press there lifts the whole row, here a week's card, rather than
-        // the file under the finger.
-        ScrollView {
-            if let materials = store.materials.value {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(materials.sections.enumerated()), id: \.element.id) { index, section in
-                        sectionView(section, isFirst: index == 0)
-                            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                            .padding(.vertical, TigerDuckTheme.Spacing.xs)
+        let currentWeek = currentWeekSectionId
+        ScrollViewReader { proxy in
+            // Not a List: a long press there lifts the whole row, here a week's card, rather than
+            // the file under the finger.
+            ScrollView {
+                if let materials = store.materials.value {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(materials.sections.enumerated()), id: \.element.id) { index, section in
+                            sectionView(section, isFirst: index == 0, isCurrentWeek: section.id == currentWeek)
+                                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                                .padding(.vertical, TigerDuckTheme.Spacing.xs)
+                        }
                     }
+                } else {
+                    MoodleFirstLoadView(
+                        failure: store.materials.isRefreshing ? nil : store.materials.failure,
+                        retry: { await store.refreshMaterials() }
+                    )
                 }
-            } else {
-                MoodleFirstLoadView(
-                    failure: store.materials.isRefreshing ? nil : store.materials.failure,
-                    retry: { await store.refreshMaterials() }
-                )
+            }
+            // A scrollTo before the scroll view's first layout does nothing, and a summary still
+            // loading can change the week: its format decides how the week is found.
+            .onGeometryChange(for: Bool.self, of: { $0.size.height > 0 }) { isLaidOut = $0 }
+            .onChange(of: isLaidOut && !store.summary.isRefreshing ? currentWeek : nil, initial: true) { _, section in
+                guard let section, !hasScrolledToWeek else { return }
+                hasScrolledToWeek = true
+                proxy.scrollTo(section, anchor: .top)
             }
         }
         .background(Color.backgroundPrimary)
@@ -42,18 +55,28 @@ struct MoodleMaterialsView: View {
         .moodleFilePresentation(files)
     }
 
-    private func sectionView(_ section: MoodleMaterialSection, isFirst: Bool) -> some View {
+    /// The course's details come from the summary call, which the course page keeps fresh.
+    private var currentWeekSectionId: Int? {
+        guard let sections = store.materials.value?.sections else { return nil }
+        let course = store.summary.value
+        return MoodleCurrentWeek.sectionId(
+            in: sections, format: course?.format, startDate: course?.startDate,
+            now: AppClock.now(), calendar: AppConstants.taipeiCalendar
+        )
+    }
+
+    private func sectionView(_ section: MoodleMaterialSection, isFirst: Bool, isCurrentWeek: Bool) -> some View {
         let rows = MoodleMaterialRow.rows(of: section)
         let neighbours = section.materials.flatMap(\.fileRefs)
         return VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             if !section.name.isEmpty {
                 Text(section.name)
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color.textSecondary)
+                    .foregroundStyle(isCurrentWeek ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
                     .lineLimit(2)
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, isFirst ? 0 : TigerDuckTheme.Spacing.sm)
-                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityAddTraits(isCurrentWeek ? [.isHeader, .isSelected] : .isHeader)
             }
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
@@ -63,7 +86,7 @@ struct MoodleMaterialsView: View {
                     rowView(row, neighbours: neighbours)
                 }
             }
-            .presetCard(policy: appState.visualStylePolicy)
+            .presetCard(policy: policy)
         }
     }
 

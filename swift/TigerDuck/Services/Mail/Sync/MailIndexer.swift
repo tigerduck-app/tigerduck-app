@@ -1,5 +1,30 @@
 #if os(iOS)
 import Foundation
+import Observation
+
+/// How far a pass of `MailIndexer` has come: `done` of the `total` mails the index lacked, or
+/// `counting` while the pass still lists every folder for that total.
+nonisolated struct MailIndexProgress: Equatable, Sendable {
+    private(set) var done = 0
+    let total: Int?
+
+    static let counting = MailIndexProgress(total: nil)
+
+    init(total: Int?) {
+        self.total = total
+    }
+
+    mutating func advance(by count: Int) {
+        done += count
+    }
+
+    /// "120/3,456", with `locale`'s digit grouping; nil while there is no total yet.
+    func text(locale: Locale = .autoupdatingCurrent) -> String? {
+        guard let total else { return nil }
+        let format = IntegerFormatStyle<Int>.number.locale(locale)
+        return done.formatted(format) + "/" + total.formatted(format)
+    }
+}
 
 /// Downloads every folder's mail into `MailSearchIndex` while the mail page is on screen, newest
 /// first and `MailConstants.indexBatchSize` mails per command. A pass that got through holds off
@@ -7,8 +32,16 @@ import Foundation
 /// waits longer before each retry, and Low Data Mode pauses it.
 /// See docs/decisions/0027-mail-local-search-index.md.
 @MainActor
+@Observable
 final class MailIndexer {
     private enum Outcome { case complete, failed, paused }
+
+    /// What a folder's index lacks, newest first.
+    private struct Plan {
+        var folder: String
+        var uidValidity: UInt32
+        var missing: [UInt32]
+    }
 
     private struct MailKey: Hashable {
         var folder: String
@@ -33,6 +66,7 @@ final class MailIndexer {
     /// skipped after failing alone `failuresBeforeSkipping` times. Kept until the account changes
     /// or the app quits.
     private var strikes: [MailKey: Int] = [:]
+    private(set) var progress: MailIndexProgress?
 
     init(
         session: MailPageSession,
@@ -114,56 +148,96 @@ final class MailIndexer {
         }
     }
 
+    /// Lists every folder before it downloads any, so the progress has one total from the start.
     /// A lost connection, a busy server or a rejected password ends the pass rather than trying
     /// each folder again: NTUST counts failed logins towards a lockout.
     private func pass(folders: [String], wipeCount: Int) async -> Outcome {
+        progress = .counting
+        defer { progress = nil }
         var failed = false
-        for folder in folders {
-            guard !Task.isCancelled, !isConstrained() else { return .paused }
-            do {
-                if !(try await update(folder: folder, wipeCount: wipeCount)) { failed = true }
-            } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
-                return isConstrained() ? .paused : .failed
-            } catch {
-                failed = true
+        do {
+            var plans: [Plan] = []
+            for folder in folders {
+                guard !Task.isCancelled, !isConstrained() else { return .paused }
+                if let plan = try await attempt({ try await self.plan(folder: folder, wipeCount: wipeCount) }) {
+                    plans.append(plan)
+                } else {
+                    failed = true
+                }
             }
+            let total = plans.reduce(0) { $0 + $1.missing.count }
+            // An index that is already current shows nothing rather than spinning at 0/0.
+            progress = total > 0 ? MailIndexProgress(total: total) : nil
+            for plan in plans {
+                guard !Task.isCancelled, !isConstrained() else { return .paused }
+                let filled = try await attempt {
+                    try await self.fill(plan, wipeCount: wipeCount) { self.progress?.advance(by: $0) }
+                }
+                if filled != true { failed = true }
+            }
+        } catch {
+            return isConstrained() ? .paused : .failed
         }
         if isConstrained() { return .paused }
         return failed ? .failed : .complete
     }
 
+    /// One folder's step; nil when it failed. Throws only an error that ends the pass.
+    private func attempt<T>(_ step: () async throws -> T?) async throws -> T? {
+        do {
+            return try await step()
+        } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
+            throw error
+        } catch {
+            return nil
+        }
+    }
+
     /// Brings `folder`'s index to the server's mail; false when it stopped before the end or a
     /// batch failed.
     func update(folder: String, wipeCount: Int) async throws -> Bool {
+        guard let plan = try await plan(folder: folder, wipeCount: wipeCount) else { return false }
+        return try await fill(plan, wipeCount: wipeCount)
+    }
+
+    /// Drops the mail the server no longer has from `folder`'s index; nil when it stopped.
+    private func plan(folder: String, wipeCount: Int) async throws -> Plan? {
         let index = cache.searchIndex
         let listed = try await session.use { client in try await client.undeletedUIDs(folder: folder) }
         let validity = listed.uidValidity
         let onServer = Set(listed.uids)
         guard !Task.isCancelled, let held = await Task.detached(operation: {
             index.prepare(folder: folder, uidValidity: validity, onServer: onServer, wipeCount: wipeCount)
-        }).value else { return false }
+        }).value else { return nil }
         let missing = onServer.subtracting(held).filter {
             (strikes[MailKey(folder: folder, uidValidity: validity, uid: $0)] ?? 0) < Self.failuresBeforeSkipping
         }
+        return Plan(folder: folder, uidValidity: validity, missing: missing.sorted(by: >))
+    }
+
+    /// Tells `onBatch` how many mails each batch dealt with, a failed one's too.
+    private func fill(_ plan: Plan, wipeCount: Int, onBatch: (Int) -> Void = { _ in }) async throws -> Bool {
+        let index = cache.searchIndex
+        let folder = plan.folder
+        let validity = plan.uidValidity
         var complete = true
-        for batch in batches(of: missing.sorted(by: >), folder: folder, uidValidity: validity) {
+        for batch in batches(of: plan.missing, folder: folder, uidValidity: validity) {
             guard !Task.isCancelled, !isConstrained() else { return false }
-            let texts: [UInt32: String]
             do {
-                texts = try await session.use { client in
+                let texts = try await session.use { client in
                     try await client.searchTexts(folder: folder, uids: batch, expectedUIDValidity: validity)
                 }
+                let added = await Task.detached {
+                    index.add(texts, folder: folder, uidValidity: validity, wipeCount: wipeCount)
+                }.value
+                guard added else { return false }
             } catch let error as MailClientError where Self.blamesTheMail(error) {
                 // A stop, as at sign-out, can be what failed it.
                 guard !Task.isCancelled else { return false }
                 strike(batch, folder: folder, uidValidity: validity)
                 complete = false
-                continue
             }
-            let added = await Task.detached {
-                index.add(texts, folder: folder, uidValidity: validity, wipeCount: wipeCount)
-            }.value
-            guard added else { return false }
+            onBatch(batch.count)
         }
         return complete
     }

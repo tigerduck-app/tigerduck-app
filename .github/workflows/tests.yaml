@@ -60,6 +60,7 @@ jobs:
               TigerDuckTests/ClassTableSwitcherTests
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
+              TigerDuckTests/CourseSyllabusPageTests
               TigerDuckTests/EmptyClassroomLayoutTests
               TigerDuckTests/HomeEditPageTests
               TigerDuckTests/HomeScrollAnchorTests
@@ -73,6 +74,7 @@ jobs:
               TigerDuckTests/MoodleCourseMembersTests/aMembersOwnPictureOpensFromTheirPage()
               TigerDuckTests/MoodleCourseMembersTests/aRowTellsTheDepartmentAfterTheStudentId()
               TigerDuckTests/MoodleCourseMembersTests/onlyRowsOnScreenAskForTheirPictures()
+              TigerDuckTests/MoodleMaterialsWeekPageTests
               TigerDuckTests/MoodleOwnProfileTests/doneUploadsOnce()
               TigerDuckTests/MoodleOwnProfileTests/theCameraButtonFollowsTheSite()
               TigerDuckTests/MoodleOwnProfileTests/theOwnRowSaysMe()
@@ -81,6 +83,7 @@ jobs:
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
               TigerDuckTests/ScrollPositionOriginTests
+              TigerDuckTests/StorageSettingsScreenTests
               TigerDuckTests/SyncStatusDotDetailsTests
               TigerDuckTests/TigerSyncLinksSectionTests
               TigerDuckTests/TimeSliderAccessibilityTests

@@ -2,7 +2,7 @@ import Foundation
 
 enum NTUSTScoreServiceError: LocalizedError {
     case notAuthenticated
-    case redirectedToSSO
+    case redirectedToSSO(landedHost: String)
     case invalidResponse
     case parseFailed
 
@@ -94,6 +94,11 @@ enum NTUSTScoreService {
         let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != scoreDisplayURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
         if landedElsewhere || bodyIsSSO {
+            let landedHost = AppLogger.landedHost(response.url, service: scoreDisplayURL)
+            var outcome = AppLogger.BounceOutcome.failed
+            defer {
+                AppLogger.serviceBounce(service: "score", landedHost: landedHost, ssoBody: bodyIsSSO, outcome: outcome)
+            }
             NTUSTSessionManager.shared.dropServiceCookies(for: scoreDisplayURL)
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
@@ -110,8 +115,12 @@ enum NTUSTScoreService {
             }
             let retryHost = (retryResp as? HTTPURLResponse)?.url?.host
             if retryHost != scoreDisplayURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
-                throw NTUSTScoreServiceError.redirectedToSSO
+                outcome = .bouncedAgain
+                throw NTUSTScoreServiceError.redirectedToSSO(
+                    landedHost: AppLogger.landedHost(retryResp.url, service: scoreDisplayURL)
+                )
             }
+            outcome = .recovered
             return retryHTML
         }
 

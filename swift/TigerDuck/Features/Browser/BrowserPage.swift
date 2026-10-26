@@ -18,6 +18,7 @@ final class BrowserPage {
     fileprivate(set) var progress = 0.0
     fileprivate(set) var isCollapsed = false
     var failure: Failure?
+    @ObservationIgnored fileprivate var failedDownload: URLRequest?
     var outside: URL?
     /// The page the browser opened with, which the bars name until a page commits.
     fileprivate(set) var start: URL?
@@ -29,6 +30,11 @@ final class BrowserPage {
     fileprivate(set) var isDesktopSite = false
     let store: WKWebsiteDataStore
     let generation: Int
+    let files = MoodleFileOpener()
+    /// This browser's saved files, removed with it; `BrowserData.reset()` removes every browser's.
+    nonisolated let downloads = BrowserPage.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent("BrowserDownloads", isDirectory: true)
     @ObservationIgnored fileprivate weak var webView: WKWebView?
     @ObservationIgnored private var collapse = BrowserChromeCollapse()
 
@@ -44,6 +50,10 @@ final class BrowserPage {
                 return url == target ? nil : url
             }
         )
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: downloads)
     }
 
     /// The address the bars, the sheet, Copy and Share go by: a one-time sign-in link stands for
@@ -76,12 +86,18 @@ final class BrowserPage {
     func reloadOrStop() {
         if isLoading {
             webView?.stopLoading()
-        } else if failure != nil, let address {
+        } else if failure != nil, let request = Self.retryRequest(failedDownload: failedDownload, address: address) {
             failure = nil
-            webView?.load(URLRequest(url: address))
+            failedDownload = nil
+            webView?.load(request)
         } else {
             webView?.reload()
         }
+    }
+
+    /// A download never commits as a page, so the address still names the page it started from.
+    static func retryRequest(failedDownload: URLRequest?, address: URL?) -> URLRequest? {
+        failedDownload ?? address.map { URLRequest(url: $0) }
     }
 
     /// Find and print need a page on screen, not an error or a sign-in under way.
@@ -142,10 +158,11 @@ final class BrowserPage {
 /// The web view's delegate: routes each navigation, turns Moodle's sign-in page into a sign-in,
 /// applies the app's TLS pins and keeps ``BrowserPage`` current.
 @MainActor
-final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
+final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private let page: BrowserPage
     private var observations: [NSKeyValueObservation] = []
     private var refusedHosts: Set<String> = []
+    private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
     /// The Moodle page asked for last, which a sign-in its navigation ran into goes on to.
     private var lastRequested: URL?
     /// How long the store keeps Moodle's session cookie on disk; Moodle's own timeout ends it sooner.
@@ -245,6 +262,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
             }
             if BrowserRouting.isMoodleReturnPage(url) { lastRequested = url }
             page.failure = nil
+            page.failedDownload = nil
             decisionHandler(.allow)
         case .openOutside(let outside):
             decisionHandler(.cancel)
@@ -255,6 +273,68 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         case .refuse:
             decisionHandler(.cancel)
         }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
+        let action = BrowserRouting.responseAction(
+            canShow: navigationResponse.canShowMIMEType, contentDisposition: disposition, isMainFrame: navigationResponse.isForMainFrame
+        )
+        return action == .download ? .download : .allow
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+        // The load ends here without finishing, which would leave a sign-in that led to it showing.
+        page.signIn.pageSettled()
+    }
+
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
+        // A folder each, so two files of one name both keep theirs.
+        let folder = page.downloads.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else { return nil }
+        let file = folder.appendingPathComponent(MoodleFileDownloads.safeName(suggestedFilename))
+        saving[ObjectIdentifier(download)] = (file, response.mimeType)
+        return file
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        guard let saved = saving.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        page.files.show(downloaded: saved.file, mimeType: saved.mimeType)
+    }
+
+    func download(
+        _ download: WKDownload,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        decisionHandler: @escaping @MainActor @Sendable (WKDownload.RedirectPolicy) -> Void
+    ) {
+        decisionHandler(BrowserRouting.allowsDownloadRedirect(to: request.url) ? .allow : .cancel)
+    }
+
+    func download(
+        _ download: WKDownload,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        pin(challenge, completionHandler: completionHandler)
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
+        saving[ObjectIdentifier(download)] = nil
+        page.failedDownload = download.originalRequest
+        page.failure = Self.downloadFailure(
+            for: error, refusedHosts: refusedHosts,
+            requestedHost: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host
+        )
+    }
+
+    /// A refused certificate names the host that sent it, which a redirect may have changed;
+    /// anything else, a stop included, blames the host the download was asked of.
+    nonisolated static func downloadFailure(for error: any Error, refusedHosts: Set<String>, requestedHost: String) -> BrowserPage.Failure {
+        let failure = failure(for: error, refusedHosts: refusedHosts)
+        if case .certificate = failure, let failure { return failure }
+        return .unreachable(host: requestedHost)
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
@@ -287,6 +367,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     private func failed(with error: any Error) {
         guard let failure = Self.failure(for: error, refusedHosts: refusedHosts) else { return }
+        page.failedDownload = nil
         page.failure = failure
         page.signIn.pageSettled()
     }
@@ -307,6 +388,13 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(
         _ webView: WKWebView,
         didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        pin(challenge, completionHandler: completionHandler)
+    }
+
+    private func pin(
+        _ challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
         let host = challenge.protectionSpace.host
