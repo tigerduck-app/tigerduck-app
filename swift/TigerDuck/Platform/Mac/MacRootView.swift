@@ -154,7 +154,7 @@ struct MacFeatureDetail: View {
     private var serversForFeature: [ServerKind] {
         switch feature {
         case .home: [.moodle, .backend]
-        case .classTable: [.moodle, .courseSelection, .backend]
+        case .classTable: ServerKind.classTableSources
         case .calendar: [.moodle, .courseSelection, .backend]
         default: ServerKind.allCases
         }

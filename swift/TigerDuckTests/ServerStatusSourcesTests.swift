@@ -29,6 +29,11 @@ struct ServerStatusSourcesTests {
         )
     }
 
+    @Test("The class table lists course selection, the score system, Moodle and TigerSync in that order")
+    func classTableSources() {
+        #expect(ServerKind.classTableSources == [.courseSelection, .scoreSystem, .moodle, .backend])
+    }
+
     @Test("The transcript page names the score system, not course selection")
     func transcriptSources() {
         #expect(ServerKind.transcriptSources == [.scoreSystem])

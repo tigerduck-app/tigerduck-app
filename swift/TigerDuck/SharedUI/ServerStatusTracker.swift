@@ -27,6 +27,8 @@ enum ServerKind: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The class table's sources, in the order its status popover lists them.
+    static let classTableSources: [ServerKind] = [.courseSelection, .scoreSystem, .moodle, .backend]
     static let transcriptSources: [ServerKind] = [.scoreSystem]
 }
 

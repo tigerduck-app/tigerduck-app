@@ -168,6 +168,7 @@ enum AppServiceBridge {
                 moodleAll = moodleEnrolledCourses
             } else {
                 moodleAll = try await MoodleEnrolledCoursesService.fetchEnrolled()
+                record(.ok, for: .moodle, round: startGeneration, authService: authService)
             }
             // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
             let moodleIdMap = moodleCourseIdMap(moodleAll)
@@ -230,7 +231,7 @@ enum AppServiceBridge {
             return courses
         } catch {
             await MainActor.run {
-                record(.failed, for: .courseSelection, round: startGeneration, authService: authService)
+                record(.failed, for: .moodle, round: startGeneration, authService: authService)
                 AppLogger.captureError(error, context: ["bridge": "fetchCourses", "semester": semester])
             }
             return DataCache.shared.loadCourses(semester: semester)
