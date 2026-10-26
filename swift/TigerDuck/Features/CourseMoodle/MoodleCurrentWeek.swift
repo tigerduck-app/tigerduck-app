@@ -1,8 +1,7 @@
 import Foundation
 
-/// The section of a course's materials that holds the current week. A weekly course counts weeks
-/// from its start date as Moodle does, section 1 being the first; any other course goes by the
-/// month and day its section names give, written with a slash or with the Chinese month and day.
+/// Moodle numbers a weekly course's sections from its start date, so those need no dates. Any
+/// other format leaves the week to the section names, the only place a teacher writes it.
 nonisolated enum MoodleCurrentWeek {
     static let weeklyFormat = "weeks"
 
@@ -28,9 +27,8 @@ nonisolated enum MoodleCurrentWeek {
         let end: Date
     }
 
-    /// A section runs from the first date its name gives to a week later or the day after its last
-    /// date, whichever is later, and stops where the next dated section starts. Dates that do not
-    /// rise from section to section are taken for other numbers, and give no section.
+    /// A name often gives only its week's first day, so a section lasts at least a week. Dates
+    /// that do not rise are likelier other numbers, such as "Quiz 1/2", than a schedule.
     private static func sectionId(byNames sections: [MoodleMaterialSection], today: Date, calendar: Calendar) -> Int? {
         let dated = sections.compactMap { section -> DatedSection? in
             let days = monthDays(in: section.name).compactMap { date($0, near: today, calendar: calendar) }

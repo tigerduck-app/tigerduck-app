@@ -7,6 +7,24 @@ import UIKit
 
 @MainActor
 struct MoodleMaterialsWeekPageTests {
+    private final class FetchGate: Sendable {
+        private let stream: AsyncStream<Void>
+        private let continuation: AsyncStream<Void>.Continuation
+
+        init() {
+            (stream, continuation) = AsyncStream<Void>.makeStream()
+        }
+
+        func wait() async {
+            for await _ in stream { return }
+        }
+
+        func open() {
+            continuation.yield()
+            continuation.finish()
+        }
+    }
+
     private nonisolated static func slides(week: Int) -> MoodleMaterial {
         let name = "week\(week).pdf"
         return MoodleMaterial(
@@ -18,22 +36,39 @@ struct MoodleMaterialsWeekPageTests {
         )
     }
 
-    private nonisolated static let materials = MoodleCourseMaterials(sections: (0...16).map { week in
-        MoodleMaterialSection(
-            id: 100 + week, name: week == 0 ? "General" : "Week \(week)", materials: [slides(week: week)], number: week
-        )
-    })
+    /// With `datedAsWeek`, each name also carries its week's first day, counted so that today
+    /// falls in that week rather than in the eighth the start date gives.
+    private nonisolated static func sectionName(week: Int, datedAsWeek: Int?) -> String {
+        guard week > 0 else { return "General" }
+        let calendar = AppConstants.taipeiCalendar
+        guard let datedAsWeek,
+              let day = calendar.date(byAdding: .day, value: 7 * (week - datedAsWeek), to: calendar.startOfDay(for: AppClock.now()))
+        else { return "Week \(week)" }
+        let parts = calendar.dateComponents([.month, .day], from: day)
+        return "Week \(week) \(parts.month ?? 0)/\(parts.day ?? 0)"
+    }
 
-    /// A weekly course in its eighth week, its materials and details already fetched.
-    private static func store(in root: URL) async -> MoodleCourseStore {
+    private nonisolated static func materials(datedAsWeek: Int?) -> MoodleCourseMaterials {
+        MoodleCourseMaterials(sections: (0...16).map { week in
+            MoodleMaterialSection(
+                id: 100 + week, name: sectionName(week: week, datedAsWeek: datedAsWeek),
+                materials: [slides(week: week)], number: week
+            )
+        })
+    }
+
+    private static func weeklyCourseInItsEighthWeek(
+        in root: URL, datedAsWeek: Int? = nil, materialsGate: FetchGate? = nil, summaryGate: FetchGate? = nil
+    ) -> MoodleCourseStore {
         let calendar = AppConstants.taipeiCalendar
         let start = calendar.date(byAdding: .day, value: -7 * 7, to: calendar.startOfDay(for: AppClock.now()))
         let course = MoodleCourseSummary(html: "", text: "", names: [], format: "weeks", startDate: start)
+        let materials = materials(datedAsWeek: datedAsWeek)
         let cache = DataCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        let store = MoodleCourseStore(
+        return MoodleCourseStore(
             courseId: 20119,
             termCourseIds: [20119],
             context: MoodleCacheContext(account: "B11399001", cache: cache, isCurrent: { true }),
@@ -42,43 +77,104 @@ struct MoodleMaterialsWeekPageTests {
                 forums: { _ in [] },
                 discussions: { _, _ in [] },
                 markViewed: { _, _ in },
-                materials: { _ in materials },
-                summary: { _ in course }
+                materials: { _ in
+                    await materialsGate?.wait()
+                    return materials
+                },
+                summary: { _ in
+                    await summaryGate?.wait()
+                    return course
+                }
             ),
             downloads: MoodleFileDownloads(root: cache.moodleFilesDir)
         )
-        await store.refreshMaterials()
-        await store.refreshSummary()
-        return store
+    }
+
+    private static func present(_ store: MoodleCourseStore) throws -> UIWindow {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = UIHostingController(rootView: NavigationStack {
+            MoodleMaterialsView(store: store, policy: VisualStylePolicy(preset: .default))
+        })
+        window.isHidden = false
+        return window
+    }
+
+    private static func waitForTopHeader(_ label: String, in window: UIWindow) async throws {
+        let page = try #require(window.rootViewController?.view)
+        try await waitUntil(timeout: .seconds(15)) {
+            accessibilityElement(labeled: label, in: page).map { $0.accessibilityFrame.minY < window.bounds.height / 3 } ?? false
+        }
+    }
+
+    private static func temporaryRoot() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoodleMaterialsWeekPageTests-\(UUID().uuidString)", isDirectory: true)
     }
 
     @Test("the materials open at this week's section, whose header alone is marked")
     func opensAtThisWeek() async throws {
         try await withAccessibilityAutomation {
-            let root = FileManager.default.temporaryDirectory
-                .appendingPathComponent("MoodleMaterialsWeekPageTests-\(UUID().uuidString)", isDirectory: true)
+            let root = Self.temporaryRoot()
             defer { try? FileManager.default.removeItem(at: root) }
-            let store = await Self.store(in: root)
-            let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-            let window = UIWindow(windowScene: scene)
-            window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-            window.rootViewController = UIHostingController(rootView: NavigationStack {
-                MoodleMaterialsView(store: store, policy: VisualStylePolicy(preset: .default))
-            })
-            window.isHidden = false
+            let store = Self.weeklyCourseInItsEighthWeek(in: root)
+            await store.refreshMaterials()
+            await store.refreshSummary()
+            let window = try Self.present(store)
             defer { window.isHidden = true }
+
+            try await Self.waitForTopHeader("Week 8", in: window)
+
             let page = try #require(window.rootViewController?.view)
-
-            try await waitUntil {
-                accessibilityElement(labeled: "Week 8", in: page).map { $0.accessibilityFrame.minY < window.bounds.height / 3 } ?? false
-            }
-
             let header = try #require(accessibilityElement(labeled: "Week 8", in: page))
             #expect(header.accessibilityTraits.contains(.header))
             #expect(header.accessibilityTraits.contains(.selected))
             let next = try #require(accessibilityElement(labeled: "Week 9", in: page))
             #expect(next.accessibilityTraits.contains(.header))
             #expect(!next.accessibilityTraits.contains(.selected))
+        }
+    }
+
+    @Test("materials that arrive after the page is shown still open at this week")
+    func scrollsOnceTheMaterialsArrive() async throws {
+        try await withAccessibilityAutomation {
+            let root = Self.temporaryRoot()
+            defer { try? FileManager.default.removeItem(at: root) }
+            let gate = FetchGate()
+            let store = Self.weeklyCourseInItsEighthWeek(in: root, materialsGate: gate)
+            await store.refreshSummary()
+            let loading = Task { await store.refreshMaterials() }
+            let window = try Self.present(store)
+            defer { window.isHidden = true }
+            try await waitUntil { store.materials.isRefreshing }
+
+            gate.open()
+            await loading.value
+
+            try await Self.waitForTopHeader("Week 8", in: window)
+        }
+    }
+
+    @Test("a summary still loading holds the scroll, so its weekly format wins over the names' dates")
+    func waitsForTheSummary() async throws {
+        try await withAccessibilityAutomation {
+            let root = Self.temporaryRoot()
+            defer { try? FileManager.default.removeItem(at: root) }
+            let gate = FetchGate()
+            let store = Self.weeklyCourseInItsEighthWeek(in: root, datedAsWeek: 3, summaryGate: gate)
+            await store.refreshMaterials()
+            let loading = Task { await store.refreshSummary() }
+            try await waitUntil { store.summary.isRefreshing }
+            let window = try Self.present(store)
+            defer { window.isHidden = true }
+            let page = try #require(window.rootViewController?.view)
+            try await waitUntil { accessibilityElement(labeled: Self.sectionName(week: 1, datedAsWeek: 3), in: page) != nil }
+
+            gate.open()
+            await loading.value
+
+            try await Self.waitForTopHeader(Self.sectionName(week: 8, datedAsWeek: 3), in: window)
         }
     }
 }
