@@ -31,9 +31,10 @@ struct MoodleMaterialsView: View {
                     )
                 }
             }
-            // A scrollTo before the scroll view's first layout does nothing.
+            // A scrollTo before the scroll view's first layout does nothing, and a summary still
+            // loading can change the week: its format decides how the week is found.
             .onGeometryChange(for: Bool.self, of: { $0.size.height > 0 }) { isLaidOut = $0 }
-            .onChange(of: isLaidOut ? currentWeek : nil, initial: true) { _, section in
+            .onChange(of: isLaidOut && !store.summary.isRefreshing ? currentWeek : nil, initial: true) { _, section in
                 guard let section, !hasScrolledToWeek else { return }
                 hasScrolledToWeek = true
                 proxy.scrollTo(section, anchor: .top)
