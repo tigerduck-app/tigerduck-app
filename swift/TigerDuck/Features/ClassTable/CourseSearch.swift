@@ -20,7 +20,7 @@ nonisolated struct CourseSearchFilters: Hashable {
         case all, undergraduate, graduate
     }
 
-    var hideConflicts = true
+    var hideConflicts = false
     var department: String?
     var level = Level.all
     var dimension: String?
