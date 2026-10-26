@@ -726,5 +726,47 @@
         }
       ]
     }
+  },
+  "2.8.1": {
+    "zh-TW": {
+      "title": "2.8.1 更新內容",
+      "items": [
+        {
+          "symbol": "doc.text",
+          "title": "課程大綱",
+          "body": "直接在課表查看課程大綱。"
+        },
+        {
+          "symbol": "internaldrive",
+          "title": "儲存空間",
+          "body": "在設定中查看快取的佔用情形。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "過去學期的課表資料來源更換成歷年成績；Moodle 教材預設開啟本週；信箱顯示同步進度。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.8.1",
+      "items": [
+        {
+          "symbol": "doc.text",
+          "title": "Syllabus",
+          "body": "See a course's syllabus right in the class table."
+        },
+        {
+          "symbol": "internaldrive",
+          "title": "Storage",
+          "body": "See how much space the caches take up, in Settings."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Past terms now take their classes from your transcript; Moodle materials open at this week; mail shows its sync progress."
+        }
+      ]
+    }
   }
 }
