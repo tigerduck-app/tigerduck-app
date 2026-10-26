@@ -172,7 +172,7 @@ enum AppServiceBridge {
         ) else {
             return cachedCourses
         }
-        if let roster = term.roster {
+        if let roster = term.roster, !Task.isCancelled, authService.loginGeneration == startGeneration {
             DataCache.shared.recordSelectionRoster(semester: semester, roster: roster)
         }
 
