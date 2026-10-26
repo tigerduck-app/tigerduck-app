@@ -1,17 +1,17 @@
 import SwiftUI
 import UIKit
 
-/// Where a link the app opens goes: the TigerDuck browser, or the system, which hands it to
-/// another app or the default browser.
+/// One place decides where every link the app opens goes, so no screen opens a school page
+/// outside the TigerDuck browser.
 nonisolated enum LinkRouting {
     enum Destination: Equatable {
         case browser(URL)
         case system(URL)
     }
 
-    /// A page the browser loads, a school page, opens in it; any other link goes to the system,
-    /// where the browser would send it too. A Moodle app link opens the app when it is installed,
-    /// and otherwise the page it names in the browser, which signs in to Moodle.
+    /// The browser hands any page it would not load to the system, so only those it loads open
+    /// in it. Without the Moodle app, a Moodle app link opens its page in the browser, which
+    /// signs in to Moodle.
     static func destination(for url: URL, moodleAppInstalled: Bool) -> Destination {
         if url.scheme?.lowercased() == "moodlemobile" {
             guard !moodleAppInstalled, let page = moodlePage(in: url) else { return .system(url) }
@@ -20,7 +20,7 @@ nonisolated enum LinkRouting {
         return BrowserRouting.decision(for: url) == .load ? .browser(url) : .system(url)
     }
 
-    /// The Moodle page a link from `AppConstants.moodleDeepLink(redirectingTo:)` names.
+    /// Only a site-relative path is taken, so a crafted link cannot send the browser off Moodle.
     static func moodlePage(in link: URL) -> URL? {
         let text = link.absoluteString
         guard let start = text.range(of: "?redirect=")?.upperBound,
