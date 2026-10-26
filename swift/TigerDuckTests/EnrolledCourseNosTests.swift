@@ -281,4 +281,17 @@ struct PastTermRebuildTests {
         #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
             == ["MA1001301", "EC9999301"])
     }
+
+    @Test("A hand-added course filled in from its server row keeps having no Moodle ID")
+    func filledHandAddKeepsNoMoodleId() {
+        let added = SDCourse(courseNo: "GE1010001", courseName: "Added here", semester: "1141")
+        let row: [String: Any] = [
+            "course_no": "GE1010001", "moodle_id": "1141GE1010001", "schedule_json": ["2": ["3", "4"]],
+        ]
+
+        let filled = AppState.scheduled(added, fromServerRow: row)
+
+        #expect(filled.schedule == [2: ["3", "4"]])
+        #expect(filled.moodleIdNumber == nil)
+    }
 }

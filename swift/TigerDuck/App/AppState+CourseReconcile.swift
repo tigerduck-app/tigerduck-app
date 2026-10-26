@@ -126,10 +126,7 @@ extension AppState {
                 guard existing.schedule.isEmpty,
                       let row = rows.first(where: { $0["course_no"] as? String == existing.courseNo }),
                       !((row["schedule_json"] as? [String: [String]]) ?? [:]).isEmpty else { continue }
-                userAdded[index] = Self.course(fromServerRow: row, courseNo: existing.courseNo,
-                                               semester: existing.semester, name: existing.courseName,
-                                               dimension: existing.dimension, allYear: existing.allYear,
-                                               requireOption: existing.requireOption)
+                userAdded[index] = Self.scheduled(existing, fromServerRow: row)
                 mergedSemesters.insert(semester)
             }
             for row in rows {
@@ -217,6 +214,17 @@ extension AppState {
               let moodleId = row["moodle_id"] as? String,
               let prefix = SDCourse.semesterPrefix(ofMoodleId: moodleId) else { return true }
         return prefix == semester.uppercased()
+    }
+
+    /// A hand-added course without class times, filled in from its server row. It keeps its own
+    /// Moodle ID: a course added here has none, which tells it apart from one merged from the server.
+    static func scheduled(_ existing: SDCourse, fromServerRow row: [String: Any]) -> SDCourse {
+        let filled = course(fromServerRow: row, courseNo: existing.courseNo,
+                            semester: existing.semester, name: existing.courseName,
+                            dimension: existing.dimension, allYear: existing.allYear,
+                            requireOption: existing.requireOption)
+        filled.moodleIdNumber = existing.moodleIdNumber
+        return filled
     }
 
     static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?,
