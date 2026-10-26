@@ -17,7 +17,7 @@ apps and the backend share.
   tombstones.
 - The backend keeps the newer value per field, comparing and writing under the user's sync lock.
   Equal content with another timestamp keeps the value and the later time, with no prompt.
-  A timestamp too far ahead is clamped to server time plus five seconds.
+  A timestamp more than five seconds ahead of server time is refused, and the device re-stamps it.
 - The override, course delete, course reset, course upload and holiday endpoints accept the
   clock; `/v3/sync/full` returns it for every field and tombstone, and keeps every tombstone
   instead of the last 30 days. Every `/v3` response carries the server clock.
@@ -40,7 +40,7 @@ apps and the backend share.
 
 ### New Capabilities
 - `tigersync-clock`: the hybrid logical clock: format, tick, where each side keeps it, how a
-  client learns server time, and the skew clamp.
+  client learns server time, and the skew allowance.
 - `tigersync-merge`: per-item, per-field last-writer-wins on the backend and in the apps:
   inventory of synced fields, tombstones and resets, compatibility with released apps, and
   migration of existing server and device data.

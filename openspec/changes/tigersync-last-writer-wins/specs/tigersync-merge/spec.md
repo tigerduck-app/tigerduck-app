@@ -23,7 +23,7 @@ SHALL never change another.
 - **THEN** both names are kept
 
 ### Requirement: The later edit wins
-An edit SHALL replace the stored value only when its clamped clock value is later than the
+An edit SHALL replace the stored value only when its clock value is later than the
 stored value's. On equal clock values the stored value SHALL stay. A field the backend holds no
 stamp for SHALL take any stamped edit, even one stamped 0.
 
@@ -129,13 +129,17 @@ removal and the roster arrives first.
 ### Requirement: A term reset clears the user's choices for that term
 A term reset SHALL clear the user's adds, hides, removals, colours, names and ignore settings
 for that term's courses that are stamped at or before it, SHALL keep those stamped after it,
-and SHALL refuse any such edit stamped before the reset. A reset older than the term's stored
+and SHALL refuse any such edit stamped at or before the reset. A reset older than the term's stored
 reset SHALL change nothing. A reset of every term SHALL do the same for all terms. The school
 roster SHALL stay.
 
 #### Scenario: Reset arriving last
 - **WHEN** a reset stamped 09:00 arrives after a hide of one course and a colour of a school course, both stamped 10:00
 - **THEN** the hide and the colour stay, and the term's other choices are cleared
+
+#### Scenario: Edit stamped at the reset
+- **WHEN** a term reset stamped 09:00 is stored and a colour of one of its courses stamped 09:00 arrives
+- **THEN** the colour is refused
 
 #### Scenario: Older reset
 - **WHEN** a term reset stamped 10:00 is stored and a reset stamped 09:00 arrives

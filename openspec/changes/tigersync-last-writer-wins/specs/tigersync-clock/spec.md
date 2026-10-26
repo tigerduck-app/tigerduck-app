@@ -37,7 +37,9 @@ that value as the last it issued. Two edits on one device SHALL never get the sa
 ### Requirement: A device ahead of the backend caps its stamps
 A device SHALL take its current time as no later than its estimate of the backend's time plus
 five seconds, the estimate being the last `X-TigerSync-Clock` value it heard plus the device
-time elapsed since. A device that has not heard the backend SHALL stamp uncapped.
+time elapsed since. A device that has not heard the backend SHALL stamp uncapped, and SHALL
+re-stamp an edit the backend refuses as ahead by this rule, lowering its last issued value to
+the cap first.
 
 #### Scenario: Device clock a minute ahead
 - **WHEN** the device clock reads 10:01:00 and it heard the backend's 10:00:00 at that moment
@@ -45,7 +47,11 @@ time elapsed since. A device that has not heard the backend SHALL stamp uncapped
 
 #### Scenario: Retry after a lost response
 - **WHEN** a device whose clock runs a minute ahead makes an edit, the write is stored but its response is lost, another device then changes the same field, and the first device sends the edit again
-- **THEN** the retry is refused and the other device's value stays
+- **THEN** the retry loses and the other device's value stays
+
+#### Scenario: Edit made before the device heard the backend
+- **WHEN** a device whose clock runs a minute ahead stamps an edit before it has heard the backend, and the backend refuses the edit as ahead
+- **THEN** the device re-stamps it at the backend's time plus five seconds and sends it again, and its next edit is stamped by the cap
 
 ### Requirement: Only user edits are stamped
 A view appearing, a school or Moodle fetch, an automatically assigned course colour, a roster
@@ -83,14 +89,13 @@ never lower it.
 - **WHEN** the backend answers 404 or 422
 - **THEN** the response still carries `X-TigerSync-Clock`
 
-### Requirement: The backend clamps clock values from the future
-The backend SHALL replace a received clock value later than its own time plus five seconds with
-its own time plus five seconds before comparing or storing it. It SHALL keep earlier values,
-however old, unchanged.
+### Requirement: The backend refuses clock values from the future
+The backend SHALL refuse a received clock value later than its own time plus five seconds with
+`409 clock_ahead`, writing nothing. It SHALL keep earlier values, however old, unchanged.
 
 #### Scenario: Device clock a day ahead
 - **WHEN** an edit arrives stamped one day after the backend's time
-- **THEN** it is compared and stored as the backend's time plus five seconds
+- **THEN** it is refused with `clock_ahead` and the stored value stays
 
 #### Scenario: Offline edit from last week
 - **WHEN** an edit stamped a week ago arrives

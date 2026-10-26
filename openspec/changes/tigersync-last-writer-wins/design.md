@@ -67,12 +67,13 @@ A value is `int64` microseconds since the Unix epoch; a device stamps an edit wi
 `max(device now, last server value seen, last value issued) + 1`, which is the owner's rule plus
 the last issued value so a device never repeats a value.
 
-A device clock more than five seconds ahead would have each send of the same edit clamped again,
-later each time (D5), so a retry after a lost response could beat an edit made meanwhile. The
-device therefore caps `device now` at its estimate of the backend's time plus five seconds: the
-last `X-TigerSync-Clock` it heard plus the device time elapsed since. A capped stamp is stored as
-issued, so a retry carries the stamp the backend first stored and changes nothing (D7). Until a
-device first hears the backend, its stamps are uncapped and the backend's clamp alone applies.
+The backend refuses a stamp more than five seconds ahead of its time (D5), so a device caps
+`device now` at its estimate of the backend's time plus five seconds: the last `X-TigerSync-Clock`
+it heard plus the device time elapsed since. An edit stamped before the device first heard the
+backend can still be refused; the refusal carries the backend's clock, and the device lowers its
+last issued value to the cap and re-stamps the edit by the same rule. Lowering it is safe: every
+stamp the backend stored is at most its time plus five seconds, and the last seen value already
+covers those the device has read.
 
 Lost:
 - ISO-8601 strings, as the snapshot uses today: Apple's `ISO8601DateFormatter` keeps three
@@ -122,14 +123,19 @@ Lost:
 - A clock endpoint: one more request, and already stale when an offline edit happens.
 - Snapshot stamps alone: an account with no stamped field yet would never learn server time.
 
-### D5. Skew allowance of five seconds
+### D5. Skew allowance of five seconds; later stamps are refused
 
-`server/sync/merge.py` clamps to `min(value, now + 5 s)`, a module constant. Five seconds absorbs
-ordinary NTP drift, so an honest device's stamps are stored as issued and its acknowledged stamps
-equal its own; a larger window lets a fast clock beat later honest edits for longer.
+The backend accepts a stamp up to five seconds after its own time (a module constant in
+`server/sync/merge.py`) and refuses a later one with `409 clock_ahead`, writing nothing. Five
+seconds absorbs ordinary NTP drift, so an honest device is never refused. The backend stores only
+the value a device sent, so a retry after a lost response carries the stored stamp and changes
+nothing (D7). Released apps send no stamp and are never refused (D8).
 
-Lost: zero skew, as `clamp_ts` does today (the owner asked for a small allowance), and a config
-setting (no operator would tune it).
+Lost:
+- Clamping to `min(value, now + 5 s)`: each send of the same edit would be clamped again, later
+  each time, so a retry after a lost response could beat an edit made meanwhile.
+- Zero skew, as `clamp_ts` does today (the owner asked for a small allowance), and a config
+  setting (no operator would tune it).
 
 ### D6. Atomicity through the per-user sync lock
 
@@ -209,7 +215,7 @@ protocol 2:
   that goes leaves today's per-course reset tombstone (`deleted_by_reset`) so released apps
   still obey it. A row that stays loses the
   fields stamped at or before the reset, which return to their empty, unstamped state.
-  Afterwards every membership or override edit for that term stamped before `reset_at` is
+  Afterwards every membership or override edit for that term stamped at or before `reset_at` is
   refused.
 - A roster upload upserts school rows, skips keys with a hide tombstone, and deletes reset
   tombstones for the keys it lists. It keeps a removal tombstone beside the school row: a
@@ -419,7 +425,8 @@ Read-only survey for its maintainer; Android owns the implementation.
 ## 6. Test plan
 
 Backend (`uv run pytest server/tests/` against a throwaway Postgres):
-- Clock: clamp at now + 5 s, old values kept, microsecond round trip, header on 200, 404 and 422.
+- Clock: refuse past now + 5 s with `clock_ahead` and nothing written, old values kept,
+  microsecond round trip, header on 200, 404, 409 and 422.
 - Merge: later wins, tie keeps, same content raises the stamp without a change log entry, a
   field without a stamp takes 0, per-locale names.
 - Concurrency: two sessions writing one field at once; the later stamp is stored.
@@ -460,7 +467,7 @@ backend, for colour, mark, hide and reset.
   → stamps never fall below the last server value seen, so the window is at most the clock's lag
   and at most the time since that device last synced; accepted with last-writer-wins.
 - [A clock up to five seconds ahead beats a later honest edit inside that window] → the skew
-  constant; anything further ahead is clamped.
+  constant; anything further ahead is refused and re-stamped.
 - [An old app's late retry wins over a newer edit] → today's behavior, ends as apps update (D8).
 - [Local changes made while sync was off before the update lose to the server, and without the
   prompt (D15) cannot be kept] → the owner's oldest rule; D13 still fills fields the server

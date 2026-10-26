@@ -18,6 +18,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 - [x] 1.8 Add a test that writes one field from two sessions at once with stamps a second apart; verify the later stamp is stored in each of 20 rounds the test runs
 - [x] 1.9 Describe the clock and merge rules in `server/AGENTS.md`'s Conventions; verify the pull request's CI passes and review finds the text matches the code
 - [x] 1.10 Read `server_hlc` in `server/routes/sync/snapshot.py` before the snapshot's first query; verify a test that a write's `X-TigerSync-Clock` is earlier than the `server_hlc` of a snapshot read after it
+- [ ] 1.11 Refuse a protocol-2 stamp later than backend time plus five seconds with `409 clock_ahead` and nothing written, instead of clamping it (design.md D5), on every route that takes `hlc`; verify tests for a refused PATCH, course delete, reset and upload, and that an old stamp is still compared as sent
 
 ## 2. Backend PR: course membership by the clock
 
@@ -29,6 +30,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 - [x] 2.6 Add API-level tests for each case listed in app issue #689 (a delete queued before a re-add elsewhere, a reset then a waiting add, a lost reply and its retry); verify they pass
 - [x] 2.7 Rewrite the tombstone conventions in `server/AGENTS.md` for both protocols; verify the pull request's CI passes and review finds the text matches the code
 - [x] 2.8 Make a removal of a school row clear only its `added_at`, and make a reset clear a hand-added row whose add it covers even when an override field is newer (design.md D10); verify tests for a removal arriving after the roster, both arrival orders, and a newer colour on an older hand-add
+- [ ] 2.9 Refuse membership and override edits stamped at a covering reset too, not only before it (design.md D10); verify a test of a colour stamped at the reset arriving after it
 
 ## 3. Backend release
 
@@ -37,6 +39,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 ## 4. iOS PR: the clock and stamped edits
 
 - [ ] 4.1 Add `SyncClock` in `swift/TigerDuck/Services/CloudSync/` with the stamping rule, its cap for a clock ahead of the backend (design.md D1) and its `Defaults` keys, assigned to the macOS build as root AGENTS.md requires; verify Swift Testing cases for the rule, two edits in one microsecond, a clock a minute ahead with and without a header heard, relaunch and a last seen value that never drops, and `python3 tools/check_macos_sources.py`
+- [ ] 4.5 On `409 clock_ahead`, lower the last issued value to the cap and re-stamp and resend the edit (design.md D1); verify a test of an edit stamped before the first header that is refused, re-stamped and accepted
 - [ ] 4.2 Raise the last seen value from `X-TigerSync-Clock` in `PushAPIClient.execute`, and record the header with the device time it arrived, while protected data is readable; verify a test with a stub `URLProtocol` and one that ignores the header with protected data unavailable
 - [ ] 4.3 Stamp every outbox op through `SyncClock` and send its stamp as `hlc` on the override PATCHes and the course DELETE; keep the stored shape so queued entries send their queue time; verify tests on the request bodies and on an entry decoded from today's file format
 - [ ] 4.4 Send the edit's stamp on the holiday PUT, including from `retryUnacknowledgedHolidayOverrides`; verify a test that a retried PUT carries the original stamp
