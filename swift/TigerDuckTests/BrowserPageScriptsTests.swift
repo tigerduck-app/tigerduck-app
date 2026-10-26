@@ -44,68 +44,87 @@ struct BrowserPageScriptsTests {
         #expect(await evaluate(webView, size) as? [Double] == before)
     }
 
-    @Test func aDarkAppearanceDarkensOnlyAPageWithNoDarkStyleOfItsOwn() async throws {
+    private static let darkened = "return document.documentElement.getAttribute('data-darkreader-mode') === 'dynamic'"
+    private static let colors = """
+    var body = getComputedStyle(document.body);
+    return [getComputedStyle(document.documentElement).backgroundColor, body.backgroundColor, body.color]
+    """
+
+    private func browser(in style: UIUserInterfaceStyle) throws -> (UIWindow, WKWebView) {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
         window.rootViewController = UIViewController()
-        window.overrideUserInterfaceStyle = .light
+        window.overrideUserInterfaceStyle = style
         window.makeKeyAndVisible()
-        defer { window.isHidden = true }
         let configuration = WKWebViewConfiguration()
         BrowserPageScripts.addScripts(to: configuration.userContentController)
         let webView = WKWebView(frame: window.bounds, configuration: configuration)
         window.rootViewController?.view.addSubview(webView)
-        let filters = "return [getComputedStyle(document.documentElement).filter, getComputedStyle(document.querySelector('img')).filter]"
-        let img = "<img style=\"width:10px;height:10px\">"
+        return (window, webView)
+    }
 
-        await load(webView, "\(Self.paragraph)\(img)")
-        #expect(await evaluate(webView, filters) as? [String] == ["none", "none"])
-        webView.overrideUserInterfaceStyle = .dark
-        try await waitUntil(timeout: .seconds(5)) { webView.traitCollection.userInterfaceStyle == .dark }
-        var shown: [String] = []
-        for _ in 0..<50 {
-            shown = await evaluate(webView, filters) as? [String] ?? []
-            if shown.first != "none" { break }
+    private func eventually(_ condition: () async throws -> Bool) async throws -> Bool {
+        for _ in 0..<100 {
+            if try await condition() { return true }
             try await Task.sleep(for: .milliseconds(50))
         }
-        #expect(shown.count == 2 && shown.allSatisfy { $0.contains("invert(1)") }, "\(shown)")
-        webView.mediaType = "print"
-        #expect(await evaluate(webView, filters) as? [String] == ["none", "none"], "a print shows the page's own colors")
-        webView.mediaType = nil
-
-        for ownDark in ["<meta name=\"color-scheme\" content=\"light dark\">", "<body style=\"background:#111;color:#eee\">"] {
-            await load(webView, "\(ownDark)\(Self.paragraph)\(img)")
-            #expect(await evaluate(webView, filters) as? [String] == ["none", "none"], "\(ownDark)")
-        }
+        return false
     }
 
     @Test(arguments: ["", "<body style=\"background:#fff\">"])
-    func aDarkenedPageIsDarkBelowItsTextToo(start: String) async throws {
-        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
-        window.rootViewController = UIViewController()
-        window.overrideUserInterfaceStyle = .dark
-        window.makeKeyAndVisible()
+    func aDarkAppearanceDarkensALightPageAndTheBackgroundAboveIt(start: String) async throws {
+        let (window, webView) = try browser(in: .dark)
         defer { window.isHidden = true }
-        let configuration = WKWebViewConfiguration()
-        BrowserPageScripts.addScripts(to: configuration.userContentController)
-        let webView = WKWebView(frame: window.bounds, configuration: configuration)
-        window.rootViewController?.view.addSubview(webView)
+        await load(webView, "\(start)\(Self.paragraph)<img style=\"width:10px;height:10px\">")
 
-        await load(webView, "\(start)\(Self.paragraph)")
-        for _ in 0..<50 {
-            if await evaluate(webView, "return getComputedStyle(document.documentElement).filter") as? String != "none" { break }
-            try await Task.sleep(for: .milliseconds(50))
+        #expect(try await eventually { try await brightnessBelowTheText(of: webView) < 0.3 })
+        #expect(await evaluate(webView, Self.darkened) as? Bool == true)
+        #expect(await evaluate(webView, "return [typeof DarkReader, typeof chrome]") as? [String] == ["undefined", "undefined"])
+        #expect(await evaluate(webView, "return getComputedStyle(document.querySelector('img')).filter") as? String == "none")
+        // What WebKit shows past the page's edges, under a top address bar too.
+        #expect(try await eventually { Self.brightness(of: webView.underPageBackgroundColor, in: webView) < 0.3 })
+
+        webView.mediaType = "print"
+        let printed = await evaluate(webView, Self.colors) as? [String]
+        webView.mediaType = nil
+        webView.overrideUserInterfaceStyle = .light
+        #expect(try await eventually { try await brightnessBelowTheText(of: webView) > 0.7 })
+        #expect(await evaluate(webView, Self.darkened) as? Bool == false)
+        #expect(try await eventually { Self.brightness(of: webView.underPageBackgroundColor, in: webView) > 0.7 })
+        #expect(printed == (await evaluate(webView, Self.colors) as? [String]), "a print shows the page's own colors")
+    }
+
+    @Test func aPageStyledThroughAnAdoptedSheetStaysDarkAndPrintsInItsOwnColors() async throws {
+        let (window, webView) = try browser(in: .dark)
+        defer { window.isHidden = true }
+        let adopted = "<script>var s = new CSSStyleSheet(); s.replaceSync('body { background: #fff; color: #000 }'); "
+            + "document.adoptedStyleSheets = [s];</script>"
+        await load(webView, "\(adopted)\(Self.paragraph)")
+        #expect(try await eventually { await evaluate(webView, "return document.adoptedStyleSheets.length") as? Int == 2 })
+
+        // Checks the page again now that Dark Reader's sheet for the adopted one is in place.
+        _ = await evaluate(webView, "dispatchEvent(new Event('load'))")
+        #expect(await evaluate(webView, Self.darkened) as? Bool == true)
+        webView.mediaType = "print"
+        #expect(await evaluate(webView, "return getComputedStyle(document.body).backgroundColor") as? String == "rgb(255, 255, 255)")
+        webView.mediaType = nil
+    }
+
+    @Test func aPageWithItsOwnDarkStyleAndTheLightSettingAreLeftAlone() async throws {
+        let (window, webView) = try browser(in: .dark)
+        defer { window.isHidden = true }
+        for ownDark in ["<meta name=\"color-scheme\" content=\"light dark\">", "<body style=\"background:#111;color:#eee\">"] {
+            await load(webView, "\(ownDark)\(Self.paragraph)")
+            #expect(await evaluate(webView, Self.darkened) as? Bool == false, "\(ownDark)")
         }
-        #expect(try await brightnessBelowTheText(of: webView) < 0.3)
+        #expect(await evaluate(webView, Self.colors) as? [String] == ["rgba(0, 0, 0, 0)", "rgb(17, 17, 17)", "rgb(238, 238, 238)"])
 
         webView.overrideUserInterfaceStyle = .light
-        for _ in 0..<50 {
-            if await evaluate(webView, "return getComputedStyle(document.documentElement).filter") as? String == "none" { break }
-            try await Task.sleep(for: .milliseconds(50))
-        }
+        // The web view tells its page a new appearance a moment later.
+        #expect(try await eventually { await evaluate(webView, "return matchMedia('(prefers-color-scheme: dark)').matches") as? Bool == false })
+        await load(webView, Self.paragraph)
+        #expect(await evaluate(webView, Self.darkened) as? Bool == false)
         #expect(try await brightnessBelowTheText(of: webView) > 0.7)
     }
 
@@ -121,6 +140,12 @@ struct BrowserPageScriptsTests {
         let scale = CGFloat(cgImage.width) / image.size.width
         let pixel = bytes + Int(point.y * scale) * cgImage.bytesPerRow + Int(point.x * scale) * cgImage.bitsPerPixel / 8
         return (CGFloat(pixel[0]) + CGFloat(pixel[1]) + CGFloat(pixel[2])) / 765
+    }
+
+    private static func brightness(of color: UIColor, in view: UIView) -> CGFloat {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        color.resolvedColor(with: view.traitCollection).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return (red + green + blue) / 3
     }
 }
 #endif

@@ -62,12 +62,24 @@ BUILD_ONLY = {
 }
 
 # Ships inside the app bundle, but is not a Swift package, so
-# Package.resolved has nothing to say about it. Its licence is its own — the
-# app being AGPL does not cover data published separately under MIT.
+# Package.resolved has nothing to say about it, and the version is written
+# here. Each licence is its own — the app being AGPL does not cover material
+# published separately under MIT.
 BUNDLED = [
+    {
+        "identity": "darkreader",
+        "name": "darkreader",
+        "version": "4.9.133",
+        # VENDORED.md beside it records the tarball and its checksum.
+        "path": ROOT / "swift" / "TigerDuck" / "Features" / "Browser" / "DarkReader",
+        "url": "https://github.com/darkreader/darkreader",
+        "firstParty": False,
+        "note": None,
+    },
     {
         "identity": "name-abbr",
         "name": "name-abbr",
+        "version": None,
         "path": ROOT / "name-abbr",
         "url": "https://github.com/tigerduck-app/name-abbr",
         "firstParty": True,
@@ -298,7 +310,7 @@ def generate(checkouts: Path) -> dict:
                 "Run: git submodule update --init"
             )
         packages.append(package_entry(
-            bundled["identity"], bundled["name"], None, bundled["url"], path,
+            bundled["identity"], bundled["name"], bundled["version"], bundled["url"], path,
             bundled["note"], bundled["firstParty"],
         ))
     packages.sort(key=lambda p: p["name"].lower())
@@ -351,7 +363,7 @@ def check() -> int:
         if pin["identity"] not in BUILD_ONLY
     }
     expected.update({path.name.lower(): (None, None) for path in local_packages()})
-    expected.update({bundled["identity"]: (None, None) for bundled in BUNDLED})
+    expected.update({bundled["identity"]: (bundled["version"], None) for bundled in BUNDLED})
     problems = []
     for identity in sorted(expected.keys() - listed.keys()):
         problems.append(f"  {identity} is linked but not listed")

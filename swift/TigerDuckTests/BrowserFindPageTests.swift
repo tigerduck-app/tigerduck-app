@@ -17,8 +17,12 @@ struct BrowserFindPageTests {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded?.resume() }
     }
 
-    private func page(_ body: String = Self.body, head: String = "", in host: UIView? = nil) async -> (WKWebView, BrowserFind) {
-        let webView = WKWebView(frame: host?.bounds ?? CGRect(x: 0, y: 0, width: 390, height: 800))
+    private func page(
+        _ body: String = Self.body, head: String = "", in host: UIView? = nil, scripts: Bool = false
+    ) async -> (WKWebView, BrowserFind) {
+        let configuration = WKWebViewConfiguration()
+        if scripts { BrowserPageScripts.addScripts(to: configuration.userContentController) }
+        let webView = WKWebView(frame: host?.bounds ?? CGRect(x: 0, y: 0, width: 390, height: 800), configuration: configuration)
         host?.addSubview(webView)
         let loader = Loader()
         webView.navigationDelegate = loader
@@ -144,17 +148,25 @@ struct BrowserFindPageTests {
         withExtendedLifetime(webView) {}
     }
 
-    @Test(arguments: [1.0, 1.5])
-    func showsTheMatchInTheMiddleOfWhatTheBarsLeaveAndDimsTheRest(zoom: Double) async throws {
+    /// On a page the browser darkens too, where the marks keep their colors and the shade stays dark.
+    @Test(arguments: [(1.0, false), (1.5, false), (1.0, true)])
+    func showsTheMatchInTheMiddleOfWhatTheBarsLeaveAndDimsTheRest(zoom: Double, darkened: Bool) async throws {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
         window.rootViewController = UIViewController()
+        window.overrideUserInterfaceStyle = darkened ? .dark : .light
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
         let rows = (0..<300).map { "<div style=\"height:20px\">\($0 == 200 ? "作業" : "")</div>" }.joined()
         let viewport = "<meta name=\"viewport\" content=\"width=device-width\"><style>body { zoom: \(zoom) }</style>"
-        let (webView, find) = await page(rows, head: viewport, in: window.rootViewController?.view)
+        let (webView, find) = await page(rows, head: viewport, in: window.rootViewController?.view, scripts: darkened)
+        // Dark Reader paints a white page #181a1b, and the shade takes a third of that away.
+        let (page, dim): (ClosedRange<CGFloat>, ClosedRange<CGFloat>) = darkened ? (0.08...0.11, 0.03...0.075) : (0.95...1, 0.4...0.8)
+        for _ in 0..<50 {
+            if await Self.rows(of: webView, at: 300, { page.contains($0.red) }).count > Int(webView.bounds.height / 2) { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
         // The browser's top bar, and a find bar with the keyboard under it over the lower half.
         webView.scrollView.contentInset = UIEdgeInsets(top: 60, left: 0, bottom: 400, right: 0)
         // The page's first frames after the load set its scroll, which would undo a scroll before them.
@@ -175,7 +187,7 @@ struct BrowserFindPageTests {
         let first = try #require(shown.first, "offset \(scroll.contentOffset.y), zoom \(scroll.zoomScale), band \(middle)")
         let last = try #require(shown.last)
         #expect(abs((first + last) / 2 - middle) < 3, "the match shows at \(first)...\(last), not around \(middle)")
-        let dimmed = await Self.rows(of: webView, at: 300) { $0.red < 0.8 && $0.red > 0.4 }
+        let dimmed = await Self.rows(of: webView, at: 300) { dim.contains($0.red) }
         #expect(dimmed.count > Int(webView.bounds.height / 2), "the rest of the page is not dimmed")
 
         find.query = ""
