@@ -521,10 +521,40 @@ struct CourseSearchTests {
         }
         await model.search("data", semester: "1151", fetch: fetch)
         #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
-        #expect(sent.value.count == 4)
+        #expect(Set(sent.value.dropFirst(2)) == [#"zh W/"1""#, "en -"])
 
         model.submit()
         #expect(model.revision == 2)
+    }
+
+    @Test("with nothing stored, a search started after one language answered waits for the other")
+    func searchBetweenAnswers() async throws {
+        let cache = Self.cache()
+        let enAnswer = Gate()
+        let model = CourseSearchModel(cache: cache)
+        let fetch: CourseSearchModel.FetchCatalog = { @MainActor _, language, _ in
+            if language == "en" { await enAnswer.wait() }
+            return .changed(try Self.stored(language, etag: #"W/"1""#))
+        }
+
+        let first = Task { await model.search("dat", semester: "1151", fetch: fetch) }
+        for _ in 0..<10_000 where cache.loadCourseCatalog(semester: "1151", language: "zh") == nil {
+            await Task.yield()
+        }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+        first.cancel()
+        let second = Task { await model.search("data", semester: "1151", fetch: fetch) }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+        #expect(model.isSearching)
+
+        enAnswer.open()
+        await second.value
+        #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
+        #expect(model.revision == 0)
     }
 
     @Test("each row mark looks and reads differently, and only a course already in the table is dimmed")

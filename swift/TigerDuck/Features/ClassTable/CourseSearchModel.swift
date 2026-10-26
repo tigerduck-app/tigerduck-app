@@ -114,8 +114,8 @@ final class CourseSearchModel {
         let cache = cache
         let hadCatalog = !catalogs.isEmpty
         var firstError: (any Error)?
-        var changed = false
-        await withTaskGroup(of: (String, Result<CourseCatalog?, any Error>).self) { group in
+        var fresh: [String: (catalog: CourseCatalog, etag: String?)] = [:]
+        await withTaskGroup(of: (String, Result<(CourseCatalog, String?)?, any Error>).self) { group in
             for language in CourseSearch.languages {
                 let etag = storedETags[language]
                 group.addTask {
@@ -126,7 +126,7 @@ final class CourseSearchModel {
                         guard case .changed(let copy) = answer else { return (language, .success(nil)) }
                         let catalog = try JSONDecoder().decode(CourseCatalog.self, from: copy.body)
                         cache.saveCourseCatalog(copy, semester: semester, language: language)
-                        return (language, .success(catalog))
+                        return (language, .success((catalog, copy.etag)))
                     } catch {
                         return (language, .failure(error))
                     }
@@ -134,9 +134,8 @@ final class CourseSearchModel {
             }
             for await (language, result) in group {
                 switch result {
-                case .success(let catalog?):
-                    catalogs[language] = catalog
-                    changed = true
+                case .success(let (catalog, etag)?):
+                    fresh[language] = (catalog, etag)
                 case .success(nil):
                     break
                 case .failure(let error):
@@ -145,7 +144,12 @@ final class CourseSearchModel {
                 }
             }
         }
-        if changed {
+        // All at once, so no search runs on one language while the other is still on its way.
+        for (language, copy) in fresh {
+            catalogs[language] = copy.catalog
+            storedETags[language] = copy.etag
+        }
+        if !fresh.isEmpty {
             options = CourseSearch.options(catalogs)
             // A search that ran on the stored catalog runs again; one that waited goes on by itself.
             if hadCatalog { revision &+= 1 }
