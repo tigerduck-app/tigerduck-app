@@ -15,6 +15,7 @@ final class BrowserPage {
     fileprivate(set) var canGoBack = false
     fileprivate(set) var canGoForward = false
     fileprivate(set) var isLoading = false
+    fileprivate(set) var progress = 0.0
     fileprivate(set) var isCollapsed = false
     var failure: Failure?
     var outside: URL?
@@ -196,6 +197,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         track(\.canGoBack) { if page.canGoBack != $0.canGoBack { page.canGoBack = $0.canGoBack } }
         track(\.canGoForward) { if page.canGoForward != $0.canGoForward { page.canGoForward = $0.canGoForward } }
         track(\.isLoading) { if page.isLoading != $0.isLoading { page.isLoading = $0.isLoading } }
+        track(\.estimatedProgress) { if page.progress != $0.estimatedProgress { page.progress = $0.estimatedProgress } }
         observations.append(webView.scrollView.observe(\.contentOffset) { scrollView, _ in
             MainActor.assumeIsolated {
                 guard scrollView.isTracking || scrollView.isDecelerating else { return }

@@ -208,6 +208,7 @@ struct TigerDuckBrowserView: View {
                 .contentTransition(.interpolate)
                 .padding(.horizontal, collapsed ? 14 : 0)
                 .frame(maxWidth: collapsed ? nil : .infinity, minHeight: collapsed ? Self.capsuleHeight : Self.barHeight)
+                .overlay(alignment: .bottom) { loadProgress }
                 // What fades in or out mid-morph stays inside the capsule as it grows or shrinks.
                 .clipShape(.capsule)
                 .contentShape(.capsule)
@@ -219,6 +220,22 @@ struct TigerDuckBrowserView: View {
         .id(reduceMotion && collapsed)
         .transition(.opacity)
         .frame(maxWidth: .infinity)
+    }
+
+    /// Safari's load bar, along the pill's bottom edge in the accent colour while a page loads.
+    private var loadProgress: some View {
+        ZStack {
+            if page.isLoading {
+                Rectangle().fill(.tint)
+                    .frame(height: 3)
+                    .scaleEffect(x: page.progress, anchor: .leading)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: page.progress)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.3), value: page.isLoading)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
