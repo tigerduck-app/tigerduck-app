@@ -142,6 +142,8 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AGENTS.md,
+				Features/Browser/DarkReader/LICENSE,
+				Features/Browser/DarkReader/VENDORED.md,
 				Info.plist,
 				LiveActivity/AGENTS.md,
 				Services/AGENTS.md,
