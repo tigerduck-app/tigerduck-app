@@ -7,6 +7,7 @@ struct MoodleMaterialsView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
     @State private var files = MoodleFileOpener()
+    @State private var isLaidOut = false
     @State private var hasScrolledToWeek = false
 
     var body: some View {
@@ -30,11 +31,12 @@ struct MoodleMaterialsView: View {
                     )
                 }
             }
-            .onChange(of: currentWeek, initial: true) { _, section in
+            // A scrollTo before the scroll view's first layout does nothing.
+            .onGeometryChange(for: Bool.self, of: { $0.size.height > 0 }) { isLaidOut = $0 }
+            .onChange(of: isLaidOut ? currentWeek : nil, initial: true) { _, section in
                 guard let section, !hasScrolledToWeek else { return }
                 hasScrolledToWeek = true
-                // The sections are laid out once the update that brought them has finished.
-                DispatchQueue.main.async { proxy.scrollTo(section, anchor: .top) }
+                proxy.scrollTo(section, anchor: .top)
             }
         }
         .background(Color.backgroundPrimary)
