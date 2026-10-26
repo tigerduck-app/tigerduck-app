@@ -221,9 +221,10 @@ protocol 2:
 - A roster upload upserts school rows, skips keys with a hide tombstone, and deletes reset
   tombstones for the keys it lists. It keeps a removal tombstone beside the school row: a
   removal takes back a hand-add and never hides the school's course, and its stamp still
-  refuses older membership edits. It never touches `added_at`, and it turns a hand-added row it
-  lists into a school row, so the `courses` of a protocol-2 upload hold only the school's
-  roster and a hand-added course goes in `adds`.
+  refuses older membership edits. It never touches `added_at`. A protocol-2 upload's `courses`
+  carry the details of every course it sends; a key also named in `adds` is a hand-add, and any
+  other key is the school's roster and turns a hand-added row it lists into a school row. So the
+  app names every hand-added course it uploads in `adds`, with that course's stamp.
 
 Requests without the protocol header keep today's code path: `force_keys`, the author releases
 by `deleted_by_device_id`, and `device_id_required`.
