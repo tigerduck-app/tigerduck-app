@@ -50,44 +50,25 @@ extension View {
 }
 
 private struct MoodleLinkOpening: ViewModifier {
-    @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    #if os(iOS)
-    @State private var inAppPage: InAppPage?
-    #endif
 
     func body(content: Content) -> some View {
-        content
-            .environment(\.openMoodleLink, MoodleLinkAction(open: open))
-            #if os(iOS)
-            .sheet(item: $inAppPage) { page in
-                InAppBrowserView(url: page.url)
-                    .ignoresSafeArea()
-            }
-            #endif
+        content.environment(\.openMoodleLink, MoodleLinkAction(open: open))
     }
 
     private func open(_ url: URL) {
+        #if os(iOS)
+        // `linkRouting()` opens a Moodle page in the TigerDuck browser, which signs it in.
+        openURL(MoodlePage.browserURL(url))
+        #else
         if MoodleAutologinService.isMoodlePage(url) {
             Task { await openURL(MoodlePage.browserURL(url), fallback: nil) }
             return
         }
-        #if os(iOS)
-        if appState.browserPreference == .inApp, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-            inAppPage = InAppPage(url: url)
-            return
-        }
-        #endif
         openURL(url)
+        #endif
     }
 }
-
-#if os(iOS)
-private struct InAppPage: Identifiable {
-    let url: URL
-    var id: URL { url }
-}
-#endif
 
 extension View {
     func moodleListChrome(

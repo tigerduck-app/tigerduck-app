@@ -43,6 +43,14 @@ struct BrowserConnectionTests {
         #expect(BrowserPage.connection(failure: .certificate(host: "moodle2.ntust.edu.tw"), hasTrust: true) == .refused)
         #expect(BrowserPage.connection(failure: .unreachable(host: "moodle2.ntust.edu.tw"), hasTrust: true) == .unknown)
     }
+
+    @Test func retryLoadsAFailedDownloadRatherThanThePageItStartedFrom() {
+        let page = URL(string: "https://moodle2.ntust.edu.tw/course/view.php?id=1")!
+        let file = URLRequest(url: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/1/duck.zip")!)
+        #expect(BrowserPage.retryRequest(failedDownload: file, address: page) == file)
+        #expect(BrowserPage.retryRequest(failedDownload: nil, address: page) == URLRequest(url: page))
+        #expect(BrowserPage.retryRequest(failedDownload: nil, address: nil) == nil)
+    }
 }
 
 struct BrowserChromeCollapseTests {

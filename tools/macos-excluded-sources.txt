@@ -204,7 +204,6 @@ EmptyStateView.swift
 GlassTextButtonModifier.swift
 HeaderMenuButton.swift
 HostScreenReader.swift
-InAppBrowserView.swift
 JustifiedText.swift
 LoginRequiredView.swift
 NTUSTReauthErrorBanner.swift
@@ -416,5 +415,6 @@ BrowserSessionSignIn.swift
 BrowserSheets.swift
 BrowserSignIn.swift
 BrowserSites.swift
+LinkRouting.swift
 TigerDuckBrowserView.swift
 BrowserAddressBarPicker.swift

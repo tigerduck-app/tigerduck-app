@@ -8,14 +8,12 @@ struct MailMessageView: View {
     private let session: MailPageSession
     private let otherFolders: [String]
 
-    @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var webHeight: CGFloat = 1
     @State private var webLoaded = false
     @State private var pendingLinkTarget: MailLinkTarget?
-    @State private var inAppURL: MailFileItem?
     @State private var previewURL: URL?
     @State private var shareItem: MailFileItem?
     @State private var riskyAttachment: RiskyAttachment?
@@ -72,7 +70,6 @@ struct MailMessageView: View {
                 onCancel: { pendingLinkTarget = nil }
             )
         }
-        .sheet(item: $inAppURL) { item in InAppBrowserView(url: item.url).ignoresSafeArea() }
         .sheet(item: $shareItem) { item in ShareSheet(url: item.url).presentationDetents([.medium, .large]) }
         .quickLookPreview($previewURL)
         .sheet(isPresented: $showMoveSheet) { moveSheet }
@@ -421,8 +418,6 @@ struct MailMessageView: View {
         if url.scheme?.lowercased() == "mailto" {
             let target = url.absoluteString.dropFirst("mailto:".count).split(separator: "?").first.map(String.init) ?? ""
             compose = MailComposeContext(mode: .new, to: MailAddress.parseList(target.removingPercentEncoding ?? target))
-        } else if appState.browserPreference == .inApp {
-            inAppURL = MailFileItem(url: url)
         } else {
             openURL(url)
         }

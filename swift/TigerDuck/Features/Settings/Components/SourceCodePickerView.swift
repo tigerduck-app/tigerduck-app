@@ -1,15 +1,7 @@
 import SwiftUI
-import UIKit
 
 struct SourceCodePickerView: View {
-    @Environment(AppState.self) private var appState
-
-    private struct IdentifiableURL: Identifiable {
-        let url: URL
-        var id: URL { url }
-    }
-
-    @State private var inAppURL: IdentifiableURL?
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         List {
@@ -25,10 +17,6 @@ struct SourceCodePickerView: View {
         }
         .navigationTitle(String(localized: "settings_view_source_code"))
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $inAppURL) { wrapped in
-            InAppBrowserView(url: wrapped.url)
-                .ignoresSafeArea()
-        }
     }
 
     @ViewBuilder
@@ -59,14 +47,6 @@ struct SourceCodePickerView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    private func openURL(_ url: URL) {
-        if appState.browserPreference == .inApp {
-            inAppURL = IdentifiableURL(url: url)
-        } else {
-            UIApplication.shared.open(url)
         }
     }
 }

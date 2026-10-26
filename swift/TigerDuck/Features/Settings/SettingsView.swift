@@ -31,8 +31,6 @@ struct SettingsView: View {
     @State private var showSchoolMailLogin = false
     #endif
     @State private var notificationsAuthorized: Bool = true
-    @State private var showOfficialWebsite = false
-    @State private var showServerStatus = false
     #if os(iOS)
     @State private var showManualUpdateCheckResultAlert = false
     @State private var manualWhatsNewItem: WhatsNewPresentation?
@@ -121,10 +119,6 @@ struct SettingsView: View {
                 )
                 Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowAllPeriods)
-                Picker(String(localized: "settings_link_opening_method"), selection: $appState.browserPreference) {
-                    Text(String(localized: "settings_browser_system_default")).tag(BrowserPreference.system)
-                    Text(String(localized: "settings_browser_in_app")).tag(BrowserPreference.inApp)
-                }
             }
 
             Section(String(localized: "browser_address_bar")) {
@@ -278,19 +272,13 @@ struct SettingsView: View {
                 whatsNewRow
                 #endif
                 Button {
-                    if appState.browserPreference == .inApp {
-                        showOfficialWebsite = true
-                    } else {
-                        openURL(Self.websiteURL)
-                    }
+                    openURL(Self.websiteURL)
                 } label: {
                     HStack {
                         Text(String(localized: "settings_official_website"))
                             .foregroundStyle(.primary)
                         Spacer()
-                        Image(systemName: appState.browserPreference == .inApp
-                              ? "rectangle.portrait.and.arrow.right"
-                              : "arrow.up.right.square")
+                        Image(systemName: "arrow.up.right.square")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -359,14 +347,6 @@ struct SettingsView: View {
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
             Text(signOutLines.joined(separator: "\n"))
-        }
-        .sheet(isPresented: $showOfficialWebsite) {
-            InAppBrowserView(url: Self.websiteURL)
-                .ignoresSafeArea()
-        }
-        .sheet(isPresented: $showServerStatus) {
-            InAppBrowserView(url: AppURLs.serverStatus)
-                .ignoresSafeArea()
         }
         .sheet(isPresented: $showLibraryLogin) {
             LoginSheet(
@@ -475,19 +455,9 @@ struct SettingsView: View {
 
     /// "Check Server Status" row. It sits under Check for Updates because that row asks
     /// whether this app is current, and this one whether the services behind it are up.
-    ///
-    /// Honours the in-app or external browser preference like every other link in
-    /// Settings. In-app it uses `SFSafariViewController`, which follows the status URL's
-    /// current 302 to another origin in place. A `WKWebView` with a host allowlist would
-    /// dead-end there, and an `openURL` hand-off would eject the user into Safari
-    /// mid-redirect.
     private var serverStatusRow: some View {
         Button {
-            if appState.browserPreference == .inApp {
-                showServerStatus = true
-            } else {
-                openURL(AppURLs.serverStatus)
-            }
+            openURL(AppURLs.serverStatus)
         } label: {
             HStack {
                 Text(String(localized: "settings_check_server_status"))

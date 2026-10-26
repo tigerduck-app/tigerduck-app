@@ -8,7 +8,6 @@ struct MailLoginCard: View {
     @Environment(\.openURL) private var openURL
     @State private var studentID = ""
     @State private var password = ""
-    @State private var showWebmail = false
     @FocusState private var field: Field?
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
     private let account = MailAccountManager.shared
@@ -86,16 +85,13 @@ struct MailLoginCard: View {
 
             signInButton
 
-            Button(String(localized: "school_mail_forgot_password"), action: openWebmail)
+            Button(String(localized: "school_mail_forgot_password")) { openURL(MailConstants.webmailURL) }
                 .font(TigerDuckTheme.Typography.caption)
         }
         .cardPadding()
         .frame(maxWidth: .infinity)
         .glassCard()
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .sheet(isPresented: $showWebmail) {
-            InAppBrowserView(url: MailConstants.webmailURL).ignoresSafeArea()
-        }
         .onAppear { seedFields() }
         #if DEBUG
         .onChange(of: DevMailServerSettings.shared.generation) { _, _ in seedFields() }
@@ -140,14 +136,6 @@ struct MailLoginCard: View {
         Task {
             await account.login(studentID: id, password: secret)
             if account.isLoggedIn { password = "" }
-        }
-    }
-
-    private func openWebmail() {
-        if appState.browserPreference == .inApp {
-            showWebmail = true
-        } else {
-            openURL(MailConstants.webmailURL)
         }
     }
 }
