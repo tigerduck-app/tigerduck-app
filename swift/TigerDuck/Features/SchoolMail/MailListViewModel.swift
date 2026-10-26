@@ -379,7 +379,8 @@ final class MailListViewModel {
     private func indexDidFill(_ folder: String) {
         guard !searchQuery.isEmpty, targets.contains(folder) else { return }
         searchIsBehind = true
-        if resultsGeneration == searchGeneration { scheduleSearchCatchUp() }
+        // A batch that lands after the page closed waits for it to reopen.
+        if !isPaused, resultsGeneration == searchGeneration { scheduleSearchCatchUp() }
     }
 
     private func scheduleSearchCatchUp() {
@@ -408,7 +409,8 @@ final class MailListViewModel {
         let generation = searchGeneration
         for folder in targets {
             let matched = await matchingUIDs(in: folder, query: query)
-            guard isCurrent(selection, epoch), generation == searchGeneration, let results = searchResults else { return }
+            guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration,
+                  let results = searchResults else { return }
             guard let matched, unfetchedMatches[folder].map({ $0.uidValidity == matched.uidValidity }) ?? true else {
                 continue
             }
@@ -445,7 +447,7 @@ final class MailListViewModel {
         }
         // Under the unread filter every row added can be read, and an empty list has no row whose
         // appearance asks for the next page.
-        guard isCurrent(selection, epoch), generation == searchGeneration else { return }
+        guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration else { return }
         if displayedRows.isEmpty, !isPaginating { await loadMoreSearchResults() }
     }
 
@@ -561,6 +563,7 @@ final class MailListViewModel {
 
     func startPolling(pollFirst: Bool = false) {
         isPaused = false
+        if searchIsBehind, resultsGeneration == searchGeneration { scheduleSearchCatchUp() }
         if !warmDone, warmTask == nil { startWarmIfLoaded() }
         startIndexIfLoaded()
         pollTask?.cancel()
@@ -582,6 +585,10 @@ final class MailListViewModel {
         pollTask = nil
         cancelWarm()
         indexer.stop()
+        // A catch-up's fetch would open the connection again; the page reopening runs it instead.
+        if searchCatchUp != nil { searchIsBehind = true }
+        searchCatchUp?.cancel()
+        searchCatchUp = nil
         session.releaseSoon()
     }
 
