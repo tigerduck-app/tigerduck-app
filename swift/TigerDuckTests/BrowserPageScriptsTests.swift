@@ -82,7 +82,7 @@ struct BrowserPageScriptsTests {
 
         #expect(try await eventually { try await brightnessBelowTheText(of: webView) < 0.3 })
         #expect(await evaluate(webView, Self.darkened) as? Bool == true)
-        #expect(await evaluate(webView, "return typeof DarkReader") as? String == "undefined", "the page cannot reach it")
+        #expect(await evaluate(webView, "return [typeof DarkReader, typeof chrome]") as? [String] == ["undefined", "undefined"])
         #expect(await evaluate(webView, "return getComputedStyle(document.querySelector('img')).filter") as? String == "none")
         // What WebKit shows past the page's edges, under a top address bar too.
         #expect(try await eventually { Self.brightness(of: webView.underPageBackgroundColor, in: webView) < 0.3 })

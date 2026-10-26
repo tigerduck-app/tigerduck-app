@@ -126,7 +126,7 @@ enum BrowserPageScripts {
         guard let darken else {
             return AppLogger.breadcrumb("browser opened without Dark Reader", category: "browser")
         }
-        // The app's own world: page scripts cannot reach it, and a page's AMD loader cannot take its UMD wrapper.
+        // The app's own world: page scripts can neither call it nor see the `window.chrome` it defines.
         controller.addUserScript(WKUserScript(source: darken, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
     }
 
