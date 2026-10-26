@@ -379,17 +379,17 @@ final class MailListViewModel {
     private func indexDidFill(_ folder: String) {
         guard !searchQuery.isEmpty, targets.contains(folder) else { return }
         searchIsBehind = true
-        // A batch that lands after the page closed waits for it to reopen.
-        if !isPaused, resultsGeneration == searchGeneration { scheduleSearchCatchUp() }
+        if resultsGeneration == searchGeneration { scheduleSearchCatchUp() }
     }
 
+    /// A closed page leaves `searchIsBehind` set, for the catch-up its reopening runs.
     private func scheduleSearchCatchUp() {
-        guard searchCatchUp == nil else { return }
+        guard searchCatchUp == nil, !isPaused else { return }
         let generation = searchGeneration
         let delay = catchUpDelay
         searchCatchUp = Task { [weak self] in
             await delay()
-            while let self, !Task.isCancelled, generation == self.searchGeneration, self.searchIsBehind {
+            while let self, !Task.isCancelled, !self.isPaused, generation == self.searchGeneration, self.searchIsBehind {
                 self.searchIsBehind = false
                 await self.catchUpSearch()
                 await delay()

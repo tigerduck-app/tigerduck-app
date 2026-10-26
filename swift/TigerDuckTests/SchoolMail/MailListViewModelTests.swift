@@ -286,6 +286,34 @@ struct MailListViewModelTests {
         #expect(h.model.displayedRows.map(\.uid) == [55])
     }
 
+    @Test func aSearchThatEndsAfterThePageClosesLeavesItsCatchUpForTheReopening() async throws {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[57].summary.subject = "Room 302 改期"
+            fake.folders["INBOX"]?[54].detail?.textBody = "Room 302"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        await h.fake.hold("summaries")
+        h.model.searchText = "room 302"
+        let search = Task { await h.model.submitSearch() }
+        await h.fake.waitForArrival("summaries")
+        await h.fake.release("searchTexts")
+        try await waitUntil { h.cache.searchIndex.search(folder: "INBOX", query: "room 302")?.uids.contains(55) == true }
+
+        h.model.stopPolling()
+        await h.fake.release("summaries")
+        await search.value
+        await h.model.waitForSearchCatchUp()
+        #expect(await h.fake.calls.filter { $0.hasPrefix("summaries ") } == ["summaries INBOX [58]"])
+
+        h.model.startPolling()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [58, 55])
+    }
+
     @Test func anUnreadOnlySearchPagesOnWhenACatchUpAddsOnlyReadMail() async {
         let h = Self.harness(inboxCount: 120, warmDelay: {}, catchUpDelay: {})
         await h.fake.update { fake in
