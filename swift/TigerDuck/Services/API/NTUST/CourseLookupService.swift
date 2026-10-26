@@ -52,6 +52,40 @@ enum CourseLookupService {
         return results
     }
 
+    private static let syllabusAPI = URL.knownGood("https://querycourse.ntust.edu.tw/querycourse/api/coursedetials")
+
+    private static var syllabi: [LookupKey: CourseSyllabus?] = [:]
+
+    /// The course's syllabus, nil when the school has none. Kept for the app's run, since a
+    /// syllabus rarely changes within a term; a failure is not kept.
+    static func syllabus(semester: String, courseNo: String, language: String) async throws -> CourseSyllabus? {
+        let key = LookupKey(semester: semester, courseNo: courseNo, language: language)
+        return try await keptSyllabus(key) {
+            let url = syllabusAPI.appending(queryItems: [
+                URLQueryItem(name: "semester", value: semester),
+                URLQueryItem(name: "course_no", value: courseNo),
+                URLQueryItem(name: "language", value: language),
+            ])
+            let (data, _) = try await session.data(from: url)
+            return try decodeSyllabus(data)
+        }
+    }
+
+    static func keptSyllabus(
+        _ key: LookupKey,
+        fetch: () async throws -> CourseSyllabus?
+    ) async throws -> CourseSyllabus? {
+        if let kept = syllabi[key] { return kept }
+        let syllabus = try await fetch()
+        syllabi.updateValue(syllabus, forKey: key)
+        return syllabus
+    }
+
+    /// The response is an array; an unknown course answers with an error object, which throws.
+    nonisolated static func decodeSyllabus(_ data: Data) throws -> CourseSyllabus? {
+        try JSONDecoder().decode([CourseSyllabus].self, from: data).first
+    }
+
     static func search(_ body: CourseSearchRequest) async throws -> [CourseSearchResult] {
         var request = URLRequest(url: courseSearchAPI)
         request.httpMethod = "POST"
