@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WebKit
 
 /// Find in page. The page script collects the text and marks the matches, in a script world of
@@ -115,6 +116,9 @@ final class BrowserFind {
     var marks = function() { return document.querySelectorAll('mark[' + marker + ']'); };
     function clear() {
       window.tigerduckFindRuns = [];
+      window.tigerduckFindCurrent = -1;
+      var light = document.querySelector('[' + marker + '-light]');
+      if (light) light.remove();
       marks().forEach(function(mark) {
         var parent = mark.parentNode;
         while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
@@ -189,15 +193,60 @@ final class BrowserFind {
       }
       return count;
     }
+    function current() {
+      return document.querySelectorAll('mark[' + marker + '="' + window.tigerduckFindCurrent + '"]');
+    }
+    // A clear box over the current match whose shadow dims the rest of the page, as Safari's find does.
+    function spotlight() {
+      var light = document.querySelector('[' + marker + '-light]'), shown = current();
+      if (!shown.length) return light && light.remove();
+      var box = Array.prototype.reduce.call(shown, function(box, mark) {
+        var r = mark.getBoundingClientRect();
+        return [Math.min(box[0], r.left), Math.min(box[1], r.top), Math.max(box[2], r.right), Math.max(box[3], r.bottom)];
+      }, [Infinity, Infinity, -Infinity, -Infinity]);
+      if (!light) {
+        light = document.createElement('div');
+        light.setAttribute(marker + '-light', '');
+        document.documentElement.appendChild(light);
+      }
+      light.style.cssText = 'position: absolute; z-index: 2147483647; pointer-events: none; border-radius: 3px; '
+        + 'box-shadow: 0 0 0 100000px rgba(0, 0, 0, 0.35); left: ' + (box[0] + scrollX) + 'px; top: ' + (box[1] + scrollY)
+        + 'px; width: ' + (box[2] - box[0]) + 'px; height: ' + (box[3] - box[1]) + 'px';
+    }
+    // The box scrolls with the page; a scrolled frame or a new layout moves the match under it.
+    if (!window.tigerduckFindListens) {
+      window.tigerduckFindListens = true;
+      addEventListener('scroll', spotlight, true);
+      addEventListener('resize', spotlight);
+    }
+    // Centres the match in each scrolled box inside the page, vertically within what the browser's
+    // bars leave visible: `view` is that band's top and bottom, the view's width and its scroll
+    // offset, in points. The browser scrolls the page itself.
+    function centre(mark) {
+      var scale = view[2] / innerWidth;
+      var top = (view[0] + view[3]) / scale - scrollY, bottom = (view[1] + view[3]) / scale - scrollY;
+      for (var box = mark.parentElement; box; box = box.parentElement) {
+        if (box === document.scrollingElement) continue;
+        var style = getComputedStyle(box), m = mark.getBoundingClientRect(), b = box.getBoundingClientRect();
+        if (box.scrollHeight > box.clientHeight && /auto|scroll/.test(style.overflowY)) {
+          box.scrollTop += (m.top + m.bottom - Math.max(b.top, top) - Math.min(b.bottom, bottom)) / 2;
+        }
+        if (box.scrollWidth > box.clientWidth && /auto|scroll/.test(style.overflowX)) {
+          box.scrollLeft += (m.left + m.right - b.left - b.right) / 2;
+        }
+      }
+    }
     function select() {
-      var shown = null;
+      window.tigerduckFindCurrent = index;
       marks().forEach(function(mark) {
-        var on = Number(mark.getAttribute(marker)) === index;
-        mark.style.background = on ? '#FFB340' : '#FFE8A3';
-        if (on && !shown) shown = mark;
+        mark.style.background = Number(mark.getAttribute(marker)) === index ? '#FFB340' : '#FFE8A3';
       });
-      if (shown) shown.scrollIntoView({ block: 'center', inline: 'nearest' });
-      return shown !== null;
+      var shown = current()[0];
+      if (shown) centre(shown);
+      spotlight();
+      if (!shown) return null;
+      var r = shown.getBoundingClientRect();
+      return [r.left + scrollX, r.top + scrollY, r.right + scrollX, r.bottom + scrollY, innerWidth];
     }
     if (action === 'texts') return texts();
     if (action === 'mark') return mark();
@@ -207,10 +256,33 @@ final class BrowserFind {
 }
 
 extension WKWebView {
-    /// One call of ``BrowserFind/script``, with every argument the script reads present.
+    /// One call of ``BrowserFind/script``, with every argument the script reads present. A match it
+    /// selects is scrolled to the middle of the band the scroll view's insets leave, which the
+    /// browser sets to its bars, or to the find bar and the keyboard while it finds.
     func runFind(_ arguments: [String: Any]) async -> Any? {
-        let all: [String: Any] = ["action": "clear", "ranges": [[Int]](), "index": 0]
+        let inset = scrollView.adjustedContentInset
+        let view = [inset.top, bounds.height - inset.bottom, bounds.width, scrollView.contentOffset.y]
+        let all: [String: Any] = ["action": "clear", "ranges": [[Int]](), "index": 0, "view": view]
             .merging(arguments) { $1 }
-        return try? await callAsyncJavaScript(BrowserFind.script, arguments: all, in: nil, contentWorld: .defaultClient)
+        let result = try? await callAsyncJavaScript(BrowserFind.script, arguments: all, in: nil, contentWorld: .defaultClient)
+        if let match = result as? [Double], match.count == 5, match[4] > 0 { reveal(match) }
+        return result
+    }
+
+    /// `match` is `[left, top, right, bottom, innerWidth]` in the page's CSS pixels. Safari
+    /// centres the match it shows; across, the page only moves when the match is out of view.
+    private func reveal(_ match: [Double]) {
+        let scale = bounds.width / match[4]
+        let inset = scrollView.adjustedContentInset
+        let size = scrollView.bounds.size, content = scrollView.contentSize
+        var offset = scrollView.contentOffset
+        let middle = (match[1] + match[3]) / 2 * scale
+        offset.y = min(max(middle - (inset.top + size.height - inset.bottom) / 2, -inset.top),
+                       max(content.height + inset.bottom - size.height, -inset.top))
+        if match[0] * scale < offset.x + inset.left || match[2] * scale > offset.x + size.width - inset.right {
+            offset.x = min(max((match[0] + match[2]) / 2 * scale - size.width / 2, -inset.left),
+                           max(content.width + inset.right - size.width, -inset.left))
+        }
+        scrollView.setContentOffset(offset, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 }

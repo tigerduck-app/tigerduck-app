@@ -1,5 +1,6 @@
 #if os(iOS)
 import Testing
+import UIKit
 import WebKit
 @testable import TigerDuck
 
@@ -16,11 +17,12 @@ struct BrowserFindPageTests {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded?.resume() }
     }
 
-    private func page(_ body: String = Self.body) async -> (WKWebView, BrowserFind) {
-        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 800))
+    private func page(_ body: String = Self.body, head: String = "", in host: UIView? = nil) async -> (WKWebView, BrowserFind) {
+        let webView = WKWebView(frame: host?.bounds ?? CGRect(x: 0, y: 0, width: 390, height: 800))
+        host?.addSubview(webView)
         let loader = Loader()
         webView.navigationDelegate = loader
-        await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString("<body>\(body)</body>", baseURL: nil) }
+        await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString("<head>\(head)</head><body>\(body)</body>", baseURL: nil) }
         withExtendedLifetime(loader) {}
         let find = BrowserFind()
         find.run = { [weak webView] in await webView?.runFind($0) }
@@ -84,6 +86,61 @@ struct BrowserFindPageTests {
             #expect(find.count == count, "\(query)")
         }
         withExtendedLifetime(webView) {}
+    }
+
+    @Test func showsTheMatchInTheMiddleOfWhatTheBarsLeaveAndDimsTheRest() async throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        window.rootViewController = UIViewController()
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let rows = (0..<300).map { "<div style=\"height:20px\">\($0 == 200 ? "作業" : "")</div>" }.joined()
+        let viewport = "<meta name=\"viewport\" content=\"width=device-width\">"
+        let (webView, find) = await page(rows, head: viewport, in: window.rootViewController?.view)
+        // The browser's top bar, and a find bar with the keyboard under it over the lower half.
+        webView.scrollView.contentInset = UIEdgeInsets(top: 60, left: 0, bottom: 400, right: 0)
+        // The page's first frames after the load set its scroll, which would undo a scroll before them.
+        _ = await evaluate(webView, "await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+        let inset = webView.scrollView.adjustedContentInset
+        let middle = (inset.top + webView.bounds.height - inset.bottom) / 2
+
+        find.query = "作業"
+        await find.search()
+        let scroll = webView.scrollView
+        var settled = scroll.contentOffset.y
+        for _ in 0..<50 {
+            try await Task.sleep(for: .milliseconds(100))
+            if scroll.contentOffset.y == settled, settled > 0 { break }
+            settled = scroll.contentOffset.y
+        }
+        let shown = await Self.rows(of: webView, at: 16) { $0.red > 0.9 && (0.6...0.8).contains($0.green) && $0.blue < 0.4 }
+        let first = try #require(shown.first, "offset \(scroll.contentOffset.y), zoom \(scroll.zoomScale), band \(middle)")
+        let last = try #require(shown.last)
+        #expect(abs((first + last) / 2 - middle) < 3, "the match shows at \(first)...\(last), not around \(middle)")
+        let dimmed = await Self.rows(of: webView, at: 300) { $0.red < 0.8 && $0.red > 0.4 }
+        #expect(dimmed.count > Int(webView.bounds.height / 2), "the rest of the page is not dimmed")
+
+        find.query = ""
+        await find.search()
+        #expect(await evaluate(webView, "return document.querySelector('[data-tigerduck-find-light]') === null") as? Bool == true)
+    }
+
+    private struct Pixel { let red, green, blue: CGFloat }
+
+    /// The rows of the web view's snapshot, in points, whose pixel at `x` passes `test`.
+    private static func rows(of webView: WKWebView, at x: CGFloat, _ test: (Pixel) -> Bool) async -> [CGFloat] {
+        guard let image = try? await webView.takeSnapshot(configuration: nil), let cgImage = image.cgImage,
+              let data = cgImage.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return [] }
+        let scale = CGFloat(cgImage.height) / webView.bounds.height
+        let bgra = cgImage.bitmapInfo.contains(.byteOrder32Little)
+        let column = Int(x * scale) * cgImage.bitsPerPixel / 8
+        return (0..<cgImage.height).compactMap { row in
+            let pixel = bytes + row * cgImage.bytesPerRow + column
+            let (red, blue) = bgra ? (pixel[2], pixel[0]) : (pixel[0], pixel[2])
+            let passes = test(Pixel(red: CGFloat(red) / 255, green: CGFloat(pixel[1]) / 255, blue: CGFloat(blue) / 255))
+            return passes ? CGFloat(row) / scale : nil
+        }
     }
 
     @Test(.timeLimit(.minutes(1)))

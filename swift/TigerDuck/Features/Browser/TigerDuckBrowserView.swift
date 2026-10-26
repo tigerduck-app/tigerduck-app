@@ -15,11 +15,13 @@ struct TigerDuckBrowserView: View {
     @State private var sheet: BrowserSheet?
     @State private var afterSheet: (() -> Void)?
     @State private var copied = false
+    /// The find bar's top edge in the window, which the keyboard under it pushes up.
+    @State private var findBarTop: CGFloat?
 
     private var collapsed: Bool { page.isCollapsed }
 
     var body: some View {
-        BrowserWebView(page: page, start: url, insets: contentInsets, appearance: appearance)
+        BrowserWebView(page: page, start: url, insets: contentInsets, findBarTop: page.find.isActive ? findBarTop : nil, appearance: appearance)
             .ignoresSafeArea(edges: addressBar == .top ? .all : .bottom)
             .overlay { failureView }
             .overlay(alignment: .top) {
@@ -33,6 +35,7 @@ struct TigerDuckBrowserView: View {
                 Group {
                     if page.find.isActive {
                         BrowserFindBar(find: page.find)
+                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { findBarTop = $0 }
                     } else if addressBar == .top {
                         toolbar
                     } else {
@@ -338,6 +341,7 @@ private struct BrowserWebView: UIViewRepresentable {
     let page: BrowserPage
     let start: URL
     let insets: UIEdgeInsets
+    let findBarTop: CGFloat?
     let appearance: BrowserAppearance
 
     func makeCoordinator() -> BrowserNavigator { BrowserNavigator(page: page) }
@@ -355,6 +359,12 @@ private struct BrowserWebView: UIViewRepresentable {
         case .dark: .dark
         }
         if webView.overrideUserInterfaceStyle != style { webView.overrideUserInterfaceStyle = style }
+        var insets = insets
+        if let findBarTop {
+            // The find bar and the keyboard under it cover the page from the bar's top edge down.
+            let covered = webView.bounds.height - webView.convert(CGPoint(x: 0, y: findBarTop), from: nil).y
+            insets.bottom = covered - webView.safeAreaInsets.bottom + TigerDuckTheme.Spacing.lg
+        }
         guard webView.scrollView.contentInset != insets else { return }
         webView.scrollView.contentInset = insets
         webView.scrollView.verticalScrollIndicatorInsets = insets
