@@ -3,6 +3,7 @@ import SwiftUI
 struct OtherSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var showReassignColorsConfirm = false
+    @State private var storageBytes: Int?
 
     var body: some View {
         @Bindable var appState = appState
@@ -45,7 +46,17 @@ struct OtherSettingsView: View {
                         .foregroundStyle(.primary)
                 }
             }
-            MoodleFilesCacheSection()
+            Section {
+                NavigationLink {
+                    StorageSettingsView()
+                } label: {
+                    LabeledContent(String(localized: "settings_storage_title")) {
+                        Text(storageBytes.map(StorageSizes.text) ?? "…")
+                            .monospacedDigit()
+                    }
+                }
+                .task { storageBytes = await StorageCleaner.live.measure().total }
+            }
         }
         .navigationTitle(String(localized: "settings_section_other_settings"))
         .navigationBarTitleDisplayMode(.inline)

@@ -3,26 +3,10 @@ import SwiftUI
 
 struct MailSettingsView: View {
     @State private var displayNameDraft = ""
-    @State private var cacheBytes: Int?
     private let account = MailAccountManager.shared
 
     static func displayNameIsEnabled(isLoggedIn: Bool) -> Bool {
         isLoggedIn
-    }
-
-    nonisolated static func cacheSizeText(bytes: Int) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
-    }
-
-    nonisolated static func measureCache(_ cache: MailCache) async -> Int {
-        await Task.detached { cache.totalBytes() }.value
-    }
-
-    nonisolated static func clearCache(_ cache: MailCache) async -> Int {
-        await Task.detached {
-            cache.clearAll()
-            return cache.totalBytes()
-        }.value
     }
 
     var body: some View {
@@ -40,19 +24,12 @@ struct MailSettingsView: View {
             .disabled(!Self.displayNameIsEnabled(isLoggedIn: account.isLoggedIn))
 
             Section {
-                LabeledContent(String(localized: "school_mail_cache_size")) {
-                    Text(cacheBytes.map(Self.cacheSizeText) ?? "…")
-                }
-                Button(String(localized: "school_mail_clear_cache")) {
-                    Task { cacheBytes = await Self.clearCache(account.cache) }
-                }
-                .disabled((cacheBytes ?? 0) == 0)
+                NavigationLink(String(localized: "settings_storage_title")) { StorageSettingsView() }
             }
         }
         .navigationTitle(String(localized: "school_mail_account_title"))
         .onAppear { displayNameDraft = account.displayName ?? "" }
         .onDisappear { account.displayName = displayNameDraft.mailNonEmpty }
-        .task { cacheBytes = await Self.measureCache(account.cache) }
     }
 }
 #endif
