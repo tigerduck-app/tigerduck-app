@@ -122,11 +122,18 @@ final class BrowserFind {
       window.tigerduckFindCurrent = -1;
       var light = document.querySelector('[' + marker + '-light]');
       if (light) light.remove();
+      // Wrapping split one text node into the original, the mark and a new rest; joining them back
+      // into the original keeps the nodes a page script may hold, which normalize() would merge away.
       marks().forEach(function(mark) {
-        var parent = mark.parentNode;
-        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-        parent.removeChild(mark);
-        parent.normalize();
+        var before = mark.previousSibling, after = mark.nextSibling;
+        if (before && before.nodeType === Node.TEXT_NODE && after && after.nodeType === Node.TEXT_NODE) {
+          before.data += mark.textContent + after.data;
+          after.remove();
+          mark.remove();
+          return;
+        }
+        while (mark.firstChild) mark.parentNode.insertBefore(mark.firstChild, mark);
+        mark.remove();
       });
       return 0;
     }

@@ -75,6 +75,21 @@ struct BrowserFindPageTests {
         #expect(await evaluate(webView, "return document.body.innerHTML") as? String == before)
     }
 
+    @Test func endingKeepsThePageScriptsOwnTextNodes() async {
+        let (webView, find) = await page("""
+        <p id="p"></p><script>var p = document.getElementById('p'); p.append('ab', 'cd'); window.held = [...p.childNodes];</script>
+        """)
+        let held = "return [p.childNodes.length, ...held.map(node => node.isConnected + ' ' + node.data)]"
+        for query in ["b", "bc", "abcd"] {
+            find.query = query
+            await find.search()
+            #expect(find.count == 1, "\(query)")
+            find.query = ""
+            await find.search()
+            #expect(await evaluate(webView, held) as? [AnyHashable] == [2, "true ab", "true cd"], "\(query)")
+        }
+    }
+
     @Test func findsTextInAnElementWithNoBoxOfItsOwn() async {
         let (webView, find) = await page("<p><span style=\"display:contents\">assignment <b>deadline</b></span></p>")
         for query in ["assignment", "assignment deadline"] {
