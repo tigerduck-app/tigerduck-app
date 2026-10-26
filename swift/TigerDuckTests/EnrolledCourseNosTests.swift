@@ -180,8 +180,8 @@ struct PastTermRebuildTests {
     @Test("A past term keeps only the transcript's classes with class times; cached junk, Moodle sites and other rows are dropped")
     func junkLeavesAPastTerm() {
         let rebuilt = AppServiceBridge.rebuiltPastTerm(
-            [Self.looked("CS1001301"), Self.looked("GE1001301", times: false)],
-            cached: ["CS1001301", "GE1001301", "EC9999301"],
+            [Self.looked("CS1001301"), Self.looked("GE1001301", times: false)], unreadable: [],
+            cached: ["CS1001301", "GE1001301", "EC9999301"].map { Self.course($0) },
             others: ["PE9999301", "CC1011301", "CS1001301", "GE1001301"],
             userAdded: []
         )
@@ -196,7 +196,7 @@ struct PastTermRebuildTests {
     func failedLookupKeepsTheCachedCourse() {
         let rebuilt = AppServiceBridge.rebuiltPastTerm(
             [Self.looked("CS1001301", times: false, answered: false), Self.looked("MA1001301", times: false, answered: false)],
-            cached: ["CS1001301"], others: [], userAdded: []
+            unreadable: [], cached: [Self.course("CS1001301")], others: [], userAdded: []
         )
 
         #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301"])
@@ -218,7 +218,7 @@ struct PastTermRebuildTests {
             Self.course("EC9999301", moodleId: "1141EC9999301"),
         ]
         let rebuilt = AppServiceBridge.rebuiltPastTerm(
-            [Self.looked("CS1001301")], cached: ["CS1001301"],
+            [Self.looked("CS1001301")], unreadable: [], cached: [Self.course("CS1001301")],
             others: ["GE1010001", "EC9999301"], userAdded: userAdded
         )
         #expect(!rebuilt.dropping.contains("GE1010001"))
@@ -239,5 +239,46 @@ struct PastTermRebuildTests {
 
         #expect(listed == ["CS1001301", "GE1010001", "PE1001301"])
         #expect(unlisted.drop == ["EC9999301"])
+    }
+
+    private static func report(_ rows: [(term: String, code: String, status: GradeStatus)]) -> ScoreReport {
+        ScoreReport(student: "", currentTerm: "", rankings: [], courses: rows.map {
+            CourseGrade(
+                index: nil, term: $0.term, code: $0.code, name: $0.code, credits: 2, creditType: .normal,
+                grade: "", status: $0.status, remark: "", geDimension: nil, distanceLearning: false
+            )
+        }, creditSummary: .empty)
+    }
+
+    @Test("The newest term the transcript lists only adds: a just-ended term listed in part, or one still running")
+    func newestListedTermOnlyAdds() {
+        let rebuilds = AppServiceBridge.rebuildsFromTranscript
+        let justEnded = Self.report([("1141", "CS1001301", .graded), ("1142", "MA1001301", .pending)])
+        #expect(!rebuilds(justEnded, "1142", false))
+        #expect(rebuilds(justEnded, "1141", false))
+
+        let running = Self.report([("1141", "CS1001301", .graded), ("1142", "MA1001301", .unknown), ("1151", "GE1001301", .exempted)])
+        #expect(!rebuilds(running, "1142", false))
+        #expect(!rebuilds(running, "1141", true))
+        #expect(!rebuilds(nil, "1141", false))
+        #expect(rebuilds(Self.report([("991", "CS1001301", .graded), ("1001", "MA1001301", .graded)]), "991", false))
+    }
+
+    @Test("A row the course query cannot read keeps its cached copy; rows the rule leaves out and courses off the transcript are dropped")
+    func unreadableRowKeepsItsCachedCopy() {
+        let report = Self.report([
+            ("1141", "CS1001301", .graded), ("1141", "NTU-CSIE-101", .graded), ("1141", "MA1001301", .withdrew),
+        ])
+        let unreadable = AppServiceBridge.unreadableClassRows(of: report, term: "1141").map(\.code)
+        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+            [Self.looked("CS1001301")], unreadable: unreadable,
+            cached: ["CS1001301", "NTU-CSIE-101", "MA1001301", "EC9999301"].map { Self.course($0) },
+            others: report.courses.map(\.code), userAdded: []
+        )
+
+        #expect(unreadable == ["NTU-CSIE-101"])
+        #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301", "NTU-CSIE-101"])
+        #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+            == ["MA1001301", "EC9999301"])
     }
 }

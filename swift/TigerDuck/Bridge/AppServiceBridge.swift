@@ -165,10 +165,11 @@ enum AppServiceBridge {
             : await transcript()
         let scoreCoursesForSemester = report.map { classRows(of: $0, term: semester) }
         let cachedCourses = DataCache.shared.loadCourses(semester: semester)
+        let rebuilds = rebuildsFromTranscript(report, term: semester, servedBySelection: servesSelectionSemester)
         guard let term = termCourseNos(
             selection: courseSelectionNos,
             transcript: scoreCoursesForSemester?.map(\.code),
-            cached: servesSelectionSemester ? cachedCourses.map(\.courseNo) : []
+            cached: rebuilds ? [] : cachedCourses.map(\.courseNo)
         ) else {
             return cachedCourses
         }
@@ -220,8 +221,9 @@ enum AppServiceBridge {
             return (data, answered)
         }.compactMap { item in item.data.map { LookedUpCourse(course: $0.course(in: semester), answered: item.answered) } }
 
-        let pastTerm = servesSelectionSemester ? nil : rebuiltPastTerm(
-            looked, cached: Set(cachedByNo.keys),
+        let pastTerm = !rebuilds ? nil : rebuiltPastTerm(
+            looked, unreadable: report.map { unreadableClassRows(of: $0, term: semester).map(\.code) } ?? [],
+            cached: cachedCourses,
             others: Array(moodleByNo.keys) + (report?.courses.filter { $0.term == semester }.map(\.code) ?? []),
             userAdded: DataCache.shared.loadUserAddedCourses().filter { DataCache.userAddedCourse($0, belongsTo: semester) }
         )
@@ -291,22 +293,32 @@ enum AppServiceBridge {
     }
 
     /// A past term rebuilt from the transcript: its classes the course query found with class
-    /// times, and the cached copy of one it did not find, as a failed lookup removes no course.
-    /// `roster` names those and the classes still waiting for a lookup. Every other course the term
-    /// may hold here or on the server, cached, merged from the server, a Moodle site or another
-    /// transcript row in `others`, is in `dropping`, so its server row is not merged back. A
-    /// course added by hand stays in the hand-added courses and is never dropped.
+    /// times, and the cached copy of one it did not find or of an `unreadable` row it cannot look
+    /// up, as neither removes a course. `roster` names those and the classes still waiting for a
+    /// lookup. Every other course the term may hold here or on the server, cached, merged from the
+    /// server, a Moodle site or a row the rule leaves out in `others`, is in `dropping`, so its
+    /// server row is not merged back. A course added by hand is never dropped.
     static func rebuiltPastTerm(
-        _ looked: [LookedUpCourse], cached: Set<String>, others: [String], userAdded: [SDCourse]
+        _ looked: [LookedUpCourse], unreadable: [String], cached: [SDCourse], others: [String], userAdded: [SDCourse]
     ) -> (courses: [SDCourse], roster: [String], dropping: [String]) {
         let hasTimes = { (course: SDCourse) in course.schedule.values.contains { !$0.isEmpty } }
-        let courses = looked.filter { $0.answered ? hasTimes($0.course) : cached.contains($0.course.courseNo) }
-            .map(\.course)
-        let roster = looked.filter { !$0.answered || hasTimes($0.course) }.map(\.course.courseNo)
+        let cachedNos = Set(cached.map(\.courseNo))
+        let courses = looked.filter { $0.answered ? hasTimes($0.course) : cachedNos.contains($0.course.courseNo) }
+            .map(\.course) + cached.filter { unreadable.contains($0.courseNo) }
+        let roster = looked.filter { !$0.answered || hasTimes($0.course) }.map(\.course.courseNo) + unreadable
         let addedHere = Set(userAdded.filter { $0.moodleIdNumber == nil }.map(\.courseNo))
         let merged = userAdded.filter { $0.moodleIdNumber != nil }.map(\.courseNo)
-        let dropping = (Array(cached) + merged + others).filter { !addedHere.contains($0) }
+        let dropping = (Array(cachedNos) + merged + others).filter { !addedHere.contains($0) }
         return (courses, roster, dropping)
+    }
+
+    /// A term is rebuilt only once the transcript lists a later one: then it has ended and the
+    /// transcript holds all of it. The newest term listed may still run or miss grades, and the
+    /// term course selection serves is its own, so both only add.
+    static func rebuildsFromTranscript(_ report: ScoreReport?, term: String, servedBySelection: Bool) -> Bool {
+        guard !servedBySelection, let report else { return false }
+        let order = { (code: String) in Int(code.filter(\.isNumber)) ?? 0 }
+        return report.courses.contains { $0.status != .exempted && order($0.term) > order(term) }
     }
 
     /// A class the transcript adds joins its term only with class times: a row without them, or one
@@ -326,9 +338,18 @@ enum AppServiceBridge {
     /// school English proficiency test have none to draw. Codes are read with
     /// `CourseSelectionService.isCourseNo`, which takes NTU and NTNU courses too.
     static func classRows(of report: ScoreReport, term: String) -> [CourseGrade] {
+        ruleRows(of: report, term: term).filter { CourseSelectionService.isCourseNo($0.code[...]) }
+    }
+
+    /// The rows the rule keeps whose code is no course number, so the course query cannot look
+    /// them up.
+    static func unreadableClassRows(of report: ScoreReport, term: String) -> [CourseGrade] {
+        ruleRows(of: report, term: term).filter { !$0.code.isEmpty && !CourseSelectionService.isCourseNo($0.code[...]) }
+    }
+
+    private static func ruleRows(of report: ScoreReport, term: String) -> [CourseGrade] {
         report.courses.filter {
-            $0.term == term && $0.status != .withdrew && $0.status != .exempted
-                && !isEnglishProficiencyTest($0) && CourseSelectionService.isCourseNo($0.code[...])
+            $0.term == term && $0.status != .withdrew && $0.status != .exempted && !isEnglishProficiencyTest($0)
         }
     }
 
