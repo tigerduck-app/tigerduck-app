@@ -280,6 +280,19 @@ struct MailIndexerTests {
         #expect(await h.passes() == 4)
     }
 
+    @Test func aPassStoppedByAResetMarksNoFolderIndexedAfterIt() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.hold("searchTexts")
+        h.indexer.startIfDue(folders: ["INBOX"])
+        await h.fake.waitForArrival("searchTexts")
+        h.indexer.reset()
+        await h.fake.release("searchTexts")
+        try await waitUntil { !h.indexer.isRunning }
+
+        #expect(!h.indexer.isIndexed("INBOX"))
+        #expect(h.indexer.progress == nil)
+    }
+
     @Test func aMailWhoseTextNeverArrivesIsSkippedAfterFailingAloneTwice() async throws {
         let h = Self.harness()
         await h.fake.update { $0.searchTextsFailingUIDs = [30] }

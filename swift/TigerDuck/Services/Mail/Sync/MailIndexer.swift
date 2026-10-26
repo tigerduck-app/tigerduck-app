@@ -87,6 +87,8 @@ final class MailIndexer {
     private var indexedFolders: Set<String> = []
     private var lastPassCompleted = false
     private var lastProgress: MailIndexProgress?
+    /// Moves on each `reset()`, so a pass it stopped writes nothing after it.
+    private var resets = 0
     /// Whether a pass is listing or downloading.
     private(set) var isRunning = false
     /// Told the folder each time a batch of its mail joins the index.
@@ -166,6 +168,7 @@ final class MailIndexer {
         indexedFolders = []
         lastPassCompleted = false
         lastProgress = nil
+        resets += 1
     }
 
     /// The last pass's count, kept after it ends; nil before a pass since the last wipe.
@@ -225,6 +228,7 @@ final class MailIndexer {
     /// A lost connection, a busy server or a rejected password ends the pass rather than trying
     /// each folder again: NTUST counts failed logins towards a lockout.
     private func pass(folders: [String], wipeCount: Int, tally: inout Tally) async -> Outcome {
+        let resets = self.resets
         isRunning = true
         lastProgress = .counting
         defer {
@@ -235,7 +239,9 @@ final class MailIndexer {
             var plans: [Plan] = []
             for folder in folders {
                 guard !Task.isCancelled, !isConstrained() else { return .paused }
-                if let plan = try await attempt({ try await self.plan(folder: folder, wipeCount: wipeCount) }) {
+                let plan = try await attempt { try await self.plan(folder: folder, wipeCount: wipeCount) }
+                guard resets == self.resets else { return .paused }
+                if let plan {
                     plans.append(plan)
                     tally.listed += 1
                     if plan.missing.isEmpty { indexedFolders.insert(folder) } else { indexedFolders.remove(folder) }
@@ -244,16 +250,17 @@ final class MailIndexer {
                     tally.failed += 1
                 }
             }
-            // A stop during the last listing, as at sign-out, leaves no stale total behind.
-            guard !Task.isCancelled else { return .paused }
             let total = plans.reduce(0) { $0 + $1.missing.count }
             tally.toFetch = total
             lastProgress = MailIndexProgress(total: total)
             for plan in plans {
                 guard !Task.isCancelled, !isConstrained() else { return .paused }
                 let filled = try await attempt {
-                    try await self.fill(plan, wipeCount: wipeCount) { self.lastProgress?.advance(by: $0) }
+                    try await self.fill(plan, wipeCount: wipeCount) { count in
+                        if resets == self.resets { self.lastProgress?.advance(by: count) }
+                    }
                 }
+                guard resets == self.resets else { return .paused }
                 if filled == true {
                     indexedFolders.insert(plan.folder)
                 } else {
