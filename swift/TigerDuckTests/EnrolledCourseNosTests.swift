@@ -113,21 +113,31 @@ struct SelectionDropsTests {
         ) == ["D"])
     }
 
-    @Test("A course course selection dropped and then added by hand keeps its server row, so the reconcile keeps it")
+    @Test("A dropped course added by hand here or on another device keeps its server row; one merged from the server does not")
     @MainActor
-    func handAddedCourseOutlivesADrop() {
-        let rows: [[String: Any]] = [["course_no": "CS1001301"], ["course_no": "GE1010001"]]
-        let kept = AppState.keptRows(rows, semester: "1151", dropped: ["GE1010001"], handAdded: ["GE1010001"])
+    func onlyCoursesAddedByHandOutliveADrop() {
+        let rows: [[String: Any]] = [
+            ["course_no": "CS1001301", "source": "ntust_portal"],
+            ["course_no": "GE1010001", "source": "ntust_portal"],
+            ["course_no": "EE2005301", "source": "ntust_portal"],
+            ["course_no": "PE1001301", "source": "user_added"],
+        ]
+        let userAdded = [
+            SDCourse(courseNo: "GE1010001", courseName: "Added here", semester: "1151"),
+            SDCourse(courseNo: "EE2005301", courseName: "Merged", moodleIdNumber: "1151EE2005301", semester: "1151"),
+        ]
+
+        let kept = AppState.keptRows(
+            rows, semester: "1151", dropped: ["GE1010001", "EE2005301", "PE1001301"], userAdded: userAdded
+        )
         let listed = Set(kept.compactMap { $0["course_no"] as? String })
-        #expect(listed == ["CS1001301", "GE1010001"])
+
+        #expect(listed == ["CS1001301", "GE1010001", "PE1001301"])
         let unlisted = AppState.unlistedCourses(
             in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
-            handAdded: ["GE1010001"], hidden: [], adding: []
+            handAdded: ["GE1010001", "EE2005301"], hidden: [], adding: []
         )
-        #expect(unlisted.drop.isEmpty)
-
-        let notAdded = AppState.keptRows(rows, semester: "1151", dropped: ["GE1010001"], handAdded: [])
-        #expect(notAdded.compactMap { $0["course_no"] as? String } == ["CS1001301"])
+        #expect(unlisted.drop == ["EE2005301"])
     }
 
     @Test("An empty answer records nothing and clears nothing: parser drift is not a mass drop")

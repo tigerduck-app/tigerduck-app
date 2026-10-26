@@ -73,7 +73,7 @@ extension AppState {
             let handAdded = Set(userAdded.filter { DataCache.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo))
             let rows = Self.keptRows(
                 rowsBySemester[semester] ?? [], semester: semester,
-                dropped: Set(selectionDropped[semester] ?? []), handAdded: handAdded
+                dropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded
             )
             let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
             let localCourses = DataCache.shared.loadCourses(semester: semester)
@@ -195,13 +195,21 @@ extension AppState {
         return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
     }
 
-    /// The term's server rows, less those of courses course selection dropped. A course added by
-    /// hand keeps its row, so a drop never takes it out of the hand-added courses.
+    /// The term's server rows, less those of courses course selection dropped. A course the user
+    /// added by hand keeps its row, so a drop never takes it out of the hand-added courses: one added
+    /// here has no Moodle ID, which a row merged from the server always has, and one added on
+    /// another device is a `user_added` row.
     static func keptRows(
-        _ rows: [[String: Any]], semester: String, dropped: Set<String>, handAdded: Set<String>
+        _ rows: [[String: Any]], semester: String, dropped: Set<String>, userAdded: [SDCourse]
     ) -> [[String: Any]] {
-        let dropped = dropped.subtracting(handAdded)
-        return rows.filter { isFiled($0, under: semester) && !dropped.contains(($0["course_no"] as? String) ?? "") }
+        let addedHere = Set(userAdded.filter {
+            $0.moodleIdNumber == nil && DataCache.userAddedCourse($0, belongsTo: semester)
+        }.map(\.courseNo))
+        return rows.filter { row in
+            let courseNo = row["course_no"] as? String ?? ""
+            return isFiled(row, under: semester)
+                && (!dropped.contains(courseNo) || addedHere.contains(courseNo) || row["source"] as? String == "user_added")
+        }
     }
 
     static func isFiled(_ row: [String: Any], under semester: String) -> Bool {
