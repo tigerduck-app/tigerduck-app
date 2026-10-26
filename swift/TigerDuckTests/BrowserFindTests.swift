@@ -157,7 +157,7 @@ struct BrowserFindTests {
         #expect(find.position.isEmpty)
     }
 
-    @Test func endingClearsTheQueryAndTheMarks() async {
+    @Test func endingClearsTheMarksAndStartingAgainBeginsEmpty() async {
         let page = Page()
         let find = find(page)
         find.start()
@@ -166,7 +166,9 @@ struct BrowserFindTests {
 
         find.end()
         while page.calls.last?["action"] as? String != "clear" { await Task.yield() }
-        #expect(!find.isActive && find.query.isEmpty && find.count == 0)
+        #expect(!find.isActive)
+        find.start()
+        #expect(find.isActive && find.query.isEmpty && find.count == 0 && find.position.isEmpty)
     }
 
     @Test func findAndPrintNeedALoadedPageWithNoErrorOrSignIn() {

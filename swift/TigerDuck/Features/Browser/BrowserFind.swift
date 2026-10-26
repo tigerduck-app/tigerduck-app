@@ -24,13 +24,16 @@ final class BrowserFind {
         return query.isEmpty ? "" : String(localized: "browser_find_none")
     }
 
-    func start() { isActive = true }
-
-    func end() {
-        isActive = false
+    func start() {
         query = ""
         count = 0
         index = 0
+        isActive = true
+    }
+
+    /// The query and count stay for the find bar as it slides away; the next start clears them.
+    func end() {
+        isActive = false
         searches += 1
         Task { _ = await run(["action": "clear"]) }
     }
