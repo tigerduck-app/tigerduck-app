@@ -29,7 +29,7 @@ nonisolated struct MailIndexProgress: Equatable, Sendable {
 /// Downloads every folder's mail into `MailSearchIndex` while the mail page is on screen, newest
 /// first and `MailConstants.indexBatchSize` mails per command. A pass that got through holds off
 /// the next for `MailConstants.indexResyncInterval`, unless mail arrived since; one that failed
-/// waits longer before each retry, and Low Data Mode pauses it.
+/// waits longer before each retry, unless the cache was cleared since, and Low Data Mode pauses it.
 /// See docs/decisions/0027-mail-local-search-index.md.
 @MainActor
 @Observable
@@ -63,9 +63,11 @@ final class MailIndexer {
     private var failedPasses = 0
     private var arrivals = 0
     /// Mails of a batch whose answer would not parse: fetched one at a time from then on, and
-    /// skipped after failing alone `failuresBeforeSkipping` times. Kept until the account changes
-    /// or the app quits.
+    /// skipped after failing alone `failuresBeforeSkipping` times. Kept until the account changes,
+    /// the cache is cleared or the app quits.
     private var strikes: [MailKey: Int] = [:]
+    /// The cache's `wipeCount` when the last pass began, which its retry and strikes belong to.
+    private var passWipeCount: Int?
     private(set) var progress: MailIndexProgress?
 
     init(
@@ -83,9 +85,13 @@ final class MailIndexer {
     }
 
     func startIfDue(folders: [String]) {
+        // A cleared cache emptied the index: a pass under way can no longer write to it, and the
+        // failures before it no longer hold the next pass off.
+        if let passWipeCount, passWipeCount != cache.wipeCount { reset() }
         guard task == nil, !isFresh, retryAt.map({ now() >= $0 }) ?? true, !isConstrained() else { return }
         let arrivals = self.arrivals
         let wipeCount = cache.wipeCount
+        passWipeCount = wipeCount
         let delay = startDelay
         let previous = stopping
         task = Task { [weak self] in

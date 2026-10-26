@@ -220,6 +220,21 @@ struct MailIndexerTests {
         #expect(await h.passes() == 6)
     }
 
+    @Test func clearingTheCacheStartsThePassAFailureWasHoldingOff() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.runPass()
+        await h.fake.update { $0.searchTextsError = nil }
+        await h.runPass()
+        #expect(await h.passes() == 1)
+
+        h.cache.clearAll()
+        await h.runPass()
+
+        #expect(await h.passes() == 2)
+        #expect(h.search("公告") == [3, 2, 1])
+    }
+
     @Test func aMailWhoseTextNeverArrivesIsSkippedAfterFailingAloneTwice() async throws {
         let h = Self.harness()
         await h.fake.update { $0.searchTextsFailingUIDs = [30] }
