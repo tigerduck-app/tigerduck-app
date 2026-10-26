@@ -2,7 +2,7 @@ import UIKit
 import WebKit
 
 /// Signs the browser in with the school SSO session the app already holds, for when Moodle has no
-/// autologin key to give: the shared jar's sign-in cookies go into the browser, a hidden page runs
+/// autologin key to give: the app's sign-in cookies go into the browser, a hidden page runs
 /// Moodle's OIDC entry, and the cookies it ends with go back. No password is posted.
 @MainActor
 final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
@@ -21,7 +21,8 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
     func signIn() async -> Bool {
         let generation = Self.accountGeneration()
         let cookies = store.httpCookieStore
-        for cookie in (HTTPCookieStorage.shared.cookies ?? []).filter(BrowserRouting.isSharedCookie) {
+        let jars = [HTTPCookieStorage.shared, NTUSTSessionManager.shared.cookieStorage]
+        for cookie in Self.sessionCookies(in: jars.map { $0.cookies ?? [] }) {
             await cookies.setCookie(cookie)
         }
         guard await runSignInPage() else { return false }
@@ -30,6 +31,13 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
         guard !Task.isCancelled, Self.accountGeneration() == generation else { return false }
         signedIn.filter(BrowserRouting.isSharedCookie).forEach(HTTPCookieStorage.shared.setCookie)
         return BrowserRouting.hasMoodleSession(signedIn)
+    }
+
+    /// The jars' sign-in cookies in the order they go into the browser. A later cookie replaces one
+    /// of the same name, domain and path, so the school jar, whose session `NTUSTSessionManager`
+    /// keeps alive, comes after the shared one, which holds what the last Moodle token harvest left.
+    nonisolated static func sessionCookies(in jars: [[HTTPCookie]]) -> [HTTPCookie] {
+        jars.joined().filter(BrowserRouting.isSharedCookie)
     }
 
     private static func accountGeneration() -> [Int] {
