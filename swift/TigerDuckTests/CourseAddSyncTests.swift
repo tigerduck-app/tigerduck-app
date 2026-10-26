@@ -87,7 +87,7 @@ struct CourseAddSyncTests {
         let adding = await coordinator.courseAddKeys(unlandedAt: fetchedAt)
         let unlisted = AppState.unlistedCourses(
             in: "1151", listed: ["CS1001301"], tombstoned: ["GE1010001"], fetched: ["CS1001301"],
-            handAdded: ["GE1010001"], hidden: [], adding: adding
+            handAdded: ["GE1010001"], droppedMerges: [], hidden: [], adding: adding
         )
         #expect(unlisted.hide.isEmpty)
         #expect(unlisted.drop.isEmpty)
@@ -339,7 +339,7 @@ struct CourseAddSyncTests {
 
         let unlisted = AppState.unlistedCourses(
             in: "1151", listed: ["CS1001301"], tombstoned: ["GE1010001"], fetched: ["CS1001301", "EE2005301"],
-            handAdded: ["MA1010003"], hidden: [], adding: Set(keys)
+            handAdded: ["MA1010003"], droppedMerges: [], hidden: [], adding: Set(keys)
         )
 
         #expect(unlisted.hide == (adding ? [] : ["GE1010001", "EE2005301"]))
@@ -350,7 +350,7 @@ struct CourseAddSyncTests {
     func emptyTermHidesOnlyByTombstone() {
         let unlisted = AppState.unlistedCourses(
             in: "1151", listed: [], tombstoned: ["GE1010001", "PE1010002"], fetched: ["CS1001301"],
-            handAdded: ["MA1010003"], hidden: ["1151:PE1010002"], adding: []
+            handAdded: ["MA1010003"], droppedMerges: [], hidden: ["1151:PE1010002"], adding: []
         )
 
         #expect(unlisted.hide == ["GE1010001"])
