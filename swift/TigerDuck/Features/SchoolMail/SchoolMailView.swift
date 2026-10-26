@@ -335,13 +335,17 @@ struct SchoolMailView: View {
         }
     }
 
+    /// While the search index downloads, the dot spins and its row counts the mail; before the
+    /// pass has a total, the row says it is syncing rather than OK.
     private var statusDot: some View {
-        SyncStatusDot(
+        let progress = viewModel.indexProgress
+        return SyncStatusDot(
             status: viewModel.serverStatus,
             label: String(localized: "feature_school_mail"),
             icon: "envelope.fill",
-            text: SyncStatusDot.statusText(viewModel.serverStatus),
-            isLoading: viewModel.isRefreshing,
+            text: progress.map { $0.text() ?? String(localized: "sync_status_syncing") }
+                ?? SyncStatusDot.statusText(viewModel.serverStatus),
+            isLoading: viewModel.isRefreshing || progress != nil,
             lastSynced: .at(viewModel.syncedAt)
         )
     }
