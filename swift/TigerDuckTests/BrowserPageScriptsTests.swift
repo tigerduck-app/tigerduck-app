@@ -44,14 +44,12 @@ struct BrowserPageScriptsTests {
         #expect(await evaluate(webView, size) as? [Double] == before)
     }
 
-    /// Dark Reader marks the root element while it recolors the page.
     private static let darkened = "return document.documentElement.getAttribute('data-darkreader-mode') === 'dynamic'"
     private static let colors = """
     var body = getComputedStyle(document.body);
     return [getComputedStyle(document.documentElement).backgroundColor, body.backgroundColor, body.color]
     """
 
-    /// A browser web view with the page scripts, in a window of `style` as the system's appearance.
     private func browser(in style: UIUserInterfaceStyle) throws -> (UIWindow, WKWebView) {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -95,6 +93,22 @@ struct BrowserPageScriptsTests {
         #expect(await evaluate(webView, Self.darkened) as? Bool == false)
         #expect(try await eventually { Self.brightness(of: webView.underPageBackgroundColor, in: webView) > 0.7 })
         #expect(printed == (await evaluate(webView, Self.colors) as? [String]), "a print shows the page's own colors")
+    }
+
+    @Test func aPageStyledThroughAnAdoptedSheetStaysDarkAndPrintsInItsOwnColors() async throws {
+        let (window, webView) = try browser(in: .dark)
+        defer { window.isHidden = true }
+        let adopted = "<script>var s = new CSSStyleSheet(); s.replaceSync('body { background: #fff; color: #000 }'); "
+            + "document.adoptedStyleSheets = [s];</script>"
+        await load(webView, "\(adopted)\(Self.paragraph)")
+        #expect(try await eventually { await evaluate(webView, "return document.adoptedStyleSheets.length") as? Int == 2 })
+
+        // Checks the page again now that Dark Reader's sheet for the adopted one is in place.
+        _ = await evaluate(webView, "dispatchEvent(new Event('load'))")
+        #expect(await evaluate(webView, Self.darkened) as? Bool == true)
+        webView.mediaType = "print"
+        #expect(await evaluate(webView, "return getComputedStyle(document.body).backgroundColor") as? String == "rgb(255, 255, 255)")
+        webView.mediaType = nil
     }
 
     @Test func aPageWithItsOwnDarkStyleAndTheLightSettingAreLeftAlone() async throws {

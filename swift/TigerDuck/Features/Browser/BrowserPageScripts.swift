@@ -54,7 +54,18 @@ enum BrowserPageScripts {
     /// `swift/TigerDuck/Features/Browser/DarkReader/`; without it in the bundle this is nil.
     nonisolated static let darken: String? = Bundle.main.url(forResource: "darkreader", withExtension: "js")
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
-        .map { $0 + "\n" + darkenWithDarkReader }
+        .map { screenOnlySheets + "\n" + $0 + "\n" + darkenWithDarkReader }
+
+    /// Runs before Dark Reader. The sheets it adds to `adoptedStyleSheets` are constructed with
+    /// no media, unlike its `style` elements, so a print would take their colors too.
+    private nonisolated static let screenOnlySheets = """
+    (function() {
+      var Sheet = CSSStyleSheet;
+      function ScreenSheet(options) { return new Sheet(Object.assign({ media: 'screen' }, options)); }
+      ScreenSheet.prototype = Sheet.prototype;
+      window.CSSStyleSheet = ScreenSheet;
+    })();
+    """
 
     private nonisolated static let darkenWithDarkReader = """
     (function() {
@@ -63,11 +74,17 @@ enum BrowserPageScripts {
       var fixes = { ignoreInlineStyle: ['[data-tigerduck-find]', '[data-tigerduck-find-light]'] };
       // Lets a cross-origin stylesheet be recolored where its server allows CORS.
       DarkReader.setFetchMethod(window.fetch);
+      // Dark Reader puts this rule in each sheet it adopts over one of the page's own.
+      function isOverride(sheet) {
+        return Array.prototype.some.call(sheet.cssRules, function(rule) { return rule.selectorText === '#__darkreader__adoptedOverride'; });
+      }
       // The page's own colors, read with Dark Reader's styles switched off for the moment.
       function drawsLight() {
         var ours = Array.prototype.map.call(document.querySelectorAll('style.darkreader'), function(style) { return style.sheet; })
           .filter(function(sheet) { return sheet && !sheet.disabled; });
+        var adopted = Array.prototype.slice.call(document.adoptedStyleSheets), own = adopted.filter(function(sheet) { return !isOverride(sheet); });
         ours.forEach(function(sheet) { sheet.disabled = true; });
+        if (own.length !== adopted.length) document.adoptedStyleSheets = own;
         try {
           var root = document.documentElement;
           var color = [document.body, root].filter(Boolean)
@@ -79,6 +96,7 @@ enum BrowserPageScripts {
           return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 127.5;
         } finally {
           ours.forEach(function(sheet) { sheet.disabled = false; });
+          if (own.length !== adopted.length) document.adoptedStyleSheets = adopted;
         }
       }
       function update() {
