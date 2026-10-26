@@ -1,6 +1,6 @@
 import WebKit
 
-/// What the browser adds to Moodle's pages so its logout cannot be reached.
+/// What the browser adds to pages: Moodle's logout hidden and blocked, and each site's zoom.
 enum BrowserPageScripts {
     private nonisolated static let logoutTargets = ["/login/logout.php", "/auth/oidc/logout.php"]
         .flatMap { ["https://\(BrowserRouting.moodleHost)\($0)", $0] }
@@ -27,6 +27,25 @@ enum BrowserPageScripts {
     })();
     """
 
+    /// Each site's zoom in `zooms`, by lowercased host, as Safari's page zoom: the body grows and
+    /// its text wraps again. On iOS `WKWebView.pageZoom` only magnifies the page, which then
+    /// scrolls sideways. Run again on a page, it applies a changed zoom.
+    nonisolated static func zoom(_ zooms: [String: Int]) -> String {
+        let table = (try? JSONSerialization.data(withJSONObject: zooms)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return """
+        (function() {
+          var zoom = (\(table))[location.hostname.toLowerCase()];
+          var style = document.querySelector('style[data-tigerduck-zoom]');
+          if (!style) {
+            style = document.createElement('style');
+            style.setAttribute('data-tigerduck-zoom', '');
+            (document.head || document.documentElement).appendChild(style);
+          }
+          style.textContent = zoom ? 'body { zoom: ' + zoom / 100 + ' !important; }' : '';
+        })();
+        """
+    }
+
     /// Blocks the logout for every resource type, frames and scripts' requests included, which
     /// the navigation delegate never sees. Content blocker patterns have no alternation, so one rule each.
     nonisolated static let logoutRules: String = {
@@ -44,11 +63,18 @@ enum BrowserPageScripts {
     /// The page loads without the rule list when WebKit's store does not answer in time; the
     /// navigation delegate still refuses the logout, and a later browser gets the list.
     static func install(in controller: WKUserContentController) async {
-        controller.addUserScript(WKUserScript(source: hideLogout, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        addScripts(to: controller)
         guard let rules = await answer(within: rulesDeadline, compileLogoutRules) else {
             return AppLogger.breadcrumb("browser opened without its logout rule list", category: "browser")
         }
         controller.add(rules)
+    }
+
+    /// Again after a zoom changes, for the pages loaded next: a user script cannot be replaced alone.
+    static func addScripts(to controller: WKUserContentController) {
+        controller.removeAllUserScripts()
+        controller.addUserScript(WKUserScript(source: hideLogout, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        controller.addUserScript(WKUserScript(source: zoom(BrowserSites.stored.zoom), injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
     private static func compileLogoutRules() async -> WKContentRuleList? {
