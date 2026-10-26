@@ -43,6 +43,9 @@ final class MailListViewModel {
     /// The search whose results `searchResults` shows.
     @ObservationIgnored private var resultsGeneration = -1
     @ObservationIgnored private var searchIsBehind = false
+    /// Matches of the search shown that the server listed as deleted or no longer had, which its
+    /// catch-ups leave out rather than fetch again.
+    @ObservationIgnored private var searchGone: [String: Set<UInt32>] = [:]
     @ObservationIgnored private var searchCatchUp: Task<Void, Never>?
     @ObservationIgnored private let catchUpDelay: @Sendable () async -> Void
     @ObservationIgnored private var warmTask: Task<Void, Never>?
@@ -327,6 +330,7 @@ final class MailListViewModel {
                     try await client.summaries(folder: folder, uids: newest, expectedUIDValidity: validity)
                 }
                 guard isCurrent(selection, epoch), generation == searchGeneration else { return }
+                noteGone(newest, summaries, folder: folder)
                 found += summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
                 unfetched[folder] = (validity, Array(matched.uids.dropFirst(newest.count)))
             } catch MailClientError.folderChanged {
@@ -407,7 +411,8 @@ final class MailListViewModel {
                 continue
             }
             let listed = Set(results.filter { $0.folder == folder }.map(\.uid))
-            let waiting = matched.uids.filter { !listed.contains($0) }
+            let skipped = listed.union(searchGone[folder] ?? [])
+            let waiting = matched.uids.filter { !skipped.contains($0) }
             let oldestListed = listed.min() ?? .max
             let wanted = waiting.prefix { $0 > oldestListed }.count + max(0, MailConstants.pageSize - listed.count)
             let batch = Array(waiting.prefix(min(wanted, MailConstants.pageSize)))
@@ -418,6 +423,7 @@ final class MailListViewModel {
                     try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: matched.uidValidity)
                 }
                 guard isCurrent(selection, epoch), generation == searchGeneration, let current = searchResults else { return }
+                noteGone(batch, summaries, folder: folder)
                 unfetchedMatches[folder]?.uids.removeAll { batch.contains($0) }
                 let shown = Set(current.map(\.id))
                 let rows = summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
@@ -437,6 +443,12 @@ final class MailListViewModel {
         }
     }
 
+    /// Records the `requested` mail the server answered as deleted or not at all.
+    private func noteGone(_ requested: [UInt32], _ summaries: [MailSummary], folder: String) {
+        let kept = Set(summaries.filter { !$0.isDeleted }.map(\.uid))
+        searchGone[folder, default: []].formUnion(requested.filter { !kept.contains($0) })
+    }
+
     private func loadMoreSearchResults() async {
         let selection = self.selection
         let epoch = accountEpoch
@@ -454,6 +466,7 @@ final class MailListViewModel {
                         try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: matches.uidValidity)
                     }
                     guard isCurrent(selection, epoch), generation == searchGeneration, let results = searchResults else { return }
+                    noteGone(batch, more, folder: folder)
                     unfetchedMatches[folder]?.uids = Array(matches.uids.dropFirst(batch.count))
                     let listed = Set(results.map(\.id))
                     let rows = more.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
@@ -487,6 +500,7 @@ final class MailListViewModel {
         searchCatchUp?.cancel()
         searchCatchUp = nil
         searchIsBehind = false
+        searchGone = [:]
     }
 
     private static func matches(_ summary: MailSummary, _ query: String) -> Bool {
