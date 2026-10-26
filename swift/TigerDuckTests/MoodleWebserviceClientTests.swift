@@ -35,7 +35,7 @@ struct MoodleWebserviceClientTests {
         )
     }
 
-    @Test("a call posts the function, the token and the form-encoded parameters, and decodes the answer")
+    @Test("a call names the function in its URL, posts the token first in the form, and decodes the answer")
     func callShape() async throws {
         let token = UUID().uuidString
         answer(200, #"{"userid":42,"sitename":"Moodle"}"#, function: "mod_assign_get_assignments", token: token)
@@ -45,9 +45,10 @@ struct MoodleWebserviceClientTests {
 
         let request = try #require(SettingsAPIStub.requests(for: Self.endpoint("mod_assign_get_assignments", token: token)).first)
         #expect(request.httpMethod == "POST")
+        #expect(request.url?.query == "moodlewsrestformat=json&wsfunction=mod_assign_get_assignments")
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/x-www-form-urlencoded")
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
-        #expect(body == "courseids%5B0%5D=7&q=a%20b%26c")
+        #expect(body == "wstoken=\(token)&courseids%5B0%5D=7&q=a%20b%26c")
     }
 
     @Test("a Moodle error body throws its case with HTTP 200 or another status, even a 503 with Retry-After")
@@ -112,7 +113,7 @@ struct MoodleWebserviceClientTests {
 
         let request = try #require(SettingsAPIStub.requests(for: Self.endpoint("mod_assign_get_assignments", token: token)).first)
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
-        #expect(body == "courseids%5B0%5D=7&courseids%5B1%5D=9&capabilities%5B0%5D=mod%2Fassign%3Asubmit")
+        #expect(body == "wstoken=\(token)&courseids%5B0%5D=7&courseids%5B1%5D=9&capabilities%5B0%5D=mod%2Fassign%3Asubmit")
     }
 
     private actor TokenLog {

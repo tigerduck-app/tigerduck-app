@@ -12,19 +12,25 @@ struct MoodleFileTransferTests {
         let file = try #require(URL(string: "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/31/mod_resource/content/2/%E8%AA%B2%E7%A8%8B.pdf?forcedownload=1"))
         let siteFile = try #require(URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/123/mod_forum/attachment/7001/scope.pdf?token=old"))
 
-        #expect(MoodleFileTransfer.downloadURL(for: file, accessKey: Self.key, token: "t0k3n", siteURL: Self.site)?.absoluteString
+        let request = try #require(MoodleFileTransfer.downloadRequest(for: file, accessKey: Self.key, token: "t0k3n", siteURL: Self.site))
+        #expect(request.url?.absoluteString
             == "https://moodle2.ntust.edu.tw/tokenpluginfile.php/\(Self.key)/31/mod_resource/content/2/%E8%AA%B2%E7%A8%8B.pdf?forcedownload=1")
-        #expect(MoodleFileTransfer.downloadURL(for: siteFile, accessKey: Self.key, token: "t0k3n", siteURL: Self.site)?.absoluteString
+        #expect(request.httpMethod == "GET")
+        #expect(request.httpBody == nil)
+        #expect(MoodleFileTransfer.downloadRequest(for: siteFile, accessKey: Self.key, token: "t0k3n", siteURL: Self.site)?.url?.absoluteString
             == "https://moodle2.ntust.edu.tw/tokenpluginfile.php/\(Self.key)/123/mod_forum/attachment/7001/scope.pdf")
     }
 
-    @Test("without a key the file goes through the web service path with the token")
-    func tokenFallback() throws {
-        let siteFile = try #require(URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/123/mod_forum/attachment/7001/scope.pdf"))
+    @Test("without a key the file is a POST to the web service path with the token in the form, not the URL",
+          arguments: [nil, ""])
+    func tokenFallback(accessKey: String?) throws {
+        let siteFile = try #require(URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/123/mod_forum/attachment/7001/scope.pdf?token=old"))
 
-        #expect(MoodleFileTransfer.downloadURL(for: siteFile, accessKey: nil, token: "t0k3n", siteURL: Self.site)?.absoluteString
-            == "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/123/mod_forum/attachment/7001/scope.pdf?token=t0k3n")
-        #expect(MoodleFileTransfer.downloadURL(for: siteFile, accessKey: "", token: "t0k3n", siteURL: Self.site)?.query == "token=t0k3n")
+        let request = try #require(MoodleFileTransfer.downloadRequest(for: siteFile, accessKey: accessKey, token: "t0k3n", siteURL: Self.site))
+        #expect(request.url?.absoluteString == "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/123/mod_forum/attachment/7001/scope.pdf")
+        #expect(request.httpMethod == "POST")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/x-www-form-urlencoded")
+        #expect(request.httpBody == Data("token=t0k3n".utf8))
     }
 
     @Test("no key goes to another host, over plain HTTP or to a page that is not a file", arguments: [
@@ -35,7 +41,7 @@ struct MoodleFileTransferTests {
     ])
     func refusesOtherURLs(_ url: String) throws {
         let file = try #require(URL(string: url))
-        #expect(MoodleFileTransfer.downloadURL(for: file, accessKey: Self.key, token: "t0k3n", siteURL: Self.site) == nil)
+        #expect(MoodleFileTransfer.downloadRequest(for: file, accessKey: Self.key, token: "t0k3n", siteURL: Self.site) == nil)
     }
 
     private static func response(_ status: Int = 200, type: String?) -> HTTPURLResponse {
@@ -150,7 +156,7 @@ struct MoodleFileTransferTests {
         config.protocolClasses = [SettingsAPIStub.self]
 
         let copy = try await MoodleFileTransfer.fetch(
-            url, mimeType: "application/pdf", expectedSize: 8, session: URLSession(configuration: config)
+            URLRequest(url: url), mimeType: "application/pdf", expectedSize: 8, session: URLSession(configuration: config)
         ) { _ in }
         defer { try? FileManager.default.removeItem(at: copy) }
 
@@ -171,7 +177,7 @@ struct MoodleFileTransferTests {
 
         await #expect(throws: MoodleWebserviceError.malformedResponse(detail: "text/html")) {
             try await MoodleFileTransfer.fetch(
-                url, mimeType: "application/pdf", expectedSize: 13, session: URLSession(configuration: config)
+                URLRequest(url: url), mimeType: "application/pdf", expectedSize: 13, session: URLSession(configuration: config)
             ) { _ in }
         }
         #expect(Self.temporaryDownloads() == before)

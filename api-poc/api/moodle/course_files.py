@@ -3,10 +3,11 @@
 core_course_get_contents returns the whole section/module tree; this flattens it
 to the course material — uploaded files and mod_url links alike.
 
-Only `type == "file"` rows are hosted on Moodle and need `?token=<wstoken>`
-appended to fileurl (or `&token=` when it already has a query) before they can
-be fetched. `type == "url"` rows are external links (Google Drive, YouTube, ...)
-with no mimetype and filesize 0; open them as-is.
+Only `type == "file"` rows are hosted on Moodle and need the wstoken before
+they can be fetched: POST the fileurl under `/webservice/pluginfile.php` with
+`token` in the form, which keeps it out of the URL. `type == "url"` rows are
+external links (Google Drive, YouTube, ...) with no mimetype and filesize 0;
+open them as-is.
 """
 
 from __future__ import annotations

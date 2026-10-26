@@ -83,6 +83,18 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         return data
     }
 
+    /// A Moodle web service call is filed under its URL with the form's `wstoken` added as a query
+    /// item, so parallel tests that call one function under their own tokens get their own answers.
+    /// The request's URL itself carries no token.
+    private static func key(for url: URL, body: Data?) -> String {
+        guard url.path.hasSuffix("/webservice/rest/server.php"),
+              let form = body.flatMap({ String(data: $0, encoding: .utf8) }),
+              let token = form.split(separator: "&").first(where: { $0.hasPrefix("wstoken=") }) else {
+            return url.absoluteString
+        }
+        return url.absoluteString + (url.query == nil ? "?" : "&") + token
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -91,11 +103,15 @@ nonisolated final class SettingsAPIStub: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
-        let key = url.absoluteString
+        // The stream reads once, so the log keeps the body as data.
+        var logged = request
+        let body = Self.bodyData(from: request)
+        if let body { logged.httpBody = body }
+        let key = Self.key(for: url, body: body)
 
         Self.lock.lock()
-        Self.requestLog[key, default: []].append(request)
-        Self.arrivals.append(request)
+        Self.requestLog[key, default: []].append(logged)
+        Self.arrivals.append(logged)
         let next = Self.responses[key]?.first
         if next != nil {
             Self.responses[key]?.removeFirst()

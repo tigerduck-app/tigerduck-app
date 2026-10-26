@@ -2,6 +2,9 @@ import Defaults
 import Foundation
 
 extension BrowserPreference: Defaults.Serializable, Defaults.PreferRawRepresentable {}
+extension BrowserAddressBar: Defaults.Serializable, Defaults.PreferRawRepresentable {}
+extension BrowserDataState: Defaults.Serializable, Defaults.PreferRawRepresentable {}
+extension BrowserAppearance: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension MoodleOpenTarget: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension AppAppearance: Defaults.Serializable, Defaults.PreferRawRepresentable {}
@@ -23,6 +26,21 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.browserPreference,
         default: .system
     )
+    static let browserAddressBar = Key<BrowserAddressBar>(
+        AppConstants.UserDefaultsKeys.browserAddressBar,
+        default: .top
+    )
+    static let browserDataState = Key<BrowserDataState>(
+        AppConstants.UserDefaultsKeys.browserDataState,
+        default: .empty
+    )
+    static let browserAppearance = Key<BrowserAppearance>(
+        AppConstants.UserDefaultsKeys.browserAppearance,
+        default: .automatic
+    )
+    /// Each site's page zoom in percent, by host; a site at 100% has no entry.
+    static let browserZoom = Key<[String: Int]>(AppConstants.UserDefaultsKeys.browserZoom, default: [:])
+    static let browserDesktopSites = Key<[String]>(AppConstants.UserDefaultsKeys.browserDesktopSites, default: [])
     /// Mac-only. Default `.browser` because the iPad Moodle app isn't
     /// installed by default on Mac; sending the user there before they
     /// opt in would fail with "no app handles this URL".

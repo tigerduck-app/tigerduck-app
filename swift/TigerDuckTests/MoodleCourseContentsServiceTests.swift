@@ -98,7 +98,7 @@ struct MoodleCourseContentsServiceTests {
         let request = try #require(SettingsAPIStub.requests(
             for: Self.endpoint(MoodleCourseContentsService.contentsFunction, token: token)
         ).first)
-        #expect(SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) } == "courseid=20119")
+        #expect(SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) } == "wstoken=\(token)&courseid=20119")
         #expect(materials.sections.map(\.id) == [100, 101, 102])
         #expect(materials.sections.map(\.name) == ["General", "Week 1 & 2", "Week 3"])
     }

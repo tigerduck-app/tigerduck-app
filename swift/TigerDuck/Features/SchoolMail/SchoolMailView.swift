@@ -16,7 +16,7 @@ struct SchoolMailView: View {
     @State private var isOnScreen = false
     @FocusState private var isSearchFocused: Bool
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
-    @ScaledMetric(relativeTo: .body) private var composeGlyphLift: CGFloat = 1.5
+    @ScaledMetric(relativeTo: .title2) private var composeGlyphLift: CGFloat = 2
     private let account = MailAccountManager.shared
 
     var body: some View {
@@ -123,12 +123,13 @@ struct SchoolMailView: View {
         if #available(iOS 26, *) { 36 } else { 40 }
     }
     private static let headerActionWidth: CGFloat = 44
+    private static let composeButtonSize: CGFloat = 56
 
-    /// Unread-only filter, guide and compose, sharing one capsule — the backing the toolbar
+    /// Unread-only filter and guide, sharing one capsule: the backing the toolbar
     /// used to supply on iOS 26. The status dot stays outside it: it reports on the server,
     /// it does not act on the mailbox.
     /// Each button is `.borderless` because the row is a `List` row now: the default style
-    /// there gives the whole row one tap target and drops the tint, so three `.automatic`
+    /// there gives the whole row one tap target and drops the tint, so two `.automatic`
     /// buttons would render untinted and fire as one. `MailFolderChipBar` and `SyncStatusDot`
     /// take `.plain` in the same situation, for the same reason.
     @ViewBuilder
@@ -147,15 +148,6 @@ struct SchoolMailView: View {
             }
             .buttonStyle(.borderless)
             .accessibilityLabel(String(localized: "school_mail_use_other_app"))
-            Button { compose = MailComposeContext(mode: .new) } label: {
-                headerIcon("square.and.pencil")
-                    // Optical centring, keep it: `square.and.pencil` draws its rounded square
-                    // 1.5pt below the centre of its 21pt box (the pencil takes the room above),
-                    // so it hangs low beside the centred circled glyphs. Already centred on x.
-                    .offset(y: -composeGlyphLift)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(String(localized: "school_mail_compose"))
         }
         if #available(iOS 26, *) {
             row.glassEffect(.regular.interactive(), in: .capsule)
@@ -195,6 +187,32 @@ struct SchoolMailView: View {
         .padding(.vertical, TigerDuckTheme.Spacing.sm)
         .background(Capsule().fill(Color(uiColor: .tertiarySystemFill)))
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    /// Floats above the tab bar and steps aside while the search field holds the keyboard, which
+    /// would otherwise carry it up over the results.
+    private var composeButton: some View {
+        Button { compose = MailComposeContext(mode: .new) } label: {
+            let glyph = Image(systemName: "square.and.pencil")
+                .font(.title2)
+                // Optical centring, keep it: `square.and.pencil` draws its rounded square below
+                // the centre of its box (the pencil takes the room above). Already centred on x.
+                .offset(y: -composeGlyphLift)
+                .frame(width: Self.composeButtonSize, height: Self.composeButtonSize)
+                .contentShape(.circle)
+            if #available(iOS 26, *) {
+                glyph.foregroundStyle(.white)
+                    .glassEffect(.regular.tint(appState.accentColor).interactive(), in: .circle)
+            } else {
+                glyph.foregroundStyle(appState.accentColor)
+                    .background(.regularMaterial, in: Circle())
+                    .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "school_mail_compose"))
+        .padding(.trailing, TigerDuckTheme.Spacing.lg)
+        .padding(.bottom, TigerDuckTheme.Spacing.sm)
     }
 
     private func headerIcon(_ systemName: String) -> some View {
@@ -270,6 +288,12 @@ struct SchoolMailView: View {
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .scrollDismissesKeyboard(.immediately)
+        .safeAreaInset(edge: .bottom, alignment: .trailing) {
+            ZStack {
+                if !isSearchFocused { composeButton.transition(.scale.combined(with: .opacity)) }
+            }
+            .animation(.snappy, value: isSearchFocused)
+        }
         .pullToRevealSearch(isRevealed: $isSearchRevealed, isActive: isSearchFocused || !viewModel.searchText.isEmpty)
         .onChange(of: viewModel.searchText) { _, text in
             if text.isEmpty { viewModel.clearSearch() }

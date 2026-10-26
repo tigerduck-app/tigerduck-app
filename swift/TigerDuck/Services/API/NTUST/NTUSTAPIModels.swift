@@ -1,6 +1,6 @@
 import Foundation
 
-struct CourseSearchResult: Codable {
+nonisolated struct CourseSearchResult: Codable {
     let Semester: String
     let CourseNo: String
     let CourseName: String
@@ -19,7 +19,7 @@ struct CourseSearchResult: Codable {
     let Contents: String?
 }
 
-struct CourseSearchRequest: Codable {
+struct CourseSearchRequest: Codable, Equatable {
     let Semester: String
     let CourseNo: String
     let CourseName: String
@@ -33,6 +33,7 @@ struct CourseSearchRequest: Codable {
     let OnlyMaster: Int
     let OnlyUnderGraduate: Int
     let OnlyNode: Int
+    let OnlyIntensive: Int
     let Language: String
 
     static func forCourseNo(_ courseNo: String, semester: String, language: String = "zh") -> CourseSearchRequest {
@@ -50,45 +51,30 @@ struct CourseSearchRequest: Codable {
             OnlyMaster: 0,
             OnlyUnderGraduate: 0,
             OnlyNode: 0,
+            OnlyIntensive: 0,
             Language: language
         )
+    }
+}
+
+/// The department and GE type lists of the Add Course filters, from the term's catalog.
+struct CourseSearchOptions: Codable, Equatable {
+    struct Option: Codable, Hashable {
+        let code: String
+        let name: String
+        let englishName: String
+
+        func name(in language: String) -> String { language == "en" ? englishName : name }
     }
 
-    static func forCourseName(_ name: String, semester: String, language: String = "zh") -> CourseSearchRequest {
-        CourseSearchRequest(
-            Semester: semester,
-            CourseNo: "",
-            CourseName: name,
-            CourseTeacher: "",
-            Dimension: "",
-            CourseNotes: "",
-            CampusNotes: "",
-            ForeignLanguage: 0,
-            OnlyGeneral: 0,
-            OnleyNTUST: 0,
-            OnlyMaster: 0,
-            OnlyUnderGraduate: 0,
-            OnlyNode: 0,
-            Language: language
-        )
+    struct College: Codable, Equatable {
+        let name: String
+        let englishName: String
+        let departments: [Option]
+
+        func name(in language: String) -> String { language == "en" ? englishName : name }
     }
 
-    static func forCourseTeacher(_ teacher: String, semester: String, language: String = "zh") -> CourseSearchRequest {
-        CourseSearchRequest(
-            Semester: semester,
-            CourseNo: "",
-            CourseName: "",
-            CourseTeacher: teacher,
-            Dimension: "",
-            CourseNotes: "",
-            CampusNotes: "",
-            ForeignLanguage: 0,
-            OnlyGeneral: 0,
-            OnleyNTUST: 0,
-            OnlyMaster: 0,
-            OnlyUnderGraduate: 0,
-            OnlyNode: 0,
-            Language: language
-        )
-    }
+    var colleges: [College] = []
+    var dimensions: [Option] = []
 }

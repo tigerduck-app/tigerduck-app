@@ -40,9 +40,10 @@ extension AppState {
             #if os(iOS)
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
-            let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
+            let (json, fetchedDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
                 try await pushCoordinator.fetchFullSync()
             })
+            var courseDeletes = fetchedDeletes
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             var changed = false
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
@@ -92,6 +93,20 @@ extension AppState {
 
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
+            guard fullSyncMayWrite(since: generation) else { return .skipped }
+            let takesCourses = Self.switchedOnCategories().contains("courses")
+                && !Defaults[.pendingConflictCategories].contains("courses")
+            let reset = Self.coursesReset(
+                server: Self.backendDate(json["courses_reset_at"]), lastSeen: Defaults[.lastSeenCoursesResetAt],
+                takesCourses: takesCourses
+            )
+            if takesCourses {
+                guard let settled = await settleQueuedCourseEdits(
+                    deleting: courseDeletes, reset: reset, generation: generation
+                ) else { return .skipped }
+                courseDeletes = settled
+                changed = reset.apply || changed
+            }
             let courseAdds = await cloudSyncCoordinator.courseAddKeys(unlandedAt: fetchedAt)
             guard fullSyncMayWrite(since: generation) else { return .skipped }
             let protectedOverrides = preFetchProtected
@@ -198,19 +213,7 @@ extension AppState {
                 changed = AcademicCalendarStore.shared.applySyncedOverrides(optedIn, fetchedAt: fetchedAt) || changed
             }
 
-            let coursesResetAt = Self.backendDate(json["courses_reset_at"])
             let tombstoneArray = json["course_tombstones"] as? [[String: Any]] ?? []
-            let lastSeenReset = Defaults[.lastSeenCoursesResetAt]
-            let reset = Self.coursesReset(
-                server: coursesResetAt, lastSeen: lastSeenReset, takesCourses: taken.contains("courses")
-            )
-
-            if reset.apply {
-                DataCache.shared.saveUserAddedCourses([])
-                DataCache.shared.saveDeletedCourseNos([])
-                changed = true
-                AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: coursesResetAt), privacy: .public) > lastSeen=\(String(describing: lastSeenReset), privacy: .public)), wiped local state")
-            }
             Self.recordFullSync(coursesReset: reset.remember, taken: taken)
 
             if taken.contains("courses") {
@@ -723,9 +726,10 @@ extension AppState {
 
     func deleteBackendCourse(courseNo: String, semester: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        recentCourseDeletions[courseNo] = Date()
+        let hiddenAt = Date()
+        recentCourseDeletions[courseNo] = hiddenAt
         revisionPoller.noteActivity()
-        Task { await cloudSyncCoordinator.deleteCourse(semester: semester, courseNo: courseNo) }
+        Task { await cloudSyncCoordinator.deleteCourse(semester: semester, courseNo: courseNo, at: hiddenAt) }
     }
 
     @discardableResult
@@ -740,13 +744,12 @@ extension AppState {
         if let semester { resettingSemesters.insert(semester) }
         defer { if let semester { resettingSemesters.remove(semester) } }
         do {
-            try await pushCoordinator.deleteAllCourses(semester: semester)
-            AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
-            if let semester { DataCache.shared.recordSemesterReset(semester) }
-            pushCoordinator.forgetUploads(semester: semester)
-            await cloudSyncCoordinator.discardCourseIgnores(semester: semester)
-            await cloudSyncCoordinator.discardCourseDeletes(semester: semester)
-            resetLocally()
+            try await Self.resetCourses(semester: semester, on: cloudSyncCoordinator, onServer: { [pushCoordinator] in
+                try await pushCoordinator.deleteAllCourses(semester: semester)
+                AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
+                if let semester { DataCache.shared.recordSemesterReset(semester) }
+                pushCoordinator.forgetUploads(semester: semester)
+            }, thenLocally: resetLocally)
             return true
         } catch {
             AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .private)")
@@ -754,9 +757,23 @@ extension AppState {
         }
     }
 
+    /// Resets the courses on the server, then clears them here and drops the deletes queued until
+    /// that moment, so a hide made during the request is gone from both and a later one kept in both.
+    static func resetCourses(
+        semester: String?, on coordinator: CloudSyncCoordinator,
+        onServer reset: () async throws -> Void, thenLocally resetLocally: () -> Void
+    ) async throws {
+        try await reset()
+        let resetAt = Date()
+        resetLocally()
+        await coordinator.discardCourseIgnores(semester: semester)
+        await coordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
+    }
+
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
         if !forceKeys.isEmpty {
-            Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys)) }
+            let addedAt = Date()
+            Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys), madeBefore: addedAt) }
         }
         guard CourseUploadPolicy.uploadsCourses else { return }
         guard forceKeys.isEmpty else {

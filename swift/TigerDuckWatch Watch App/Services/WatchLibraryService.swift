@@ -9,20 +9,27 @@ enum WatchLibraryServiceError: LocalizedError {
     case offline
     case pinMismatch
 
-    var errorDescription: String? {
+    var errorDescription: String? { message(in: WatchLanguage(tag: nil)) }
+
+    /// An error from outside this enum keeps the system's text, in the Watch's own language.
+    static func message(for error: Error, in language: WatchLanguage) -> String {
+        (error as? Self)?.message(in: language) ?? error.localizedDescription
+    }
+
+    func message(in language: WatchLanguage) -> String {
         switch self {
         case .offline:
-            return String(localized: "error_network_unavailable")
+            return language.string("error_network_unavailable")
         case .pinMismatch:
-            return String(localized: "watch_open_phone_to_sync")
+            return language.string("watch_open_phone_to_sync")
         case .credentialsNotFound:
-            return String(localized: "library_sign_in_qr_prompt")
+            return language.string("library_sign_in_qr_prompt")
         case .loginFailed(let m):
-            return String(format: String(localized: "error_library_sign_in_failed_format"), m)
+            return language.format("error_library_sign_in_failed_format", m)
         case .qrGenerationFailed:
-            return String(localized: "library_qr_generate_failed")
+            return language.string("library_qr_generate_failed")
         case .networkError(let e):
-            return String(format: String(localized: "error_network_format"), e.localizedDescription)
+            return language.format("error_network_format", e.localizedDescription)
         }
     }
 }

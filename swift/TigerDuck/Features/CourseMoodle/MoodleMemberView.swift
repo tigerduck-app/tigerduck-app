@@ -23,7 +23,6 @@ struct MoodleMemberView: View {
     @State private var isUploadingPicture = false
     @State private var pictureFailure: String?
     @State private var profileEditor: ProfileEditorPage?
-    @State private var isOpeningProfileEditor = false
     #endif
 
     /// The list's copy, so a new picture shows once the members are fetched again.
@@ -82,9 +81,8 @@ struct MoodleMemberView: View {
                 upload(jpeg)
             }
         }
-        .sheet(item: $profileEditor, onDismiss: { Task { await store.refetchMembers() } }) { page in
-            InAppBrowserView(url: page.url)
-                .ignoresSafeArea()
+        .fullScreenCover(item: $profileEditor, onDismiss: { Task { await store.refetchMembers() } }) { page in
+            TigerDuckBrowserView(url: page.url)
         }
         .alert(pictureFailure ?? "", isPresented: Binding(
             get: { pictureFailure != nil },
@@ -128,12 +126,8 @@ struct MoodleMemberView: View {
     private var editButtonRoom: CGFloat { isOwn ? Self.editButtonSize + TigerDuckTheme.Spacing.lg : 0 }
 
     private func openProfileEditor() {
-        guard !isOpeningProfileEditor, profileEditor == nil, let url = MoodlePage.profileEditor.webURL else { return }
-        isOpeningProfileEditor = true
-        Task {
-            profileEditor = ProfileEditorPage(url: await MoodleAutologinService.shared.url(for: url))
-            isOpeningProfileEditor = false
-        }
+        guard profileEditor == nil, let url = MoodlePage.profileEditor.webURL else { return }
+        profileEditor = ProfileEditorPage(url: url)
     }
 
     private func crop(_ item: PhotosPickerItem) async {

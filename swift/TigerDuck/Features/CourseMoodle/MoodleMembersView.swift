@@ -184,13 +184,23 @@ struct MoodleMembersView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets())
             case .sections(let sections):
+                // Each member is a row of the list, so only the rows on screen ask for their pictures.
                 ForEach(sections) { section in
-                    MoodleMemberSectionView(store: store, section: section, policy: policy) { member in
-                        open(.member(member))
+                    MoodleMemberSectionHeader(section: section)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(rowInsets(top: TigerDuckTheme.Spacing.xs, bottom: 0))
+                    ForEach(Array(section.members.enumerated()), id: \.element.id) { index, member in
+                        let isLast = index == section.members.count - 1
+                        MoodleMemberListRow(
+                            store: store, member: member, policy: policy, isFirst: index == 0, isLast: isLast
+                        ) {
+                            open(.member(member))
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(rowInsets(top: 0, bottom: isLast ? TigerDuckTheme.Spacing.xs : 0))
                     }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(rowInsets)
                 }
             case .noMatches(let needle):
                 ContentUnavailableView.search(text: needle)
@@ -199,6 +209,7 @@ struct MoodleMembersView: View {
             }
         }
         .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
         #if os(iOS)
@@ -217,12 +228,11 @@ struct MoodleMembersView: View {
     }
 
     private var rowInsets: EdgeInsets {
-        EdgeInsets(
-            top: TigerDuckTheme.Spacing.xs,
-            leading: TigerDuckTheme.Spacing.lg,
-            bottom: TigerDuckTheme.Spacing.xs,
-            trailing: TigerDuckTheme.Spacing.lg
-        )
+        rowInsets(top: TigerDuckTheme.Spacing.xs, bottom: TigerDuckTheme.Spacing.xs)
+    }
+
+    private func rowInsets(top: CGFloat, bottom: CGFloat) -> EdgeInsets {
+        EdgeInsets(top: top, leading: TigerDuckTheme.Spacing.lg, bottom: bottom, trailing: TigerDuckTheme.Spacing.lg)
     }
 
     @ViewBuilder
@@ -268,47 +278,52 @@ struct MoodleMembersView: View {
     }
 }
 
-private struct MoodleMemberSectionView: View {
-    let store: MoodleCourseStore
+private struct MoodleMemberSectionHeader: View {
     let section: MoodleMemberSection
-    let policy: VisualStylePolicy
-    let open: (MoodleMember) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            HStack {
-                Text(section.placement.title)
-                    .font(.footnote.weight(.semibold))
-                Spacer()
-                Text(section.members.count, format: .number)
-                    .font(.footnote)
-                    .monospacedDigit()
-            }
-            .foregroundStyle(Color.textSecondary)
-            .padding(.horizontal, TigerDuckTheme.Spacing.xs)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(section.placement.title)
-            .accessibilityValue(section.members.count.formatted())
-            .accessibilityAddTraits(.isHeader)
-            VStack(spacing: 0) {
-                ForEach(Array(section.members.enumerated()), id: \.element.id) { index, member in
-                    if index > 0 {
-                        Divider().padding(.leading, MoodleMemberRow.textInset)
-                    }
-                    Button { open(member) } label: {
-                        MoodleMemberRow(
-                            member: member,
-                            picture: member.pictureURL.flatMap { store.pictures[$0] },
-                            isMe: member.id == store.members.value?.ownId
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .task(id: member.pictureURL) { await store.loadPicture(of: member) }
-                }
-            }
-            .presetCard(policy: policy)
+        HStack {
+            Text(section.placement.title)
+                .font(.footnote.weight(.semibold))
+            Spacer()
+            Text(section.members.count, format: .number)
+                .font(.footnote)
+                .monospacedDigit()
         }
-        .padding(.top, TigerDuckTheme.Spacing.sm)
+        .foregroundStyle(Color.textSecondary)
+        .padding(.horizontal, TigerDuckTheme.Spacing.xs)
+        .padding(.vertical, TigerDuckTheme.Spacing.sm)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(section.placement.title)
+        .accessibilityValue(section.members.count.formatted())
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct MoodleMemberListRow: View {
+    let store: MoodleCourseStore
+    let member: MoodleMember
+    let policy: VisualStylePolicy
+    let isFirst: Bool
+    let isLast: Bool
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            MoodleMemberRow(
+                member: member,
+                picture: member.pictureURL.flatMap { store.pictures[$0] },
+                isMe: member.id == store.members.value?.ownId
+            )
+        }
+        .buttonStyle(.plain)
+        .presetCardRow(policy: policy, isFirst: isFirst, isLast: isLast)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                Divider().padding(.leading, MoodleMemberRow.textInset)
+            }
+        }
+        .task(id: member.pictureURL) { await store.loadPicture(of: member) }
     }
 }
 

@@ -132,19 +132,59 @@ struct MailListViewModelTests {
         #expect(h.model.loadState == .failed(MailAccountManager.LoginError.network.message))
     }
 
-    @Test func searchAsksTheServer() async {
-        let h = Self.harness()
+    /// The page with its search index downloaded, the warm and the index starting at once.
+    static func indexedHarness() async -> Harness {
+        let h = harness(warmDelay: {})
         await h.model.load()
-        h.model.searchText = "公告 7"
+        await h.model.waitForIndex()
+        return h
+    }
+
+    @Test func searchFindsMailInTheIndexByItsBodyWithoutAskingTheServerToSearch() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { $0.folders["INBOX"]?[6].detail?.textBody = "期末考在 Room 302" }
+        await h.model.load()
+        await h.model.waitForIndex()
+        h.model.searchText = "room 302"
         await h.model.submitSearch()
         #expect(h.model.searchUsedLocalFallback == false)
-        #expect(h.model.displayedRows.map(\.uid).contains(7))
-        #expect(await h.fake.calls.contains("search INBOX 公告 7"))
+        #expect(h.model.displayedRows.map(\.uid) == [7])
+        #expect(await h.fake.calls.contains("summaries INBOX [7]"))
+    }
+
+    @Test func searchFindsLoadedMailTheIndexHasNotReached() async {
+        let h = Self.harness()
+        await h.model.load()
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        #expect(h.model.searchUsedLocalFallback == false)
+        #expect(h.model.displayedRows.map(\.uid) == [60])
+        #expect(await !h.fake.calls.contains { $0.hasPrefix("searchTexts") })
+    }
+
+    @Test func leavingThePageStopsTheIndexDownloadAndComingBackResumesIt() async throws {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.hold("searchTexts")
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        h.model.stopPolling()
+        await h.fake.release("searchTexts")
+        try await waitUntil { h.cache.searchIndex.search(folder: "INBOX", query: "公告 60")?.uids == [60] }
+
+        h.model.startPolling()
+        await h.model.waitForIndex()
+        h.model.stopPolling()
+
+        let batches = await h.fake.calls.filter { $0.hasPrefix("searchTexts INBOX ") }
+        #expect(batches == [
+            "searchTexts INBOX \(Array((UInt32(41)...60).reversed()))",
+            "searchTexts INBOX \(Array((UInt32(21)...40).reversed()))",
+            "searchTexts INBOX \(Array((UInt32(1)...20).reversed()))",
+        ])
     }
 
     @Test func searchResultsPastThePageLoadAtTheEnd() async throws {
-        let h = Self.harness()
-        await h.model.load()
+        let h = await Self.indexedHarness()
         h.model.searchText = "公告"
         await h.model.submitSearch()
         #expect(h.model.displayedRows.count == 50)
@@ -155,8 +195,7 @@ struct MailListViewModelTests {
     }
 
     @Test func aFolderRecreatedBeforeTheNextSearchPageIsNotListedAsMatches() async throws {
-        let h = Self.harness()
-        await h.model.load()
+        let h = await Self.indexedHarness()
         h.model.searchText = "公告"
         await h.model.submitSearch()
         let last = try #require(h.model.displayedRows.last)
@@ -181,8 +220,7 @@ struct MailListViewModelTests {
     }
 
     @Test func aSearchPageWithNothingToShowDoesNotStallThePaging() async {
-        let h = Self.harness()
-        await h.model.load()
+        let h = await Self.indexedHarness()
         await h.fake.update { fake in
             fake.folders["INBOX"] = (UInt32(1)...60).map {
                 FakeMailClient.message(uid: $0, subject: "公告 \($0)", deleted: $0 > 10)
@@ -193,13 +231,24 @@ struct MailListViewModelTests {
         #expect(h.model.displayedRows.map(\.uid) == Array((UInt32(1)...10).reversed()))
     }
 
-    @Test func searchFallsBackToLoadedMailWhenTheServerRefuses() async {
-        let h = Self.harness()
+    @Test func searchFallsBackToTheIndexMatchesAmongLoadedMailWhenTheServerCannotBeReached() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[49].detail?.textBody = "獎學金申請"
+            fake.folders["INBOX"]?[5].detail?.textBody = "獎學金申請"
+        }
         await h.model.load()
-        await h.fake.update { $0.searchError = .searchUnsupported }
-        h.model.searchText = "公告 60"
+        await h.model.waitForIndex()
+        await h.fake.update { $0.summariesError = .unreachable }
+        h.model.searchText = "獎學金"
         await h.model.submitSearch()
         #expect(h.model.searchUsedLocalFallback)
+        #expect(h.model.serverStatus == .failed)
+        #expect(h.model.displayedRows.map(\.uid) == [50])
+        await h.fake.update { $0.summariesError = nil }
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        #expect(!h.model.searchUsedLocalFallback)
         #expect(h.model.displayedRows.map(\.uid) == [60])
         h.model.clearSearch()
         #expect(h.model.displayedRows.count == 50)
@@ -399,12 +448,12 @@ struct MailListViewModelTests {
     @Test func switchingFoldersWhileASearchIsInFlightDiscardsTheStaleResults() async throws {
         let h = Self.harness()
         await h.model.load()
-        h.model.searchText = "公告 7"
-        await h.fake.update { $0.holdSearch = true }
+        h.model.searchText = "公告 60"
+        await h.fake.hold("summaries")
         let searchTask = Task { await h.model.submitSearch() }
-        await h.fake.waitForArrival("search")
+        await h.fake.waitForArrival("summaries")
         await h.model.select(.real(MailFolderRole.trash.imapName))
-        await h.fake.releaseSearch()
+        await h.fake.release("summaries")
         await searchTask.value
         #expect(h.model.searchResults == nil)
         #expect(h.model.rows.map(\.summary.subject) == ["舊信"])
@@ -726,7 +775,7 @@ struct MailListViewModelTests {
         h.model.searchText = "件 3"
         await h.model.submitSearch()
         let named = await h.fake.calls.filter {
-            $0.hasPrefix("page ") || $0.hasPrefix("search ") || $0.hasPrefix("status ") || $0.hasPrefix("summaries ")
+            $0.hasPrefix("page ") || $0.hasPrefix("status ") || $0.hasPrefix("summaries ")
         }
         #expect(!named.isEmpty)
         #expect(named.allSatisfy { $0.contains("INBOX") || $0.contains(Self.sent) })
@@ -738,17 +787,16 @@ struct MailListViewModelTests {
         await h.model.select(.allMail)
         h.model.searchText = "件 3"
         await h.model.submitSearch()
-        #expect(await h.fake.calls.contains("search INBOX 件 3"))
-        #expect(await h.fake.calls.contains("search \(Self.sent) 件 3"))
+        #expect(await h.fake.calls.contains("summaries \(Self.sent) [3]"))
         #expect(h.model.searchUsedLocalFallback == false)
         #expect(Self.labels(h.model.displayedRows) == ["寄3"])
     }
 
-    @Test func aRefusedSearchInOneMergedFolderFallsBackForThatFolderOnly() async {
+    @Test func anUnreachableServerFallsBackToTheLoadedMailOfBothMergedFolders() async {
         let h = await Self.mergedHarness()
         await h.model.load()
         await h.model.select(.allMail)
-        await h.fake.update { $0.searchError = .searchUnsupported }
+        await h.fake.update { $0.summariesError = .unreachable }
         h.model.searchText = "3"
         await h.model.submitSearch()
         #expect(h.model.searchUsedLocalFallback)

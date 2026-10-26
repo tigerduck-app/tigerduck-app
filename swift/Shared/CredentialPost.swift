@@ -51,7 +51,7 @@ nonisolated final class CredentialPostDelegate: NSObject, URLSessionTaskDelegate
         let next = CredentialPost.request(following: response, proposed: request)
         if next == nil {
             Self.logger.error(
-                "Sign-in POST stopped at a \(response.statusCode, privacy: .public) redirect to \(request.url?.host ?? "", privacy: .private)"
+                "POST with a credential stopped at a \(response.statusCode, privacy: .public) redirect to \(request.url?.host ?? "", privacy: .private)"
             )
         }
         completionHandler(next)

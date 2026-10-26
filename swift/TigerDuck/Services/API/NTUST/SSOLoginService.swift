@@ -178,6 +178,37 @@ enum SSOLoginService {
         }
     }
 
+    /// ``ensureServiceLogin`` for the retry of a refused stored password. A live session lets an
+    /// automatic sign-in through without a post, which says nothing about the password, so this
+    /// ends the session as a typed sign-in does and posts. A refusal is counted, but a yes leaves
+    /// the count to the caller, which forgets it once the rest of its retry went through. Once it
+    /// holds the SSO locks it posts nothing while no refusal is counted, as a sign-in it waited
+    /// behind may have settled it, nor while `mayPost` says no, as for a sign-in typed meanwhile,
+    /// nor while a refusal's wait holds; the session then stays as it is.
+    static func signInAgain(
+        session: URLSession,
+        serviceURL: URL,
+        studentId: String,
+        password: String,
+        generation: Int,
+        now: () -> Date = { Date() },
+        mayPost: () -> Bool
+    ) async throws -> Bool {
+        try await postingStoredPassword {
+            try await oneAtATime {
+                try checkSignedIn(generation)
+                guard storedPasswordRefusals.count > 0 else { return true }
+                guard mayPost() else { return false }
+                if storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
+                return try await performServiceLogin(
+                    session: session, serviceURL: serviceURL, studentId: studentId, password: password,
+                    generation: generation, interactive: false, retry: true, now: now,
+                    logFailure: { AppLogger.captureError($0, context: ["service": "ssoSignInAgain"]) }
+                )
+            }
+        }
+    }
+
     private static func signIn(
         session: URLSession,
         serviceURL: URL,
@@ -192,7 +223,8 @@ enum SSOLoginService {
             try checkSignedIn(generation)
             let signedIn = try await performServiceLogin(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: interactive, now: now, logFailure: logFailure
+                generation: generation, interactive: interactive, retry: false, now: now,
+                logFailure: logFailure
             )
             if interactive, signedIn { forgetStoredPasswordRefusals() }
             return signedIn
@@ -210,16 +242,17 @@ enum SSOLoginService {
         password: String,
         generation: Int,
         interactive: Bool,
+        retry: Bool,
         now: () -> Date,
         logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
             var (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
 
-            // Step 3: Check if we're on the SSO login page. A live session would let a password the
-            // user typed through unchecked, so that sign-in drops the service's cookies and goes on to
+            // Step 3: Check if we're on the SSO login page. A live session would let the password
+            // through unchecked, so a sign-in past it drops the service's cookies and goes on to
             // step 4, which ends the SSO session: the visit after it reaches the form.
-            if interactive, !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+            if interactive || retry, !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
             } else if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if try await isSignedIn(html: currentHTML, url: currentURL, session: session) { return true }
@@ -307,7 +340,7 @@ enum SSOLoginService {
             guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                 throw SSOLoginError.invalidResponse
             }
-            if !interactive { forgetStoredPasswordRefusals() }
+            if !interactive, !retry { forgetStoredPasswordRefusals() }
             return true
         } catch SSOLoginError.loginFailed(let reason) {
             throw SSOLoginError.loginFailed(reason: reason)

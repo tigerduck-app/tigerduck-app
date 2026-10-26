@@ -104,7 +104,7 @@ struct CourseIgnoreOutboxTests {
 
     private actor Sent {
         private(set) var count = 0
-        func add(_ op: ResolvedSyncOp) { count += 1 }
+        func add(_ op: SyncOp) { count += 1 }
     }
 
     @Test("A drain under way neither keeps nor parks a setting discarded while it ran")

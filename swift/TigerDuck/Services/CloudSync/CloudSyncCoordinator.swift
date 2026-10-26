@@ -32,6 +32,7 @@ final class CloudSyncCoordinator {
     @ObservationIgnored let outbox: SyncOutbox
     @ObservationIgnored private let syncsAssignmentMarks: @Sendable () -> Bool
     @ObservationIgnored private let syncsCourseIgnores: @Sendable () -> Bool
+    @ObservationIgnored private let syncsCourseOverrides: @Sendable (_ category: String) -> Bool
     @ObservationIgnored private let addedCourseUpload: @MainActor (_ semester: String, _ courseNo: String)
         -> PushAPI.CourseUploadRequest?
     @ObservationIgnored private let uploadsCourses: @MainActor () -> Bool
@@ -48,7 +49,11 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private var lastColorEdit: [String: Int] = [:]
     @ObservationIgnored private var lastNameEdit: [String: Int] = [:]
     @ObservationIgnored private var courseAddsEnqueuing: [UUID: String] = [:]
-    @ObservationIgnored private var courseAddsLanded: [String: Date] = [:]
+    @ObservationIgnored private var courseAddTimes: [String: Date] = [:]
+    @ObservationIgnored private var sending: Task<Void, Error>?
+    @ObservationIgnored private var cutoffs: [String: Date] = [:]
+    @ObservationIgnored private var signOuts = 0
+    @ObservationIgnored private var signOutsSettling = 0
 
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
@@ -70,6 +75,9 @@ final class CloudSyncCoordinator {
                 pendingChecks: Defaults[.pendingConflictCategories]
             )
         },
+        syncsCourseOverrides: @escaping @Sendable (_ category: String) -> Bool = {
+            !Defaults[.pendingConflictCategories].contains($0)
+        },
         addedCourseUpload: @escaping @MainActor (_ semester: String, _ courseNo: String)
             -> PushAPI.CourseUploadRequest? = { _, _ in nil },
         uploadsCourses: @escaping @MainActor () -> Bool = { false },
@@ -88,6 +96,7 @@ final class CloudSyncCoordinator {
         self.loginGeneration = loginGeneration
         self.syncsAssignmentMarks = syncsAssignmentMarks
         self.syncsCourseIgnores = syncsCourseIgnores
+        self.syncsCourseOverrides = syncsCourseOverrides
         self.addedCourseUpload = addedCourseUpload
         self.uploadsCourses = uploadsCourses
 
@@ -120,11 +129,20 @@ final class CloudSyncCoordinator {
         }
     }
 
+    /// A drain the timer, `scheduleTick` or an edit started runs in a task the sign-out does not
+    /// cancel, so its request is cancelled here, and `execute` sends nothing more for a drain
+    /// begun before the sign-out or while it settles.
     func settleForSignOut() async {
+        signOuts += 1
+        signOutsSettling += 1
+        defer { signOutsSettling -= 1 }
+        sending?.cancel()
         await enqueueTransition { [weak self] in
             await self?.matchPreference()
             await self?.outbox.clearAll()
+            self?.forgetDiscards()
         }.value
+        _ = await sending?.result
     }
 
     private func matchPreference() async {
@@ -169,6 +187,7 @@ final class CloudSyncCoordinator {
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
 
         await outbox.clearAll()
+        forgetDiscards()
 
         state = .disabled
     }
@@ -192,18 +211,23 @@ final class CloudSyncCoordinator {
         await outbox.loadOrGiveUp(protectedDataAvailable: protectedDataAvailable)
         guard await outbox.pendingCount() > 0 else { return }
 
+        let signOutsBefore = signOuts
         let syncsMarks = syncsAssignmentMarks
         let syncsIgnores = syncsCourseIgnores
+        let syncsOverrides = syncsCourseOverrides
         await outbox.drain(holding: { op in
             switch op {
             case .assignmentOverride: return !syncsMarks()
             case .courseIgnore: return !syncsIgnores()
             case .courseAdd: return !protectedDataAvailable
-            case .courseOverride, .courseDelete: return false
+            case .courseOverride(_, _, let customName, let colorHex, _, _):
+                return (colorHex != nil && !syncsOverrides("course_colors"))
+                    || (customName != nil && !syncsOverrides("course_names"))
+            case .courseDelete: return false
             }
         }) { [weak self] op in
             guard let self else { throw CancellationError() }
-            try await self.execute(op)
+            try await self.execute(op, signOutsBefore: signOutsBefore)
         }
     }
 
@@ -215,9 +239,15 @@ final class CloudSyncCoordinator {
         await syncTick()
     }
 
+    /// TigerSync switched on counts before its enable transition has left `.disabled`, so an
+    /// edit made in between is queued and goes once the coordinator is active.
+    private var takesEdits: Bool {
+        state != .disabled || Defaults[.cloudSyncEnabled]
+    }
+
     @discardableResult
     func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) -> Task<Void, Never>? {
-        guard state != .disabled else { return nil }
+        guard takesEdits else { return nil }
         return enqueueCourseOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
             customName: nil, colorHex: colorHex, locale: nil, stamp: Date()))
@@ -227,7 +257,7 @@ final class CloudSyncCoordinator {
     func enqueueCourseNameOverride(
         moodleId: String, semester: String, customName: String, locale: String?
     ) -> Task<Void, Never>? {
-        guard state != .disabled else { return nil }
+        guard takesEdits else { return nil }
         return enqueueCourseOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
             customName: customName, colorHex: nil, locale: locale, stamp: Date()))
@@ -248,7 +278,7 @@ final class CloudSyncCoordinator {
     }
 
     func enqueueAssignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String) async {
-        guard state != .disabled else { return }
+        guard takesEdits else { return }
         let op = SyncOp.assignmentOverride(
             moodleCourseId: moodleCourseId,
             moodleAssignmentId: moodleAssignmentId,
@@ -292,26 +322,30 @@ final class CloudSyncCoordinator {
         return (pending.colors.union(edited.colors), pending.names.union(edited.names))
     }
 
+    /// Use Server for `categories`: drops this device's edits of them made so far, then waits out
+    /// a request the outbox has in flight, so the server's values read next include it.
     func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
-        await outbox.discard { op in
-            switch op {
-            case .assignmentOverride:
-                return categories.contains("assignments")
-            case .courseIgnore:
-                return courseIgnores && categories.contains("assignments")
-            case .courseOverride(_, _, let customName, let colorHex, _, _):
-                return (colorHex != nil && categories.contains("course_colors"))
-                    || (customName != nil && categories.contains("course_names"))
-            case .courseAdd:
-                return categories.contains("courses")
-            case .courseDelete:
-                return false
-            }
-        }
+        var scopes = categories.intersection(["assignments", "course_colors", "course_names"])
+        if categories.contains("courses") { scopes.insert("ca") }
+        if courseIgnores && categories.contains("assignments") { scopes.insert("course_ignores") }
+        courseOverridesEnqueuing = courseOverridesEnqueuing.filter { scopes.isDisjoint(with: $0.value.scopes) }
+        if scopes.contains("ca") { courseAddsEnqueuing = [:] }
+        let now = Date()
+        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
+        _ = await sending?.result
+    }
+
+    /// Discards by time in the outbox, and refuses those ops at `execute` too: a drain picks its
+    /// op on the outbox, so it can be on its way to `execute` with one the discard dropped.
+    @discardableResult
+    private func discard(madeBefore scopeCutoffs: [String: Date]) async -> [SyncOp] {
+        let now = Date()
+        cutoffs.merge(scopeCutoffs.mapValues { min($0, now) }, uniquingKeysWith: max)
+        return await outbox.discard(madeBefore: scopeCutoffs)
     }
 
     func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
-        guard state != .disabled else { return }
+        guard takesEdits else { return }
         await outbox.enqueue(.courseIgnore(
             semester: semester, courseNo: courseNo, moodleId: moodleId,
             moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()))
@@ -334,14 +368,14 @@ final class CloudSyncCoordinator {
         return keys
     }
 
-    func enqueueCourseDelete(semester: String, courseNo: String) async {
-        guard state != .disabled else { return }
-        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: Date()))
+    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date = Date()) async {
+        guard takesEdits else { return }
+        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp))
     }
 
-    func deleteCourse(semester: String, courseNo: String) async {
+    func deleteCourse(semester: String, courseNo: String, at stamp: Date = Date()) async {
         await discardCourseIgnores(semester: semester, courseNo: courseNo)
-        await enqueueCourseDelete(semester: semester, courseNo: courseNo)
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp)
         await syncTick()
     }
 
@@ -366,14 +400,19 @@ final class CloudSyncCoordinator {
     @discardableResult
     func addCourse(semester: String, courseNo: String) -> Task<Void, Never> {
         let id = UUID()
-        courseAddsEnqueuing[id] = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        let stamp = Date()
+        courseAddsEnqueuing[id] = key
+        courseAddTimes[key] = stamp
         return Task {
-            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: Date()))
+            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp))
             courseAddsEnqueuing[id] = nil
             await syncTick()
         }
     }
 
+    /// Sampling the outbox misses an add that starts while it is read, so an add started or
+    /// landed since `date` counts by its time.
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> {
         var keys = Set(courseAddsEnqueuing.values)
         for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
@@ -381,22 +420,77 @@ final class CloudSyncCoordinator {
                 keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
             }
         }
-        return keys.union(courseAddsLanded.filter { $0.value >= date }.keys)
+        return keys.union(courseAddTimes.filter { $0.value >= date }.keys)
     }
 
-    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil) async {
-        await outbox.discard { op in
-            guard case .courseDelete(let opSemester, let courseNo, _) = op else { return false }
-            let key = CourseTombstone.serverKey(semester: opSemester, courseNo: courseNo)
-            return (semester == nil || semester == opSemester) && (courseKeys?.contains(key) ?? true)
-        }
+    /// How far this device's clock may be off the server's when an edit stamped here is compared
+    /// with a server time. NTP keeps it within seconds; inside the margin the order cannot be told,
+    /// and the edit made here is kept.
+    nonisolated static let clockSkewMargin: TimeInterval = 2 * 60
+
+    /// Drops the course adds and deletes made here before another device's course reset at
+    /// `resetAt`, the server's `courses_reset_at`, and returns the keys of the deletes. One made
+    /// after the reset, or within the skew margin of it, stays.
+    @discardableResult
+    func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
+        let cutoff = resetAt.addingTimeInterval(-Self.clockSkewMargin)
+        let dropped = await discard(madeBefore: ["ca": cutoff, "cd": cutoff])
+        return Self.courseKeys(of: dropped.filter { op in
+            if case .courseDelete = op { return true }
+            return false
+        })
+    }
+
+    /// Drops the deletes queued before `cutoff`, the time of the re-add or reset, which a caller
+    /// takes before its task hop so a hide made after the action is kept.
+    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil, madeBefore cutoff: Date) async {
+        let serverPrefix = CourseTombstone.serverKey(of: "")
+        let scopes = courseKeys.map { keys in
+            keys.compactMap { key -> String? in
+                let local = String(key.dropFirst(serverPrefix.count))
+                guard key.hasPrefix(serverPrefix),
+                      semester == nil || CourseTombstone.parts(of: local)?.semester == semester else { return nil }
+                return "cd|" + local
+            }
+        } ?? [semester.map { "cd|\($0)" } ?? "cd"]
+        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, cutoff) }))
+    }
+
+    private nonisolated static func courseKeys(of ops: [SyncOp]) -> Set<String> {
+        Set(ops.compactMap { op -> String? in
+            switch op {
+            case .courseAdd(let semester, let courseNo, _), .courseDelete(let semester, let courseNo, _):
+                return CourseTombstone.key(semester: semester, courseNo: courseNo)
+            case .courseOverride, .assignmentOverride, .courseIgnore:
+                return nil
+            }
+        })
+    }
+
+    /// Nothing a discard or an add recorded carries over once the queue is cleared.
+    private func forgetDiscards() {
+        cutoffs = [:]
+        courseAddTimes = [:]
     }
 
     func requeueParkedMarks() async {
         await outbox.requeueParked()
     }
 
-    private func execute(_ op: ResolvedSyncOp) async throws {
+    private func execute(_ op: SyncOp, signOutsBefore: Int) async throws {
+        guard signOuts == signOutsBefore, signOutsSettling == 0 else { throw CancellationError() }
+        guard !SyncOutbox.isCutOff(op, by: cutoffs) else { return }
+        let request = Task { try await self.send(SyncOutbox.resolve(op)) }
+        sending = request
+        defer { if sending == request { sending = nil } }
+        try await withTaskCancellationHandler {
+            try await request.value
+        } onCancel: {
+            request.cancel()
+        }
+    }
+
+    private func send(_ op: ResolvedSyncOp) async throws {
         do {
             switch op {
             case .courseOverride(let courseId, let colorHex, let customName, let locale):
@@ -431,7 +525,7 @@ final class CloudSyncCoordinator {
                     request, semester: semester,
                     isCurrent: { [uploadsCourses, loginGeneration] in uploadsCourses() && loginGeneration() == generation }
                 ) else { return }
-                courseAddsLanded[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
+                courseAddTimes[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
             }
         } catch {
             if isUnauthorized(error) {

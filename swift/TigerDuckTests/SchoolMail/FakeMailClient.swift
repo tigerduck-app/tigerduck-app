@@ -21,7 +21,10 @@ actor FakeMailClient: MailClient {
     var pageError: MailClientError?
     var pageErrors: [String: MailClientError] = [:]
     private(set) var pageRequests: [String] = []
-    var searchError: MailClientError?
+    var summariesError: MailClientError?
+    var searchTextsError: MailClientError?
+    /// Mails whose text never arrives: a batch holding one fails as an unreadable answer would.
+    var searchTextsFailingUIDs: Set<UInt32> = []
     /// Simulates a server that refuses `SEARCH HEADER "Message-ID"` — nothing in Mail2000's
     /// CAPABILITY banner promises it is honoured, and a refusal is what makes the sent-copy
     /// dedupe probe unanswerable.
@@ -40,10 +43,6 @@ actor FakeMailClient: MailClient {
     var holdStatus: Bool {
         get { heldCommands.contains("status") }
         set { if newValue { heldCommands.insert("status") } else { heldCommands.remove("status") } }
-    }
-    var holdSearch: Bool {
-        get { heldCommands.contains("search") }
-        set { if newValue { heldCommands.insert("search") } else { heldCommands.remove("search") } }
     }
     var autoSaveSentTo: String?
     /// Returned by `summaries(folder:fromUID:)` on top of the real range (the `n:*` quirk).
@@ -85,10 +84,6 @@ actor FakeMailClient: MailClient {
 
     func releaseStatus() {
         release("status")
-    }
-
-    func releaseSearch() {
-        release("search")
     }
 
     private func assertUIDValidity(_ expected: UInt32?, folder: String) throws {
@@ -181,6 +176,7 @@ actor FakeMailClient: MailClient {
     func summaries(folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws -> [MailSummary] {
         calls.append("summaries \(folder) \(uids)")
         await gate("summaries")
+        if let summariesError { throw summariesError }
         try assertUIDValidity(expectedUIDValidity, folder: folder)
         return (folders[folder] ?? []).map(\.summary).filter { uids.contains($0.uid) }
     }
@@ -228,15 +224,23 @@ actor FakeMailClient: MailClient {
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.attachments[part.section] ?? Data()
     }
 
-    func search(folder: String, query: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
-        calls.append("search \(folder) \(query)")
-        await gate("search")
-        if let searchError { throw searchError }
-        let uids = (folders[folder] ?? []).map(\.summary).filter {
-            ($0.subject ?? "").localizedCaseInsensitiveContains(query)
-                || ($0.fromAddress ?? "").localizedCaseInsensitiveContains(query)
-        }.map(\.uid)
-        return (uids, uidValidity[folder] ?? 1)
+    func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
+        calls.append("undeletedUIDs \(folder)")
+        await gate("undeletedUIDs")
+        return ((folders[folder] ?? []).map(\.summary).filter { !$0.isDeleted }.map(\.uid), uidValidity[folder] ?? 1)
+    }
+
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
+        calls.append("searchTexts \(folder) \(uids)")
+        await gate("searchTexts")
+        if let searchTextsError { throw searchTextsError }
+        if !searchTextsFailingUIDs.isDisjoint(with: uids) { throw MailClientError.protocolError("unreadable") }
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
+        var texts: [UInt32: String] = [:]
+        for message in folders[folder] ?? [] where uids.contains(message.summary.uid) && !message.summary.isDeleted {
+            texts[message.summary.uid] = MailSearchIndex.text(of: message.summary, body: message.detail?.textBody)
+        }
+        return texts
     }
 
     func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws {

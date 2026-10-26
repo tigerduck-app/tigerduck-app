@@ -23,11 +23,11 @@ struct RectangularView: View {
     }
 
     private var displayCourse: WatchCourse? { entry.current ?? entry.next }
-    private var headline: String { displayCourse?.name ?? String(localized: "watch_no_upcoming_classes") }
+    private var headline: String { displayCourse?.name ?? entry.language.string("watch_no_upcoming_classes") }
     var subhead: String {
         guard let c = displayCourse else { return "—" }
         let range = "\(c.startHHmm)–\(c.endHHmm)"
-        return entry.current == nil ? entry.nextDay.inlineCaption(range) : range
+        return entry.current == nil ? entry.nextDay.inlineCaption(range, in: entry.language) : range
     }
     private var displayRoom: String? {
         guard let c = displayCourse, !c.classroom.isEmpty else { return nil }

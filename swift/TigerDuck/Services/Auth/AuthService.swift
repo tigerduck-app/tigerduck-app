@@ -25,6 +25,9 @@ final class AuthService {
 
     private let schoolSessionIsLive: () async -> Bool
     private let renewSchoolSignIn: (_ studentId: String, _ password: String, _ generation: Int) async throws -> Bool
+    private let retrySchoolSignIn: (
+        _ studentId: String, _ password: String, _ generation: Int, _ mayPost: () -> Bool
+    ) async throws -> Bool
 
     private let now: () -> Date
     private let retrySleep: @Sendable (Duration) async -> Void
@@ -52,6 +55,9 @@ final class AuthService {
         schoolSessionIsLive: @escaping () async -> Bool = { await NTUSTSessionManager.shared.probeCookiesValid() },
         renewSchoolSignIn: @escaping (_ studentId: String, _ password: String, _ generation: Int) async throws -> Bool
             = AuthService.renewSignInToSchool,
+        retrySchoolSignIn: @escaping (
+            _ studentId: String, _ password: String, _ generation: Int, _ mayPost: () -> Bool
+        ) async throws -> Bool = AuthService.retrySignInToSchool,
         endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
             = AuthService.endSchoolSession(departing:),
         now: @escaping () -> Date = { Date() },
@@ -62,6 +68,7 @@ final class AuthService {
         self.schoolSignIn = schoolSignIn
         self.schoolSessionIsLive = schoolSessionIsLive
         self.renewSchoolSignIn = renewSchoolSignIn
+        self.retrySchoolSignIn = retrySchoolSignIn
         self.endSchoolSession = endSchoolSession
         self.now = now
         self.retrySleep = retrySleep
@@ -177,6 +184,19 @@ final class AuthService {
         signOutCalls = task
         return task
     }
+    @ObservationIgnored private(set) var departingUnregisterRetry: Task<Void, Never>?
+
+    /// The launch's retry of a kept unregister is no sign-out: it clears nothing of an account,
+    /// and only a backend sign-in, whose device it could otherwise unregister, waits for it.
+    func startDepartingUnregisterRetry(_ retry: @escaping @MainActor () async -> Void) {
+        let beginBackgroundTask = beginSignOutBackgroundTask
+        departingUnregisterRetry = Task { @MainActor in
+            let endBackgroundTask = await beginBackgroundTask()
+            await retry()
+            await endBackgroundTask()
+        }
+    }
+
     @ObservationIgnored private var backendSignIn: Task<Void, Never>?
     /// When an automatic backend sign-in that had credentials to send last failed. The backend
     /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
@@ -255,6 +275,19 @@ final class AuthService {
         )
     }
 
+    static func retrySignInToSchool(
+        studentId: String, password: String, generation: Int, mayPost: () -> Bool
+    ) async throws -> Bool {
+        try await SSOLoginService.signInAgain(
+            session: NTUSTSessionManager.shared.session,
+            serviceURL: ssoServiceURL,
+            studentId: studentId,
+            password: password,
+            generation: generation,
+            mayPost: mayPost
+        )
+    }
+
     nonisolated static func normalizedStudentId(_ studentId: String) -> String {
         studentId.trimmingCharacters(in: .whitespaces).uppercased()
     }
@@ -291,6 +324,9 @@ final class AuthService {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
                 ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId)
+                #if os(iOS)
+                BrowserData.shared.reset()
+                #endif
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 
@@ -329,6 +365,7 @@ final class AuthService {
     private func performV3Login(studentId: String, harvesting: Bool = false) async -> Bool {
         guard let authTokenManager else { return false }
         let generation = loginGeneration
+        await departingUnregisterRetry?.value
         let moodleToken = harvesting ? await moodleTokenForBackend() : await moodleTokens.currentToken()
         guard let moodleToken, !moodleToken.isEmpty, loginGeneration == generation else { return false }
         let moodlePrivateToken = KeychainManager.loadString(
@@ -522,14 +559,16 @@ final class AuthService {
         guard !isLoggingIn, let studentId = storedStudentId, let password = storedPassword else { return false }
         let generation = loginGeneration
         let sessionGeneration = NTUSTSessionManager.shared.generation
-        if await !schoolSessionIsLive() {
-            guard !isLoggingIn,
-                  (try? await renewSchoolSignIn(studentId, password, sessionGeneration)) == true else { return false }
-            _revision &+= 1
-        }
+        // A sign-in typed while the retry waited for the SSO lock posts what was typed instead.
+        let posted = try? await retrySchoolSignIn(studentId, password, sessionGeneration) { !self.isLoggingIn }
+        guard posted == true else { return false }
+        _revision &+= 1
         guard loginGeneration == generation else { return false }
         reauthErrorMessage = nil
         guard (try? await moodleTokens.refreshTokenIfNeeded()) != nil, loginGeneration == generation else { return false }
+        // Not at the school's yes: a refused Moodle token sign-in after it would count from one
+        // again, and the password would go out every ten seconds. The backend takes no password.
+        SSOLoginService.forgetStoredPasswordRefusals()
         await signInToBackendAgain()
         return true
     }

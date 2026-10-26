@@ -97,6 +97,8 @@ SuggestionCard.swift
 
 # Features/Home — iOS home surfaces; macOS has its own dashboard under Platform/Mac
 AddSectionSheet.swift
+HomeEditPage.swift
+HomeScrollAnchor.swift
 ReorderDropSupport.swift
 CourseTimeCard.swift
 FluidGlassTrackView.swift
@@ -217,6 +219,7 @@ WidgetContainer.swift
 # there even though it lives under Shared/.
 NextClassResolver.swift
 WatchCourse.swift
+WatchLanguage.swift
 WatchLibraryPayload.swift
 WatchPayloadCodec.swift
 WatchSnapshot.swift
@@ -386,11 +389,13 @@ SchoolMailBootstrap.swift
 MailCache.swift
 MailCredentialStore.swift
 MailPreferences.swift
+MailSearchIndex.swift
 
-# Services/Mail/Sync — School Mail's background refresh and new-mail
-# notification; iOS-only, see Features/SchoolMail above
+# Services/Mail/Sync — School Mail's background refresh, new-mail
+# notification and search index download; iOS-only, see Features/SchoolMail above
 MailBackgroundRefresh.swift
 MailChecker.swift
+MailIndexer.swift
 MailNotifier.swift
 
 # Services/Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see
@@ -398,3 +403,20 @@ MailNotifier.swift
 LiveMailClient.swift
 MailMover.swift
 MailTLSVerifier.swift
+
+# Features/Browser — the TigerDuck browser is iOS only; the Mac opens links in its default browser
+BrowserCertificate.swift
+BrowserChromeCollapse.swift
+BrowserData.swift
+BrowserFind.swift
+BrowserFindBar.swift
+BrowserMenu.swift
+BrowserPage.swift
+BrowserPageScripts.swift
+BrowserRouting.swift
+BrowserSessionSignIn.swift
+BrowserSheets.swift
+BrowserSignIn.swift
+BrowserSites.swift
+TigerDuckBrowserView.swift
+BrowserAddressBarPicker.swift

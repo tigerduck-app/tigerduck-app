@@ -18,7 +18,7 @@ struct CornerView: View {
     }
     var timeText: String {
         if let c = entry.current { return c.endHHmm }
-        if let n = entry.next { return entry.nextDay.inlineCaption(n.startHHmm) }
+        if let n = entry.next { return entry.nextDay.inlineCaption(n.startHHmm, in: entry.language) }
         return ""
     }
 }

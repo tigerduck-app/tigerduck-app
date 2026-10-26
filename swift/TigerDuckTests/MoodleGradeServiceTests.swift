@@ -77,7 +77,7 @@ struct MoodleGradeServiceTests {
 
         let request = try #require(SettingsAPIStub.requests(for: Self.endpoint(token: token)).first)
         let body = SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) }
-        #expect(body == "courseid=20119&userid=42")
+        #expect(body == "wstoken=\(token)&courseid=20119&userid=42")
     }
 
     @Test("items decode in the gradebook's order, with no grade for one ungraded or kept from the student")

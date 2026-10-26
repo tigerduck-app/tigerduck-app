@@ -126,7 +126,7 @@ extension MoodleAssignmentView {
     }
 
     static func weekdayTimeText(_ date: Date, locale: Locale = .autoupdatingCurrent) -> String {
-        "\(NextClassResolver.Day.later(weekday: date.scheduleWeekday).headline) \(formatted(date, template: "HHmm", locale: locale))"
+        "\(NextClassResolver.Day.later(weekday: date.scheduleWeekday).headline(in: WatchLanguage(tag: nil))) \(formatted(date, template: "HHmm", locale: locale))"
     }
 
     static func monthText(_ date: Date, locale: Locale = .autoupdatingCurrent) -> String {

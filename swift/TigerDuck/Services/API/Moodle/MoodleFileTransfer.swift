@@ -1,12 +1,15 @@
 import Foundation
 
 nonisolated enum MoodleFileTransfer {
-    static func downloadURL(
+    /// A GET under `tokenpluginfile.php` with the private access key, as the Moodle app downloads
+    /// files, or without the key a POST to the web service path with the token in the form, which
+    /// `pluginfile.php` reads as it reads the query and access logs do not keep.
+    static func downloadRequest(
         for fileURL: URL,
         accessKey: String?,
         token: String,
         siteURL: URL = AppConstants.moodleBaseURL
-    ) -> URL? {
+    ) -> URLRequest? {
         guard fileURL.scheme?.lowercased() == "https",
               let host = fileURL.host?.lowercased(), host == siteURL.host?.lowercased(),
               var components = URLComponents(url: fileURL, resolvingAgainstBaseURL: false) else { return nil }
@@ -15,25 +18,33 @@ nonisolated enum MoodleFileTransfer {
             return nil
         }
         let rest = path.dropFirst(script.count)
-        var items = (components.queryItems ?? []).filter { $0.name != "token" }
-        if let key = accessKey?.addingPercentEncoding(withAllowedCharacters: .alphanumerics), !key.isEmpty {
-            components.percentEncodedPath = "/tokenpluginfile.php/\(key)/\(rest)"
-        } else {
-            components.percentEncodedPath = "/webservice/pluginfile.php/\(rest)"
-            items.append(URLQueryItem(name: "token", value: token))
-        }
+        let items = (components.queryItems ?? []).filter { $0.name != "token" }
+        let key = accessKey?.addingPercentEncoding(withAllowedCharacters: .alphanumerics).flatMap { $0.isEmpty ? nil : $0 }
+        components.percentEncodedPath = key.map { "/tokenpluginfile.php/\($0)/\(rest)" } ?? "/webservice/pluginfile.php/\(rest)"
         components.queryItems = items.isEmpty ? nil : items
-        return components.url
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url)
+        if key == nil {
+            request.httpMethod = "POST"
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.httpBody = Data(MoodleWebserviceClient.formBody([("token", token)]).utf8)
+        }
+        return request
+    }
+
+    /// A POST carries the token, so its redirects go through `CredentialPostDelegate`.
+    static func redirectGuard(for request: URLRequest) -> CredentialPostDelegate? {
+        request.httpMethod == "POST" ? CredentialPostDelegate() : nil
     }
 
     static func fetch(
-        _ url: URL,
+        _ request: URLRequest,
         mimeType: String?,
         expectedSize: Int,
         session: URLSession = MoodleWebserviceClient.session,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
-        let (location, response) = try await download(url, expectedSize: expectedSize, session: session, progress: progress)
+        let (location, response) = try await download(request, expectedSize: expectedSize, session: session, progress: progress)
         do {
             try check(response, at: location, mimeType: mimeType)
             return location
@@ -74,7 +85,7 @@ nonisolated enum MoodleFileTransfer {
     }
 
     private static func download(
-        _ url: URL,
+        _ request: URLRequest,
         expectedSize: Int,
         session: URLSession,
         progress: @escaping @Sendable (Double) -> Void
@@ -82,7 +93,7 @@ nonisolated enum MoodleFileTransfer {
         let running = RunningTransfer()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let task = session.downloadTask(with: url) { location, response, error in
+                let task = session.downloadTask(with: request) { location, response, error in
                     running.finish()
                     if let error {
                         continuation.resume(throwing: Self.mapped(error))
@@ -102,6 +113,7 @@ nonisolated enum MoodleFileTransfer {
                         continuation.resume(throwing: error)
                     }
                 }
+                task.delegate = redirectGuard(for: request)
                 let observation = task.progress.observe(\.completedUnitCount) { transfer, _ in
                     let total = transfer.totalUnitCount > 0 ? transfer.totalUnitCount : Int64(expectedSize)
                     progress(total > 0 ? min(1, Double(transfer.completedUnitCount) / Double(total)) : 0)

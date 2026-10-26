@@ -6,19 +6,12 @@ struct WatchTheme: ViewModifier {
     func body(content: Content) -> some View {
         content
             .accentColor(accent)
-            .environment(\.locale, locale)
+            .environment(\.locale, WatchLanguage(tag: snapshot?.languageTag).locale)
     }
 
     private var accent: Color {
         let hex = snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex
         return Color(hex: hex) ?? .orange
-    }
-
-    private var locale: Locale {
-        if let tag = snapshot?.languageTag {
-            return Locale(identifier: tag)
-        }
-        return .current
     }
 }
 

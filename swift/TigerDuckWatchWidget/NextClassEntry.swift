@@ -10,8 +10,5 @@ nonisolated struct NextClassEntry: TimelineEntry {
     let languageTag: String?
     let relevance: TimelineEntryRelevance?
 
-    var locale: Locale {
-        if let tag = languageTag { return Locale(identifier: tag) }
-        return .current
-    }
+    var language: WatchLanguage { WatchLanguage(tag: languageTag) }
 }

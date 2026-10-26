@@ -674,5 +674,57 @@
         }
       ]
     }
+  },
+  "2.8.0": {
+    "zh-TW": {
+      "title": "2.8.0 更新內容",
+      "items": [
+        {
+          "symbol": "safari",
+          "title": "內建瀏覽器",
+          "body": "為了自動登入嗑了點，未來會相容於各校務系統，目前僅支援編輯自己的 Moodle 介紹。"
+        },
+        {
+          "symbol": "magnifyingglass",
+          "title": "新增課程",
+          "body": "新增額外篩選器，可以用任何方式找到想要的課。"
+        },
+        {
+          "symbol": "envelope",
+          "title": "學校信箱",
+          "body": "支援中文搜尋。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "首頁編輯改為版面編輯，並改善登入、同步與大字級顯示。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.8.0",
+      "items": [
+        {
+          "symbol": "safari",
+          "title": "In-app browser",
+          "body": "We gave ourselves a hard time to sign you in automatically. More school systems will follow; for now it only edits your own Moodle profile."
+        },
+        {
+          "symbol": "magnifyingglass",
+          "title": "Add Course",
+          "body": "New filters let you find the course you want any way you like."
+        },
+        {
+          "symbol": "envelope",
+          "title": "School Mail",
+          "body": "Search now works in Chinese."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Home's edit mode becomes a layout editor, with sign-in, sync and large text fixes."
+        }
+      ]
+    }
   }
 }

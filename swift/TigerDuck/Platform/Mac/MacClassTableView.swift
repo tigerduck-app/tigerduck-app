@@ -230,7 +230,7 @@ struct MacClassTableView: View {
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
                 semester: selectedSemester,
-                existingCourseNos: Set(courses.map(\.courseNo)),
+                tableCourses: courses,
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )

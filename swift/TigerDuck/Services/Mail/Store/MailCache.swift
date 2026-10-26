@@ -22,8 +22,9 @@ nonisolated final class MailCache: @unchecked Sendable {
     private var maxEntryBytes: Int { bodyLimitBytes / 2 }
     private let account: @Sendable () -> String?
     private let lock = NSLock()
-    private let wipes = OSAllocatedUnfairLock(initialState: 0)
+    private let wipes: OSAllocatedUnfairLock<Int>
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Cache")
+    let searchIndex: MailSearchIndex
 
     init(
         directory: URL,
@@ -33,6 +34,13 @@ nonisolated final class MailCache: @unchecked Sendable {
         self.directory = directory
         self.bodyLimitBytes = bodyLimitBytes
         self.account = account
+        let wipes = OSAllocatedUnfairLock(initialState: 0)
+        self.wipes = wipes
+        searchIndex = MailSearchIndex(
+            url: directory.appendingPathComponent("search-index.sqlite"),
+            account: account,
+            wipeCount: { wipes.withLock { $0 } }
+        )
     }
 
     func pageURL(folder: String) -> URL {
@@ -120,6 +128,19 @@ nonisolated final class MailCache: @unchecked Sendable {
         return folder.appendingPathComponent(Self.safeAttachmentName(filename))
     }
 
+    /// Writes nothing, and returns nil, once a wipe has run since `wipeCount` was read, so a
+    /// download that outlived a sign-out leaves no file of that account.
+    func saveAttachment(_ data: Data, filename: String, wipeCount: Int) throws -> URL? {
+        guard isCurrent(wipeCount) else { return nil }
+        let url = try temporaryFileURL(filename: filename)
+        return try lock.withLock {
+            guard isCurrent(wipeCount) else { return nil }
+            try createDirectory(url.deletingLastPathComponent())
+            try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return url
+        }
+    }
+
     private static func safeAttachmentName(_ filename: String) -> String {
         let replaced = filename.replacingOccurrences(of: "/", with: "_")
         guard let nonEmpty = replaced.mailNonEmpty, nonEmpty != ".", nonEmpty != ".." else {
@@ -148,7 +169,7 @@ nonisolated final class MailCache: @unchecked Sendable {
     func clearAll() {
         lock.withLock {
             wipes.withLock { $0 += 1 }
-            _ = try? FileManager.default.removeItem(at: directory)
+            searchIndex.close { _ = try? FileManager.default.removeItem(at: directory) }
         }
     }
 

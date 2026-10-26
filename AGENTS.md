@@ -41,6 +41,7 @@ xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch
 xcodebuild build -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=macOS'
 (cd swift/Packages/SwiftMail && swift test)
 python3 tools/check_macos_sources.py
+python3 tools/check_privacy_manifests.py
 python3 tools/localization/check_keys.py
 python3 tools/generate_licenses.py --check
 python3 -m unittest discover -s tools -p 'test_*.py'
