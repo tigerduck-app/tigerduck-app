@@ -57,6 +57,20 @@ struct CourseSyllabusTests {
         }
     }
 
+    @Test("a number reads as its digits and a field of another type as blank")
+    func lenientFields() throws {
+        let syllabus = try #require(try Self.fixture("CourseSyllabusNumeric"))
+
+        #expect(syllabus.grading == nil)
+        #expect(syllabus.notes == "3")
+        #expect(syllabus.outline == "Counting ducks.")
+        #expect(CourseSyllabusBreakdown.teaching(syllabus) == [
+            Part(label: String(localized: "course_detail_syllabus_lecture"), percent: 60),
+            Part(label: String(localized: "course_detail_syllabus_case_study"), percent: 12.5),
+            Part(label: String(localized: "course_detail_syllabus_practical"), percent: 27.5),
+        ])
+    }
+
     @Test("a syllabus is fetched once per term, course and language, even when there is none")
     func syllabiAreKept() async throws {
         var calls = 0
