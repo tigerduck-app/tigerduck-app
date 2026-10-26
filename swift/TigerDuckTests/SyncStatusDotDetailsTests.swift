@@ -36,6 +36,24 @@ struct SyncStatusDotDetailsTests {
         }
     }
 
+    @Test("a loading page's dot reads its own text, not only that it syncs")
+    func aLoadingPageReadsItsText() async throws {
+        try await withAccessibilityAutomation {
+            let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+            let window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+            let dot = SyncStatusDot(
+                status: .ok, label: Self.name, icon: "envelope.fill", text: "20/61", isLoading: true, lastSynced: .hidden
+            )
+            let host = UIHostingController(rootView: dot)
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true }
+
+            try await waitUntil(timeout: .seconds(10)) { accessibilityElement(labeled: "20/61", in: host.view) != nil }
+        }
+    }
+
     private static func labels(in node: NSObject) -> [String] {
         var found = node.accessibilityLabel.map { [$0] } ?? []
         var children = node.accessibilityElements ?? []
