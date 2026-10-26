@@ -314,13 +314,16 @@ final class DataCache {
         load(from: "selection_dropped.json", in: persistentDir) ?? [:]
     }
 
-    func recordSelectionRoster(semester: String, roster: [String]) {
+    /// The roster comes from course selection or, for any other term, the transcript. A course
+    /// in `alsoListed`, Moodle's course sites for the term, is dropped too when the roster leaves
+    /// it out, so a row an earlier version uploaded for it is not merged back from the server.
+    func recordSelectionRoster(semester: String, roster: [String], alsoListed: [String] = []) {
         guard !roster.isEmpty else { return }
         var stored = loadSelectionDroppedNos()
         let previous = Set(stored[semester] ?? [])
         let updated = AppServiceBridge.selectionDrops(
             previous: previous,
-            localPortalNos: loadCourses(semester: semester).map(\.courseNo),
+            localPortalNos: loadCourses(semester: semester).map(\.courseNo) + alsoListed,
             roster: roster
         )
         guard updated != previous else { return }

@@ -31,7 +31,8 @@ enum AppServiceBridge {
             authService: authService,
             semester: semester,
             forceRefresh: forceRefresh,
-            moodleEnrolledCourses: nil
+            moodleEnrolledCourses: nil,
+            transcript: { await fetchTranscript(authService: authService, forceRefresh: forceRefresh) }
         )
     }
 
@@ -41,20 +42,52 @@ enum AppServiceBridge {
 
     static func warmAllSemesterCaches(authService: AuthService) async {
         await SemesterCatalog.refreshIfStale()
+        let semesters = SemesterCatalog.availableSemesters().filter {
+            DataCache.shared.loadCourses(semester: $0).isEmpty
+        }
+        guard !semesters.isEmpty else { return }
         let moodleEnrolledCourses = (try? await MoodleEnrolledCoursesService.fetchEnrolled()) ?? []
+        let transcript = await fetchTranscript(authService: authService, forceRefresh: false)
 
         await withTaskGroup(of: Void.self) { group in
-            for semester in SemesterCatalog.availableSemesters() {
-                guard DataCache.shared.loadCourses(semester: semester).isEmpty else { continue }
+            for semester in semesters {
                 group.addTask {
                     _ = await fetchCourses(
                         authService: authService,
                         semester: semester,
                         forceRefresh: false,
-                        moodleEnrolledCourses: moodleEnrolledCourses
+                        moodleEnrolledCourses: moodleEnrolledCourses,
+                        transcript: { transcript }
                     )
                 }
             }
+        }
+    }
+
+    /// The transcript, or nil when it cannot be fetched. Records the score system's answer.
+    static func fetchTranscript(authService: AuthService, forceRefresh: Bool) async -> ScoreReport? {
+        let startGeneration = authService.loginGeneration
+        guard let studentId = authService.storedStudentId,
+              let password = authService.storedPassword else { return nil }
+        do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.scoreSystem)
+            #endif
+            let report = try await NTUSTScoreService.fetchScoreReport(
+                session: NTUSTSessionManager.shared.session,
+                studentId: studentId,
+                password: password,
+                forceRefresh: forceRefresh,
+                persistGuard: { @Sendable [weak authService] in
+                    authService?.loginGeneration == startGeneration
+                }
+            ).report
+            record(.ok, for: .scoreSystem, round: startGeneration, authService: authService)
+            return report
+        } catch {
+            record(.failed, for: .scoreSystem, round: startGeneration, authService: authService)
+            AppLogger.captureError(error, context: ["service": "fetchScoreReport", "flow": "classTable"])
+            return nil
         }
     }
 
@@ -62,7 +95,8 @@ enum AppServiceBridge {
         authService: AuthService,
         semester: String,
         forceRefresh: Bool,
-        moodleEnrolledCourses: [MoodleEnrolledCourse]?
+        moodleEnrolledCourses: [MoodleEnrolledCourse]?,
+        transcript: () async -> ScoreReport?
     ) async -> [SDCourse] {
         let startGeneration = authService.loginGeneration
         await SemesterCatalog.refreshIfStale()
@@ -81,13 +115,13 @@ enum AppServiceBridge {
         }
 
         do {
-            #if DEBUG
-            try await ServerFailureSimulator.shared.check(.courseSelection)
-            #endif
             let session = NTUSTSessionManager.shared.session
             var courseSelectionNos: [String]?
             if servesSelectionSemester {
                 do {
+                    #if DEBUG
+                    try await ServerFailureSimulator.shared.check(.courseSelection)
+                    #endif
                     courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
                         session: session,
                         studentId: studentId,
@@ -106,7 +140,7 @@ enum AppServiceBridge {
                         AppLogger.captureError(error, context: [
                             "service": "fetchEnrolledCourseNos",
                             "semester": semester,
-                            "fallback": "moodleOnly",
+                            "fallback": "transcript",
                         ])
                     }
                 }
@@ -117,10 +151,23 @@ enum AppServiceBridge {
                     semester: semester, roster: courseSelectionNos)
             }
 
-            let moodleAll = if let moodleEnrolledCourses {
-                moodleEnrolledCourses
+            let selectionAnswered = courseSelectionNos?.isEmpty == false
+            let report = selectionAnswered
+                ? DataCache.shared.loadScoreReport(studentId: studentId)?.report
+                : await transcript()
+            let scoreCoursesForSemester = report.map { classRows(of: $0, term: semester) }
+            guard let orderedCourseNos = enrolledCourseNos(
+                selection: courseSelectionNos,
+                transcript: scoreCoursesForSemester?.map(\.code)
+            ) else {
+                return DataCache.shared.loadCourses(semester: semester)
+            }
+
+            let moodleAll: [MoodleEnrolledCourse]
+            if let moodleEnrolledCourses {
+                moodleAll = moodleEnrolledCourses
             } else {
-                try await MoodleEnrolledCoursesService.fetchEnrolled()
+                moodleAll = try await MoodleEnrolledCoursesService.fetchEnrolled()
             }
             // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
             let moodleIdMap = moodleCourseIdMap(moodleAll)
@@ -138,20 +185,11 @@ enum AppServiceBridge {
                 uniquingKeysWith: { first, _ in first }
             )
 
-            let scoreCoursesForSemester: [CourseGrade] = DataCache.shared
-                .loadScoreReport(studentId: studentId)?
-                .report.courses
-                .filter { $0.term == semester && $0.status != .withdrew && !$0.code.isEmpty } ?? []
             let scoreByNo = Dictionary(
-                scoreCoursesForSemester.map { ($0.code, $0) },
+                (scoreCoursesForSemester ?? []).map { ($0.code, $0) },
                 uniquingKeysWith: { first, _ in first }
             )
 
-            let orderedCourseNos = enrolledCourseNos(
-                selection: courseSelectionNos,
-                moodle: moodleForSemester.map(\.courseNo),
-                transcript: scoreCoursesForSemester.map(\.code)
-            )
             let cachedByNo = Dictionary(
                 DataCache.shared.loadCourses(semester: semester).map { ($0.courseNo, CourseData($0)) },
                 uniquingKeysWith: { first, _ in first }
@@ -179,6 +217,11 @@ enum AppServiceBridge {
                 return DataCache.shared.loadCourses(semester: semester)
             }
             if !courses.isEmpty {
+                if !selectionAnswered {
+                    DataCache.shared.recordSelectionRoster(
+                        semester: semester, roster: orderedCourseNos,
+                        alsoListed: moodleForSemester.map(\.courseNo))
+                }
                 DataCache.shared.saveCourses(courses, semester: semester)
                 uploadVisibleCourses(
                     courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()), to: courseUploader
@@ -217,22 +260,32 @@ enum AppServiceBridge {
         tracker.set(status, for: server, note: note)
     }
 
-    /// Moodle leads then and the transcript adds non-Moodle classes. An empty list
-    /// counts as nil: the D01 regex scrape returns no matches, not an error, when the
-    /// page drifts, and that is cached for a day, so it must not blank the term.
-    static func enrolledCourseNos(
-        selection: [String]?,
-        moodle: [String],
-        transcript: [String]
-    ) -> [String] {
-        let candidates: [String]
-        if let selection, !selection.isEmpty {
-            candidates = selection
-        } else {
-            candidates = moodle + transcript
-        }
+    /// Course selection owns the term it serves. Every other term, and that one when course
+    /// selection gives nothing, takes the transcript's classes; Moodle lists course sites, and
+    /// keeps a dropped class, so it adds none. Nil when neither answers, so the term keeps its
+    /// cached courses. An empty list counts as nil: the D01 regex scrape returns no matches,
+    /// not an error, when the page drifts, and the transcript lists a new term late.
+    static func enrolledCourseNos(selection: [String]?, transcript: [String]?) -> [String]? {
+        let candidates = selection?.isEmpty == false ? selection : transcript
         var seen = Set<String>()
-        return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
+        let courseNos = (candidates ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
+        return courseNos.isEmpty ? nil : courseNos
+    }
+
+    /// The term's transcript rows that stand for a class. Withdrawn and exempted rows and the
+    /// school English proficiency test have none to draw. Codes are read with
+    /// `CourseSelectionService.isCourseNo`, which takes NTU and NTNU courses too.
+    static func classRows(of report: ScoreReport, term: String) -> [CourseGrade] {
+        report.courses.filter {
+            $0.term == term && $0.status != .withdrew && $0.status != .exempted
+                && !isEnglishProficiencyTest($0) && CourseSelectionService.isCourseNo($0.code[...])
+        }
+    }
+
+    // shortcut: matched by its course name, as no transcript row of the test was at hand to read
+    // its code; match the code instead once a real transcript shows it.
+    static func isEnglishProficiencyTest(_ row: CourseGrade) -> Bool {
+        row.name.contains("校定英文能力檢測") || row.name.localizedCaseInsensitiveContains("English Proficiency Test")
     }
 
     static func moodleCourseIdMap(_ courses: [MoodleEnrolledCourse]) -> [String: Int] {
