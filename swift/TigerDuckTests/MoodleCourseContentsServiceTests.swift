@@ -101,6 +101,17 @@ struct MoodleCourseContentsServiceTests {
         #expect(SettingsAPIStub.bodyData(from: request).flatMap { String(data: $0, encoding: .utf8) } == "wstoken=\(token)&courseid=20119")
         #expect(materials.sections.map(\.id) == [100, 101, 102])
         #expect(materials.sections.map(\.name) == ["General", "Week 1 & 2", "Week 3"])
+        #expect(materials.sections.map(\.number) == [0, 1, 2])
+    }
+
+    @Test("materials cached without section numbers still load")
+    func cachedWithoutNumbers() throws {
+        let cached = Data(#"{"sections": [{"id": 101, "name": "Week 1", "materials": []}]}"#.utf8)
+
+        let materials = try JSONDecoder().decode(MoodleCourseMaterials.self, from: cached)
+
+        #expect(materials.sections.map(\.id) == [101])
+        #expect(materials.sections.first?.number == nil)
     }
 
     @Test("only files, folders and links an account can open are kept, and a section with none of them is not")

@@ -12,6 +12,8 @@ nonisolated struct MoodleMaterialSection: Codable, Sendable, Hashable, Identifia
     let id: Int
     let name: String
     let materials: [MoodleMaterial]
+    /// Moodle's section number, 0 for the general section; optional so materials cached without it still load.
+    var number: Int? = nil
 }
 
 nonisolated struct MoodleMaterial: Codable, Sendable, Hashable, Identifiable {
@@ -82,6 +84,7 @@ nonisolated enum MoodleCourseContentsService {
 private nonisolated struct RawSection: Decodable, Sendable {
     let id: Int
     let name: String?
+    let section: Int?
     let uservisible: Bool?
     let modules: [RawModule]?
 
@@ -89,7 +92,9 @@ private nonisolated struct RawSection: Decodable, Sendable {
         guard uservisible != false else { return nil }
         let materials = (modules ?? []).compactMap(\.model)
         guard !materials.isEmpty else { return nil }
-        return MoodleMaterialSection(id: id, name: MoodleHTMLText.plainText(fromHTML: name ?? ""), materials: materials)
+        return MoodleMaterialSection(
+            id: id, name: MoodleHTMLText.plainText(fromHTML: name ?? ""), materials: materials, number: section
+        )
     }
 }
 
