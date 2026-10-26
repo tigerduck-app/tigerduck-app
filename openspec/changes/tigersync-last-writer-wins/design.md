@@ -214,7 +214,8 @@ protocol 2:
   clears. A school row goes unless its `added_at` or one of its override stamps is later. A row
   that goes leaves today's per-course reset tombstone (`deleted_by_reset`) so released apps
   still obey it. A row that stays loses the
-  fields stamped at or before the reset, which return to their empty, unstamped state.
+  fields stamped at or before the reset; each returns to its empty value stamped at the reset,
+  so an older write (an academics PUT, a first upload, a roster colour) cannot bring it back.
   Afterwards every membership or override edit for that term stamped at or before `reset_at` is
   refused.
 - A roster upload upserts school rows, skips keys with a hide tombstone, and deletes reset
