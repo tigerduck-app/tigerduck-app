@@ -93,9 +93,11 @@ final class MailListViewModel {
         return unreadOnly ? base.filter { !$0.summary.isSeen } : base
     }
 
-    var targets: [String] { selection.targets(roles: folderRoles) }
+    var targets: [String] { selection.targets(roles: folderRoles, others: otherFolders) }
 
-    var showsAllMailChip: Bool { MailFolderSelection.allMail.targets(roles: folderRoles).count > 1 }
+    var showsAllMailChip: Bool {
+        MailFolderSelection.allMail.targets(roles: folderRoles, others: otherFolders).count > 1
+    }
 
     var showsInbox: Bool { targets.contains(MailConstants.inbox) }
 
@@ -123,10 +125,10 @@ final class MailListViewModel {
     /// from the server. The refresh is merged into what is already loaded, not swapped in: new
     /// mail is added, and mail the user paginated to beyond this first page is kept.
     ///
-    /// One page per real folder: one round trip for an ordinary folder, two for All mail,
-    /// however far the merged list has been scrolled. That bound is why the merged view refreshes
-    /// only the newest page per folder: Mail2000 caps connections and starts answering
-    /// "The mail server is busy" under load.
+    /// One page per real folder: one round trip for an ordinary folder, one per covered folder
+    /// for All mail, however far the merged list has been scrolled. That bound is why the merged
+    /// view refreshes only the newest page per folder: Mail2000 caps connections and starts
+    /// answering "The mail server is busy" under load.
     func load() async {
         var selection = self.selection
         let epoch = accountEpoch
@@ -156,17 +158,26 @@ final class MailListViewModel {
             }
             guard isCurrent(selection, epoch) else { return }
             let folders = targets
-            let fetched = try await session.use { client -> [(String, MailFolderPage)] in
-                var result: [(String, MailFolderPage)] = []
+            // A folder that fails leaves the others' pages; a lost connection, a busy server or a
+            // rejected password stops at that folder, as each one after it would fail the same way.
+            typealias Fetched = (pages: [(String, MailFolderPage)], failure: MailClientError?)
+            let fetched = try await session.use { client -> Fetched in
+                var pages: [(String, MailFolderPage)] = []
+                var failure: MailClientError?
                 for folder in folders {
-                    result.append((folder, try await client.page(folder: folder, olderThanSequence: nil,
-                                                                 pageSize: MailConstants.pageSize)))
+                    do {
+                        pages.append((folder, try await client.page(folder: folder, olderThanSequence: nil,
+                                                                    pageSize: MailConstants.pageSize)))
+                    } catch let error as MailClientError {
+                        failure = error
+                        if MailChecker.endsPrefetch(error) { break }
+                    }
                 }
-                return result
+                return (pages, failure)
             }
             guard isCurrent(selection, epoch) else { return }
             let fetchedAt = Date()
-            for (folder, page) in fetched {
+            for (folder, page) in fetched.pages {
                 var fresh = page
                 fresh.fetchedAt = fetchedAt
                 if pages[folder]?.uidNext != fresh.uidNext { indexer.noteNewMail() }
@@ -184,6 +195,7 @@ final class MailListViewModel {
                 await save(merged)
             }
             rebuildRows()
+            if let failure = fetched.failure { throw failure }
             serverStatus = .ok
             loadState = .loaded
             startIndexIfLoaded()
@@ -732,7 +744,7 @@ final class MailListViewModel {
         startWarm()
     }
 
-    /// Inbox and Sent first, the folders All mail searches.
+    /// Inbox and Sent first: most searches look there.
     private func startIndexIfLoaded(force: Bool = false) {
         guard !isPaused, loadState == .loaded, serverStatus == .ok, !folderRoles.isEmpty else { return }
         let roles = MailFolderRole.allCases.compactMap { folderRoles[$0] }

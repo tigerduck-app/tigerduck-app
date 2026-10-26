@@ -747,16 +747,67 @@ struct MailListViewModelTests {
         rows.map { "\($0.folder == "INBOX" ? "收" : "寄")\($0.uid)" }
     }
 
-    @Test func theAllMailChipAppearsOnlyWhenBothFoldersResolve() async {
+    @Test func theAllMailChipAppearsOnlyWhenAllMailCoversMoreThanOneFolder() async {
         let h = Self.harness()
         #expect(h.model.showsAllMailChip == false)
         await h.model.load()
         #expect(h.model.showsAllMailChip)
 
-        let withoutSent = Self.harness(includeSent: false)
-        await withoutSent.model.load()
-        #expect(withoutSent.model.showsAllMailChip == false)
+        let inboxOnly = Self.harness(includeSent: false)
+        await inboxOnly.fake.update { $0.folders[Self.moodle] = nil }
+        await inboxOnly.model.load()
+        #expect(inboxOnly.model.showsAllMailChip == false)
     }
+
+    nonisolated static let drafts = MailFolderRole.drafts.imapName
+    nonisolated static let junk = MailFolderRole.junk.imapName
+    nonisolated static let moodle = "Moodle &irJ6C4oOitZTQA-"
+
+    @Test func allMailCoversEveryFolderButJunkAndTrashWhichTheWarmFetches() async {
+        let h = Self.harness(inboxCount: 2, sentUIDs: [1], warmDelay: {})
+        await h.fake.update { fake in
+            fake.folders[Self.drafts] = [FakeMailClient.message(uid: 1, subject: "草稿")]
+            fake.folders[Self.junk] = [FakeMailClient.message(uid: 1, subject: "廣告")]
+            fake.folders[Self.moodle] = [FakeMailClient.message(uid: 1, subject: "課程")]
+        }
+        await h.model.refresh()
+        await h.model.waitForWarm()
+
+        #expect(h.model.selection == .allMail)
+        #expect(h.model.targets == ["INBOX", Self.sent, Self.drafts, Self.moodle])
+        #expect(Set(h.model.rows.compactMap(\.summary.subject)) == ["公告 1", "公告 2", "寄件 1", "草稿", "課程"])
+        let requests = await h.fake.pageRequests
+        #expect(requests.contains("\(Self.junk) \(MailConstants.warmPageSize)"))
+        #expect(requests.contains("\(Self.trash) \(MailConstants.warmPageSize)"))
+    }
+
+    @Test func searchingAllMailFindsAMatchOnlyACustomFolderHolds() async {
+        let h = Self.harness(inboxCount: 3, warmDelay: {})
+        await h.fake.update { $0.folders[Self.moodle] = [FakeMailClient.message(uid: 4, subject: "通知", text: "作業三 繳交提醒")] }
+        await h.model.load()
+        await h.model.waitForIndex()
+
+        h.model.searchText = "作業三"
+        await h.model.submitSearch()
+
+        #expect(h.model.selection == .allMail)
+        #expect(h.model.displayedRows.map { "\($0.folder) \($0.uid)" } == ["\(Self.moodle) 4"])
+    }
+
+    @Test func aFolderThatFailsToLoadLeavesTheOthersInAllMail() async {
+        let h = Self.harness(inboxCount: 3, sentUIDs: [1])
+        await h.fake.update { fake in
+            fake.folders[Self.moodle] = [FakeMailClient.message(uid: 5, subject: "課程")]
+            fake.pageErrors[Self.sent] = .protocolError("NO")
+        }
+        await h.model.load()
+
+        #expect(h.model.selection == .allMail)
+        #expect(h.model.rows.map { "\($0.folder) \($0.uid)" } == ["\(Self.moodle) 5", "INBOX 3", "INBOX 2", "INBOX 1"])
+        #expect(h.model.serverStatus == .failed)
+        #expect(h.model.loadState == .loaded)
+    }
+
 
     @Test func theMergedFolderInterleavesTheInboxAndSentMailByDate() async {
         let h = await Self.mergedHarness()
@@ -839,7 +890,7 @@ struct MailListViewModelTests {
 
         let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
         await h.model.load()
-        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count - before == 2)
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count - before == h.model.targets.count)
         #expect(h.model.rows.count == 63)
     }
 
@@ -852,8 +903,9 @@ struct MailListViewModelTests {
         let named = await h.fake.calls.filter {
             $0.hasPrefix("page ") || $0.hasPrefix("status ") || $0.hasPrefix("summaries ")
         }
+        let targets = h.model.targets
         #expect(!named.isEmpty)
-        #expect(named.allSatisfy { $0.contains("INBOX") || $0.contains(Self.sent) })
+        #expect(named.allSatisfy { call in targets.contains { call.contains($0) } })
     }
 
     @Test func searchingTheMergedViewAsksBothFoldersAndKeepsTheirFolders() async {
@@ -919,7 +971,7 @@ struct MailListViewModelTests {
         let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
         await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 1_000)) }
         await h.model.pollOnce()
-        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before + 2)
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before + h.model.targets.count)
     }
 
     @Test func thePollLeavesAFolderWithoutTheInboxAlone() async {
@@ -940,12 +992,13 @@ struct MailListViewModelTests {
 
         await h.model.load()
         #expect(h.model.selection == .allMail)
-        #expect(h.model.targets == ["INBOX", Self.sent])
+        #expect(h.model.targets == ["INBOX", Self.sent, Self.moodle])
         #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
     }
 
     @Test func theListOpensOnTheInboxWhenThereIsNothingToMerge() async {
         let h = Self.harness(inboxCount: 4, includeSent: false)
+        await h.fake.update { $0.folders[Self.moodle] = nil }
         await h.model.load()
         #expect(h.model.showsAllMailChip == false)
         #expect(h.model.selection == .real("INBOX"))
