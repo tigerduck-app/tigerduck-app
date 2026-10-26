@@ -47,30 +47,45 @@ enum BrowserPageScripts {
         """
     }
 
-    /// Under a dark appearance, a page that draws itself light is inverted and its pictures and
-    /// find marks inverted back, as most school pages have no dark style. Checked again once the
-    /// page's styles load and when the appearance changes; a page with its own dark style is kept.
-    nonisolated static let darken = """
+    /// Under a dark appearance, Dark Reader recolors a page that draws itself light, as most school
+    /// pages have no dark style; its styles are for the screen only, so a print keeps the site's
+    /// colors. Checked again once the page's styles load and when the appearance changes; a page
+    /// with its own dark style is kept. Dark Reader is vendored in
+    /// `swift/TigerDuck/Features/Browser/DarkReader/`; without it in the bundle this is nil.
+    nonisolated static let darken: String? = Bundle.main.url(forResource: "darkreader", withExtension: "js")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+        .map { $0 + "\n" + darkenWithDarkReader }
+
+    private nonisolated static let darkenWithDarkReader = """
     (function() {
       var dark = matchMedia('(prefers-color-scheme: dark)');
-      var style = document.createElement('style');
-      style.setAttribute('data-tigerduck-dark', '');
-      (document.head || document.documentElement).appendChild(style);
-      var invert = '{ filter: invert(1) hue-rotate(180deg) !important; }';
-      var back = 'img, video, canvas, iframe, embed, object, svg image, [style*="background-image"], mark[data-tigerduck-find]';
+      // Find's marks and spotlight keep the colors it gives them.
+      var fixes = { ignoreInlineStyle: ['[data-tigerduck-find]', '[data-tigerduck-find-light]'] };
+      // Lets a cross-origin stylesheet be recolored where its server allows CORS.
+      DarkReader.setFetchMethod(window.fetch);
+      // The page's own colors, read with Dark Reader's styles switched off for the moment.
       function drawsLight() {
-        var root = document.documentElement;
-        var color = [document.body, root].filter(Boolean)
-          .map(function(element) { return getComputedStyle(element).backgroundColor; })
-          .filter(function(color) { return !/^transparent$|, 0\\)$/.test(color); })[0];
-        var meta = document.querySelector('meta[name="color-scheme"]');
-        if (!color) return !/dark/.test(getComputedStyle(root).colorScheme + (meta ? meta.content : ''));
-        var rgb = color.match(/[\\d.]+/g).map(Number);
-        return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 127.5;
+        var ours = Array.prototype.map.call(document.querySelectorAll('style.darkreader'), function(style) { return style.sheet; })
+          .filter(function(sheet) { return sheet && !sheet.disabled; });
+        ours.forEach(function(sheet) { sheet.disabled = true; });
+        try {
+          var root = document.documentElement;
+          var color = [document.body, root].filter(Boolean)
+            .map(function(element) { return getComputedStyle(element).backgroundColor; })
+            .filter(function(color) { return !/^transparent$|, 0\\)$/.test(color); })[0];
+          var meta = document.querySelector('meta[name="color-scheme"]');
+          if (!color) return !/dark/.test(getComputedStyle(root).colorScheme + (meta ? meta.content : ''));
+          var rgb = color.match(/[\\d.]+/g).map(Number);
+          return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 127.5;
+        } finally {
+          ours.forEach(function(sheet) { sheet.disabled = false; });
+        }
       }
       function update() {
-        style.textContent = '';
-        if (dark.matches && drawsLight()) style.textContent = '@media screen { html ' + invert + ' ' + back + ' ' + invert + ' }';
+        var wanted = dark.matches && drawsLight();
+        if (wanted === DarkReader.isEnabled()) return;
+        if (wanted) DarkReader.enable({}, fixes);
+        else DarkReader.disable();
       }
       update();
       dark.addEventListener('change', update);
@@ -108,7 +123,11 @@ enum BrowserPageScripts {
         controller.removeAllUserScripts()
         controller.addUserScript(WKUserScript(source: hideLogout, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         controller.addUserScript(WKUserScript(source: zoom(BrowserSites.stored.zoom), injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        controller.addUserScript(WKUserScript(source: darken, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        guard let darken else {
+            return AppLogger.breadcrumb("browser opened without Dark Reader", category: "browser")
+        }
+        // The app's own world: page scripts cannot reach it, and a page's AMD loader cannot take its UMD wrapper.
+        controller.addUserScript(WKUserScript(source: darken, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
     }
 
     private static func compileLogoutRules() async -> WKContentRuleList? {

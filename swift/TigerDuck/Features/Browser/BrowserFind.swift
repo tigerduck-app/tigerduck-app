@@ -221,10 +221,8 @@ final class BrowserFind {
         light.setAttribute(marker + '-light', '');
         document.documentElement.appendChild(light);
       }
-      // The browser's dark style inverts the page, the box with it, so its shadow is then drawn white.
-      var shade = getComputedStyle(document.documentElement).filter === 'none' ? '0, 0, 0' : '255, 255, 255';
       light.style.cssText = 'position: absolute; z-index: 2147483647; pointer-events: none; border-radius: 3px; '
-        + 'box-shadow: 0 0 0 100000px rgba(' + shade + ', 0.35); left: ' + (box[0] + scrollX) + 'px; top: ' + (box[1] + scrollY)
+        + 'box-shadow: 0 0 0 100000px rgba(0, 0, 0, 0.35); left: ' + (box[0] + scrollX) + 'px; top: ' + (box[1] + scrollY)
         + 'px; width: ' + (box[2] - box[0]) + 'px; height: ' + (box[3] - box[1]) + 'px';
     }
     // The box scrolls with the page; a scrolled frame or a new layout moves the match under it.
