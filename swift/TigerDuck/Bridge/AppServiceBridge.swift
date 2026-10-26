@@ -186,13 +186,14 @@ enum AppServiceBridge {
         let scoreCoursesForSemester = report.map { classRows(of: $0, term: semester) }
         let cachedCourses = DataCache.shared.loadCourses(semester: semester)
         let rebuilds = rebuildsFromTranscript(report, term: semester, servedBySelection: servesSelectionSemester)
-        guard let term = termCourseNos(
-            selection: courseSelectionNos,
-            transcript: scoreCoursesForSemester?.map(\.code),
-            cached: rebuilds ? [] : cachedCourses.map(\.courseNo)
-        ) else {
-            return cachedCourses
-        }
+        let term: (courseNos: [String], roster: [String]?)? = rebuilds
+            ? (uniqueCourseNos(scoreCoursesForSemester?.map(\.code) ?? []), nil)
+            : termCourseNos(
+                selection: courseSelectionNos,
+                transcript: scoreCoursesForSemester?.map(\.code),
+                cached: cachedCourses.map(\.courseNo)
+            )
+        guard let term else { return cachedCourses }
         if let roster = term.roster, !Task.isCancelled, authService.loginGeneration == startGeneration {
             DataCache.shared.recordSelectionRoster(semester: semester, roster: roster)
         }
@@ -254,9 +255,11 @@ enum AppServiceBridge {
         guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
             return DataCache.shared.loadCourses(semester: semester)
         }
-        guard !courses.isEmpty else { return cachedCourses }
+        guard !courses.isEmpty || pastTerm != nil else { return cachedCourses }
         if let pastTerm {
-            DataCache.shared.recordSelectionRoster(semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping)
+            DataCache.shared.recordSelectionRoster(
+                semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping, isFinal: true
+            )
         }
         DataCache.shared.saveCourses(courses, semester: semester)
         uploadVisibleCourses(
@@ -332,13 +335,15 @@ enum AppServiceBridge {
         return (courses, roster, dropping)
     }
 
-    /// A term is rebuilt only once the transcript lists a later one: then it has ended and the
-    /// transcript holds all of it. The newest term listed may still run or miss grades, and the
-    /// term course selection serves is its own, so both only add.
+    /// A term the transcript lists is rebuilt only once it lists a later one too: then the term
+    /// has ended and the transcript holds all of it, even when that leaves no class to draw. The
+    /// newest term listed may still run or miss grades, and the term course selection serves is
+    /// its own, so both only add. An exempted row can be filed under any term and counts for neither.
     static func rebuildsFromTranscript(_ report: ScoreReport?, term: String, servedBySelection: Bool) -> Bool {
         guard !servedBySelection, let report else { return false }
         let order = { (code: String) in Int(code.filter(\.isNumber)) ?? 0 }
-        return report.courses.contains { $0.status != .exempted && order($0.term) > order(term) }
+        let listed = report.courses.filter { $0.status != .exempted }
+        return listed.contains { $0.term == term } && listed.contains { order($0.term) > order(term) }
     }
 
     /// A class the transcript adds joins its term only with class times: a row without them, or one
@@ -427,9 +432,10 @@ enum AppServiceBridge {
     static func selectionDrops(
         previous: Set<String>,
         localPortalNos: [String],
-        roster: [String]
+        roster: [String],
+        isFinal: Bool = false
     ) -> Set<String> {
-        guard !roster.isEmpty else { return previous }
+        guard !roster.isEmpty || isFinal else { return previous }
         let enrolled = Set(roster)
         return previous.union(localPortalNos).subtracting(enrolled)
     }

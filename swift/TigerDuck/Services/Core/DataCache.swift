@@ -316,15 +316,17 @@ final class DataCache {
 
     /// The roster comes from course selection or, for a past term, the transcript. A course in
     /// `alsoListed`, which the term may hold on the server without this device having fetched it,
-    /// is dropped too when the roster leaves it out.
-    func recordSelectionRoster(semester: String, roster: [String], alsoListed: [String] = []) {
-        guard !roster.isEmpty else { return }
+    /// is dropped too when the roster leaves it out. A final roster, an ended term's, counts even
+    /// when empty; an empty course-selection answer may be a drifted page and records nothing.
+    func recordSelectionRoster(semester: String, roster: [String], alsoListed: [String] = [], isFinal: Bool = false) {
+        guard !roster.isEmpty || isFinal else { return }
         var stored = loadSelectionDroppedNos()
         let previous = Set(stored[semester] ?? [])
         let updated = AppServiceBridge.selectionDrops(
             previous: previous,
             localPortalNos: loadCourses(semester: semester).map(\.courseNo) + alsoListed,
-            roster: roster
+            roster: roster,
+            isFinal: isFinal
         )
         guard updated != previous else { return }
         if updated.isEmpty {

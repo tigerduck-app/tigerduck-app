@@ -283,6 +283,32 @@ struct PastTermRebuildTests {
             == ["MA1001301", "EC9999301"])
     }
 
+    @Test("An ended term whose transcript leaves no class to draw is saved empty and drops what it held")
+    func emptyRebuildDropsWhatItHeld() {
+        let report = Self.report([
+            ("1141", "TH9001301", .graded), ("1141", "MA1001301", .withdrew), ("1142", "CS1001301", .graded),
+        ])
+        #expect(AppServiceBridge.rebuildsFromTranscript(report, term: "1141", servedBySelection: false))
+
+        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+            [Self.looked("TH9001301", times: false)], unreadable: [], cached: [Self.course("EE2005301")],
+            others: ["TH9001301", "MA1001301"], userAdded: []
+        )
+
+        #expect(rebuilt.courses.isEmpty)
+        #expect(rebuilt.roster.isEmpty)
+        #expect(AppServiceBridge.selectionDrops(
+            previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster, isFinal: true
+        ) == ["EE2005301", "TH9001301", "MA1001301"])
+        #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: ["EE2005301"], roster: []).isEmpty)
+    }
+
+    @Test("A term the transcript lists only through exempted rows is not rebuilt")
+    func exemptedOnlyTermIsNotRebuilt() {
+        let report = Self.report([("1141", "GE1001301", .exempted), ("1142", "CS1001301", .graded)])
+        #expect(!AppServiceBridge.rebuildsFromTranscript(report, term: "1141", servedBySelection: false))
+    }
+
     @Test("A hand-added course filled in from its server row keeps having no Moodle ID")
     func filledHandAddKeepsNoMoodleId() {
         let added = SDCourse(courseNo: "GE1010001", courseName: "Added here", semester: "1141")
