@@ -127,7 +127,8 @@ final class ScoreViewModel {
         isCurrent: () -> Bool,
         isReachable: () async -> Bool,
         fetch: () async throws -> (report: ScoreReport, cachedAt: Date),
-        indicator manager: LoadingIndicator = NTUSTSessionManager.shared
+        indicator manager: LoadingIndicator = NTUSTSessionManager.shared,
+        tracker: ServerStatusTracker? = nil
     ) async {
         switchAccount(to: studentId)
         let owner = RefreshOwner(studentId: studentId, generation: generation)
@@ -149,7 +150,7 @@ final class ScoreViewModel {
         let outcome: Result<(report: ScoreReport, cachedAt: Date), any Error>
         do {
             #if DEBUG
-            try await ServerFailureSimulator.shared.check(.courseSelection)
+            try await ServerFailureSimulator.shared.check(.scoreSystem)
             #endif
             outcome = .success(try await fetch())
         } catch {
@@ -164,10 +165,10 @@ final class ScoreViewModel {
         switch outcome {
         case .success(let fresh):
             apply(fresh.report, cachedAt: fresh.cachedAt)
-            ServerStatusTracker.shared.set(.ok, for: .courseSelection)
+            (tracker ?? .shared).set(.ok, for: .scoreSystem)
             manager.loadingState = .loaded
         case .failure(let error):
-            ServerStatusTracker.shared.set(.failed, for: .courseSelection)
+            (tracker ?? .shared).set(.failed, for: .scoreSystem)
             errorMessage = error.localizedDescription
             manager.loadingState = .error(error.localizedDescription)
         }

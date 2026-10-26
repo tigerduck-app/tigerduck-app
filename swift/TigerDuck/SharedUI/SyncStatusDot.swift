@@ -283,6 +283,7 @@ struct SyncStatusDot: View {
         switch server {
         case .moodle: String(localized: "calendar_source_moodle")
         case .courseSelection: String(localized: "feature_course_selection")
+        case .scoreSystem: String(localized: "sync_status_score_system")
         case .backend: String(localized: "cloud_sync_title")
         }
     }

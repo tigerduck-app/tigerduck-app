@@ -4,6 +4,7 @@ import Foundation
 enum ServerKind: String, CaseIterable, Identifiable {
     case moodle
     case courseSelection
+    case scoreSystem
     case backend
 
     var id: String { rawValue }
@@ -12,6 +13,7 @@ enum ServerKind: String, CaseIterable, Identifiable {
         switch self {
         case .moodle: "graduationcap.fill"
         case .courseSelection: "list.clipboard.fill"
+        case .scoreSystem: "chart.bar.fill"
         case .backend: "cloud.fill"
         }
     }
@@ -20,9 +22,12 @@ enum ServerKind: String, CaseIterable, Identifiable {
         switch self {
         case .moodle: "Moodle"
         case .courseSelection: "Course Selection"
+        case .scoreSystem: "Score System"
         case .backend: "TigerDuck Backend"
         }
     }
+
+    static let transcriptSources: [ServerKind] = [.scoreSystem]
 }
 
 nonisolated enum ServerStatus: Equatable {
@@ -76,6 +81,7 @@ final class ServerStatusTracker {
 enum SimulatedServer: String, CaseIterable, Identifiable {
     case moodle
     case courseSelection
+    case scoreSystem
     case backend
     case library
 
