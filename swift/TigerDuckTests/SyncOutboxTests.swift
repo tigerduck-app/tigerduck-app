@@ -111,6 +111,29 @@ struct SyncOutboxTests {
         #expect(await Self.makeOutbox(directory: directory).parkedSnapshot().isEmpty)
     }
 
+    @Test("A discard by time drops its scopes' edits made before it, queued, parked or on their way in, and a cutoff past now refuses no later edit")
+    func discardByTimeRefusesTheOlderEditsStillToCome() async {
+        let outbox = Self.makeOutbox()
+        let cutoff = Date()
+        let older = cutoff.addingTimeInterval(-60)
+        await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE1", stamp: older))
+        await Self.drain(outbox, times: SyncOutbox.maxAttempts, failingWith: PushAPIError.httpStatus(422, body: ""))
+        await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE2", stamp: older))
+        await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE3", stamp: cutoff.addingTimeInterval(60)))
+        await outbox.enqueue(Self.mark)
+
+        let dropped = await outbox.discard(madeBefore: ["ca": cutoff, "cd|1151:PE7": Date().addingTimeInterval(3600)])
+        await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE4", stamp: older))
+        await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE5", stamp: Date()))
+        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "GE6", stamp: older))
+        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE7", stamp: Date()))
+
+        #expect(Set(dropped.map(\.dedupKey)) == ["ca|1151|GE1", "ca|1151|GE2"])
+        #expect(await outbox.parkedSnapshot().isEmpty)
+        #expect(await outbox.snapshot().map(\.op.dedupKey)
+            == ["ca|1151|GE3", Self.mark.dedupKey, "ca|1151|GE5", "cd|1151|GE6", "cd|1151|PE7"])
+    }
+
     @Test("A held mark stays queued and untried while the edits behind it go")
     func heldMarkWaitsWhileOthersGo() async {
         let outbox = Self.makeOutbox()
@@ -130,7 +153,20 @@ struct SyncOutboxTests {
 
     private actor Sent {
         private(set) var count = 0
-        func add(_ op: ResolvedSyncOp) { count += 1 }
+        func add(_ op: SyncOp) { count += 1 }
+    }
+
+    @Test("Clearing the queue forgets its discard cutoffs, so the next account's edits are not refused by them")
+    func clearingForgetsTheCutoffs() async {
+        let outbox = Self.makeOutbox()
+        let earlier = SyncOp.assignmentOverride(
+            moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored", stamp: Date().addingTimeInterval(-60))
+        await outbox.discard(madeBefore: ["assignments": Date()])
+
+        await outbox.clearAll()
+        await outbox.enqueue(earlier)
+
+        #expect(await outbox.snapshot().map(\.op.dedupKey) == [earlier.dedupKey])
     }
 
     @Test("A full sync that requeues during the drain parking a mark keeps it parked")

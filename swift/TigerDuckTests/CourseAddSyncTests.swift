@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -50,7 +51,7 @@ struct CourseAddSyncTests {
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: push ?? makePush(backend), outbox: outbox, isEnabled: true,
-            syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
+            syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:]) },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
             loginGeneration: loginGeneration
@@ -191,7 +192,110 @@ struct CourseAddSyncTests {
 
         #expect(backend.uploads.isEmpty)
         #expect(!(await coordinator.holdsUnsentEdits()))
+        #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
+    }
+
+    @Test("A sign-out forgets when the adds landed, so none counts for the next account's full sync")
+    func signOutForgetsTheAddTimes() async {
+        let coordinator = Self.makeCoordinator(Backend(), cache: Self.makeCache(userAdded: [Self.art()]))
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+        #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast) == ["1151:GE1010001"])
+
+        await coordinator.settleForSignOut()
+
         #expect(await coordinator.courseAddKeys(unlandedAt: .distantPast).isEmpty)
+    }
+
+    @Test("An add counts for a full sync whose fetch began before it, though it left the outbox unsent")
+    func addCountsForASyncThatBeganBeforeIt() async {
+        let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:GE1010001"])
+        let coordinator = Self.makeCoordinator(Backend(), cache: cache)
+        let fetchedAt = Date()
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        #expect(!(await coordinator.holdsUnsentEdits()))
+        #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
+    }
+
+    /// The outbox can take an add's enqueue after a full sync read it, so the add is in neither read.
+    /// The read is held on a queue file the outbox has not loaded yet, as behind the lock screen.
+    @Test("An add that starts while a full sync reads the outbox still counts")
+    func addDuringTheReadCounts() async throws {
+        let backend = Backend()
+        backend.answer(503)
+        let directory = Self.freshDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for name in ["outbox.json", "outbox-parked.json"] {
+            try Data("[]".utf8).write(to: directory.appendingPathComponent(name))
+        }
+        let locked = OSAllocatedUnfairLock(initialState: true)
+        let reading = OSAllocatedUnfairLock(initialState: false)
+        let release = DispatchSemaphore(value: 0)
+        let outbox = SyncOutbox(directory: directory) { url in
+            guard !locked.withLock({ $0 }) else { throw CocoaError(.fileReadNoPermission) }
+            if !reading.withLock({ $0 }) {
+                reading.withLock { $0 = true }
+                release.wait()
+            }
+            return try Data(contentsOf: url)
+        }
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]), outbox: outbox)
+        let fetchedAt = Date()
+        locked.withLock { $0 = false }
+
+        let keys = Task { await coordinator.courseAddKeys(unlandedAt: fetchedAt) }
+        try await waitUntil { reading.withLock { $0 } }
+        let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
+        release.signal()
+
+        #expect(await keys.value == ["1151:GE1010001"])
+        await add.value
+    }
+
+    @Test("Use Server for courses refuses an add still on its way into the outbox")
+    func useServerRefusesAnAddOnItsWayIn() async {
+        let backend = Backend()
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
+
+        let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
+        await coordinator.discardEdits(of: ["courses"], courseIgnores: false)
+        await add.value
+
+        #expect(backend.uploads.isEmpty)
+        #expect(!(await coordinator.holdsUnsentEdits()))
+        #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
+    }
+
+    @Test("A reset made elsewhere wipes the hand-added and hidden courses but keeps those an add or hide made after it still sends")
+    func resetElsewhereKeepsTheCoursesOfLaterEdits() async {
+        let resetAt = Date().addingTimeInterval(-3600)
+        let early = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin - 60)
+        let courses = ["GE1010001", "GE2", "GE3"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }
+        let cache = Self.makeCache(userAdded: courses, hidden: ["1151:PE4", "1151:PE5", "1151:PE6"])
+        let outbox = SyncOutbox(directory: Self.freshDirectory())
+        await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE1010001", stamp: Date()))
+        await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE2", stamp: early))
+        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE4", stamp: Date()))
+        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
+        let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
+
+        #expect(await AppState.applyCourseReset(at: resetAt, cache: cache, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
+
+        #expect(cache.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
+        #expect(cache.loadDeletedCourseNos() == ["1151:PE4"])
+        #expect(AppState.addedCourseUpload(semester: "1151", courseNo: "GE1010001", cache: cache, colors: [:]) != nil)
+    }
+
+    @Test("A reset made elsewhere leaves the hand-added and hidden courses alone when the sync may no longer write, as behind the lock screen")
+    func resetElsewhereWritesNothingWhenItMayNot() async {
+        let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])
+        let coordinator = Self.makeCoordinator(Backend(), cache: cache)
+
+        #expect(await AppState.applyCourseReset(at: Date(), cache: cache, on: coordinator, mayWrite: { false }) == nil)
+
+        #expect(cache.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
+        #expect(cache.loadDeletedCourseNos() == ["1151:PE4"])
     }
 
     @Test("An add the server keeps refusing is parked, so a full sync still keeps its course and tries it again")

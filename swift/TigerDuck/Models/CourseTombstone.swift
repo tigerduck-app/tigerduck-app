@@ -6,7 +6,11 @@ nonisolated enum CourseTombstone {
     }
 
     static func serverKey(semester: String, courseNo: String) -> String {
-        "client:" + key(semester: semester, courseNo: courseNo)
+        serverKey(of: key(semester: semester, courseNo: courseNo))
+    }
+
+    static func serverKey(of key: String) -> String {
+        "client:" + key
     }
 
     static func parts(of key: String) -> (semester: String, courseNo: String)? {

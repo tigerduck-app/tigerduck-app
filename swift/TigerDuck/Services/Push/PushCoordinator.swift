@@ -253,6 +253,7 @@ final class PushCoordinator {
         let previous = lastUploads[key]
         let upload = Task { @MainActor [weak self] () async throws -> Bool in
             await previous?.value
+            try Task.checkCancellation()
             guard let self, isCurrent() else { return false }
             let now = self.clock()
             if !always, self.uploads.isHeldBack(key, fingerprint: fingerprint, now: now) {
@@ -289,7 +290,8 @@ final class PushCoordinator {
                 unfinishedUploads[key]?.remove(at: index)
             }
         }
-        return try await upload.value
+        // A cancelled caller, as a sign-out's, stops the upload rather than waiting for it.
+        return try await withTaskCancellationHandler { try await upload.value } onCancel: { upload.cancel() }
     }
 
     func forgetUploads(semester: String? = nil) {

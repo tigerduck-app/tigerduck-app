@@ -90,6 +90,31 @@ nonisolated enum SyncOp: Codable, Sendable {
             return "ca|\(semester)|\(courseNo)"
         }
     }
+
+    var stamp: Date {
+        switch self {
+        case .courseOverride(_, _, _, _, _, let stamp), .assignmentOverride(_, _, _, let stamp),
+             .courseIgnore(_, _, _, _, _, let stamp), .courseDelete(_, _, let stamp), .courseAdd(_, _, let stamp):
+            return stamp
+        }
+    }
+
+    /// What a discard by time can cut this op off under: its kind or category, a delete's term,
+    /// and an add's or a delete's course.
+    var scopes: [String] {
+        switch self {
+        case .courseOverride(_, _, let customName, let colorHex, _, _):
+            return (colorHex != nil ? ["course_colors"] : []) + (customName != nil ? ["course_names"] : [])
+        case .assignmentOverride:
+            return ["assignments"]
+        case .courseIgnore:
+            return ["course_ignores"]
+        case .courseDelete(let semester, let courseNo, _):
+            return ["cd", "cd|\(semester)", "cd|" + CourseTombstone.key(semester: semester, courseNo: courseNo)]
+        case .courseAdd(let semester, let courseNo, _):
+            return ["ca", "ca|" + CourseTombstone.key(semester: semester, courseNo: courseNo)]
+        }
+    }
 }
 
 nonisolated enum ResolvedSyncOp: Sendable {
@@ -119,6 +144,7 @@ actor SyncOutbox {
     /// on it, nothing is written over the files, and what was queued meanwhile joins what they hold.
     private var isLoaded: Bool
     private var unreadableLoads = 0
+    private var cutoffs: [String: Date] = [:]
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
     init(
@@ -142,6 +168,7 @@ actor SyncOutbox {
 
     func enqueue(_ op: SyncOp) {
         loadIfNeeded()
+        guard !Self.isCutOff(op, by: cutoffs) else { return }
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
@@ -189,16 +216,34 @@ actor SyncOutbox {
     func clearAll() {
         entries = []
         parked = []
+        cutoffs = [:]
         isLoaded = true
         generation += 1
         persist()
     }
 
-    func discard(where isDropped: @Sendable (SyncOp) -> Bool) {
+    @discardableResult
+    func discard(where isDropped: @Sendable (SyncOp) -> Bool) -> [SyncOp] {
         loadIfNeeded()
+        let dropped = (entries + parked).map(\.op).filter(isDropped)
         entries.removeAll { isDropped($0.op) }
         parked.removeAll { isDropped($0.op) }
         persist()
+        return dropped
+    }
+
+    /// Discards the ops made before the cutoff of a scope they fall under, and refuses such an op
+    /// still on its way in, as one whose enqueue task had not reached the outbox yet. One cutoff
+    /// is kept per scope, and none later than now, so it never refuses an edit made after this.
+    @discardableResult
+    func discard(madeBefore scopeCutoffs: [String: Date]) -> [SyncOp] {
+        let now = Date()
+        cutoffs.merge(scopeCutoffs.mapValues { min($0, now) }, uniquingKeysWith: max)
+        return discard { Self.isCutOff($0, by: scopeCutoffs) }
+    }
+
+    nonisolated static func isCutOff(_ op: SyncOp, by cutoffs: [String: Date]) -> Bool {
+        op.scopes.contains { scope in cutoffs[scope].map { op.stamp < $0 } ?? false }
     }
 
     func requeueParked() {
@@ -239,7 +284,7 @@ actor SyncOutbox {
     @discardableResult
     func drain(
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
-        execute: @Sendable (ResolvedSyncOp) async throws -> Void
+        execute: @Sendable (SyncOp) async throws -> Void
     ) async -> Bool {
         // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
         // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
@@ -277,7 +322,7 @@ actor SyncOutbox {
             }
 
             do {
-                try await execute(resolve(entry.op))
+                try await execute(entry.op)
             } catch {
                 guard generation == startGeneration else { return entries.isEmpty }
                 if Self.keepsWithoutAttempt(error, for: entry.op) {
@@ -318,7 +363,7 @@ actor SyncOutbox {
         parked.append(entry)
     }
 
-    private func resolve(_ op: SyncOp) -> ResolvedSyncOp {
+    nonisolated static func resolve(_ op: SyncOp) -> ResolvedSyncOp {
         switch op {
         case .courseOverride(_, let moodleId, let customName, let colorHex, let locale, _):
             let resolvedLocale = customName != nil

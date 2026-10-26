@@ -22,6 +22,7 @@ struct CloudSyncCoordinatorTests {
     private static func makeCoordinator(
         _ backend: Backend,
         syncsAssignmentMarks: (@Sendable () -> Bool)? = { true },
+        syncsCourseOverrides: @escaping @Sendable (String) -> Bool = { _ in true },
         authHeader: @escaping @Sendable () async -> String? = { "Bearer test" }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
@@ -39,7 +40,7 @@ struct CloudSyncCoordinatorTests {
         }
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: syncsAssignmentMarks
+            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseOverrides: syncsCourseOverrides
         )
     }
 
@@ -174,6 +175,168 @@ struct CloudSyncCoordinatorTests {
         await coordinator.syncTick()
         #expect(backend.requests("sync/assignments/42/override").count == 1)
         #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("A colour or name edit waits in the outbox while its re-enable check is pending, and goes once that is settled")
+    func colourAndNameEditsWaitForTheirReenableCheck() async {
+        let backend = Backend()
+        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
+        backend.answer("sync/courses/1151EE2/override", body: Self.colourReply)
+        let pending = OSAllocatedUnfairLock<Set<String>>(initialState: ["course_colors"])
+        let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { category in
+            !pending.withLock { $0.contains(category) }
+        })
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueCourseNameOverride(
+            moodleId: "1151EE2", semester: "1151", customName: "Circuits", locale: "en"
+        )?.value
+
+        await coordinator.syncTick()
+        #expect(backend.requests("sync/courses/1151CS1/override").isEmpty)
+        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        #expect(await coordinator.pendingCourseOverrides().colors == ["1151CS1"])
+
+        pending.withLock { $0 = ["course_names"] }
+        await coordinator.syncTick()
+        #expect(backend.requests("sync/courses/1151CS1/override").count == 1)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("Use Server waits out a colour edit the outbox is already sending, so the pull after it reads that edit")
+    func useServerWaitsForTheEditInFlight() async throws {
+        let backend = Backend()
+        let gate = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(Self.colourReply.utf8), gate: gate),
+            for: backend.url("sync/courses/1151CS1/override")
+        )
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { !backend.requests("sync/courses/1151CS1/override").isEmpty }
+
+        let answered = OSAllocatedUnfairLock(initialState: false)
+        let useServer = Task {
+            await coordinator.discardEdits(of: ["course_colors"], courseIgnores: false)
+            answered.withLock { $0 = true }
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(!answered.withLock { $0 })
+
+        gate.open()
+        await useServer.value
+        await drain.value
+        #expect(answered.withLock { $0 })
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("Cancelling a drain, as a sign-out does, cancels the request it is sending, and the edit stays queued")
+    func cancellingADrainCancelsItsRequest() async throws {
+        let backend = Backend()
+        let gate = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(Self.colourReply.utf8), gate: gate),
+            for: backend.url("sync/courses/1151CS1/override")
+        )
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { !backend.requests("sync/courses/1151CS1/override").isEmpty }
+
+        let ended = OSAllocatedUnfairLock(initialState: false)
+        let watcher = Task {
+            await drain.value
+            ended.withLock { $0 = true }
+        }
+        drain.cancel()
+        try await waitUntil(timeout: .seconds(10)) { ended.withLock { $0 } }
+        gate.open()
+        await watcher.value
+
+        #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
+    }
+
+    /// The drain asks whether colours sync after it picked the edit on the outbox and before it
+    /// sends it, so holding that answer opens the gap Use Server must close.
+    @available(iOS 26.0, macOS 26.0, *)
+    @Test("Use Server drops a colour edit a drain picked just before it, though its request had not started")
+    func useServerDropsAnEditPickedBeforeIt() async throws {
+        let backend = Backend()
+        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
+        let picked = OSAllocatedUnfairLock(initialState: false)
+        let release = DispatchSemaphore(value: 0)
+        let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { _ in
+            if !picked.withLock({ $0 }) {
+                picked.withLock { $0 = true }
+                release.wait()
+            }
+            return true
+        })
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { picked.withLock { $0 } }
+
+        let useServer = Task.immediate { await coordinator.discardEdits(of: ["course_colors"], courseIgnores: false) }
+        release.signal()
+        await useServer.value
+        await drain.value
+
+        #expect(backend.requests("sync/courses/1151CS1/override").isEmpty)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("Signing out cancels the request of a drain it did not start, and returns once it has stopped")
+    func signOutCancelsTheRequestInFlight() async throws {
+        let backend = Backend()
+        let gate = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(Self.colourReply.utf8), gate: gate),
+            for: backend.url("sync/courses/1151CS1/override")
+        )
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { !backend.requests("sync/courses/1151CS1/override").isEmpty }
+        let ended = OSAllocatedUnfairLock(initialState: false)
+        let watcher = Task {
+            await drain.value
+            ended.withLock { $0 = true }
+        }
+
+        await coordinator.settleForSignOut()
+        try await waitUntil(timeout: .seconds(10)) { ended.withLock { $0 } }
+        gate.open()
+        await watcher.value
+
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    /// The drain asks whether colours sync for the second edit after it sent the first, so holding
+    /// that answer starts the sign-out while the drain is between two requests.
+    @available(iOS 26.0, macOS 26.0, *)
+    @Test("Signing out stops a drain under way before it sends its next edit")
+    func signOutStopsTheRestOfADrain() async throws {
+        let backend = Backend()
+        let courses = ["1151CS1", "1151EE2", "1151GE3"]
+        for course in courses { backend.answer("sync/courses/\(course)/override", body: Self.colourReply) }
+        let asks = OSAllocatedUnfairLock(initialState: 0)
+        let release = DispatchSemaphore(value: 0)
+        let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { _ in
+            if asks.withLock({ $0 += 1; return $0 }) == 2 { release.wait() }
+            return true
+        })
+        for course in courses {
+            await coordinator.enqueueCourseColorOverride(moodleId: course, semester: "1151", colorHex: "#FF6B6B")?.value
+        }
+        let drain = Task { await coordinator.syncTick() }
+        try await waitUntil { asks.withLock { $0 } == 2 }
+
+        let signOut = Task.immediate { await coordinator.settleForSignOut() }
+        release.signal()
+        await signOut.value
+        await drain.value
+
+        #expect(courses.map { backend.requests("sync/courses/\($0)/override").count } == [1, 0, 0])
     }
 
     @Test("A colour or name edit counts as pending from the edit until its request is sent")
