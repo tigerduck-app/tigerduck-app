@@ -280,11 +280,22 @@ struct CourseAddSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
         let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
 
-        #expect(await AppState.applyCourseReset(at: resetAt, cache: cache, on: coordinator) == ["1151:PE5"])
+        #expect(await AppState.applyCourseReset(at: resetAt, cache: cache, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
 
         #expect(cache.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.loadDeletedCourseNos() == ["1151:PE4"])
         #expect(AppState.addedCourseUpload(semester: "1151", courseNo: "GE1010001", cache: cache, colors: [:]) != nil)
+    }
+
+    @Test("A reset made elsewhere leaves the hand-added and hidden courses alone when the sync may no longer write, as behind the lock screen")
+    func resetElsewhereWritesNothingWhenItMayNot() async {
+        let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])
+        let coordinator = Self.makeCoordinator(Backend(), cache: cache)
+
+        #expect(await AppState.applyCourseReset(at: Date(), cache: cache, on: coordinator, mayWrite: { false }) == nil)
+
+        #expect(cache.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
+        #expect(cache.loadDeletedCourseNos() == ["1151:PE4"])
     }
 
     @Test("An add the server keeps refusing is parked, so a full sync still keeps its course and tries it again")

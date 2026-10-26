@@ -101,7 +101,10 @@ extension AppState {
                 takesCourses: takesCourses
             )
             if takesCourses {
-                courseDeletes = await settleQueuedCourseEdits(deleting: courseDeletes, reset: reset)
+                guard let settled = await settleQueuedCourseEdits(
+                    deleting: courseDeletes, reset: reset, generation: generation
+                ) else { return .skipped }
+                courseDeletes = settled
                 changed = reset.apply || changed
             }
             let courseAdds = await cloudSyncCoordinator.courseAddKeys(unlandedAt: fetchedAt)
