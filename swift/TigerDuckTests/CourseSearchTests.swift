@@ -414,6 +414,23 @@ struct CourseSearchTests {
         #expect(!model.isSearching)
     }
 
+    /// Fails only in an optimized build, where the inline tuple form `run` avoids loses each
+    /// answer's language.
+    @Test("every answer lands under the language that asked for it")
+    func answersKeepTheirLanguage() async {
+        let rows = [Self.result("CS1001301")]
+        let model = CourseSearchModel(cache: Self.cache(), search: { _ in
+            try await Task.sleep(for: .microseconds(Int.random(in: 0...2000)))
+            if Int.random(in: 0..<3) == 0 { throw URLError(.timedOut) }
+            return rows
+        }, fetchOptions: Self.noOptions)
+
+        for _ in 0..<300 {
+            await model.search("微積分", semester: "1151")
+            #expect(Set(model.results.keys).isSubset(of: CourseSearch.languages))
+        }
+    }
+
     @Test("a course only the other language found is added under its app-language row")
     func otherLanguageCourseIsLookedUp() async {
         let sent = Box<[String]>([])
