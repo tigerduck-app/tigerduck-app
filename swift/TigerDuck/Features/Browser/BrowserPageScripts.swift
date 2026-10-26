@@ -126,7 +126,8 @@ enum BrowserPageScripts {
         guard let darken else {
             return AppLogger.breadcrumb("browser opened without Dark Reader", category: "browser")
         }
-        // The app's own world: page scripts can neither call it nor see the `window.chrome` it defines.
+        // The app's own world: page scripts cannot call it or see the `window.chrome` it defines.
+        // Its style sheet proxy still runs in the page, as Dark Reader inserts it as a script element.
         controller.addUserScript(WKUserScript(source: darken, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
     }
 
