@@ -10,7 +10,8 @@ enum BrowserAddressBar: String, CaseIterable {
     case bottom
 }
 
-/// The color scheme the TigerDuck browser tells its pages; automatic follows the system.
+/// The color scheme the TigerDuck browser tells its pages, darkening a page with no dark style
+/// under dark; automatic follows the system.
 enum BrowserAppearance: String, CaseIterable {
     case automatic
     case light

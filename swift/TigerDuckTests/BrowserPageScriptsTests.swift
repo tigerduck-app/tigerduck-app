@@ -43,5 +43,38 @@ struct BrowserPageScriptsTests {
         _ = await evaluate(webView, BrowserPageScripts.zoom(["other.test": 150]))
         #expect(await evaluate(webView, size) as? [Double] == before)
     }
+
+    @Test func aDarkAppearanceDarkensOnlyAPageWithNoDarkStyleOfItsOwn() async throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        window.rootViewController = UIViewController()
+        window.overrideUserInterfaceStyle = .light
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let configuration = WKWebViewConfiguration()
+        BrowserPageScripts.addScripts(to: configuration.userContentController)
+        let webView = WKWebView(frame: window.bounds, configuration: configuration)
+        window.rootViewController?.view.addSubview(webView)
+        let filters = "return [getComputedStyle(document.documentElement).filter, getComputedStyle(document.querySelector('img')).filter]"
+        let img = "<img style=\"width:10px;height:10px\">"
+
+        await load(webView, "\(Self.paragraph)\(img)")
+        #expect(await evaluate(webView, filters) as? [String] == ["none", "none"])
+        webView.overrideUserInterfaceStyle = .dark
+        try await waitUntil(timeout: .seconds(5)) { webView.traitCollection.userInterfaceStyle == .dark }
+        var shown: [String] = []
+        for _ in 0..<50 {
+            shown = await evaluate(webView, filters) as? [String] ?? []
+            if shown.first != "none" { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(shown.count == 2 && shown.allSatisfy { $0.contains("invert(1)") }, "\(shown)")
+
+        for ownDark in ["<meta name=\"color-scheme\" content=\"light dark\">", "<body style=\"background:#111;color:#eee\">"] {
+            await load(webView, "\(ownDark)\(Self.paragraph)\(img)")
+            #expect(await evaluate(webView, filters) as? [String] == ["none", "none"], "\(ownDark)")
+        }
+    }
 }
 #endif

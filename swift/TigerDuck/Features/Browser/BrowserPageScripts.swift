@@ -1,6 +1,7 @@
 import WebKit
 
-/// What the browser adds to pages: Moodle's logout hidden and blocked, and each site's zoom.
+/// What the browser adds to pages: Moodle's logout hidden and blocked, each site's zoom, and a
+/// dark page where the site has none.
 enum BrowserPageScripts {
     private nonisolated static let logoutTargets = ["/login/logout.php", "/auth/oidc/logout.php"]
         .flatMap { ["https://\(BrowserRouting.moodleHost)\($0)", $0] }
@@ -46,6 +47,38 @@ enum BrowserPageScripts {
         """
     }
 
+    /// Under a dark appearance, a page that draws itself light is inverted and its pictures and
+    /// find marks inverted back, as most school pages have no dark style. Checked again once the
+    /// page's styles load and when the appearance changes; a page with its own dark style is kept.
+    nonisolated static let darken = """
+    (function() {
+      var dark = matchMedia('(prefers-color-scheme: dark)');
+      var style = document.createElement('style');
+      style.setAttribute('data-tigerduck-dark', '');
+      (document.head || document.documentElement).appendChild(style);
+      var invert = '{ filter: invert(1) hue-rotate(180deg) !important; }';
+      var back = 'img, video, canvas, iframe, embed, object, svg image, [style*="background-image"], mark[data-tigerduck-find]';
+      function drawsLight() {
+        var root = document.documentElement;
+        var color = [document.body, root].filter(Boolean)
+          .map(function(element) { return getComputedStyle(element).backgroundColor; })
+          .filter(function(color) { return !/^transparent$|, 0\\)$/.test(color); })[0];
+        var meta = document.querySelector('meta[name="color-scheme"]');
+        if (!color) return !/dark/.test(getComputedStyle(root).colorScheme + (meta ? meta.content : ''));
+        var rgb = color.match(/[\\d.]+/g).map(Number);
+        return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 127.5;
+      }
+      function update() {
+        style.textContent = '';
+        if (dark.matches && drawsLight()) style.textContent = 'html ' + invert + ' ' + back + ' ' + invert;
+      }
+      update();
+      dark.addEventListener('change', update);
+      document.addEventListener('DOMContentLoaded', update);
+      addEventListener('load', update);
+    })();
+    """
+
     /// Blocks the logout for every resource type, frames and scripts' requests included, which
     /// the navigation delegate never sees. Content blocker patterns have no alternation, so one rule each.
     nonisolated static let logoutRules: String = {
@@ -75,6 +108,7 @@ enum BrowserPageScripts {
         controller.removeAllUserScripts()
         controller.addUserScript(WKUserScript(source: hideLogout, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         controller.addUserScript(WKUserScript(source: zoom(BrowserSites.stored.zoom), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        controller.addUserScript(WKUserScript(source: darken, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
     private static func compileLogoutRules() async -> WKContentRuleList? {
