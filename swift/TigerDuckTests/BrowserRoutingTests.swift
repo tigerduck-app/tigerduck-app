@@ -108,6 +108,16 @@ struct BrowserRoutingTests {
         #expect(!BrowserRouting.isSharedCookie(Self.cookie("tracker", domain: "moodle2.ntust.edu.tw.evil.com")))
     }
 
+    @Test func theSchoolJarsSignInCookiesGoInAfterTheSharedJarsSoTheyWin() {
+        let identity = ".AspNetCore.Identity.Application"
+        let shared = [Self.cookie(identity, domain: "ssoam2.ntust.edu.tw", value: "harvest")]
+        let school = [
+            Self.cookie(identity, domain: "ssoam2.ntust.edu.tw", value: "school"),
+            Self.cookie("ASP.NET_SessionId", domain: "courseselection.ntust.edu.tw"),
+        ]
+        #expect(BrowserSessionSignIn.sessionCookies(in: [shared, school]).map(\.value) == ["harvest", "school"])
+    }
+
     @Test func aMoodleSessionIsAMoodleSessionCookieWithAValue() {
         #expect(BrowserRouting.hasMoodleSession([Self.cookie("MoodleSession", domain: "moodle2.ntust.edu.tw")]))
         #expect(BrowserRouting.hasMoodleSession([Self.cookie("MoodleSessionprod", domain: ".moodle2.ntust.edu.tw")]))
