@@ -1,4 +1,5 @@
 #if os(iOS)
+import Defaults
 import SwiftUI
 import Testing
 import UIKit
@@ -13,12 +14,16 @@ struct TigerSyncLinksSectionTests {
 
     @Test(arguments: [BrowserPreference.inApp, .system])
     func aLinkOpensWhereTheSettingSays(preference: BrowserPreference) async throws {
+        let saved = Defaults[.browserPreference]
+        Defaults[.browserPreference] = preference
+        defer { Defaults[.browserPreference] = saved }
         try await withAccessibilityAutomation {
             let opened = Opened()
             let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
             let window = UIWindow(windowScene: scene)
             window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-            let host = UIHostingController(rootView: Form { TigerSyncLinksSection(browserPreference: preference) }
+            let host = UIHostingController(rootView: Form { TigerSyncLinksSection() }
+                .linkRouting()
                 .environment(\.openURL, OpenURLAction { url in
                     opened.urls.append(url)
                     return .handled

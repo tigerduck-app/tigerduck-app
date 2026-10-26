@@ -136,18 +136,13 @@ private struct LicenseTextView: View {
 private struct LicenseLinkRow: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    @State private var showInApp = false
 
     let titleKey: String.LocalizationValue
     let url: URL
 
     var body: some View {
         Button {
-            if appState.browserPreference == .inApp {
-                showInApp = true
-            } else {
-                openURL(url)
-            }
+            openURL(url)
         } label: {
             HStack {
                 Text(String(localized: titleKey))
@@ -159,10 +154,6 @@ private struct LicenseLinkRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
-        .sheet(isPresented: $showInApp) {
-            InAppBrowserView(url: url)
-                .ignoresSafeArea()
         }
     }
 }
