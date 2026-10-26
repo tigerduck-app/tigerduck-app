@@ -73,6 +73,19 @@ struct BrowserFindPageTests {
         #expect(await evaluate(webView, "return document.body.innerHTML") as? String == before)
     }
 
+    @Test func doesNotMatchAcrossSkippedTextOrAnEmptyBlockButDoesAcrossHiddenText() async {
+        let (webView, find) = await page("""
+        <p>ab<span contenteditable="true">XX</span>cd</p><div>ef<p></p>gh</div><p>ij<svg><text>XX</text></svg>kl</p>\
+        <p>mn<span style="display:none">XX</span>op</p>
+        """)
+        for (query, count) in [("ab", 1), ("abcd", 0), ("fg", 0), ("jk", 0), ("mnop", 1)] {
+            find.query = query
+            await find.search()
+            #expect(find.count == count, "\(query)")
+        }
+        withExtendedLifetime(webView) {}
+    }
+
     @Test(.timeLimit(.minutes(1)))
     func aSlowExpressionLeavesThePageResponsive() async {
         let (webView, find) = await page()

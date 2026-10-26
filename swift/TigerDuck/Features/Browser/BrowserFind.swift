@@ -108,8 +108,8 @@ final class BrowserFind {
     /// The body `run` calls with `action` and its arguments: texts gives the text of every run it
     /// searches, mark wraps the ranges found in them and gives how many matches it marked. A run
     /// is the text nodes of one stretch of inline text, so a phrase split by `<b>` still matches;
-    /// a block or a line break ends it. Editable text, such as a rich-text answer, and SVG are
-    /// left as they are.
+    /// a block, a line break or skipped content that shows ends it. Editable text, such as a
+    /// rich-text answer, and SVG are skipped.
     nonisolated static let script = """
     var marker = 'data-tigerduck-find';
     var marks = function() { return document.querySelectorAll('mark[' + marker + ']'); };
@@ -132,23 +132,23 @@ final class BrowserFind {
     function texts() {
       clear();
       if (!document.body) return [];
+      var runs = [], run = null, block = null;
       var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
         acceptNode: function(node) {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            if (node.isContentEditable || node.matches('script, style, noscript, textarea, select, template, svg')) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            return node.localName === 'br' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+            var skipped = node.isContentEditable || node.matches('script, style, noscript, textarea, select, template, svg');
+            var display = getComputedStyle(node).display;
+            // The walk never stops at an element, so one that shows between two texts ends the run here.
+            if (display !== 'none' && (skipped || node.localName === 'br' || !/^(inline|contents)$/.test(display))) run = null;
+            return skipped ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
           }
           var parent = node.parentElement;
           if (!parent || parent.getClientRects().length === 0) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;
         }
       });
-      var runs = [], run = null, block = null;
       while (walker.nextNode()) {
         var node = walker.currentNode;
-        if (node.nodeType === Node.ELEMENT_NODE) { run = null; continue; }
         var nodeBlock = blockOf(node.parentElement);
         if (!run || nodeBlock !== block) {
           run = { nodes: [], starts: [], text: '' };
