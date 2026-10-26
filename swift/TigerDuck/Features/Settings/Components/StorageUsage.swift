@@ -25,7 +25,6 @@ nonisolated struct StorageSizes: Equatable, Sendable {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
-    /// The bar's parts: every kind above 0, in page order, as its share of the total.
     var segments: [Segment] {
         let total = total
         guard total > 0 else { return [] }
@@ -36,7 +35,8 @@ nonisolated struct StorageSizes: Equatable, Sendable {
     }
 }
 
-/// Measures every kind and clears one, each through the store given for it.
+/// Takes each kind's measure and clear as closures, so tests can stand in for the folders and
+/// the WebKit store.
 nonisolated struct StorageCleaner: Sendable {
     struct Store: Sendable {
         let measure: @Sendable () async -> Int?
