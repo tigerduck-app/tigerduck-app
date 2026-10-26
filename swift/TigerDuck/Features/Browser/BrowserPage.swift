@@ -317,15 +317,24 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        TLSPinningDelegate.shared.evaluate(challenge) { disposition, credential in
-            Task { @MainActor in completionHandler(disposition, credential) }
-        }
+        pin(challenge, completionHandler: completionHandler)
     }
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
         saving[ObjectIdentifier(download)] = nil
         page.failedDownload = download.originalRequest
-        page.failure = .unreachable(host: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host)
+        page.failure = Self.downloadFailure(
+            for: error, refusedHosts: refusedHosts,
+            requestedHost: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host
+        )
+    }
+
+    /// A refused certificate names the host that sent it, which a redirect may have changed;
+    /// anything else, a stop included, blames the host the download was asked of.
+    nonisolated static func downloadFailure(for error: any Error, refusedHosts: Set<String>, requestedHost: String) -> BrowserPage.Failure {
+        let failure = failure(for: error, refusedHosts: refusedHosts)
+        if case .certificate = failure, let failure { return failure }
+        return .unreachable(host: requestedHost)
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
@@ -379,6 +388,13 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     func webView(
         _ webView: WKWebView,
         didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        pin(challenge, completionHandler: completionHandler)
+    }
+
+    private func pin(
+        _ challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
         let host = challenge.protectionSpace.host

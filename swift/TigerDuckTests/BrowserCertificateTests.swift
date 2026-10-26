@@ -44,6 +44,19 @@ struct BrowserConnectionTests {
         #expect(BrowserPage.connection(failure: .unreachable(host: "moodle2.ntust.edu.tw"), hasTrust: true) == .unknown)
     }
 
+    @Test func aDownloadRefusedForItsCertificateSaysSoAndNamesTheHostThatSentIt() {
+        let refused = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: [
+            NSURLErrorFailingURLErrorKey: URL(string: "https://files.ntust.edu.tw/a.pdf")!,
+        ])
+        #expect(BrowserNavigator.downloadFailure(for: refused, refusedHosts: ["files.ntust.edu.tw"], requestedHost: "moodle2.ntust.edu.tw")
+            == .certificate(host: "files.ntust.edu.tw"))
+        #expect(BrowserNavigator.downloadFailure(for: refused, refusedHosts: [], requestedHost: "moodle2.ntust.edu.tw")
+            == .unreachable(host: "moodle2.ntust.edu.tw"))
+        let offline = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        #expect(BrowserNavigator.downloadFailure(for: offline, refusedHosts: [], requestedHost: "moodle2.ntust.edu.tw")
+            == .unreachable(host: "moodle2.ntust.edu.tw"))
+    }
+
     @Test func retryLoadsAFailedDownloadRatherThanThePageItStartedFrom() {
         let page = URL(string: "https://moodle2.ntust.edu.tw/course/view.php?id=1")!
         let file = URLRequest(url: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/1/duck.zip")!)
