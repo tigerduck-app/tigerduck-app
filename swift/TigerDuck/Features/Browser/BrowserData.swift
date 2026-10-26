@@ -46,13 +46,14 @@ final class BrowserData {
         if self.generation == generation { saveState(.used) }
     }
 
-    /// Returns the removal, which tests wait for.
+    /// Returns the removal, which tests wait for. Settings › Storage keeps each site's zoom and
+    /// desktop choice, which a sign-in or a sign-out forgets with the account.
     @discardableResult
-    func reset() -> Task<Void, Never>? {
+    func reset(keepingSiteChoices: Bool = false) -> Task<Void, Never>? {
         generation += 1
         current = nil
         try? FileManager.default.removeItem(at: BrowserPage.downloadsRoot)
-        Defaults.reset(.browserZoom, .browserDesktopSites)
+        if !keepingSiteChoices { Defaults.reset(.browserZoom, .browserDesktopSites) }
         guard loadState() != .empty else { return nil }
         saveState(.stale)
         let opensAtStart = opens
@@ -62,6 +63,28 @@ final class BrowserData {
             guard opens == opensAtStart else { return }
             if removed { saveState(.empty) } else { await clear() }
         }
+    }
+
+    /// The store's size on disk; nil when its folder is missing while the store is in use, as a
+    /// change of WebKit's layout would leave it.
+    static func storeBytes() async -> Int? {
+        let inUse = Defaults[.browserDataState] != .empty
+        return await Task.detached { Self.storeBytes(in: Self.storeFolder(), inUse: inUse) }.value
+    }
+
+    /// Where WebKit keeps a store made with an identifier, cookies and caches included. It names
+    /// the folder in lowercase, and the device's file system tells case apart.
+    nonisolated static func storeFolder(_ id: UUID = storeID) -> URL {
+        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("WebKit", isDirectory: true)
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "", isDirectory: true)
+            .appendingPathComponent("WebsiteDataStore", isDirectory: true)
+            .appendingPathComponent(id.uuidString.lowercased(), isDirectory: true)
+    }
+
+    nonisolated static func storeBytes(in folder: URL, inUse: Bool) -> Int? {
+        guard FileManager.default.fileExists(atPath: folder.path) else { return inUse ? nil : 0 }
+        return MoodleFileDownloads.totalBytes(in: folder)
     }
 
     /// WebKit refuses while a web view still has the store, as a browser that is closing does.

@@ -154,6 +154,8 @@ NotificationPermissionSettingsView.swift  # macOS never receives notifications, 
 OpenSourceLicensesView.swift
 OtherSettingsView.swift
 SourceCodePickerView.swift
+StorageSettingsView.swift  # School Mail and the TigerDuck browser are iOS only; the Mac keeps MoodleFilesCacheSection
+StorageUsage.swift
 SyncContentSettingsView.swift
 TabEditorView.swift
 SettingsView.swift
