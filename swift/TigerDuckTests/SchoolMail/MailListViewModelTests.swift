@@ -28,7 +28,8 @@ struct MailListViewModelTests {
         includeSent: Bool = true,
         open: (() async throws -> any MailClient)? = nil,
         signOutEvents: NotificationCenter = NotificationCenter(),
-        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) }
+        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) },
+        catchUpDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) }
     ) -> Harness {
         let inbox = (UInt32(1)...inboxCount).map { FakeMailClient.message(uid: $0, subject: "公告 \($0)", seen: $0 % 2 == 0) }
         var folders: [String: [FakeMailClient.Message]] = [
@@ -44,7 +45,7 @@ struct MailListViewModelTests {
         let seen = SeenLog()
         let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake }, signOutEvents: signOutEvents)
         let model = MailListViewModel(session: session, cache: cache, noteSeenByPage: { seen.noted.append($0) },
-                                      signOutEvents: signOutEvents, warmDelay: warmDelay)
+                                      signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
         return Harness(model: model, fake: fake, cache: cache, seen: seen)
     }
 
@@ -181,6 +182,43 @@ struct MailListViewModelTests {
             "searchTexts INBOX \(Array((UInt32(21)...40).reversed()))",
             "searchTexts INBOX \(Array((UInt32(1)...20).reversed()))",
         ])
+    }
+
+    @Test func aPullStartsTheIndexWithoutWaitingOutAFailedPass() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.model.load()
+        await h.model.waitForIndex()
+        await h.fake.update { $0.searchTextsError = nil }
+
+        await h.model.refresh()
+        await h.model.waitForIndex()
+        #expect(h.cache.searchIndex.search(folder: "INBOX", query: "公告 60")?.uids == [])
+
+        await h.model.refresh(forcingIndex: true)
+        await h.model.waitForIndex()
+        #expect(h.cache.searchIndex.search(folder: "INBOX", query: "公告 60")?.uids == [60])
+    }
+
+    @Test func aSearchStartsTheIndexAtOnceAndItsResultsGrowAsThePassFillsThem() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.searchTextsError = .serverBusy
+            fake.folders["INBOX"]?[54].detail?.textBody = "期末考在 Room 302"
+            fake.folders["INBOX"]?[6].detail?.textBody = "補考也在 Room 302"
+        }
+        await h.model.load()
+        await h.model.waitForIndex()
+        await h.fake.update { $0.searchTextsError = nil }
+
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.isEmpty)
+
+        await h.model.waitForIndex()
+        await h.model.waitForSearchCatchUp()
+        #expect(h.model.displayedRows.map(\.uid) == [55, 7])
+        #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 2)
     }
 
     @Test func searchResultsPastThePageLoadAtTheEnd() async throws {

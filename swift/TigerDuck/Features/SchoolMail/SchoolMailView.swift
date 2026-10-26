@@ -285,7 +285,7 @@ struct SchoolMailView: View {
         .onChange(of: viewModel.searchText) { _, text in
             if text.isEmpty { viewModel.clearSearch() }
         }
-        .refreshable { await viewModel.refresh() }
+        .refreshable { await viewModel.refresh(forcingIndex: true) }
         .navigationDestination(item: $route) { route in
             MailMessageView(
                 route: route,

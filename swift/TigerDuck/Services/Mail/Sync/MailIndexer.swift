@@ -31,6 +31,7 @@ nonisolated struct MailIndexProgress: Equatable, Sendable {
 /// first and `MailConstants.indexBatchSize` mails per command. A pass that got through holds off
 /// the next for `MailConstants.indexResyncInterval`, unless mail arrived since; one that failed
 /// waits longer before each retry, unless the cache was cleared since, and Low Data Mode pauses it.
+/// A pass the user asks for, by a pull or a search, waits out neither.
 /// See docs/decisions/0027-mail-local-search-index.md.
 @MainActor
 @Observable
@@ -77,7 +78,11 @@ final class MailIndexer {
     private var strikes: [MailKey: Int] = [:]
     /// The cache's `wipeCount` when the last pass began, which its retry and strikes belong to.
     private var passWipeCount: Int?
+    /// The folders the index held all the mail of when a pass last listed or filled them.
+    private var indexedFolders: Set<String> = []
     private(set) var progress: MailIndexProgress?
+    /// Told the folder each time a batch of its mail joins the index.
+    @ObservationIgnored var onFill: ((String) -> Void)?
 
     init(
         session: MailPageSession,
@@ -93,10 +98,15 @@ final class MailIndexer {
         self.isConstrained = isConstrained ?? { NetworkMonitor.shared.isConstrained }
     }
 
-    func startIfDue(folders: [String]) {
+    /// `force` starts a pass even when the last one got through or failed a moment ago.
+    func startIfDue(folders: [String], force: Bool = false) {
         // A cleared cache emptied the index: a pass under way can no longer write to it, and the
         // failures before it no longer hold the next pass off.
         if let passWipeCount, passWipeCount != cache.wipeCount { reset() }
+        if force {
+            completed = nil
+            retryAt = nil
+        }
         if let reason = notDueReason {
             AppLogger.mail.info("Index pass not started: \(reason, privacy: .public)")
             return
@@ -147,6 +157,12 @@ final class MailIndexer {
         retryAt = nil
         failedPasses = 0
         strikes = [:]
+        indexedFolders = []
+    }
+
+    /// Whether the index held all of `folder`'s mail when a pass last reached it.
+    func isIndexed(_ folder: String) -> Bool {
+        passWipeCount == cache.wipeCount && indexedFolders.contains(folder)
     }
 
     func noteNewMail() {
@@ -201,7 +217,9 @@ final class MailIndexer {
                 if let plan = try await attempt({ try await self.plan(folder: folder, wipeCount: wipeCount) }) {
                     plans.append(plan)
                     tally.listed += 1
+                    if plan.missing.isEmpty { indexedFolders.insert(folder) } else { indexedFolders.remove(folder) }
                 } else {
+                    indexedFolders.remove(folder)
                     tally.failed += 1
                 }
             }
@@ -214,7 +232,11 @@ final class MailIndexer {
                 let filled = try await attempt {
                     try await self.fill(plan, wipeCount: wipeCount) { self.progress?.advance(by: $0) }
                 }
-                if filled != true { tally.failed += 1 }
+                if filled == true {
+                    indexedFolders.insert(plan.folder)
+                } else {
+                    tally.failed += 1
+                }
             }
         } catch {
             tally.failed += 1
@@ -282,6 +304,7 @@ final class MailIndexer {
                     index.add(texts, folder: folder, uidValidity: validity, wipeCount: wipeCount)
                 }.value
                 guard added else { return false }
+                onFill?(folder)
             } catch let error as MailClientError where Self.blamesTheMail(error) {
                 // A stop, as at sign-out, can be what failed it.
                 guard !Task.isCancelled else { return false }
