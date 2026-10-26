@@ -189,7 +189,6 @@ private struct BrowserCertificateView: View {
                         Image(systemName: "seal")
                             .foregroundStyle(link.id == selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                     }
-                    .padding(.leading, CGFloat(link.id) * 18)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(.rect)
                 }
