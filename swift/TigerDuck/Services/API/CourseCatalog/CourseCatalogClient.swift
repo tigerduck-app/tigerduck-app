@@ -10,6 +10,19 @@ nonisolated struct CourseCatalog: Decodable, Sendable {
         let isIntensive: Bool
         let isAlliance: Bool
         let isEnglishTaught: Bool
+        /// What the search compares, made once here so that a keystroke folds no case: the
+        /// upper-cased course number, and the lower-cased name and teacher as UTF-8.
+        let numberKey: String
+        let textKey: [UInt8]
+
+        init(row: CourseSearchResult, isIntensive: Bool, isAlliance: Bool, isEnglishTaught: Bool) {
+            self.row = row
+            self.isIntensive = isIntensive
+            self.isAlliance = isAlliance
+            self.isEnglishTaught = isEnglishTaught
+            numberKey = row.CourseNo.uppercased()
+            textKey = Array("\(row.CourseName)\n\(row.CourseTeacher)".lowercased().utf8)
+        }
     }
 
     nonisolated struct Named: Decodable, Sendable {

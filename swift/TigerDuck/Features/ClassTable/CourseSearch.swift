@@ -63,40 +63,47 @@ enum CourseSearch {
     ) -> [String: [CourseSearchResult]] {
         if query.range(of: courseNoPattern, options: .regularExpression) != nil {
             let prefix = query.uppercased()
-            let found = rows(in: catalogs, filters) { _, row in row.CourseNo.uppercased().hasPrefix(prefix) }
+            let found = rows(in: catalogs, filters) { _, course in course.numberKey.hasPrefix(prefix) }
             if !found.isEmpty { return found }
         }
         // The zh names are in traditional characters, so simplified input is converted.
         let zhQuery = query.applyingTransform(hansHantTransform, reverse: false) ?? query
-        return rows(in: catalogs, filters) { language, row in
-            let text = language == "zh" ? zhQuery : query
-            return [row.CourseName, row.CourseTeacher].contains { $0.range(of: text, options: .caseInsensitive) != nil }
+        let needles = (zh: Array(zhQuery.lowercased().utf8), other: Array(query.lowercased().utf8))
+        return rows(in: catalogs, filters) { language, course in
+            holds(course.textKey, language == "zh" ? needles.zh : needles.other)
         }
     }
 
     private nonisolated static func rows(
         in catalogs: [String: [CourseCatalog.Course]],
         _ filters: CourseSearchFilters,
-        where matches: (_ language: String, CourseSearchResult) -> Bool
+        where matches: (_ language: String, CourseCatalog.Course) -> Bool
     ) -> [String: [CourseSearchResult]] {
         var found: [String: [CourseSearchResult]] = [:]
         for (language, courses) in catalogs {
-            let rows = courses.compactMap { admits($0, filters) && matches(language, $0.row) ? $0.row : nil }
+            let rows = courses.compactMap { admits($0, filters) && matches(language, $0) ? $0.row : nil }
             if !rows.isEmpty { found[language] = rows }
         }
         return found
     }
 
+    // UTF-8 never starts a character inside another, so a byte match is a text match.
+    private nonisolated static func holds(_ text: [UInt8], _ needle: [UInt8]) -> Bool {
+        text.withUnsafeBytes { text in
+            needle.withUnsafeBytes { memmem(text.baseAddress, text.count, $0.baseAddress, $0.count) != nil }
+        }
+    }
+
     nonisolated static func admits(_ course: CourseCatalog.Course, _ filters: CourseSearchFilters) -> Bool {
         let row = course.row
-        let level = row.CourseNo.dropFirst(2).first ?? " "
+        let level = course.numberKey.dropFirst(2).first ?? " "
         let levelMatches = switch filters.level {
         case .all: true
         case .undergraduate: undergraduateLevels.contains(level)
         case .graduate: graduateLevels.contains(level)
         }
         return levelMatches
-            && (filters.department.map { row.CourseNo.hasPrefix($0.uppercased()) } ?? true)
+            && (filters.department.map { course.numberKey.hasPrefix($0.uppercased()) } ?? true)
             && (filters.dimension.map { row.Dimension == $0 } ?? true)
             && (!filters.generalOnly || !(row.Dimension ?? "").isEmpty)
             && (!filters.englishTaught || course.isEnglishTaught)
