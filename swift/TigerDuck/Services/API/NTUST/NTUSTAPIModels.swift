@@ -90,32 +90,10 @@ nonisolated struct CourseSyllabus: Codable, Hashable, Sendable {
     let CourseNote: String?
     let CoreAbility: String?
     let CourseURL: String?
-}
-
-nonisolated extension CourseSyllabus {
-    var grading: String? { Self.text(CourseGrading) }
-    var outline: String? { Self.text(CourseObject) }
-    var method: String? { Self.text(CourseContent) }
-    var notes: String? { Self.text(CourseNote) }
-    var objectives: String? { Self.text(CoreAbility) }
-
-    var references: String? {
-        let books = [CourseTextbook, CourseRefbook].compactMap(Self.text)
-        return books.isEmpty ? nil : books.joined(separator: "\n\n")
-    }
-
-    var website: URL? {
-        guard let text = Self.text(CourseURL), let url = URL(string: text),
-              ["https", "http"].contains(url.scheme?.lowercased() ?? "") else { return nil }
-        return url
-    }
-
-    var hasContent: Bool {
-        [grading, outline, method, references, notes, objectives].contains { $0 != nil } || website != nil
-    }
-
-    private static func text(_ value: String?) -> String? {
-        let text = value?.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        return text?.isEmpty == false ? text : nil
-    }
+    /// Shares of lecture, group discussion, case study and practical exercises, as "60" or "".
+    let Instruction_1: String?
+    let Instruction_2: String?
+    let Instruction_3: String?
+    let Instruction_4: String?
+    let Instruction_other: String?
 }
