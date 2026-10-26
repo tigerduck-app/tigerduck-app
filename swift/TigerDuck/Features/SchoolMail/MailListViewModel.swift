@@ -178,8 +178,11 @@ final class MailListViewModel {
                 }
                 return (pages, failure)
             }
-            // Caught above to keep the other folders' pages, so `use(_:)` never saw it.
-            if fetched.failure == .authenticationFailed { session.reportAuthenticationRejection() }
+            // Caught above to keep the other folders' pages, so `use(_:)` never saw it. A sign-out
+            // since makes it the old account's, which the new one must not inherit.
+            if fetched.failure == .authenticationFailed, epoch == accountEpoch {
+                session.reportAuthenticationRejection()
+            }
             guard isCurrent(selection, epoch) else { return }
             let fetchedAt = Date()
             for (folder, page) in fetched.pages {

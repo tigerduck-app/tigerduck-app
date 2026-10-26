@@ -906,6 +906,22 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows) == ["收3", "收2", "收1"])
     }
 
+    @Test func aRejectedPasswordFromALoadASignOutOvertookIsNotReported() async {
+        let center = NotificationCenter()
+        let h = Self.harness(inboxCount: 3, signOutEvents: center)
+        await h.fake.hold("page")
+        let load = Task { await h.model.load() }
+        await h.fake.waitForArrival("page")
+        center.post(name: MailAccountManager.didSignOut, object: nil)
+        await h.fake.update { fake in
+            fake.pageErrors["INBOX"] = .authenticationFailed
+            fake.release("page")
+        }
+        await load.value
+
+        #expect(h.seen.authFailures == 0)
+    }
+
     @Test func aFolderThatFailsToLoadLeavesTheOthersInAllMail() async {
         let h = Self.harness(inboxCount: 3, sentUIDs: [1])
         await h.fake.update { fake in
