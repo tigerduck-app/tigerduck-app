@@ -443,6 +443,10 @@ final class MailListViewModel {
                 return
             }
         }
+        // Under the unread filter every row added can be read, and an empty list has no row whose
+        // appearance asks for the next page.
+        guard isCurrent(selection, epoch), generation == searchGeneration else { return }
+        if displayedRows.isEmpty, !isPaginating { await loadMoreSearchResults() }
     }
 
     /// Records the `requested` mail the server answered as deleted or not at all.
