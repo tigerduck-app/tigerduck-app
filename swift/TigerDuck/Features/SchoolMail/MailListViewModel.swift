@@ -480,6 +480,8 @@ final class MailListViewModel {
             let pending = unfetchedMatches.filter { !$0.value.uids.isEmpty }
             guard !pending.isEmpty else { return }
             for (folder, matches) in pending {
+                // A stopped catch-up or a closed page fetches no further page.
+                guard !Task.isCancelled, !isPaused else { return }
                 let batch = Array(matches.uids.prefix(MailConstants.pageSize))
                 do {
                     let more = try await session.use { client in
