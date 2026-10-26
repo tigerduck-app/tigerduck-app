@@ -1,6 +1,6 @@
 import Foundation
 
-struct CourseSearchResult: Codable {
+nonisolated struct CourseSearchResult: Codable {
     let Semester: String
     let CourseNo: String
     let CourseName: String
