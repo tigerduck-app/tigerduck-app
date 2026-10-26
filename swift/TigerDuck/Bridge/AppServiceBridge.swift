@@ -31,8 +31,8 @@ enum AppServiceBridge {
             authService: authService,
             semester: semester,
             forceRefresh: forceRefresh,
-            moodleEnrolledCourses: nil,
-            transcript: { await fetchTranscript(authService: authService, forceRefresh: forceRefresh) }
+            moodle: { await fetchMoodleCourses(authService: authService) },
+            transcript: { await fetchTranscript(authService: authService) }
         )
     }
 
@@ -46,8 +46,8 @@ enum AppServiceBridge {
             DataCache.shared.loadCourses(semester: $0).isEmpty
         }
         guard !semesters.isEmpty else { return }
-        let moodleEnrolledCourses = (try? await MoodleEnrolledCoursesService.fetchEnrolled()) ?? []
-        let transcript = await fetchTranscript(authService: authService, forceRefresh: false)
+        let moodle = await fetchMoodleCourses(authService: authService)
+        let transcript = await fetchTranscript(authService: authService)
 
         await withTaskGroup(of: Void.self) { group in
             for semester in semesters {
@@ -56,7 +56,7 @@ enum AppServiceBridge {
                         authService: authService,
                         semester: semester,
                         forceRefresh: false,
-                        moodleEnrolledCourses: moodleEnrolledCourses,
+                        moodle: { moodle },
                         transcript: { transcript }
                     )
                 }
@@ -64,8 +64,23 @@ enum AppServiceBridge {
         }
     }
 
-    /// The transcript, or nil when it cannot be fetched. Records the score system's answer.
-    static func fetchTranscript(authService: AuthService, forceRefresh: Bool) async -> ScoreReport? {
+    /// Moodle's course sites, or nil when Moodle cannot answer. Records Moodle's answer.
+    static func fetchMoodleCourses(authService: AuthService) async -> [MoodleEnrolledCourse]? {
+        let startGeneration = authService.loginGeneration
+        do {
+            let courses = try await MoodleEnrolledCoursesService.fetchEnrolled()
+            record(.ok, for: .moodle, round: startGeneration, authService: authService)
+            return courses
+        } catch {
+            record(.failed, for: .moodle, round: startGeneration, authService: authService)
+            AppLogger.captureError(error, context: ["service": "fetchEnrolled", "flow": "classTable"])
+            return nil
+        }
+    }
+
+    /// The transcript, or nil when it cannot be fetched. Records the score system's answer. A pull
+    /// does not skip the day-long cache, so a past term's refresh adds no score-system sign-in.
+    static func fetchTranscript(authService: AuthService) async -> ScoreReport? {
         let startGeneration = authService.loginGeneration
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else { return nil }
@@ -77,7 +92,6 @@ enum AppServiceBridge {
                 session: NTUSTSessionManager.shared.session,
                 studentId: studentId,
                 password: password,
-                forceRefresh: forceRefresh,
                 persistGuard: { @Sendable [weak authService] in
                     authService?.loginGeneration == startGeneration
                 }
@@ -95,7 +109,7 @@ enum AppServiceBridge {
         authService: AuthService,
         semester: String,
         forceRefresh: Bool,
-        moodleEnrolledCourses: [MoodleEnrolledCourse]?,
+        moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
     ) async -> [SDCourse] {
         let startGeneration = authService.loginGeneration
@@ -114,128 +128,106 @@ enum AppServiceBridge {
             return DataCache.shared.loadCourses(semester: semester)
         }
 
-        do {
-            let session = NTUSTSessionManager.shared.session
-            var courseSelectionNos: [String]?
-            if servesSelectionSemester {
-                do {
-                    #if DEBUG
-                    try await ServerFailureSimulator.shared.check(.courseSelection)
-                    #endif
-                    courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
-                        session: session,
-                        studentId: studentId,
-                        password: password,
-                        forceRefresh: forceRefresh,
-                        persistGuard: { @Sendable [weak authService] in
-                            authService?.loginGeneration == startGeneration
-                        }
-                    )
-                    await MainActor.run {
-                        record(.ok, for: .courseSelection, round: startGeneration, authService: authService)
+        let session = NTUSTSessionManager.shared.session
+        var courseSelectionNos: [String]?
+        if servesSelectionSemester {
+            do {
+                #if DEBUG
+                try await ServerFailureSimulator.shared.check(.courseSelection)
+                #endif
+                courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
+                    session: session,
+                    studentId: studentId,
+                    password: password,
+                    forceRefresh: forceRefresh,
+                    persistGuard: { @Sendable [weak authService] in
+                        authService?.loginGeneration == startGeneration
                     }
-                } catch {
-                    await MainActor.run {
-                        record(.failed, for: .courseSelection, round: startGeneration, authService: authService)
-                        AppLogger.captureError(error, context: [
-                            "service": "fetchEnrolledCourseNos",
-                            "semester": semester,
-                            "fallback": "transcript",
-                        ])
-                    }
+                )
+                await MainActor.run {
+                    record(.ok, for: .courseSelection, round: startGeneration, authService: authService)
+                }
+            } catch {
+                await MainActor.run {
+                    record(.failed, for: .courseSelection, round: startGeneration, authService: authService)
+                    AppLogger.captureError(error, context: [
+                        "service": "fetchEnrolledCourseNos",
+                        "semester": semester,
+                        "fallback": "transcript",
+                    ])
                 }
             }
+        }
 
-            if let courseSelectionNos {
-                DataCache.shared.recordSelectionRoster(
-                    semester: semester, roster: courseSelectionNos)
-            }
+        let selectionAnswered = courseSelectionNos?.isEmpty == false
+        let report = selectionAnswered
+            ? DataCache.shared.loadScoreReport(studentId: studentId)?.report
+            : await transcript()
+        let scoreCoursesForSemester = report.map { classRows(of: $0, term: semester) }
+        let cachedCourses = DataCache.shared.loadCourses(semester: semester)
+        guard let term = termCourseNos(
+            selection: courseSelectionNos,
+            transcript: scoreCoursesForSemester?.map(\.code),
+            cached: cachedCourses.map(\.courseNo)
+        ) else {
+            return cachedCourses
+        }
+        if let roster = term.roster {
+            DataCache.shared.recordSelectionRoster(semester: semester, roster: roster)
+        }
 
-            let selectionAnswered = courseSelectionNos?.isEmpty == false
-            let report = selectionAnswered
-                ? DataCache.shared.loadScoreReport(studentId: studentId)?.report
-                : await transcript()
-            let scoreCoursesForSemester = report.map { classRows(of: $0, term: semester) }
-            guard let orderedCourseNos = enrolledCourseNos(
-                selection: courseSelectionNos,
-                transcript: scoreCoursesForSemester?.map(\.code)
-            ) else {
-                return DataCache.shared.loadCourses(semester: semester)
-            }
+        let moodleAll = await moodle()
+        // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
+        if let moodleAll, !Task.isCancelled, authService.loginGeneration == startGeneration {
+            DataCache.shared.saveMoodleCourseIdMap(moodleCourseIdMap(moodleAll))
+        }
 
-            let moodleAll: [MoodleEnrolledCourse]
-            if let moodleEnrolledCourses {
-                moodleAll = moodleEnrolledCourses
-            } else {
-                moodleAll = try await MoodleEnrolledCoursesService.fetchEnrolled()
-                record(.ok, for: .moodle, round: startGeneration, authService: authService)
-            }
-            // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
-            let moodleIdMap = moodleCourseIdMap(moodleAll)
-            if !Task.isCancelled,
-               authService.loginGeneration == startGeneration {
-                DataCache.shared.saveMoodleCourseIdMap(moodleIdMap)
-            }
+        let moodleByNo = Dictionary(
+            (moodleAll ?? []).compactMap { course -> (String, MoodleEnrolledCourse)? in
+                guard course.semester == semester, !course.courseNo.isEmpty else { return nil }
+                return (course.courseNo, course)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
 
-            let moodleForSemester = moodleAll.filter { $0.semester == semester }
-            let moodleByNo = Dictionary(
-                moodleForSemester.compactMap { course -> (String, MoodleEnrolledCourse)? in
-                    guard !course.courseNo.isEmpty else { return nil }
-                    return (course.courseNo, course)
-                },
-                uniquingKeysWith: { first, _ in first }
-            )
+        let scoreByNo = Dictionary(
+            (scoreCoursesForSemester ?? []).map { ($0.code, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
-            let scoreByNo = Dictionary(
-                (scoreCoursesForSemester ?? []).map { ($0.code, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
+        let cachedByNo = Dictionary(
+            cachedCourses.map { ($0.courseNo, CourseData($0)) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
-            let cachedByNo = Dictionary(
-                DataCache.shared.loadCourses(semester: semester).map { ($0.courseNo, CourseData($0)) },
-                uniquingKeysWith: { first, _ in first }
-            )
-
-            let courseDataList = await concurrentMap(orderedCourseNos) { @MainActor courseNo -> CourseData? in
-                await refreshedCourseData(
-                    courseNo: courseNo,
-                    semester: semester,
-                    cached: cachedByNo[courseNo],
-                    moodle: moodleByNo[courseNo],
-                    grade: scoreByNo[courseNo],
-                    display: display
-                ) {
-                    try await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: courseNo, language: courseApiLanguage,
-                        fresh: forceRefresh
-                    )
-                }
-            }.compactMap { $0 }
-
-            let courses = courseDataList.map { $0.course(in: semester) }
-
-            guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
-                return DataCache.shared.loadCourses(semester: semester)
-            }
-            if !courses.isEmpty {
-                if !selectionAnswered {
-                    DataCache.shared.recordSelectionRoster(
-                        semester: semester, roster: orderedCourseNos,
-                        alsoListed: moodleForSemester.map(\.courseNo))
-                }
-                DataCache.shared.saveCourses(courses, semester: semester)
-                uploadVisibleCourses(
-                    courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()), to: courseUploader
+        let courseDataList = await concurrentMap(term.courseNos) { @MainActor courseNo -> CourseData? in
+            await refreshedCourseData(
+                courseNo: courseNo,
+                semester: semester,
+                cached: cachedByNo[courseNo],
+                moodle: moodleByNo[courseNo],
+                grade: scoreByNo[courseNo],
+                display: display
+            ) {
+                try await CourseLookupService.lookupCourse(
+                    semester: semester, courseNo: courseNo, language: courseApiLanguage,
+                    fresh: forceRefresh
                 )
             }
-            return courses
-        } catch {
-            await MainActor.run {
-                record(.failed, for: .moodle, round: startGeneration, authService: authService)
-                AppLogger.captureError(error, context: ["bridge": "fetchCourses", "semester": semester])
-            }
+        }.compactMap { $0 }
+
+        let courses = courseDataList.map { $0.course(in: semester) }
+
+        guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
             return DataCache.shared.loadCourses(semester: semester)
         }
+        if !courses.isEmpty {
+            DataCache.shared.saveCourses(courses, semester: semester)
+            uploadVisibleCourses(
+                courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()), to: courseUploader
+            )
+        }
+        return courses
     }
 
     static func uploadVisibleCourses(
@@ -261,16 +253,26 @@ enum AppServiceBridge {
         tracker.set(status, for: server, note: note)
     }
 
-    /// Course selection owns the term it serves. Every other term, and that one when course
-    /// selection gives nothing, takes the transcript's classes; Moodle lists course sites, and
-    /// keeps a dropped class, so it adds none. Nil when neither answers, so the term keeps its
-    /// cached courses. An empty list counts as nil: the D01 regex scrape returns no matches,
-    /// not an error, when the page drifts, and the transcript lists a new term late.
-    static func enrolledCourseNos(selection: [String]?, transcript: [String]?) -> [String]? {
-        let candidates = selection?.isEmpty == false ? selection : transcript
+    /// A term's course numbers, or nil when no source answers and the term keeps its cached
+    /// courses. Course selection's answer owns the term it serves and is the roster its drops are
+    /// read from. Any other term, or that one when course selection gives nothing, adds the
+    /// transcript's classes to its cached courses: a transcript lists a running term late or in
+    /// part, so it never removes one. Moodle lists course sites and keeps a dropped class, so it
+    /// adds none. An empty list counts as nil: the D01 regex scrape returns no matches, not an
+    /// error, when the page drifts.
+    static func termCourseNos(
+        selection: [String]?, transcript: [String]?, cached: [String]
+    ) -> (courseNos: [String], roster: [String]?)? {
+        let fromSelection = uniqueCourseNos(selection ?? [])
+        if !fromSelection.isEmpty { return (fromSelection, fromSelection) }
+        let fromTranscript = uniqueCourseNos(transcript ?? [])
+        guard !fromTranscript.isEmpty else { return nil }
+        return (uniqueCourseNos(fromTranscript + cached), nil)
+    }
+
+    private static func uniqueCourseNos(_ courseNos: [String]) -> [String] {
         var seen = Set<String>()
-        let courseNos = (candidates ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
-        return courseNos.isEmpty ? nil : courseNos
+        return courseNos.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     /// The term's transcript rows that stand for a class. Withdrawn and exempted rows and the

@@ -21,8 +21,8 @@ struct EnrolledCourseNosTests {
         """)
     }
 
-    @Test("A past term takes only its graded and passed classes from the transcript, NTU and NTNU ones too")
-    func pastTermTakesTheTranscriptsClasses() {
+    @Test("A past term built from the transcript takes only its graded and passed classes, NTU and NTNU ones too")
+    func pastTermTakesTheTranscriptsClasses() throws {
         let report = Self.transcript(rows: [
             ("1141", "CS1001301", "程式設計", "A", ""),
             ("1141", "PE1001301", "體育", "通過", ""),
@@ -34,12 +34,23 @@ struct EnrolledCourseNosTests {
             ("1142", "EE1001301", "電路學", "A", ""),
         ])
 
-        let nos = AppServiceBridge.enrolledCourseNos(
+        let term = try #require(AppServiceBridge.termCourseNos(
             selection: nil,
-            transcript: AppServiceBridge.classRows(of: report, term: "1141").map(\.code)
-        )
+            transcript: AppServiceBridge.classRows(of: report, term: "1141").map(\.code),
+            cached: []
+        ))
 
-        #expect(nos == ["CS1001301", "PE1001301", "3N1004701", "3T5287701"])
+        #expect(term.courseNos == ["CS1001301", "PE1001301", "3N1004701", "3T5287701"])
+    }
+
+    @Test("A transcript only adds: a term it lists late or in part keeps its cached courses and records no drops")
+    func transcriptNeverShrinksATerm() throws {
+        let term = try #require(AppServiceBridge.termCourseNos(
+            selection: nil, transcript: ["CS1001301", "PE1001301"], cached: ["EE2005301", "CS1001301"]
+        ))
+
+        #expect(term.courseNos == ["CS1001301", "PE1001301", "EE2005301"])
+        #expect(term.roster == nil)
     }
 
     @Test("The English proficiency test is matched by its name in either language")
@@ -57,23 +68,24 @@ struct EnrolledCourseNosTests {
 
     @Test("A past term whose transcript cannot be fetched, or lists nothing for it, keeps its cached courses")
     func noTranscriptKeepsTheCache() {
-        #expect(AppServiceBridge.enrolledCourseNos(selection: nil, transcript: nil) == nil)
-        #expect(AppServiceBridge.enrolledCourseNos(selection: nil, transcript: []) == nil)
+        #expect(AppServiceBridge.termCourseNos(selection: nil, transcript: nil, cached: ["CS1"]) == nil)
+        #expect(AppServiceBridge.termCourseNos(selection: nil, transcript: [], cached: ["CS1"]) == nil)
     }
 
-    @Test("Course selection answered: it owns the latest term, so a stale transcript adds nothing")
-    func selectionIsAuthoritative() {
-        let nos = AppServiceBridge.enrolledCourseNos(
-            selection: ["CS1", "CS2", "CS1"],
-            transcript: ["CS1", "DROPPED"]
-        )
-        #expect(nos == ["CS1", "CS2"])
+    @Test("Course selection answered: it owns the latest term and is its roster, so a stale transcript adds nothing")
+    func selectionIsAuthoritative() throws {
+        let term = try #require(AppServiceBridge.termCourseNos(
+            selection: ["CS1", "CS2", "CS1"], transcript: ["CS1", "DROPPED"], cached: ["CS1", "OLD"]
+        ))
+        #expect(term.courseNos == ["CS1", "CS2"])
+        #expect(term.roster == ["CS1", "CS2"])
     }
 
     @Test("Course selection unreachable or empty: the latest term falls back to the transcript")
     func latestTermFallsBackToTheTranscript() {
-        #expect(AppServiceBridge.enrolledCourseNos(selection: nil, transcript: ["CS3", "", "CS3", "PE9"]) == ["CS3", "PE9"])
-        #expect(AppServiceBridge.enrolledCourseNos(selection: [], transcript: ["PE9"]) == ["PE9"])
+        let unreachable = AppServiceBridge.termCourseNos(selection: nil, transcript: ["CS3", "", "CS3", "PE9"], cached: [])
+        #expect(unreachable?.courseNos == ["CS3", "PE9"])
+        #expect(AppServiceBridge.termCourseNos(selection: [], transcript: ["PE9"], cached: [])?.courseNos == ["PE9"])
     }
 }
 
