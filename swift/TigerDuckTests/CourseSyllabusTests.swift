@@ -181,6 +181,10 @@ struct CourseSyllabusTests {
             Part(label: others, percent: nil, detail: "Pond visit"),
         ])
         #expect(CourseSyllabusBreakdown.teaching(Self.teaching(lecture: "0", other: " ")) == nil)
+        let prose = String(repeating: "Ducks swim across the pond. ", count: 8) + "10%"
+        #expect(CourseSyllabusBreakdown.teaching(Self.teaching(lecture: "0", other: prose)) == [
+            Part(label: others, percent: nil, detail: prose),
+        ])
     }
 
     private static func teaching(lecture: String, other: String) -> CourseSyllabus {

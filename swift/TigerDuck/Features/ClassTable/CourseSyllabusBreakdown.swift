@@ -11,6 +11,8 @@ nonisolated enum CourseSyllabusBreakdown {
     }
 
     static let maxLabelLength = 20
+    /// Longer pieces are prose, and the lazy pattern would backtrack through all of it.
+    static let maxPieceLength = 200
 
     /// Nil when one part is not a short label followed by a percentage, to show the text as written.
     static func grading(_ text: String) -> [Part]? {
@@ -68,6 +70,7 @@ nonisolated enum CourseSyllabusBreakdown {
 
     /// The text before a closing percentage, without the separator between them.
     private static func trailingPercent(_ text: String) -> (String, Double)? {
+        guard text.count <= maxPieceLength else { return nil }
         let pattern = /(.*?)[\s:：=－\-]*[(（]?([0-9]{1,3}(?:\.[0-9]+)?)\s*[%％][)）]?/
         guard let match = text.wholeMatch(of: pattern), let percent = Double(match.2) else { return nil }
         return (String(match.1).trimmingCharacters(in: .whitespaces), percent)

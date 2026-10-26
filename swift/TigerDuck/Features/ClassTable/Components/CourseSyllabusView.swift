@@ -4,15 +4,24 @@ import SwiftUI
 struct CourseSyllabusView: View {
     let syllabus: CourseSyllabus
     let policy: VisualStylePolicy
+    private let gradingParts: [CourseSyllabusBreakdown.Part]?
+    private let teachingParts: [CourseSyllabusBreakdown.Part]?
 
     @Environment(\.openMoodleLink) private var openMoodleLink
+
+    init(syllabus: CourseSyllabus, policy: VisualStylePolicy) {
+        self.syllabus = syllabus
+        self.policy = policy
+        gradingParts = syllabus.grading.flatMap(CourseSyllabusBreakdown.grading)
+        teachingParts = CourseSyllabusBreakdown.teaching(syllabus)
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                 if let grading = syllabus.grading {
                     card(String(localized: "course_detail_syllabus_grading")) {
-                        if let parts = CourseSyllabusBreakdown.grading(grading) {
+                        if let parts = gradingParts {
                             CourseSyllabusBreakdownView(parts: parts)
                         } else {
                             Self.text(grading)
@@ -22,7 +31,7 @@ struct CourseSyllabusView: View {
                 if let outline = syllabus.outline {
                     card(String(localized: "course_detail_syllabus_outline")) { Self.text(outline) }
                 }
-                if let teaching = CourseSyllabusBreakdown.teaching(syllabus) {
+                if let teaching = teachingParts {
                     card(String(localized: "course_detail_syllabus_method")) {
                         CourseSyllabusBreakdownView(parts: teaching)
                     }
@@ -188,10 +197,12 @@ struct CourseSyllabusBreakdownView: View {
                 Text(part.label)
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(Color.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let detail = part.detail {
                     Text(detail)
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -200,6 +211,7 @@ struct CourseSyllabusBreakdownView: View {
                     .font(TigerDuckTheme.Typography.body)
                     .monospacedDigit()
                     .foregroundStyle(Color.textSecondary)
+                    .fixedSize()
             }
         }
         .accessibilityElement(children: .combine)
