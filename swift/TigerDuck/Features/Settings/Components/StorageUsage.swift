@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the Storage page lists, in page order.
+/// Case order sets the bar's segments; keep it matching the rows `StorageSettingsView` lays out.
 nonisolated enum StorageKind: CaseIterable, Hashable, Sendable {
     case moodleFiles
     case mail
