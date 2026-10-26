@@ -498,6 +498,35 @@ struct CourseSearchTests {
         #expect(sent.value.count == 4)
     }
 
+    @Test("Enter also fetches again a language that failed while the other loaded")
+    func enterRetriesAMissingLanguage() async throws {
+        let sent = Box<[String]>([])
+        let online = Box(false)
+        let model = CourseSearchModel(cache: Self.cache())
+        let fetch = Self.backend(sent) { language in
+            guard language == "zh" || online.value else { throw URLError(.notConnectedToInternet) }
+            return .changed(try Self.stored(language, etag: #"W/"1""#))
+        }
+
+        await model.search("data", semester: "1151", fetch: fetch)
+        #expect(model.failure == nil)
+        #expect(model.results.isEmpty)
+
+        online.value = true
+        model.submit()
+        #expect(model.revision == 1)
+        await model.search("data", semester: "1151", fetch: fetch)
+        for _ in 0..<10_000 where model.revision == 1 {
+            await Task.yield()
+        }
+        await model.search("data", semester: "1151", fetch: fetch)
+        #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
+        #expect(sent.value.count == 4)
+
+        model.submit()
+        #expect(model.revision == 2)
+    }
+
     @Test("each row mark looks and reads differently, and only a course already in the table is dimmed")
     func rowMarks() {
         let marks: [AddCourseRowMark] = [.inTable, .addedHere, .notAdded]

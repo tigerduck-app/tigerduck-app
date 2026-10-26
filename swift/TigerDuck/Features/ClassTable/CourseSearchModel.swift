@@ -25,6 +25,7 @@ final class CourseSearchModel {
     @ObservationIgnored private var storedRead: Task<Void, Never>?
     @ObservationIgnored private var revalidation: Task<Void, Never>?
     @ObservationIgnored private var catalogFailure: (any Error)?
+    @ObservationIgnored private var lacksLanguage = false
 
     init(cache: DataCache = .shared) {
         self.cache = cache
@@ -61,10 +62,11 @@ final class CourseSearchModel {
         isSearching = false
     }
 
-    /// Enter in the search field. It searches again only to retry a failed search, as one that
-    /// ran or is running would find the same rows.
+    /// Enter in the search field. It searches again only to retry a failed search or a catalog
+    /// language that failed to load, as one that ran or is running would find the same rows.
     func submit() {
-        guard failure != nil else { return }
+        guard failure != nil || lacksLanguage else { return }
+        lacksLanguage = false
         revalidation = nil
         revision &+= 1
     }
@@ -149,5 +151,6 @@ final class CourseSearchModel {
             if hadCatalog { revision &+= 1 }
         }
         if catalogs.isEmpty { catalogFailure = firstError }
+        lacksLanguage = catalogs.count < CourseSearch.languages.count
     }
 }
