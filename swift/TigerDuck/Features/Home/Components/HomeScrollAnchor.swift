@@ -42,6 +42,9 @@ final class HomeScrollAnchor {
 }
 
 extension View {
+    // In a List row both markers go before `homeListRow`. Row settings applied inside them no
+    // longer reach the List, which then draws its default insets, background and separators.
+
     /// Marks the first row of a section, for `HomeScrollAnchor` and `ScrollViewReader.scrollTo`.
     func homeScrollAnchor(_ sectionID: String, in anchor: HomeScrollAnchor) -> some View {
         id(sectionID).homeScrollRow(sectionID, in: anchor)
