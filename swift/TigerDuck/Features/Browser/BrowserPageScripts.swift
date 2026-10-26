@@ -70,7 +70,7 @@ enum BrowserPageScripts {
       }
       function update() {
         style.textContent = '';
-        if (dark.matches && drawsLight()) style.textContent = 'html ' + invert + ' ' + back + ' ' + invert;
+        if (dark.matches && drawsLight()) style.textContent = '@media screen { html ' + invert + ' ' + back + ' ' + invert + ' }';
       }
       update();
       dark.addEventListener('change', update);

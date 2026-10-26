@@ -70,6 +70,9 @@ struct BrowserPageScriptsTests {
             try await Task.sleep(for: .milliseconds(50))
         }
         #expect(shown.count == 2 && shown.allSatisfy { $0.contains("invert(1)") }, "\(shown)")
+        webView.mediaType = "print"
+        #expect(await evaluate(webView, filters) as? [String] == ["none", "none"], "a print shows the page's own colors")
+        webView.mediaType = nil
 
         for ownDark in ["<meta name=\"color-scheme\" content=\"light dark\">", "<body style=\"background:#111;color:#eee\">"] {
             await load(webView, "\(ownDark)\(Self.paragraph)\(img)")

@@ -88,7 +88,8 @@ struct BrowserFindPageTests {
         withExtendedLifetime(webView) {}
     }
 
-    @Test func showsTheMatchInTheMiddleOfWhatTheBarsLeaveAndDimsTheRest() async throws {
+    @Test(arguments: [1.0, 1.5])
+    func showsTheMatchInTheMiddleOfWhatTheBarsLeaveAndDimsTheRest(zoom: Double) async throws {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
@@ -96,7 +97,7 @@ struct BrowserFindPageTests {
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
         let rows = (0..<300).map { "<div style=\"height:20px\">\($0 == 200 ? "作業" : "")</div>" }.joined()
-        let viewport = "<meta name=\"viewport\" content=\"width=device-width\">"
+        let viewport = "<meta name=\"viewport\" content=\"width=device-width\"><style>body { zoom: \(zoom) }</style>"
         let (webView, find) = await page(rows, head: viewport, in: window.rootViewController?.view)
         // The browser's top bar, and a find bar with the keyboard under it over the lower half.
         webView.scrollView.contentInset = UIEdgeInsets(top: 60, left: 0, bottom: 400, right: 0)
