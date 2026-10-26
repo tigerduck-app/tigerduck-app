@@ -71,10 +71,8 @@ extension AppState {
             if resettingSemesters.contains(semester) { continue }
             if let reset = resetAt[semester], reset > fetchedAt { continue }
             let handAdded = Set(userAdded.filter { DataCache.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo))
-            let rows = Self.keptRows(
-                rowsBySemester[semester] ?? [], semester: semester,
-                dropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded
-            )
+            let dropped = Set(selectionDropped[semester] ?? [])
+            let rows = Self.keptRows(rowsBySemester[semester] ?? [], semester: semester, dropped: dropped, userAdded: userAdded)
             let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
             let localCourses = DataCache.shared.loadCourses(semester: semester)
 
@@ -95,9 +93,12 @@ extension AppState {
                 in: semester, listed: serverNos, tombstoned: Set(tombstoned),
                 fetched: Set(localCourses.map(\.courseNo)),
                 handAdded: handAdded,
+                droppedMerges: Self.droppedMerges(userAdded, semester: semester, dropped: dropped),
                 hidden: deletedNos, adding: adding
             )
             for courseNo in unlisted.hide { hide(courseNo) }
+            let manualBefore = userAdded.count
+            userAdded.removeAll { DataCache.userAddedCourse($0, belongsTo: semester) && unlisted.drop.contains($0.courseNo) }
 
             guard !serverNos.isEmpty else {
                 let uploadable = localCourses.filter { !isHidden($0.courseNo) }
@@ -105,14 +106,10 @@ extension AppState {
                     uploadCourses(uploadable, semester: semester, resend: true)
                     AppLogger.sync.info("[sync] \(semester, privacy: .public): server empty, uploaded \(uploadable.count, privacy: .public) local courses")
                 }
-                let manualBefore = userAdded.count
                 userAdded.removeAll { $0.semester == semester && isHidden($0.courseNo) }
                 if userAdded.count != manualBefore { mergedSemesters.insert(semester) }
                 continue
             }
-
-            let manualBefore = userAdded.count
-            userAdded.removeAll { DataCache.userAddedCourse($0, belongsTo: semester) && unlisted.drop.contains($0.courseNo) }
             if userAdded.count != manualBefore { mergedSemesters.insert(semester) }
 
             if Self.unhideListedCourses(serverNos, semester: semester, deleting: deleting, in: &deletedNos) {
@@ -174,12 +171,15 @@ extension AppState {
             && !CourseTombstone.isHidden(courseNo, semester: semester, in: deleting)
     }
 
+    /// A hand-added course leaves once the server stops listing it. When the server lists none of
+    /// the term's, only one in `droppedMerges` does: any other may not have reached the server yet.
     nonisolated static func unlistedCourses(
         in semester: String,
         listed: Set<String>,
         tombstoned: Set<String>,
         fetched: Set<String>,
         handAdded: Set<String>,
+        droppedMerges: Set<String>,
         hidden: Set<String>,
         adding: Set<String>
     ) -> (hide: Set<String>, drop: Set<String>) {
@@ -188,8 +188,16 @@ extension AppState {
         }
         let isShown = { (courseNo: String) in !CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
         let byTombstone = tombstoned.filter { isGone($0) && isShown($0) }
-        guard !listed.isEmpty else { return (byTombstone, []) }
+        guard !listed.isEmpty else { return (byTombstone, droppedMerges.filter(isGone)) }
         return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
+    }
+
+    /// The term's courses merged from the server that course selection dropped. One added by hand
+    /// here has no Moodle ID; one added on another device keeps its `user_added` row in `keptRows`.
+    static func droppedMerges(_ userAdded: [SDCourse], semester: String, dropped: Set<String>) -> Set<String> {
+        Set(userAdded.filter {
+            $0.moodleIdNumber != nil && dropped.contains($0.courseNo) && DataCache.userAddedCourse($0, belongsTo: semester)
+        }.map(\.courseNo))
     }
 
     /// The term's server rows, less those of courses course selection dropped. A course the user

@@ -152,7 +152,7 @@ struct SelectionDropsTests {
         #expect(listed == ["CS1001301", "GE1010001", "PE1001301"])
         let unlisted = AppState.unlistedCourses(
             in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
-            handAdded: ["GE1010001", "EE2005301"], hidden: [], adding: []
+            handAdded: ["GE1010001", "EE2005301"], droppedMerges: [], hidden: [], adding: []
         )
         #expect(unlisted.drop == ["EE2005301"])
     }
@@ -235,10 +235,28 @@ struct PastTermRebuildTests {
             .compactMap { $0["course_no"] as? String })
         let unlisted = AppState.unlistedCourses(
             in: "1141", listed: listed, tombstoned: [], fetched: Set(rebuilt.courses.map(\.courseNo)),
-            handAdded: Set(userAdded.map(\.courseNo)), hidden: [], adding: []
+            handAdded: Set(userAdded.map(\.courseNo)), droppedMerges: [], hidden: [], adding: []
         )
 
         #expect(listed == ["CS1001301", "GE1010001", "PE1001301"])
+        #expect(unlisted.drop == ["EC9999301"])
+    }
+
+    @Test("Junk merged from the server leaves even when the drops leave the term no server row; a hand-add stays")
+    func droppedMergeLeavesATermWithNoRowLeft() {
+        let userAdded = [Self.course("GE1010001"), Self.course("EC9999301", moodleId: "1141EC9999301")]
+        let dropped: Set<String> = ["GE1010001", "EC9999301"]
+        let rows: [[String: Any]] = [["course_no": "EC9999301", "source": "ntust_portal"]]
+
+        let listed = Set(AppState.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
+            .compactMap { $0["course_no"] as? String })
+        let unlisted = AppState.unlistedCourses(
+            in: "1141", listed: listed, tombstoned: [], fetched: [], handAdded: Set(userAdded.map(\.courseNo)),
+            droppedMerges: AppState.droppedMerges(userAdded, semester: "1141", dropped: dropped),
+            hidden: [], adding: []
+        )
+
+        #expect(listed.isEmpty)
         #expect(unlisted.drop == ["EC9999301"])
     }
 
