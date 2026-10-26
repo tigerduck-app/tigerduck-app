@@ -53,17 +53,19 @@ struct EnrolledCourseNosTests {
         #expect(term.roster == nil)
     }
 
-    @Test("The English proficiency test is matched by its name in either language")
-    func englishTestMatchesByName() {
-        let row = { (name: String) in
+    @Test("The English proficiency test is matched by its course number, or by its exact name")
+    func englishTestMatchesByNumberOrExactName() {
+        let row = { (code: String, name: String) in
             CourseGrade(
-                index: 1, term: "1141", code: "CC1011301", name: name, credits: 0, creditType: .normal,
+                index: 1, term: "1141", code: code, name: name, credits: 0, creditType: .normal,
                 grade: "通過", status: .passed, remark: "", geDimension: nil, distanceLearning: false
             )
         }
-        #expect(AppServiceBridge.isEnglishProficiencyTest(row("校定英文能力檢測")))
-        #expect(AppServiceBridge.isEnglishProficiencyTest(row("English Proficiency Test")))
-        #expect(!AppServiceBridge.isEnglishProficiencyTest(row("英文閱讀與寫作")))
+        #expect(AppServiceBridge.isEnglishProficiencyTest(row("CC1011301", "校定英文能力檢測")))
+        #expect(AppServiceBridge.isEnglishProficiencyTest(row("CC1011301", "English Proficiency Test")))
+        #expect(AppServiceBridge.isEnglishProficiencyTest(row("CC1019301", " 校定英文能力檢測 ")))
+        #expect(!AppServiceBridge.isEnglishProficiencyTest(row("FL2001301", "English Proficiency Test Preparation")))
+        #expect(!AppServiceBridge.isEnglishProficiencyTest(row("FL2002301", "校定英文能力檢測輔導")))
     }
 
     @Test("A past term whose transcript cannot be fetched, or lists nothing for it, keeps its cached courses")

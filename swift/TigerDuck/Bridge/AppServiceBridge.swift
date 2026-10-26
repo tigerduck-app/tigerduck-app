@@ -285,10 +285,10 @@ enum AppServiceBridge {
         }
     }
 
-    // shortcut: matched by its course name, as no transcript row of the test was at hand to read
-    // its code; match the code instead once a real transcript shows it.
+    /// The school English proficiency test, a graduation requirement the transcript files as a
+    /// course row, under its own course number or, should that change, its exact name.
     static func isEnglishProficiencyTest(_ row: CourseGrade) -> Bool {
-        row.name.contains("校定英文能力檢測") || row.name.localizedCaseInsensitiveContains("English Proficiency Test")
+        row.code == "CC1011301" || row.name.trimmingCharacters(in: .whitespacesAndNewlines) == "校定英文能力檢測"
     }
 
     static func moodleCourseIdMap(_ courses: [MoodleEnrolledCourse]) -> [String: Int] {
