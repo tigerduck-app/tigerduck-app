@@ -56,10 +56,12 @@ struct StorageSettingsView: View {
                 if kind.confirmsDelete { confirming = kind } else { delete(kind) }
             } label: {
                 Image(systemName: "trash")
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
+            // A 44-point target that does not make the row taller than its icon tile.
+            .padding(.vertical, -7)
             .disabled(!canDelete)
             .accessibilityLabel(String(format: String(localized: "settings_storage_delete_kind"), kind.title))
         }
