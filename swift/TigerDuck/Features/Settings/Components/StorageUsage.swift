@@ -1,6 +1,6 @@
 import Foundation
 
-/// Reordering the cases reorders the page's rows and the bar's segments.
+/// Case order sets the bar's segments; keep it matching the rows `StorageSettingsView` lays out.
 nonisolated enum StorageKind: CaseIterable, Hashable, Sendable {
     case moodleFiles
     case mail
