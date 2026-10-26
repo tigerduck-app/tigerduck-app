@@ -236,6 +236,10 @@ final class MailListViewModel {
         clearSearch()
         cancelWarm()
         await load()
+        // The query stays in the field, so the new mailbox shows its results, not its plain list.
+        if self.selection == selection, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await submitSearch()
+        }
         startWarmIfLoaded()
     }
 

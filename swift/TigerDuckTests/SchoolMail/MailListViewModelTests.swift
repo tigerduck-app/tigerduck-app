@@ -455,7 +455,7 @@ struct MailListViewModelTests {
         await h.model.select(.real(MailFolderRole.trash.imapName))
         await h.fake.release("summaries")
         await searchTask.value
-        #expect(h.model.searchResults == nil)
+        #expect(h.model.searchResults == [])
         #expect(h.model.rows.map(\.summary.subject) == ["舊信"])
         #expect(h.model.selection == .real(MailFolderRole.trash.imapName))
     }
@@ -790,6 +790,20 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.contains("summaries \(Self.sent) [3]"))
         #expect(h.model.searchUsedLocalFallback == false)
         #expect(Self.labels(h.model.displayedRows) == ["寄3"])
+    }
+
+    @Test func switchingMailboxRunsTheSearchInTheFieldThere() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.real("INBOX"))
+        h.model.searchText = " 3 "
+        await h.model.submitSearch()
+        #expect(Self.labels(h.model.displayedRows) == ["收3"])
+
+        await h.model.select(.real(Self.sent))
+
+        #expect(Self.labels(h.model.displayedRows) == ["寄3"])
+        #expect(await h.fake.calls.contains("summaries \(Self.sent) [3]"))
     }
 
     @Test func anUnreachableServerFallsBackToTheLoadedMailOfBothMergedFolders() async {
