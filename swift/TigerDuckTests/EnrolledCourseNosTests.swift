@@ -53,6 +53,22 @@ struct EnrolledCourseNosTests {
         #expect(term.roster == nil)
     }
 
+    @Test("A class the transcript adds joins its term only with class times; course selection's and cached ones stay")
+    func transcriptClassesNeedClassTimes() {
+        let courses = [
+            SDCourse(courseNo: "CS1001301", courseName: "Timed", schedule: [2: ["3", "4"]], semester: "1141"),
+            SDCourse(courseNo: "GE1001301", courseName: "No periods", semester: "1141"),
+            SDCourse(courseNo: "MA1001301", courseName: "Empty day", schedule: [3: []], semester: "1141"),
+            SDCourse(courseNo: "EE2005301", courseName: "Cached", semester: "1141"),
+        ]
+
+        let fromTranscript = AppServiceBridge.drawnCourses(courses, fromSelection: false, cached: ["EE2005301"])
+        let fromSelection = AppServiceBridge.drawnCourses(courses, fromSelection: true, cached: [])
+
+        #expect(fromTranscript.map(\.courseNo) == ["CS1001301", "EE2005301"])
+        #expect(fromSelection.map(\.courseNo) == ["CS1001301", "GE1001301", "MA1001301", "EE2005301"])
+    }
+
     @Test("The English proficiency test is matched by its course number, or by its exact name")
     func englishTestMatchesByNumberOrExactName() {
         let row = { (code: String, name: String) in

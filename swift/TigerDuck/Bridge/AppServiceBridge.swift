@@ -216,7 +216,10 @@ enum AppServiceBridge {
             }
         }.compactMap { $0 }
 
-        let courses = courseDataList.map { $0.course(in: semester) }
+        let courses = drawnCourses(
+            courseDataList.map { $0.course(in: semester) },
+            fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
+        )
 
         guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
             return DataCache.shared.loadCourses(semester: semester)
@@ -268,6 +271,14 @@ enum AppServiceBridge {
         let fromTranscript = uniqueCourseNos(transcript ?? [])
         guard !fromTranscript.isEmpty else { return nil }
         return (uniqueCourseNos(fromTranscript + cached), nil)
+    }
+
+    /// A class the transcript adds joins its term only with class times: a row without them, or one
+    /// whose lookup failed, has nothing to draw, and a later fetch adds it once the lookup answers.
+    /// Course selection's courses and the term's cached ones stay as they are.
+    static func drawnCourses(_ courses: [SDCourse], fromSelection: Bool, cached: Set<String>) -> [SDCourse] {
+        guard !fromSelection else { return courses }
+        return courses.filter { cached.contains($0.courseNo) || $0.schedule.values.contains { !$0.isEmpty } }
     }
 
     private static func uniqueCourseNos(_ courseNos: [String]) -> [String] {
