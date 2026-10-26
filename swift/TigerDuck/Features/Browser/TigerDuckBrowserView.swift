@@ -78,7 +78,9 @@ struct TigerDuckBrowserView: View {
     private static let capsuleHeight: CGFloat = 30
     private static let toolbarHeight: CGFloat = 56
     /// From the screen's bottom edge: the home indicator takes about 13 points, and a small gap.
-    private static let homeIndicatorClearance: CGFloat = 20
+    private static let homeIndicatorClearance: CGFloat = 16
+    /// How far a button hidden by the collapse moves toward the address capsule as it fades.
+    private static let toCapsule: CGFloat = 56
 
     private var contentInsets: UIEdgeInsets {
         let gap = TigerDuckTheme.Spacing.lg
@@ -91,7 +93,7 @@ struct TigerDuckBrowserView: View {
 
     private var topBar: some View {
         HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
-            closeButton.hiddenWhenCollapsed(collapsed, edge: .top, moving: !reduceMotion)
+            closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.toCapsule, height: -24), moving: !reduceMotion)
             address {
                 VStack(spacing: 0) {
                     HStack(spacing: collapsed ? 4 : 5) {
@@ -110,7 +112,7 @@ struct TigerDuckBrowserView: View {
                 }
                 .accessibilityLabel(String(localized: "browser_share"))
             }
-            .hiddenWhenCollapsed(collapsed, edge: .top, moving: !reduceMotion)
+            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: -Self.toCapsule, height: -24), moving: !reduceMotion)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
@@ -126,7 +128,7 @@ struct TigerDuckBrowserView: View {
         .frame(height: Self.toolbarHeight)
         .browserGlass(in: Capsule())
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
+        .hiddenWhenCollapsed(collapsed, toward: CGSize(width: 0, height: 120), moving: !reduceMotion)
     }
 
     private func toolbarButton(_ symbol: String, _ label: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -143,7 +145,7 @@ struct TigerDuckBrowserView: View {
 
     private var bottomBar: some View {
         HStack(alignment: .bottom, spacing: TigerDuckTheme.Spacing.md) {
-            closeButton.hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
+            closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.toCapsule, height: 24), moving: !reduceMotion)
             address {
                 HStack(spacing: 0) {
                     if !collapsed {
@@ -154,10 +156,14 @@ struct TigerDuckBrowserView: View {
                         }
                         .disabled(!page.canUsePage)
                         .accessibilityLabel(String(localized: "browser_find"))
+                        .transition(intoCapsule(from: .leading))
                     }
                     Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
                         .frame(maxWidth: collapsed ? nil : .infinity)
-                    if !collapsed { reloadButton(size: 16).frame(width: 40, height: Self.barHeight) }
+                    if !collapsed {
+                        reloadButton(size: 16).frame(width: 40, height: Self.barHeight)
+                            .transition(intoCapsule(from: .trailing))
+                    }
                 }
             }
             circle {
@@ -168,7 +174,7 @@ struct TigerDuckBrowserView: View {
                 }
                 .accessibilityLabel(String(localized: "browser_more"))
             }
-            .hiddenWhenCollapsed(collapsed, edge: .bottom, moving: !reduceMotion)
+            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: -Self.toCapsule, height: 24), moving: !reduceMotion)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         // Collapsed, the row leaves the safe area for a spot just above the home indicator; the
@@ -176,6 +182,11 @@ struct TigerDuckBrowserView: View {
         .padding(.bottom, collapsed ? Self.homeIndicatorClearance : 0)
         .frame(maxHeight: .infinity, alignment: .bottom)
         .ignoresSafeArea(.container, edges: collapsed ? .bottom : [])
+    }
+
+    /// A button inside the address pill shrinks with it, toward the host name and down.
+    private func intoCapsule(from side: HorizontalEdge) -> AnyTransition {
+        reduceMotion ? .opacity : .offset(x: side == .leading ? 16 : -16, y: 10).combined(with: .opacity)
     }
 
     // MARK: - Shared pieces
@@ -346,8 +357,8 @@ struct TigerDuckBrowserView: View {
 }
 
 private extension View {
-    func hiddenWhenCollapsed(_ collapsed: Bool, edge: VerticalEdge, moving: Bool) -> some View {
-        offset(y: collapsed && moving ? (edge == .top ? -24 : 120) : 0)
+    func hiddenWhenCollapsed(_ collapsed: Bool, toward offset: CGSize, moving: Bool) -> some View {
+        self.offset(collapsed && moving ? offset : .zero)
             .opacity(collapsed ? 0 : 1)
             .allowsHitTesting(!collapsed)
             .accessibilityHidden(collapsed)
