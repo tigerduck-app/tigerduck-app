@@ -1,6 +1,6 @@
 import Foundation
 
-struct CourseSearchResult: Codable {
+nonisolated struct CourseSearchResult: Codable {
     let Semester: String
     let CourseNo: String
     let CourseName: String
@@ -57,7 +57,7 @@ struct CourseSearchRequest: Codable, Equatable {
     }
 }
 
-/// The department and GE type lists of the course query's filters, as the device stores them.
+/// The department and GE type lists of the Add Course filters, from the term's catalog.
 struct CourseSearchOptions: Codable, Equatable {
     struct Option: Codable, Hashable {
         let code: String

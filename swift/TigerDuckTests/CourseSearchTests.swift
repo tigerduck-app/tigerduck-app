@@ -13,87 +13,165 @@ struct CourseSearchTests {
         )
     }
 
-    /// Number, name, teacher and language, the fields that tell the rounds apart.
-    private static func summary(_ request: CourseSearchRequest) -> String {
-        "\(request.CourseNo)|\(request.CourseName)|\(request.CourseTeacher)|\(request.Language)"
-    }
+    // MARK: Catalog
 
-    private static func cache() -> DataCache {
-        let root = FileManager.default.temporaryDirectory.appending(path: "CourseSearchTests-\(UUID().uuidString)")
-        return DataCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
-    }
+    private struct Row {
+        let courseNo: String
+        var name: String
+        var teacher = ""
+        var node = "M3"
+        var dimension = ""
+        var intensive = false
+        var alliance = false
+        var englishTaught = false
 
-    private static let noOptions: CourseSearchModel.FetchOptions = { @MainActor in CourseSearchOptions() }
-
-    // MARK: Query planning
-
-    @Test("letters and digits ask for a course-number prefix first, then name and teacher")
-    func prefixThenNameAndTeacher() {
-        let rounds = CourseSearch.rounds(for: "cs", semester: "1151", filters: .init())
-        #expect(rounds.map { $0.map(Self.summary) } == [
-            ["CS|||zh", "CS|||en"],
-            ["|cs||zh", "||cs|zh", "|cs||en", "||cs|en"],
-        ])
-        #expect(rounds.joined().allSatisfy { $0.Semester == "1151" })
-    }
-
-    @Test("other text asks for name and teacher only, in traditional characters for zh")
-    func textSkipsThePrefixRound() {
-        let rounds = CourseSearch.rounds(for: "微积分", semester: "1151", filters: .init())
-        #expect(rounds.map { $0.map(Self.summary) } == [
-            ["|微積分||zh", "||微積分|zh", "|微积分||en", "||微积分|en"],
-        ])
-        #expect(CourseSearch.rounds(for: "EC 10", semester: "1151", filters: .init()).count == 1)
-    }
-
-    @Test("a department narrows the prefix, or replaces a round no course number can match")
-    func departmentPrefix() {
-        #expect(CourseSearch.courseNoPrefix("CS10", department: "cs") == "CS10")
-        #expect(CourseSearch.courseNoPrefix("C", department: "CS") == "CS")
-        #expect(CourseSearch.courseNoPrefix("EE", department: "CS") == nil)
-        #expect(CourseSearch.courseNoPrefix("EE", department: nil) == "EE")
-
-        var filters = CourseSearchFilters()
-        filters.department = "CS"
-        let rounds = CourseSearch.rounds(for: "EE", semester: "1151", filters: filters)
-        #expect(rounds.map { $0.map(Self.summary) } == [
-            ["CS|EE||zh", "CS||EE|zh", "CS|EE||en", "CS||EE|en"],
-        ])
-    }
-
-    @Test("no request leaves every search field empty")
-    func neverTheEmptyFilter() {
-        for query in ["a", "1", "CS1001301", "王", "data structures"] {
-            for request in CourseSearch.rounds(for: query, semester: "1151", filters: .init()).joined() {
-                #expect(!(request.CourseNo + request.CourseName + request.CourseTeacher).isEmpty)
-            }
+        var json: [String: Any] {
+            [
+                "Semester": "1151", "CourseNo": courseNo, "CourseName": name, "CourseTeacher": teacher,
+                "Dimension": dimension, "CreditPoint": "3", "RequireOption": "R", "AllYear": "H",
+                "ChooseStudent": 50, "Restrict1": "0", "Restrict2": "60", "CourseTimes": "3",
+                "PracticalTimes": "0", "ClassRoomNo": "TR-313", "Node": node, "Contents": "",
+                "IsIntensive": intensive, "IsAlliance": alliance, "IsEnglishTaught": englishTaught,
+            ]
         }
+    }
+
+    /// A term in course-number order, as the backend sorts it. Courses differ in what one
+    /// filter or one search looks at.
+    private static let zhRows = [
+        Row(courseNo: "3N1346703", name: "國文文法", teacher: "郭維茹", intensive: true, alliance: true),
+        Row(courseNo: "CS1001301", name: "計算機概論", teacher: "王大明"),
+        Row(courseNo: "CS1002301", name: "資料結構", teacher: "李小華"),
+        Row(courseNo: "CS5101701", name: "深度學習", teacher: "陳明", englishTaught: true),
+        Row(courseNo: "EE1001301", name: "微積分(上)", teacher: "黃意婷"),
+        Row(courseNo: "GE1408301", name: "台灣文學", teacher: "林文", dimension: "A"),
+        Row(courseNo: "MA160A001", name: "微積分", teacher: "周志隆", node: "R6"),
+        Row(courseNo: "MA160A001", name: "微積分", teacher: "周志隆", node: "F2,F3"),
+        Row(courseNo: "TCG051301", name: "藝術欣賞", teacher: "張美", dimension: "C"),
+    ]
+
+    private static let enNames = [
+        "3N1346703": ("Chinese Grammar", "Wei-Ju Kuo"),
+        "CS1001301": ("Introduction to Computers", "Da-Ming Wang"),
+        "CS1002301": ("Data Structures", "Hsiao-Hua Li"),
+        "CS5101701": ("Deep Learning", "Ming Chen"),
+        "EE1001301": ("Calculus (I)", "Yi-Ting Huang"),
+        "GE1408301": ("Taiwanese Literature", "Wen Lin"),
+        "MA160A001": ("Calculus", "Chih-Lung Chou"),
+        "TCG051301": ("Art Appreciation", "Mei Chang"),
+    ]
+
+    private static func rows(_ language: String) -> [Row] {
+        guard language == "en" else { return zhRows }
+        return zhRows.map { row in
+            var row = row
+            (row.name, row.teacher) = enNames[row.courseNo] ?? (row.name, row.teacher)
+            return row
+        }
+    }
+
+    /// The document `GET /v3/course-catalog/1151` sends.
+    private static func body(_ language: String, rows: [Row]? = nil) throws -> Data {
+        let english = language == "en"
+        let document: [String: Any] = [
+            "fetched_at": "2026-10-26T05:29:37Z", "semester": "1151", "language": language,
+            "courses": (rows ?? Self.rows(language)).map(\.json),
+            "colleges": [[
+                "no": "2", "name": english ? "College of EECS" : "電資學院",
+                "departments": [
+                    ["no": "CS", "name": english ? "Computer Science" : "資訊工程系"],
+                    ["no": "EE", "name": english ? "Electrical Engineering" : "電機工程系"],
+                ],
+            ]],
+            "dimensions": [["no": "A", "name": english ? "Humanities and Thinking(A)" : "人文素養(A)"]],
+        ]
+        return try JSONSerialization.data(withJSONObject: document)
+    }
+
+    private static func catalog(_ language: String) throws -> CourseCatalog {
+        try JSONDecoder().decode(CourseCatalog.self, from: body(language))
+    }
+
+    private static func search(
+        _ query: String,
+        _ change: (inout CourseSearchFilters) -> Void = { _ in }
+    ) throws -> [String: [String]] {
+        var filters = CourseSearchFilters()
+        change(&filters)
+        let catalogs = try ["zh": catalog("zh").courses, "en": catalog("en").courses]
+        return CourseSearch.search(query, in: catalogs, filters: filters).mapValues { $0.map(\.CourseNo) }
+    }
+
+    // MARK: Local search
+
+    @Test("letters and digits match a course-number prefix first, ignoring case")
+    func prefixFirst() throws {
+        #expect(try Self.search("cs10") == ["zh": ["CS1001301", "CS1002301"], "en": ["CS1001301", "CS1002301"]])
+        // "Deep Learning" holds "ee" too, but a course number starts with it.
+        #expect(try Self.search("ee") == ["zh": ["EE1001301"], "en": ["EE1001301"]])
+        #expect(try Self.search("MA160A001") == ["zh": ["MA160A001", "MA160A001"], "en": ["MA160A001", "MA160A001"]])
+    }
+
+    @Test("letters and digits no course number starts with match the name and teacher")
+    func alphanumericFallsBack() throws {
+        #expect(try Self.search("data") == ["en": ["CS1002301"]])
+        #expect(try Self.search("HUANG") == ["en": ["EE1001301"]])
+    }
+
+    @Test("other text matches the name and teacher, simplified characters as traditional in zh")
+    func textMatchesNameAndTeacher() throws {
+        #expect(try Self.search("微积分") == ["zh": ["EE1001301", "MA160A001", "MA160A001"]])
+        #expect(try Self.search("黃意婷") == ["zh": ["EE1001301"]])
+        #expect(try Self.search("deep learn") == ["en": ["CS5101701"]])
+        #expect(try Self.search("calculus (") == ["en": ["EE1001301"]])
+    }
+
+    @Test("a department narrows the prefix, and a prefix outside it is matched as a name")
+    func departmentAndPrefix() throws {
+        let inCS = ["CS1001301", "CS1002301", "CS5101701"]
+        #expect(try Self.search("c") { $0.department = "CS" } == ["zh": inCS, "en": inCS])
+        #expect(try Self.search("ee") { $0.department = "CS" } == ["en": ["CS5101701"]])
+        #expect(try Self.search("ma") { $0.department = "CS" }.isEmpty)
+    }
+
+    private static func admitted(_ change: (inout CourseSearchFilters) -> Void) throws -> [String] {
+        var filters = CourseSearchFilters()
+        change(&filters)
+        return try catalog("zh").courses.filter { CourseSearch.admits($0, filters) }.map(\.row.CourseNo)
+    }
+
+    @Test("each filter keeps the courses the school's filter of that name returned")
+    func filters() throws {
+        let all = Self.zhRows.map(\.courseNo)
+        #expect(try Self.admitted { _ in } == all)
+        #expect(try Self.admitted { $0.department = "CS" } == ["CS1001301", "CS1002301", "CS5101701"])
+        #expect(try Self.admitted { $0.level = .graduate } == ["CS5101701"])
+        #expect(try Self.admitted { $0.level = .undergraduate } == all.filter { $0 != "CS5101701" })
+        #expect(try Self.admitted { $0.dimension = "A" } == ["GE1408301"])
+        #expect(try Self.admitted { $0.generalOnly = true } == ["GE1408301", "TCG051301"])
+        #expect(try Self.admitted { $0.englishTaught = true } == ["CS5101701"])
+        #expect(try Self.admitted { $0.intensiveOnly = true } == ["3N1346703"])
+        #expect(try Self.admitted { $0.excludeAlliance = true } == all.filter { $0 != "3N1346703" })
+        #expect(try Self.admitted {
+            $0.department = "CS"
+            $0.level = .undergraduate
+        } == ["CS1001301", "CS1002301"])
+    }
+
+    @Test("the filter lists come from the catalog, with each name in both languages")
+    func optionsFromCatalog() throws {
+        let options = CourseSearch.options(try ["zh": Self.catalog("zh"), "en": Self.catalog("en")])
+        #expect(options == CourseSearchOptions(
+            colleges: [.init(name: "電資學院", englishName: "College of EECS", departments: [
+                .init(code: "CS", name: "資訊工程系", englishName: "Computer Science"),
+                .init(code: "EE", name: "電機工程系", englishName: "Electrical Engineering"),
+            ])],
+            dimensions: [.init(code: "A", name: "人文素養(A)", englishName: "Humanities and Thinking(A)")]
+        ))
+        #expect(CourseSearch.options([:]) == CourseSearchOptions())
     }
 
     // MARK: Filters
-
-    @Test("each server filter maps to its request field")
-    func filterMapping() throws {
-        func request(_ change: (inout CourseSearchFilters) -> Void) throws -> CourseSearchRequest {
-            var filters = CourseSearchFilters()
-            change(&filters)
-            return try #require(CourseSearch.rounds(for: "CS", semester: "1151", filters: filters).first?.first)
-        }
-        let plain = try request { _ in }
-        #expect(plain == .forCourseNo("CS", semester: "1151", language: "zh"))
-
-        #expect(try request { $0.dimension = "A" }.Dimension == "A")
-        #expect(try request { $0.generalOnly = true }.OnlyGeneral == 1)
-        #expect(try request { $0.englishTaught = true }.CourseNotes == "eng")
-        #expect(try request { $0.englishTaught = true }.ForeignLanguage == 0)
-        #expect(try request { $0.intensiveOnly = true }.OnlyIntensive == 1)
-        #expect(try request { $0.excludeAlliance = true }.OnleyNTUST == 1)
-        let graduate = try request { $0.level = .graduate }
-        #expect(graduate.OnlyMaster == 1 && graduate.OnlyUnderGraduate == 0)
-        let undergraduate = try request { $0.level = .undergraduate }
-        #expect(undergraduate.OnlyMaster == 0 && undergraduate.OnlyUnderGraduate == 1)
-        #expect(try request { $0.department = "CS" }.CourseNo == "CS")
-    }
 
     @Test("hide conflicts and periods stay on the device, and reset means every default")
     func deviceFilters() {
@@ -102,9 +180,9 @@ struct CourseSearchTests {
         filters.hideConflicts = false
         filters.periods = [CourseSlot(day: 1, period: "3")]
         #expect(!filters.isDefault)
-        #expect(filters.requested == CourseSearchFilters())
+        #expect(filters.searched == CourseSearchFilters())
         filters.generalOnly = true
-        #expect(filters.requested != CourseSearchFilters())
+        #expect(filters.searched != CourseSearchFilters())
     }
 
     @Test("a picked period range keeps only courses that meet inside it")
@@ -252,15 +330,6 @@ struct CourseSearchTests {
         #expect(shown.otherNames["CS1001301"] == "Introduction to Computers")
     }
 
-    @Test("rows repeat only for another time slot of the same course")
-    func mergeKeepsSlots() {
-        let merged = CourseSearch.merge(
-            [Self.result("CS1001301", node: "M3")],
-            [Self.result("CS1001301", node: "M3"), Self.result("CS1001301", node: "W4")]
-        )
-        #expect(merged.map(\.Node) == ["M3", "W4"])
-    }
-
     @Test("department search ignores case and matches codes and either name")
     func departmentSearch() {
         let colleges = [
@@ -280,299 +349,222 @@ struct CourseSearchTests {
 
     // MARK: Model
 
-    @Test("an empty prefix round falls back to name and teacher once")
-    func fallback() async {
+    private static func cache() -> DataCache {
+        let root = FileManager.default.temporaryDirectory.appending(path: "CourseSearchTests-\(UUID().uuidString)")
+        return DataCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
+    }
+
+    private static func stored(_ language: String, etag: String, rows: [Row]? = nil) throws -> StoredCourseCatalog {
+        StoredCourseCatalog(body: try body(language, rows: rows), etag: etag)
+    }
+
+    /// A backend that logs each language and ETag it is asked with, waits for `gate`, then answers.
+    private static func backend(
+        _ sent: Box<[String]>,
+        gate: Gate? = nil,
+        answer: @escaping @MainActor (_ language: String) throws -> CourseCatalogClient.Answer
+    ) -> CourseSearchModel.FetchCatalog {
+        { @MainActor semester, language, etag in
+            #expect(semester == "1151")
+            sent.value.append("\(language) \(etag ?? "-")")
+            await gate?.wait()
+            return try answer(language)
+        }
+    }
+
+    @Test("the stored catalog is searched before the backend answers; a 304 keeps it, a 200 replaces it")
+    func storedCatalogFirst() async throws {
+        let cache = Self.cache()
+        let storedZh = try Self.stored("zh", etag: #"W/"zh1""#)
+        cache.saveCourseCatalog(storedZh, semester: "1151", language: "zh")
+        cache.saveCourseCatalog(try Self.stored("en", etag: #"W/"en1""#), semester: "1151", language: "en")
+        let renamed = Self.rows("en").map { row in
+            var row = row
+            if row.courseNo == "CS1001301" { row.name = "Computing 101" }
+            return row
+        }
+        let freshEn = try Self.stored("en", etag: #"W/"en2""#, rows: renamed)
         let sent = Box<[String]>([])
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
-            sent.value.append(Self.summary(request))
-            return request.CourseName.isEmpty ? [] : [Self.result("GE1001301")]
-        }, fetchOptions: Self.noOptions)
-
-        await model.search("calc", semester: "1151")
-
-        #expect(Set(sent.value.prefix(2)) == ["CALC|||zh", "CALC|||en"])
-        #expect(Set(sent.value.dropFirst(2)) == ["|calc||zh", "||calc|zh", "|calc||en", "||calc|en"])
-        #expect(sent.value.count == 6)
-        #expect(model.results["zh"]?.map(\.CourseNo) == ["GE1001301"])
-        #expect(!model.isSearching)
-        #expect(model.failure == nil)
-    }
-
-    @Test("a prefix that finds courses sends nothing more")
-    func prefixHit() async {
-        let sent = Box(0)
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
-            sent.value += 1
-            return [Self.result("CS1001301")]
-        }, fetchOptions: Self.noOptions)
-
-        await model.search("CS", semester: "1151")
-        #expect(sent.value == 2)
-        #expect(model.results.keys.sorted() == ["en", "zh"])
-    }
-
-    @Test("a round that fails everywhere shows the error and stops; one answer is enough")
-    func failures() async {
-        let sent = Box(0)
-        let failing = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
-            sent.value += 1
-            throw URLError(.timedOut)
-        }, fetchOptions: Self.noOptions)
-        await failing.search("CS", semester: "1151")
-        #expect(sent.value == 2)
-        #expect((failing.failure as? URLError)?.code == .timedOut)
-
-        let halfFailing = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
-            if request.Language == "zh" { throw URLError(.timedOut) }
-            return [Self.result("CS1001301")]
-        }, fetchOptions: Self.noOptions)
-        await halfFailing.search("CS", semester: "1151")
-        #expect(halfFailing.failure == nil)
-        #expect(halfFailing.results["en"]?.count == 1)
-    }
-
-    @Test("a new query drops the old rows and shows as searching before its wait ends")
-    func newQueryClearsAtOnce() async {
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
-            [Self.result("CS1001301")]
-        }, fetchOptions: Self.noOptions)
-        await model.search("CS", semester: "1151")
-        #expect(!model.results.isEmpty)
-
-        let waiting = Task { await model.search("EE", semester: "1151", after: .seconds(60)) }
-        for _ in 0..<10_000 where !model.results.isEmpty {
-            await Task.yield()
-        }
-        #expect(model.results.isEmpty)
-        #expect(model.isSearching)
-        #expect(model.failure == nil)
-        waiting.cancel()
-        await waiting.value
-    }
-
-    @Test("a blank query sends nothing and clears the results")
-    func blankQuery() async {
-        let sent = Box(0)
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
-            sent.value += 1
-            return [Self.result("CS1001301")]
-        }, fetchOptions: Self.noOptions)
-        await model.search("CS", semester: "1151")
-        sent.value = 0
-
-        await model.search(" \t ", semester: "1151")
-        #expect(sent.value == 0)
-        #expect(model.results.isEmpty)
-        #expect(!model.isSearching)
-        #expect(!model.hasSearched)
-    }
-
-    @Test("a failed request in the last round shows the error, not \"not found\"")
-    func lastRoundFailure() async {
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
-            guard request.Language == "zh", !request.CourseName.isEmpty else { throw URLError(.timedOut) }
-            return []
-        }, fetchOptions: Self.noOptions)
-        await model.search("微積分", semester: "1151")
-        #expect((model.failure as? URLError)?.code == .timedOut)
-        #expect(!model.isSearching)
-    }
-
-    @Test("an empty answer beside a failure in the prefix round still falls back")
-    func prefixRoundFailureFallsBack() async {
-        let sent = Box(0)
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
-            sent.value += 1
-            if request.CourseNo == "CALC", request.Language == "zh" { throw URLError(.timedOut) }
-            return []
-        }, fetchOptions: Self.noOptions)
-        await model.search("calc", semester: "1151")
-        #expect(sent.value == 6)
-        #expect(model.failure == nil)
-        #expect(model.results.isEmpty)
-    }
-
-    @Test("each request's courses show while another request is still out")
-    func showsEachAnswer() async {
         let gate = Gate()
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
-            if request.Language == "zh" { await gate.wait() }
-            return [Self.result("CS1001301")]
-        }, fetchOptions: Self.noOptions)
+        let fetch = Self.backend(sent, gate: gate) { $0 == "zh" ? .notModified : .changed(freshEn) }
+        let model = CourseSearchModel(cache: cache)
 
-        let search = Task { await model.search("CS1001301", semester: "1151") }
-        for _ in 0..<10_000 where model.results["en"] == nil {
+        await model.search("CS10", semester: "1151", fetch: fetch)
+        #expect(model.results["zh"]?.map(\.CourseNo) == ["CS1001301", "CS1002301"])
+        #expect(model.results["en"]?.first?.CourseName == "Introduction to Computers")
+        #expect(model.options.dimensions.map(\.code) == ["A"])
+        #expect(!model.isSearching)
+
+        let revision = model.revision
+        for _ in 0..<10_000 where sent.value.count < 2 {
             await Task.yield()
         }
-        #expect(model.results["en"]?.count == 1)
-        #expect(model.results["zh"] == nil)
+        #expect(Set(sent.value) == [#"zh W/"zh1""#, #"en W/"en1""#])
+        gate.open()
+        for _ in 0..<10_000 where model.revision == revision {
+            await Task.yield()
+        }
+        #expect(model.revision != revision)
+        #expect(cache.loadCourseCatalog(semester: "1151", language: "zh") == storedZh)
+        #expect(cache.loadCourseCatalog(semester: "1151", language: "en") == freshEn)
+
+        await model.search("computing", semester: "1151", fetch: fetch)
+        #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1001301"]])
+        #expect(sent.value.count == 2)
+
+        let nextSheet = CourseSearchModel(cache: cache)
+        let nextSent = Box<[String]>([])
+        await nextSheet.search("CS", semester: "1151", fetch: Self.backend(nextSent) { _ in .notModified })
+        for _ in 0..<10_000 where nextSent.value.count < 2 {
+            await Task.yield()
+        }
+        #expect(Set(nextSent.value) == [#"zh W/"zh1""#, #"en W/"en2""#])
+    }
+
+    @Test("with nothing stored, a search waits for the catalog, stores it and adds in the app language")
+    func nothingStored() async throws {
+        let cache = Self.cache()
+        let sent = Box<[String]>([])
+        let gate = Gate()
+        let model = CourseSearchModel(cache: cache)
+        let fetch = Self.backend(sent, gate: gate) { .changed(try Self.stored($0, etag: #"W/"\#($0)""#)) }
+
+        let search = Task { await model.search("data", semester: "1151", fetch: fetch) }
+        for _ in 0..<10_000 where sent.value.count < 2 {
+            await Task.yield()
+        }
         #expect(model.isSearching)
+        #expect(model.failure == nil)
+        model.submit()
+        #expect(model.revision == 0)
 
         gate.open()
         await search.value
-        #expect(model.results["zh"]?.count == 1)
         #expect(!model.isSearching)
+        #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
+        #expect(model.revision == 0)
+        #expect(cache.loadCourseCatalog(semester: "1151", language: "zh")?.etag == #"W/"zh""#)
+        #expect(cache.loadCourseCatalog(semester: "1151", language: "en")?.etag == #"W/"en""#)
+
+        #expect(model.appLanguageRow(of: "CS1002301", language: "zh")?.CourseName == "資料結構")
+        #expect(model.appLanguageRow(of: "CS9999301", language: "zh") == nil)
+        #expect(sent.value.count == 2)
     }
 
-    /// Fails only in an optimized build, where the inline tuple form `run` avoids loses each
-    /// answer's language.
-    @Test("every answer lands under the language that asked for it")
-    func answersKeepTheirLanguage() async {
-        let rows = [Self.result("CS1001301")]
-        let model = CourseSearchModel(cache: Self.cache(), search: { _ in
-            try await Task.sleep(for: .microseconds(Int.random(in: 0...2000)))
-            if Int.random(in: 0..<3) == 0 { throw URLError(.timedOut) }
-            return rows
-        }, fetchOptions: Self.noOptions)
+    @Test("with no catalog to be had, a search shows the error instead of not found", arguments: [
+        CourseCatalogError.unavailable as any Error,
+        URLError(.notConnectedToInternet),
+        PushAPIError.notSignedIn,
+    ])
+    func noCatalog(error: any Error) async {
+        let model = CourseSearchModel(cache: Self.cache())
+        let fetch = Self.backend(Box<[String]>([])) { _ in throw error }
 
-        for _ in 0..<300 {
-            await model.search("微積分", semester: "1151")
-            #expect(Set(model.results.keys).isSubset(of: CourseSearch.languages))
-        }
+        await model.search("CS", semester: "1151", fetch: fetch)
+        #expect(model.failure?.localizedDescription == error.localizedDescription)
+        #expect(model.results.isEmpty)
+        #expect(!model.isSearching)
+
+        await model.search(" ", semester: "1151", fetch: fetch)
+        #expect(model.failure == nil)
+        #expect(!model.hasSearched)
     }
 
-    @Test("a course only the other language found is added under its app-language row")
-    func otherLanguageCourseIsLookedUp() async {
+    @Test("Enter searches again only to retry a failed search")
+    func enterRetriesOnlyAFailure() async throws {
         let sent = Box<[String]>([])
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor request in
-            sent.value.append(Self.summary(request))
-            if request.CourseNo == "MA1001301", request.Language == "zh" { return [Self.result("MA1001301", "微積分")] }
-            return request.Language == "en" && !request.CourseName.isEmpty ? [Self.result("MA1001301", "Calculus")] : []
-        }, fetchOptions: Self.noOptions)
-        await model.search("Calculus", semester: "1151")
-        sent.value = []
+        let online = Box(false)
+        let model = CourseSearchModel(cache: Self.cache())
+        let fetch = Self.backend(sent) { language in
+            guard online.value else { throw URLError(.notConnectedToInternet) }
+            return .changed(try Self.stored(language, etag: #"W/"1""#))
+        }
 
-        let row = await model.appLanguageRow(of: "MA1001301", language: "zh", semester: "1151")
-        #expect(row?.CourseName == "微積分")
-        #expect(sent.value == ["MA1001301|||zh"])
+        await model.search("CS", semester: "1151", fetch: fetch)
+        #expect(model.failure != nil)
+        await model.search("CS1", semester: "1151", fetch: fetch)
+        #expect(sent.value.count == 2)
 
-        sent.value = []
-        #expect(await model.appLanguageRow(of: "MA1001301", language: "en", semester: "1151")?.CourseName == "Calculus")
-        #expect(sent.value.isEmpty)
+        online.value = true
+        model.submit()
+        #expect(model.revision == 1)
+        await model.search("CS1", semester: "1151", fetch: fetch)
+        #expect(model.failure == nil)
+        #expect(model.results["zh"]?.map(\.CourseNo) == ["CS1001301", "CS1002301"])
+        #expect(sent.value.count == 4)
+
+        model.submit()
+        #expect(model.revision == 1)
+        #expect(sent.value.count == 4)
     }
 
-    @Test("a failed or empty lookup leaves the found row in place")
-    func otherLanguageLookupFails() async {
-        let answers = Box<[Result<[CourseSearchResult], URLError>]>([.failure(URLError(.timedOut)), .success([])])
-        let model = CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
-            try answers.value.removeFirst().get()
-        }, fetchOptions: Self.noOptions)
+    @Test("Enter also fetches again a language that failed while the other loaded")
+    func enterRetriesAMissingLanguage() async throws {
+        let sent = Box<[String]>([])
+        let online = Box(false)
+        let model = CourseSearchModel(cache: Self.cache())
+        let fetch = Self.backend(sent) { language in
+            guard language == "zh" || online.value else { throw URLError(.notConnectedToInternet) }
+            return .changed(try Self.stored(language, etag: #"W/"1""#))
+        }
 
-        #expect(await model.appLanguageRow(of: "MA1001301", language: "zh", semester: "1151") == nil)
-        #expect(await model.appLanguageRow(of: "MA1001301", language: "zh", semester: "1151") == nil)
-        #expect(answers.value.isEmpty)
+        await model.search("data", semester: "1151", fetch: fetch)
+        #expect(model.failure == nil)
+        #expect(model.results.isEmpty)
+
+        online.value = true
+        model.submit()
+        #expect(model.revision == 1)
+        await model.search("data", semester: "1151", fetch: fetch)
+        for _ in 0..<10_000 where model.revision == 1 {
+            await Task.yield()
+        }
+        await model.search("data", semester: "1151", fetch: fetch)
+        #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
+        #expect(Set(sent.value.dropFirst(2)) == [#"zh W/"1""#, "en -"])
+
+        model.submit()
+        #expect(model.revision == 2)
     }
 
-    private static func lookupModel(gate: Gate) -> CourseSearchModel {
-        CourseSearchModel(cache: Self.cache(), search: { @MainActor _ in
-            await gate.wait()
-            return [Self.result("MA1001301", "微積分")]
-        }, fetchOptions: Self.noOptions)
-    }
-
-    @Test("an add waits for its lookup, and a second tap meanwhile does nothing")
-    func addWaitsForLookup() async throws {
-        let gate = Gate()
-        let model = Self.lookupModel(gate: gate)
-        let added = Box<[String?]>([])
-        let task = try #require(model.add("MA1001301", language: "zh", semester: "1151", isCurrent: { true }) {
-            added.value.append($0?.CourseName)
-        })
-        #expect(model.add("MA1001301", language: "zh", semester: "1151", isCurrent: { true }) { _ in } == nil)
-
-        gate.open()
-        await task.value
-        #expect(added.value == ["微積分"])
-    }
-
-    @Test("an add whose lookup outlives the sign-in writes nothing")
-    func addAfterSignOut() async throws {
-        let gate = Gate()
-        let model = Self.lookupModel(gate: gate)
-        let generation = Box(1)
-        let started = generation.value
-        let added = Box(0)
-        let task = try #require(model.add(
-            "MA1001301", language: "zh", semester: "1151", isCurrent: { generation.value == started }
-        ) { _ in added.value += 1 })
-
-        generation.value += 1
-        gate.open()
-        await task.value
-        #expect(added.value == 0)
-    }
-
-    @Test("closing the sheet drops an add still waiting for its lookup")
-    func addAfterSheetCloses() async throws {
-        let gate = Gate()
-        let model = Self.lookupModel(gate: gate)
-        let added = Box(0)
-        let task = try #require(model.add("MA1001301", language: "zh", semester: "1151", isCurrent: { true }) { _ in
-            added.value += 1
-        })
-
-        model.cancelPendingAdds()
-        gate.open()
-        await task.value
-        #expect(added.value == 0)
-    }
-
-    // MARK: Option lists
-
-    private static let stored = CourseSearchOptions(
-        colleges: [.init(name: "電資學院", englishName: "EECS", departments: [
-            .init(code: "CS", name: "資訊工程系", englishName: "Computer Science"),
-        ])],
-        dimensions: [.init(code: "A", name: "人文素養(A)", englishName: "Humanities and Thinking(A)")]
-    )
-
-    private static let fresh = CourseSearchOptions(
-        colleges: [.init(name: "電資學院", englishName: "EECS", departments: [
-            .init(code: "CS", name: "資訊工程系", englishName: "Computer Science"),
-            .init(code: "EE", name: "電機工程系", englishName: "Electrical Engineering"),
-        ])],
-        dimensions: [.init(code: "B", name: "當代文明(B)", englishName: "Contemporary Civilization(B)")]
-    )
-
-    @Test("the stored lists show before the refresh, which then replaces and stores them once")
-    func optionsRefresh() async {
+    @Test("with nothing stored, a search started after one language answered waits for the other")
+    func searchBetweenAnswers() async throws {
         let cache = Self.cache()
-        cache.saveCourseSearchOptions(Self.stored)
-        let seenWhileFetching = Box<CourseSearchOptions?>(nil)
-        let fetches = Box(0)
-        let model = Box<CourseSearchModel?>(nil)
-        model.value = CourseSearchModel(cache: cache, search: { _ in [] }, fetchOptions: { @MainActor in
-            fetches.value += 1
-            seenWhileFetching.value = model.value?.options
-            return Self.fresh
-        })
+        let enAnswer = Gate()
+        let model = CourseSearchModel(cache: cache)
+        let fetch: CourseSearchModel.FetchCatalog = { @MainActor _, language, _ in
+            if language == "en" { await enAnswer.wait() }
+            return .changed(try Self.stored(language, etag: #"W/"1""#))
+        }
 
-        await model.value?.refreshOptions()
-        #expect(seenWhileFetching.value == Self.stored)
-        #expect(model.value?.options == Self.fresh)
-        #expect(cache.loadCourseSearchOptions() == Self.fresh)
+        let first = Task { await model.search("dat", semester: "1151", fetch: fetch) }
+        for _ in 0..<10_000 where cache.loadCourseCatalog(semester: "1151", language: "zh") == nil {
+            await Task.yield()
+        }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+        first.cancel()
+        let second = Task { await model.search("data", semester: "1151", fetch: fetch) }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+        #expect(model.isSearching)
 
-        await model.value?.refreshOptions()
-        #expect(fetches.value == 1)
+        enAnswer.open()
+        await second.value
+        #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
+        #expect(model.revision == 0)
     }
 
-    @Test("a failed or empty refresh keeps the stored lists and tries again next time")
-    func optionsRefreshFails() async {
-        let cache = Self.cache()
-        cache.saveCourseSearchOptions(Self.stored)
-        let answers = Box<[CourseSearchOptions?]>([nil, CourseSearchOptions(), Self.fresh])
-        let model = CourseSearchModel(cache: cache, search: { _ in [] }, fetchOptions: { @MainActor in
-            guard let answer = answers.value.removeFirst() else { throw URLError(.notConnectedToInternet) }
-            return answer
-        })
-
-        await model.refreshOptions()
-        #expect(model.options == Self.stored)
-        await model.refreshOptions()
-        #expect(model.options == Self.stored)
-        #expect(cache.loadCourseSearchOptions() == Self.stored)
-        await model.refreshOptions()
-        #expect(model.options == Self.fresh)
+    @Test("each row mark looks and reads differently, and only a course already in the table is dimmed")
+    func rowMarks() {
+        let marks: [AddCourseRowMark] = [.inTable, .addedHere, .notAdded]
+        #expect(marks.map(\.symbol) == ["checkmark", "checkmark.circle.fill", "plus.circle"])
+        let heard = marks.map { [$0.accessibilityValue, $0.accessibilityHint, "\($0 == .inTable)"] }
+        #expect(Set(heard).count == marks.count)
+        #expect(AddCourseRowMark.notAdded.accessibilityValue.isEmpty)
+        #expect(AddCourseRowMark.addedHere.accessibilityValue == String(localized: "add_course_added"))
     }
 }
 
@@ -587,17 +579,17 @@ private final class Box<Value> {
 
 @MainActor
 private final class Gate {
-    private var continuation: CheckedContinuation<Void, Never>?
+    private var waiting: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false
 
     func wait() async {
         guard !isOpen else { return }
-        await withCheckedContinuation { continuation = $0 }
+        await withCheckedContinuation { waiting.append($0) }
     }
 
     func open() {
         isOpen = true
-        continuation?.resume()
-        continuation = nil
+        waiting.forEach { $0.resume() }
+        waiting = []
     }
 }

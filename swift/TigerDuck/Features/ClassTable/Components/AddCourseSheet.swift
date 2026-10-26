@@ -10,11 +10,8 @@ struct AddCourseSheet: View {
     let onAdd: (SDCourse) -> Bool
     var onRemove: ((String) -> Void)? = nil
 
-    private static let liveSearchDebounce: Duration = .milliseconds(350)
-
     @State private var model = CourseSearchModel()
     @State private var searchText = ""
-    @State private var attempt = 0
     @State private var showFilters = false
     @State private var sessionAddedCourseNos: Set<String> = []
     @FocusState private var searchFocused: Bool
@@ -22,29 +19,34 @@ struct AddCourseSheet: View {
     private struct SearchKey: Equatable {
         let text: String
         let filters: CourseSearchFilters
-        let attempt: Int
+        let revision: Int
     }
 
     var body: some View {
         #if os(macOS)
         macBody
             .onAppear { searchFocused = true }
-            .onDisappear { model.cancelPendingAdds() }
             .task(id: searchKey) {
-                await model.search(searchText, semester: semester, after: Self.liveSearchDebounce)
+                await model.search(searchText, semester: semester, fetch: fetchCatalog)
             }
         #else
         iosBody
             .onAppear { searchFocused = true }
-            .onDisappear { model.cancelPendingAdds() }
             .task(id: searchKey) {
-                await model.search(searchText, semester: semester, after: Self.liveSearchDebounce)
+                await model.search(searchText, semester: semester, fetch: fetchCatalog)
             }
         #endif
     }
 
     private var searchKey: SearchKey {
-        SearchKey(text: trimmedQuery, filters: model.filters.requested, attempt: attempt)
+        SearchKey(text: trimmedQuery, filters: model.filters.searched, revision: model.revision)
+    }
+
+    private var fetchCatalog: CourseSearchModel.FetchCatalog {
+        let client = CourseCatalogClient(authHeaderProvider: { [atm = appState.authTokenManager] in
+            await atm.authorizationHeader()
+        })
+        return { @MainActor in try await client.fetch(semester: $0, language: $1, etag: $2) }
     }
 
     private var trimmedQuery: String {
@@ -120,7 +122,7 @@ struct AddCourseSheet: View {
             .searchPresentationToolbarBehavior(.avoidHidingContent)
             .autocorrectionDisabled()
             .textFieldNeverCapitalized()
-            .onSubmit(of: .search) { attempt &+= 1 }
+            .onSubmit(of: .search) { model.submit() }
             .navigationTitle(String(localized: "add_course_title"))
             .inlineNavigationTitle()
             .toolbar {
@@ -184,7 +186,7 @@ struct AddCourseSheet: View {
                         .autocorrectionDisabled()
                         .focused($searchFocused)
                         .submitLabel(.search)
-                        .onSubmit { attempt &+= 1 }
+                        .onSubmit { model.submit() }
                     if !searchText.isEmpty {
                         Button {
                             searchText = ""
@@ -274,12 +276,6 @@ struct AddCourseSheet: View {
     @ViewBuilder
     private var macBottomBar: some View {
         HStack {
-            if model.isSearching && !model.results.isEmpty {
-                ProgressView().controlSize(.small)
-                Text(String(localized: "add_course_searching"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             Spacer()
             Button(String(localized: "action_close")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
@@ -317,15 +313,18 @@ struct AddCourseSheet: View {
         let existingCourseNos = Set(tableCourses.map(\.courseNo))
         ForEach(shown, id: \.course.courseNo) { item in
             let group = item.course
-            let isPreExisting = existingCourseNos.contains(group.courseNo)
-            let isSessionAdded = sessionAddedCourseNos.contains(group.courseNo)
-            let isPresent = isPreExisting || isSessionAdded
+            // A course added here joins `tableCourses` too, and stays removable.
+            let mark: AddCourseRowMark = sessionAddedCourseNos.contains(group.courseNo) ? .addedHere
+                : existingCourseNos.contains(group.courseNo) ? .inTable : .notAdded
             Button {
-                if isSessionAdded {
+                switch mark {
+                case .addedHere:
                     sessionAddedCourseNos.remove(group.courseNo)
                     onRemove?(group.courseNo)
-                } else if !isPreExisting {
+                case .notAdded:
                     addCourse(from: group)
+                case .inTable:
+                    break
                 }
             } label: {
                 HStack(alignment: .top, spacing: 8) {
@@ -346,7 +345,7 @@ struct AddCourseSheet: View {
                                 .font(TigerDuckTheme.Typography.caption)
                                 .foregroundStyle(Color.textSecondary)
                         }
-                        if !isPresent, !item.conflicts.isEmpty {
+                        if mark == .notAdded, !item.conflicts.isEmpty {
                             Label(
                                 String(
                                     format: String(localized: "course_search_conflicts_with"),
@@ -359,17 +358,15 @@ struct AddCourseSheet: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    if isPresent {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        Image(systemName: "plus.circle")
-                            .foregroundStyle(.tint)
-                    }
+                    Image(systemName: mark.symbol)
+                        .foregroundStyle(mark == .inTable ? AnyShapeStyle(Color.textSecondary) : AnyShapeStyle(.tint))
+                        .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
             }
-            .disabled(isPreExisting && !isSessionAdded)
+            .disabled(mark == .inTable)
+            .accessibilityValue(mark.accessibilityValue)
+            .accessibilityHint(mark.accessibilityHint)
         }
     }
 
@@ -484,16 +481,8 @@ struct AddCourseSheet: View {
     }
 
     private func addCourse(from group: GroupedCourse) {
-        let authService = appState.authService
-        let generation = authService.loginGeneration
-        model.add(
-            group.courseNo,
-            language: language,
-            semester: semester,
-            isCurrent: { authService.loginGeneration == generation }
-        ) { row in
-            add(group, name: row?.CourseName ?? group.primaryName, instructor: row?.CourseTeacher ?? group.instructor)
-        }
+        let row = model.appLanguageRow(of: group.courseNo, language: language)
+        add(group, name: row?.CourseName ?? group.primaryName, instructor: row?.CourseTeacher ?? group.instructor)
     }
 
     private func add(_ group: GroupedCourse, name: String, instructor: String) {
@@ -515,6 +504,32 @@ struct AddCourseSheet: View {
         )
         if onAdd(course) {
             sessionAddedCourseNos.insert(group.courseNo)
+        }
+    }
+}
+
+/// A result row's mark: in the table already, which this sheet cannot remove; added in this
+/// sheet, which a tap removes again; or not added. VoiceOver hears the first as dimmed.
+enum AddCourseRowMark {
+    case inTable, addedHere, notAdded
+
+    var symbol: String {
+        switch self {
+        case .inTable: "checkmark"
+        case .addedHere: "checkmark.circle.fill"
+        case .notAdded: "plus.circle"
+        }
+    }
+
+    var accessibilityValue: String {
+        self == .notAdded ? "" : String(localized: "add_course_added")
+    }
+
+    var accessibilityHint: String {
+        switch self {
+        case .inTable: ""
+        case .addedHere: String(localized: "action_remove")
+        case .notAdded: String(localized: "action_add")
         }
     }
 }

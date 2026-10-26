@@ -68,8 +68,6 @@ struct CourseSearchFilterView: View {
             }
         }
         .formStyle(.grouped)
-        // Not `.task`: pushing the department page would cancel the refresh it is waiting for.
-        .onAppear { Task { await model.refreshOptions() } }
     }
 
     private var resetButton: some View {

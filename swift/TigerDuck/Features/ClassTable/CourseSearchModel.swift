@@ -1,168 +1,160 @@
 import Foundation
 
-/// The Add Course sheet's search and filters. Each request's courses show as soon as it
-/// answers, and the filter page's option lists come from the device first.
+/// The Add Course sheet's search and filters, over the term's catalog from the TigerDuck
+/// backend. The stored catalog is searched at once, and the backend is asked once per sheet
+/// whether it changed.
 @Observable
 final class CourseSearchModel {
-    typealias Search = @Sendable (CourseSearchRequest) async throws -> [CourseSearchResult]
-    typealias FetchOptions = @Sendable () async throws -> CourseSearchOptions
+    typealias FetchCatalog = @Sendable (_ semester: String, _ language: String, _ etag: String?) async throws
+        -> CourseCatalogClient.Answer
 
     var filters = CourseSearchFilters()
-    /// Rows per request language, none repeated. A language that found nothing has no entry.
+    /// Rows per catalog language, none repeated. A language that found nothing has no entry.
     private(set) var results: [String: [CourseSearchResult]] = [:]
     private(set) var isSearching = false
     private(set) var hasSearched = false
     private(set) var failure: (any Error)?
     private(set) var options = CourseSearchOptions()
+    /// Moves when the sheet must search again for the same query and filters: the catalog
+    /// changed, or Enter retries a failed search.
+    private(set) var revision = 0
 
-    @ObservationIgnored private let search: Search
-    @ObservationIgnored private let fetchOptions: FetchOptions
     @ObservationIgnored private let cache: DataCache
-    @ObservationIgnored private var hasStoredOptions = false
-    @ObservationIgnored private var hasFreshOptions = false
-    @ObservationIgnored private var pendingAdds: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var catalogs: [String: CourseCatalog] = [:]
+    @ObservationIgnored private var storedETags: [String: String] = [:]
+    @ObservationIgnored private var storedRead: Task<Void, Never>?
+    @ObservationIgnored private var revalidation: Task<Void, Never>?
+    @ObservationIgnored private var catalogFailure: (any Error)?
+    @ObservationIgnored private var lacksLanguage = false
 
-    init(
-        cache: DataCache = .shared,
-        search: @escaping Search = CourseLookupService.search,
-        fetchOptions: @escaping FetchOptions = CourseLookupService.fetchSearchOptions
-    ) {
+    init(cache: DataCache = .shared) {
         self.cache = cache
-        self.search = search
-        self.fetchOptions = fetchOptions
     }
 
-    /// Waits `delay`, then searches. The previous query's rows go at once and the search shows as
-    /// running, so no old row can be tapped and no "not found" shows while the new query waits.
-    /// A blank query only clears, since a request with every search field empty never returns.
-    func search(_ query: String, semester: String, after delay: Duration = .zero) async {
+    /// Searches the catalog, once it is loaded, off the main thread. A blank query only clears.
+    func search(_ query: String, semester: String, fetch: @escaping FetchCatalog) async {
         let query = query.trimmingCharacters(in: .whitespaces)
-        results = [:]
-        failure = nil
         hasSearched = !query.isEmpty
-        isSearching = !query.isEmpty
-        guard !query.isEmpty else { return }
-        if delay > .zero {
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
+        if query.isEmpty { results = [:] }
+        if catalogs.isEmpty {
+            failure = nil
+            isSearching = !query.isEmpty
         }
-        let rounds = CourseSearch.rounds(for: query, semester: semester, filters: filters)
-        for (index, round) in rounds.enumerated() {
-            let (answered, firstError) = await run(round)
-            guard !Task.isCancelled else { return }
-            if !results.isEmpty { break }
-            // With nothing found, a failed request in the last round may have held the match.
-            if let firstError, !answered || index == rounds.count - 1 {
-                failure = firstError
-                AppLogger.captureError(firstError, context: ["feature": "addCourseSheet.search"])
-                break
-            }
+        await loadCatalog(semester: semester, fetch: fetch)
+        guard !Task.isCancelled else { return }
+        guard !query.isEmpty else {
+            failure = nil
+            isSearching = false
+            return
         }
+        guard !catalogs.isEmpty else {
+            results = [:]
+            failure = catalogFailure ?? CourseCatalogError.unavailable
+            isSearching = false
+            return
+        }
+        let courses = catalogs.mapValues(\.courses)
+        let filters = filters
+        let found = await Task.detached { CourseSearch.search(query, in: courses, filters: filters) }.value
+        guard !Task.isCancelled else { return }
+        results = found
+        failure = nil
         isSearching = false
     }
 
-    /// Adds each request's rows as it answers. Returns whether any request answered, and the
-    /// first error of those that failed.
-    private func run(_ requests: [CourseSearchRequest]) async -> (answered: Bool, firstError: (any Error)?) {
-        let search = search
-        var answered = false
+    /// Enter in the search field. It searches again only to retry a failed search or a catalog
+    /// language that failed to load, as one that ran or is running would find the same rows.
+    func submit() {
+        guard failure != nil || lacksLanguage else { return }
+        lacksLanguage = false
+        revalidation = nil
+        revision &+= 1
+    }
+
+    /// The row to add a course from, in the app's course language; nil when that language's
+    /// catalog lacks it, and the caller then keeps the row it was found with.
+    func appLanguageRow(of courseNo: String, language: String) -> CourseSearchResult? {
+        catalogs[language]?.courses.first { $0.row.CourseNo == courseNo }?.row
+    }
+
+    /// Reads the stored catalog, then asks the backend once whether it changed. Waits for the
+    /// backend only while no catalog is stored.
+    private func loadCatalog(semester: String, fetch: @escaping FetchCatalog) async {
+        if storedRead == nil {
+            storedRead = Task { await readStored(semester) }
+        }
+        await storedRead?.value
+        if revalidation == nil {
+            revalidation = Task { await revalidate(semester, fetch) }
+        }
+        if catalogs.isEmpty { await revalidation?.value }
+    }
+
+    private func readStored(_ semester: String) async {
+        let (cache, languages) = (cache, CourseSearch.languages)
+        let stored = await Task.detached {
+            var stored: [String: (catalog: CourseCatalog, etag: String?)] = [:]
+            for language in languages {
+                guard let copy = cache.loadCourseCatalog(semester: semester, language: language) else { continue }
+                do {
+                    stored[language] = (try JSONDecoder().decode(CourseCatalog.self, from: copy.body), copy.etag)
+                } catch {
+                    AppLogger.captureError(error, context: ["feature": "addCourseSheet.storedCatalog"])
+                }
+            }
+            return stored
+        }.value
+        guard !stored.isEmpty else { return }
+        catalogs = stored.mapValues(\.catalog)
+        storedETags = stored.compactMapValues(\.etag)
+        options = CourseSearch.options(catalogs)
+    }
+
+    private func revalidate(_ semester: String, _ fetch: @escaping FetchCatalog) async {
+        let cache = cache
+        let hadCatalog = !catalogs.isEmpty
         var firstError: (any Error)?
-        await withTaskGroup(of: (String, Result<[CourseSearchResult], any Error>).self) { group in
-            for request in requests {
-                let language = request.Language
+        var fresh: [String: (catalog: CourseCatalog, etag: String?)] = [:]
+        await withTaskGroup(of: (String, Result<(CourseCatalog, String?)?, any Error>).self) { group in
+            for language in CourseSearch.languages {
+                let etag = storedETags[language]
                 group.addTask {
                     do {
-                        // Awaited before the tuple is built: in optimized builds (Swift 6.4) the inline
-                        // `return (language, .success(try await ...))` leaves `language` unset on success.
-                        let rows = try await search(request)
-                        return (language, .success(rows))
+                        // Awaited before the tuple is built: in optimized builds (Swift 6.4) an inline
+                        // `try await` in the returned tuple leaves `language` unset.
+                        let answer = try await fetch(semester, language, etag)
+                        guard case .changed(let copy) = answer else { return (language, .success(nil)) }
+                        let catalog = try JSONDecoder().decode(CourseCatalog.self, from: copy.body)
+                        cache.saveCourseCatalog(copy, semester: semester, language: language)
+                        return (language, .success((catalog, copy.etag)))
                     } catch {
                         return (language, .failure(error))
                     }
                 }
             }
-            for await (language, result) in group where !Task.isCancelled {
+            for await (language, result) in group {
                 switch result {
-                case .success(let rows):
-                    answered = true
-                    guard !rows.isEmpty else { continue }
-                    results[language] = CourseSearch.merge(results[language] ?? [], rows)
+                case .success(let (catalog, etag)?):
+                    fresh[language] = (catalog, etag)
+                case .success(nil):
+                    break
                 case .failure(let error):
                     firstError = firstError ?? error
+                    AppLogger.captureError(error, context: ["feature": "addCourseSheet.catalog"])
                 }
             }
         }
-        return (answered, firstError)
-    }
-
-    /// The row to add a course from, in the app's course language. A course only the other
-    /// language found is looked up once by its number; nil when that fails or finds nothing,
-    /// and the caller then keeps the row it was found with.
-    func appLanguageRow(of courseNo: String, language: String, semester: String) async -> CourseSearchResult? {
-        if let row = results[language]?.first(where: { $0.CourseNo == courseNo }) { return row }
-        do {
-            return try await search(.forCourseNo(courseNo, semester: semester, language: language))
-                .first { $0.CourseNo == courseNo }
-        } catch {
-            if !Task.isCancelled {
-                AppLogger.captureError(error, context: ["feature": "addCourseSheet.appLanguageRow"])
-            }
-            return nil
+        // All at once, so no search runs on one language while the other is still on its way.
+        for (language, copy) in fresh {
+            catalogs[language] = copy.catalog
+            storedETags[language] = copy.etag
         }
-    }
-
-    /// Hands a course's app-language row, or nil, to `add` once the lookup answers. A second tap
-    /// while it is out does nothing. Nothing is added after `cancelPendingAdds` or once
-    /// `isCurrent` turns false: a sign-out has purged that account's courses, and a late add
-    /// would write one back.
-    @discardableResult
-    func add(
-        _ courseNo: String,
-        language: String,
-        semester: String,
-        isCurrent: @escaping () -> Bool,
-        add: @escaping (CourseSearchResult?) -> Void
-    ) -> Task<Void, Never>? {
-        guard pendingAdds[courseNo] == nil else { return nil }
-        let task = Task { [weak self] in
-            let row = await self?.appLanguageRow(of: courseNo, language: language, semester: semester)
-            guard let self, !Task.isCancelled else { return }
-            pendingAdds[courseNo] = nil
-            guard isCurrent() else { return }
-            add(row)
+        if !fresh.isEmpty {
+            options = CourseSearch.options(catalogs)
+            // A search that ran on the stored catalog runs again; one that waited goes on by itself.
+            if hadCatalog { revision &+= 1 }
         }
-        pendingAdds[courseNo] = task
-        return task
-    }
-
-    /// Drops every add still waiting for its lookup, for a sheet that went away.
-    func cancelPendingAdds() {
-        pendingAdds.values.forEach { $0.cancel() }
-        pendingAdds = [:]
-    }
-
-    /// Shows the stored lists at once, then fetches the school's once per sheet. A failed or empty
-    /// fetch keeps the stored lists, and the next call tries again.
-    func refreshOptions() async {
-        if !hasStoredOptions {
-            hasStoredOptions = true
-            options = cache.loadCourseSearchOptions() ?? options
-        }
-        guard !hasFreshOptions else { return }
-        hasFreshOptions = true
-        do {
-            let fresh = try await fetchOptions()
-            guard !fresh.colleges.isEmpty, !fresh.dimensions.isEmpty else {
-                hasFreshOptions = false
-                return
-            }
-            options = fresh
-            cache.saveCourseSearchOptions(fresh)
-        } catch {
-            hasFreshOptions = false
-            if !Task.isCancelled {
-                AppLogger.captureError(error, context: ["feature": "addCourseSheet.options"])
-            }
-        }
+        if catalogs.isEmpty { catalogFailure = firstError }
+        lacksLanguage = catalogs.count < CourseSearch.languages.count
     }
 }
