@@ -49,7 +49,6 @@ struct BrowserFindBar: View {
         .onAppear { focused = true }
         // The bar stays on screen while it slides away, and the keyboard goes down with it.
         .onChange(of: find.isActive) { _, active in if !active { focused = false } }
-        // Searches once typing pauses rather than on every keystroke.
         .task(id: [find.query, find.mode.rawValue]) {
             do { try await Task.sleep(for: Self.pause) } catch { return }
             if find.isActive { await find.search() }

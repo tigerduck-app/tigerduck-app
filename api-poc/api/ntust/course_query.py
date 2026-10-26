@@ -184,7 +184,6 @@ def run_latency(probe: Probe, semester: str, rounds: int = 5) -> None:
             probe.courses("latency", f"{kind} #{round_no}", semester, **fields)
         if round_no < 3:
             probe.courses("latency", f"flag-only OnlyGeneral #{round_no}", semester, OnlyGeneral=1)
-    probe.courses("latency", "empty #1", semester)
 
 
 def run_parallel(probe: Probe, semester: str) -> None:
