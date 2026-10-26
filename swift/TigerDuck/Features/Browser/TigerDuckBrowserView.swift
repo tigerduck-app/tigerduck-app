@@ -204,10 +204,10 @@ struct TigerDuckBrowserView: View {
         .ignoresSafeArea(.container, edges: collapsed ? .bottom : [])
     }
 
-    /// A button inside the address pill narrows to nothing as the pill shrinks, so it moves with
-    /// its own edge of the pill toward the host name and down.
+    /// A button inside the address pill shrinks to nothing as the pill does, so it moves with its
+    /// own edge of the pill toward the host name and down, and leaves the pill its capsule height.
     private func intoCapsule(_ button: some View) -> some View {
-        button.frame(width: collapsed ? 0 : 40)
+        button.frame(width: collapsed ? 0 : 40, height: collapsed ? 0 : nil)
             .hiddenWhenCollapsed(collapsed, toward: CGSize(width: 0, height: 10), moving: !reduceMotion)
     }
 
