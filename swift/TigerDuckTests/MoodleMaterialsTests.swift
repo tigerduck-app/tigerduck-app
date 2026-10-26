@@ -565,4 +565,18 @@ struct MoodleMaterialsTests {
         #expect(opener.shared?.url == store.location(of: page.file, in: page.owner))
         #expect(opener.preview == nil)
     }
+
+    @Test func aFileTheBrowserSavedOpensAsAMoodleFileDoes() {
+        let opener = MoodleFileOpener()
+        let pdf = URL(fileURLWithPath: "/tmp/BrowserDownloads/a/week1.pdf")
+        opener.show(downloaded: pdf, mimeType: "application/pdf")
+        #expect(opener.preview == pdf)
+        #expect(opener.shared == nil)
+
+        let page = URL(fileURLWithPath: "/tmp/BrowserDownloads/b/notes")
+        opener.preview = nil
+        opener.show(downloaded: page, mimeType: "text/html; charset=utf-8")
+        #expect(opener.shared?.url == page)
+        #expect(opener.preview == nil)
+    }
 }

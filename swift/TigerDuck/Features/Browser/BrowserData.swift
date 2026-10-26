@@ -51,6 +51,7 @@ final class BrowserData {
     func reset() -> Task<Void, Never>? {
         generation += 1
         current = nil
+        try? FileManager.default.removeItem(at: BrowserPage.downloadsRoot)
         Defaults.reset(.browserZoom, .browserDesktopSites)
         guard loadState() != .empty else { return nil }
         saveState(.stale)

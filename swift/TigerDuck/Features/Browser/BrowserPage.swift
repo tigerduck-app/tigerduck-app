@@ -29,6 +29,12 @@ final class BrowserPage {
     fileprivate(set) var isDesktopSite = false
     let store: WKWebsiteDataStore
     let generation: Int
+    /// Shows a file the browser saved, as a Moodle file is shown.
+    let files = MoodleFileOpener()
+    /// This browser's saved files, removed with it; `BrowserData.reset()` removes every browser's.
+    nonisolated let downloads = BrowserPage.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent("BrowserDownloads", isDirectory: true)
     @ObservationIgnored fileprivate weak var webView: WKWebView?
     @ObservationIgnored private var collapse = BrowserChromeCollapse()
 
@@ -44,6 +50,10 @@ final class BrowserPage {
                 return url == target ? nil : url
             }
         )
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: downloads)
     }
 
     /// The address the bars, the sheet, Copy and Share go by: a one-time sign-in link stands for
@@ -142,10 +152,11 @@ final class BrowserPage {
 /// The web view's delegate: routes each navigation, turns Moodle's sign-in page into a sign-in,
 /// applies the app's TLS pins and keeps ``BrowserPage`` current.
 @MainActor
-final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
+final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private let page: BrowserPage
     private var observations: [NSKeyValueObservation] = []
     private var refusedHosts: Set<String> = []
+    private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
     /// The Moodle page asked for last, which a sign-in its navigation ran into goes on to.
     private var lastRequested: URL?
     /// How long the store keeps Moodle's session cookie on disk; Moodle's own timeout ends it sooner.
@@ -255,6 +266,39 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate {
         case .refuse:
             decisionHandler(.cancel)
         }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
+        let action = BrowserRouting.responseAction(
+            canShow: navigationResponse.canShowMIMEType, contentDisposition: disposition, isMainFrame: navigationResponse.isForMainFrame
+        )
+        return action == .download ? .download : .allow
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+        // The load ends here without finishing, which would leave a sign-in that led to it showing.
+        page.signIn.pageSettled()
+    }
+
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
+        // A folder each, so two files of one name both keep theirs.
+        let folder = page.downloads.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else { return nil }
+        let file = folder.appendingPathComponent(MoodleFileDownloads.safeName(suggestedFilename))
+        saving[ObjectIdentifier(download)] = (file, response.mimeType)
+        return file
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        guard let saved = saving.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        page.files.show(downloaded: saved.file, mimeType: saved.mimeType)
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
+        saving[ObjectIdentifier(download)] = nil
+        page.failure = .unreachable(host: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host)
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {

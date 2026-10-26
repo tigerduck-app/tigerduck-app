@@ -34,6 +34,19 @@ nonisolated enum BrowserRouting {
         }
     }
 
+    enum ResponseAction: Equatable {
+        case show
+        case download
+    }
+
+    /// A page's response WebKit cannot show, or one its server sends as an attachment, is a file
+    /// to save. A frame's is left to WebKit, as the browser shows only the page's own files.
+    static func responseAction(canShow: Bool, contentDisposition: String?, isMainFrame: Bool) -> ResponseAction {
+        guard isMainFrame else { return .show }
+        let disposition = contentDisposition?.split(separator: ";").first?.trimmingCharacters(in: .whitespaces).lowercased()
+        return canShow && disposition != "attachment" ? .show : .download
+    }
+
     /// https on the default port with no user in the address, on a subdomain of ntust.edu.tw.
     static func isAllowed(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https", url.port == nil || url.port == 443,

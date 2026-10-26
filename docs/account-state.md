@@ -18,7 +18,7 @@ account: preferences, the device's own identity and public school data.
 |---|---|
 | School session cookies, the Moodle and SSO cookies | `AuthService.endSchoolSession(departing:)` and `MoodleTokenService.signOut()` |
 | Shared URL cache and the in-app browser's website data | `AuthService.forgetSchoolPages`, in the sign-out calls a sign-in waits for |
-| The TigerDuck browser's website data, in a store of its own on disk | `BrowserData.reset()` in `AppState.forgetAccountOnDevice` and at each sign-in in `AuthService.login`; what it could not remove the next browser clears before it loads (`browserDataState`) |
+| The TigerDuck browser's website data, in a store of its own on disk, and the files it saved | `BrowserData.reset()` in `AppState.forgetAccountOnDevice` and at each sign-in in `AuthService.login`; what it could not remove the next browser clears before it loads (`browserDataState`) |
 | Delivered notifications of the account | `AuthService.logout()` and again at the end of the sign-out calls; School Mail's thread stays |
 | Answers shared between callers (Moodle enrolment, classroom usage, enrolled course numbers) | `AuthService.endSchoolSession(departing:)` |
 | Imported class tables of the account | `ImportedClassTableStore.removeAll()` in `AppState.forgetAccountOnDevice` |
