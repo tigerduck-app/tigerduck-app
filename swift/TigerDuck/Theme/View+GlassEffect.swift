@@ -25,10 +25,24 @@ private struct GlassCardModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.background(
-            // The material over the flat light page reads as grey, so light cards are white.
             RoundedRectangle(cornerRadius: cornerRadius)
-                .fill(colorScheme == .light ? AnyShapeStyle(Color.white) : AnyShapeStyle(.ultraThinMaterial))
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                .fill(GlassCard.surface(colorScheme))
+                .glassCardShadow()
         )
+    }
+}
+
+/// Shared by `glassCard` and `presetCardRow`, so a card split across list rows looks the same as
+/// a whole one.
+enum GlassCard {
+    // The material over the flat light page reads as grey, so light cards are white.
+    static func surface(_ colorScheme: ColorScheme) -> AnyShapeStyle {
+        colorScheme == .light ? AnyShapeStyle(Color.white) : AnyShapeStyle(.ultraThinMaterial)
+    }
+}
+
+extension View {
+    func glassCardShadow() -> some View {
+        shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
     }
 }
