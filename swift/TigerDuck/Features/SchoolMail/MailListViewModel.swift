@@ -469,7 +469,8 @@ final class MailListViewModel {
                     }
                     guard isCurrent(selection, epoch), generation == searchGeneration, let results = searchResults else { return }
                     noteGone(batch, more, folder: folder)
-                    unfetchedMatches[folder]?.uids = Array(matches.uids.dropFirst(batch.count))
+                    // Only what this page fetched: a catch-up may have queued more meanwhile.
+                    unfetchedMatches[folder]?.uids.removeAll { batch.contains($0) }
                     let listed = Set(results.map(\.id))
                     let rows = more.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
                     searchResults = ordered(results + rows.filter { !listed.contains($0.id) })
