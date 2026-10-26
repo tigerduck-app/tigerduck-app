@@ -121,10 +121,10 @@ struct SchoolMailView: View {
     private static let headerActionWidth: CGFloat = 44
     private static let composeButtonSize: CGFloat = 56
 
-    /// The unread-only filter in a capsule: the backing the toolbar used to supply on iOS 26.
+    /// The unread-only filter in a capsule, the backing an iOS 26 toolbar gives its buttons.
     /// The status dot stays outside it: it reports on the server, it does not act on the mailbox.
-    /// The button is `.borderless` because the row is a `List` row now: the default style
-    /// there gives the whole row one tap target and drops the tint. `MailFolderChipBar` and
+    /// The button is `.borderless` because the row is a `List` row: the default style there
+    /// gives the whole row one tap target and drops the tint. `MailFolderChipBar` and
     /// `SyncStatusDot` take `.plain` in the same situation, for the same reason.
     @ViewBuilder
     private var headerActions: some View {
