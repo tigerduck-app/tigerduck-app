@@ -329,10 +329,13 @@ enum MoodleCourseRoute: Hashable {
     case discussion(MoodleDiscussion, in: MoodleForum)
     case assignments
     case assignment(MoodleCourseAssignments.Entry)
+    case syllabus(CourseSyllabus)
 
     var refreshesOnItsOwn: Bool {
         switch self {
         case .announcements, .materials, .grades, .members, .forums, .forum, .discussion, .assignments: true
+        // Its chrome takes the Mac's refresh shortcut and has nothing to fetch again.
+        case .syllabus: true
         case .announcement, .member, .assignment: false
         }
     }

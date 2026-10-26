@@ -60,6 +60,7 @@ jobs:
               TigerDuckTests/ClassTableSwitcherTests
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
+              TigerDuckTests/CourseSyllabusPageTests
               TigerDuckTests/EmptyClassroomLayoutTests
               TigerDuckTests/HomeEditPageTests
               TigerDuckTests/HomeScrollAnchorTests
