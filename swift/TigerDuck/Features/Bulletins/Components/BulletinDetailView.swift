@@ -19,7 +19,6 @@ struct BulletinDetailView: View {
     @State private var detail: BulletinAPI.BulletinDetail?
     @State private var loadError: String?
     @State private var isLoading: Bool = false
-    @State private var showInAppBrowser: Bool = false
 
     private static let apiClient: BulletinAPIClient = BulletinAPIClient()
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Detail")
@@ -52,12 +51,6 @@ struct BulletinDetailView: View {
         .task(id: bulletin.id) {
             readState?.markRead(bulletin.id)
             await loadDetail()
-        }
-        .sheet(isPresented: $showInAppBrowser) {
-            if let url = URL(string: bulletin.sourceUrl) {
-                InAppBrowserView(url: url)
-                    .ignoresSafeArea()
-            }
         }
     }
 
@@ -153,11 +146,7 @@ struct BulletinDetailView: View {
     private var sourceLinkButton: some View {
         if let url = URL(string: bulletin.sourceUrl) {
             Button {
-                if appState.browserPreference == .inApp {
-                    showInAppBrowser = true
-                } else {
-                    openURL(url)
-                }
+                openURL(url)
             } label: {
                 Label(String(localized: "bulletin_source_link_label"), systemImage: "safari")
                     .font(.callout.bold())
