@@ -25,6 +25,29 @@ nonisolated enum AppLogger {
         diagnostics.info("\(category, privacy: .public): \(scrubSensitive(message), privacy: .private)")
     }
 
+    /// Logs a school service's fetch that landed off its page, so a sysdiagnose shows where a
+    /// lapsed session goes (https://github.com/tigerduck-app/tigerduck-app/issues/242). Every
+    /// field is a fixed label, which is why they can be public.
+    static func serviceBounce(service: String, landedHost: String, ssoBody: Bool, outcome: BounceOutcome) {
+        diagnostics.info("""
+            bounce service=\(service, privacy: .public) landedHost=\(landedHost, privacy: .public) \
+            ssoBody=\(ssoBody, privacy: .public) outcome=\(outcome.rawValue, privacy: .public)
+            """)
+    }
+
+    enum BounceOutcome: String {
+        case recovered, bouncedAgain, failed
+    }
+
+    /// The host a fetch landed on as one of a few labels; the path, the query and any other
+    /// host are never kept.
+    static func landedHost(_ url: URL?, service: URL) -> String {
+        guard let host = url?.host?.lowercased() else { return "other" }
+        if host == service.host?.lowercased() { return "service" }
+        let known = ["ssoam2.ntust.edu.tw": "ssoam2", "ssoam.ntust.edu.tw": "ssoam", "i.ntust.edu.tw": "i.ntust.edu.tw"]
+        return known[host] ?? "other"
+    }
+
     static func errorLine(_ error: any Error, context: [String: String]) -> String {
         let fields = context.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
         let line = fields.isEmpty

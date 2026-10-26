@@ -173,11 +173,20 @@ struct CourseSearchTests {
 
     // MARK: Filters
 
+    @Test("hide conflicts starts off and, turned on alone, fills the filter button")
+    func hideConflictsDefault() {
+        var filters = CourseSearchFilters()
+        #expect(!filters.hideConflicts)
+        #expect(filters.isDefault)
+        filters.hideConflicts = true
+        #expect(!filters.isDefault)
+    }
+
     @Test("hide conflicts and periods stay on the device, and reset means every default")
     func deviceFilters() {
         var filters = CourseSearchFilters()
         #expect(filters.isDefault)
-        filters.hideConflicts = false
+        filters.hideConflicts = true
         filters.periods = [CourseSlot(day: 1, period: "3")]
         #expect(!filters.isDefault)
         #expect(filters.searched == CourseSearchFilters())
@@ -188,7 +197,6 @@ struct CourseSearchTests {
     @Test("a picked period range keeps only courses that meet inside it")
     func periodsFilter() {
         var filters = CourseSearchFilters()
-        filters.hideConflicts = false
         filters.periods = [CourseSlot(day: 1, period: "3"), CourseSlot(day: 1, period: "4")]
         func shown(_ schedule: [Int: [String]]) -> Bool {
             CourseSearch.visibleConflicts(courseNo: "X", schedule: schedule, table: [], filters: filters) != nil
@@ -214,7 +222,7 @@ struct CourseSearchTests {
 
     // MARK: Conflicts
 
-    @Test("a clash is hidden by default and named when hide conflicts is off")
+    @Test("a clash is named by default and hidden when hide conflicts is on")
     func conflicts() {
         let table = [
             CourseSearchTableCourse(courseNo: "CS2001301", name: "資料結構", slots: [CourseSlot(day: 2, period: "3")]),
@@ -222,12 +230,12 @@ struct CourseSearchTests {
         ]
         var filters = CourseSearchFilters()
         let clash = [2: ["3", "4"]]
-        #expect(CourseSearch.visibleConflicts(courseNo: "MA1001301", schedule: clash, table: table, filters: filters) == nil)
-        #expect(CourseSearch.visibleConflicts(courseNo: "MA1001301", schedule: [2: ["5"]], table: table, filters: filters) == [])
-
-        filters.hideConflicts = false
         #expect(CourseSearch.visibleConflicts(courseNo: "MA1001301", schedule: clash, table: table, filters: filters)
             == ["資料結構", "計算機組織"])
+
+        filters.hideConflicts = true
+        #expect(CourseSearch.visibleConflicts(courseNo: "MA1001301", schedule: clash, table: table, filters: filters) == nil)
+        #expect(CourseSearch.visibleConflicts(courseNo: "MA1001301", schedule: [2: ["5"]], table: table, filters: filters) == [])
     }
 
     @Test("a course already in the timetable is no conflict and stays listed")
