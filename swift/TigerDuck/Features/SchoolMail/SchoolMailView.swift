@@ -9,7 +9,6 @@ struct SchoolMailView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = MailListViewModel()
     @State private var showLoginSheet = false
-    @State private var showGuide = false
     @State private var route: MailMessageRoute?
     @State private var compose: MailComposeContext?
     @State private var isSearchRevealed = false
@@ -33,7 +32,6 @@ struct SchoolMailView: View {
         Group {
             if account.isLoggedIn { mailList } else { signedOut }
         }
-        .navigationDestination(isPresented: $showGuide) { MailGuideView() }
         .sheet(isPresented: $showLoginSheet) { MailLoginSheet(isPresented: $showLoginSheet) }
         #if DEBUG
         .onChange(of: DevMailServerSettings.shared.generation) { _, _ in
@@ -90,8 +88,6 @@ struct SchoolMailView: View {
                 #endif
                 MailLoginCard()
                     .padding(.top, TigerDuckTheme.Spacing.sm)
-                Button(String(localized: "school_mail_use_other_app")) { showGuide = true }
-                    .font(TigerDuckTheme.Typography.caption)
             }
             .padding(.bottom, TigerDuckTheme.Spacing.xl)
         }
@@ -125,30 +121,21 @@ struct SchoolMailView: View {
     private static let headerActionWidth: CGFloat = 44
     private static let composeButtonSize: CGFloat = 56
 
-    /// Unread-only filter and guide, sharing one capsule: the backing the toolbar
-    /// used to supply on iOS 26. The status dot stays outside it: it reports on the server,
-    /// it does not act on the mailbox.
-    /// Each button is `.borderless` because the row is a `List` row now: the default style
-    /// there gives the whole row one tap target and drops the tint, so two `.automatic`
-    /// buttons would render untinted and fire as one. `MailFolderChipBar` and `SyncStatusDot`
-    /// take `.plain` in the same situation, for the same reason.
+    /// The unread-only filter in a capsule: the backing the toolbar used to supply on iOS 26.
+    /// The status dot stays outside it: it reports on the server, it does not act on the mailbox.
+    /// The button is `.borderless` because the row is a `List` row now: the default style
+    /// there gives the whole row one tap target and drops the tint. `MailFolderChipBar` and
+    /// `SyncStatusDot` take `.plain` in the same situation, for the same reason.
     @ViewBuilder
     private var headerActions: some View {
-        let row = HStack(spacing: 0) {
-            Button { viewModel.unreadOnly.toggle() } label: {
-                headerIcon(viewModel.unreadOnly
-                    ? "line.3.horizontal.decrease.circle.fill"
-                    : "line.3.horizontal.decrease.circle")
-                    .symbolRenderingMode(.hierarchical)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(String(localized: "school_mail_unread_only"))
-            Button { showGuide = true } label: {
-                headerIcon("questionmark.circle")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(String(localized: "school_mail_use_other_app"))
+        let row = Button { viewModel.unreadOnly.toggle() } label: {
+            headerIcon(viewModel.unreadOnly
+                ? "line.3.horizontal.decrease.circle.fill"
+                : "line.3.horizontal.decrease.circle")
+                .symbolRenderingMode(.hierarchical)
         }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(String(localized: "school_mail_unread_only"))
         if #available(iOS 26, *) {
             row.glassEffect(.regular.interactive(), in: .capsule)
         } else {

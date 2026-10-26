@@ -317,7 +317,6 @@ SettingsDocumentClient.swift
 MailComposeView.swift
 MailComposeViewModel.swift
 MailDateFormatter.swift
-MailGuideView.swift
 MailListViewModel.swift
 MailMessageView.swift
 MailMessageViewModel.swift
@@ -332,7 +331,6 @@ SchoolMailView.swift
 MailAttachmentList.swift
 MailCredentialPrefill.swift
 MailFolderChipBar.swift
-MailGuideWebView.swift
 MailHTMLView.swift
 MailLoginCard.swift
 MailLoginSheet.swift

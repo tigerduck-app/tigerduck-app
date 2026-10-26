@@ -9,7 +9,6 @@ nonisolated enum MailConstants {
     static let addressDomain = "mail.ntust.edu.tw"
     static let inbox = "INBOX"
     static let webmailURL = URL(string: "https://mail.ntust.edu.tw")!
-    static let mail2000AppStoreURL = URL(string: "https://apps.apple.com/tw/app/mail2000/id509471262")!
 
     static let pagePollInterval: TimeInterval = 60
     static let foregroundCheckThrottle: TimeInterval = 60

@@ -8,7 +8,6 @@ import Testing
 struct MailSettingsTests {
     @Test func linksPointWhereTheSpecSays() {
         #expect(MailConstants.webmailURL.absoluteString == "https://mail.ntust.edu.tw")
-        #expect(MailConstants.mail2000AppStoreURL.absoluteString == "https://apps.apple.com/tw/app/mail2000/id509471262")
     }
 
     @Test func theLoginSheetCarriesTheResetLink() {
