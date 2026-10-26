@@ -40,10 +40,6 @@ struct MailSettingsView: View {
             .disabled(!Self.displayNameIsEnabled(isLoggedIn: account.isLoggedIn))
 
             Section {
-                NavigationLink(String(localized: "school_mail_use_other_app")) { MailGuideView() }
-            }
-
-            Section {
                 LabeledContent(String(localized: "school_mail_cache_size")) {
                     Text(cacheBytes.map(Self.cacheSizeText) ?? "…")
                 }

@@ -89,6 +89,8 @@ final class MailListViewModel {
 
     var showsInbox: Bool { targets.contains(MailConstants.inbox) }
 
+    var indexProgress: MailIndexProgress? { indexer.progress }
+
     // MARK: Loading
 
     /// Paints each covered folder's cached page first, then refreshes the newest page of each
