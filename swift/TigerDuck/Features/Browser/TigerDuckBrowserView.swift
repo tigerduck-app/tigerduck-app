@@ -172,22 +172,18 @@ struct TigerDuckBrowserView: View {
             closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.toCapsule, height: 24), moving: !reduceMotion)
             address {
                 HStack(spacing: 0) {
-                    if !collapsed {
+                    intoCapsule(
                         Button { page.find.start() } label: {
                             Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold))
-                                .frame(width: 40, height: Self.barHeight)
+                                .frame(maxWidth: .infinity, minHeight: Self.barHeight)
                                 .contentShape(.rect)
                         }
                         .disabled(!page.canUsePage)
                         .accessibilityLabel(String(localized: "browser_find"))
-                        .transition(intoCapsule(from: .leading))
-                    }
+                    )
                     Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
                         .frame(maxWidth: collapsed ? nil : .infinity)
-                    if !collapsed {
-                        reloadButton(size: 16).frame(width: 40, height: Self.barHeight)
-                            .transition(intoCapsule(from: .trailing))
-                    }
+                    intoCapsule(reloadButton(size: 16))
                 }
             }
             circle {
@@ -208,9 +204,11 @@ struct TigerDuckBrowserView: View {
         .ignoresSafeArea(.container, edges: collapsed ? .bottom : [])
     }
 
-    /// A button inside the address pill shrinks with it, toward the host name and down.
-    private func intoCapsule(from side: HorizontalEdge) -> AnyTransition {
-        reduceMotion ? .opacity : .offset(x: side == .leading ? 16 : -16, y: 10).combined(with: .opacity)
+    /// A button inside the address pill narrows to nothing as the pill shrinks, so it moves with
+    /// its own edge of the pill toward the host name and down.
+    private func intoCapsule(_ button: some View) -> some View {
+        button.frame(width: collapsed ? 0 : 40)
+            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: 0, height: 10), moving: !reduceMotion)
     }
 
     // MARK: - Shared pieces
