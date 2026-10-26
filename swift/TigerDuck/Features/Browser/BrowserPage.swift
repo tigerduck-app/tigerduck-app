@@ -303,6 +303,25 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.files.show(downloaded: saved.file, mimeType: saved.mimeType)
     }
 
+    func download(
+        _ download: WKDownload,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        decisionHandler: @escaping @MainActor @Sendable (WKDownload.RedirectPolicy) -> Void
+    ) {
+        decisionHandler(BrowserRouting.allowsDownloadRedirect(to: request.url) ? .allow : .cancel)
+    }
+
+    func download(
+        _ download: WKDownload,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        TLSPinningDelegate.shared.evaluate(challenge) { disposition, credential in
+            Task { @MainActor in completionHandler(disposition, credential) }
+        }
+    }
+
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
         saving[ObjectIdentifier(download)] = nil
         page.failedDownload = download.originalRequest

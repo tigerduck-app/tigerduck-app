@@ -18,6 +18,11 @@ nonisolated enum BrowserRouting {
     /// Moodle's OIDC entry, which signs the browser in with the school SSO session it holds.
     static let webSignInURL = URL.knownGood("https://moodle2.ntust.edu.tw/auth/oidc/?source=loginpage")
 
+    /// A download leaves the web view's navigation delegate, so its redirects get the same check here.
+    static func allowsDownloadRedirect(to url: URL?) -> Bool {
+        url.map { decision(for: $0) == .load } ?? false
+    }
+
     /// `byLinkTap` is whether the student tapped a link: a script's navigation never opens Mail.
     static func decision(for url: URL, byLinkTap: Bool = false) -> Decision {
         switch url.scheme?.lowercased() {
