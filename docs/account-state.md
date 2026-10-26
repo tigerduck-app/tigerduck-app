@@ -67,7 +67,6 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `browserAppearance` | device |  |
 | defaults | `browserDataState` | device |  |
 | defaults | `browserDesktopSites` | account | `swift/TigerDuck/Features/Browser/BrowserData.swift` `reset` |
-| defaults | `browserPreference` | device |  |
 | defaults | `browserZoom` | account | `swift/TigerDuck/Features/Browser/BrowserData.swift` `reset` |
 | defaults | `bulletinPushEnabled` | device |  |
 | defaults | `bulletinReadIds` | device |  |

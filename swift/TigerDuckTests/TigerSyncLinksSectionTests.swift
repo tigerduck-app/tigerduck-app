@@ -1,5 +1,4 @@
 #if os(iOS)
-import Defaults
 import SwiftUI
 import Testing
 import UIKit
@@ -12,11 +11,7 @@ struct TigerSyncLinksSectionTests {
         var urls: [URL] = []
     }
 
-    @Test(arguments: [BrowserPreference.inApp, .system])
-    func aLinkOpensWhereTheSettingSays(preference: BrowserPreference) async throws {
-        let saved = Defaults[.browserPreference]
-        Defaults[.browserPreference] = preference
-        defer { Defaults[.browserPreference] = saved }
+    @Test func aLinkToTheWebsiteOpensInTheSystemBrowser() async throws {
         try await withAccessibilityAutomation {
             let opened = Opened()
             let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -39,15 +34,9 @@ struct TigerSyncLinksSectionTests {
             try await waitUntil { accessibilityElement(labeled: label, in: host.view) != nil }
             _ = try #require(accessibilityElement(labeled: label, in: host.view)).accessibilityActivate()
 
-            switch preference {
-            case .inApp:
-                try await waitUntil(timeout: .seconds(10)) { host.presentedViewController != nil }
-                #expect(opened.urls.isEmpty)
-            case .system:
-                try await waitUntil(timeout: .seconds(10)) { !opened.urls.isEmpty }
-                #expect(opened.urls == [AppURLs.privacyPolicy])
-                #expect(host.presentedViewController == nil)
-            }
+            try await waitUntil(timeout: .seconds(10)) { !opened.urls.isEmpty }
+            #expect(opened.urls == [AppURLs.privacyPolicy])
+            #expect(host.presentedViewController == nil)
         }
     }
 }

@@ -134,7 +134,6 @@ private struct LicenseTextView: View {
 }
 
 private struct LicenseLinkRow: View {
-    @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
 
     let titleKey: String.LocalizationValue
@@ -148,9 +147,7 @@ private struct LicenseLinkRow: View {
                 Text(String(localized: titleKey))
                     .foregroundStyle(.tint)
                 Spacer()
-                Image(systemName: appState.browserPreference == .inApp
-                      ? "rectangle.portrait.and.arrow.right"
-                      : "arrow.up.right.square")
+                Image(systemName: "arrow.up.right.square")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

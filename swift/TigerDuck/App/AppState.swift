@@ -350,10 +350,6 @@ final class AppState {
         }
     }
 
-    var browserPreference: BrowserPreference = Defaults[.browserPreference] {
-        didSet { Defaults[.browserPreference] = browserPreference }
-    }
-
     /// Mac-only: where the "open in Moodle" actions route to. The iPad
     /// Moodle app installed via Mac App Store registers `moodlemobile://`
     /// too, so users who installed it can opt into the deep-link path.

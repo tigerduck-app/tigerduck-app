@@ -58,7 +58,7 @@ private struct MoodleLinkOpening: ViewModifier {
 
     private func open(_ url: URL) {
         #if os(iOS)
-        // `linkRouting()` signs a Moodle page in, in the TigerDuck browser or the default one.
+        // `linkRouting()` opens a Moodle page in the TigerDuck browser, which signs it in.
         openURL(MoodlePage.browserURL(url))
         #else
         if MoodleAutologinService.isMoodlePage(url) {

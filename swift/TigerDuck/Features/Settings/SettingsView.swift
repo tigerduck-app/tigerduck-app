@@ -119,10 +119,6 @@ struct SettingsView: View {
                 )
                 Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowAllPeriods)
-                Picker(String(localized: "settings_link_opening_method"), selection: $appState.browserPreference) {
-                    Text(String(localized: "settings_browser_system_default")).tag(BrowserPreference.system)
-                    Text(String(localized: "settings_browser_in_app")).tag(BrowserPreference.inApp)
-                }
             }
 
             Section(String(localized: "browser_address_bar")) {
@@ -282,9 +278,7 @@ struct SettingsView: View {
                         Text(String(localized: "settings_official_website"))
                             .foregroundStyle(.primary)
                         Spacer()
-                        Image(systemName: appState.browserPreference == .inApp
-                              ? "rectangle.portrait.and.arrow.right"
-                              : "arrow.up.right.square")
+                        Image(systemName: "arrow.up.right.square")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

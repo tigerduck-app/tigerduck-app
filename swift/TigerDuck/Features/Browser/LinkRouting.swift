@@ -1,4 +1,3 @@
-import Defaults
 import SwiftUI
 import UIKit
 
@@ -10,20 +9,15 @@ nonisolated enum LinkRouting {
         case system(URL)
     }
 
-    /// An https page opens in the browser under the in-app preference and in the default browser
-    /// under the system one. A Moodle app link opens the app when it is installed, and otherwise
-    /// the page it names in the browser whatever the preference, as the browser signs in to
-    /// Moodle. Anything else, plain http and the App Store too, goes to the system.
-    static func destination(for url: URL, moodleAppInstalled: Bool, preference: BrowserPreference) -> Destination {
-        switch url.scheme?.lowercased() {
-        case "moodlemobile":
+    /// A page the browser loads, a school page, opens in it; any other link goes to the system,
+    /// where the browser would send it too. A Moodle app link opens the app when it is installed,
+    /// and otherwise the page it names in the browser, which signs in to Moodle.
+    static func destination(for url: URL, moodleAppInstalled: Bool) -> Destination {
+        if url.scheme?.lowercased() == "moodlemobile" {
             guard !moodleAppInstalled, let page = moodlePage(in: url) else { return .system(url) }
             return .browser(page)
-        case "https" where preference == .inApp && !BrowserRouting.isAppStore(url):
-            return .browser(url)
-        default:
-            return .system(url)
         }
+        return BrowserRouting.decision(for: url) == .load ? .browser(url) : .system(url)
     }
 
     /// The Moodle page a link from `AppConstants.moodleDeepLink(redirectingTo:)` names.
@@ -49,29 +43,18 @@ private struct LinkRoutingHost: ViewModifier {
     @Environment(\.openURL) private var openOutside
     @State private var page: BrowserLink?
 
-    /// Pages the student fills in, which tapping a reminder leaves open.
-    private static let keptPages: Set<URL> = [AppURLs.issues, AppURLs.deleteAccount]
-
     func body(content: Content) -> some View {
         content
             .environment(\.openURL, OpenURLAction { route($0) })
-            .fullScreenCover(item: $page) { page in
-                TigerDuckBrowserView(url: page.url)
-                    .keptOverReminders(Self.keptPages.contains(page.url))
-            }
+            .fullScreenCover(item: $page) { TigerDuckBrowserView(url: $0.url) }
     }
 
     private func route(_ url: URL) -> OpenURLAction.Result {
         // canOpenURL answers for moodlemobile because Info.plist lists it in LSApplicationQueriesSchemes.
         let installed = url.scheme?.lowercased() == "moodlemobile" && UIApplication.shared.canOpenURL(url)
-        switch LinkRouting.destination(for: url, moodleAppInstalled: installed, preference: Defaults[.browserPreference]) {
-        case .browser(let url):
-            page = BrowserLink(url: url)
-        case .system(let url) where MoodleAutologinService.isMoodlePage(url):
-            // The default browser has no Moodle session, so the page opens through a one-time sign-in link.
-            Task { openOutside(await MoodleAutologinService.shared.url(for: url)) }
-        case .system(let url):
-            openOutside(url)
+        switch LinkRouting.destination(for: url, moodleAppInstalled: installed) {
+        case .browser(let url): page = BrowserLink(url: url)
+        case .system(let url): openOutside(url)
         }
         return .handled
     }

@@ -204,7 +204,6 @@ EmptyStateView.swift
 GlassTextButtonModifier.swift
 HeaderMenuButton.swift
 HostScreenReader.swift
-InAppBrowserView.swift
 JustifiedText.swift
 LoginRequiredView.swift
 NTUSTReauthErrorBanner.swift

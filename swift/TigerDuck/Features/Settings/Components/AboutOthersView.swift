@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct AboutOthersView: View {
-    @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
 
     private static let feedbackURL = AppURLs.issues
@@ -43,17 +42,13 @@ struct AboutOthersView: View {
     ///
     /// Not `.foregroundStyle(.primary)`, which renders a Button's label as
     /// ordinary settings text, so nothing would mark the row as tappable or as
-    /// a web link. Like that glyph, this one follows the browser preference: an
-    /// arrow out of a box when the link hands off to the browser, an arrow into
-    /// a card when it opens in the TigerDuck browser over the app.
+    /// a web link.
     private func linkLabel(_ key: String.LocalizationValue) -> some View {
         HStack {
             Text(String(localized: key))
                 .foregroundStyle(.tint)
             Spacer()
-            Image(systemName: appState.browserPreference == .inApp
-                  ? "rectangle.portrait.and.arrow.right"
-                  : "arrow.up.right.square")
+            Image(systemName: "arrow.up.right.square")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

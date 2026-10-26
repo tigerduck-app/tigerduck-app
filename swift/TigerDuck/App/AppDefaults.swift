@@ -1,7 +1,6 @@
 import Defaults
 import Foundation
 
-extension BrowserPreference: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension BrowserAddressBar: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension BrowserDataState: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension BrowserAppearance: Defaults.Serializable, Defaults.PreferRawRepresentable {}
@@ -21,10 +20,6 @@ nonisolated extension Defaults.Keys {
     static let accentColorHex = Key<Int>(
         AppConstants.UserDefaultsKeys.accentColorHex,
         default: 0x007AFF
-    )
-    static let browserPreference = Key<BrowserPreference>(
-        AppConstants.UserDefaultsKeys.browserPreference,
-        default: .system
     )
     static let browserAddressBar = Key<BrowserAddressBar>(
         AppConstants.UserDefaultsKeys.browserAddressBar,
