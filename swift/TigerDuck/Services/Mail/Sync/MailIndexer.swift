@@ -31,11 +31,16 @@ nonisolated struct MailIndexProgress: Equatable, Sendable {
 /// first and `MailConstants.indexBatchSize` mails per command. A pass that got through holds off
 /// the next for `MailConstants.indexResyncInterval`, unless mail arrived since; one that failed
 /// waits longer before each retry, unless the cache was cleared since, and Low Data Mode pauses it.
-/// A pass the user asks for, by a pull or a search, waits out neither.
+/// A pass the user asks for skips some of these waits (`Request`).
 /// See docs/decisions/0027-mail-local-search-index.md.
 @MainActor
 @Observable
 final class MailIndexer {
+    /// A pass the user asked for: a search skips the wait after a pass that got through, and a
+    /// pull also the wait after one that failed, which a folder failing every pass would otherwise
+    /// turn into a full listing per search.
+    enum Request { case search, pull }
+
     private enum Outcome: String { case complete, failed, paused }
 
     /// A pass's counts for the log, which never names a folder or a mail.
@@ -101,15 +106,12 @@ final class MailIndexer {
         self.isConstrained = isConstrained ?? { NetworkMonitor.shared.isConstrained }
     }
 
-    /// `force` starts a pass even when the last one got through or failed a moment ago.
-    func startIfDue(folders: [String], force: Bool = false) {
+    func startIfDue(folders: [String], for request: Request? = nil) {
         // A cleared cache emptied the index: a pass under way can no longer write to it, and the
         // failures before it no longer hold the next pass off.
         if let passWipeCount, passWipeCount != cache.wipeCount { reset() }
-        if force {
-            completed = nil
-            retryAt = nil
-        }
+        if request != nil { completed = nil }
+        if request == .pull { retryAt = nil }
         if let reason = notDueReason {
             AppLogger.mail.info("Index pass not started: \(reason, privacy: .public)")
             return

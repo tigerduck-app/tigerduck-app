@@ -218,7 +218,7 @@ final class MailListViewModel {
         cancelWarm()
         await load()
         // A pull starts the search index's download at once, however recent the last one.
-        if forcingIndex { startIndexIfLoaded(force: true) }
+        if forcingIndex { startIndexIfLoaded(for: .pull) }
         startWarmIfLoaded()
     }
 
@@ -352,7 +352,7 @@ final class MailListViewModel {
         guard generation == searchGeneration else { return }
         if searchIsBehind { scheduleSearchCatchUp() }
         // A folder the index has not caught up with is downloaded now; its matches join as they arrive.
-        if targets.contains(where: { !indexer.isIndexed($0) }) { startIndexIfLoaded(force: true) }
+        if targets.contains(where: { !indexer.isIndexed($0) }) { startIndexIfLoaded(for: .search) }
     }
 
     /// `folder`'s mail that matches `query`, newest first: the index's, and the loaded mail's, which
@@ -745,10 +745,10 @@ final class MailListViewModel {
     }
 
     /// Inbox and Sent first: most searches look there.
-    private func startIndexIfLoaded(force: Bool = false) {
+    private func startIndexIfLoaded(for request: MailIndexer.Request? = nil) {
         guard !isPaused, loadState == .loaded, serverStatus == .ok, !folderRoles.isEmpty else { return }
         let roles = MailFolderRole.allCases.compactMap { folderRoles[$0] }
-        indexer.startIfDue(folders: roles + otherFolders.filter { !roles.contains($0) }, force: force)
+        indexer.startIfDue(folders: roles + otherFolders.filter { !roles.contains($0) }, for: request)
     }
 
     private func cancelWarm() {

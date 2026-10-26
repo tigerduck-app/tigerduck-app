@@ -251,10 +251,10 @@ struct MailIndexerTests {
         #expect(h.search("公告") == [3, 2, 1])
     }
 
-    @Test func aForcedPassWaitsOutNeitherAPassThatGotThroughNorAFailedOneButKeepsToLowDataMode() async {
+    @Test func aSearchSkipsTheWaitAfterAPassThatGotThroughAndAPullTheWaitAfterAFailedOne() async {
         let h = Self.harness(inboxCount: 3)
         await h.runPass()
-        h.indexer.startIfDue(folders: ["INBOX"], force: true)
+        h.indexer.startIfDue(folders: ["INBOX"], for: .search)
         await h.indexer.waitForPass()
         #expect(await h.passes() == 2)
 
@@ -265,13 +265,17 @@ struct MailIndexerTests {
         h.indexer.noteNewMail()
         await h.runPass()
         await h.fake.update { $0.searchTextsError = nil }
-        h.indexer.startIfDue(folders: ["INBOX"], force: true)
+        h.indexer.startIfDue(folders: ["INBOX"], for: .search)
+        await h.indexer.waitForPass()
+        #expect(await h.passes() == 3)
+
+        h.indexer.startIfDue(folders: ["INBOX"], for: .pull)
         await h.indexer.waitForPass()
         #expect(await h.passes() == 4)
         #expect(h.search("公告 4") == [4])
 
         h.network.isConstrained = true
-        h.indexer.startIfDue(folders: ["INBOX"], force: true)
+        h.indexer.startIfDue(folders: ["INBOX"], for: .pull)
         await h.indexer.waitForPass()
         #expect(await h.passes() == 4)
     }

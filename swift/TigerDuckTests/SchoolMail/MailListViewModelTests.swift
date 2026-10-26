@@ -221,41 +221,44 @@ struct MailListViewModelTests {
         #expect(!h.model.isSyncing)
     }
 
-    @Test func aPullStartsTheIndexWithoutWaitingOutAFailedPass() async {
+    @Test func aSearchWaitsOutAFailedPassButAPullDoesNot() async {
         let h = Self.harness(warmDelay: {})
         await h.fake.update { $0.searchTextsError = .serverBusy }
         await h.model.load()
         await h.model.waitForIndex()
         await h.fake.update { $0.searchTextsError = nil }
 
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
         await h.model.refresh()
         await h.model.waitForIndex()
-        #expect(h.cache.searchIndex.search(folder: "INBOX", query: "公告 60")?.uids == [])
+        #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 1)
 
         await h.model.refresh(forcingIndex: true)
         await h.model.waitForIndex()
+        #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 2)
         #expect(h.cache.searchIndex.search(folder: "INBOX", query: "公告 60")?.uids == [60])
     }
 
-    @Test func aSearchStartsTheIndexAtOnceAndItsResultsGrowAsThePassFillsThem() async {
+    @Test func aSearchDuringAPassGrowsAsThePassFillsItsFoldersWithoutASecondPass() async {
         let h = Self.harness(warmDelay: {}, catchUpDelay: {})
         await h.fake.update { fake in
-            fake.searchTextsError = .serverBusy
             fake.folders["INBOX"]?[54].detail?.textBody = "期末考在 Room 302"
             fake.folders["INBOX"]?[6].detail?.textBody = "補考也在 Room 302"
+            fake.hold("searchTexts")
         }
         await h.model.load()
-        await h.model.waitForIndex()
-        await h.fake.update { $0.searchTextsError = nil }
+        await h.fake.waitForArrival("searchTexts")
 
         h.model.searchText = "room 302"
         await h.model.submitSearch()
         #expect(h.model.displayedRows.isEmpty)
 
+        await h.fake.release("searchTexts")
         await h.model.waitForIndex()
         await h.model.waitForSearchCatchUp()
         #expect(h.model.displayedRows.map(\.uid) == [55, 7])
-        #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 2)
+        #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 1)
     }
 
     @Test func searchResultsPastThePageLoadAtTheEnd() async throws {
