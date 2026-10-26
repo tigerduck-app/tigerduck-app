@@ -30,7 +30,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 - [x] 2.6 Add API-level tests for each case listed in app issue #689 (a delete queued before a re-add elsewhere, a reset then a waiting add, a lost reply and its retry); verify they pass
 - [x] 2.7 Rewrite the tombstone conventions in `server/AGENTS.md` for both protocols; verify the pull request's CI passes and review finds the text matches the code
 - [x] 2.8 Make a removal of a school row clear only its `added_at`, and make a reset clear a hand-added row whose add it covers even when an override field is newer (design.md D10); verify tests for a removal arriving after the roster, both arrival orders, and a newer colour on an older hand-add
-- [ ] 2.9 Refuse membership and override edits stamped at a covering reset too, not only before it (design.md D10); verify a test of a colour stamped at the reset arriving after it
+- [x] 2.9 Refuse membership and override edits stamped at a covering reset too, not only before it (design.md D10); verify a test of a colour stamped at the reset arriving after it
 
 ## 3. Backend release
 
