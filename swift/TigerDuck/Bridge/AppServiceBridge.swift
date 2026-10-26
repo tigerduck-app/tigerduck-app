@@ -168,7 +168,7 @@ enum AppServiceBridge {
         guard let term = termCourseNos(
             selection: courseSelectionNos,
             transcript: scoreCoursesForSemester?.map(\.code),
-            cached: cachedCourses.map(\.courseNo)
+            cached: servesSelectionSemester ? cachedCourses.map(\.courseNo) : []
         ) else {
             return cachedCourses
         }
@@ -200,8 +200,9 @@ enum AppServiceBridge {
             uniquingKeysWith: { first, _ in first }
         )
 
-        let courseDataList = await concurrentMap(term.courseNos) { @MainActor courseNo -> CourseData? in
-            await refreshedCourseData(
+        let looked = await concurrentMap(term.courseNos) { @MainActor courseNo -> (data: CourseData?, answered: Bool) in
+            var answered = false
+            let data = await refreshedCourseData(
                 courseNo: courseNo,
                 semester: semester,
                 cached: cachedByNo[courseNo],
@@ -209,27 +210,36 @@ enum AppServiceBridge {
                 grade: scoreByNo[courseNo],
                 display: display
             ) {
-                try await CourseLookupService.lookupCourse(
+                let results = try await CourseLookupService.lookupCourse(
                     semester: semester, courseNo: courseNo, language: courseApiLanguage,
                     fresh: forceRefresh
                 )
+                answered = !results.isEmpty
+                return results
             }
-        }.compactMap { $0 }
+            return (data, answered)
+        }.compactMap { item in item.data.map { LookedUpCourse(course: $0.course(in: semester), answered: item.answered) } }
 
-        let courses = drawnCourses(
-            courseDataList.map { $0.course(in: semester) },
-            fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
+        let pastTerm = servesSelectionSemester ? nil : rebuiltPastTerm(
+            looked, cached: Set(cachedByNo.keys),
+            others: Array(moodleByNo.keys) + (report?.courses.filter { $0.term == semester }.map(\.code) ?? []),
+            userAdded: DataCache.shared.loadUserAddedCourses().filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+        )
+        let courses = pastTerm?.courses ?? drawnCourses(
+            looked.map(\.course), fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
         )
 
         guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
             return DataCache.shared.loadCourses(semester: semester)
         }
-        if !courses.isEmpty {
-            DataCache.shared.saveCourses(courses, semester: semester)
-            uploadVisibleCourses(
-                courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()), to: courseUploader
-            )
+        guard !courses.isEmpty else { return cachedCourses }
+        if let pastTerm {
+            DataCache.shared.recordSelectionRoster(semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping)
         }
+        DataCache.shared.saveCourses(courses, semester: semester)
+        uploadVisibleCourses(
+            courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()), to: courseUploader
+        )
         return courses
     }
 
@@ -271,6 +281,32 @@ enum AppServiceBridge {
         let fromTranscript = uniqueCourseNos(transcript ?? [])
         guard !fromTranscript.isEmpty else { return nil }
         return (uniqueCourseNos(fromTranscript + cached), nil)
+    }
+
+    struct LookedUpCourse {
+        let course: SDCourse
+        /// Whether the course query found the course; when it did not, `course` is the cached copy
+        /// or one built from Moodle and the transcript.
+        let answered: Bool
+    }
+
+    /// A past term rebuilt from the transcript: its classes the course query found with class
+    /// times, and the cached copy of one it did not find, as a failed lookup removes no course.
+    /// `roster` names those and the classes still waiting for a lookup. Every other course the term
+    /// may hold here or on the server, cached, merged from the server, a Moodle site or another
+    /// transcript row in `others`, is in `dropping`, so its server row is not merged back. A
+    /// course added by hand stays in the hand-added courses and is never dropped.
+    static func rebuiltPastTerm(
+        _ looked: [LookedUpCourse], cached: Set<String>, others: [String], userAdded: [SDCourse]
+    ) -> (courses: [SDCourse], roster: [String], dropping: [String]) {
+        let hasTimes = { (course: SDCourse) in course.schedule.values.contains { !$0.isEmpty } }
+        let courses = looked.filter { $0.answered ? hasTimes($0.course) : cached.contains($0.course.courseNo) }
+            .map(\.course)
+        let roster = looked.filter { !$0.answered || hasTimes($0.course) }.map(\.course.courseNo)
+        let addedHere = Set(userAdded.filter { $0.moodleIdNumber == nil }.map(\.courseNo))
+        let merged = userAdded.filter { $0.moodleIdNumber != nil }.map(\.courseNo)
+        let dropping = (Array(cached) + merged + others).filter { !addedHere.contains($0) }
+        return (courses, roster, dropping)
     }
 
     /// A class the transcript adds joins its term only with class times: a row without them, or one

@@ -163,3 +163,81 @@ struct SelectionDropsTests {
         ) == ["C"])
     }
 }
+
+@MainActor
+struct PastTermRebuildTests {
+    private static func course(_ courseNo: String, times: Bool = true, moodleId: String? = nil) -> SDCourse {
+        SDCourse(
+            courseNo: courseNo, courseName: courseNo, schedule: times ? [2: ["3", "4"]] : [:],
+            moodleIdNumber: moodleId, semester: "1141"
+        )
+    }
+
+    private static func looked(_ courseNo: String, times: Bool = true, answered: Bool = true) -> AppServiceBridge.LookedUpCourse {
+        AppServiceBridge.LookedUpCourse(course: course(courseNo, times: times), answered: answered)
+    }
+
+    @Test("A past term keeps only the transcript's classes with class times; cached junk, Moodle sites and other rows are dropped")
+    func junkLeavesAPastTerm() {
+        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+            [Self.looked("CS1001301"), Self.looked("GE1001301", times: false)],
+            cached: ["CS1001301", "GE1001301", "EC9999301"],
+            others: ["PE9999301", "CC1011301", "CS1001301", "GE1001301"],
+            userAdded: []
+        )
+
+        #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301"])
+        #expect(rebuilt.roster == ["CS1001301"])
+        #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+            == ["GE1001301", "EC9999301", "PE9999301", "CC1011301"])
+    }
+
+    @Test("A class whose lookup failed keeps its cached copy and is never dropped; one with no copy waits for a later fetch")
+    func failedLookupKeepsTheCachedCourse() {
+        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+            [Self.looked("CS1001301", times: false, answered: false), Self.looked("MA1001301", times: false, answered: false)],
+            cached: ["CS1001301"], others: [], userAdded: []
+        )
+
+        #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301"])
+        #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: ["CS1001301", "MA1001301"], roster: rebuilt.roster)
+            .isEmpty)
+    }
+
+    @Test("A failed transcript fetch, or one that lists nothing for the term, leaves a past term untouched")
+    func noTranscriptTouchesNothing() {
+        #expect(AppServiceBridge.termCourseNos(selection: nil, transcript: nil, cached: []) == nil)
+        #expect(AppServiceBridge.termCourseNos(selection: nil, transcript: [], cached: []) == nil)
+    }
+
+    @Test("A course added by hand stays through a rebuild and the reconcile; junk merged from the server does not come back")
+    func handAddedStaysAndJunkStaysGone() {
+        let userAdded = [
+            Self.course("GE1010001"),
+            Self.course("PE1001301", moodleId: "1141PE1001301"),
+            Self.course("EC9999301", moodleId: "1141EC9999301"),
+        ]
+        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+            [Self.looked("CS1001301")], cached: ["CS1001301"],
+            others: ["GE1010001", "EC9999301"], userAdded: userAdded
+        )
+        #expect(!rebuilt.dropping.contains("GE1010001"))
+
+        let dropped = AppServiceBridge.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+        let rows: [[String: Any]] = [
+            ["course_no": "CS1001301", "source": "ntust_portal"],
+            ["course_no": "GE1010001", "source": "ntust_portal"],
+            ["course_no": "PE1001301", "source": "user_added"],
+            ["course_no": "EC9999301", "source": "ntust_portal"],
+        ]
+        let listed = Set(AppState.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
+            .compactMap { $0["course_no"] as? String })
+        let unlisted = AppState.unlistedCourses(
+            in: "1141", listed: listed, tombstoned: [], fetched: Set(rebuilt.courses.map(\.courseNo)),
+            handAdded: Set(userAdded.map(\.courseNo)), hidden: [], adding: []
+        )
+
+        #expect(listed == ["CS1001301", "GE1010001", "PE1001301"])
+        #expect(unlisted.drop == ["EC9999301"])
+    }
+}

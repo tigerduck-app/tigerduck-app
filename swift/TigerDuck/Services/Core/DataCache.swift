@@ -314,13 +314,16 @@ final class DataCache {
         load(from: "selection_dropped.json", in: persistentDir) ?? [:]
     }
 
-    func recordSelectionRoster(semester: String, roster: [String]) {
+    /// The roster comes from course selection or, for a past term, the transcript. A course in
+    /// `alsoListed`, which the term may hold on the server without this device having fetched it,
+    /// is dropped too when the roster leaves it out.
+    func recordSelectionRoster(semester: String, roster: [String], alsoListed: [String] = []) {
         guard !roster.isEmpty else { return }
         var stored = loadSelectionDroppedNos()
         let previous = Set(stored[semester] ?? [])
         let updated = AppServiceBridge.selectionDrops(
             previous: previous,
-            localPortalNos: loadCourses(semester: semester).map(\.courseNo),
+            localPortalNos: loadCourses(semester: semester).map(\.courseNo) + alsoListed,
             roster: roster
         )
         guard updated != previous else { return }
