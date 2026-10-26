@@ -27,7 +27,8 @@ nonisolated enum CourseSyllabusBreakdown {
         return parts
     }
 
-    /// The methods above 0%, then Others with its text; nil when there is neither.
+    /// The service fills all four methods, 0 or blank when unused, so only those above 0% show,
+    /// followed by Others.
     static func teaching(_ syllabus: CourseSyllabus) -> [Part]? {
         let methods = [
             (syllabus.Instruction_1, String(localized: "course_detail_syllabus_lecture")),
@@ -68,16 +69,19 @@ nonisolated enum CourseSyllabusBreakdown {
         return Part(label: label, percent: percent)
     }
 
-    /// The text before a closing percentage, without the separator between them.
+    /// A range such as 40-60% stays text: a bar would show one share the teacher did not give.
     private static func trailingPercent(_ text: String) -> (String, Double)? {
-        guard text.count <= maxPieceLength else { return nil }
+        guard text.count <= maxPieceLength,
+              text.firstMatch(of: /[0-9][%％]?\s*[-－~～〜至到]\s*[0-9]{1,3}(?:\.[0-9]+)?\s*[%％][)）]?$/) == nil
+        else { return nil }
         let pattern = /(.*?)[\s:：=－\-]*[(（]?([0-9]{1,3}(?:\.[0-9]+)?)\s*[%％][)）]?/
         guard let match = text.wholeMatch(of: pattern), let percent = Double(match.2) else { return nil }
         return (String(match.1).trimmingCharacters(in: .whitespaces), percent)
     }
 }
 
-/// The syllabus as its page shows it: each field trimmed, and nil when blank.
+/// The service sends sections a teacher left empty as blank or whitespace, so each field is
+/// trimmed and a blank one is nil, which hides its section.
 nonisolated extension CourseSyllabus {
     var grading: String? { Self.text(CourseGrading) }
     var outline: String? { Self.text(CourseObject) }

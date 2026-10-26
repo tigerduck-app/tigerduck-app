@@ -137,11 +137,13 @@ struct CourseSyllabusTests {
         ])
     }
 
-    @Test("a part without a percentage, a label too long or no label leaves the text as written")
+    @Test("a part without a percentage, a range, a label too long or no label leaves the text as written")
     func gradingFallsBack() {
         #expect(CourseSyllabusBreakdown.grading("期中考 30%\n課堂參與") == nil)
         #expect(CourseSyllabusBreakdown.grading("期中考 30%以上") == nil)
         #expect(CourseSyllabusBreakdown.grading("100%") == nil)
+        #expect(CourseSyllabusBreakdown.grading("期中考 30%\nMidterm 40-60%") == nil)
+        #expect(CourseSyllabusBreakdown.grading("Final 20%～30%\n作業 50%") == nil)
         #expect(CourseSyllabusBreakdown.grading("  \n ") == nil)
         let twenty = String(repeating: "鴨", count: 20)
         #expect(CourseSyllabusBreakdown.grading("\(twenty) 100%") == [Part(label: twenty, percent: 100)])
@@ -181,6 +183,9 @@ struct CourseSyllabusTests {
             Part(label: others, percent: nil, detail: "Pond visit"),
         ])
         #expect(CourseSyllabusBreakdown.teaching(Self.teaching(lecture: "0", other: " ")) == nil)
+        #expect(CourseSyllabusBreakdown.teaching(Self.teaching(lecture: "0", other: "Pond visit 10-20%")) == [
+            Part(label: others, percent: nil, detail: "Pond visit 10-20%"),
+        ])
         let prose = String(repeating: "Ducks swim across the pond. ", count: 8) + "10%"
         #expect(CourseSyllabusBreakdown.teaching(Self.teaching(lecture: "0", other: prose)) == [
             Part(label: others, percent: nil, detail: prose),
