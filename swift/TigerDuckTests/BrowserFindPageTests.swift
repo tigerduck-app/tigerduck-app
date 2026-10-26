@@ -75,6 +75,47 @@ struct BrowserFindPageTests {
         #expect(await evaluate(webView, "return document.body.innerHTML") as? String == before)
     }
 
+    @Test func findsTextInAnElementWithNoBoxOfItsOwn() async {
+        let (webView, find) = await page("<p><span style=\"display:contents\">assignment <b>deadline</b></span></p>")
+        for query in ["assignment", "assignment deadline"] {
+            find.query = query
+            await find.search()
+            #expect(find.count == 1, "\(query)")
+        }
+        withExtendedLifetime(webView) {}
+    }
+
+    @Test func showsAMatchInAScrolledBoxBelowWhatIsOnScreen() async throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        window.rootViewController = UIViewController()
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let gap = "<div style=\"height:2000px\"></div>"
+        let box = "<div id=\"box\" style=\"height:300px;overflow:auto\">\(gap)作業\(gap)</div>"
+        let viewport = "<meta name=\"viewport\" content=\"width=device-width\">"
+        let (webView, find) = await page(gap + box + gap, head: viewport, in: window.rootViewController?.view)
+        webView.scrollView.contentInset = UIEdgeInsets(top: 60, left: 0, bottom: 400, right: 0)
+        _ = await evaluate(webView, "await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+
+        find.query = "作業"
+        await find.search()
+        let scroll = webView.scrollView
+        var settled = scroll.contentOffset.y
+        for _ in 0..<50 {
+            try await Task.sleep(for: .milliseconds(100))
+            if scroll.contentOffset.y == settled, settled > 0 { break }
+            settled = scroll.contentOffset.y
+        }
+        let place = "var m = document.querySelector('mark').getBoundingClientRect(), b = document.getElementById('box').getBoundingClientRect(); "
+            + "return [m.top - b.top, b.bottom - m.bottom, m.top, m.bottom]"
+        let shown = try #require(await evaluate(webView, place) as? [Double])
+        #expect(shown[0] >= 0 && shown[1] >= 0, "the match is scrolled out of its box: \(shown)")
+        let inset = scroll.adjustedContentInset
+        #expect(shown[2] >= inset.top && shown[3] <= webView.bounds.height - inset.bottom, "the match is off screen: \(shown)")
+    }
+
     @Test func doesNotMatchAcrossSkippedTextOrAnEmptyBlockButDoesAcrossHiddenText() async {
         let (webView, find) = await page("""
         <p>ab<span contenteditable="true">XX</span>cd</p><div>ef<p></p>gh</div><p>ij<svg><text>XX</text></svg>kl</p>\

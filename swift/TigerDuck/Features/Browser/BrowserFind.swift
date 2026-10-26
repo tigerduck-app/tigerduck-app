@@ -150,6 +150,7 @@ final class BrowserFind {
             return skipped ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
           }
           var parent = node.parentElement;
+          while (parent && getComputedStyle(parent).display === 'contents') parent = parent.parentElement;
           if (!parent || parent.getClientRects().length === 0) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;
         }
@@ -234,7 +235,10 @@ final class BrowserFind {
         if (box === document.scrollingElement) continue;
         var style = getComputedStyle(box), m = mark.getBoundingClientRect(), b = box.getBoundingClientRect();
         if (box.scrollHeight > box.clientHeight && /auto|scroll/.test(style.overflowY)) {
-          box.scrollTop += (m.top + m.bottom - Math.max(b.top, top) - Math.min(b.bottom, bottom)) / 2;
+          // A box outside the band is centred on its own; the browser then scrolls the page to it.
+          var from = Math.max(b.top, top), to = Math.min(b.bottom, bottom);
+          if (from >= to) { from = b.top; to = b.bottom; }
+          box.scrollTop += (m.top + m.bottom - from - to) / 2;
         }
         if (box.scrollWidth > box.clientWidth && /auto|scroll/.test(style.overflowX)) {
           box.scrollLeft += (m.left + m.right - b.left - b.right) / 2;
