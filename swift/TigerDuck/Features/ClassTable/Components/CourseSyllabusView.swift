@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A course's syllabus, pushed from the course detail sheet with the copy the sheet fetched.
+/// Takes the copy the detail sheet fetched to decide on its button, so it opens without a wait.
 struct CourseSyllabusView: View {
     let syllabus: CourseSyllabus
     let policy: VisualStylePolicy
@@ -128,7 +128,7 @@ struct CourseSyllabusView: View {
     }
 }
 
-/// Shares as one stacked bar, then a row per part with its color, label and percentage.
+/// The rows name each color, as the bar carries no labels of its own.
 struct CourseSyllabusBreakdownView: View {
     let parts: [CourseSyllabusBreakdown.Part]
 

@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the Storage page lists, in page order.
+/// Reordering the cases reorders the page's rows and the bar's segments.
 nonisolated enum StorageKind: CaseIterable, Hashable, Sendable {
     case moodleFiles
     case mail
