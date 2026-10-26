@@ -165,7 +165,9 @@ final class MailIndexer {
                     failed = true
                 }
             }
-            progress = MailIndexProgress(total: plans.reduce(0) { $0 + $1.missing.count })
+            let total = plans.reduce(0) { $0 + $1.missing.count }
+            // An index that is already current shows nothing rather than spinning at 0/0.
+            progress = total > 0 ? MailIndexProgress(total: total) : nil
             for plan in plans {
                 guard !Task.isCancelled, !isConstrained() else { return .paused }
                 let filled = try await attempt {
