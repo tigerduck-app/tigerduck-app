@@ -239,14 +239,6 @@ final class DataCache {
         save(closed, to: "closed_unsubmitted_assignments.json")
     }
 
-    func saveCourseSearchOptions(_ options: CourseSearchOptions) {
-        save(options, to: "course_search_options.json")
-    }
-
-    func loadCourseSearchOptions() -> CourseSearchOptions? {
-        load(from: "course_search_options.json")
-    }
-
     // MARK: - Course catalog (semester + language)
 
     /// The same for every account, so a sign-out keeps it. `nonisolated`: a body runs to a few

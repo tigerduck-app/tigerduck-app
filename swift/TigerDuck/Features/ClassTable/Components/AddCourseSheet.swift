@@ -10,11 +10,8 @@ struct AddCourseSheet: View {
     let onAdd: (SDCourse) -> Bool
     var onRemove: ((String) -> Void)? = nil
 
-    private static let liveSearchDebounce: Duration = .milliseconds(350)
-
     @State private var model = CourseSearchModel()
     @State private var searchText = ""
-    @State private var attempt = 0
     @State private var showFilters = false
     @State private var sessionAddedCourseNos: Set<String> = []
     @FocusState private var searchFocused: Bool
@@ -22,29 +19,34 @@ struct AddCourseSheet: View {
     private struct SearchKey: Equatable {
         let text: String
         let filters: CourseSearchFilters
-        let attempt: Int
+        let revision: Int
     }
 
     var body: some View {
         #if os(macOS)
         macBody
             .onAppear { searchFocused = true }
-            .onDisappear { model.cancelPendingAdds() }
             .task(id: searchKey) {
-                await model.search(searchText, semester: semester, after: Self.liveSearchDebounce)
+                await model.search(searchText, semester: semester, fetch: fetchCatalog)
             }
         #else
         iosBody
             .onAppear { searchFocused = true }
-            .onDisappear { model.cancelPendingAdds() }
             .task(id: searchKey) {
-                await model.search(searchText, semester: semester, after: Self.liveSearchDebounce)
+                await model.search(searchText, semester: semester, fetch: fetchCatalog)
             }
         #endif
     }
 
     private var searchKey: SearchKey {
-        SearchKey(text: trimmedQuery, filters: model.filters.requested, attempt: attempt)
+        SearchKey(text: trimmedQuery, filters: model.filters.searched, revision: model.revision)
+    }
+
+    private var fetchCatalog: CourseSearchModel.FetchCatalog {
+        let client = CourseCatalogClient(authHeaderProvider: { [atm = appState.authTokenManager] in
+            await atm.authorizationHeader()
+        })
+        return { @MainActor in try await client.fetch(semester: $0, language: $1, etag: $2) }
     }
 
     private var trimmedQuery: String {
@@ -120,7 +122,7 @@ struct AddCourseSheet: View {
             .searchPresentationToolbarBehavior(.avoidHidingContent)
             .autocorrectionDisabled()
             .textFieldNeverCapitalized()
-            .onSubmit(of: .search) { attempt &+= 1 }
+            .onSubmit(of: .search) { model.submit() }
             .navigationTitle(String(localized: "add_course_title"))
             .inlineNavigationTitle()
             .toolbar {
@@ -184,7 +186,7 @@ struct AddCourseSheet: View {
                         .autocorrectionDisabled()
                         .focused($searchFocused)
                         .submitLabel(.search)
-                        .onSubmit { attempt &+= 1 }
+                        .onSubmit { model.submit() }
                     if !searchText.isEmpty {
                         Button {
                             searchText = ""
@@ -274,12 +276,6 @@ struct AddCourseSheet: View {
     @ViewBuilder
     private var macBottomBar: some View {
         HStack {
-            if model.isSearching && !model.results.isEmpty {
-                ProgressView().controlSize(.small)
-                Text(String(localized: "add_course_searching"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             Spacer()
             Button(String(localized: "action_close")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
@@ -484,16 +480,8 @@ struct AddCourseSheet: View {
     }
 
     private func addCourse(from group: GroupedCourse) {
-        let authService = appState.authService
-        let generation = authService.loginGeneration
-        model.add(
-            group.courseNo,
-            language: language,
-            semester: semester,
-            isCurrent: { authService.loginGeneration == generation }
-        ) { row in
-            add(group, name: row?.CourseName ?? group.primaryName, instructor: row?.CourseTeacher ?? group.instructor)
-        }
+        let row = model.appLanguageRow(of: group.courseNo, language: language)
+        add(group, name: row?.CourseName ?? group.primaryName, instructor: row?.CourseTeacher ?? group.instructor)
     }
 
     private func add(_ group: GroupedCourse, name: String, instructor: String) {
@@ -518,3 +506,4 @@ struct AddCourseSheet: View {
         }
     }
 }
+

@@ -2,7 +2,7 @@ import Foundation
 
 /// A class period on one weekday. `day` counts from 1 for Monday, as
 /// `CourseLookupService.parseNodeToSchedule` does.
-struct CourseSlot: Hashable {
+nonisolated struct CourseSlot: Hashable {
     let day: Int
     let period: String
 }
@@ -15,8 +15,8 @@ struct CourseSearchTableCourse {
 }
 
 /// The Add Course filters. They last for one sheet, so nothing here is stored.
-struct CourseSearchFilters: Hashable {
-    enum Level: Hashable, CaseIterable {
+nonisolated struct CourseSearchFilters: Hashable {
+    nonisolated enum Level: Hashable, CaseIterable {
         case all, undergraduate, graduate
     }
 
@@ -32,9 +32,9 @@ struct CourseSearchFilters: Hashable {
 
     var isDefault: Bool { self == Self() }
 
-    /// The filters the server applies. The others only narrow the results on the device, so a
-    /// change to them sends no request.
-    var requested: Self {
+    /// The filters the catalog search applies. The others only narrow its results in the view,
+    /// so a change to them runs no search.
+    var searched: Self {
         var sent = self
         sent.hideConflicts = Self().hideConflicts
         sent.periods = []
@@ -46,72 +46,84 @@ enum CourseSearch {
     static let languages = ["zh", "en"]
     static let gridDays = Array(1...6)
 
-    private static let courseNoPattern = #"^[A-Za-z0-9]+$"#
-    private static let hansHantTransform = StringTransform(rawValue: "Hans-Hant")
+    private nonisolated static let courseNoPattern = #"^[A-Za-z0-9]+$"#
+    private nonisolated static let hansHantTransform = StringTransform(rawValue: "Hans-Hant")
+    // A course number's third character, as the school's level filters read it
+    // (`local_match` in api-poc/api/ntust/course_query.py).
+    private nonisolated static let undergraduateLevels: Set<Character> = ["1", "2", "3", "4", "G"]
+    private nonisolated static let graduateLevels: Set<Character> = ["5", "6", "7", "8", "9"]
 
-    /// The request rounds for a query, in order; a round runs only when the ones before it found
-    /// nothing. Each round asks in both languages, since a name matches only in its own language.
-    static func rounds(for query: String, semester: String, filters: CourseSearchFilters) -> [[CourseSearchRequest]] {
-        var rounds: [[CourseSearchRequest]] = []
-        if query.range(of: courseNoPattern, options: .regularExpression) != nil,
-           let courseNo = courseNoPrefix(query.uppercased(), department: filters.department) {
-            rounds.append(languages.map { request(semester, $0, filters, courseNo: courseNo) })
+    /// Each language's rows that pass the filters and match, in catalog order; a language that
+    /// found nothing has no entry. A query of letters and digits is first a course-number prefix,
+    /// and the name and teacher are matched only when no course number starts with it.
+    nonisolated static func search(
+        _ query: String,
+        in catalogs: [String: [CourseCatalog.Course]],
+        filters: CourseSearchFilters
+    ) -> [String: [CourseSearchResult]] {
+        if query.range(of: courseNoPattern, options: .regularExpression) != nil {
+            let prefix = query.uppercased()
+            let found = rows(in: catalogs, filters) { _, row in row.CourseNo.uppercased().hasPrefix(prefix) }
+            if !found.isEmpty { return found }
         }
-        // The zh service matches traditional characters only, so simplified input is converted.
+        // The zh names are in traditional characters, so simplified input is converted.
         let zhQuery = query.applyingTransform(hansHantTransform, reverse: false) ?? query
-        let department = filters.department ?? ""
-        rounds.append(languages.flatMap { language in
+        return rows(in: catalogs, filters) { language, row in
             let text = language == "zh" ? zhQuery : query
-            return [
-                request(semester, language, filters, courseNo: department, name: text),
-                request(semester, language, filters, courseNo: department, teacher: text),
-            ]
-        })
-        return rounds
+            return [row.CourseName, row.CourseTeacher].contains { $0.range(of: text, options: .caseInsensitive) != nil }
+        }
     }
 
-    /// The narrower of the typed course-number prefix and the department's, or nil when no
-    /// course number can start with both.
-    static func courseNoPrefix(_ typed: String, department: String?) -> String? {
-        guard let department = department?.uppercased() else { return typed }
-        if typed.hasPrefix(department) { return typed }
-        if department.hasPrefix(typed) { return department }
-        return nil
-    }
-
-    private static func request(
-        _ semester: String,
-        _ language: String,
+    private nonisolated static func rows(
+        in catalogs: [String: [CourseCatalog.Course]],
         _ filters: CourseSearchFilters,
-        courseNo: String,
-        name: String = "",
-        teacher: String = ""
-    ) -> CourseSearchRequest {
-        CourseSearchRequest(
-            Semester: semester,
-            CourseNo: courseNo,
-            CourseName: name,
-            CourseTeacher: teacher,
-            Dimension: filters.dimension ?? "",
-            // `eng` is the English-taught note; `ForeignLanguage` means language classes instead.
-            CourseNotes: filters.englishTaught ? "eng" : "",
-            CampusNotes: "",
-            ForeignLanguage: 0,
-            OnlyGeneral: filters.generalOnly ? 1 : 0,
-            OnleyNTUST: filters.excludeAlliance ? 1 : 0,
-            OnlyMaster: filters.level == .graduate ? 1 : 0,
-            OnlyUnderGraduate: filters.level == .undergraduate ? 1 : 0,
-            OnlyNode: 0,
-            OnlyIntensive: filters.intensiveOnly ? 1 : 0,
-            Language: language
-        )
+        where matches: (_ language: String, CourseSearchResult) -> Bool
+    ) -> [String: [CourseSearchResult]] {
+        var found: [String: [CourseSearchResult]] = [:]
+        for (language, courses) in catalogs {
+            let rows = courses.compactMap { admits($0, filters) && matches(language, $0.row) ? $0.row : nil }
+            if !rows.isEmpty { found[language] = rows }
+        }
+        return found
     }
 
-    /// `rows` followed by the rows of `new` it lacks. A course number can hold several rows, one
-    /// per time slot, so a row is keyed by its number and slot.
-    static func merge(_ rows: [CourseSearchResult], _ new: [CourseSearchResult]) -> [CourseSearchResult] {
-        var seen = Set<String>()
-        return (rows + new).filter { seen.insert("\($0.CourseNo)#\($0.Node ?? "")").inserted }
+    nonisolated static func admits(_ course: CourseCatalog.Course, _ filters: CourseSearchFilters) -> Bool {
+        let row = course.row
+        let level = row.CourseNo.dropFirst(2).first ?? " "
+        let levelMatches = switch filters.level {
+        case .all: true
+        case .undergraduate: undergraduateLevels.contains(level)
+        case .graduate: graduateLevels.contains(level)
+        }
+        return levelMatches
+            && (filters.department.map { row.CourseNo.hasPrefix($0.uppercased()) } ?? true)
+            && (filters.dimension.map { row.Dimension == $0 } ?? true)
+            && (!filters.generalOnly || !(row.Dimension ?? "").isEmpty)
+            && (!filters.englishTaught || course.isEnglishTaught)
+            && (!filters.intensiveOnly || course.isIntensive)
+            && (!filters.excludeAlliance || !course.isAlliance)
+    }
+
+    /// The filter lists of the term, with each name in both languages. A list only one language
+    /// has keeps that language's names for both.
+    static func options(_ catalogs: [String: CourseCatalog]) -> CourseSearchOptions {
+        guard let zh = catalogs["zh"] ?? catalogs["en"] else { return CourseSearchOptions() }
+        let en = catalogs["en"] ?? zh
+        func list(_ named: [CourseCatalog.Named], english: [CourseCatalog.Named]) -> [CourseSearchOptions.Option] {
+            let english = Dictionary(english.map { ($0.no, $0.name) }, uniquingKeysWith: { first, _ in first })
+            return named.map { .init(code: $0.no, name: $0.name, englishName: english[$0.no] ?? $0.name) }
+        }
+        let enColleges = Dictionary(en.colleges.map { ($0.no, $0) }, uniquingKeysWith: { first, _ in first })
+        return CourseSearchOptions(
+            colleges: zh.colleges.map { college in
+                CourseSearchOptions.College(
+                    name: college.name,
+                    englishName: enColleges[college.no]?.name ?? college.name,
+                    departments: list(college.departments, english: enColleges[college.no]?.departments ?? [])
+                )
+            },
+            dimensions: list(zh.dimensions, english: en.dimensions)
+        )
     }
 
     /// The rows to show: the primary language's, then the courses only another language found,
