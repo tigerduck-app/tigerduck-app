@@ -184,6 +184,43 @@ struct MailListViewModelTests {
         ])
     }
 
+    @Test func theStatusSaysOKOnceTheIndexIsComplete() async {
+        let h = await Self.indexedHarness()
+        #expect(h.model.statusText == SyncStatusDot.statusText(.ok))
+        #expect(!h.model.isSyncing)
+    }
+
+    @Test func theStatusCountsTheIndexAfterAFailedPass() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.model.load()
+        await h.model.waitForIndex()
+        #expect(h.model.serverStatus == .ok)
+        #expect(h.model.statusText == "0/61")
+        #expect(!h.model.isSyncing)
+    }
+
+    @Test func theStatusCountsAPausedPassWithoutSpinning() async throws {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.hold("searchTexts")
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        #expect(h.model.isSyncing)
+        #expect(h.model.statusText == "0/61")
+
+        h.model.stopPolling()
+        await h.fake.release("searchTexts")
+        try await waitUntil { !h.model.isSyncing }
+        #expect(h.model.statusText == "20/61")
+    }
+
+    @Test func clearingTheCacheTakesTheStatusBackToSyncing() async {
+        let h = await Self.indexedHarness()
+        h.cache.clearAll()
+        #expect(h.model.statusText == String(localized: "sync_status_syncing"))
+        #expect(!h.model.isSyncing)
+    }
+
     @Test func aPullStartsTheIndexWithoutWaitingOutAFailedPass() async {
         let h = Self.harness(warmDelay: {})
         await h.fake.update { $0.searchTextsError = .serverBusy }

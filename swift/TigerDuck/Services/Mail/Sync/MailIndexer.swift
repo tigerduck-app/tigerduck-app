@@ -80,7 +80,10 @@ final class MailIndexer {
     private var passWipeCount: Int?
     /// The folders the index held all the mail of when a pass last listed or filled them.
     private var indexedFolders: Set<String> = []
-    private(set) var progress: MailIndexProgress?
+    private var lastPassCompleted = false
+    private var lastProgress: MailIndexProgress?
+    /// Whether a pass is listing or downloading.
+    private(set) var isRunning = false
     /// Told the folder each time a batch of its mail joins the index.
     @ObservationIgnored var onFill: ((String) -> Void)?
 
@@ -125,6 +128,7 @@ final class MailIndexer {
             var tally = Tally()
             let outcome = await self.pass(folders: folders, wipeCount: wipeCount, tally: &tally)
             guard !Task.isCancelled else {
+                self.lastPassCompleted = false
                 Self.logEnd(.paused, tally)
                 return
             }
@@ -158,6 +162,19 @@ final class MailIndexer {
         failedPasses = 0
         strikes = [:]
         indexedFolders = []
+        lastPassCompleted = false
+        lastProgress = nil
+    }
+
+    /// The last pass's count, kept after it ends; nil before a pass since the last wipe.
+    var progress: MailIndexProgress? {
+        passWipeCount == cache.wipeCount ? lastProgress : nil
+    }
+
+    /// Whether a pass got through since the last wipe or account change, and none failed or
+    /// paused after it.
+    var isComplete: Bool {
+        lastPassCompleted && passWipeCount == cache.wipeCount
     }
 
     /// Whether the index held all of `folder`'s mail when a pass last reached it.
@@ -180,6 +197,7 @@ final class MailIndexer {
     }
 
     private func finish(_ outcome: Outcome, tally: Tally, arrivals: Int, wipeCount: Int, folders: [String]) {
+        lastPassCompleted = outcome == .complete
         switch outcome {
         case .paused:
             Self.logEnd(outcome, tally)
@@ -205,10 +223,11 @@ final class MailIndexer {
     /// A lost connection, a busy server or a rejected password ends the pass rather than trying
     /// each folder again: NTUST counts failed logins towards a lockout.
     private func pass(folders: [String], wipeCount: Int, tally: inout Tally) async -> Outcome {
-        progress = .counting
+        isRunning = true
+        lastProgress = .counting
         defer {
-            tally.done = progress?.done ?? 0
-            progress = nil
+            tally.done = lastProgress?.done ?? 0
+            isRunning = false
         }
         do {
             var plans: [Plan] = []
@@ -223,14 +242,15 @@ final class MailIndexer {
                     tally.failed += 1
                 }
             }
+            // A stop during the last listing, as at sign-out, leaves no stale total behind.
+            guard !Task.isCancelled else { return .paused }
             let total = plans.reduce(0) { $0 + $1.missing.count }
             tally.toFetch = total
-            // An index that is already current shows nothing rather than spinning at 0/0.
-            progress = total > 0 ? MailIndexProgress(total: total) : nil
+            lastProgress = MailIndexProgress(total: total)
             for plan in plans {
                 guard !Task.isCancelled, !isConstrained() else { return .paused }
                 let filled = try await attempt {
-                    try await self.fill(plan, wipeCount: wipeCount) { self.progress?.advance(by: $0) }
+                    try await self.fill(plan, wipeCount: wipeCount) { self.lastProgress?.advance(by: $0) }
                 }
                 if filled == true {
                     indexedFolders.insert(plan.folder)

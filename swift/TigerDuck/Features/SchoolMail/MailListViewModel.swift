@@ -99,7 +99,23 @@ final class MailListViewModel {
 
     var showsInbox: Bool { targets.contains(MailConstants.inbox) }
 
-    var indexProgress: MailIndexProgress? { indexer.progress }
+    /// The status dot's text, which says OK only once the search index is complete: until then,
+    /// and while a pass downloads, it counts the index's mail, or says it is syncing before the
+    /// first count. A failed server shows its failure first.
+    var statusText: String {
+        guard serverStatus == .ok, isIndexBusy else { return SyncStatusDot.statusText(serverStatus) }
+        return indexer.progress?.text() ?? String(localized: "sync_status_syncing")
+    }
+
+    /// Whether the status dot spins: a load, or a pass with mail to download.
+    var isSyncing: Bool {
+        isRefreshing || (serverStatus == .ok && indexer.isRunning && indexer.progress?.total != 0)
+    }
+
+    /// An index that is already current shows nothing rather than spinning at 0/0.
+    private var isIndexBusy: Bool {
+        !indexer.isComplete || (indexer.isRunning && indexer.progress?.total != 0)
+    }
 
     // MARK: Loading
 

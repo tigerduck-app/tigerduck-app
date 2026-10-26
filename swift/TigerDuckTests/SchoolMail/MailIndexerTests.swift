@@ -220,6 +220,22 @@ struct MailIndexerTests {
         #expect(await h.passes() == 6)
     }
 
+    @Test func theIndexIsIncompleteUntilAPassGetsThroughAndAgainAfterAWipeOrAFailure() async {
+        let h = Self.harness(inboxCount: 3)
+        #expect(!h.indexer.isComplete)
+        await h.runPass()
+        #expect(h.indexer.isComplete)
+
+        h.cache.clearAll()
+        #expect(!h.indexer.isComplete)
+        #expect(h.indexer.progress == nil)
+
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.runPass()
+        #expect(!h.indexer.isComplete)
+        #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "0/3")
+    }
+
     @Test func clearingTheCacheStartsThePassAFailureWasHoldingOff() async {
         let h = Self.harness(inboxCount: 3)
         await h.fake.update { $0.searchTextsError = .serverBusy }
@@ -334,7 +350,9 @@ struct MailIndexerTests {
         await h.indexer.waitForPass()
         #expect(await h.textBatches().count == 1)
         #expect(h.search("公告 45") == [45])
-        #expect(h.indexer.progress == nil)
+        #expect(!h.indexer.isRunning)
+        #expect(!h.indexer.isComplete)
+        #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "20/45")
 
         h.network.isConstrained = false
         await h.runPass()
@@ -365,7 +383,8 @@ struct MailIndexerTests {
         #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "20/46")
         await h.fake.release("searchTexts")
         await h.indexer.waitForPass()
-        #expect(h.indexer.progress == nil)
+        #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "46/46")
+        #expect(h.indexer.isComplete)
         #expect(h.search("寄件", in: "Sent") == [1])
     }
 
