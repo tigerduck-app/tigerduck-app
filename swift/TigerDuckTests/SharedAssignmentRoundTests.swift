@@ -9,6 +9,8 @@ import Testing
 struct SharedAssignmentRoundTests {
     @MainActor
     private final class Rounds {
+        /// Callers that reached `sharedRound`, which decides whether to join before it first waits.
+        var entered = 0
         var started: [String] = []
         var finished: [String] = []
         private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -32,6 +34,7 @@ struct SharedAssignmentRoundTests {
         _ name: String, _ rounds: Rounds, generation: Int = 1, rechecks: Bool
     ) -> Task<Void, Never> {
         Task {
+            rounds.entered += 1
             _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks, isCurrent: { true }) {
                 await rounds.run(name)
             }
@@ -46,7 +49,7 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["launch"] }
         let foreground = start("foreground", rounds, rechecks: false)
         let pullAfterPull = start("pull", rounds, rechecks: false)
-        try await Task.sleep(for: .milliseconds(20))
+        try await waitUntil { rounds.entered == 3 }
         rounds.open()
         _ = await (launch.value, foreground.value, pullAfterPull.value)
         #expect(rounds.started == ["launch"])
@@ -59,7 +62,7 @@ struct SharedAssignmentRoundTests {
         let launch = start("launch", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["launch"] }
         let pull = start("pull", rounds, rechecks: true)
-        try await Task.sleep(for: .milliseconds(20))
+        try await waitUntil { rounds.entered == 2 }
         #expect(rounds.started == ["launch"])
         rounds.open()
         _ = await (launch.value, pull.value)
@@ -74,7 +77,7 @@ struct SharedAssignmentRoundTests {
         let pull = start("pull", rounds, rechecks: true)
         try await waitUntil { rounds.started == ["pull"] }
         let foreground = start("foreground", rounds, rechecks: false)
-        try await Task.sleep(for: .milliseconds(20))
+        try await waitUntil { rounds.entered == 2 }
         rounds.open()
         _ = await (pull.value, foreground.value)
         #expect(rounds.started == ["pull"])
@@ -108,6 +111,7 @@ struct SharedAssignmentRoundTests {
         let departing = "departing-" + UUID().uuidString
         let due = Date(timeIntervalSince1970: 1_800_000_000)
         let pull = Task {
+            rounds.entered += 1
             _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
                 _ = await rounds.run("pull")
                 return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
@@ -115,9 +119,10 @@ struct SharedAssignmentRoundTests {
         }
         try await waitUntil { rounds.started == ["pull"] }
         let joined = Task {
-            await AppServiceBridge.sharedRound(generation: 1, rechecks: false, isCurrent: { signIn.isCurrent }) { [] }
+            rounds.entered += 1
+            return await AppServiceBridge.sharedRound(generation: 1, rechecks: false, isCurrent: { signIn.isCurrent }) { [] }
         }
-        try await Task.sleep(for: .milliseconds(20))
+        try await waitUntil { rounds.entered == 2 }
         signIn.isCurrent = false
         rounds.open()
 
@@ -133,11 +138,12 @@ struct SharedAssignmentRoundTests {
         let launch = start("launch", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["launch"] }
         let pull = Task {
+            rounds.entered += 1
             _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
                 await rounds.run("pull")
             }
         }
-        try await Task.sleep(for: .milliseconds(20))
+        try await waitUntil { rounds.entered == 2 }
         signIn.isCurrent = false
         rounds.open()
         _ = await (launch.value, pull.value)
