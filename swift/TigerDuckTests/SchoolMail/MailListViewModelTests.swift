@@ -314,6 +314,31 @@ struct MailListViewModelTests {
         #expect(h.model.displayedRows.map(\.uid) == [58, 55])
     }
 
+    @Test func aCatchUpThatFailsLeavesItsMatchesForTheNextOne() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[54].detail?.textBody = "Room 302"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+
+        await h.fake.update { $0.summariesError = .protocolError("NO") }
+        await h.fake.release("searchTexts")
+        await h.model.waitForIndex()
+        await h.model.waitForSearchCatchUp()
+        #expect(h.model.displayedRows.isEmpty)
+
+        await h.fake.update { $0.summariesError = nil }
+        h.model.stopPolling()
+        h.model.startPolling()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [55])
+    }
+
     @Test func anUnreadOnlySearchPagesOnWhenACatchUpAddsOnlyReadMail() async {
         let h = Self.harness(inboxCount: 120, warmDelay: {}, catchUpDelay: {})
         await h.fake.update { fake in

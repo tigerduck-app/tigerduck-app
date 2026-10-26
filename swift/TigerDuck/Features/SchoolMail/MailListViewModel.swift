@@ -391,7 +391,11 @@ final class MailListViewModel {
             await delay()
             while let self, !Task.isCancelled, !self.isPaused, generation == self.searchGeneration, self.searchIsBehind {
                 self.searchIsBehind = false
-                await self.catchUpSearch()
+                guard await self.catchUpSearch() else {
+                    // Left for the next fill or the page reopening rather than retried at once.
+                    if generation == self.searchGeneration { self.searchIsBehind = true }
+                    break
+                }
                 await delay()
             }
             guard let self, !Task.isCancelled, generation == self.searchGeneration else { return }
@@ -401,8 +405,9 @@ final class MailListViewModel {
 
     /// Adds the matches the index gained since the search ran, leaving the listed rows in place:
     /// a folder's matches newer than its oldest listed row are fetched now, with older ones only
-    /// to fill its first page, and the rest wait for the end of the list.
-    private func catchUpSearch() async {
+    /// to fill its first page, and the rest wait for the end of the list. False when it stopped
+    /// before the last folder.
+    private func catchUpSearch() async -> Bool {
         let query = searchQuery
         let selection = self.selection
         let epoch = accountEpoch
@@ -410,7 +415,7 @@ final class MailListViewModel {
         for folder in targets {
             let matched = await matchingUIDs(in: folder, query: query)
             guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration,
-                  let results = searchResults else { return }
+                  let results = searchResults else { return false }
             guard let matched, unfetchedMatches[folder].map({ $0.uidValidity == matched.uidValidity }) ?? true else {
                 continue
             }
@@ -426,7 +431,9 @@ final class MailListViewModel {
                 let summaries = try await session.use { client in
                     try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: matched.uidValidity)
                 }
-                guard isCurrent(selection, epoch), generation == searchGeneration, let current = searchResults else { return }
+                guard isCurrent(selection, epoch), generation == searchGeneration, let current = searchResults else {
+                    return false
+                }
                 noteGone(batch, summaries, folder: folder)
                 unfetchedMatches[folder]?.uids.removeAll { batch.contains($0) }
                 let shown = Set(current.map(\.id))
@@ -434,21 +441,23 @@ final class MailListViewModel {
                     .filter { !shown.contains($0.id) }
                 if !rows.isEmpty { searchResults = ordered(current + rows) }
             } catch MailClientError.folderChanged {
-                guard isCurrent(selection, epoch), generation == searchGeneration else { return }
+                guard isCurrent(selection, epoch), generation == searchGeneration else { return false }
                 unfetchedMatches[folder] = nil
                 searchResults?.removeAll { $0.folder == folder }
                 await recoverFromFolderChange(folder)
-                return
+                return false
             } catch {
-                guard isCurrent(selection, epoch) else { return }
+                // A stop, as the page closing, can be what failed it; the server is not to blame.
+                guard !Task.isCancelled, isCurrent(selection, epoch) else { return false }
                 serverStatus = .failed
-                return
+                return false
             }
         }
         // Under the unread filter every row added can be read, and an empty list has no row whose
         // appearance asks for the next page.
-        guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration else { return }
+        guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration else { return false }
         if displayedRows.isEmpty, !isPaginating { await loadMoreSearchResults() }
+        return true
     }
 
     /// Records the `requested` mail the server answered as deleted or not at all.
@@ -487,7 +496,7 @@ final class MailListViewModel {
                     await recoverFromFolderChange(folder)
                     return
                 } catch {
-                    guard isCurrent(selection, epoch) else { return }
+                    guard !Task.isCancelled, isCurrent(selection, epoch) else { return }
                     serverStatus = .failed
                     return
                 }
