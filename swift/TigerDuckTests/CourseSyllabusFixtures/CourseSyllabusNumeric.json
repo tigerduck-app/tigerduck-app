@@ -1,0 +1,18 @@
+[
+  {
+    "Semester": "1151",
+    "CourseNo": "ZZ1003301",
+    "CourseName": "Numbered Pond",
+    "CourseGrading": true,
+    "CourseObject": "Counting ducks.",
+    "CourseContent": null,
+    "CourseNote": 3,
+    "CoreAbility": "",
+    "CourseURL": "",
+    "Instruction_1": 60,
+    "Instruction_2": 0,
+    "Instruction_3": 12.5,
+    "Instruction_4": "27.5",
+    "Instruction_other": null
+  }
+]

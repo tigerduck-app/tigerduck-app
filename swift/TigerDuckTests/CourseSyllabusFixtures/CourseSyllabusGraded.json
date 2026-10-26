@@ -1,0 +1,24 @@
+[
+  {
+    "Semester": "1151",
+    "CourseNo": "ZZ1001301",
+    "CourseName": "鴨子程式設計",
+    "CourseTeacher": "測試老師",
+    "CreditPoint": "3",
+    "ClassRoomNo": "W6(TR-000)  ",
+    "CoreAbility": "  ",
+    "CourseURL": "",
+    "CourseObject": "1.池塘概論\r\n2.鴨子如何游泳\r\n",
+    "CourseContent": "講授與實作\r\n",
+    "CourseTextbook": "鴨子入門，第二版",
+    "CourseRefbook": " 池塘手冊 ",
+    "CourseNote": null,
+    "CourseGrading": "期中考：30%\r\n期末考：40%\r\n作業：30%",
+    "CourseRemark": "不顯示",
+    "Instruction_1": "60",
+    "Instruction_2": "0",
+    "Instruction_3": " 20 ",
+    "Instruction_4": "20%",
+    "Instruction_other": ""
+  }
+]

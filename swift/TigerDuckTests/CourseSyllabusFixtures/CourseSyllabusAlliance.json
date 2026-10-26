@@ -1,0 +1,17 @@
+[
+  {
+    "Semester": "1151",
+    "CourseNo": "3N0000701",
+    "CourseName": "Pond Studies",
+    "CourseTeacher": "Test Teacher",
+    "CoreAbility": "",
+    "CourseURL": "https://example.edu.tw/syllabus?code=ZZZ0001",
+    "CourseObject": "ZZZ0001",
+    "CourseContent": "Partner school course",
+    "CourseTextbook": null,
+    "CourseRefbook": null,
+    "CourseNote": null,
+    "CourseGrading": null,
+    "CourseRemark": null
+  }
+]
