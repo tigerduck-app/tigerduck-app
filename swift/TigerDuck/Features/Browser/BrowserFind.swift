@@ -72,13 +72,14 @@ final class BrowserFind {
 
     /// Each match of `query` in `texts` as `[text, start, end]`, in the UTF-16 offsets the DOM
     /// counts, ignoring case. Plain text matches any run of white space where the query has one,
-    /// as a page's source line breaks show as a single space. None for an expression that does
-    /// not compile, and none once the search has run past `budget`, as a pattern such as `(a+)+$`
-    /// backtracks exponentially.
+    /// at its ends too, as a page's source line breaks show as a single space. None for a query of
+    /// only white space or an expression that does not compile, and none once the search has run
+    /// past `budget`, as a pattern such as `(a+)+$` backtracks exponentially.
     nonisolated static func ranges(
         of query: String, regex: Bool, in texts: [String], budget: Duration = .milliseconds(500)
     ) -> [[Int]] {
-        let pattern = regex ? query : query.split(whereSeparator: \.isWhitespace)
+        if !regex, query.allSatisfy(\.isWhitespace) { return [] }
+        let pattern = regex ? query : query.split(separator: /\s+/, omittingEmptySubsequences: false)
             .map { NSRegularExpression.escapedPattern(for: String($0)) }
             .joined(separator: "\\s+")
         guard let expression = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [] }

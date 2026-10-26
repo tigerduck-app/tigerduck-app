@@ -29,6 +29,12 @@ struct BrowserFindMatcherTests {
         #expect(ranges("a b", "   ") == [])
     }
 
+    @Test func spaceAtEitherEndOfPlainTextStillNeedsWhiteSpace() {
+        #expect(ranges("category cat food", "cat ") == [[0, 9, 13]])
+        #expect(ranges("concat cat", " cat") == [[0, 6, 10]])
+        #expect(ranges("a\n\tcat  b", "  cat ") == [[0, 1, 8]])
+    }
+
     @Test func aRegularExpressionMatchesItsPattern() {
         #expect(ranges("第一週：介紹，第三週：提案", "第[一二三四]週", regex: true) == [[0, 0, 3], [0, 7, 10]])
         #expect(ranges("HW1 hw22", "hw\\d+", regex: true) == [[0, 0, 3], [0, 4, 8]])
