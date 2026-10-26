@@ -36,7 +36,7 @@ struct SyncStatusDotDetailsTests {
         }
     }
 
-    @Test("a loading page's dot reads its own text, not only that it syncs")
+    @Test("a loading page's dot says it syncs, then reads its own text")
     func aLoadingPageReadsItsText() async throws {
         try await withAccessibilityAutomation {
             let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -50,7 +50,8 @@ struct SyncStatusDotDetailsTests {
             window.makeKeyAndVisible()
             defer { window.isHidden = true }
 
-            try await waitUntil(timeout: .seconds(10)) { accessibilityElement(labeled: "20/61", in: host.view) != nil }
+            let label = "\(String(localized: "sync_status_syncing")), 20/61"
+            try await waitUntil(timeout: .seconds(10)) { accessibilityElement(labeled: label, in: host.view) != nil }
         }
     }
 
