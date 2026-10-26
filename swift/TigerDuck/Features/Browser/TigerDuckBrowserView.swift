@@ -36,6 +36,7 @@ struct TigerDuckBrowserView: View {
                     if page.find.isActive {
                         BrowserFindBar(find: page.find)
                             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { findBarTop = $0 }
+                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                     } else if addressBar == .top {
                         toolbar
                     } else {
@@ -43,7 +44,8 @@ struct TigerDuckBrowserView: View {
                     }
                 }
             }
-            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.35), value: collapsed)
+            .animation(motion, value: collapsed)
+            .animation(motion, value: page.find.isActive)
             .animation(.default, value: page.signIn.phase)
             .sheet(item: $sheet, onDismiss: {
                 afterSheet?()
@@ -73,6 +75,8 @@ struct TigerDuckBrowserView: View {
             }
             .onDisappear { page.signIn.close() }
     }
+
+    private var motion: Animation { reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.35) }
 
     private static let barHeight: CGFloat = 44
     private static let capsuleHeight: CGFloat = 30
