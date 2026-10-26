@@ -79,5 +79,48 @@ struct BrowserPageScriptsTests {
             #expect(await evaluate(webView, filters) as? [String] == ["none", "none"], "\(ownDark)")
         }
     }
+
+    @Test(arguments: ["", "<body style=\"background:#fff\">"])
+    func aDarkenedPageIsDarkBelowItsTextToo(start: String) async throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        window.rootViewController = UIViewController()
+        window.overrideUserInterfaceStyle = .dark
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let configuration = WKWebViewConfiguration()
+        BrowserPageScripts.addScripts(to: configuration.userContentController)
+        let webView = WKWebView(frame: window.bounds, configuration: configuration)
+        window.rootViewController?.view.addSubview(webView)
+
+        await load(webView, "\(start)\(Self.paragraph)")
+        for _ in 0..<50 {
+            if await evaluate(webView, "return getComputedStyle(document.documentElement).filter") as? String != "none" { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(try await brightnessBelowTheText(of: webView) < 0.3)
+
+        webView.overrideUserInterfaceStyle = .light
+        for _ in 0..<50 {
+            if await evaluate(webView, "return getComputedStyle(document.documentElement).filter") as? String == "none" { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(try await brightnessBelowTheText(of: webView) > 0.7)
+    }
+
+    private func brightnessBelowTheText(of webView: WKWebView) async throws -> CGFloat {
+        _ = await evaluate(webView, "await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+        let image = try await webView.takeSnapshot(configuration: nil)
+        return try #require(Self.brightness(of: image, at: CGPoint(x: 200, y: 700)))
+    }
+
+    /// The mean of a snapshot pixel's color channels, from 0 for black to 1 for white.
+    private static func brightness(of image: UIImage, at point: CGPoint) -> CGFloat? {
+        guard let cgImage = image.cgImage, let data = cgImage.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return nil }
+        let scale = CGFloat(cgImage.width) / image.size.width
+        let pixel = bytes + Int(point.y * scale) * cgImage.bytesPerRow + Int(point.x * scale) * cgImage.bitsPerPixel / 8
+        return (CGFloat(pixel[0]) + CGFloat(pixel[1]) + CGFloat(pixel[2])) / 765
+    }
 }
 #endif
