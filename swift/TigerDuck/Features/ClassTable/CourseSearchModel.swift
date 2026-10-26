@@ -72,7 +72,10 @@ final class CourseSearchModel {
                 let language = request.Language
                 group.addTask {
                     do {
-                        return (language, .success(try await search(request)))
+                        // Awaited before the tuple is built: in optimized builds (Swift 6.4) the inline
+                        // `return (language, .success(try await ...))` leaves `language` unset on success.
+                        let rows = try await search(request)
+                        return (language, .success(rows))
                     } catch {
                         return (language, .failure(error))
                     }
