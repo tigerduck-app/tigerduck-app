@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -180,6 +181,44 @@ struct UnchangedUploadTests {
             throw URLError(.notConnectedToInternet)
         }
         #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {})
+    }
+
+    @Test("Cancelling an upload's caller stops its send, or skips it while it waits its turn, and records no failure")
+    func cancelledCallerStopsTheUpload() async throws {
+        let coordinator = Backend().makeCoordinator()
+        let key = UploadLedger.courses("1151")
+        let sent = OSAllocatedUnfairLock(initialState: [Int]())
+        let release = ManualSleeper()
+        let first = Task {
+            try await coordinator.uploadIfChanged(key, fingerprint: 1, always: true, isCurrent: { true }) {
+                sent.withLock { $0.append(1) }
+                await release.sleep(for: .zero)
+                try await Task.sleep(for: .seconds(30))
+            }
+        }
+        try await release.waitUntilArmed()
+        let second = Task {
+            try await coordinator.uploadIfChanged(key, fingerprint: 2, always: true, isCurrent: { true }) {
+                sent.withLock { $0.append(2) }
+            }
+        }
+        second.cancel()
+        await release.fire()
+        first.cancel()
+
+        let ended = OSAllocatedUnfairLock(initialState: false)
+        let watcher = Task {
+            _ = try? await first.value
+            _ = try? await second.value
+            ended.withLock { $0 = true }
+        }
+        try await waitUntil(timeout: .seconds(10)) { ended.withLock { $0 } }
+        await watcher.value
+
+        await #expect(throws: CancellationError.self) { try await first.value }
+        await #expect(throws: CancellationError.self) { try await second.value }
+        #expect(sent.withLock { $0 } == [1])
+        #expect(!coordinator.holdsUnsentCourseUploads)
     }
 
     @Test("A course list the server refused counts as unsent until a list of that term goes up or a sign-out forgets it")
