@@ -13,17 +13,19 @@ nonisolated enum MailFolderSelection: Hashable, Sendable {
 
     case allMail
 
-    static let mergedRoles: [MailFolderRole] = [.inbox, .sent]
+    /// The role folders All mail covers, ahead of every folder that has no role; Junk and Trash
+    /// stay out.
+    static let mergedRoles: [MailFolderRole] = [.inbox, .sent, .drafts]
 
     var realFolder: String? {
         if case .real(let name) = self { return name }
         return nil
     }
 
-    func targets(roles: [MailFolderRole: String]) -> [String] {
+    func targets(roles: [MailFolderRole: String], others: [String]) -> [String] {
         switch self {
         case .real(let name): [name]
-        case .allMail: Self.mergedRoles.compactMap { roles[$0] }
+        case .allMail: Self.mergedRoles.compactMap { roles[$0] } + others
         }
     }
 }

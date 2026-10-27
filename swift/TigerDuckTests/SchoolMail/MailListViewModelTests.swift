@@ -7,6 +7,7 @@ import Testing
 struct MailListViewModelTests {
     final class SeenLog {
         var noted: [MailboxStatusInfo] = []
+        var authFailures = 0
     }
 
     struct Harness {
@@ -28,7 +29,8 @@ struct MailListViewModelTests {
         includeSent: Bool = true,
         open: (() async throws -> any MailClient)? = nil,
         signOutEvents: NotificationCenter = NotificationCenter(),
-        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) }
+        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) },
+        catchUpDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) }
     ) -> Harness {
         let inbox = (UInt32(1)...inboxCount).map { FakeMailClient.message(uid: $0, subject: "公告 \($0)", seen: $0 % 2 == 0) }
         var folders: [String: [FakeMailClient.Message]] = [
@@ -42,9 +44,10 @@ struct MailListViewModelTests {
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
         let seen = SeenLog()
-        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake }, signOutEvents: signOutEvents)
+        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
+                                      onAuthFailure: { seen.authFailures += 1 }, signOutEvents: signOutEvents)
         let model = MailListViewModel(session: session, cache: cache, noteSeenByPage: { seen.noted.append($0) },
-                                      signOutEvents: signOutEvents, warmDelay: warmDelay)
+                                      signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
         return Harness(model: model, fake: fake, cache: cache, seen: seen)
     }
 
@@ -181,6 +184,250 @@ struct MailListViewModelTests {
             "searchTexts INBOX \(Array((UInt32(21)...40).reversed()))",
             "searchTexts INBOX \(Array((UInt32(1)...20).reversed()))",
         ])
+    }
+
+    @Test func theStatusSaysOKOnceTheIndexIsComplete() async {
+        let h = await Self.indexedHarness()
+        #expect(h.model.statusText == SyncStatusDot.statusText(.ok))
+        #expect(!h.model.isSyncing)
+    }
+
+    @Test func theStatusCountsTheIndexAfterAFailedPass() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.model.load()
+        await h.model.waitForIndex()
+        #expect(h.model.serverStatus == .ok)
+        #expect(h.model.statusText == "0/61")
+        #expect(!h.model.isSyncing)
+    }
+
+    @Test func theStatusCountsAPausedPassWithoutSpinning() async throws {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.hold("searchTexts")
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        #expect(h.model.isSyncing)
+        #expect(h.model.statusText == "0/61")
+
+        h.model.stopPolling()
+        await h.fake.release("searchTexts")
+        try await waitUntil { !h.model.isSyncing }
+        #expect(h.model.statusText == "20/61")
+    }
+
+    @Test func clearingTheCacheTakesTheStatusBackToSyncing() async {
+        let h = await Self.indexedHarness()
+        h.cache.clearAll()
+        #expect(h.model.statusText == String(localized: "sync_status_syncing"))
+        #expect(!h.model.isSyncing)
+    }
+
+    @Test func aSearchWaitsOutAFailedPassButAPullDoesNot() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.model.load()
+        await h.model.waitForIndex()
+        await h.fake.update { $0.searchTextsError = nil }
+
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        await h.model.refresh()
+        await h.model.waitForIndex()
+        #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 1)
+
+        await h.model.refresh(forcingIndex: true)
+        await h.model.waitForIndex()
+        #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 2)
+        #expect(h.cache.searchIndex.search(folder: "INBOX", query: "公告 60")?.uids == [60])
+    }
+
+    @Test func aSearchDuringAPassGrowsAsThePassFillsItsFoldersWithoutASecondPass() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[54].detail?.textBody = "期末考在 Room 302"
+            fake.folders["INBOX"]?[6].detail?.textBody = "補考也在 Room 302"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.isEmpty)
+
+        await h.fake.release("searchTexts")
+        await h.model.waitForIndex()
+        await h.model.waitForSearchCatchUp()
+        #expect(h.model.displayedRows.map(\.uid) == [55, 7])
+        #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 1)
+    }
+
+    @Test func aBatchThatLandsAfterThePageClosesCatchesTheSearchUpOnlyWhenItReopens() async throws {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[54].detail?.textBody = "期末考在 Room 302"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+
+        h.model.stopPolling()
+        await h.fake.release("searchTexts")
+        try await waitUntil { !h.model.isSyncing }
+        await h.model.waitForSearchCatchUp()
+        #expect(await !h.fake.calls.contains { $0.hasPrefix("summaries ") })
+
+        h.model.startPolling()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [55])
+    }
+
+    @Test func aSearchThatEndsAfterThePageClosesLeavesItsCatchUpForTheReopening() async throws {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[57].summary.subject = "Room 302 改期"
+            fake.folders["INBOX"]?[54].detail?.textBody = "Room 302"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        await h.fake.hold("summaries")
+        h.model.searchText = "room 302"
+        let search = Task { await h.model.submitSearch() }
+        await h.fake.waitForArrival("summaries")
+        await h.fake.release("searchTexts")
+        try await waitUntil { h.cache.searchIndex.search(folder: "INBOX", query: "room 302")?.uids.contains(55) == true }
+
+        h.model.stopPolling()
+        await h.fake.release("summaries")
+        await search.value
+        await h.model.waitForSearchCatchUp()
+        #expect(await h.fake.calls.filter { $0.hasPrefix("summaries ") } == ["summaries INBOX [58]"])
+
+        h.model.startPolling()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [58, 55])
+    }
+
+    @Test func aCatchUpAfterTheFolderWasRecreatedReplacesItsOldMatches() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { $0.folders["INBOX"]?[54].detail?.textBody = "Room 302" }
+        await h.model.load()
+        await h.model.waitForIndex()
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.map(\.uid) == [55])
+
+        await h.fake.update { fake in
+            fake.uidValidity["INBOX"] = 2
+            fake.folders["INBOX"]?[54].detail?.textBody = "期末"
+            fake.folders["INBOX"]?[29].detail?.textBody = "Room 302"
+        }
+        await h.model.refresh(forcingIndex: true)
+        await h.model.waitForIndex()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [30])
+    }
+
+    @Test func aCatchUpAfterTheFolderWasRecreatedReplacesLoadedMatchesASearchFellBackOn() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { $0.folders["INBOX"]?[54].detail?.textBody = "Room 302" }
+        await h.model.load()
+        await h.model.waitForIndex()
+        await h.fake.update { $0.summariesError = .protocolError("NO") }
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+        #expect(h.model.searchUsedLocalFallback)
+        #expect(h.model.displayedRows.map(\.uid) == [55])
+
+        await h.fake.update { fake in
+            fake.summariesError = nil
+            fake.uidValidity["INBOX"] = 2
+            fake.folders["INBOX"]?[54].detail?.textBody = "期末"
+            fake.folders["INBOX"]?[29].detail?.textBody = "Room 302"
+        }
+        await h.model.refresh(forcingIndex: true)
+        await h.model.waitForIndex()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [30])
+    }
+
+    @Test func aCatchUpThatFailsLeavesItsMatchesForTheNextOne() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[54].detail?.textBody = "Room 302"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+
+        await h.fake.update { $0.summariesError = .protocolError("NO") }
+        await h.fake.release("searchTexts")
+        await h.model.waitForIndex()
+        await h.model.waitForSearchCatchUp()
+        #expect(h.model.displayedRows.isEmpty)
+
+        await h.fake.update { $0.summariesError = nil }
+        h.model.stopPolling()
+        h.model.startPolling()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [55])
+    }
+
+    @Test func anUnreadOnlySearchPagesOnWhenACatchUpAddsOnlyReadMail() async {
+        let h = Self.harness(inboxCount: 120, warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            for uid in Array(stride(from: 22, through: 120, by: 2)) + [1] {
+                fake.folders["INBOX"]?[uid - 1].detail?.textBody = "Room 302"
+            }
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        h.model.unreadOnly = true
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+
+        await h.fake.release("searchTexts")
+        await h.model.waitForIndex()
+        await h.model.waitForSearchCatchUp()
+        #expect(h.model.searchResults?.count == 51)
+        #expect(h.model.displayedRows.map(\.uid) == [1])
+    }
+
+    @Test func anUnreadOnlySearchThePageClosedOnPagesOnWhenItReopens() async {
+        let h = Self.harness(inboxCount: 120, warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            for uid in Array(stride(from: 22, through: 120, by: 2)) + [1] {
+                fake.folders["INBOX"]?[uid - 1].detail?.textBody = "Room 302"
+            }
+        }
+        await h.model.load()
+        await h.model.waitForIndex()
+        h.model.unreadOnly = true
+        h.model.searchText = "room 302"
+        await h.fake.hold("summaries")
+        let search = Task { await h.model.submitSearch() }
+        await h.fake.waitForArrival("summaries")
+        h.model.stopPolling()
+        await h.fake.release("summaries")
+        await search.value
+        #expect(h.model.displayedRows.isEmpty)
+
+        h.model.startPolling()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [1])
     }
 
     @Test func searchResultsPastThePageLoadAtTheEnd() async throws {
@@ -455,7 +702,7 @@ struct MailListViewModelTests {
         await h.model.select(.real(MailFolderRole.trash.imapName))
         await h.fake.release("summaries")
         await searchTask.value
-        #expect(h.model.searchResults == nil)
+        #expect(h.model.searchResults == [])
         #expect(h.model.rows.map(\.summary.subject) == ["舊信"])
         #expect(h.model.selection == .real(MailFolderRole.trash.imapName))
     }
@@ -672,16 +919,93 @@ struct MailListViewModelTests {
         rows.map { "\($0.folder == "INBOX" ? "收" : "寄")\($0.uid)" }
     }
 
-    @Test func theAllMailChipAppearsOnlyWhenBothFoldersResolve() async {
+    @Test func theAllMailChipAppearsOnlyWhenAllMailCoversMoreThanOneFolder() async {
         let h = Self.harness()
         #expect(h.model.showsAllMailChip == false)
         await h.model.load()
         #expect(h.model.showsAllMailChip)
 
-        let withoutSent = Self.harness(includeSent: false)
-        await withoutSent.model.load()
-        #expect(withoutSent.model.showsAllMailChip == false)
+        let inboxOnly = Self.harness(includeSent: false)
+        await inboxOnly.fake.update { $0.folders[Self.moodle] = nil }
+        await inboxOnly.model.load()
+        #expect(inboxOnly.model.showsAllMailChip == false)
     }
+
+    nonisolated static let drafts = MailFolderRole.drafts.imapName
+    nonisolated static let junk = MailFolderRole.junk.imapName
+    nonisolated static let moodle = "Moodle &irJ6C4oOitZTQA-"
+
+    @Test func allMailCoversEveryFolderButJunkAndTrashWhichTheWarmFetches() async {
+        let h = Self.harness(inboxCount: 2, sentUIDs: [1], warmDelay: {})
+        await h.fake.update { fake in
+            fake.folders[Self.drafts] = [FakeMailClient.message(uid: 1, subject: "草稿")]
+            fake.folders[Self.junk] = [FakeMailClient.message(uid: 1, subject: "廣告")]
+            fake.folders[Self.moodle] = [FakeMailClient.message(uid: 1, subject: "課程")]
+        }
+        await h.model.refresh()
+        await h.model.waitForWarm()
+
+        #expect(h.model.selection == .allMail)
+        #expect(h.model.targets == ["INBOX", Self.sent, Self.drafts, Self.moodle])
+        #expect(Set(h.model.rows.compactMap(\.summary.subject)) == ["公告 1", "公告 2", "寄件 1", "草稿", "課程"])
+        let requests = await h.fake.pageRequests
+        #expect(requests.contains("\(Self.junk) \(MailConstants.warmPageSize)"))
+        #expect(requests.contains("\(Self.trash) \(MailConstants.warmPageSize)"))
+    }
+
+    @Test func searchingAllMailFindsAMatchOnlyACustomFolderHolds() async {
+        let h = Self.harness(inboxCount: 3, warmDelay: {})
+        await h.fake.update { $0.folders[Self.moodle] = [FakeMailClient.message(uid: 4, subject: "通知", text: "作業三 繳交提醒")] }
+        await h.model.load()
+        await h.model.waitForIndex()
+
+        h.model.searchText = "作業三"
+        await h.model.submitSearch()
+
+        #expect(h.model.selection == .allMail)
+        #expect(h.model.displayedRows.map { "\($0.folder) \($0.uid)" } == ["\(Self.moodle) 4"])
+    }
+
+    @Test func aRejectedPasswordInOneFolderOfAllMailIsReported() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.update { $0.pageErrors[Self.moodle] = .authenticationFailed }
+        await h.model.load()
+
+        #expect(h.seen.authFailures == 1)
+        #expect(h.model.serverStatus == .failed)
+        #expect(Self.labels(h.model.rows) == ["收3", "收2", "收1"])
+    }
+
+    @Test func aRejectedPasswordFromALoadASignOutOvertookIsNotReported() async {
+        let center = NotificationCenter()
+        let h = Self.harness(inboxCount: 3, signOutEvents: center)
+        await h.fake.hold("page")
+        let load = Task { await h.model.load() }
+        await h.fake.waitForArrival("page")
+        center.post(name: MailAccountManager.didSignOut, object: nil)
+        await h.fake.update { fake in
+            fake.pageErrors["INBOX"] = .authenticationFailed
+            fake.release("page")
+        }
+        await load.value
+
+        #expect(h.seen.authFailures == 0)
+    }
+
+    @Test func aFolderThatFailsToLoadLeavesTheOthersInAllMail() async {
+        let h = Self.harness(inboxCount: 3, sentUIDs: [1])
+        await h.fake.update { fake in
+            fake.folders[Self.moodle] = [FakeMailClient.message(uid: 5, subject: "課程")]
+            fake.pageErrors[Self.sent] = .protocolError("NO")
+        }
+        await h.model.load()
+
+        #expect(h.model.selection == .allMail)
+        #expect(h.model.rows.map { "\($0.folder) \($0.uid)" } == ["\(Self.moodle) 5", "INBOX 3", "INBOX 2", "INBOX 1"])
+        #expect(h.model.serverStatus == .failed)
+        #expect(h.model.loadState == .loaded)
+    }
+
 
     @Test func theMergedFolderInterleavesTheInboxAndSentMailByDate() async {
         let h = await Self.mergedHarness()
@@ -764,7 +1088,7 @@ struct MailListViewModelTests {
 
         let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
         await h.model.load()
-        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count - before == 2)
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count - before == h.model.targets.count)
         #expect(h.model.rows.count == 63)
     }
 
@@ -777,8 +1101,9 @@ struct MailListViewModelTests {
         let named = await h.fake.calls.filter {
             $0.hasPrefix("page ") || $0.hasPrefix("status ") || $0.hasPrefix("summaries ")
         }
+        let targets = h.model.targets
         #expect(!named.isEmpty)
-        #expect(named.allSatisfy { $0.contains("INBOX") || $0.contains(Self.sent) })
+        #expect(named.allSatisfy { call in targets.contains { call.contains($0) } })
     }
 
     @Test func searchingTheMergedViewAsksBothFoldersAndKeepsTheirFolders() async {
@@ -790,6 +1115,20 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.contains("summaries \(Self.sent) [3]"))
         #expect(h.model.searchUsedLocalFallback == false)
         #expect(Self.labels(h.model.displayedRows) == ["寄3"])
+    }
+
+    @Test func switchingMailboxRunsTheSearchInTheFieldThere() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.real("INBOX"))
+        h.model.searchText = " 3 "
+        await h.model.submitSearch()
+        #expect(Self.labels(h.model.displayedRows) == ["收3"])
+
+        await h.model.select(.real(Self.sent))
+
+        #expect(Self.labels(h.model.displayedRows) == ["寄3"])
+        #expect(await h.fake.calls.contains("summaries \(Self.sent) [3]"))
     }
 
     @Test func anUnreachableServerFallsBackToTheLoadedMailOfBothMergedFolders() async {
@@ -830,7 +1169,7 @@ struct MailListViewModelTests {
         let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
         await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 1_000)) }
         await h.model.pollOnce()
-        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before + 2)
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before + h.model.targets.count)
     }
 
     @Test func thePollLeavesAFolderWithoutTheInboxAlone() async {
@@ -851,12 +1190,13 @@ struct MailListViewModelTests {
 
         await h.model.load()
         #expect(h.model.selection == .allMail)
-        #expect(h.model.targets == ["INBOX", Self.sent])
+        #expect(h.model.targets == ["INBOX", Self.sent, Self.moodle])
         #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
     }
 
     @Test func theListOpensOnTheInboxWhenThereIsNothingToMerge() async {
         let h = Self.harness(inboxCount: 4, includeSent: false)
+        await h.fake.update { $0.folders[Self.moodle] = nil }
         await h.model.load()
         #expect(h.model.showsAllMailChip == false)
         #expect(h.model.selection == .real("INBOX"))

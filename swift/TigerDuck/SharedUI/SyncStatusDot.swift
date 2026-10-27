@@ -109,7 +109,9 @@ struct SyncStatusDot: View {
     }
 
     private var accessibilityStatusText: String {
-        if isLoading { return String(localized: "sync_status_syncing") }
+        let syncing = String(localized: "sync_status_syncing")
+        if case .single(let source, _) = mode { return isLoading ? "\(syncing), \(source.text)" : source.text }
+        if isLoading { return syncing }
         if case .servers(let servers) = mode,
            servers.allSatisfy(isMinimal), summary == .ok {
             return String(localized: "sync_status_minimal")
