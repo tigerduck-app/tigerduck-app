@@ -768,5 +768,37 @@
         }
       ]
     }
+  },
+  "2.8.2": {
+    "zh-TW": {
+      "title": "2.8.2 更新內容",
+      "items": [
+        {
+          "symbol": "envelope",
+          "title": "學校信箱",
+          "body": "修正「所有郵件」的涵蓋範圍。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "搜尋時立即同步並即時更新結果；切換信件匣時保留搜尋狀態。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.8.2",
+      "items": [
+        {
+          "symbol": "envelope",
+          "title": "School Mail",
+          "body": "Fixed which folders All Mail covers."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Search syncs right away and updates its results as it goes; switching folders keeps your search state."
+        }
+      ]
+    }
   }
 }
