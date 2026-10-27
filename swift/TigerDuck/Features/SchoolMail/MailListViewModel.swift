@@ -347,6 +347,8 @@ final class MailListViewModel {
                 let uids = Set(matched.uids)
                 found += (pages[folder]?.summaries ?? []).filter { uids.contains($0.uid) }
                     .map { MailListRow(folder: folder, summary: $0) }
+                // The rows' validity, so a catch-up can tell they predate a recreated folder.
+                unfetched[folder] = (validity, [])
                 usedFallback = true
             }
         }

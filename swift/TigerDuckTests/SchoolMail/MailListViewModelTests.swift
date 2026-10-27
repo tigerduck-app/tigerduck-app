@@ -335,6 +335,30 @@ struct MailListViewModelTests {
         #expect(h.model.displayedRows.map(\.uid) == [30])
     }
 
+    @Test func aCatchUpAfterTheFolderWasRecreatedReplacesLoadedMatchesASearchFellBackOn() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { $0.folders["INBOX"]?[54].detail?.textBody = "Room 302" }
+        await h.model.load()
+        await h.model.waitForIndex()
+        await h.fake.update { $0.summariesError = .protocolError("NO") }
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+        #expect(h.model.searchUsedLocalFallback)
+        #expect(h.model.displayedRows.map(\.uid) == [55])
+
+        await h.fake.update { fake in
+            fake.summariesError = nil
+            fake.uidValidity["INBOX"] = 2
+            fake.folders["INBOX"]?[54].detail?.textBody = "期末"
+            fake.folders["INBOX"]?[29].detail?.textBody = "Room 302"
+        }
+        await h.model.refresh(forcingIndex: true)
+        await h.model.waitForIndex()
+        await h.model.waitForSearchCatchUp()
+        h.model.stopPolling()
+        #expect(h.model.displayedRows.map(\.uid) == [30])
+    }
+
     @Test func aCatchUpThatFailsLeavesItsMatchesForTheNextOne() async {
         let h = Self.harness(warmDelay: {}, catchUpDelay: {})
         await h.fake.update { fake in
