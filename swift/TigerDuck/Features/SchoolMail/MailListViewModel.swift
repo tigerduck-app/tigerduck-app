@@ -347,6 +347,8 @@ final class MailListViewModel {
                 let uids = Set(matched.uids)
                 found += (pages[folder]?.summaries ?? []).filter { uids.contains($0.uid) }
                     .map { MailListRow(folder: folder, summary: $0) }
+                // The rows' validity, so a catch-up can tell they predate a recreated folder.
+                unfetched[folder] = (validity, [])
                 usedFallback = true
             }
         }
@@ -418,11 +420,14 @@ final class MailListViewModel {
         for folder in targets {
             let matched = await matchingUIDs(in: folder, query: query)
             guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration,
-                  let results = searchResults else { return false }
-            guard let matched, unfetchedMatches[folder].map({ $0.uidValidity == matched.uidValidity }) ?? true else {
-                continue
+                  searchResults != nil else { return false }
+            guard let matched else { continue }
+            if let known = unfetchedMatches[folder], known.uidValidity != matched.uidValidity {
+                // The folder was recreated, so its old uids may name other mail now.
+                searchResults?.removeAll { $0.folder == folder }
+                searchGone[folder] = nil
             }
-            let listed = Set(results.filter { $0.folder == folder }.map(\.uid))
+            let listed = Set((searchResults ?? []).filter { $0.folder == folder }.map(\.uid))
             let skipped = listed.union(searchGone[folder] ?? [])
             let waiting = matched.uids.filter { !skipped.contains($0) }
             let oldestListed = listed.min() ?? .max
